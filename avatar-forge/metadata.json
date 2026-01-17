@@ -1,0 +1,5 @@
+{
+  "name": "Avatar Forge",
+  "description": "A professional AI tool to create consistent character avatars based on reference photos using Gemini 3 Pro.",
+  "requestFramePermissions": []
+}
