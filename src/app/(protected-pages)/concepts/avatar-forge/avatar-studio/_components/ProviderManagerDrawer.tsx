@@ -12,10 +12,10 @@ import type { AIProvider, ProviderType } from '@/@types/supabase'
 export const DEFAULT_PROVIDERS: AIProvider[] = [
     // Image Providers
     {
-        id: 'gemini-imagen-3',
-        name: 'Gemini Imagen 3',
+        id: 'gemini-nano-banana',
+        name: 'Gemini 3 Pro Image',
         type: 'GOOGLE' as ProviderType,
-        model: 'imagen-3.0-generate-002',
+        model: 'gemini-3-pro-image-preview',
         endpoint: null,
         is_active: true,
         supports_image: true,
@@ -153,8 +153,8 @@ const ProviderManagerDrawer = () => {
 
     const getProviderDescription = (provider: AIProvider) => {
         switch (provider.id) {
-            case 'gemini-imagen-3':
-                return 'Alta calidad, edicion avanzada, estilo consistente'
+            case 'gemini-nano-banana':
+                return 'Studio-quality images, text rendering, multi-image blending'
             case 'gemini-veo3':
                 return 'Video HD con audio generado, efectos cinematicos'
             case 'kling-v1-6':
