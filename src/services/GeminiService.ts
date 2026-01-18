@@ -1336,7 +1336,7 @@ ${hairColorSpecDesc ? `- EXACT HAIR COLOR: ${hairColorSpecDesc}` : ''}
         if (candidate.finishReason && candidate.finishReason !== 'STOP') {
             const reason = candidate.finishReason
             if (reason === 'SAFETY' || reason === 'IMAGE_SAFETY') {
-                throw new Error('Safety Block: Content violates safety guidelines.')
+                throw new Error('⚠️ Safety Block: Your prompt or reference images were flagged by content filters. Try: 1) Simplify your prompt, 2) Remove suggestive terms, 3) Use different reference images.')
             }
             throw new Error(`Generation stopped: ${reason}`)
         }
