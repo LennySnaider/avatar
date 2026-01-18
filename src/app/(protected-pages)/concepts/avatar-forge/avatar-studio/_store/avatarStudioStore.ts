@@ -746,11 +746,9 @@ export const useAvatarStudioStore = create<AvatarStudioState>()(
         {
             name: 'avatar-studio-storage',
             storage: createJSONStorage(() => sessionStorage),
-            // Only persist gallery and preview to avoid large base64 data
-            partialize: (state) => ({
-                gallery: state.gallery,
-                previewMedia: state.previewMedia,
-            }),
+            // Don't persist anything - gallery items have URLs from Supabase, previewMedia is large base64
+            // Persisting base64 data exceeds sessionStorage quota (~5MB limit)
+            partialize: () => ({}),
         }
     )
 )
