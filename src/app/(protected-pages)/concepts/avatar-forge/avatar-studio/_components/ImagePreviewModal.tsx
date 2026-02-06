@@ -685,6 +685,7 @@ const ImagePreviewModal = ({
                                 <video
                                     ref={videoRef}
                                     src={previewMedia.url}
+                                    crossOrigin="anonymous"
                                     className="max-h-[60vh] rounded-lg"
                                     controls={false}
                                     loop
