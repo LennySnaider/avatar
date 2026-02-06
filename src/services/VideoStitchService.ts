@@ -1,5 +1,5 @@
 import { FFmpeg } from '@ffmpeg/ffmpeg'
-import { fetchFile, toBlobURL } from '@ffmpeg/util'
+import { toBlobURL } from '@ffmpeg/util'
 
 let ffmpeg: FFmpeg | null = null
 let isLoaded = false
@@ -23,6 +23,18 @@ async function loadFFmpeg(): Promise<FFmpeg> {
 
     isLoaded = true
     return ffmpeg
+}
+
+/**
+ * Fetch video data from URL (handles both blob URLs and remote URLs)
+ */
+async function fetchVideoData(url: string): Promise<Uint8Array> {
+    const response = await fetch(url)
+    if (!response.ok) {
+        throw new Error(`Failed to fetch video: ${response.status}`)
+    }
+    const arrayBuffer = await response.arrayBuffer()
+    return new Uint8Array(arrayBuffer)
 }
 
 /**
@@ -56,7 +68,7 @@ export async function stitchVideos(
 
             onProgress?.(Math.round((i / videoUrls.length) * 30)) // 0-30% for downloading
 
-            const videoData = await fetchFile(videoUrls[i])
+            const videoData = await fetchVideoData(videoUrls[i])
             await ff.writeFile(filename, videoData)
         }
 
@@ -131,7 +143,7 @@ export async function stitchVideosWithReencode(
 
             onProgress?.(Math.round((i / videoUrls.length) * 30))
 
-            const videoData = await fetchFile(videoUrls[i])
+            const videoData = await fetchVideoData(videoUrls[i])
             await ff.writeFile(filename, videoData)
         }
 
