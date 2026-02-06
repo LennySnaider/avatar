@@ -1,5 +1,6 @@
 'use client'
 
+import { useRef } from 'react'
 import { useAvatarStudioStore } from '../_store/avatarStudioStore'
 import Button from '@/components/ui/Button'
 import Card from '@/components/ui/Card'
@@ -7,7 +8,7 @@ import Spinner from '@/components/ui/Spinner'
 import ScrollBar from '@/components/ui/ScrollBar'
 import Notification from '@/components/ui/Notification'
 import toast from '@/components/ui/toast'
-import { HiOutlineTrash, HiOutlineDownload, HiOutlineFilm, HiOutlinePhotograph, HiOutlinePencilAlt } from 'react-icons/hi'
+import { HiOutlineTrash, HiOutlineDownload, HiOutlineFilm, HiOutlinePhotograph, HiOutlinePencilAlt, HiOutlineUpload } from 'react-icons/hi'
 import { stitchVideos } from '@/services/VideoStitchService'
 import type { GeneratedMedia } from '../types'
 
@@ -33,6 +34,49 @@ const GalleryPanel = ({ onAnimateImage, onSaveToGallery }: GalleryPanelProps) =>
         addToGallery,
         openEditor,
     } = useAvatarStudioStore()
+
+    const uploadInputRef = useRef<HTMLInputElement>(null)
+
+    const handleUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const files = e.target.files
+        if (!files || files.length === 0) return
+
+        Array.from(files).forEach((file) => {
+            const isVideo = file.type.startsWith('video/')
+            const isImage = file.type.startsWith('image/')
+
+            if (!isVideo && !isImage) {
+                toast.push(
+                    <Notification type="warning" title="Invalid File">
+                        Only video and image files are supported
+                    </Notification>
+                )
+                return
+            }
+
+            const url = URL.createObjectURL(file)
+
+            const media: GeneratedMedia = {
+                id: `upload-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+                url,
+                prompt: `Uploaded: ${file.name}`,
+                aspectRatio: '16:9', // Default, could detect from video/image
+                timestamp: Date.now(),
+                mediaType: isVideo ? 'VIDEO' : 'IMAGE',
+            }
+
+            addToGallery(media)
+        })
+
+        toast.push(
+            <Notification type="success" title="Upload Complete">
+                {files.length} file(s) added to gallery
+            </Notification>
+        )
+
+        // Reset input
+        e.target.value = ''
+    }
 
     const handleDownload = async (media: GeneratedMedia) => {
         try {
@@ -132,10 +176,28 @@ const GalleryPanel = ({ onAnimateImage, onSaveToGallery }: GalleryPanelProps) =>
         <div className="h-full flex flex-col">
             <ScrollBar className="flex-1 h-full" autoHide={false}>
                 <div className="p-4">
+                    {/* Hidden Upload Input */}
+                    <input
+                        ref={uploadInputRef}
+                        type="file"
+                        accept="video/*,image/*"
+                        multiple
+                        className="hidden"
+                        onChange={handleUpload}
+                    />
+
                     {/* Gallery Header */}
                     <div className="flex items-center justify-between mb-4">
                         <h3 className="font-semibold text-lg">Gallery</h3>
                         <div className="flex items-center gap-2">
+                            <Button
+                                size="xs"
+                                variant="plain"
+                                onClick={() => uploadInputRef.current?.click()}
+                                icon={<HiOutlineUpload />}
+                            >
+                                <span>Upload</span>
+                            </Button>
                             {hasVideos && (
                                 <Button
                                     size="xs"
@@ -167,7 +229,15 @@ const GalleryPanel = ({ onAnimateImage, onSaveToGallery }: GalleryPanelProps) =>
                                 <HiOutlinePhotograph className="w-8 h-8" />
                             </div>
                             <p className="text-lg font-medium">Ready to Generate</p>
-                            <p className="text-sm">Describe a scene and click Generate</p>
+                            <p className="text-sm mb-4">Describe a scene and click Generate</p>
+                            <Button
+                                size="sm"
+                                variant="solid"
+                                onClick={() => uploadInputRef.current?.click()}
+                                icon={<HiOutlineUpload />}
+                            >
+                                Or Upload Videos/Images
+                            </Button>
                         </div>
                     )}
 
