@@ -905,7 +905,7 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
 
     // Continue Video Handler
     const handleContinueVideo = useCallback(
-        (frameBase64: string, promptSuggestion: string) => {
+        async (frameBase64: string, promptSuggestion: string) => {
             const refImg: ReferenceImage = {
                 id: `continue-${Date.now()}`,
                 url: frameBase64,
@@ -916,9 +916,15 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
             setVideoInputImage(refImg)
             setGenerationMode('VIDEO')
             setVideoSubMode('ANIMATE')
-            setPrompt(`${promptSuggestion} (Continued)`)
+            setPrompt(promptSuggestion)
+
+            // AUTO-GENERAR: Ejecutar generación automáticamente
+            // Esperar un tick para que el estado se actualice
+            setTimeout(() => {
+                handleGenerate()
+            }, 100)
         },
-        [setVideoInputImage, setGenerationMode, setVideoSubMode, setPrompt]
+        [setVideoInputImage, setGenerationMode, setVideoSubMode, setPrompt, handleGenerate]
     )
 
     // Re-use Handler - copies prompt and sets image as clone reference

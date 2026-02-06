@@ -6,6 +6,7 @@ import Dialog from '@/components/ui/Dialog'
 import Button from '@/components/ui/Button'
 import Input from '@/components/ui/Input'
 import Slider from '@/components/ui/Slider'
+import ContinueVideoDialog from './ContinueVideoDialog'
 import {
     HiOutlineDownload,
     HiOutlineChevronLeft,
@@ -76,6 +77,8 @@ const ImagePreviewModal = ({
     const [isPromptExpanded, setIsPromptExpanded] = useState(false)
     const [showApiPrompt, setShowApiPrompt] = useState(false)
     const [editAssets, setEditAssets] = useState<EditAsset[]>([])
+    const [showContinueDialog, setShowContinueDialog] = useState(false)
+    const [capturedFrame, setCapturedFrame] = useState<string | null>(null)
 
     const canvasRef = useRef<HTMLCanvasElement>(null)
     const editAssetInputRef = useRef<HTMLInputElement>(null)
@@ -539,8 +542,8 @@ const ImagePreviewModal = ({
 
             ctx.drawImage(video, 0, 0)
             const frameBase64 = canvas.toDataURL('image/jpeg')
-            onContinueVideo(frameBase64, previewMedia.prompt)
-            handleClose()
+            setCapturedFrame(frameBase64)
+            setShowContinueDialog(true)
         }
 
         // If video has duration, seek to last frame (slightly before end to ensure valid frame)
@@ -568,6 +571,21 @@ const ImagePreviewModal = ({
             captureCurrentFrame()
         }
     }, [previewMedia, onContinueVideo, handleClose])
+
+    // Handle confirm continue from dialog
+    const handleConfirmContinue = useCallback((prompt: string) => {
+        if (!capturedFrame || !previewMedia || !onContinueVideo) return
+        onContinueVideo(capturedFrame, prompt)
+        setShowContinueDialog(false)
+        setCapturedFrame(null)
+        handleClose()
+    }, [capturedFrame, previewMedia, onContinueVideo, handleClose])
+
+    // Handle cancel continue from dialog
+    const handleCancelContinue = useCallback(() => {
+        setShowContinueDialog(false)
+        setCapturedFrame(null)
+    }, [])
 
     // Keyboard navigation
     useEffect(() => {
@@ -1069,6 +1087,15 @@ const ImagePreviewModal = ({
                     </div>
                 </div>
             </Dialog>
+
+            {/* Continue Video Dialog */}
+            <ContinueVideoDialog
+                isOpen={showContinueDialog}
+                frameBase64={capturedFrame || ''}
+                originalPrompt={previewMedia?.prompt || ''}
+                onClose={handleCancelContinue}
+                onConfirm={handleConfirmContinue}
+            />
         </>
     )
 }
