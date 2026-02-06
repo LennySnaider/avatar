@@ -83,7 +83,7 @@ export async function stitchVideos(
 
         // Read the output file
         const data = await ff.readFile('output.mp4')
-        const blob = new Blob([data], { type: 'video/mp4' })
+        const blob = new Blob([data as BlobPart], { type: 'video/mp4' })
         const url = URL.createObjectURL(blob)
 
         // Clean up files
@@ -156,7 +156,7 @@ export async function stitchVideosWithReencode(
         onProgress?.(95)
 
         const data = await ff.readFile('output.mp4')
-        const blob = new Blob([data], { type: 'video/mp4' })
+        const blob = new Blob([data as BlobPart], { type: 'video/mp4' })
         const url = URL.createObjectURL(blob)
 
         // Clean up
