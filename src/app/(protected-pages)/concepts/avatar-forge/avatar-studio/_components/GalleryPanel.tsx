@@ -5,7 +5,10 @@ import Button from '@/components/ui/Button'
 import Card from '@/components/ui/Card'
 import Spinner from '@/components/ui/Spinner'
 import ScrollBar from '@/components/ui/ScrollBar'
+import Notification from '@/components/ui/Notification'
+import toast from '@/components/ui/toast'
 import { HiOutlineTrash, HiOutlineDownload, HiOutlineFilm, HiOutlinePhotograph, HiOutlinePencilAlt } from 'react-icons/hi'
+import { stitchVideos } from '@/services/VideoStitchService'
 import type { GeneratedMedia } from '../types'
 
 interface GalleryPanelProps {
@@ -26,6 +29,8 @@ const GalleryPanel = ({ onAnimateImage, onSaveToGallery }: GalleryPanelProps) =>
         toggleMontageSelection,
         setIsMontageMode,
         clearMontageSelection,
+        setIsStitching,
+        addToGallery,
         openEditor,
     } = useAvatarStudioStore()
 
@@ -59,6 +64,68 @@ const GalleryPanel = ({ onAnimateImage, onSaveToGallery }: GalleryPanelProps) =>
         }
     }
 
+    const handleStitch = async () => {
+        if (montageSelection.length < 2) return
+
+        // Get video URLs in selection order
+        const videoUrls = montageSelection
+            .map(id => gallery.find(m => m.id === id))
+            .filter((m): m is GeneratedMedia => m !== undefined && m.mediaType === 'VIDEO')
+            .map(m => m.url)
+
+        if (videoUrls.length < 2) {
+            toast.push(
+                <Notification type="warning" title="Not Enough Videos">
+                    Please select at least 2 videos to stitch
+                </Notification>
+            )
+            return
+        }
+
+        setIsStitching(true)
+
+        toast.push(
+            <Notification type="info" title="Stitching Videos">
+                Combining {videoUrls.length} videos... This may take a moment.
+            </Notification>
+        )
+
+        try {
+            const stitchedUrl = await stitchVideos(videoUrls, (progress) => {
+                console.log(`Stitch progress: ${progress}%`)
+            })
+
+            // Add stitched video to gallery
+            const stitchedMedia: GeneratedMedia = {
+                id: `stitch-${Date.now()}`,
+                url: stitchedUrl,
+                prompt: `Stitched video (${montageSelection.length} clips)`,
+                aspectRatio: gallery.find(m => m.id === montageSelection[0])?.aspectRatio || '16:9',
+                timestamp: Date.now(),
+                mediaType: 'VIDEO',
+            }
+
+            addToGallery(stitchedMedia)
+            clearMontageSelection()
+            setIsMontageMode(false)
+
+            toast.push(
+                <Notification type="success" title="Stitch Complete">
+                    Videos have been combined successfully!
+                </Notification>
+            )
+        } catch (error) {
+            console.error('Stitch failed:', error)
+            toast.push(
+                <Notification type="danger" title="Stitch Failed">
+                    {error instanceof Error ? error.message : 'Failed to stitch videos'}
+                </Notification>
+            )
+        } finally {
+            setIsStitching(false)
+        }
+    }
+
     const hasVideos = gallery.some((m) => m.mediaType === 'VIDEO')
 
     return (
@@ -85,6 +152,7 @@ const GalleryPanel = ({ onAnimateImage, onSaveToGallery }: GalleryPanelProps) =>
                                     size="xs"
                                     variant="solid"
                                     loading={isStitching}
+                                    onClick={handleStitch}
                                 >
                                     Stitch ({montageSelection.length})
                                 </Button>

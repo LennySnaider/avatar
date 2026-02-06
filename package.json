@@ -12,6 +12,8 @@
     "prettier:fix": "npm run prettier -- --write"
   },
   "dependencies": {
+    "@ffmpeg/ffmpeg": "^0.12.15",
+    "@ffmpeg/util": "^0.12.2",
     "@floating-ui/react": "^0.27.16",
     "@fullcalendar/core": "^6.1.18",
     "@fullcalendar/daygrid": "^6.1.18",
