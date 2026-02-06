@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useState, useEffect } from 'react'
+import { useCallback, useState, useEffect, useRef } from 'react'
 import { useAvatarStudioStore } from '../_store/avatarStudioStore'
 import AvatarEditDrawer from './AvatarEditDrawer'
 import BottomControlBar from './BottomControlBar'
@@ -46,6 +46,7 @@ interface AvatarStudioMainProps {
 const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
     const [isAvatarSelectorOpen, setIsAvatarSelectorOpen] = useState(false)
     const [isAvatarEditOpen, setIsAvatarEditOpen] = useState(false)
+    const pendingAutoGenerateRef = useRef(false)
 
     const {
         // State
@@ -905,7 +906,7 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
 
     // Continue Video Handler
     const handleContinueVideo = useCallback(
-        async (frameBase64: string, promptSuggestion: string) => {
+        (frameBase64: string, promptSuggestion: string) => {
             const refImg: ReferenceImage = {
                 id: `continue-${Date.now()}`,
                 url: frameBase64,
@@ -918,14 +919,23 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
             setVideoSubMode('ANIMATE')
             setPrompt(promptSuggestion)
 
-            // AUTO-GENERAR: Ejecutar generación automáticamente
-            // Esperar un tick para que el estado se actualice
-            setTimeout(() => {
-                handleGenerate()
-            }, 100)
+            // Mark for auto-generation after state updates
+            pendingAutoGenerateRef.current = true
         },
-        [setVideoInputImage, setGenerationMode, setVideoSubMode, setPrompt, handleGenerate]
+        [setVideoInputImage, setGenerationMode, setVideoSubMode, setPrompt]
     )
+
+    // Auto-generate when videoInputImage changes and pendingAutoGenerate is true
+    useEffect(() => {
+        if (pendingAutoGenerateRef.current && videoInputImage?.base64) {
+            pendingAutoGenerateRef.current = false
+            // Small delay to ensure all state updates have propagated
+            const timer = setTimeout(() => {
+                handleGenerate()
+            }, 50)
+            return () => clearTimeout(timer)
+        }
+    }, [videoInputImage, handleGenerate])
 
     // Re-use Handler - copies prompt and sets image as clone reference
     const handleReuse = useCallback(
