@@ -60,7 +60,7 @@ const ContinueVideoDialog = ({
             isOpen={isOpen}
             onClose={onClose}
             width={550}
-            className="z-[60]"
+            overlayClassName="!z-[60]"
             closable={true}
         >
             <div className="flex flex-col">
