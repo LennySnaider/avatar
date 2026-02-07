@@ -32,16 +32,18 @@ async function loadFFmpeg(): Promise<FFmpeg> {
         })
 
         try {
-            // Load FFmpeg single-threaded core (no SharedArrayBuffer required)
-            // Using single-threaded version for better browser compatibility
-            const baseURL = 'https://unpkg.com/@ffmpeg/core-st@0.12.6/dist/umd'
+            // Load FFmpeg core from jsDelivr (better CORS support than unpkg)
+            const baseURL = 'https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.6/dist/esm'
 
-            console.log('[FFmpeg] Loading single-threaded core from CDN...')
+            console.log('[FFmpeg] Loading FFmpeg core from jsDelivr CDN...')
 
             const coreURL = await toBlobURL(`${baseURL}/ffmpeg-core.js`, 'text/javascript')
-            const wasmURL = await toBlobURL(`${baseURL}/ffmpeg-core.wasm`, 'application/wasm')
+            console.log('[FFmpeg] Core JS loaded')
 
-            console.log('[FFmpeg] Core URLs prepared, loading into FFmpeg...')
+            const wasmURL = await toBlobURL(`${baseURL}/ffmpeg-core.wasm`, 'application/wasm')
+            console.log('[FFmpeg] WASM loaded')
+
+            console.log('[FFmpeg] Loading into FFmpeg instance...')
 
             await ff.load({
                 coreURL,
