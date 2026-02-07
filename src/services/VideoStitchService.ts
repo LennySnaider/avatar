@@ -32,10 +32,11 @@ async function loadFFmpeg(): Promise<FFmpeg> {
         })
 
         try {
-            // Load FFmpeg core from CDN with timeout
-            const baseURL = 'https://unpkg.com/@ffmpeg/core@0.12.6/dist/umd'
+            // Load FFmpeg single-threaded core (no SharedArrayBuffer required)
+            // Using single-threaded version for better browser compatibility
+            const baseURL = 'https://unpkg.com/@ffmpeg/core-st@0.12.6/dist/umd'
 
-            console.log('[FFmpeg] Loading core from CDN...')
+            console.log('[FFmpeg] Loading single-threaded core from CDN...')
 
             const coreURL = await toBlobURL(`${baseURL}/ffmpeg-core.js`, 'text/javascript')
             const wasmURL = await toBlobURL(`${baseURL}/ffmpeg-core.wasm`, 'application/wasm')
