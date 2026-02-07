@@ -9,7 +9,6 @@ import ScrollBar from '@/components/ui/ScrollBar'
 import Notification from '@/components/ui/Notification'
 import toast from '@/components/ui/toast'
 import { HiOutlineTrash, HiOutlineDownload, HiOutlineFilm, HiOutlinePhotograph, HiOutlinePencilAlt, HiOutlineUpload } from 'react-icons/hi'
-import { stitchVideos } from '@/services/VideoStitchService'
 import type { GeneratedMedia } from '../types'
 
 interface GalleryPanelProps {
@@ -108,19 +107,18 @@ const GalleryPanel = ({ onAnimateImage, onSaveToGallery }: GalleryPanelProps) =>
         }
     }
 
-    const handleStitch = async () => {
-        if (montageSelection.length < 2) return
+    const handleDownloadSelected = async () => {
+        if (montageSelection.length === 0) return
 
-        // Get video URLs in selection order
-        const videoUrls = montageSelection
+        // Get selected videos in order
+        const selectedVideos = montageSelection
             .map(id => gallery.find(m => m.id === id))
             .filter((m): m is GeneratedMedia => m !== undefined && m.mediaType === 'VIDEO')
-            .map(m => m.url)
 
-        if (videoUrls.length < 2) {
+        if (selectedVideos.length === 0) {
             toast.push(
-                <Notification type="warning" title="Not Enough Videos">
-                    Please select at least 2 videos to stitch
+                <Notification type="warning" title="No Videos Selected">
+                    Please select at least 1 video to download
                 </Notification>
             )
             return
@@ -129,40 +127,47 @@ const GalleryPanel = ({ onAnimateImage, onSaveToGallery }: GalleryPanelProps) =>
         setIsStitching(true)
 
         toast.push(
-            <Notification type="info" title="Stitching Videos">
-                Combining {videoUrls.length} videos... This may take a moment.
+            <Notification type="info" title="Downloading Videos">
+                Downloading {selectedVideos.length} video(s)... Files are numbered in selection order.
             </Notification>
         )
 
         try {
-            const stitchedUrl = await stitchVideos(videoUrls, (progress) => {
-                console.log(`Stitch progress: ${progress}%`)
-            })
+            // Download each video with numbered filename
+            for (let i = 0; i < selectedVideos.length; i++) {
+                const video = selectedVideos[i]
+                const response = await fetch(video.url)
+                const blob = await response.blob()
+                const blobUrl = window.URL.createObjectURL(blob)
 
-            // Add stitched video to gallery
-            const stitchedMedia: GeneratedMedia = {
-                id: `stitch-${Date.now()}`,
-                url: stitchedUrl,
-                prompt: `Stitched video (${montageSelection.length} clips)`,
-                aspectRatio: gallery.find(m => m.id === montageSelection[0])?.aspectRatio || '16:9',
-                timestamp: Date.now(),
-                mediaType: 'VIDEO',
+                const link = document.createElement('a')
+                link.href = blobUrl
+                // Number files so user knows the order for stitching
+                link.download = `video-${String(i + 1).padStart(2, '0')}-${Date.now()}.mp4`
+                document.body.appendChild(link)
+                link.click()
+                document.body.removeChild(link)
+                window.URL.revokeObjectURL(blobUrl)
+
+                // Small delay between downloads to prevent browser issues
+                if (i < selectedVideos.length - 1) {
+                    await new Promise(resolve => setTimeout(resolve, 500))
+                }
             }
 
-            addToGallery(stitchedMedia)
             clearMontageSelection()
             setIsMontageMode(false)
 
             toast.push(
-                <Notification type="success" title="Stitch Complete">
-                    Videos have been combined successfully!
+                <Notification type="success" title="Download Complete">
+                    {selectedVideos.length} video(s) downloaded. Use any video editor to combine them.
                 </Notification>
             )
         } catch (error) {
-            console.error('Stitch failed:', error)
+            console.error('Download failed:', error)
             toast.push(
-                <Notification type="danger" title="Stitch Failed">
-                    {error instanceof Error ? error.message : 'Failed to stitch videos'}
+                <Notification type="danger" title="Download Failed">
+                    {error instanceof Error ? error.message : 'Failed to download videos'}
                 </Notification>
             )
         } finally {
@@ -209,14 +214,15 @@ const GalleryPanel = ({ onAnimateImage, onSaveToGallery }: GalleryPanelProps) =>
                                     <span>{isMontageMode ? 'Exit Studio' : 'Video Studio'}</span>
                                 </Button>
                             )}
-                            {isMontageMode && montageSelection.length >= 2 && (
+                            {isMontageMode && montageSelection.length >= 1 && (
                                 <Button
                                     size="xs"
                                     variant="solid"
                                     loading={isStitching}
-                                    onClick={handleStitch}
+                                    onClick={handleDownloadSelected}
+                                    icon={<HiOutlineDownload />}
                                 >
-                                    Stitch ({montageSelection.length})
+                                    Download ({montageSelection.length})
                                 </Button>
                             )}
                         </div>
