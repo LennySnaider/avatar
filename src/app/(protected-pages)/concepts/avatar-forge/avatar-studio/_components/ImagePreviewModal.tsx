@@ -26,6 +26,7 @@ import {
     HiOutlineCode,
     HiOutlinePhotograph,
     HiOutlineX,
+    HiOutlineCamera,
 } from 'react-icons/hi'
 import Tooltip from '@/components/ui/Tooltip'
 import type { GeneratedMedia } from '../types'
@@ -44,7 +45,7 @@ interface ImagePreviewModalProps {
     onAnimate?: (media: GeneratedMedia) => void
     onVariant?: (media: GeneratedMedia) => void
     onSave?: (media: GeneratedMedia) => Promise<void>
-    onContinueVideo?: (frameBase64: string, promptSuggestion: string) => void
+    onContinueVideo?: (frameBase64: string, promptSuggestion: string, dialogue: string) => void
     onReuse?: (media: GeneratedMedia) => void
 }
 
@@ -56,7 +57,7 @@ const ImagePreviewModal = ({
     onContinueVideo,
     onReuse,
 }: ImagePreviewModalProps) => {
-    const { gallery, previewMedia, setPreviewMedia, removeFromGallery, addToGallery } = useAvatarStudioStore()
+    const { gallery, previewMedia, setPreviewMedia, removeFromGallery, addToGallery, videoDialogue } = useAvatarStudioStore()
 
     const [isEditing, setIsEditing] = useState(false)
     const [editPrompt, setEditPrompt] = useState('')
@@ -520,7 +521,7 @@ const ImagePreviewModal = ({
         setIsPlaying(!isPlaying)
     }
 
-    // Capture last frame of video for "Continue" functionality
+    // Capture current frame of video for "Continue" functionality
     const captureFrame = useCallback(() => {
         if (!videoRef.current || !previewMedia || !onContinueVideo) return
 
@@ -532,50 +533,47 @@ const ImagePreviewModal = ({
             setIsPlaying(false)
         }
 
-        // Function to capture current frame
-        const captureCurrentFrame = () => {
-            const canvas = document.createElement('canvas')
-            canvas.width = video.videoWidth
-            canvas.height = video.videoHeight
-            const ctx = canvas.getContext('2d')
-            if (!ctx) return
+        const canvas = document.createElement('canvas')
+        canvas.width = video.videoWidth
+        canvas.height = video.videoHeight
+        const ctx = canvas.getContext('2d')
+        if (!ctx) return
 
-            ctx.drawImage(video, 0, 0)
-            const frameBase64 = canvas.toDataURL('image/jpeg')
-            setCapturedFrame(frameBase64)
-            setShowContinueDialog(true)
-        }
+        ctx.drawImage(video, 0, 0)
+        const frameBase64 = canvas.toDataURL('image/jpeg')
+        setCapturedFrame(frameBase64)
+        setShowContinueDialog(true)
+    }, [previewMedia, onContinueVideo])
 
-        // If video has duration, seek to last frame (slightly before end to ensure valid frame)
-        if (video.duration && isFinite(video.duration)) {
-            // Seek to 0.1 seconds before end to ensure we get a valid frame
-            const targetTime = Math.max(0, video.duration - 0.1)
+    // Capture current frame and download as image
+    const captureFrameAsImage = useCallback(() => {
+        const video = videoRef.current
+        if (!video) return
 
-            // If already near the end, just capture
-            if (Math.abs(video.currentTime - targetTime) < 0.2) {
-                captureCurrentFrame()
-                return
-            }
+        const canvas = document.createElement('canvas')
+        canvas.width = video.videoWidth
+        canvas.height = video.videoHeight
+        const ctx = canvas.getContext('2d')
+        if (!ctx) return
 
-            // Add one-time seeked event listener
-            const handleSeeked = () => {
-                video.removeEventListener('seeked', handleSeeked)
-                // Small delay to ensure frame is rendered
-                setTimeout(captureCurrentFrame, 50)
-            }
-
-            video.addEventListener('seeked', handleSeeked)
-            video.currentTime = targetTime
-        } else {
-            // Fallback: capture current frame if duration not available
-            captureCurrentFrame()
-        }
-    }, [previewMedia, onContinueVideo, handleClose])
+        ctx.drawImage(video, 0, 0)
+        canvas.toBlob((blob) => {
+            if (!blob) return
+            const blobUrl = URL.createObjectURL(blob)
+            const link = document.createElement('a')
+            link.href = blobUrl
+            link.download = `avatar-frame-${Date.now()}.jpg`
+            document.body.appendChild(link)
+            link.click()
+            document.body.removeChild(link)
+            URL.revokeObjectURL(blobUrl)
+        }, 'image/jpeg', 0.95)
+    }, [])
 
     // Handle confirm continue from dialog
-    const handleConfirmContinue = useCallback((prompt: string) => {
+    const handleConfirmContinue = useCallback((prompt: string, dialogue: string) => {
         if (!capturedFrame || !previewMedia || !onContinueVideo) return
-        onContinueVideo(capturedFrame, prompt)
+        onContinueVideo(capturedFrame, prompt, dialogue)
         setShowContinueDialog(false)
         setCapturedFrame(null)
         handleClose()
@@ -1031,6 +1029,12 @@ const ImagePreviewModal = ({
                                 </>
                             )}
 
+                            {previewMedia.mediaType === 'VIDEO' && (
+                                <Button variant="plain" onClick={captureFrameAsImage} icon={<HiOutlineCamera />}>
+                                    <span>Frame</span>
+                                </Button>
+                            )}
+
                             {previewMedia.mediaType === 'VIDEO' && onContinueVideo && (
                                 <Button variant="plain" color="purple" onClick={captureFrame} icon={<HiOutlineFilm />}>
                                     <span>Continue</span>
@@ -1094,6 +1098,7 @@ const ImagePreviewModal = ({
                 isOpen={showContinueDialog}
                 frameBase64={capturedFrame || ''}
                 originalPrompt={previewMedia?.prompt || ''}
+                originalDialogue={videoDialogue}
                 onClose={handleCancelContinue}
                 onConfirm={handleConfirmContinue}
             />

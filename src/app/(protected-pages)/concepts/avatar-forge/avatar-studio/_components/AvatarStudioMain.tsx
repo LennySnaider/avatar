@@ -114,6 +114,7 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
         setPromptAndAnalyze,
         setProviders,
         setActiveProviderId,
+        setVideoDialogue,
     } = useAvatarStudioStore()
 
     // Image optimization hook for API calls
@@ -906,7 +907,7 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
 
     // Continue Video Handler
     const handleContinueVideo = useCallback(
-        (frameBase64: string, promptSuggestion: string) => {
+        (frameBase64: string, promptSuggestion: string, dialogue: string) => {
             const refImg: ReferenceImage = {
                 id: `continue-${Date.now()}`,
                 url: frameBase64,
@@ -918,11 +919,12 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
             setGenerationMode('VIDEO')
             setVideoSubMode('ANIMATE')
             setPrompt(promptSuggestion)
+            setVideoDialogue(dialogue)
 
             // Mark for auto-generation after state updates
             pendingAutoGenerateRef.current = true
         },
-        [setVideoInputImage, setGenerationMode, setVideoSubMode, setPrompt]
+        [setVideoInputImage, setGenerationMode, setVideoSubMode, setPrompt, setVideoDialogue]
     )
 
     // Auto-generate when videoInputImage changes and pendingAutoGenerate is true

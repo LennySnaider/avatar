@@ -9,18 +9,21 @@ interface ContinueVideoDialogProps {
     isOpen: boolean
     frameBase64: string
     originalPrompt: string
+    originalDialogue?: string
     onClose: () => void
-    onConfirm: (prompt: string) => void
+    onConfirm: (prompt: string, dialogue: string) => void
 }
 
 const ContinueVideoDialog = ({
     isOpen,
     frameBase64,
     originalPrompt,
+    originalDialogue = '',
     onClose,
     onConfirm,
 }: ContinueVideoDialogProps) => {
     const [editablePrompt, setEditablePrompt] = useState('')
+    const [dialogue, setDialogue] = useState('')
     const [showOriginal, setShowOriginal] = useState(false)
 
     // Inicializar con sugerencia cuando se abre
@@ -30,20 +33,22 @@ const ContinueVideoDialog = ({
                 ? `${originalPrompt} (Continued)`
                 : 'Cinematic movement, continuation of previous scene'
             setEditablePrompt(suggestion)
+            setDialogue(originalDialogue)
         } else {
             // Reset al cerrar
             setEditablePrompt('')
+            setDialogue('')
             setShowOriginal(false)
         }
-    }, [isOpen, originalPrompt])
+    }, [isOpen, originalPrompt, originalDialogue])
 
     // Handler para confirmar
     const handleConfirm = useCallback(() => {
         const cleanPrompt = editablePrompt.trim()
         if (cleanPrompt) {
-            onConfirm(cleanPrompt)
+            onConfirm(cleanPrompt, dialogue.trim())
         }
-    }, [editablePrompt, onConfirm])
+    }, [editablePrompt, dialogue, onConfirm])
 
     // Shortcut de teclado
     const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
@@ -91,7 +96,7 @@ const ContinueVideoDialog = ({
                             />
                             <div className="flex-1">
                                 <p className="text-xs font-medium text-gray-700">
-                                    Last Frame Captured
+                                    Frame Captured
                                 </p>
                                 <p className="text-xs text-gray-500">
                                     This will be the starting point for continuation
@@ -99,6 +104,24 @@ const ContinueVideoDialog = ({
                             </div>
                         </div>
                     )}
+
+                    {/* Dialogue Input */}
+                    <div>
+                        <label className="text-sm font-medium text-gray-700 mb-2 block">
+                            Dialogue
+                        </label>
+                        <input
+                            type="text"
+                            value={dialogue}
+                            onChange={(e) => setDialogue(e.target.value)}
+                            onKeyDown={handleKeyDown}
+                            placeholder="What should they say?"
+                            className="w-full p-3 border border-gray-300 rounded-lg bg-white text-sm focus:border-purple-500 focus:ring-2 focus:ring-purple-200 transition-all"
+                        />
+                        <p className="text-xs text-gray-400 mt-1">
+                            Optional — leave empty for no speech
+                        </p>
+                    </div>
 
                     {/* Prompt Input */}
                     <div>
