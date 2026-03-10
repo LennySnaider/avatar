@@ -10,7 +10,7 @@ import Notification from '@/components/ui/Notification'
 import toast from '@/components/ui/toast'
 import { HiOutlineTrash, HiOutlineDownload, HiOutlineFilm, HiOutlinePhotograph, HiOutlinePencilAlt, HiOutlineUpload } from 'react-icons/hi'
 import { stitchVideos } from '@/services/VideoStitchService'
-import type { GeneratedMedia } from '../types'
+import type { GeneratedMedia, AspectRatio } from '../types'
 
 interface GalleryPanelProps {
     onAnimateImage?: (media: GeneratedMedia) => void
@@ -37,6 +37,15 @@ const GalleryPanel = ({ onAnimateImage, onSaveToGallery }: GalleryPanelProps) =>
 
     const uploadInputRef = useRef<HTMLInputElement>(null)
 
+    const detectAspectRatio = (width: number, height: number): AspectRatio => {
+        const ratio = width / height
+        if (ratio > 1.5) return '16:9'
+        if (ratio > 1.15) return '4:3'
+        if (ratio < 0.67) return '9:16'
+        if (ratio < 0.87) return '3:4'
+        return '1:1'
+    }
+
     const handleUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
         const files = e.target.files
         if (!files || files.length === 0) return
@@ -55,17 +64,36 @@ const GalleryPanel = ({ onAnimateImage, onSaveToGallery }: GalleryPanelProps) =>
             }
 
             const url = URL.createObjectURL(file)
+            const id = `upload-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
 
-            const media: GeneratedMedia = {
-                id: `upload-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-                url,
-                prompt: `Uploaded: ${file.name}`,
-                aspectRatio: '16:9', // Default, could detect from video/image
-                timestamp: Date.now(),
-                mediaType: isVideo ? 'VIDEO' : 'IMAGE',
+            if (isVideo) {
+                const video = document.createElement('video')
+                video.preload = 'metadata'
+                video.onloadedmetadata = () => {
+                    addToGallery({
+                        id,
+                        url,
+                        prompt: `Uploaded: ${file.name}`,
+                        aspectRatio: detectAspectRatio(video.videoWidth, video.videoHeight),
+                        timestamp: Date.now(),
+                        mediaType: 'VIDEO',
+                    })
+                }
+                video.src = url
+            } else {
+                const img = new Image()
+                img.onload = () => {
+                    addToGallery({
+                        id,
+                        url,
+                        prompt: `Uploaded: ${file.name}`,
+                        aspectRatio: detectAspectRatio(img.naturalWidth, img.naturalHeight),
+                        timestamp: Date.now(),
+                        mediaType: 'IMAGE',
+                    })
+                }
+                img.src = url
             }
-
-            addToGallery(media)
         })
 
         toast.push(

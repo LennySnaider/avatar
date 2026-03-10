@@ -571,9 +571,9 @@ const ImagePreviewModal = ({
     }, [])
 
     // Handle confirm continue from dialog
-    const handleConfirmContinue = useCallback((prompt: string, dialogue: string) => {
+    const handleConfirmContinue = useCallback((prompt: string, dialogue: string, aspectRatio: AspectRatio) => {
         if (!capturedFrame || !previewMedia || !onContinueVideo) return
-        onContinueVideo(capturedFrame, prompt, dialogue, previewMedia.aspectRatio)
+        onContinueVideo(capturedFrame, prompt, dialogue, aspectRatio)
         setShowContinueDialog(false)
         setCapturedFrame(null)
         handleClose()
@@ -1099,6 +1099,7 @@ const ImagePreviewModal = ({
                 frameBase64={capturedFrame || ''}
                 originalPrompt={previewMedia?.prompt || ''}
                 originalDialogue={videoDialogue}
+                originalAspectRatio={previewMedia?.aspectRatio}
                 onClose={handleCancelContinue}
                 onConfirm={handleConfirmContinue}
             />

@@ -4,14 +4,29 @@ import { useState, useEffect, useCallback } from 'react'
 import Dialog from '@/components/ui/Dialog'
 import Button from '@/components/ui/Button'
 import { HiOutlineFilm } from 'react-icons/hi'
+import { ASPECT_RATIOS } from '../types'
+import type { AspectRatio } from '../types'
 
 interface ContinueVideoDialogProps {
     isOpen: boolean
     frameBase64: string
     originalPrompt: string
     originalDialogue?: string
+    originalAspectRatio?: AspectRatio
     onClose: () => void
-    onConfirm: (prompt: string, dialogue: string) => void
+    onConfirm: (prompt: string, dialogue: string, aspectRatio: AspectRatio) => void
+}
+
+const AspectRatioIcon = ({ ratio, isSelected }: { ratio: string; isSelected: boolean }) => {
+    const baseClass = `border-2 rounded-sm ${isSelected ? 'border-purple-500 bg-purple-500/20' : 'border-gray-400'}`
+    switch (ratio) {
+        case '1:1': return <span className={`${baseClass} w-3.5 h-3.5`} />
+        case '16:9': return <span className={`${baseClass} w-5 h-3`} />
+        case '9:16': return <span className={`${baseClass} w-3 h-5`} />
+        case '4:3': return <span className={`${baseClass} w-4 h-3`} />
+        case '3:4': return <span className={`${baseClass} w-3 h-4`} />
+        default: return <span className={`${baseClass} w-3.5 h-3.5`} />
+    }
 }
 
 const ContinueVideoDialog = ({
@@ -19,11 +34,13 @@ const ContinueVideoDialog = ({
     frameBase64,
     originalPrompt,
     originalDialogue = '',
+    originalAspectRatio = '16:9',
     onClose,
     onConfirm,
 }: ContinueVideoDialogProps) => {
     const [editablePrompt, setEditablePrompt] = useState('')
     const [dialogue, setDialogue] = useState('')
+    const [aspectRatio, setAspectRatio] = useState<AspectRatio>('16:9')
     const [showOriginal, setShowOriginal] = useState(false)
 
     // Inicializar con sugerencia cuando se abre
@@ -34,21 +51,22 @@ const ContinueVideoDialog = ({
                 : 'Cinematic movement, continuation of previous scene'
             setEditablePrompt(suggestion)
             setDialogue(originalDialogue)
+            setAspectRatio(originalAspectRatio)
         } else {
             // Reset al cerrar
             setEditablePrompt('')
             setDialogue('')
             setShowOriginal(false)
         }
-    }, [isOpen, originalPrompt, originalDialogue])
+    }, [isOpen, originalPrompt, originalDialogue, originalAspectRatio])
 
     // Handler para confirmar
     const handleConfirm = useCallback(() => {
         const cleanPrompt = editablePrompt.trim()
         if (cleanPrompt) {
-            onConfirm(cleanPrompt, dialogue.trim())
+            onConfirm(cleanPrompt, dialogue.trim(), aspectRatio)
         }
-    }, [editablePrompt, dialogue, onConfirm])
+    }, [editablePrompt, dialogue, aspectRatio, onConfirm])
 
     // Shortcut de teclado
     const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
@@ -104,6 +122,29 @@ const ContinueVideoDialog = ({
                             </div>
                         </div>
                     )}
+
+                    {/* Aspect Ratio Selector */}
+                    <div>
+                        <label className="text-sm font-medium text-gray-700 mb-2 block">
+                            Aspect Ratio
+                        </label>
+                        <div className="flex gap-2">
+                            {ASPECT_RATIOS.map((r) => (
+                                <button
+                                    key={r.value}
+                                    onClick={() => setAspectRatio(r.value as AspectRatio)}
+                                    className={`flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-lg border transition-colors ${
+                                        aspectRatio === r.value
+                                            ? 'border-purple-500 bg-purple-50 text-purple-700 font-medium'
+                                            : 'border-gray-200 bg-white text-gray-600 hover:bg-gray-50'
+                                    }`}
+                                >
+                                    <AspectRatioIcon ratio={r.value} isSelected={aspectRatio === r.value} />
+                                    {r.label}
+                                </button>
+                            ))}
+                        </div>
+                    </div>
 
                     {/* Dialogue Input */}
                     <div>
