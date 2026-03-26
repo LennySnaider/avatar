@@ -69,6 +69,7 @@ const VIDEO_RESOLUTIONS: { value: VideoResolution; label: string }[] = [
 interface BottomControlBarProps {
     onGenerate: () => void
     onChangeAvatar: () => void
+    onDeselectAvatar: () => void
     onEditAvatar: () => void
     onEnhancePrompt: () => void
     onDescribeImage: (image: { base64: string; mimeType: string }) => void
@@ -158,6 +159,7 @@ const ImageDropzone = ({
 const BottomControlBar = ({
     onGenerate,
     onChangeAvatar,
+    onDeselectAvatar,
     onEditAvatar,
     onEnhancePrompt,
     onDescribeImage,
@@ -479,6 +481,7 @@ const BottomControlBar = ({
                 <div className="flex items-center gap-2 shrink-0">
                     {hasAvatar ? (
                         <div className="flex items-center gap-2">
+                            <div className="relative group">
                             <div
                                 className="w-11 h-11 rounded-lg overflow-hidden bg-gray-100 dark:bg-gray-700 cursor-pointer hover:ring-2 hover:ring-primary transition-all"
                                 onClick={onChangeAvatar}
@@ -490,6 +493,14 @@ const BottomControlBar = ({
                                         <HiOutlineUser className="w-5 h-5 text-gray-400" />
                                     </div>
                                 )}
+                            </div>
+                            <button
+                                onClick={(e) => { e.stopPropagation(); onDeselectAvatar() }}
+                                className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-gray-500/80 hover:bg-red-500 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                                title="Deselect avatar"
+                            >
+                                <HiOutlineX className="w-2.5 h-2.5" />
+                            </button>
                             </div>
                             <div className="hidden sm:block">
                                 <p className="text-xs font-medium truncate max-w-[80px]">{avatarName || 'Avatar'}</p>

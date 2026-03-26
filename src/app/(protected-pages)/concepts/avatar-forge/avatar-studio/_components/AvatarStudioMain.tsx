@@ -92,7 +92,10 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
         // Actions
         setAvatarId,
         setAvatarName,
+        setCurrentAvatar,
         setFaceDescription,
+        clearAvatarReferences,
+        unlockAvatar,
         setPrompt,
         setGenerationMode,
         setVideoSubMode,
@@ -1050,6 +1053,13 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
             <BottomControlBar
                 onGenerate={handleGenerate}
                 onChangeAvatar={() => setIsAvatarSelectorOpen(true)}
+                onDeselectAvatar={() => {
+                    setAvatarId(null)
+                    setAvatarName('')
+                    setCurrentAvatar(null)
+                    clearAvatarReferences()
+                    unlockAvatar()
+                }}
                 onEditAvatar={() => setIsAvatarEditOpen(true)}
                 onEnhancePrompt={handleEnhancePrompt}
                 onDescribeImage={handleDescribeImage}
