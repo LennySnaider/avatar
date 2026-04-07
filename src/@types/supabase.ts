@@ -257,3 +257,33 @@ export type PromptInsert = Database['public']['Tables']['prompts']['Insert']
 export type PromptUpdate = Database['public']['Tables']['prompts']['Update']
 
 export type AIProvider = Database['public']['Tables']['ai_providers']['Row']
+
+// ─── Voice Studio Tables ───────────────────────────────────
+
+export interface DbClonedVoice {
+    id: string
+    user_id: string
+    avatar_id: string | null
+    name: string
+    provider: string
+    provider_voice_id: string
+    sample_audio_url: string
+    language: string
+    status: string
+    created_at: string
+    updated_at: string
+}
+
+export interface DbAudioScript {
+    id: string
+    user_id: string
+    generation_id: string | null
+    title: string
+    script_text: string
+    language: string
+    tone: string
+    duration_target_seconds: number
+    template_type: string
+    context: Record<string, unknown>
+    created_at: string
+}
