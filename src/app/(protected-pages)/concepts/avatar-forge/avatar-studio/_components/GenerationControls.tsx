@@ -1,6 +1,7 @@
 'use client'
 
-import { useRef } from 'react'
+import { useRef, useState, useEffect } from 'react'
+import Link from 'next/link'
 import { useAvatarStudioStore } from '../_store/avatarStudioStore'
 import Button from '@/components/ui/Button'
 import Input from '@/components/ui/Input'
@@ -25,6 +26,7 @@ import {
     HiOutlineCamera,
     HiOutlineBookmarkAlt,
     HiOutlineExclamation,
+    HiOutlineMicrophone,
 } from 'react-icons/hi'
 import { PiLightningFill } from 'react-icons/pi'
 import { MODEL_ACTION_PRESETS } from '../_constants/modelActionPresets'
@@ -33,6 +35,13 @@ import KlingVoiceControls from './KlingVoiceControls'
 import KlingCameraControls from './KlingCameraControls'
 import KlingMotionBrushEditor from './KlingMotionBrushEditor'
 import KlingMotionControlEditor from './KlingMotionControlEditor'
+
+interface ClonedVoice {
+    id: string
+    name: string
+    provider_voice_id: string
+    language: string
+}
 
 const VIDEO_RESOLUTIONS: { value: VideoResolution; label: string }[] = [
     { value: '480p', label: '480p' },
@@ -71,6 +80,29 @@ const GenerationControls = ({
     const videoInputRef = useRef<HTMLInputElement>(null)
     const assetInputRef = useRef<HTMLInputElement>(null)
     const imageToPromptRef = useRef<HTMLInputElement>(null)
+
+    // Cloned voice state
+    const [clonedVoices, setClonedVoices] = useState<ClonedVoice[]>([])
+    const [selectedClonedVoiceId, setSelectedClonedVoiceId] = useState<string>('')
+    const [isLoadingVoices, setIsLoadingVoices] = useState(false)
+
+    useEffect(() => {
+        const fetchVoices = async () => {
+            setIsLoadingVoices(true)
+            try {
+                const res = await fetch('/api/voice/list')
+                if (res.ok) {
+                    const data = await res.json()
+                    setClonedVoices(data.voices || [])
+                }
+            } catch {
+                // silently ignore fetch errors
+            } finally {
+                setIsLoadingVoices(false)
+            }
+        }
+        fetchVoices()
+    }, [])
 
     const {
         prompt,
@@ -697,6 +729,51 @@ const GenerationControls = ({
                             </select>
                         </div>
                     )}
+
+                    {/* Cloned Voice Selector */}
+                    <div>
+                        <div className="flex items-center gap-1.5 mb-1">
+                            <HiOutlineMicrophone className="w-3.5 h-3.5 text-purple-400" />
+                            <label className="text-xs font-medium text-gray-500">
+                                Cloned Voice
+                            </label>
+                        </div>
+                        {isLoadingVoices ? (
+                            <div className="flex items-center gap-2 py-2 text-xs text-gray-400">
+                                <div className="w-3 h-3 border border-gray-400 border-t-transparent rounded-full animate-spin" />
+                                Loading voices...
+                            </div>
+                        ) : clonedVoices.length === 0 ? (
+                            <div className="flex items-center justify-between py-1.5 px-3 border border-dashed border-gray-300 dark:border-gray-600 rounded-lg">
+                                <span className="text-xs text-gray-400">No cloned voices yet</span>
+                                <Link
+                                    href="/concepts/voice-studio"
+                                    className="text-xs text-purple-500 hover:text-purple-400 hover:underline transition-colors"
+                                >
+                                    Go to Voice Studio →
+                                </Link>
+                            </div>
+                        ) : (
+                            <select
+                                value={selectedClonedVoiceId}
+                                onChange={(e) => setSelectedClonedVoiceId(e.target.value)}
+                                className="w-full px-3 py-2 border rounded-lg text-sm bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-600"
+                            >
+                                <option value="">— None (use voice style) —</option>
+                                {clonedVoices.map((v) => (
+                                    <option key={v.id} value={v.provider_voice_id}>
+                                        {v.name}
+                                        {v.language ? ` (${v.language})` : ''}
+                                    </option>
+                                ))}
+                            </select>
+                        )}
+                        {selectedClonedVoiceId && (
+                            <p className="text-[10px] text-purple-400 mt-1">
+                                Using cloned voice ID: {selectedClonedVoiceId}
+                            </p>
+                        )}
+                    </div>
 
                     <Checkbox
                         checked={noMusic}
