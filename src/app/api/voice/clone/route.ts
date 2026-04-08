@@ -3,37 +3,6 @@ import { auth } from '@/auth'
 import { createServerSupabaseClient } from '@/lib/supabase'
 import { uploadAudioForCloning, cloneVoice, generateVoiceId } from '@/services/MiniMaxService'
 
-async function convertToWav(inputBuffer: Buffer, originalName: string): Promise<Buffer> {
-    const isWav = originalName.toLowerCase().endsWith('.wav')
-    if (isWav) return inputBuffer
-
-    const { execSync } = await import('child_process')
-    const { writeFileSync, readFileSync, unlinkSync, mkdirSync, existsSync } = await import('fs')
-    const path = await import('path')
-    const { randomUUID } = await import('crypto')
-
-    const tmpDir = '/tmp/voice-convert'
-    if (!existsSync(tmpDir)) mkdirSync(tmpDir, { recursive: true })
-
-    const jobId = randomUUID()
-    const ext = path.extname(originalName) || '.mp3'
-    const tmpInput = path.join(tmpDir, `${jobId}-input${ext}`)
-    const tmpOutput = path.join(tmpDir, `${jobId}-output.wav`)
-
-    try {
-        writeFileSync(tmpInput, inputBuffer)
-        execSync(
-            `ffmpeg -y -i "${tmpInput}" -ar 16000 -ac 1 -sample_fmt s16 "${tmpOutput}"`,
-            { timeout: 30000 }
-        )
-        return readFileSync(tmpOutput)
-    } finally {
-        for (const f of [tmpInput, tmpOutput]) {
-            try { unlinkSync(f) } catch { /* ignore */ }
-        }
-    }
-}
-
 export async function POST(req: NextRequest) {
     const session = await auth()
     if (!session?.user?.id) {
@@ -70,17 +39,14 @@ export async function POST(req: NextRequest) {
             .from('avatars')
             .getPublicUrl(storagePath)
 
-        // 2. Convert to WAV (MiniMax only accepts WAV for voice cloning)
-        const wavBuffer = await convertToWav(audioBuffer, audioFile.name)
+        // 2. Upload to MiniMax for cloning
+        const fileId = await uploadAudioForCloning(audioBuffer, audioFile.name)
 
-        // 3. Upload WAV to MiniMax
-        const fileId = await uploadAudioForCloning(wavBuffer, audioFile.name.replace(/\.[^.]+$/, '.wav'))
-
-        // 4. Clone voice
+        // 3. Clone voice
         const voiceId = await generateVoiceId(userId, name)
         await cloneVoice(fileId, voiceId, `Hola, esta es una prueba de mi voz clonada.`)
 
-        // 5. Save to DB
+        // 4. Save to DB
         const { data: voice, error: dbError } = await supabase
             .from('cloned_voices')
             .insert({
