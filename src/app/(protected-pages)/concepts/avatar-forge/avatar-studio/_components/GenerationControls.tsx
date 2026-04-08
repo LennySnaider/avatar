@@ -747,7 +747,7 @@ const GenerationControls = ({
                             <div className="flex items-center justify-between py-1.5 px-3 border border-dashed border-gray-300 dark:border-gray-600 rounded-lg">
                                 <span className="text-xs text-gray-400">No cloned voices yet</span>
                                 <Link
-                                    href="/concepts/voice-studio"
+                                    href="/concepts/avatar-forge/voice-studio"
                                     className="text-xs text-purple-500 hover:text-purple-400 hover:underline transition-colors"
                                 >
                                     Go to Voice Studio →
