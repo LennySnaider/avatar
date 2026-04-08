@@ -30,7 +30,7 @@ export async function uploadAudioForCloning(
 ): Promise<string> {
     const formData = new FormData()
     formData.append('purpose', 'voice_clone')
-    formData.append('file', new Blob([new Uint8Array(audioBuffer)], { type: 'audio/wav' }), filename)
+    formData.append('file', new Blob([new Uint8Array(audioBuffer)]), filename)
 
     const res = await fetch(`${MINIMAX_API_BASE}/files/upload`, {
         method: 'POST',
