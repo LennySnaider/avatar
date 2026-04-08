@@ -2,7 +2,6 @@
 
 import type {
     MiniMaxFileUploadResponse,
-    MiniMaxVoiceCloneRequest,
     MiniMaxVoiceCloneResponse,
     MiniMaxTTSRequest,
     MiniMaxTTSResponse,
@@ -38,17 +37,24 @@ export async function uploadAudioForCloning(
         body: formData,
     })
 
+    const rawText = await res.text()
+
     if (!res.ok) {
-        const text = await res.text()
-        throw new Error(`MiniMax file upload failed (${res.status}): ${text}`)
+        throw new Error(`MiniMax file upload failed (${res.status}): ${rawText}`)
     }
 
-    const json: MiniMaxFileUploadResponse = await res.json()
+    const json: MiniMaxFileUploadResponse = JSON.parse(rawText)
     if (json.base_resp.status_code !== 0) {
         throw new Error(`MiniMax file upload error: ${json.base_resp.status_msg}`)
     }
 
-    return json.file.file_id
+    // Extract file_id as raw string to preserve int64 precision
+    const fileIdMatch = rawText.match(/"file_id"\s*:\s*(\d+)/)
+    if (!fileIdMatch) {
+        throw new Error('MiniMax file upload: could not extract file_id')
+    }
+
+    return fileIdMatch[1]
 }
 
 // ─── Voice Clone ──────────────────────────────────────────
@@ -58,16 +64,20 @@ export async function cloneVoice(
     voiceId: string,
     previewText?: string
 ): Promise<MiniMaxVoiceCloneResponse> {
-    const body: MiniMaxVoiceCloneRequest = {
-        file_id: fileId,
+    // Build JSON manually to preserve file_id as unquoted int64
+    const opts: Record<string, unknown> = {
         voice_id: voiceId,
-        model: 'speech-2.8-hd',
         need_noise_reduction: true,
         need_volume_normalization: true,
     }
     if (previewText) {
-        body.text = previewText.slice(0, 300)
+        opts.text = previewText.slice(0, 300)
+        opts.model = 'speech-2.8-hd'
     }
+
+    // Inject file_id as raw number (not string) to preserve int64 precision
+    const jsonBody = JSON.stringify(opts)
+    const bodyWithFileId = `{"file_id":${fileId},${jsonBody.slice(1)}`
 
     const res = await fetch(`${MINIMAX_API_BASE}/voice_clone`, {
         method: 'POST',
@@ -75,7 +85,7 @@ export async function cloneVoice(
             ...authHeaders(),
             'Content-Type': 'application/json',
         },
-        body: JSON.stringify(body),
+        body: bodyWithFileId,
     })
 
     if (!res.ok) {
