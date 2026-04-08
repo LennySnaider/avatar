@@ -97,6 +97,7 @@ import {
     PiImageSquareDuotone,
     PiBookmarksDuotone,
     PiPlugsDuotone,
+    PiMicrophoneDuotone,
 } from 'react-icons/pi'
 
 import type { JSX } from 'react'
@@ -213,6 +214,7 @@ const navigationIcon: NavigationIcons = {
     promptLibrary: <PiBookmarksDuotone />,
     aiProviders: <PiPlugsDuotone />,
     imageEdit: <PiNotePencilDuotone />,
+    voiceStudio: <PiMicrophoneDuotone />,
 }
 
 export default navigationIcon

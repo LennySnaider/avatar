@@ -71,6 +71,22 @@ const conceptsNavigationConfig: NavigationTree[] = [
                 subMenu: [],
             },
             {
+                key: 'avatarForge.voiceStudio',
+                path: `${CONCEPTS_PREFIX_PATH}/avatar-forge/voice-studio`,
+                title: 'Voice Studio',
+                translateKey: 'nav.avatarForge.voiceStudio',
+                icon: 'voiceStudio',
+                type: NAV_ITEM_TYPE_ITEM,
+                authority: [ADMIN, USER],
+                meta: {
+                    description: {
+                        translateKey: 'nav.avatarForge.voiceStudioDesc',
+                        label: 'Generate AI voiceovers',
+                    },
+                },
+                subMenu: [],
+            },
+            {
                 key: 'avatarForge.avatarList',
                 path: `${CONCEPTS_PREFIX_PATH}/avatar-forge/avatar-list`,
                 title: 'My Avatars',

@@ -338,6 +338,15 @@ const conceptsRoute: Routes = {
             footer: false,
         },
     },
+    '/concepts/avatar-forge/voice-studio': {
+        key: 'concepts.avatarForge.voiceStudio',
+        authority: [ADMIN, USER],
+        meta: {
+            pageContainerType: 'gutterless',
+            pageBackgroundType: 'plain',
+            footer: false,
+        },
+    },
 }
 
 export default conceptsRoute
