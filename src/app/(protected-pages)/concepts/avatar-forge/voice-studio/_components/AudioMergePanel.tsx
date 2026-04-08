@@ -5,11 +5,7 @@ import Button from '@/components/ui/Button'
 import Card from '@/components/ui/Card'
 import Input from '@/components/ui/Input'
 
-interface Props {
-    userId: string
-}
-
-export default function AudioMergePanel({ userId }: Props) {
+export default function AudioMergePanel() {
     const {
         selectedVideoUrl, setSelectedVideoUrl,
         previewAudioUrl,

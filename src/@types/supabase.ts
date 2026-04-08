@@ -138,6 +138,90 @@ export type Database = {
                 }
                 Relationships: []
             }
+            cloned_voices: {
+                Row: {
+                    id: string
+                    user_id: string
+                    avatar_id: string | null
+                    name: string
+                    provider: string
+                    provider_voice_id: string
+                    sample_audio_url: string
+                    language: string
+                    status: string
+                    created_at: string
+                    updated_at: string
+                }
+                Insert: {
+                    id?: string
+                    user_id: string
+                    avatar_id?: string | null
+                    name: string
+                    provider?: string
+                    provider_voice_id: string
+                    sample_audio_url: string
+                    language?: string
+                    status?: string
+                    created_at?: string
+                    updated_at?: string
+                }
+                Update: {
+                    id?: string
+                    user_id?: string
+                    avatar_id?: string | null
+                    name?: string
+                    provider?: string
+                    provider_voice_id?: string
+                    sample_audio_url?: string
+                    language?: string
+                    status?: string
+                    created_at?: string
+                    updated_at?: string
+                }
+                Relationships: []
+            }
+            audio_scripts: {
+                Row: {
+                    id: string
+                    user_id: string
+                    generation_id: string | null
+                    title: string
+                    script_text: string
+                    language: string
+                    tone: string
+                    duration_target_seconds: number
+                    template_type: string
+                    context: Json
+                    created_at: string
+                }
+                Insert: {
+                    id?: string
+                    user_id: string
+                    generation_id?: string | null
+                    title: string
+                    script_text: string
+                    language?: string
+                    tone?: string
+                    duration_target_seconds?: number
+                    template_type?: string
+                    context?: Json
+                    created_at?: string
+                }
+                Update: {
+                    id?: string
+                    user_id?: string
+                    generation_id?: string | null
+                    title?: string
+                    script_text?: string
+                    language?: string
+                    tone?: string
+                    duration_target_seconds?: number
+                    template_type?: string
+                    context?: Json
+                    created_at?: string
+                }
+                Relationships: []
+            }
             ai_providers: {
                 Row: {
                     id: string

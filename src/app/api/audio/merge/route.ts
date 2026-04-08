@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { auth } from '@/configs/auth.config'
+import { auth } from '@/auth'
 import { mergeAudioVideo } from '@/services/AudioMergeService'
 
 export async function POST(req: NextRequest) {

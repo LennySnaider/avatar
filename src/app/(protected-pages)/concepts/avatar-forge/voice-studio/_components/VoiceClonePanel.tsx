@@ -6,11 +6,7 @@ import Button from '@/components/ui/Button'
 import Input from '@/components/ui/Input'
 import Card from '@/components/ui/Card'
 
-interface Props {
-    userId: string
-}
-
-export default function VoiceClonePanel({ userId }: Props) {
+export default function VoiceClonePanel() {
     const { setVoices, voices, setIsCloning, isCloning } = useVoiceStudioStore()
     const [name, setName] = useState('')
     const [language, setLanguage] = useState('es')

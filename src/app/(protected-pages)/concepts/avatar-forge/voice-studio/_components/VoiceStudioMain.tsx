@@ -9,11 +9,7 @@ import AudioPreview from './AudioPreview'
 import AudioMergePanel from './AudioMergePanel'
 import type { ClonedVoice } from '@/@types/voice'
 
-interface Props {
-    userId: string
-}
-
-export default function VoiceStudioMain({ userId }: Props) {
+export default function VoiceStudioMain() {
     const { setVoices } = useVoiceStudioStore()
 
     useEffect(() => {
@@ -34,7 +30,7 @@ export default function VoiceStudioMain({ userId }: Props) {
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                 {/* Left column: Voice management */}
                 <div className="flex flex-col gap-4">
-                    <VoiceClonePanel userId={userId} />
+                    <VoiceClonePanel />
                     <VoiceLibrary />
                 </div>
 
@@ -46,7 +42,7 @@ export default function VoiceStudioMain({ userId }: Props) {
                 {/* Right column: Preview & merge */}
                 <div className="flex flex-col gap-4">
                     <AudioPreview />
-                    <AudioMergePanel userId={userId} />
+                    <AudioMergePanel />
                 </div>
             </div>
         </div>

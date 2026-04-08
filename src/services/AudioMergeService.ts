@@ -1,7 +1,7 @@
 'use server'
 
 import { createServerSupabaseClient } from '@/lib/supabase'
-import { v4 as uuidv4 } from 'uuid'
+import { randomUUID } from 'crypto'
 
 /**
  * Merges an audio track with a video by calling FFmpeg via a temporary
@@ -25,7 +25,7 @@ export async function mergeAudioVideo(params: {
     const supabase = createServerSupabaseClient()
 
     // 1. Upload audio to temp storage
-    const tempAudioPath = `temp/${userId}/${uuidv4()}.mp3`
+    const tempAudioPath = `temp/${userId}/${randomUUID()}.mp3`
     const { error: audioUploadError } = await supabase.storage
         .from('generations')
         .upload(tempAudioPath, audioBuffer, {
@@ -54,7 +54,7 @@ export async function mergeAudioVideo(params: {
     const tmpDir = '/tmp/audio-merge'
     if (!existsSync(tmpDir)) mkdirSync(tmpDir, { recursive: true })
 
-    const jobId = uuidv4()
+    const jobId = randomUUID()
     const tmpVideo = path.join(tmpDir, `${jobId}-video.mp4`)
     const tmpAudio = path.join(tmpDir, `${jobId}-audio.mp3`)
     const tmpOutput = path.join(tmpDir, `${jobId}-output.mp4`)

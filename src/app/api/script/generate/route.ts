@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { auth } from '@/configs/auth.config'
+import { auth } from '@/auth'
 import { createServerSupabaseClient } from '@/lib/supabase'
 import { generateScript } from '@/services/ScriptService'
 import type { ScriptGenerateParams } from '@/@types/voice'

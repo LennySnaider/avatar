@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { auth } from '@/configs/auth.config'
+import { auth } from '@/auth'
 import { createServerSupabaseClient } from '@/lib/supabase'
 import { uploadAudioForCloning, cloneVoice, generateVoiceId } from '@/services/MiniMaxService'
 
@@ -43,7 +43,7 @@ export async function POST(req: NextRequest) {
         const fileId = await uploadAudioForCloning(audioBuffer, audioFile.name)
 
         // 3. Clone voice
-        const voiceId = generateVoiceId(userId, name)
+        const voiceId = await generateVoiceId(userId, name)
         await cloneVoice(fileId, voiceId, `Hola, esta es una prueba de mi voz clonada.`)
 
         // 4. Save to DB

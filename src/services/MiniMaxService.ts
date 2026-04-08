@@ -30,7 +30,7 @@ export async function uploadAudioForCloning(
 ): Promise<string> {
     const formData = new FormData()
     formData.append('purpose', 'voice_clone')
-    formData.append('file', new Blob([audioBuffer]), filename)
+    formData.append('file', new Blob([new Uint8Array(audioBuffer)]), filename)
 
     const res = await fetch(`${MINIMAX_API_BASE}/files/upload`, {
         method: 'POST',
@@ -154,7 +154,7 @@ export async function textToSpeech(params: {
 // ─── Generate voice_id from user input ────────────────────
 
 /** MiniMax requires: min 8 chars, starts with letter, alphanumeric only */
-export function generateVoiceId(userId: string, voiceName: string): string {
+export async function generateVoiceId(userId: string, voiceName: string): Promise<string> {
     const clean = voiceName.replace(/[^a-zA-Z0-9]/g, '').toLowerCase()
     const prefix = clean.length >= 4 ? clean.slice(0, 4) : 'voice'
     const suffix = userId.replace(/-/g, '').slice(0, 8)
