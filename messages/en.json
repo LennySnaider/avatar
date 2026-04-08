@@ -15,7 +15,9 @@
             "providers": "AI Providers",
             "providersDesc": "Configure AI providers",
             "imageEditor": "Image Editor",
-            "imageEditorDesc": "Edit images with AI"
+            "imageEditorDesc": "Edit images with AI",
+            "voiceStudio": "Voice Studio",
+            "voiceStudioDesc": "Clone voices and generate scripts"
         },
         "dashboard": {
             "dashboard": "Dashboard",

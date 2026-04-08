@@ -15,7 +15,9 @@
             "providers": "Proveedores IA",
             "providersDesc": "Configurar proveedores de IA",
             "imageEditor": "Editor de Imágenes",
-            "imageEditorDesc": "Editar imágenes con IA"
+            "imageEditorDesc": "Editar imágenes con IA",
+            "voiceStudio": "Estudio de Voz",
+            "voiceStudioDesc": "Clonar voces y generar guiones"
         },
         "dashboard": {
             "dashboard": "Tablero",

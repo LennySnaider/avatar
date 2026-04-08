@@ -15,7 +15,9 @@
             "providers": "AI提供商",
             "providersDesc": "配置AI提供商",
             "imageEditor": "图像编辑器",
-            "imageEditorDesc": "使用AI编辑图像"
+            "imageEditorDesc": "使用AI编辑图像",
+            "voiceStudio": "语音工作室",
+            "voiceStudioDesc": "克隆语音并生成脚本"
         },
         "dashboard": {
             "dashboard": "仪表板",

@@ -15,7 +15,9 @@
             "providers": "مزودو الذكاء الاصطناعي",
             "providersDesc": "تكوين مزودي الذكاء الاصطناعي",
             "imageEditor": "محرر الصور",
-            "imageEditorDesc": "تحرير الصور بالذكاء الاصطناعي"
+            "imageEditorDesc": "تحرير الصور بالذكاء الاصطناعي",
+            "voiceStudio": "استوديو الصوت",
+            "voiceStudioDesc": "استنساخ الأصوات وإنشاء النصوص"
         },
         "dashboard": {
             "dashboard": "لوحة القيادة",
