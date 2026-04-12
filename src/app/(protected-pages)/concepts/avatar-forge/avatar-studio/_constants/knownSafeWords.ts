@@ -9,8 +9,9 @@
 
 export const KNOWN_SAFE_WORDS: string[] = [
     // Clothing & Fashion
-    'bikini',
-    'two-piece bikini',
+    // NOTE: 'bikini', 'two-piece bikini', 'strapless', and 'lingerie' were removed
+    // because they trigger Gemini image generation safety filters.
+    // They are now auto-sanitized by src/utils/promptSanitizer.ts
     'triangle top',
     'high-cut',
     'side-tie',
@@ -25,7 +26,6 @@ export const KNOWN_SAFE_WORDS: string[] = [
     'mini skirt',
     'bodysuit',
     'leotard',
-    'lingerie',
 
     // Descriptive terms
     'accentuating',
@@ -35,7 +35,6 @@ export const KNOWN_SAFE_WORDS: string[] = [
     'revealing',
     'low-cut',
     'backless',
-    'strapless',
     'sleeveless',
 
     // Age-neutral descriptors

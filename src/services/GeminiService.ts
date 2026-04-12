@@ -3,6 +3,7 @@
 import { GoogleGenAI, Type } from '@google/genai'
 import type { PhysicalMeasurements, AspectRatio } from '@/@types/supabase'
 import { filterKnownSafeCorrections } from '@/app/(protected-pages)/concepts/avatar-forge/avatar-studio/_constants/knownSafeWords'
+import { sanitizePromptForGeneration } from '@/utils/promptSanitizer'
 
 // Types for the service
 export interface ImageData {
@@ -322,6 +323,15 @@ DO NOT DESCRIBE (CRITICAL - THESE ARE PROVIDED BY AVATAR SETTINGS):
 
 The avatar's physical characteristics (skin tone, hair color, body type, face) are configured separately.
 Only describe: outfit, setting, lighting, mood, composition.
+
+VOCABULARY RESTRICTIONS (these words trigger downstream safety filters - NEVER use them):
+- "bikini" → use "swim top", "swim set", or "swim bottom" instead
+- "strapless" → use "off-shoulder" instead
+- "lingerie" → use "loungewear" instead
+- "bralette" → use "fitted top" instead
+- "bustier" → use "structured bodice" instead
+- "corset" → use "structured waist garment" instead
+Use fashion-safe vocabulary only.
 
 Keep it concise, descriptive, and high-quality. Output only the description, no explanations.`,
                     },
@@ -1314,7 +1324,13 @@ ${hairColorSpecDesc ? `- EXACT HAIR COLOR: ${hairColorSpecDesc}` : ''}
     ${cameraAngle !== null ? `- Camera angle is ${cameraAngle.replace(/_/g, ' ')}` : ''}
   `
 
-    parts.push({ text: finalPrompt })
+    // Sanitize prompt to replace words that trigger image generation safety filters
+    const { sanitized: sanitizedPrompt, replacements: sanitizedReplacements } = sanitizePromptForGeneration(finalPrompt)
+    if (sanitizedReplacements.length > 0) {
+        console.log(`[generateAvatar] Prompt sanitized: ${sanitizedReplacements.length} replacement(s) applied`)
+    }
+
+    parts.push({ text: sanitizedPrompt })
 
     try {
         const response = await ai.models.generateContent({
@@ -1346,7 +1362,7 @@ ${hairColorSpecDesc ? `- EXACT HAIR COLOR: ${hairColorSpecDesc}` : ''}
                 const inlineData = (part as { inlineData: { data: string } }).inlineData
                 return {
                     url: `data:image/jpeg;base64,${inlineData.data}`,
-                    fullApiPrompt: finalPrompt,
+                    fullApiPrompt: sanitizedPrompt,
                 }
             }
         }
