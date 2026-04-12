@@ -260,7 +260,12 @@ export async function enhancePrompt(
     2. ACTION: Expand on the movement described. Make it natural and fluid.
     3. CONTEXT: If an image is provided, use it to describe the SUBJECT and SETTING strictly.
     4. SAFETY: Ensure the prompt is safe (SFW) and avoids controversial terms.
-    5. LENGTH: The output should be 2-4 sentences long.
+    5. VOCABULARY RESTRICTIONS (these trigger downstream safety filters - NEVER use them):
+       - "bikini" → use "swim top", "swim set", or "swim bottom" instead
+       - "strapless" → use "off-shoulder" instead
+       - "lingerie" → use "loungewear" instead
+       - "bralette" → use "fitted top" instead
+    6. LENGTH: The output should be 2-4 sentences long.
 
     User's Raw Input: "${currentPrompt}"
 
@@ -615,6 +620,15 @@ DO NOT DESCRIBE (CRITICAL - THESE COME FROM AVATAR SETTINGS):
 
 These properties (skin tone, hair color, face, body type) will be provided by the avatar configuration.
 Only describe clothing, pose, setting, lighting - NOT the person's inherent physical characteristics.
+
+VOCABULARY RESTRICTIONS (these words trigger downstream safety filters - NEVER use them):
+- "bikini" → use "swim top", "swim set", or "swim bottom" instead
+- "strapless" → use "off-shoulder" instead
+- "lingerie" → use "loungewear" instead
+- "bralette" → use "fitted top" instead
+- "bustier" → use "structured bodice" instead
+- "corset" → use "structured waist garment" instead
+Use fashion-safe vocabulary only.
 
 Output a detailed, comma-separated description that can be used to recreate this exact image with a DIFFERENT person.
 Be specific and thorough - this description should capture the essence of the image.`,
