@@ -35,6 +35,7 @@ import KlingVoiceControls from './KlingVoiceControls'
 import KlingCameraControls from './KlingCameraControls'
 import KlingMotionBrushEditor from './KlingMotionBrushEditor'
 import KlingMotionControlEditor from './KlingMotionControlEditor'
+import CinemaCameraControls from './CinemaCameraControls'
 
 interface ClonedVoice {
     id: string
@@ -582,6 +583,9 @@ const GenerationControls = ({
                     </div>
                 </Dropdown>
             </div>
+
+            {/* Camera & Cinema Controls (IMAGE mode only) */}
+            {generationMode === 'IMAGE' && <CinemaCameraControls />}
 
             {/* Aspect Ratio */}
             <div className="grid grid-cols-2 gap-3">
