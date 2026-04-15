@@ -11,6 +11,9 @@ import type {
     SubjectAction,
     VideoResolution,
     CameraShot,
+    CinemaLens,
+    CinemaFocalLength,
+    CinemaAperture,
 } from '../types'
 import type { Avatar, AIProvider, Prompt } from '@/@types/supabase'
 import type {
@@ -79,6 +82,10 @@ interface AvatarStudioState {
     cameraMotion: CameraMotion
     cameraShot: CameraShot // Framing (close-up, medium, full, etc.)
     cameraAngle: CameraShot | null // Angle (low, high, dutch, etc.) - null means AI decides
+    // Cinema Controls
+    cinemaLens: CinemaLens
+    cinemaFocalLength: CinemaFocalLength
+    cinemaAperture: CinemaAperture
     subjectAction: SubjectAction
     videoDialogue: string
     voiceStyle: string
@@ -200,6 +207,9 @@ interface AvatarStudioState {
     setCameraMotion: (motion: CameraMotion) => void
     setCameraShot: (shot: CameraShot) => void
     setCameraAngle: (angle: CameraShot | null) => void
+    setCinemaLens: (lens: CinemaLens) => void
+    setCinemaFocalLength: (focal: CinemaFocalLength) => void
+    setCinemaAperture: (aperture: CinemaAperture) => void
     setSubjectAction: (action: SubjectAction) => void
     setVideoDialogue: (dialogue: string) => void
     setVoiceStyle: (style: string) => void
@@ -344,6 +354,9 @@ const initialState = {
     cameraMotion: 'NONE' as CameraMotion,
     cameraShot: 'AUTO' as CameraShot,
     cameraAngle: null as CameraShot | null,
+    cinemaLens: 'AUTO' as CinemaLens,
+    cinemaFocalLength: 'AUTO' as CinemaFocalLength,
+    cinemaAperture: 'AUTO' as CinemaAperture,
     subjectAction: 'NONE' as SubjectAction,
     videoDialogue: '',
     voiceStyle: 'Realistic',
@@ -565,6 +578,9 @@ export const useAvatarStudioStore = create<AvatarStudioState>()(
     setCameraMotion: (motion) => set({ cameraMotion: motion }),
     setCameraShot: (shot) => set({ cameraShot: shot }),
     setCameraAngle: (angle) => set({ cameraAngle: angle }),
+    setCinemaLens: (lens) => set({ cinemaLens: lens }),
+    setCinemaFocalLength: (focal) => set({ cinemaFocalLength: focal }),
+    setCinemaAperture: (aperture) => set({ cinemaAperture: aperture }),
     setSubjectAction: (action) => set({ subjectAction: action }),
     setVideoDialogue: (dialogue) => set({ videoDialogue: dialogue }),
     setVoiceStyle: (style) => set({ voiceStyle: style }),
