@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import { useAvatarStudioStore } from '../_store/avatarStudioStore'
 import { CAMERA_SHOTS } from '../types'
-import type { CameraShot, CinemaLens, CinemaFocalLength, CinemaAperture } from '../types'
+import type { CameraShot } from '../types'
 import {
     CINEMA_LENSES,
     CINEMA_FOCAL_LENGTHS,

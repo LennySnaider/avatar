@@ -4,6 +4,8 @@ import { GoogleGenAI, Type } from '@google/genai'
 import type { PhysicalMeasurements, AspectRatio } from '@/@types/supabase'
 import { filterKnownSafeCorrections } from '@/app/(protected-pages)/concepts/avatar-forge/avatar-studio/_constants/knownSafeWords'
 import { sanitizePromptForGeneration } from '@/utils/promptSanitizer'
+import type { CinemaLens, CinemaFocalLength, CinemaAperture } from '@/app/(protected-pages)/concepts/avatar-forge/avatar-studio/types'
+import { CINEMA_LENSES, CINEMA_FOCAL_LENGTHS, CINEMA_APERTURES } from '@/app/(protected-pages)/concepts/avatar-forge/avatar-studio/_constants/cinemaPresets'
 
 // Types for the service
 export interface ImageData {
@@ -740,6 +742,9 @@ export async function generateAvatar(params: {
     aspectRatio: AspectRatio
     cameraShot?: CameraShot // Framing (close-up, medium, full, etc.)
     cameraAngle?: CameraShot | null // Angle (low, high, dutch, etc.)
+    cinemaLens?: CinemaLens
+    cinemaFocalLength?: CinemaFocalLength
+    cinemaAperture?: CinemaAperture
     identityWeight?: number
     styleWeight?: number
     measurements?: PhysicalMeasurements
@@ -758,6 +763,9 @@ export async function generateAvatar(params: {
         aspectRatio,
         cameraShot = 'AUTO',
         cameraAngle = null,
+        cinemaLens = 'AUTO',
+        cinemaFocalLength = 'AUTO',
+        cinemaAperture = 'AUTO',
         identityWeight = 85,
         styleWeight = 50,
         measurements = { age: 25, height: 165, bodyType: 'average' as const, bust: 90, waist: 60, hips: 90 },
@@ -1180,6 +1188,25 @@ ${hairColorSpecDesc ? `- EXACT HAIR COLOR: ${hairColorSpecDesc}` : ''}
         return instructions
     }
 
+    // Build cinema lens/focal/aperture instructions
+    const buildCinemaInstructions = (): string => {
+        const lensModifier = CINEMA_LENSES.find(l => l.value === cinemaLens)?.promptModifier || ''
+        const focalModifier = CINEMA_FOCAL_LENGTHS.find(f => f.value === cinemaFocalLength)?.promptModifier || ''
+        const apertureModifier = CINEMA_APERTURES.find(a => a.value === cinemaAperture)?.promptModifier || ''
+
+        const parts = [lensModifier, focalModifier, apertureModifier].filter(Boolean)
+        if (parts.length === 0) return ''
+
+        return `
+    ═══════════════════════════════════════════════════════════════
+    CINEMA & LENS SPECIFICATIONS:
+    ═══════════════════════════════════════════════════════════════
+    ${parts.map(p => `- ${p}`).join('\n    ')}
+
+    Apply these camera/lens characteristics to the final image.
+    `
+    }
+
     // Build style instructions based on styleWeight
     const buildStyleInstructions = (): string => {
         if (!hasStyleRef) return ''
@@ -1308,6 +1335,7 @@ ${hairColorSpecDesc ? `- EXACT HAIR COLOR: ${hairColorSpecDesc}` : ''}
     - You are putting [FACE_ANCHOR]'s face on the mannequin's position
     ` : ''}
     ${buildCameraShotInstructions()}
+    ${buildCinemaInstructions()}
     ${buildStyleInstructions()}
 
     RENDERING ORDER (FOLLOW STRICTLY):
