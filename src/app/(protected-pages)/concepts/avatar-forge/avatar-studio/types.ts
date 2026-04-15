@@ -91,6 +91,22 @@ export type CameraShot =
     // Angles
     | 'LOW_ANGLE' | 'HIGH_ANGLE' | 'DUTCH_ANGLE' | 'BIRDS_EYE' | 'WORMS_EYE' | 'OVER_SHOULDER' | 'POV' | 'PROFILE' | 'THREE_QUARTER'
 
+// Cinema lens types for image generation
+export type CinemaLens =
+    | 'AUTO'
+    | 'ANAMORPHIC'
+    | 'VINTAGE_PRIME'
+    | 'MACRO'
+    | 'TILT_SHIFT'
+    | 'SWIRL_BOKEH'
+    | 'SOFT_DIFFUSION'
+
+// Focal length options (in mm)
+export type CinemaFocalLength = 'AUTO' | '24' | '35' | '50' | '85' | '135'
+
+// Aperture (f-stop) options
+export type CinemaAperture = 'AUTO' | '1.4' | '2.8' | '4' | '8' | '11'
+
 // Provider selection
 export interface ProviderOption {
     id: string
