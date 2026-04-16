@@ -73,3 +73,48 @@ export function sanitizePromptForGeneration(prompt: string): {
 
     return { sanitized: result, replacements }
 }
+
+/**
+ * Aggressive sanitization for retry attempts after a safety block.
+ * Strips clothing details, body descriptors, and suggestive context
+ * while preserving the core scene/composition intent.
+ */
+const AGGRESSIVE_STRIP_PATTERNS: RegExp[] = [
+    // Clothing detail phrases that can trigger in combination
+    /\b(low[- ]cut|backless|sleeveless|skin[- ]tight|body[- ]hugging|figure[- ]hugging|form[- ]fitting|revealing|sheer|see[- ]through|plunging|micro|thong|g[- ]string|mini)\b/gi,
+    // Swimwear variants the basic sanitizer might miss
+    /\b(beachwear|bathing suit|one[- ]piece|monokini|tankini|maillot|swimwear|swim\s+set|swim\s+top|swim\s+bottom)\b/gi,
+    // Body/skin descriptors that can trigger when combined with clothing
+    /\b(cleavage|midriff|navel|belly\s+button|bare\s+skin|exposed|naked|nude|undressed|topless|braless)\b/gi,
+    // Suggestive poses/contexts
+    /\b(seductive|sensual|provocative|sultry|alluring|flirty|intimate|bedroom\s+eyes)\b/gi,
+]
+
+export function aggressiveSanitize(prompt: string): {
+    sanitized: string
+    wasModified: boolean
+} {
+    // First apply standard sanitization
+    const { sanitized: firstPass } = sanitizePromptForGeneration(prompt)
+
+    let result = firstPass
+    let wasModified = false
+
+    for (const pattern of AGGRESSIVE_STRIP_PATTERNS) {
+        pattern.lastIndex = 0
+        if (pattern.test(result)) {
+            wasModified = true
+            pattern.lastIndex = 0
+            result = result.replace(pattern, '')
+        }
+    }
+
+    // Clean up extra whitespace from removals
+    result = result.replace(/\s{2,}/g, ' ').trim()
+
+    if (wasModified) {
+        console.log('[PromptSanitizer] Aggressive sanitization applied for retry')
+    }
+
+    return { sanitized: result, wasModified }
+}

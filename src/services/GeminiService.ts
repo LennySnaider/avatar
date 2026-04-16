@@ -3,7 +3,7 @@
 import { GoogleGenAI, Type } from '@google/genai'
 import type { PhysicalMeasurements, AspectRatio } from '@/@types/supabase'
 import { filterKnownSafeCorrections } from '@/app/(protected-pages)/concepts/avatar-forge/avatar-studio/_constants/knownSafeWords'
-import { sanitizePromptForGeneration } from '@/utils/promptSanitizer'
+import { sanitizePromptForGeneration, aggressiveSanitize } from '@/utils/promptSanitizer'
 import type { CinemaLens, CinemaFocalLength, CinemaAperture } from '@/app/(protected-pages)/concepts/avatar-forge/avatar-studio/types'
 import { CINEMA_LENSES, CINEMA_FOCAL_LENGTHS, CINEMA_APERTURES } from '@/app/(protected-pages)/concepts/avatar-forge/avatar-studio/_constants/cinemaPresets'
 
@@ -1372,12 +1372,13 @@ ${hairColorSpecDesc ? `- EXACT HAIR COLOR: ${hairColorSpecDesc}` : ''}
         console.log(`[generateAvatar] Prompt sanitized: ${sanitizedReplacements.length} replacement(s) applied`)
     }
 
-    parts.push({ text: sanitizedPrompt })
+    // Helper to attempt generation with a given prompt text
+    const attemptGeneration = async (promptText: string): Promise<{ url: string; fullApiPrompt: string } | 'SAFETY_BLOCKED'> => {
+        const attemptParts = [...parts, { text: promptText }]
 
-    try {
         const response = await ai.models.generateContent({
             model: modelName,
-            contents: { parts },
+            contents: { parts: attemptParts },
             config: {
                 imageConfig: {
                     aspectRatio: aspectRatio,
@@ -1394,7 +1395,7 @@ ${hairColorSpecDesc ? `- EXACT HAIR COLOR: ${hairColorSpecDesc}` : ''}
         if (candidate.finishReason && candidate.finishReason !== 'STOP') {
             const reason = candidate.finishReason
             if (reason === 'SAFETY' || reason === 'IMAGE_SAFETY') {
-                throw new Error('⚠️ Safety Block: Your prompt or reference images were flagged by content filters. Try: 1) Simplify your prompt, 2) Remove suggestive terms, 3) Use different reference images.')
+                return 'SAFETY_BLOCKED'
             }
             throw new Error(`Generation stopped: ${reason}`)
         }
@@ -1404,12 +1405,36 @@ ${hairColorSpecDesc ? `- EXACT HAIR COLOR: ${hairColorSpecDesc}` : ''}
                 const inlineData = (part as { inlineData: { data: string } }).inlineData
                 return {
                     url: `data:image/jpeg;base64,${inlineData.data}`,
-                    fullApiPrompt: sanitizedPrompt,
+                    fullApiPrompt: promptText,
                 }
             }
         }
 
         throw new Error('Model returned success but no image data found.')
+    }
+
+    try {
+        // Attempt 1: Standard sanitized prompt
+        console.log('[generateAvatar] Attempt 1: standard sanitized prompt')
+        const result1 = await attemptGeneration(sanitizedPrompt)
+        if (result1 !== 'SAFETY_BLOCKED') return result1
+
+        // Attempt 2: Aggressive sanitization (strip suggestive terms)
+        console.log('[generateAvatar] Attempt 1 BLOCKED — retrying with aggressive sanitization...')
+        const { sanitized: aggressivePrompt } = aggressiveSanitize(finalPrompt)
+        const result2 = await attemptGeneration(aggressivePrompt)
+        if (result2 !== 'SAFETY_BLOCKED') {
+            console.log('[generateAvatar] Attempt 2 succeeded with aggressive sanitization')
+            return result2
+        }
+
+        // Both attempts blocked
+        console.warn('[generateAvatar] Both attempts blocked by safety filters')
+        throw new Error(
+            'SAFETY_BLOCKED: Image generation was blocked by content filters after 2 attempts. ' +
+            'The prompt or reference images contain content that Gemini cannot process. ' +
+            'Try simplifying your prompt or using different reference images.'
+        )
     } catch (error) {
         console.error('Gemini Generation Error:', error)
         throw error
