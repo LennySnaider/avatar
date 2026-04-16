@@ -21,6 +21,7 @@ Prime Avatar necesita un pipeline visual para encadenar operaciones de generacio
 | Layout UI | Canvas-first con paneles flotantes | Sin sidebar fijo, maximo espacio para el canvas |
 | Libreria | @xyflow/react v12 (misma que AgentSoft) | Consistencia, conocimiento existente |
 | Status en nodos | Badge circular SVG dentro del nodo (sin texto) | Limpio, compacto, profesional |
+| Direccion del flow | Izquierda a derecha (LTR) | Lectura natural, consistente con el mockup aprobado |
 
 ---
 
@@ -79,6 +80,12 @@ Cada nodo en el canvas es un `VideoBaseNode` que renderiza:
 │ ○                             ○ │  ← handles (input left, output right)
 └─────────────────────────────────┘
 ```
+
+**Direccion del flow: izquierda a derecha (LTR).** Los handles se posicionan acorde:
+- **Input handle:** lado izquierdo del nodo (`Position.Left`)
+- **Output handle:** lado derecho del nodo (`Position.Right`)
+- Nodos de tipo Input (SelectAvatar, UploadImage) solo tienen output handle (derecha)
+- Nodos de tipo Output (SaveToGallery, Webhook) solo tienen input handle (izquierda)
 
 **Status badge:** Circulo de 18px con icono SVG:
 - `idle` → sin badge (estado default)
