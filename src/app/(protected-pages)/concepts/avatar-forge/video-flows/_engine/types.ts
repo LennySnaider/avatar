@@ -1,4 +1,4 @@
-import type { Node, Edge } from '@xyflow/react'
+import type { Node } from '@xyflow/react'
 
 export type NodeStatus = 'idle' | 'running' | 'completed' | 'error' | 'pending'
 

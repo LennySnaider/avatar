@@ -1,4 +1,4 @@
-import type { VideoNodeTemplate, NodeCategory } from '../_engine/types'
+import type { VideoNodeTemplate } from '../_engine/types'
 
 export const NODE_TEMPLATES: VideoNodeTemplate[] = [
     // ─── Input ───────────────────────────────────────────────
