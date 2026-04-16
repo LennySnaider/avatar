@@ -31,6 +31,7 @@
     "@tiptap/react": "^2.10.4",
     "@tiptap/starter-kit": "^2.10.4",
     "@visx/pattern": "^3.13.0-alpha.0",
+    "@xyflow/react": "^12.10.2",
     "axios": "^1.7.7",
     "classnames": "^2.5.1",
     "d3-dsv": "^3.0.1",
