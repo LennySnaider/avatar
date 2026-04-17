@@ -17,7 +17,9 @@
             "imageEditor": "محرر الصور",
             "imageEditorDesc": "تحرير الصور بالذكاء الاصطناعي",
             "voiceStudio": "استوديو الصوت",
-            "voiceStudioDesc": "استنساخ الأصوات وإنشاء النصوص"
+            "voiceStudioDesc": "استنساخ الأصوات وإنشاء النصوص",
+            "videoFlows": "تدفقات الفيديو",
+            "videoFlowsDesc": "محرر خطوط الأنابيب المرئية"
         },
         "dashboard": {
             "dashboard": "لوحة القيادة",

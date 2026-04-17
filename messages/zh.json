@@ -17,7 +17,9 @@
             "imageEditor": "图像编辑器",
             "imageEditorDesc": "使用AI编辑图像",
             "voiceStudio": "语音工作室",
-            "voiceStudioDesc": "克隆语音并生成脚本"
+            "voiceStudioDesc": "克隆语音并生成脚本",
+            "videoFlows": "视频流程",
+            "videoFlowsDesc": "可视化管道编辑器"
         },
         "dashboard": {
             "dashboard": "仪表板",

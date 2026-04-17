@@ -17,7 +17,9 @@
             "imageEditor": "Editor de Imágenes",
             "imageEditorDesc": "Editar imágenes con IA",
             "voiceStudio": "Estudio de Voz",
-            "voiceStudioDesc": "Clonar voces y generar guiones"
+            "voiceStudioDesc": "Clonar voces y generar guiones",
+            "videoFlows": "Video Flows",
+            "videoFlowsDesc": "Editor visual de pipelines"
         },
         "dashboard": {
             "dashboard": "Tablero",

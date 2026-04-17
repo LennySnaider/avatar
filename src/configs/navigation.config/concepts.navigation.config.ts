@@ -87,6 +87,22 @@ const conceptsNavigationConfig: NavigationTree[] = [
                 subMenu: [],
             },
             {
+                key: 'avatarForge.videoFlows',
+                path: `${CONCEPTS_PREFIX_PATH}/avatar-forge/video-flows`,
+                title: 'Video Flows',
+                translateKey: 'nav.avatarForge.videoFlows',
+                icon: 'videoFlows',
+                type: NAV_ITEM_TYPE_ITEM,
+                authority: [ADMIN, USER],
+                meta: {
+                    description: {
+                        translateKey: 'nav.avatarForge.videoFlowsDesc',
+                        label: 'Visual pipeline editor',
+                    },
+                },
+                subMenu: [],
+            },
+            {
                 key: 'avatarForge.avatarList',
                 path: `${CONCEPTS_PREFIX_PATH}/avatar-forge/avatar-list`,
                 title: 'My Avatars',
