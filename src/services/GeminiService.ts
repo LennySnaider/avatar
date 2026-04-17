@@ -6,7 +6,7 @@ import { filterKnownSafeCorrections } from '@/app/(protected-pages)/concepts/ava
 import { sanitizePromptForGeneration, aggressiveSanitize } from '@/utils/promptSanitizer'
 import type { CinemaLens, CinemaFocalLength, CinemaAperture } from '@/app/(protected-pages)/concepts/avatar-forge/avatar-studio/types'
 import { CINEMA_LENSES, CINEMA_FOCAL_LENGTHS, CINEMA_APERTURES } from '@/app/(protected-pages)/concepts/avatar-forge/avatar-studio/_constants/cinemaPresets'
-import { generateImageWithGraydient } from '@/services/GraydientService'
+import { generateImage as generateImageWithMiniMax } from '@/services/MiniMaxService'
 
 // Types for the service
 export interface ImageData {
@@ -1429,35 +1429,27 @@ ${hairColorSpecDesc ? `- EXACT HAIR COLOR: ${hairColorSpecDesc}` : ''}
             return { success: true as const, ...result2 }
         }
 
-        // Both Gemini attempts blocked — try Graydient AI as fallback
-        console.warn('[generateAvatar] Both Gemini attempts blocked — trying Graydient fallback...')
+        // Both Gemini attempts blocked — try MiniMax image-01 as fallback
+        console.warn('[generateAvatar] Both Gemini attempts blocked — trying MiniMax fallback...')
 
-        if (process.env.GRAYDIENT_API_TOKEN) {
-            const graydientResult = await generateImageWithGraydient({
-                prompt: finalPrompt, // Use original prompt — Graydient doesn't block
-                aspectRatio: params.aspectRatio,
-            })
+        const miniMaxResult = await generateImageWithMiniMax({
+            prompt: finalPrompt, // Use original prompt — MiniMax is less restrictive
+            aspectRatio: params.aspectRatio,
+        })
 
-            if (graydientResult.success) {
-                console.log('[generateAvatar] Graydient fallback succeeded!')
-                return {
-                    success: true as const,
-                    url: graydientResult.url,
-                    fullApiPrompt: `[Graydient Fallback] ${graydientResult.fullApiPrompt}`,
-                }
-            }
-
-            console.warn('[generateAvatar] Graydient fallback also failed:', graydientResult.error)
+        if (miniMaxResult.success) {
+            console.log('[generateAvatar] MiniMax fallback succeeded!')
             return {
-                success: false as const,
-                error: `Gemini bloqueó la generación por filtros de contenido. Graydient fallback también falló: ${graydientResult.error}`,
-                errorType: 'SAFETY_BLOCKED' as const,
+                success: true as const,
+                url: miniMaxResult.url,
+                fullApiPrompt: `[MiniMax Fallback] ${miniMaxResult.fullApiPrompt}`,
             }
         }
 
+        console.warn('[generateAvatar] MiniMax fallback also failed:', miniMaxResult.error)
         return {
             success: false as const,
-            error: 'Gemini bloqueó la generación por filtros de contenido después de 2 intentos. Configura GRAYDIENT_API_TOKEN para habilitar el provider alternativo.',
+            error: `Gemini bloqueó la generación por filtros de contenido. MiniMax fallback también falló: ${miniMaxResult.error}`,
             errorType: 'SAFETY_BLOCKED' as const,
         }
     } catch (error) {

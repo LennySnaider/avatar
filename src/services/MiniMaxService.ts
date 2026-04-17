@@ -161,6 +161,101 @@ export async function textToSpeech(params: {
     }
 }
 
+// ─── Image Generation (fallback provider) ────────────────
+
+interface MiniMaxImageResponse {
+    base_resp: { status_code: number; status_msg: string }
+    data: { image_base64: string[] }
+}
+
+function getImageAspectRatio(aspectRatio: string): string {
+    switch (aspectRatio) {
+        case '1:1': return '1:1'
+        case '3:4': return '3:4'
+        case '4:3': return '4:3'
+        case '9:16': return '9:16'
+        case '16:9': return '16:9'
+        default: return '1:1'
+    }
+}
+
+/**
+ * Generate an image using MiniMax image-01.
+ * Supports subject_reference for facial consistency when a face URL is provided.
+ */
+export async function generateImage(params: {
+    prompt: string
+    aspectRatio?: string
+    faceReferenceUrl?: string
+}): Promise<{
+    success: true
+    url: string
+    fullApiPrompt: string
+    provider: 'minimax'
+} | {
+    success: false
+    error: string
+}> {
+    const { prompt, aspectRatio = '1:1', faceReferenceUrl } = params
+
+    try {
+        const body: Record<string, unknown> = {
+            model: 'image-01',
+            prompt,
+            aspect_ratio: getImageAspectRatio(aspectRatio),
+            response_format: 'base64',
+        }
+
+        if (faceReferenceUrl) {
+            body.subject_reference = [
+                { type: 'character', image_file: faceReferenceUrl },
+            ]
+            console.log('[MiniMaxService] Using subject_reference for facial consistency')
+        }
+
+        console.log(`[MiniMaxService] Generating image: aspect=${aspectRatio}, prompt length=${prompt.length}`)
+
+        const res = await fetch('https://api.minimaxi.com/v1/image_generation', {
+            method: 'POST',
+            headers: {
+                ...authHeaders(),
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(body),
+        })
+
+        if (!res.ok) {
+            const text = await res.text()
+            return { success: false, error: `MiniMax image generation failed (${res.status}): ${text}` }
+        }
+
+        const json: MiniMaxImageResponse = await res.json()
+
+        if (json.base_resp.status_code !== 0) {
+            return { success: false, error: `MiniMax image error: ${json.base_resp.status_msg}` }
+        }
+
+        const images = json.data?.image_base64
+        if (!images || images.length === 0) {
+            return { success: false, error: 'MiniMax returned no images' }
+        }
+
+        const dataUri = `data:image/png;base64,${images[0]}`
+        console.log('[MiniMaxService] Image generation successful')
+
+        return {
+            success: true,
+            url: dataUri,
+            fullApiPrompt: prompt,
+            provider: 'minimax',
+        }
+    } catch (error) {
+        console.error('[MiniMaxService] Image generation failed:', error)
+        const message = error instanceof Error ? error.message : 'Error desconocido en MiniMax'
+        return { success: false, error: message }
+    }
+}
+
 // ─── Generate voice_id from user input ────────────────────
 
 /** MiniMax requires: min 8 chars, starts with letter, alphanumeric only */
