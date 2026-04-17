@@ -24,6 +24,19 @@ export const DEFAULT_PROVIDERS: AIProvider[] = [
         api_key_env_var: 'GEMINI_API_KEY',
         created_at: null,
     },
+    {
+        id: 'minimax-image-01',
+        name: 'MiniMax image-01',
+        type: 'MINIMAX' as ProviderType,
+        model: 'image-01',
+        endpoint: 'https://api.minimaxi.com/v1',
+        is_active: true,
+        supports_image: true,
+        supports_video: false,
+        requires_api_key: true,
+        api_key_env_var: 'MINIMAX_API_KEY',
+        created_at: null,
+    },
     // Video Providers
     {
         id: 'gemini-veo3',
@@ -142,6 +155,12 @@ const ProviderManagerDrawer = () => {
                         K
                     </div>
                 )
+            case 'MINIMAX':
+                return (
+                    <div className="w-8 h-8 rounded-full bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center text-white font-bold text-sm">
+                        M
+                    </div>
+                )
             default:
                 return (
                     <div className="w-8 h-8 rounded-full bg-gray-500 flex items-center justify-center text-white font-bold text-sm">
@@ -161,6 +180,8 @@ const ProviderManagerDrawer = () => {
                 return 'Video estable, motion brush, camera control'
             case 'kling-v2-6':
                 return 'Voice synthesis, lip-sync, talking avatars'
+            case 'minimax-image-01':
+                return 'Menos restrictivo, subject reference, fashion-friendly'
             default:
                 return provider.model
         }

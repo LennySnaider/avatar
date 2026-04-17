@@ -280,7 +280,7 @@ export type Database = {
 // Custom types
 export type ReferenceType = 'general' | 'face' | 'angle' | 'body'
 export type MediaType = 'IMAGE' | 'VIDEO'
-export type ProviderType = 'GOOGLE' | 'KLING' | 'OPENAI' | 'RUNWAY' | 'QWEN' | 'CUSTOM'
+export type ProviderType = 'GOOGLE' | 'KLING' | 'OPENAI' | 'RUNWAY' | 'QWEN' | 'MINIMAX' | 'CUSTOM'
 export type AspectRatio = '1:1' | '16:9' | '9:16' | '4:3' | '3:4'
 
 export type BodyType = 'petite' | 'slim' | 'athletic' | 'average' | 'curvy' | 'hourglass' | 'plus-size'

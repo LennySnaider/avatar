@@ -33,6 +33,7 @@ import {
     generateAvatarVideo as generateAvatarVideoKling,
     generateVideoWithMotionControl as generateMotionControlKling,
 } from '@/services/KlingService'
+import { generateImage as generateImageMiniMax } from '@/services/MiniMaxService'
 import { HiOutlineCog, HiOutlineBookOpen, HiX } from 'react-icons/hi'
 import { AppState } from '../types'
 import type { GeneratedMedia, ReferenceImage } from '../types'
@@ -393,37 +394,52 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
             let apiPrompt: string | undefined
 
             if (generationMode === 'IMAGE') {
-                // Pose and Clone descriptions are now added directly to the prompt input (editable by user)
-                // No need to append them here - they're already in fullPrompt if user added them
+                const isMiniMaxProvider = activeProvider?.type === 'MINIMAX'
 
-                const result = await generateAvatar({
-                    prompt: fullPrompt,
-                    avatarReferences: optimizedPayload.generalRefs,
-                    assetReferences: optimizedPayload.assetImages,
-                    sceneReference: optimizedPayload.sceneImage, // Scene Composite - literally places avatar in this scene
-                    faceRefImage: optimizedPayload.faceRef,
-                    bodyRefImage: optimizedPayload.bodyRef,
-                    angleRefImage: optimizedAngleRef,
-                    poseRefImage: null, // Pose description is now in prompt as text
-                    aspectRatio,
-                    cameraShot,
-                    cameraAngle,
-                    cinemaLens,
-                    cinemaFocalLength,
-                    cinemaAperture,
-                    identityWeight,
-                    styleWeight: 50, // Default value, not used with Clone Ref
-                    measurements,
-                    faceDescription,
-                    modelName: activeProvider?.model,
-                })
+                if (isMiniMaxProvider) {
+                    // MiniMax image-01 — direct generation
+                    const result = await generateImageMiniMax({
+                        prompt: fullPrompt,
+                        aspectRatio,
+                    })
 
-                if (!result.success) {
-                    throw new Error(result.error)
+                    if (!result.success) {
+                        throw new Error(result.error)
+                    }
+
+                    resultUrl = result.url
+                    apiPrompt = result.fullApiPrompt
+                } else {
+                    // Gemini — with auto-retry + MiniMax fallback on safety block
+                    const result = await generateAvatar({
+                        prompt: fullPrompt,
+                        avatarReferences: optimizedPayload.generalRefs,
+                        assetReferences: optimizedPayload.assetImages,
+                        sceneReference: optimizedPayload.sceneImage,
+                        faceRefImage: optimizedPayload.faceRef,
+                        bodyRefImage: optimizedPayload.bodyRef,
+                        angleRefImage: optimizedAngleRef,
+                        poseRefImage: null,
+                        aspectRatio,
+                        cameraShot,
+                        cameraAngle,
+                        cinemaLens,
+                        cinemaFocalLength,
+                        cinemaAperture,
+                        identityWeight,
+                        styleWeight: 50,
+                        measurements,
+                        faceDescription,
+                        modelName: activeProvider?.model,
+                    })
+
+                    if (!result.success) {
+                        throw new Error(result.error)
+                    }
+
+                    resultUrl = result.url
+                    apiPrompt = result.fullApiPrompt
                 }
-
-                resultUrl = result.url
-                apiPrompt = result.fullApiPrompt
             } else {
                 // VIDEO mode - check provider type
                 const isKlingProvider = activeProvider?.type === 'KLING'
