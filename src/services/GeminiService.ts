@@ -6,6 +6,7 @@ import { filterKnownSafeCorrections } from '@/app/(protected-pages)/concepts/ava
 import { sanitizePromptForGeneration, aggressiveSanitize } from '@/utils/promptSanitizer'
 import type { CinemaLens, CinemaFocalLength, CinemaAperture } from '@/app/(protected-pages)/concepts/avatar-forge/avatar-studio/types'
 import { CINEMA_LENSES, CINEMA_FOCAL_LENGTHS, CINEMA_APERTURES } from '@/app/(protected-pages)/concepts/avatar-forge/avatar-studio/_constants/cinemaPresets'
+import { generateImageWithGraydient } from '@/services/GraydientService'
 
 // Types for the service
 export interface ImageData {
@@ -750,7 +751,7 @@ export async function generateAvatar(params: {
     measurements?: PhysicalMeasurements
     faceDescription?: string
     modelName?: string
-}): Promise<{ url: string; fullApiPrompt: string }> {
+}): Promise<{ success: true; url: string; fullApiPrompt: string } | { success: false; error: string; errorType: 'SAFETY_BLOCKED' | 'GENERATION_ERROR' }> {
     const {
         prompt,
         avatarReferences,
@@ -1417,7 +1418,7 @@ ${hairColorSpecDesc ? `- EXACT HAIR COLOR: ${hairColorSpecDesc}` : ''}
         // Attempt 1: Standard sanitized prompt
         console.log('[generateAvatar] Attempt 1: standard sanitized prompt')
         const result1 = await attemptGeneration(sanitizedPrompt)
-        if (result1 !== 'SAFETY_BLOCKED') return result1
+        if (result1 !== 'SAFETY_BLOCKED') return { success: true as const, ...result1 }
 
         // Attempt 2: Aggressive sanitization (strip suggestive terms)
         console.log('[generateAvatar] Attempt 1 BLOCKED — retrying with aggressive sanitization...')
@@ -1425,19 +1426,48 @@ ${hairColorSpecDesc ? `- EXACT HAIR COLOR: ${hairColorSpecDesc}` : ''}
         const result2 = await attemptGeneration(aggressivePrompt)
         if (result2 !== 'SAFETY_BLOCKED') {
             console.log('[generateAvatar] Attempt 2 succeeded with aggressive sanitization')
-            return result2
+            return { success: true as const, ...result2 }
         }
 
-        // Both attempts blocked
-        console.warn('[generateAvatar] Both attempts blocked by safety filters')
-        throw new Error(
-            'SAFETY_BLOCKED: Image generation was blocked by content filters after 2 attempts. ' +
-            'The prompt or reference images contain content that Gemini cannot process. ' +
-            'Try simplifying your prompt or using different reference images.'
-        )
+        // Both Gemini attempts blocked — try Graydient AI as fallback
+        console.warn('[generateAvatar] Both Gemini attempts blocked — trying Graydient fallback...')
+
+        if (process.env.GRAYDIENT_API_TOKEN) {
+            const graydientResult = await generateImageWithGraydient({
+                prompt: finalPrompt, // Use original prompt — Graydient doesn't block
+                aspectRatio: params.aspectRatio,
+            })
+
+            if (graydientResult.success) {
+                console.log('[generateAvatar] Graydient fallback succeeded!')
+                return {
+                    success: true as const,
+                    url: graydientResult.url,
+                    fullApiPrompt: `[Graydient Fallback] ${graydientResult.fullApiPrompt}`,
+                }
+            }
+
+            console.warn('[generateAvatar] Graydient fallback also failed:', graydientResult.error)
+            return {
+                success: false as const,
+                error: `Gemini bloqueó la generación por filtros de contenido. Graydient fallback también falló: ${graydientResult.error}`,
+                errorType: 'SAFETY_BLOCKED' as const,
+            }
+        }
+
+        return {
+            success: false as const,
+            error: 'Gemini bloqueó la generación por filtros de contenido después de 2 intentos. Configura GRAYDIENT_API_TOKEN para habilitar el provider alternativo.',
+            errorType: 'SAFETY_BLOCKED' as const,
+        }
     } catch (error) {
         console.error('Gemini Generation Error:', error)
-        throw error
+        const message = error instanceof Error ? error.message : 'Error desconocido en generación de imagen'
+        return {
+            success: false as const,
+            error: message,
+            errorType: 'GENERATION_ERROR' as const,
+        }
     }
 }
 

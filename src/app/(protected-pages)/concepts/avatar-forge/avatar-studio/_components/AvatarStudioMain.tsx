@@ -417,6 +417,11 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                     faceDescription,
                     modelName: activeProvider?.model,
                 })
+
+                if (!result.success) {
+                    throw new Error(result.error)
+                }
+
                 resultUrl = result.url
                 apiPrompt = result.fullApiPrompt
             } else {

@@ -240,6 +240,11 @@ const AvatarCreatorMain = ({ userId, existingAvatar }: AvatarCreatorMainProps) =
                 measurements,
                 faceDescription,
             })
+
+            if (!result.success) {
+                throw new Error(result.error)
+            }
+
             const dataUrl = result.url
 
             // Extract mimeType and base64 from the data URL

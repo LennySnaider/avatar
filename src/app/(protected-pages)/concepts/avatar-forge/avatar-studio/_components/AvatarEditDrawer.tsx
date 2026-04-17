@@ -291,6 +291,11 @@ const AvatarEditDrawer = ({ isOpen, onClose, onSaveAvatar }: AvatarEditDrawerPro
                 measurements: localMeasurements,
                 faceDescription: localFaceDescription,
             })
+
+            if (!result.success) {
+                throw new Error(result.error)
+            }
+
             const dataUrl = result.url
 
             const matches = dataUrl.match(/^data:(.+);base64,(.+)$/)

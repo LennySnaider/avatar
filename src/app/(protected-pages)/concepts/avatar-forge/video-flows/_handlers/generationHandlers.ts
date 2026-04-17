@@ -28,6 +28,10 @@ export const generateImage: VideoNodeHandler = async (node, inputs) => {
             (node.data.config.aspectRatio as AspectRatio) ?? '1:1',
     })
 
+    if (!result.success) {
+        throw new Error(result.error)
+    }
+
     return {
         output: {
             imageUrl: result.url,
