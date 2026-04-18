@@ -196,7 +196,8 @@ export async function generateImage(params: {
     success: false
     error: string
 }> {
-    const { prompt, aspectRatio = '1:1', faceReferenceUrl } = params
+    const { prompt: rawPrompt, aspectRatio = '1:1', faceReferenceUrl } = params
+    const prompt = rawPrompt.slice(0, 1500)
 
     try {
         const body: Record<string, unknown> = {
