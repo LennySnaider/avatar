@@ -85,6 +85,7 @@ const ImagePreviewModal = ({
     const editAssetInputRef = useRef<HTMLInputElement>(null)
     const imageRef = useRef<HTMLImageElement>(null)
     const videoRef = useRef<HTMLVideoElement>(null)
+    const mediaContainerRef = useRef<HTMLDivElement>(null)
     const isDrawingRef = useRef(false)
     const lastPosRef = useRef({ x: 0, y: 0 })
     const [canvasSize, setCanvasSize] = useState({ width: 500, height: 500 })
@@ -172,16 +173,23 @@ const ImagePreviewModal = ({
         setPanPosition({ x: 0, y: 0 })
     }, [])
 
-    // Mouse wheel zoom
-    const handleWheel = useCallback((e: React.WheelEvent) => {
-        if (isEditing) return
-        e.preventDefault()
-        if (e.deltaY < 0) {
-            handleZoomIn()
-        } else {
-            handleZoomOut()
+    // Mouse wheel zoom — use native listener with { passive: false }
+    // so preventDefault() works (React's onWheel is passive by default in modern browsers)
+    useEffect(() => {
+        const el = mediaContainerRef.current
+        if (!el) return
+        const onWheel = (e: WheelEvent) => {
+            if (isEditing) return
+            e.preventDefault()
+            if (e.deltaY < 0) {
+                handleZoomIn()
+            } else {
+                handleZoomOut()
+            }
         }
-    }, [isEditing, handleZoomIn, handleZoomOut])
+        el.addEventListener('wheel', onWheel, { passive: false })
+        return () => el.removeEventListener('wheel', onWheel)
+    }, [isEditing, handleZoomIn, handleZoomOut, previewMedia])
 
     // Pan handlers for zoomed image
     const handlePanStart = useCallback((e: React.MouseEvent) => {
@@ -675,8 +683,8 @@ const ImagePreviewModal = ({
 
                     {/* Media Display */}
                     <div
+                        ref={mediaContainerRef}
                         className="relative max-h-full max-w-full overflow-hidden"
-                        onWheel={handleWheel}
                     >
                         {previewMedia.mediaType === 'VIDEO' ? (
                             <div className="relative">
