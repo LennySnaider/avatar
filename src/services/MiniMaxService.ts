@@ -215,7 +215,7 @@ export async function generateImage(params: {
 
         console.log(`[MiniMaxService] Generating image: aspect=${aspectRatio}, prompt length=${prompt.length}`)
 
-        const res = await fetch('https://api.minimaxi.com/v1/image_generation', {
+        const res = await fetch(`${MINIMAX_API_BASE}/image_generation`, {
             method: 'POST',
             headers: {
                 ...authHeaders(),
