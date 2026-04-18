@@ -90,6 +90,19 @@ export const DEFAULT_PROVIDERS: AIProvider[] = [
         api_key_env_var: 'KLING_ACCESS_KEY',
         created_at: null,
     },
+    {
+        id: 'kling-v3',
+        name: 'Kling v3 (Latest)',
+        type: 'KLING' as ProviderType,
+        model: 'kling-v3',
+        endpoint: 'https://api-singapore.klingai.com',
+        is_active: true,
+        supports_image: false,
+        supports_video: true,
+        requires_api_key: true,
+        api_key_env_var: 'KLING_ACCESS_KEY',
+        created_at: null,
+    },
 ]
 
 const ProviderManagerDrawer = () => {
@@ -145,19 +158,19 @@ const ProviderManagerDrawer = () => {
         switch (type) {
             case 'GOOGLE':
                 return (
-                    <div className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-500 to-green-500 flex items-center justify-center text-white font-bold text-sm">
+                    <div className="w-8 h-8 rounded-full bg-linear-to-br from-blue-500 to-green-500 flex items-center justify-center text-white font-bold text-sm">
                         G
                     </div>
                 )
             case 'KLING':
                 return (
-                    <div className="w-8 h-8 rounded-full bg-gradient-to-br from-orange-500 to-red-500 flex items-center justify-center text-white font-bold text-sm">
+                    <div className="w-8 h-8 rounded-full bg-linear-to-br from-orange-500 to-red-500 flex items-center justify-center text-white font-bold text-sm">
                         K
                     </div>
                 )
             case 'MINIMAX':
                 return (
-                    <div className="w-8 h-8 rounded-full bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center text-white font-bold text-sm">
+                    <div className="w-8 h-8 rounded-full bg-linear-to-br from-purple-500 to-pink-500 flex items-center justify-center text-white font-bold text-sm">
                         M
                     </div>
                 )
@@ -180,6 +193,8 @@ const ProviderManagerDrawer = () => {
                 return 'Video estable, motion brush, camera control'
             case 'kling-v2-6':
                 return 'Voice synthesis, lip-sync, talking avatars'
+            case 'kling-v3':
+                return 'Video generation, motion control, voice synthesis, mejor calidad'
             case 'minimax-image-01':
                 return 'Menos restrictivo, subject reference, fashion-friendly'
             default:
@@ -263,7 +278,7 @@ const ProviderManagerDrawer = () => {
                                                 <span className="text-xs px-2 py-0.5 bg-gray-200 dark:bg-gray-700 rounded">
                                                     {provider.model}
                                                 </span>
-                                                {provider.type === 'KLING' && provider.model === 'kling-v2-6' && (
+                                                {provider.type === 'KLING' && (provider.model === 'kling-v2-6' || provider.model === 'kling-v3') && (
                                                     <span className="text-xs px-2 py-0.5 bg-purple-100 dark:bg-purple-900/50 text-purple-600 dark:text-purple-400 rounded">
                                                         Voice
                                                     </span>
@@ -281,8 +296,8 @@ const ProviderManagerDrawer = () => {
                 {generationMode === 'VIDEO' && (
                     <div className="p-3 bg-orange-50 dark:bg-orange-900/20 border border-orange-200 dark:border-orange-800 rounded-lg">
                         <p className="text-xs text-orange-700 dark:text-orange-300">
-                            <strong>Kling:</strong> Selecciona v2.6 para voice synthesis y lip-sync.
-                            Usa v1.6 para motion brush y camera control avanzado.
+                            <strong>Kling:</strong> V3 es la versión más reciente con mejor calidad.
+                            V2.6 sigue disponible para casos legacy. V1.6 para motion brush y camera control avanzado.
                         </p>
                     </div>
                 )}

@@ -16,6 +16,7 @@ export type KlingModel =
     | 'kling-v2-1-master'
     | 'kling-v2-5-turbo'
     | 'kling-v2-6'
+    | 'kling-v3'
 
 export type KlingMode = 'std' | 'pro'
 export type KlingDuration = '5' | '10'
