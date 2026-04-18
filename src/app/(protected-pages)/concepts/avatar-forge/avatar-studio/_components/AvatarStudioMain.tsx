@@ -622,7 +622,9 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
             const newMedia: GeneratedMedia = {
                 id: crypto.randomUUID(),
                 url: resultUrl,
-                prompt: fullPrompt,
+                // Store the raw user prompt so Re-use restores the editable text.
+                // The fully-tagged prompt goes in fullApiPrompt for debugging.
+                prompt: prompt.trim() || fullPrompt,
                 aspectRatio,
                 timestamp: Date.now(),
                 mediaType: generationMode,
@@ -630,7 +632,7 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                     name: avatarName || 'Unnamed',
                     thumbnailUrl: faceRef?.url || generalReferences[0]?.url,
                 },
-                fullApiPrompt: apiPrompt,
+                fullApiPrompt: apiPrompt ?? fullPrompt,
             }
 
             addToGallery(newMedia)
@@ -1024,8 +1026,24 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
     // Re-use Handler - copies prompt and sets image as clone reference
     const handleReuse = useCallback(
         async (media: GeneratedMedia) => {
-            // Set the prompt
-            setPrompt(media.prompt)
+            // Uploaded images have placeholder prompts (e.g. "Uploaded: foo.jpg")
+            // that describe nothing. Clear the prompt so the user writes a real one.
+            const isUploadedPlaceholder = /^Uploaded:\s/i.test(media.prompt)
+
+            // Stored prompts may include [BODY: ...] / [FACE: ...] tags injected by
+            // getFullPrompt(). Strip them so we don't duplicate tags on re-generation.
+            const cleanedPrompt = isUploadedPlaceholder
+                ? ''
+                : media.prompt
+                      .replace(/\[BODY:[^\]]*\]\s*/gi, '')
+                      .replace(/\[FACE:[^\]]*\]\s*/gi, '')
+                      .trim()
+
+            setPrompt(cleanedPrompt)
+
+            if (media.aspectRatio) {
+                setAspectRatio(media.aspectRatio)
+            }
 
             // Set the image as clone reference
             if (media.mediaType === 'IMAGE') {
@@ -1054,12 +1072,17 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
             }
 
             toast.push(
-                <Notification type="success" title="Re-using Generation">
-                    Prompt and clone reference loaded
+                <Notification
+                    type={isUploadedPlaceholder ? 'info' : 'success'}
+                    title={isUploadedPlaceholder ? 'Image loaded as reference' : 'Re-using Generation'}
+                >
+                    {isUploadedPlaceholder
+                        ? 'Uploaded image set as clone reference. Describe the scene you want to generate.'
+                        : 'Prompt and clone reference loaded'}
                 </Notification>
             )
         },
-        [setPrompt, setCloneImage]
+        [setPrompt, setCloneImage, setAspectRatio]
     )
 
     return (
