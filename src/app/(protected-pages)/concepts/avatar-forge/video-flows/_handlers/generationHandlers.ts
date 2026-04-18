@@ -3,6 +3,7 @@ import type { ImageData } from '@/services/GeminiService'
 import type { AspectRatio } from '@/@types/supabase'
 import * as GeminiService from '@/services/GeminiService'
 import * as KlingService from '@/services/KlingService'
+import * as MiniMaxService from '@/services/MiniMaxService'
 
 export const generateImage: VideoNodeHandler = async (node, inputs) => {
     const prompt =
@@ -14,6 +15,29 @@ export const generateImage: VideoNodeHandler = async (node, inputs) => {
     const avatarReferences =
         (inputs.references as ImageData[]) ?? []
     const faceRef = inputs.faceRef as ImageData | null
+    const aspectRatio = (node.data.config.aspectRatio as AspectRatio) ?? '1:1'
+    const model = (node.data.config.model as string) ?? 'gemini'
+
+    if (model === 'minimax') {
+        const faceReferenceUrl = faceRef
+            ? `data:${faceRef.mimeType};base64,${faceRef.base64}`
+            : avatarReferences[0]
+                ? `data:${avatarReferences[0].mimeType};base64,${avatarReferences[0].base64}`
+                : undefined
+
+        const result = await MiniMaxService.generateImage({
+            prompt,
+            aspectRatio,
+            faceReferenceUrl,
+        })
+        if (!result.success) throw new Error(result.error)
+        return {
+            output: {
+                imageUrl: result.url,
+                fullApiPrompt: result.fullApiPrompt,
+            },
+        }
+    }
 
     const result = await GeminiService.generateAvatar({
         prompt,
@@ -24,8 +48,7 @@ export const generateImage: VideoNodeHandler = async (node, inputs) => {
         bodyRefImage: null,
         angleRefImage: null,
         poseRefImage: null,
-        aspectRatio:
-            (node.data.config.aspectRatio as AspectRatio) ?? '1:1',
+        aspectRatio,
     })
 
     if (!result.success) {

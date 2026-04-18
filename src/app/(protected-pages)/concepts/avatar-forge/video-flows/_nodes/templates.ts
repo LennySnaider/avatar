@@ -124,7 +124,7 @@ export const NODE_TEMPLATES: VideoNodeTemplate[] = [
         category: 'output',
         icon: 'HiOutlineSave',
         description: 'Save generated media to avatar gallery',
-        inputs: ['imageUrl', 'videoUrl'],
+        inputs: ['imageUrl', 'videoUrl', 'avatarId'],
         outputs: ['galleryItemId', 'savedUrl'],
         defaultData: { collection: 'default' },
     },

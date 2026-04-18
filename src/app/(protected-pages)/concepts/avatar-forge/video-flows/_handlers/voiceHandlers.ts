@@ -43,12 +43,18 @@ export const textToSpeech: VideoNodeHandler = async (node, inputs) => {
         text,
         voiceId,
         speed: (config.speed as number) ?? 1.0,
+        language: config.language as string | undefined,
     })
+
+    // Convert raw buffer to a data URI so downstream nodes (and the UI) can
+    // consume a URL rather than a Node Buffer that doesn't survive JSON.
+    const base64 = Buffer.from(result.audioBuffer).toString('base64')
+    const audioUrl = `data:audio/mp3;base64,${base64}`
 
     return {
         output: {
-            audioBuffer: result.audioBuffer,
-            durationMs: result.durationMs,
+            audioUrl,
+            duration: Math.round(result.durationMs / 1000),
         },
     }
 }

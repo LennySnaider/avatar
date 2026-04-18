@@ -4,6 +4,7 @@ import { supabase } from '@/lib/supabase'
 
 export const saveToGallery: VideoNodeHandler = async (node, inputs) => {
     const mediaUrl =
+        (inputs.outputUrl as string) ??
         (inputs.imageUrl as string) ??
         (inputs.videoUrl as string) ??
         (inputs.stitchedVideoUrl as string) ??
@@ -16,9 +17,16 @@ export const saveToGallery: VideoNodeHandler = async (node, inputs) => {
     if (!user) throw new Error('Not authenticated')
 
     const mediaType: MediaType =
-        mediaUrl.includes('.mp4') || (inputs.videoUrl as string)
+        mediaUrl.includes('.mp4') || inputs.videoUrl || inputs.stitchedVideoUrl
             ? 'VIDEO'
             : 'IMAGE'
+
+    // Prefer avatarId flowing in from an upstream select-avatar node,
+    // fall back to whatever is hard-coded in node config.
+    const avatarId =
+        (inputs.avatarId as string) ??
+        (node.data.config.avatarId as string) ??
+        null
 
     const { data, error } = await supabase
         .from('generations')
@@ -27,7 +35,10 @@ export const saveToGallery: VideoNodeHandler = async (node, inputs) => {
             storage_path: mediaUrl,
             media_type: mediaType,
             prompt: (inputs.fullApiPrompt as string) ?? '',
-            avatar_id: (node.data.config.avatarId as string) ?? null,
+            avatar_id: avatarId,
+            metadata: {
+                collection: (node.data.config.collection as string) ?? 'default',
+            },
         })
         .select('id, storage_path')
         .single()
