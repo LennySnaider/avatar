@@ -1,5 +1,6 @@
 'use server'
 
+import { createServerSupabaseClient } from '@/lib/supabase'
 import type {
     MiniMaxFileUploadResponse,
     MiniMaxVoiceCloneResponse,
@@ -358,6 +359,41 @@ export async function retrieveMiniMaxFile(fileId: string): Promise<string> {
     return json.file.download_url
 }
 
+/**
+ * Download a video from a URL and re-upload to Supabase Storage.
+ * MiniMax download_urls have CORS restrictions / attachment headers that
+ * prevent inline playback in <video> elements, so we proxy through our own
+ * bucket to get a stable, reproducible URL.
+ */
+async function persistVideoToSupabase(sourceUrl: string): Promise<string> {
+    const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL
+    if (!SUPABASE_URL) throw new Error('NEXT_PUBLIC_SUPABASE_URL is not defined')
+
+    const res = await fetch(sourceUrl)
+    if (!res.ok) {
+        throw new Error(`Failed to download MiniMax video (${res.status})`)
+    }
+    const buffer = Buffer.from(await res.arrayBuffer())
+
+    const fileName = `minimax-videos/${Date.now()}-${Math.random().toString(36).substr(2, 9)}.mp4`
+    const supabase = createServerSupabaseClient()
+    const { error } = await supabase.storage
+        .from('generations')
+        .upload(fileName, buffer, {
+            contentType: 'video/mp4',
+            cacheControl: '3600',
+            upsert: false,
+        })
+    if (error) {
+        console.error('[MiniMaxService] Supabase upload error:', error)
+        throw new Error(`Failed to persist MiniMax video: ${error.message}`)
+    }
+
+    const publicUrl = `${SUPABASE_URL}/storage/v1/object/public/generations/${fileName}`
+    console.log('[MiniMaxService] Video persisted to:', publicUrl)
+    return publicUrl
+}
+
 export type MiniMaxVideoMode = 'text' | 'image' | 'subject' | 'startEnd'
 
 export interface GenerateMiniMaxVideoParams {
@@ -437,6 +473,7 @@ export async function generateVideoMiniMax(params: GenerateMiniMaxVideoParams): 
     console.log(`[MiniMaxService] Task complete, file_id=${fileId}`)
 
     const downloadUrl = await retrieveMiniMaxFile(fileId)
-    console.log('[MiniMaxService] Video ready')
-    return downloadUrl
+    console.log('[MiniMaxService] Video ready, persisting to storage')
+
+    return persistVideoToSupabase(downloadUrl)
 }
