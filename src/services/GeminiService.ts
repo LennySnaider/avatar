@@ -465,17 +465,21 @@ export async function analyzeFaceFromImages(images: { base64: string; mimeType: 
     })
 
     parts.push({
-        text: `Analyze these images and describe ONLY the permanent physical facial features.
+        text: `Analyze these images and describe the permanent physical features of the person so another AI can recreate them identically from text alone.
 
     CRITICAL DETAILS TO EXTRACT:
-    1. Eye shape and exact color.
-    2. Eyebrow shape and thickness.
-    3. Nose shape (bridge, tip).
-    4. Lip shape (upper/lower fullness).
-    5. Jawline definition and chin shape.
-    6. Distinctive marks (freckles, moles, scars, dimples).
+    1. Apparent ethnicity / heritage and apparent age range.
+    2. Overall face shape (oval, round, square, heart, etc.) and facial proportions.
+    3. Skin tone (warm/cool, fair/medium/olive/tan/deep) and texture (smooth, freckled, etc.).
+    4. Hair: color, length, texture (straight/wavy/curly/coily), and typical style.
+    5. Eye shape, exact color, and eyelid type (monolid, double, hooded, etc.).
+    6. Eyebrow shape, thickness, and color.
+    7. Nose shape (bridge, tip, nostril width).
+    8. Lip shape (upper/lower fullness, cupid's bow).
+    9. Jawline definition and chin shape.
+    10. Distinctive marks (freckles, moles, scars, dimples, beauty marks).
 
-    Output as a concise, comma-separated descriptive string.`,
+    Output as a single concise, comma-separated descriptive string — no headings, no bullet points, no preamble. Keep under 400 characters.`,
     })
 
     try {
