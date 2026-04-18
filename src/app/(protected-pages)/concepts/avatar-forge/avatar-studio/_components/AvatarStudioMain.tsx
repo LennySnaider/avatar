@@ -397,10 +397,17 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                 const isMiniMaxProvider = activeProvider?.type === 'MINIMAX'
 
                 if (isMiniMaxProvider) {
-                    // MiniMax image-01 — direct generation
+                    // MiniMax image-01 — direct generation with subject_reference for facial consistency
+                    const subjectRef =
+                        optimizedPayload.faceRef ?? optimizedPayload.generalRefs[0] ?? null
+                    const faceReferenceUrl = subjectRef
+                        ? `data:${subjectRef.mimeType};base64,${subjectRef.base64}`
+                        : undefined
+
                     const result = await generateImageMiniMax({
                         prompt: fullPrompt,
                         aspectRatio,
+                        faceReferenceUrl,
                     })
 
                     if (!result.success) {
