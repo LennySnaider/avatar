@@ -5,6 +5,9 @@ import AvatarStudioMain from './_components/AvatarStudioMain'
 import getAvatarStudioData from '@/server/actions/getAvatarStudioData'
 import type { PageProps } from '@/@types/common'
 
+// Fluid Compute: extend timeout to 800s (~13min) to cover Kling/MiniMax video polling
+export const maxDuration = 800
+
 export default async function Page({ searchParams }: PageProps) {
     const session = await auth()
     const params = await searchParams

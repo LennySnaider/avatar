@@ -942,9 +942,9 @@ async function cleanupTempFiles(paths: string[]): Promise<void> {
 
 /**
  * Poll for motion control task completion
- * Default timeout: 15 minutes (180 attempts * 5 seconds)
+ * Default timeout: ~13 minutes (160 attempts * 5 seconds) — fits in Vercel Pro 800s Fluid Compute limit
  */
-async function pollMotionTaskResult(taskId: string, maxAttempts = 180, intervalMs = 5000): Promise<KlingTaskResultResponse['data']> {
+async function pollMotionTaskResult(taskId: string, maxAttempts = 160, intervalMs = 5000): Promise<KlingTaskResultResponse['data']> {
     for (let attempt = 0; attempt < maxAttempts; attempt++) {
         const result = await klingRequest<KlingTaskResultResponse>(
             `/v1/videos/motion-control/${taskId}`,
