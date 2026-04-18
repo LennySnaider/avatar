@@ -404,8 +404,14 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                         ? `data:${subjectRef.mimeType};base64,${subjectRef.base64}`
                         : undefined
 
+                    // MiniMax only gets text + one reference, so fold faceDescription
+                    // into the prompt to compensate for the missing Gemini-only fields.
+                    const miniMaxPrompt = faceDescription?.trim()
+                        ? `[FACE: ${faceDescription.trim()}] ${fullPrompt}`
+                        : fullPrompt
+
                     const result = await generateImageMiniMax({
-                        prompt: fullPrompt,
+                        prompt: miniMaxPrompt,
                         aspectRatio,
                         faceReferenceUrl,
                     })
