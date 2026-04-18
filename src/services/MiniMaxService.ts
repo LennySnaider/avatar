@@ -5,6 +5,13 @@ import type {
     MiniMaxVoiceCloneResponse,
     MiniMaxTTSRequest,
     MiniMaxTTSResponse,
+    MiniMaxVideoModel,
+    MiniMaxVideoDuration,
+    MiniMaxVideoResolution,
+    MiniMaxVideoGenerationRequest,
+    MiniMaxVideoTaskResponse,
+    MiniMaxVideoStatusResponse,
+    MiniMaxFileRetrieveResponse,
 } from '@/@types/minimax'
 
 const MINIMAX_API_BASE = 'https://api.minimax.io/v1'
@@ -266,4 +273,170 @@ export async function generateVoiceId(userId: string, voiceName: string): Promis
     const suffix = userId.replace(/-/g, '').slice(0, 8)
     const ts = Date.now().toString(36)
     return `pa${prefix}${suffix}${ts}`
+}
+
+// ─── Video Generation (Hailuo) ────────────────────────────
+
+function normalizeVideoResolution(input?: string): MiniMaxVideoResolution {
+    if (!input) return '1080P'
+    const upper = input.toUpperCase()
+    if (upper === '1080P') return '1080P'
+    return '768P'
+}
+
+function toDataUri(base64: string, mimeType: string): string {
+    if (base64.startsWith('data:')) return base64
+    return `data:${mimeType};base64,${base64}`
+}
+
+async function submitVideoTask(body: MiniMaxVideoGenerationRequest): Promise<string> {
+    const res = await fetch(`${MINIMAX_API_BASE}/video_generation`, {
+        method: 'POST',
+        headers: {
+            ...authHeaders(),
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(body),
+    })
+
+    if (!res.ok) {
+        const text = await res.text()
+        throw new Error(`MiniMax video submit failed (${res.status}): ${text}`)
+    }
+
+    const json: MiniMaxVideoTaskResponse = await res.json()
+    if (json.base_resp.status_code !== 0) {
+        throw new Error(`MiniMax video submit error: ${json.base_resp.status_msg}`)
+    }
+    return json.task_id
+}
+
+export async function pollMiniMaxVideoTask(
+    taskId: string,
+    options?: { maxAttempts?: number; intervalMs?: number }
+): Promise<string> {
+    const maxAttempts = options?.maxAttempts ?? 120
+    const intervalMs = options?.intervalMs ?? 5000
+
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+        const res = await fetch(
+            `${MINIMAX_API_BASE}/query/video_generation?task_id=${encodeURIComponent(taskId)}`,
+            { headers: authHeaders() }
+        )
+        if (!res.ok) {
+            const text = await res.text()
+            throw new Error(`MiniMax video poll failed (${res.status}): ${text}`)
+        }
+        const json: MiniMaxVideoStatusResponse = await res.json()
+
+        if (json.status === 'Success' && json.file_id) {
+            return json.file_id
+        }
+        if (json.status === 'Fail') {
+            throw new Error(
+                `MiniMax video generation failed: ${json.base_resp?.status_msg || 'Unknown failure'}`
+            )
+        }
+        await new Promise(resolve => setTimeout(resolve, intervalMs))
+    }
+    throw new Error('MiniMax video generation timed out after 10 minutes')
+}
+
+export async function retrieveMiniMaxFile(fileId: string): Promise<string> {
+    const res = await fetch(
+        `${MINIMAX_API_BASE}/files/retrieve?file_id=${encodeURIComponent(fileId)}`,
+        { headers: authHeaders() }
+    )
+    if (!res.ok) {
+        const text = await res.text()
+        throw new Error(`MiniMax file retrieve failed (${res.status}): ${text}`)
+    }
+    const json: MiniMaxFileRetrieveResponse = await res.json()
+    if (json.base_resp.status_code !== 0) {
+        throw new Error(`MiniMax file retrieve error: ${json.base_resp.status_msg}`)
+    }
+    return json.file.download_url
+}
+
+export type MiniMaxVideoMode = 'text' | 'image' | 'subject' | 'startEnd'
+
+export interface GenerateMiniMaxVideoParams {
+    mode: MiniMaxVideoMode
+    prompt: string
+    firstFrameImage?: { base64: string; mimeType: string } | string
+    lastFrameImage?: { base64: string; mimeType: string } | string
+    characterImages?: Array<{ base64: string; mimeType: string } | string>
+    model?: MiniMaxVideoModel
+    duration?: MiniMaxVideoDuration
+    resolution?: MiniMaxVideoResolution | string
+    promptOptimizer?: boolean
+}
+
+function coerceImage(input?: { base64: string; mimeType: string } | string): string | undefined {
+    if (!input) return undefined
+    if (typeof input === 'string') return input
+    return toDataUri(input.base64, input.mimeType)
+}
+
+/**
+ * End-to-end MiniMax Hailuo video generation:
+ * submit → poll until ready → retrieve download URL.
+ *
+ * Modes:
+ * - 'text'      → prompt only
+ * - 'image'     → first_frame_image + prompt (image-to-video)
+ * - 'subject'   → subject_reference (1-8 images) + prompt (avatar lock)
+ * - 'startEnd'  → first_frame_image + last_frame_image + prompt
+ */
+export async function generateVideoMiniMax(params: GenerateMiniMaxVideoParams): Promise<string> {
+    const {
+        mode,
+        prompt,
+        firstFrameImage,
+        lastFrameImage,
+        characterImages,
+        model = 'MiniMax-Hailuo-2.3',
+        duration = 6,
+        resolution,
+        promptOptimizer = true,
+    } = params
+
+    const body: MiniMaxVideoGenerationRequest = {
+        model,
+        prompt: prompt.slice(0, 2000),
+        duration,
+        resolution: normalizeVideoResolution(resolution),
+        prompt_optimizer: promptOptimizer,
+    }
+
+    if (mode === 'image') {
+        const firstUri = coerceImage(firstFrameImage)
+        if (!firstUri) throw new Error('firstFrameImage is required for mode "image"')
+        body.first_frame_image = firstUri
+    } else if (mode === 'subject') {
+        const uris = (characterImages ?? []).map(coerceImage).filter((u): u is string => !!u)
+        if (uris.length === 0) {
+            throw new Error('characterImages (1-8) required for mode "subject"')
+        }
+        body.subject_reference = [{ type: 'character', image: uris.slice(0, 8) }]
+    } else if (mode === 'startEnd') {
+        const firstUri = coerceImage(firstFrameImage)
+        const lastUri = coerceImage(lastFrameImage)
+        if (!firstUri || !lastUri) {
+            throw new Error('firstFrameImage and lastFrameImage required for mode "startEnd"')
+        }
+        body.first_frame_image = firstUri
+        body.last_frame_image = lastUri
+    }
+
+    console.log(`[MiniMaxService] Submitting video: mode=${mode}, model=${model}, duration=${duration}s`)
+    const taskId = await submitVideoTask(body)
+    console.log(`[MiniMaxService] Task submitted: ${taskId}`)
+
+    const fileId = await pollMiniMaxVideoTask(taskId)
+    console.log(`[MiniMaxService] Task complete, file_id=${fileId}`)
+
+    const downloadUrl = await retrieveMiniMaxFile(fileId)
+    console.log('[MiniMaxService] Video ready')
+    return downloadUrl
 }

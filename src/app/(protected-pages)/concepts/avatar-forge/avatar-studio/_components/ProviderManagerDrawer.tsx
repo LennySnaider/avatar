@@ -103,6 +103,32 @@ export const DEFAULT_PROVIDERS: AIProvider[] = [
         api_key_env_var: 'KLING_ACCESS_KEY',
         created_at: null,
     },
+    {
+        id: 'minimax-hailuo-2-3',
+        name: 'MiniMax Hailuo 2.3',
+        type: 'MINIMAX' as ProviderType,
+        model: 'MiniMax-Hailuo-2.3',
+        endpoint: 'https://api.minimax.io/v1',
+        is_active: true,
+        supports_image: false,
+        supports_video: true,
+        requires_api_key: true,
+        api_key_env_var: 'MINIMAX_API_KEY',
+        created_at: null,
+    },
+    {
+        id: 'minimax-hailuo-2-3-fast',
+        name: 'MiniMax Hailuo 2.3 Fast',
+        type: 'MINIMAX' as ProviderType,
+        model: 'MiniMax-Hailuo-2.3-Fast',
+        endpoint: 'https://api.minimax.io/v1',
+        is_active: true,
+        supports_image: false,
+        supports_video: true,
+        requires_api_key: true,
+        api_key_env_var: 'MINIMAX_API_KEY',
+        created_at: null,
+    },
 ]
 
 const ProviderManagerDrawer = () => {
@@ -197,6 +223,10 @@ const ProviderManagerDrawer = () => {
                 return 'Video generation, motion control, voice synthesis, mejor calidad'
             case 'minimax-image-01':
                 return 'Menos restrictivo, subject reference, fashion-friendly'
+            case 'minimax-hailuo-2-3':
+                return 'Video Hailuo 2.3, subject reference (avatar lock), 1080P'
+            case 'minimax-hailuo-2-3-fast':
+                return 'Hailuo 2.3 Fast - m\u00e1s r\u00e1pido y econ\u00f3mico'
             default:
                 return provider.model
         }

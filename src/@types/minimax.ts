@@ -95,6 +95,69 @@ export interface MiniMaxTTSResponse {
     }
 }
 
+// ─── Video Generation ─────────────────────────────────────
+export type MiniMaxVideoModel =
+    | 'MiniMax-Hailuo-2.3'
+    | 'MiniMax-Hailuo-2.3-Fast'
+    | 'MiniMax-Hailuo-02'
+    | 'I2V-01-Director'
+
+export type MiniMaxVideoDuration = 6 | 10
+export type MiniMaxVideoResolution = '768P' | '1080P'
+
+export interface MiniMaxSubjectReference {
+    type: 'character'
+    image: string[] // Public URLs or base64 data URIs (1-8 items)
+}
+
+export interface MiniMaxVideoGenerationRequest {
+    model: MiniMaxVideoModel
+    prompt: string
+    first_frame_image?: string // URL or data URI (image-to-video)
+    last_frame_image?: string // URL or data URI (start/end frame)
+    subject_reference?: MiniMaxSubjectReference[] // Avatar lock
+    duration?: MiniMaxVideoDuration
+    resolution?: MiniMaxVideoResolution
+    prompt_optimizer?: boolean
+    callback_url?: string
+}
+
+export interface MiniMaxVideoTaskResponse {
+    task_id: string
+    base_resp: {
+        status_code: number
+        status_msg: string
+    }
+}
+
+export type MiniMaxVideoStatus = 'Queueing' | 'Preparing' | 'Processing' | 'Success' | 'Fail'
+
+export interface MiniMaxVideoStatusResponse {
+    task_id: string
+    status: MiniMaxVideoStatus
+    file_id?: string
+    video_width?: number
+    video_height?: number
+    base_resp: {
+        status_code: number
+        status_msg: string
+    }
+}
+
+export interface MiniMaxFileRetrieveResponse {
+    file: {
+        file_id: string
+        bytes: number
+        filename: string
+        download_url: string
+        backup_download_url?: string
+    }
+    base_resp: {
+        status_code: number
+        status_msg: string
+    }
+}
+
 // ─── Error codes ───────────────────────────────────────────
 export const MINIMAX_ERROR_CODES: Record<number, string> = {
     0: 'Success',

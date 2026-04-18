@@ -33,7 +33,11 @@ import {
     generateAvatarVideo as generateAvatarVideoKling,
     generateVideoWithMotionControl as generateMotionControlKling,
 } from '@/services/KlingService'
-import { generateImage as generateImageMiniMax } from '@/services/MiniMaxService'
+import {
+    generateImage as generateImageMiniMax,
+    generateVideoMiniMax,
+} from '@/services/MiniMaxService'
+import type { MiniMaxVideoModel } from '@/@types/minimax'
 import { HiOutlineCog, HiOutlineBookOpen, HiX } from 'react-icons/hi'
 import { AppState } from '../types'
 import type { GeneratedMedia, ReferenceImage } from '../types'
@@ -456,11 +460,13 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
             } else {
                 // VIDEO mode - check provider type
                 const isKlingProvider = activeProvider?.type === 'KLING'
+                const isMinimaxProvider = activeProvider?.type === 'MINIMAX'
 
                 // Debug logging
                 console.log('[AvatarStudio] Active Provider:', activeProvider)
                 console.log('[AvatarStudio] Provider Type:', activeProvider?.type)
                 console.log('[AvatarStudio] Is Kling Provider:', isKlingProvider)
+                console.log('[AvatarStudio] Is MiniMax Provider:', isMinimaxProvider)
 
                 if (videoSubMode === 'ANIMATE') {
                     if (!videoInputImage || !videoInputImage.base64) {
@@ -509,6 +515,15 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                                 modelName: activeProvider?.model || 'kling-v1-6',
                             })
                         }
+                    } else if (isMinimaxProvider) {
+                        // MiniMax Hailuo image-to-video
+                        resultUrl = await generateVideoMiniMax({
+                            mode: 'image',
+                            prompt: fullPrompt,
+                            firstFrameImage: optimizedVideoInput,
+                            model: (activeProvider?.model as MiniMaxVideoModel) || 'MiniMax-Hailuo-2.3',
+                            resolution: videoResolution,
+                        })
                     } else {
                         // Use Gemini Service (default)
                         resultUrl = await generateVideoGemini({
@@ -562,6 +577,25 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                                 modelName: activeProvider?.model || 'kling-v1-6',
                             })
                         }
+                    } else if (isMinimaxProvider) {
+                        // MiniMax Hailuo with subject_reference (avatar lock)
+                        const refs = [
+                            optimizedPayload.faceRef,
+                            optimizedPayload.bodyRef,
+                            ...optimizedPayload.generalRefs,
+                        ].filter((r): r is { base64: string; mimeType: string } => !!r)
+
+                        if (refs.length === 0) {
+                            throw new Error('Please add avatar references for MiniMax video generation')
+                        }
+
+                        resultUrl = await generateVideoMiniMax({
+                            mode: 'subject',
+                            prompt: fullPrompt,
+                            characterImages: refs,
+                            model: (activeProvider?.model as MiniMaxVideoModel) || 'MiniMax-Hailuo-2.3',
+                            resolution: videoResolution,
+                        })
                     } else {
                         // Use Gemini Service (default)
                         resultUrl = await generateVideoGemini({
