@@ -4,7 +4,9 @@ import { useRef, useState, useCallback, useEffect } from 'react'
 import { useAvatarStudioStore } from '../_store/avatarStudioStore'
 import { analyzePoseFromImage, analyzeImageForClone, analyzeImageForPlace } from '@/services/GeminiService'
 import Button from '@/components/ui/Button'
+import Notification from '@/components/ui/Notification'
 import Spinner from '@/components/ui/Spinner'
+import toast from '@/components/ui/toast'
 import Tooltip from '@/components/ui/Tooltip'
 import Dropdown from '@/components/ui/Dropdown'
 import Checkbox from '@/components/ui/Checkbox'
@@ -309,22 +311,42 @@ const BottomControlBar = ({
     const handleCloneRefUpload = async (file: File) => {
         const { base64, mimeType, url } = await processFileToBase64(file)
 
+        const cloneId = crypto.randomUUID()
+
         // Save image for visual reference
         setCloneImage({
-            id: crypto.randomUUID(),
+            id: cloneId,
             url,
             mimeType,
             base64,
             type: 'general',
         })
 
-        // Analyze image and extract clone description
+        // Analyze image and extract clone description. Guard against two
+        // failure modes that used to leave the button stuck on "Analyzing...":
+        // (a) Gemini hanging indefinitely with no timeout, and
+        // (b) the user removing/replacing the clone image while the previous
+        // analyze is still in-flight.
         setIsAnalyzingClone(true)
         try {
-            const description = await analyzeImageForClone({ base64, mimeType })
+            const ANALYZE_TIMEOUT_MS = 60_000
+            const description = await Promise.race([
+                analyzeImageForClone({ base64, mimeType }),
+                new Promise<never>((_, reject) =>
+                    setTimeout(
+                        () => reject(new Error('Clone analysis timed out after 60s')),
+                        ANALYZE_TIMEOUT_MS,
+                    ),
+                ),
+            ])
+
+            // If the clone image was cleared or replaced while we were waiting,
+            // discard this result so we don't overwrite newer state.
+            const currentClone = useAvatarStudioStore.getState().cloneImage
+            if (!currentClone || currentClone.id !== cloneId) return
+
             setCloneDescription(description)
 
-            // Add clone description to prompt so user can edit it
             if (description) {
                 const currentPrompt = useAvatarStudioStore.getState().prompt
                 const cloneText = `[CLONE: ${description}]`
@@ -333,6 +355,11 @@ const BottomControlBar = ({
         } catch (error) {
             console.error('Failed to analyze clone image:', error)
             setCloneDescription('')
+            toast.push(
+                <Notification type="warning" title="Clone analysis failed">
+                    {error instanceof Error ? error.message : 'Could not analyze the image'}
+                </Notification>,
+            )
         } finally {
             setIsAnalyzingClone(false)
         }
@@ -696,8 +723,17 @@ const BottomControlBar = ({
                                             </div>
                                         )}
                                         <button
-                                            onClick={() => setCloneImage(null)}
-                                            className="absolute -top-1 -right-1 p-0.5 bg-red-500 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
+                                            onClick={() => {
+                                                setCloneImage(null)
+                                                setCloneDescription('')
+                                                setIsAnalyzingClone(false)
+                                            }}
+                                            className={`absolute -top-1 -right-1 p-0.5 bg-red-500 text-white rounded-full transition-opacity ${
+                                                isAnalyzingClone
+                                                    ? 'opacity-100'
+                                                    : 'opacity-0 group-hover:opacity-100'
+                                            }`}
+                                            title={isAnalyzingClone ? 'Cancel analysis' : 'Remove'}
                                         >
                                             <HiOutlineX className="w-3 h-3" />
                                         </button>
