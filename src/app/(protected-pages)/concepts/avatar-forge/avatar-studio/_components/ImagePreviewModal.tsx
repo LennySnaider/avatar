@@ -662,7 +662,7 @@ const ImagePreviewModal = ({
                 </div>
 
                 {/* Media Content */}
-                <div className="flex-1 relative flex items-center justify-center p-4 bg-gray-100">
+                <div className="flex-1 relative flex items-center justify-center p-4 bg-gray-100 overflow-hidden">
                     {/* Navigation Arrows */}
                     {hasPrev && (
                         <button
@@ -684,7 +684,7 @@ const ImagePreviewModal = ({
                     {/* Media Display */}
                     <div
                         ref={mediaContainerRef}
-                        className="relative max-h-full max-w-full overflow-hidden"
+                        className="relative max-h-full max-w-full"
                     >
                         {previewMedia.mediaType === 'VIDEO' ? (
                             <div className="relative">
@@ -712,7 +712,7 @@ const ImagePreviewModal = ({
                             <div
                                 className="relative inline-block"
                                 style={{
-                                    transform: isEditing ? 'none' : `scale(${zoomLevel}) translate(${panPosition.x / zoomLevel}px, ${panPosition.y / zoomLevel}px)`,
+                                    transform: isEditing ? 'none' : `translate(${panPosition.x}px, ${panPosition.y}px)`,
                                     transition: isPanning ? 'none' : 'transform 0.2s ease-out',
                                     cursor: zoomLevel > 1 && !isEditing ? (isPanning ? 'grabbing' : 'grab') : 'default',
                                 }}
@@ -722,7 +722,12 @@ const ImagePreviewModal = ({
                                     ref={imageRef}
                                     src={previewMedia.url}
                                     alt={previewMedia.prompt}
-                                    className="max-h-[60vh] rounded-lg block select-none"
+                                    className="rounded-lg block select-none"
+                                    style={{
+                                        maxHeight: `${60 * zoomLevel}vh`,
+                                        maxWidth: isEditing ? '100%' : `${100 * zoomLevel}%`,
+                                        transition: isPanning ? 'none' : 'max-height 0.2s ease-out, max-width 0.2s ease-out',
+                                    }}
                                     onLoad={updateCanvasSize}
                                     draggable={false}
                                 />

@@ -1422,9 +1422,22 @@ ${hairColorSpecDesc ? `- EXACT HAIR COLOR: ${hairColorSpecDesc}` : ''}
         // Both Gemini attempts blocked — try MiniMax image-01 as fallback
         console.warn('[generateAvatar] Both Gemini attempts blocked — trying MiniMax fallback...')
 
+        // MiniMax defaults to a 3D/illustration style unless the prompt is
+        // explicit about wanting photography. Force realism and pass the
+        // face reference so the output matches the avatar's identity.
+        const REALISM_PREFIX =
+            'Photorealistic high-resolution photograph, shot on a DSLR with natural skin texture and realistic lighting. NOT an illustration, NOT 3D render, NOT anime, NOT cartoon. '
+
+        const faceReferenceUrl = faceRefImage
+            ? `data:${faceRefImage.mimeType};base64,${faceRefImage.base64}`
+            : avatarReferences[0]
+                ? `data:${avatarReferences[0].mimeType};base64,${avatarReferences[0].base64}`
+                : undefined
+
         const miniMaxResult = await generateImageWithMiniMax({
-            prompt: finalPrompt, // Use original prompt — MiniMax is less restrictive
+            prompt: `${REALISM_PREFIX}${finalPrompt}`,
             aspectRatio: params.aspectRatio,
+            faceReferenceUrl,
         })
 
         if (miniMaxResult.success) {
