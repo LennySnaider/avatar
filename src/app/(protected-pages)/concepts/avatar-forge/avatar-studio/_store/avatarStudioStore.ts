@@ -529,10 +529,14 @@ export const useAvatarStudioStore = create<AvatarStudioState>()(
     clearDetectedTerms: () => set({ detectedTerms: [] }),
     getFullPrompt: () => {
         const state = get()
-        const { prompt, measurements } = state
+        const { prompt: rawPrompt, measurements } = state
 
         // If there's no prompt, return empty
-        if (!prompt.trim()) return ''
+        if (!rawPrompt.trim()) return ''
+
+        // Flatten any structured markdown inside a [CLONE: ...] tag so the
+        // image model doesn't read headers/bullets as "generate a spec sheet".
+        const prompt = sanitizeCloneTags(rawPrompt)
 
         // Build body measurements string to reinforce avatar's body type
         // This ensures Clone Ref doesn't override the avatar's physical characteristics
@@ -768,3 +772,23 @@ export const useAvatarStudioStore = create<AvatarStudioState>()(
         }
     )
 )
+
+/**
+ * Flatten markdown structure inside a [CLONE: ...] tag. Headers, bullets,
+ * and bold labels confuse image models into producing spec-sheet infographics.
+ */
+function sanitizeCloneTags(prompt: string): string {
+    return prompt.replace(/\[CLONE:\s*([\s\S]*?)\]/gi, (_match, inner: string) => {
+        const cleaned = inner
+            .replace(/^\s*\**\s*\d+\.\s*[A-Z][A-Z\s&]+\**\s*$/gm, '')
+            .replace(/\*\*([^*]+)\*\*/g, '$1')
+            .replace(/^\s*[-*•]\s+/gm, '')
+            .replace(/^(Outfit|Accessories|Footwear|Hair\s*style|Pose|Setting|Lighting|Composition|Style|Background|Mood)[^:]*:\s*/gim, '')
+            .replace(/\n+/g, ', ')
+            .replace(/\s+/g, ' ')
+            .replace(/,\s*,+/g, ',')
+            .replace(/\s+,/g, ',')
+            .trim()
+        return `[CLONE: ${cleaned}]`
+    })
+}

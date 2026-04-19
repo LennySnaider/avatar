@@ -580,65 +580,28 @@ export async function analyzeImageForClone(image: { base64: string; mimeType: st
                         },
                     },
                     {
-                        text: `Analyze this image and describe EVERYTHING needed to recreate it, EXCEPT the person's face and body type.
+                        text: `You are generating an image-generation prompt fragment that captures everything about this image EXCEPT the person's face, body type, skin tone, hair color, age, or ethnicity (those come from the avatar).
 
-DESCRIBE IN DETAIL:
-1. CLOTHING & ACCESSORIES
-   - Exact outfit description (style, fit, fabric, patterns)
-   - All accessories (jewelry, bags, hats, glasses, etc.)
-   - Footwear
-   - Hair style and color
+Cover: outfit/clothing/accessories/footwear/hairstyle, pose and body orientation, setting and background, lighting quality and direction, camera angle and shot type, and overall artistic style.
 
-2. POSE & POSITION
-   - Body orientation and angle
-   - Arm and hand positions
-   - Leg positions
-   - Head tilt and gaze direction
-   - Overall posture (relaxed, dynamic, elegant, etc.)
+CRITICAL OUTPUT FORMAT:
+- Write ONE flowing paragraph of natural prose, separated by commas
+- NO headers, NO numbered sections, NO bullet points, NO markdown (no **bold**, no asterisks)
+- NO labels like "Outfit:", "Pose:", "Setting:". Just natural description
+- Keep under 500 characters total
+- It must read like a standard image-generation prompt, not a spec sheet
 
-3. SETTING & BACKGROUND
-   - Location/environment (studio, outdoor, indoor, etc.)
-   - Background elements and colors
-   - Props or objects in scene
+DO NOT describe: facial features, body measurements or body type (thin/curvy/muscular), age, skin tone/complexion, hair color, or ethnicity.
 
-4. LIGHTING & ATMOSPHERE
-   - Light direction and quality (soft, hard, dramatic, etc.)
-   - Color temperature (warm, cool, neutral)
-   - Shadows and highlights
-   - Overall mood/atmosphere
+VOCABULARY RESTRICTIONS (these trigger downstream safety filters, never use them):
+- "bikini" → "swim top" / "swim set" / "swim bottom"
+- "strapless" → "off-shoulder"
+- "lingerie" → "loungewear"
+- "bralette" → "fitted top"
+- "bustier" → "structured bodice"
+- "corset" → "structured waist garment"
 
-5. COMPOSITION & FRAMING
-   - Camera angle (eye level, low angle, high angle)
-   - Shot type (full body, 3/4, portrait)
-   - Subject placement in frame
-
-6. ARTISTIC STYLE
-   - Photography style (fashion, editorial, casual, etc.)
-   - Color palette and grading
-   - Overall aesthetic
-
-DO NOT DESCRIBE (CRITICAL - THESE COME FROM AVATAR SETTINGS):
-- The person's face or facial features
-- Body measurements or body type (thin, curvy, muscular, etc.)
-- Age appearance
-- SKIN TONE / SKIN COLOR / COMPLEXION (fair, tan, dark, pale, olive, etc.)
-- HAIR COLOR (blonde, brunette, black, red, etc.)
-- Any ethnicity-related appearance features
-
-These properties (skin tone, hair color, face, body type) will be provided by the avatar configuration.
-Only describe clothing, pose, setting, lighting - NOT the person's inherent physical characteristics.
-
-VOCABULARY RESTRICTIONS (these words trigger downstream safety filters - NEVER use them):
-- "bikini" → use "swim top", "swim set", or "swim bottom" instead
-- "strapless" → use "off-shoulder" instead
-- "lingerie" → use "loungewear" instead
-- "bralette" → use "fitted top" instead
-- "bustier" → use "structured bodice" instead
-- "corset" → use "structured waist garment" instead
-Use fashion-safe vocabulary only.
-
-Output a detailed, comma-separated description that can be used to recreate this exact image with a DIFFERENT person.
-Be specific and thorough - this description should capture the essence of the image.`,
+Example output (format to match): "a woman wearing a floral halter swim top and striped high-cut swim bottom with a delicate gold chain necklace, leaning forward on white pool coping with hands resting on the edge, bright outdoor swimming pool with clear blue water, soft overhead daylight with gentle shadows, medium three-quarter shot from slightly low angle, casual lifestyle photography with vibrant natural color grading"`,
                     },
                 ],
             },
@@ -649,11 +612,34 @@ Be specific and thorough - this description should capture the essence of the im
             throw new Error('No clone description generated from the analysis')
         }
 
-        return text
+        return sanitizeCloneDescription(text)
     } catch (e) {
         console.error('Clone Analysis Failed', e)
         throw e instanceof Error ? e : new Error('Clone analysis failed')
     }
+}
+
+/**
+ * Strip markdown/structural formatting that confuses image-generation models
+ * into producing spec-sheet infographics instead of actual imagery.
+ */
+export function sanitizeCloneDescription(text: string): string {
+    return text
+        // Strip numbered section headers like "1. CLOTHING" or "**1. CLOTHING**"
+        .replace(/^\s*\**\s*\d+\.\s*[A-Z][A-Z\s&]+\**\s*$/gm, '')
+        // Strip bold markdown labels like "**Outfit:**"
+        .replace(/\*\*([^*]+)\*\*/g, '$1')
+        // Strip leading bullet markers ("- ", "* ", "• ")
+        .replace(/^\s*[-*•]\s+/gm, '')
+        // Collapse "Label: value" to just "value" for common label patterns
+        .replace(/^(Outfit|Accessories|Footwear|Hair\s*style|Pose|Setting|Lighting|Composition|Style|Background|Mood)[^:]*:\s*/gim, '')
+        // Flatten newlines into commas
+        .replace(/\n+/g, ', ')
+        // Collapse repeated spaces and commas
+        .replace(/\s+/g, ' ')
+        .replace(/,\s*,+/g, ',')
+        .replace(/\s+,/g, ',')
+        .trim()
 }
 
 /**
