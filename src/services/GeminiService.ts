@@ -623,7 +623,7 @@ Example output (format to match): "a woman wearing a floral halter swim top and 
  * Strip markdown/structural formatting that confuses image-generation models
  * into producing spec-sheet infographics instead of actual imagery.
  */
-export function sanitizeCloneDescription(text: string): string {
+function sanitizeCloneDescription(text: string): string {
     return text
         // Strip numbered section headers like "1. CLOTHING" or "**1. CLOTHING**"
         .replace(/^\s*\**\s*\d+\.\s*[A-Z][A-Z\s&]+\**\s*$/gm, '')
