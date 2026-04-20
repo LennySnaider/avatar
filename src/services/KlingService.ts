@@ -360,7 +360,7 @@ export async function generateImage(params: {
         prompt,
         referenceImage,
         aspectRatio,
-        modelName = 'kling-v3-0',
+        modelName = 'kling-v2-1',
         n = 1,
     } = params
 

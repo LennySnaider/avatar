@@ -38,10 +38,10 @@ export const DEFAULT_PROVIDERS: AIProvider[] = [
         created_at: null,
     },
     {
-        id: 'kling-kolors-v3',
-        name: 'Kling KOLORS v3.0',
+        id: 'kling-kolors-v2-1',
+        name: 'Kling KOLORS v2.1',
         type: 'KLING' as ProviderType,
-        model: 'kling-v3-0',
+        model: 'kling-v2-1',
         endpoint: 'https://api-singapore.klingai.com',
         is_active: true,
         supports_image: true,
@@ -240,8 +240,8 @@ const ProviderManagerDrawer = () => {
                 return 'Video Hailuo 2.3, subject reference (avatar lock), 1080P'
             case 'minimax-hailuo-2-3-fast':
                 return 'Hailuo 2.3 Fast - m\u00e1s r\u00e1pido y econ\u00f3mico'
-            case 'kling-kolors-v3':
-                return 'KOLORS v3.0, 2K resolution, reference image fidelity'
+            case 'kling-kolors-v2-1':
+                return 'KOLORS v2.1, reference image fidelity, face/subject/restyle'
             default:
                 return provider.model
         }

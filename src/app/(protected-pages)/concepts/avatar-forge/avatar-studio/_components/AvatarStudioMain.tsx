@@ -446,7 +446,7 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                         prompt: klingPrompt,
                         referenceImage,
                         aspectRatio,
-                        modelName: activeProvider?.model || 'kling-v3-0',
+                        modelName: activeProvider?.model || 'kling-v2-1',
                     })
 
                     resultUrl = result.url
