@@ -1422,11 +1422,39 @@ ${hairColorSpecDesc ? `- EXACT HAIR COLOR: ${hairColorSpecDesc}` : ''}
         // Both Gemini attempts blocked — try MiniMax image-01 as fallback
         console.warn('[generateAvatar] Both Gemini attempts blocked — trying MiniMax fallback...')
 
-        // MiniMax defaults to a 3D/illustration style unless the prompt is
-        // explicit about wanting photography. Force realism and pass the
-        // face reference so the output matches the avatar's identity.
+        // MiniMax is architecturally different from Gemini: it accepts only
+        // plain text + ONE subject_reference image. Reusing Gemini's
+        // finalPrompt here (with [FACE_ANCHOR] / [BODY_SHAPE] / box-drawing
+        // headers) gets truncated to 1500 chars by MiniMax and drops the
+        // actual user scene, so MiniMax defaults to a face close-up.
+        // Build a compact, MiniMax-native prompt from the original inputs.
         const REALISM_PREFIX =
-            'Photorealistic high-resolution photograph, shot on a DSLR with natural skin texture and realistic lighting. NOT an illustration, NOT 3D render, NOT anime, NOT cartoon. '
+            'Photorealistic high-resolution photograph, shot on a DSLR with natural skin texture and realistic lighting. NOT an illustration, NOT 3D render, NOT anime, NOT cartoon.'
+
+        const framingText = cameraShotToNaturalLanguage(cameraShot, cameraAngle)
+
+        const measurementsLine = [
+            measurements.bodyType,
+            measurements.age ? `${measurements.age} years old` : null,
+            measurements.height ? `${measurements.height}cm tall` : null,
+            measurements.bust ? `bust ${measurements.bust}cm` : null,
+            measurements.waist ? `waist ${measurements.waist}cm` : null,
+            measurements.hips ? `hips ${measurements.hips}cm` : null,
+        ]
+            .filter(Boolean)
+            .join(', ')
+
+        const miniMaxPromptParts = [
+            REALISM_PREFIX,
+            prompt.trim(),
+            framingText ? `Shot framing: ${framingText}.` : '',
+            activeFaceDescription
+                ? `Subject appearance: ${activeFaceDescription}.`
+                : '',
+            measurementsLine ? `Body: ${measurementsLine}.` : '',
+        ].filter(Boolean)
+
+        const miniMaxPrompt = miniMaxPromptParts.join('\n\n')
 
         const faceReferenceUrl = faceRefImage
             ? `data:${faceRefImage.mimeType};base64,${faceRefImage.base64}`
@@ -1435,7 +1463,7 @@ ${hairColorSpecDesc ? `- EXACT HAIR COLOR: ${hairColorSpecDesc}` : ''}
                 : undefined
 
         const miniMaxResult = await generateImageWithMiniMax({
-            prompt: `${REALISM_PREFIX}${finalPrompt}`,
+            prompt: miniMaxPrompt,
             aspectRatio: params.aspectRatio,
             faceReferenceUrl,
         })
@@ -1812,4 +1840,42 @@ export async function editImage(
         console.error('Edit Image Failed:', error)
         throw error
     }
+}
+
+/**
+ * Translate CameraShot enum values (used by Gemini's structured tags) into
+ * natural language suitable for a MiniMax plain-text prompt. Critical so
+ * MiniMax doesn't default to a face close-up when the user asked for, e.g.,
+ * a medium full shot of the avatar in a scene.
+ */
+function cameraShotToNaturalLanguage(
+    shot: CameraShot,
+    angle: CameraShot | null,
+): string {
+    const framingMap: Partial<Record<CameraShot, string>> = {
+        EXTREME_CLOSE_UP: 'extreme close-up on face details',
+        CLOSE_UP: 'close-up portrait (head and shoulders)',
+        MEDIUM_CLOSE_UP: 'medium close-up (chest up)',
+        MEDIUM_SHOT: 'medium shot (waist up)',
+        MEDIUM_FULL: 'medium full shot (knees up)',
+        FULL_SHOT: 'full body shot showing head to feet',
+        WIDE_SHOT: 'wide shot with the subject inside the environment',
+        EXTREME_WIDE: 'extreme wide landscape shot with the subject in the scene',
+    }
+    const angleMap: Partial<Record<CameraShot, string>> = {
+        LOW_ANGLE: 'low angle looking up at the subject',
+        HIGH_ANGLE: 'high angle looking down at the subject',
+        DUTCH_ANGLE: 'Dutch angle (tilted/diagonal framing)',
+        BIRDS_EYE: "bird's-eye view from directly above",
+        WORMS_EYE: "worm's-eye view from directly below",
+        OVER_SHOULDER: 'over-the-shoulder angle',
+        POV: 'first-person point of view',
+        PROFILE: 'profile view (side of face)',
+        THREE_QUARTER: 'three-quarter view (45 degrees)',
+    }
+
+    const parts: string[] = []
+    if (shot !== 'AUTO' && framingMap[shot]) parts.push(framingMap[shot] as string)
+    if (angle && angleMap[angle]) parts.push(angleMap[angle] as string)
+    return parts.join(', ')
 }
