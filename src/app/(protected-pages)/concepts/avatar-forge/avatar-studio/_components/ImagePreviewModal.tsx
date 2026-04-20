@@ -613,11 +613,11 @@ const ImagePreviewModal = ({
             isOpen={!!previewMedia}
             onClose={handleClose}
             width={900}
-            className="!p-0 !bg-white"
+            className="p-0! bg-white! dark:bg-gray-900!"
         >
             <div className="flex flex-col h-[80vh]">
                 {/* Header */}
-                <div className="flex items-center gap-4 p-4 border-b border-gray-200 bg-white">
+                <div className="flex items-center gap-4 p-4 border-b border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-900">
                     <span
                         className={`px-2 py-1 text-xs font-bold rounded ${
                             previewMedia.mediaType === 'VIDEO'
@@ -627,7 +627,7 @@ const ImagePreviewModal = ({
                     >
                         {previewMedia.mediaType}
                     </span>
-                    <span className="text-sm text-gray-600">
+                    <span className="text-sm text-gray-600 dark:text-gray-300">
                         {currentIndex + 1} / {gallery.length}
                     </span>
 
@@ -637,14 +637,14 @@ const ImagePreviewModal = ({
                             <button
                                 onClick={handleZoomOut}
                                 disabled={zoomLevel <= 1}
-                                className="p-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                                className="p-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                                 title="Zoom Out"
                             >
                                 <HiOutlineZoomOut className="w-4 h-4" />
                             </button>
                             <button
                                 onClick={handleResetZoom}
-                                className="px-2 py-1 text-xs text-gray-600 hover:text-gray-900 min-w-12 text-center"
+                                className="px-2 py-1 text-xs text-gray-600 hover:text-gray-900 dark:text-gray-300 dark:hover:text-white min-w-12 text-center"
                                 title="Reset Zoom"
                             >
                                 {Math.round(zoomLevel * 100)}%
@@ -652,7 +652,7 @@ const ImagePreviewModal = ({
                             <button
                                 onClick={handleZoomIn}
                                 disabled={zoomLevel >= 3}
-                                className="p-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                                className="p-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                                 title="Zoom In"
                             >
                                 <HiOutlineZoomIn className="w-4 h-4" />
@@ -662,12 +662,12 @@ const ImagePreviewModal = ({
                 </div>
 
                 {/* Media Content */}
-                <div className="flex-1 relative flex items-center justify-center p-4 bg-gray-100 overflow-hidden">
+                <div className="flex-1 relative flex items-center justify-center p-4 bg-gray-100 dark:bg-gray-800 overflow-hidden">
                     {/* Navigation Arrows */}
                     {hasPrev && (
                         <button
                             onClick={handlePrev}
-                            className="absolute left-4 p-3 bg-white/90 text-gray-700 rounded-full hover:bg-white shadow-lg transition-colors z-10"
+                            className="absolute left-4 p-3 bg-white/90 text-gray-700 rounded-full hover:bg-white dark:bg-gray-800/90 dark:text-gray-200 dark:hover:bg-gray-800 shadow-lg transition-colors z-10"
                         >
                             <HiOutlineChevronLeft className="w-6 h-6" />
                         </button>
@@ -787,10 +787,10 @@ const ImagePreviewModal = ({
 
                 {/* Edit Mode Panel */}
                 {isEditing && previewMedia.mediaType === 'IMAGE' && (
-                    <div className="p-4 border-t border-gray-200 bg-white">
+                    <div className="p-4 border-t border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-900">
                         <div className="flex gap-3 items-end">
                             <div className="flex-1">
-                                <label className="text-xs text-gray-500 mb-1 block">
+                                <label className="text-xs text-gray-500 dark:text-gray-400 mb-1 block">
                                     Edit Instruction
                                 </label>
                                 <Input
@@ -800,13 +800,13 @@ const ImagePreviewModal = ({
                                 />
                             </div>
                             <div>
-                                <label className="text-xs text-gray-500 mb-1 block">
+                                <label className="text-xs text-gray-500 dark:text-gray-400 mb-1 block">
                                     Aspect Ratio
                                 </label>
                                 <select
                                     value={editAspectRatio}
                                     onChange={(e) => setEditAspectRatio(e.target.value as AspectRatio)}
-                                    className="h-10 px-3 text-sm border rounded-lg bg-white border-gray-300 text-gray-900"
+                                    className="h-10 px-3 text-sm border rounded-lg bg-white border-gray-300 text-gray-900 dark:bg-gray-800 dark:border-gray-700 dark:text-gray-100"
                                 >
                                     <option value="1:1">1:1</option>
                                     <option value="16:9">16:9</option>
@@ -838,7 +838,7 @@ const ImagePreviewModal = ({
                         {isDrawingMask ? (
                             <div className="mt-3 space-y-2">
                                 <div className="flex items-center gap-4">
-                                    <span className="text-xs text-gray-500 w-20">Brush Size</span>
+                                    <span className="text-xs text-gray-500 dark:text-gray-400 w-20">Brush Size</span>
                                     <div className="flex-1">
                                         <Slider
                                             value={brushSize}
@@ -847,16 +847,16 @@ const ImagePreviewModal = ({
                                             max={100}
                                         />
                                     </div>
-                                    <span className="text-xs text-gray-500 w-8">{brushSize}px</span>
+                                    <span className="text-xs text-gray-500 dark:text-gray-400 w-8">{brushSize}px</span>
                                 </div>
-                                <p className="text-xs text-gray-500">
+                                <p className="text-xs text-gray-500 dark:text-gray-400">
                                     Draw on the image to highlight the area you want to edit
                                 </p>
                             </div>
                         ) : (
                             <div className="mt-3">
                                 <div className="flex items-center gap-4">
-                                    <span className="text-xs text-gray-500 w-20">Crop Size</span>
+                                    <span className="text-xs text-gray-500 dark:text-gray-400 w-20">Crop Size</span>
                                     <div className="flex-1">
                                         <Slider
                                             value={cropScale}
@@ -865,17 +865,17 @@ const ImagePreviewModal = ({
                                             max={100}
                                         />
                                     </div>
-                                    <span className="text-xs text-gray-500 w-10">{cropScale}%</span>
+                                    <span className="text-xs text-gray-500 dark:text-gray-400 w-10">{cropScale}%</span>
                                 </div>
                             </div>
                         )}
 
                         {/* Reference Assets for Edit */}
-                        <div className="mt-4 pt-3 border-t border-gray-200">
+                        <div className="mt-4 pt-3 border-t border-gray-200 dark:border-gray-700">
                             <div className="flex items-center gap-2 mb-2">
                                 <HiOutlinePhotograph className="w-4 h-4 text-purple-500" />
-                                <span className="text-xs font-medium text-gray-700">Reference Assets</span>
-                                <span className="text-[10px] text-gray-400">({editAssets.length}/3)</span>
+                                <span className="text-xs font-medium text-gray-700 dark:text-gray-200">Reference Assets</span>
+                                <span className="text-[10px] text-gray-400 dark:text-gray-500">({editAssets.length}/3)</span>
                             </div>
                             <div className="flex items-center gap-2">
                                 {/* Existing assets */}
@@ -884,7 +884,7 @@ const ImagePreviewModal = ({
                                         <img
                                             src={asset.url}
                                             alt="Reference"
-                                            className="w-12 h-12 object-cover rounded-lg border border-gray-200"
+                                            className="w-12 h-12 object-cover rounded-lg border border-gray-200 dark:border-gray-700"
                                         />
                                         <button
                                             onClick={() => removeEditAsset(asset.id)}
@@ -899,7 +899,7 @@ const ImagePreviewModal = ({
                                     <Tooltip title="Add reference image for the edit">
                                         <button
                                             onClick={() => editAssetInputRef.current?.click()}
-                                            className="w-12 h-12 border-2 border-dashed border-purple-300 rounded-lg flex items-center justify-center hover:border-purple-500 hover:bg-purple-50 transition-colors"
+                                            className="w-12 h-12 border-2 border-dashed border-purple-300 dark:border-purple-700 rounded-lg flex items-center justify-center hover:border-purple-500 hover:bg-purple-50 dark:hover:bg-purple-950/40 transition-colors"
                                         >
                                             <HiOutlinePhotograph className="w-5 h-5 text-purple-400" />
                                         </button>
@@ -913,7 +913,7 @@ const ImagePreviewModal = ({
                                     className="hidden"
                                     onChange={handleEditAssetUpload}
                                 />
-                                <p className="text-[10px] text-gray-400 ml-2">
+                                <p className="text-[10px] text-gray-400 dark:text-gray-500 ml-2">
                                     Add images to guide the edit (e.g., style reference, outfit example)
                                 </p>
                             </div>
@@ -923,13 +923,13 @@ const ImagePreviewModal = ({
 
                 {/* Footer Actions */}
                 {!isEditing && (
-                    <div className="p-4 border-t border-gray-200 bg-white">
+                    <div className="p-4 border-t border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-900">
                         {/* Avatar Info + Prompt */}
                         <div className="flex gap-3 mb-4">
                             {/* Avatar Thumbnail - shows avatar used to CREATE this image */}
                             {previewMedia.avatarInfo && (
                                 <div className="flex items-start gap-2 shrink-0">
-                                    <div className="w-10 h-10 rounded-lg overflow-hidden bg-gray-100 flex items-center justify-center">
+                                    <div className="w-10 h-10 rounded-lg overflow-hidden bg-gray-100 dark:bg-gray-800 flex items-center justify-center">
                                         {previewMedia.avatarInfo.thumbnailUrl ? (
                                             <img
                                                 src={previewMedia.avatarInfo.thumbnailUrl}
@@ -941,8 +941,8 @@ const ImagePreviewModal = ({
                                         )}
                                     </div>
                                     <div className="flex flex-col">
-                                        <span className="text-[10px] text-gray-400 uppercase">Avatar</span>
-                                        <span className="text-xs font-medium text-gray-700">{previewMedia.avatarInfo.name}</span>
+                                        <span className="text-[10px] text-gray-400 dark:text-gray-500 uppercase">Avatar</span>
+                                        <span className="text-xs font-medium text-gray-700 dark:text-gray-200">{previewMedia.avatarInfo.name}</span>
                                     </div>
                                 </div>
                             )}
@@ -950,16 +950,16 @@ const ImagePreviewModal = ({
                             {/* Prompt with Copy Button */}
                             <div className="flex-1 relative">
                                 <div
-                                    className={`${isPromptExpanded ? 'max-h-60' : 'max-h-16'} overflow-y-auto pr-10 scrollbar-thin scrollbar-thumb-gray-300 transition-all duration-200`}
+                                    className={`${isPromptExpanded ? 'max-h-60' : 'max-h-16'} overflow-y-auto pr-10 scrollbar-thin scrollbar-thumb-gray-300 dark:scrollbar-thumb-gray-700 transition-all duration-200`}
                                 >
-                                    <p className="text-sm text-gray-600 whitespace-pre-wrap wrap-break-word">
+                                    <p className="text-sm text-gray-600 dark:text-gray-300 whitespace-pre-wrap wrap-break-word">
                                         {previewMedia.prompt}
                                     </p>
                                 </div>
                                 <div className="absolute top-0 right-0 flex gap-1">
                                     <button
                                         onClick={() => setIsPromptExpanded(!isPromptExpanded)}
-                                        className="p-1.5 text-gray-400 hover:text-primary hover:bg-gray-100 rounded transition-colors"
+                                        className="p-1.5 text-gray-400 hover:text-primary hover:bg-gray-100 dark:hover:bg-gray-800 rounded transition-colors"
                                         title={isPromptExpanded ? 'Collapse' : 'Expand'}
                                     >
                                         <svg className={`w-4 h-4 transition-transform ${isPromptExpanded ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -970,7 +970,7 @@ const ImagePreviewModal = ({
                                         onClick={() => {
                                             navigator.clipboard.writeText(previewMedia.prompt)
                                         }}
-                                        className="p-1.5 text-gray-400 hover:text-primary hover:bg-gray-100 rounded transition-colors"
+                                        className="p-1.5 text-gray-400 hover:text-primary hover:bg-gray-100 dark:hover:bg-gray-800 rounded transition-colors"
                                         title="Copy prompt"
                                     >
                                         <HiOutlineClipboardCopy className="w-4 h-4" />
@@ -978,7 +978,7 @@ const ImagePreviewModal = ({
                                     {previewMedia.fullApiPrompt && (
                                         <button
                                             onClick={() => setShowApiPrompt(!showApiPrompt)}
-                                            className={`p-1.5 rounded transition-colors ${showApiPrompt ? 'text-primary bg-primary/10' : 'text-gray-400 hover:text-primary hover:bg-gray-100'}`}
+                                            className={`p-1.5 rounded transition-colors ${showApiPrompt ? 'text-primary bg-primary/10' : 'text-gray-400 hover:text-primary hover:bg-gray-100 dark:hover:bg-gray-800'}`}
                                             title="Ver API Prompt completo"
                                         >
                                             <HiOutlineCode className="w-4 h-4" />
