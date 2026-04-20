@@ -1431,36 +1431,56 @@ ${hairColorSpecDesc ? `- EXACT HAIR COLOR: ${hairColorSpecDesc}` : ''}
         const REALISM_PREFIX =
             'Photorealistic high-resolution photograph, shot on a DSLR with natural skin texture and realistic lighting. NOT an illustration, NOT 3D render, NOT anime, NOT cartoon.'
 
-        const framingText = cameraShotToNaturalLanguage(cameraShot, cameraAngle)
-
-        const measurementsLine = [
-            measurements.bodyType,
-            measurements.age ? `${measurements.age} years old` : null,
-            measurements.height ? `${measurements.height}cm tall` : null,
-            measurements.bust ? `bust ${measurements.bust}cm` : null,
-            measurements.waist ? `waist ${measurements.waist}cm` : null,
-            measurements.hips ? `hips ${measurements.hips}cm` : null,
-        ]
-            .filter(Boolean)
-            .join(', ')
-
-        const miniMaxPromptParts = [
-            REALISM_PREFIX,
-            prompt.trim(),
-            framingText ? `Shot framing: ${framingText}.` : '',
-            activeFaceDescription
-                ? `Subject appearance: ${activeFaceDescription}.`
-                : '',
-            measurementsLine ? `Body: ${measurementsLine}.` : '',
-        ].filter(Boolean)
-
-        const miniMaxPrompt = miniMaxPromptParts.join('\n\n')
+        // Fight MiniMax's tendency to produce warped hands/arms in complex
+        // poses when a subject_reference is present.
+        const ANATOMY_SUFFIX =
+            'Natural realistic human anatomy with correctly formed hands (exactly five fingers each), proportional arms and shoulders, no extra or missing limbs, no distorted body parts.'
 
         const faceReferenceUrl = faceRefImage
             ? `data:${faceRefImage.mimeType};base64,${faceRefImage.base64}`
             : avatarReferences[0]
                 ? `data:${avatarReferences[0].mimeType};base64,${avatarReferences[0].base64}`
                 : undefined
+
+        const framingText = cameraShotToNaturalLanguage(cameraShot, cameraAngle)
+        const userPromptHasBodyTag = /\[BODY:/i.test(prompt)
+
+        // When a subject_reference image is present, MiniMax already has the
+        // avatar's face as a visual anchor. Piling on a detailed face
+        // description competes with the reference and can distort features.
+        // Only use the text face description as a fallback when we have no
+        // image reference.
+        const shouldIncludeFaceDescription =
+            !faceReferenceUrl && Boolean(activeFaceDescription)
+
+        // Avoid repeating body measurements — the user prompt already carries
+        // a [BODY: ...] tag from the store. Only build a fallback Body line
+        // when the prompt somehow lacks it.
+        const measurementsLine = userPromptHasBodyTag
+            ? ''
+            : [
+                  measurements.bodyType,
+                  measurements.age ? `${measurements.age} years old` : null,
+                  measurements.height ? `${measurements.height}cm tall` : null,
+                  measurements.bust ? `bust ${measurements.bust}cm` : null,
+                  measurements.waist ? `waist ${measurements.waist}cm` : null,
+                  measurements.hips ? `hips ${measurements.hips}cm` : null,
+              ]
+                  .filter(Boolean)
+                  .join(', ')
+
+        const miniMaxPromptParts = [
+            REALISM_PREFIX,
+            prompt.trim(),
+            framingText ? `Shot framing: ${framingText}.` : '',
+            shouldIncludeFaceDescription
+                ? `Subject appearance: ${activeFaceDescription}.`
+                : '',
+            measurementsLine ? `Body: ${measurementsLine}.` : '',
+            ANATOMY_SUFFIX,
+        ].filter(Boolean)
+
+        const miniMaxPrompt = miniMaxPromptParts.join('\n\n')
 
         const miniMaxResult = await generateImageWithMiniMax({
             prompt: miniMaxPrompt,
