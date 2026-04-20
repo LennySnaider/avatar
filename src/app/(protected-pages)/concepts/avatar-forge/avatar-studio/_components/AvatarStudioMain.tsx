@@ -32,6 +32,7 @@ import {
     generateVideo as generateVideoKling,
     generateAvatarVideo as generateAvatarVideoKling,
     generateVideoWithMotionControl as generateMotionControlKling,
+    generateImage as generateImageKling,
 } from '@/services/KlingService'
 import {
     generateImage as generateImageMiniMax,
@@ -399,6 +400,7 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
 
             if (generationMode === 'IMAGE') {
                 const isMiniMaxProvider = activeProvider?.type === 'MINIMAX'
+                const isKlingProvider = activeProvider?.type === 'KLING'
 
                 if (isMiniMaxProvider) {
                     // MiniMax image-01 — direct generation with subject_reference for facial consistency
@@ -423,6 +425,29 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                     if (!result.success) {
                         throw new Error(result.error)
                     }
+
+                    resultUrl = result.url
+                    apiPrompt = result.fullApiPrompt
+                } else if (isKlingProvider) {
+                    // Kling KOLORS — single reference image (face > body > first general)
+                    const referenceImage =
+                        optimizedPayload.faceRef ??
+                        optimizedPayload.bodyRef ??
+                        optimizedPayload.generalRefs[0] ??
+                        null
+
+                    // Fold faceDescription into prompt since Kling image API doesn't
+                    // accept separate identity hints like Gemini does.
+                    const klingPrompt = faceDescription?.trim()
+                        ? `[FACE: ${faceDescription.trim()}] ${fullPrompt}`
+                        : fullPrompt
+
+                    const result = await generateImageKling({
+                        prompt: klingPrompt,
+                        referenceImage,
+                        aspectRatio,
+                        modelName: activeProvider?.model || 'kling-v3-0',
+                    })
 
                     resultUrl = result.url
                     apiPrompt = result.fullApiPrompt
