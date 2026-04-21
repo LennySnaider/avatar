@@ -5,19 +5,48 @@ let ffmpeg: FFmpeg | null = null
 let isLoading = false
 let loadPromise: Promise<FFmpeg> | null = null
 
+const FFMPEG_CORE_VERSION = '0.12.6'
+const CDN_BASES = [
+    `https://cdn.jsdelivr.net/npm/@ffmpeg/core@${FFMPEG_CORE_VERSION}/dist/esm`,
+    `https://unpkg.com/@ffmpeg/core@${FFMPEG_CORE_VERSION}/dist/esm`,
+]
+
+/** Reject the inner promise if it doesn't settle before `ms` milliseconds. */
+function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
+    return new Promise<T>((resolve, reject) => {
+        const t = setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms`)), ms)
+        promise.then(
+            (v) => { clearTimeout(t); resolve(v) },
+            (e) => { clearTimeout(t); reject(e) },
+        )
+    })
+}
+
+async function fetchFromCdnWithFallback(path: string, mimeType: string): Promise<string> {
+    let lastError: unknown
+    for (const base of CDN_BASES) {
+        try {
+            console.log(`[FFmpeg] Fetching ${path} from ${base}`)
+            return await withTimeout(
+                toBlobURL(`${base}/${path}`, mimeType),
+                20_000,
+                `Fetch ${path} from ${base}`,
+            )
+        } catch (err) {
+            console.warn(`[FFmpeg] CDN ${base} failed for ${path}:`, err)
+            lastError = err
+        }
+    }
+    throw lastError ?? new Error(`All CDNs failed for ${path}`)
+}
+
 /**
- * Initialize FFmpeg WASM with timeout
+ * Initialize FFmpeg WASM with timeouts, CDN fallback, and cache reset on failure
+ * so a hung load doesn't permanently poison the module state.
  */
 async function loadFFmpeg(): Promise<FFmpeg> {
-    // If already loaded, return immediately
-    if (ffmpeg) {
-        return ffmpeg
-    }
-
-    // If currently loading, wait for the existing promise
-    if (isLoading && loadPromise) {
-        return loadPromise
-    }
+    if (ffmpeg) return ffmpeg
+    if (isLoading && loadPromise) return loadPromise
 
     isLoading = true
 
@@ -25,39 +54,35 @@ async function loadFFmpeg(): Promise<FFmpeg> {
         console.log('[FFmpeg] Starting to load FFmpeg WASM...')
 
         const ff = new FFmpeg()
-
-        // Add logging
         ff.on('log', ({ message }) => {
             console.log('[FFmpeg Log]', message)
         })
 
         try {
-            // Load FFmpeg core from jsDelivr (better CORS support than unpkg)
-            const baseURL = 'https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.6/dist/esm'
-
-            console.log('[FFmpeg] Loading FFmpeg core from jsDelivr CDN...')
-
-            const coreURL = await toBlobURL(`${baseURL}/ffmpeg-core.js`, 'text/javascript')
+            const coreURL = await fetchFromCdnWithFallback('ffmpeg-core.js', 'text/javascript')
             console.log('[FFmpeg] Core JS loaded')
 
-            const wasmURL = await toBlobURL(`${baseURL}/ffmpeg-core.wasm`, 'application/wasm')
+            const wasmURL = await fetchFromCdnWithFallback('ffmpeg-core.wasm', 'application/wasm')
             console.log('[FFmpeg] WASM loaded')
 
             console.log('[FFmpeg] Loading into FFmpeg instance...')
 
-            await ff.load({
-                coreURL,
-                wasmURL,
-            })
+            await withTimeout(
+                ff.load({ coreURL, wasmURL }),
+                45_000,
+                'FFmpeg instance load',
+            )
 
             console.log('[FFmpeg] FFmpeg loaded successfully!')
             ffmpeg = ff
             return ff
         } catch (error) {
             console.error('[FFmpeg] Failed to load FFmpeg:', error)
+            const message = error instanceof Error ? error.message : String(error)
+            throw new Error(`Failed to load FFmpeg (${message}). Refresh and try again.`)
+        } finally {
             isLoading = false
-            loadPromise = null
-            throw new Error('Failed to load FFmpeg. Please refresh the page and try again.')
+            if (!ffmpeg) loadPromise = null
         }
     })()
 
