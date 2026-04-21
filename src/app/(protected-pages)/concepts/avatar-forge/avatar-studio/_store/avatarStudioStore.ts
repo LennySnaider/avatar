@@ -115,6 +115,7 @@ interface AvatarStudioState {
     // Provider
     providers: AIProvider[]
     activeProviderId: string | null
+    geminiAutoFallback: boolean
 
     // App State
     appState: AppState
@@ -243,6 +244,7 @@ interface AvatarStudioState {
     setProviders: (providers: AIProvider[]) => void
     setActiveProviderId: (id: string | null) => void
     setShowProviderManager: (show: boolean) => void
+    setGeminiAutoFallback: (enabled: boolean) => void
 
     // Actions - App State
     setAppState: (state: AppState) => void
@@ -385,6 +387,7 @@ const initialState = {
 
     providers: [],
     activeProviderId: null,
+    geminiAutoFallback: false,
 
     appState: AppState.IDLE,
     isAvatarLocked: false,
@@ -645,6 +648,7 @@ export const useAvatarStudioStore = create<AvatarStudioState>()(
     setProviders: (providers) => set({ providers }),
     setActiveProviderId: (id) => set({ activeProviderId: id }),
     setShowProviderManager: (show) => set({ showProviderManager: show }),
+    setGeminiAutoFallback: (enabled) => set({ geminiAutoFallback: enabled }),
 
     // Actions - App State
     setAppState: (state) => set({ appState: state }),

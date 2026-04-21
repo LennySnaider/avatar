@@ -5,6 +5,7 @@ import { useAvatarStudioStore } from '../_store/avatarStudioStore'
 import Drawer from '@/components/ui/Drawer'
 import Button from '@/components/ui/Button'
 import Card from '@/components/ui/Card'
+import Switcher from '@/components/ui/Switcher'
 import { HiOutlineCheck, HiOutlinePhotograph, HiOutlineVideoCamera } from 'react-icons/hi'
 import type { AIProvider, ProviderType } from '@/@types/supabase'
 
@@ -166,6 +167,8 @@ const ProviderManagerDrawer = () => {
         activeProviderId,
         setActiveProviderId,
         generationMode,
+        geminiAutoFallback,
+        setGeminiAutoFallback,
     } = useAvatarStudioStore()
 
     // Initialize providers on mount - always sync with DEFAULT_PROVIDERS
@@ -300,6 +303,26 @@ const ProviderManagerDrawer = () => {
                         </span>
                     </p>
                 </div>
+
+                {/* Gemini auto-fallback toggle (IMAGE mode only) */}
+                {generationMode === 'IMAGE' && (
+                    <div className="p-3 bg-gray-50 dark:bg-gray-800/60 border border-gray-200 dark:border-gray-700 rounded-lg">
+                        <div className="flex items-start justify-between gap-3">
+                            <div className="flex-1">
+                                <p className="text-sm font-medium text-gray-800 dark:text-gray-200">
+                                    Auto-fallback a MiniMax
+                                </p>
+                                <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                                    Si Gemini bloquea por safety, reintenta automáticamente con MiniMax image-01.
+                                </p>
+                            </div>
+                            <Switcher
+                                checked={geminiAutoFallback}
+                                onChange={(checked) => setGeminiAutoFallback(checked)}
+                            />
+                        </div>
+                    </div>
+                )}
 
                 {/* Provider List */}
                 <div className="space-y-3">

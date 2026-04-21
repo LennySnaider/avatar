@@ -128,6 +128,7 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
         setActiveProviderId,
         setVideoDialogue,
         setAspectRatio,
+        geminiAutoFallback,
     } = useAvatarStudioStore()
 
     // Image optimization hook for API calls
@@ -452,7 +453,7 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                     resultUrl = result.url
                     apiPrompt = result.fullApiPrompt
                 } else {
-                    // Gemini — with auto-retry + MiniMax fallback on safety block
+                    // Gemini — with auto-retry and optional MiniMax fallback on safety block
                     const result = await generateAvatar({
                         prompt: fullPrompt,
                         avatarReferences: optimizedPayload.generalRefs,
@@ -473,6 +474,7 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                         measurements,
                         faceDescription,
                         modelName: activeProvider?.model,
+                        allowFallback: geminiAutoFallback,
                     })
 
                     if (!result.success) {
@@ -710,6 +712,7 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
         klingMotionOrientation,
         klingKeepOriginalSound,
         klingMotionDuration,
+        geminiAutoFallback,
         getActiveProvider,
         getFullPrompt,
         addToGallery,

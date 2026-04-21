@@ -741,6 +741,7 @@ export async function generateAvatar(params: {
     measurements?: PhysicalMeasurements
     faceDescription?: string
     modelName?: string
+    allowFallback?: boolean
 }): Promise<{ success: true; url: string; fullApiPrompt: string } | { success: false; error: string; errorType: 'SAFETY_BLOCKED' | 'GENERATION_ERROR' }> {
     const {
         prompt,
@@ -762,6 +763,7 @@ export async function generateAvatar(params: {
         measurements = { age: 25, height: 165, bodyType: 'average' as const, bust: 90, waist: 60, hips: 90 },
         faceDescription = '',
         modelName = 'gemini-3-pro-image-preview',
+        allowFallback = false,
     } = params
 
     const apiKey = getApiKey()
@@ -1417,6 +1419,17 @@ ${hairColorSpecDesc ? `- EXACT HAIR COLOR: ${hairColorSpecDesc}` : ''}
         if (result2 !== 'SAFETY_BLOCKED') {
             console.log('[generateAvatar] Attempt 2 succeeded with aggressive sanitization')
             return { success: true as const, ...result2 }
+        }
+
+        // Both Gemini attempts blocked. If auto-fallback is disabled, surface
+        // the safety block directly so the user can switch provider manually.
+        if (!allowFallback) {
+            console.warn('[generateAvatar] Both Gemini attempts blocked (auto-fallback disabled).')
+            return {
+                success: false as const,
+                error: 'Gemini bloqueó la generación por filtros de contenido. Cambia de provider (MiniMax o Kling) y reintenta.',
+                errorType: 'SAFETY_BLOCKED' as const,
+            }
         }
 
         // Both Gemini attempts blocked — try MiniMax image-01 as fallback
