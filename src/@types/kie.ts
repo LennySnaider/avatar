@@ -3,18 +3,16 @@
 
 export type KieTaskState = 'waiting' | 'queuing' | 'generating' | 'success' | 'fail'
 
-// Model strings follow the pattern <provider>-<version>/<task>.
-// These are best-effort defaults; verify against the live KIE catalog and
-// adjust if the platform renames them.
+// KIE has heterogeneous endpoints — some models go through /jobs/createTask
+// (unified async), others through dedicated endpoints like /flux/kontext/generate.
+// The model string identifies BOTH the model AND which endpoint family to use.
 export type KieImageModel =
-    | 'flux-kontext/text-to-image'
-    | 'gpt-image-2/text-to-image'
-    | 'gpt-image-2/image-to-image'
+    | 'flux-kontext-pro'   // dedicated endpoint /api/v1/flux/kontext/generate
+    | 'flux-kontext-max'   // dedicated endpoint /api/v1/flux/kontext/generate
 
 export type KieVideoModel =
-    | 'veo-3.1/text-to-video'
-    | 'veo-3.1-fast/text-to-video'
-    | 'veo-3.1/image-to-video'
+    | 'veo-3.1'            // dedicated endpoint /api/v1/veo/generate (TBD wiring)
+    | 'veo-3.1-fast'
 
 export interface KieCreateTaskRequest {
     model: string
@@ -55,4 +53,20 @@ export interface KieRecordInfoResponse {
 export interface KieResultJsonShape {
     resultUrls?: string[]
     [key: string]: unknown
+}
+
+// ─── Flux Kontext (dedicated endpoint) ────────────────────────
+// successFlag: 0=generating, 1=success, 2=create-failed, 3=generate-failed
+export type KieFluxKontextSuccessFlag = 0 | 1 | 2 | 3
+
+export interface KieFluxKontextRecordInfoResponse {
+    code: number
+    msg: string
+    data: {
+        taskId: string
+        successFlag: KieFluxKontextSuccessFlag
+        resultImageUrl?: string
+        originImageUrl?: string
+        errorMessage?: string
+    }
 }

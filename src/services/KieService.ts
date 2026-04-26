@@ -6,6 +6,7 @@ import type {
     KieCreateTaskResponse,
     KieRecordInfoResponse,
     KieResultJsonShape,
+    KieFluxKontextRecordInfoResponse,
 } from '@/@types/kie'
 
 const KIE_API_BASE = 'https://api.kie.ai/api/v1'
@@ -129,40 +130,110 @@ export interface GenerateImageKieParams {
 }
 
 /**
- * Generate an image via KIE AI. Submits task → polls → persists to Supabase.
- * Auto-selects image-to-image variant of the model when a reference is provided
- * (assumes KIE follows the convention `<provider>/text-to-image` vs
- * `<provider>/image-to-image`).
+ * Generate an image via KIE AI. Routes to the right endpoint based on the
+ * model family — KIE has dedicated endpoints per family, not a single unified
+ * createTask for everything.
  */
 export async function generateImageKie(
     params: GenerateImageKieParams,
 ): Promise<{ url: string; fullApiPrompt: string }> {
     const { prompt, model, aspectRatio = '1:1', referenceImage } = params
 
-    const input: Record<string, unknown> = {
-        prompt,
-        aspect_ratio: aspectRatio,
+    if (model.startsWith('flux-kontext')) {
+        return generateImageFluxKontext({ prompt, model, aspectRatio, referenceImage })
     }
 
+    // Fallback to generic createTask flow (Grok and others)
+    const input: Record<string, unknown> = { prompt, aspect_ratio: aspectRatio }
     let resolvedModel = model
     if (referenceImage) {
-        // Switch to image-to-image variant if the model expose one.
         resolvedModel = model.replace('/text-to-image', '/image-to-image')
         input.image_url = `data:${referenceImage.mimeType};base64,${referenceImage.base64}`
     }
 
-    console.log(`[KIE] Submitting image task: model=${resolvedModel}`)
+    console.log(`[KIE] Submitting generic image task: model=${resolvedModel}`)
     const taskId = await withTimeout(
         submitTask({ model: resolvedModel, input }),
         30_000,
         'KIE image submit',
     )
-    console.log(`[KIE] Image task submitted: ${taskId}`)
-
     const urls = await pollTask(taskId, { maxAttempts: 60, intervalMs: 3000 })
-    console.log(`[KIE] Image task complete: ${urls[0]}`)
-
     const persistedUrl = await persistToSupabase(urls[0], 'png', 'kie-images')
+    return { url: persistedUrl, fullApiPrompt: prompt }
+}
+
+/**
+ * Flux Kontext uses a dedicated endpoint with camelCase fields and a different
+ * polling response shape (successFlag + resultImageUrl instead of state +
+ * resultJson). It supports text-to-image and image-to-image in the same
+ * endpoint — pass `inputImage` to enable edit mode.
+ */
+async function generateImageFluxKontext(params: GenerateImageKieParams): Promise<{ url: string; fullApiPrompt: string }> {
+    const { prompt, model, aspectRatio = '1:1', referenceImage } = params
+
+    const body: Record<string, unknown> = {
+        prompt,
+        model,
+        aspectRatio,
+        outputFormat: 'png',
+    }
+    if (referenceImage) {
+        body.inputImage = `data:${referenceImage.mimeType};base64,${referenceImage.base64}`
+    }
+
+    console.log(`[KIE/Flux] Submitting: model=${model}, hasReference=${!!referenceImage}`)
+    const submitRes = await withTimeout(
+        fetch(`${KIE_API_BASE}/flux/kontext/generate`, {
+            method: 'POST',
+            headers: authHeaders(),
+            body: JSON.stringify(body),
+        }),
+        30_000,
+        'KIE Flux Kontext submit',
+    )
+    if (!submitRes.ok) {
+        const text = await submitRes.text()
+        throw new Error(`KIE Flux Kontext submit failed (${submitRes.status}): ${text}`)
+    }
+    const submitJson: KieCreateTaskResponse = await submitRes.json()
+    if (submitJson.code !== 200 || !submitJson.data?.taskId) {
+        throw new Error(`KIE Flux Kontext submit error: code=${submitJson.code} msg=${submitJson.msg}`)
+    }
+    const taskId = submitJson.data.taskId
+    console.log(`[KIE/Flux] Task submitted: ${taskId}`)
+
+    // Poll the dedicated record-info endpoint
+    const maxAttempts = 60
+    const intervalMs = 3000
+    let resultUrl: string | undefined
+
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+        const res = await fetch(
+            `${KIE_API_BASE}/flux/kontext/record-info?taskId=${encodeURIComponent(taskId)}`,
+            { headers: authHeaders() },
+        )
+        if (!res.ok) {
+            const text = await res.text()
+            throw new Error(`KIE Flux Kontext poll failed (${res.status}): ${text}`)
+        }
+        const json: KieFluxKontextRecordInfoResponse = await res.json()
+        const flag = json.data?.successFlag
+
+        if (flag === 1 && json.data.resultImageUrl) {
+            resultUrl = json.data.resultImageUrl
+            break
+        }
+        if (flag === 2 || flag === 3) {
+            throw new Error(`KIE Flux Kontext failed (flag=${flag}): ${json.data.errorMessage || 'Unknown'}`)
+        }
+        await new Promise(resolve => setTimeout(resolve, intervalMs))
+    }
+    if (!resultUrl) {
+        throw new Error(`KIE Flux Kontext timed out after ${(maxAttempts * intervalMs) / 1000}s`)
+    }
+
+    console.log(`[KIE/Flux] Generation complete: ${resultUrl}`)
+    const persistedUrl = await persistToSupabase(resultUrl, 'png', 'kie-images')
     return { url: persistedUrl, fullApiPrompt: prompt }
 }
 

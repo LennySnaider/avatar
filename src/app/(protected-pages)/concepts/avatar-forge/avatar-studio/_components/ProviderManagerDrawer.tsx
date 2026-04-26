@@ -53,9 +53,9 @@ export const DEFAULT_PROVIDERS: AIProvider[] = [
     },
     {
         id: 'kie-flux-kontext',
-        name: 'Flux.1 Kontext (KIE)',
+        name: 'Flux.1 Kontext Pro (KIE)',
         type: 'KIE' as ProviderType,
-        model: 'flux-kontext/text-to-image',
+        model: 'flux-kontext-pro',
         endpoint: 'https://api.kie.ai/api/v1',
         is_active: true,
         supports_image: true,
@@ -65,10 +65,10 @@ export const DEFAULT_PROVIDERS: AIProvider[] = [
         created_at: null,
     },
     {
-        id: 'kie-gpt-image-2',
-        name: 'GPT Image 2 (KIE)',
+        id: 'kie-flux-kontext-max',
+        name: 'Flux.1 Kontext Max (KIE)',
         type: 'KIE' as ProviderType,
-        model: 'gpt-image-2/text-to-image',
+        model: 'flux-kontext-max',
         endpoint: 'https://api.kie.ai/api/v1',
         is_active: true,
         supports_image: true,
@@ -167,19 +167,6 @@ export const DEFAULT_PROVIDERS: AIProvider[] = [
         supports_video: true,
         requires_api_key: true,
         api_key_env_var: 'MINIMAX_API_KEY',
-        created_at: null,
-    },
-    {
-        id: 'kie-veo-3-1',
-        name: 'Google Veo 3.1 (KIE)',
-        type: 'KIE' as ProviderType,
-        model: 'veo-3.1/text-to-video',
-        endpoint: 'https://api.kie.ai/api/v1',
-        is_active: true,
-        supports_image: false,
-        supports_video: true,
-        requires_api_key: true,
-        api_key_env_var: 'KIE_API_KEY',
         created_at: null,
     },
 ]
@@ -291,11 +278,9 @@ const ProviderManagerDrawer = () => {
             case 'kling-kolors-v2-1':
                 return 'KOLORS v2.1, reference image fidelity, face/subject/restyle'
             case 'kie-flux-kontext':
-                return 'Flux.1 Kontext - context-aware editing v\u00eda KIE aggregator'
-            case 'kie-gpt-image-2':
-                return 'OpenAI flagship image model v\u00eda KIE aggregator'
-            case 'kie-veo-3-1':
-                return 'Google Veo 3.1 - sucesor de Veo 3 v\u00eda KIE aggregator'
+                return 'Flux.1 Kontext Pro - context-aware editing, 8 unidades por imagen'
+            case 'kie-flux-kontext-max':
+                return 'Flux.1 Kontext Max - mejor calidad para escenas complejas'
             default:
                 return provider.model
         }
