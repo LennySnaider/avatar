@@ -348,6 +348,15 @@ const GalleryPanel = ({ onAnimateImage, onSaveToGallery }: GalleryPanelProps) =>
                                         </span>
                                     </div>
 
+                                    {/* Provider/Model Badge */}
+                                    {media.providerName && (
+                                        <div className="absolute top-2 left-2">
+                                            <span className="px-2 py-1 text-[10px] font-medium rounded bg-black/70 text-white max-w-32 truncate inline-block">
+                                                {media.providerName}
+                                            </span>
+                                        </div>
+                                    )}
+
                                     {/* Overlay Actions */}
                                     {!isMontageMode && (
                                         <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-end">

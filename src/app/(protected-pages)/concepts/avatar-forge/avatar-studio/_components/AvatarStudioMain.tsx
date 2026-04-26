@@ -712,6 +712,7 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                     thumbnailUrl: faceRef?.url || generalReferences[0]?.url,
                 },
                 fullApiPrompt: apiPrompt ?? fullPrompt,
+                providerName: activeProvider?.name,
             }
 
             addToGallery(newMedia)
@@ -990,6 +991,7 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                     aspectRatio: targetAspectRatio,
                     timestamp: Date.now(),
                     mediaType: 'IMAGE',
+                    providerName: resolvedProvider?.name ?? 'Gemini 3 Pro Image',
                 }
 
                 addToGallery(newMedia)
@@ -1034,6 +1036,7 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                     aspectRatio: editAspectRatio,
                     timestamp: Date.now(),
                     mediaType: 'IMAGE',
+                    providerName: getActiveProvider()?.name,
                 }
 
                 addToGallery(newMedia)

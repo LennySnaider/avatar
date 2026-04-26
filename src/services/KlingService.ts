@@ -445,7 +445,10 @@ export async function generateImage(params: {
         // Add reference image if provided
         if (referenceImage?.base64) {
             requestBody.image = cleanBase64ForKling(referenceImage.base64) // Fixed: Kling requires base64 WITHOUT prefix
-            requestBody.image_fidelity = 0.5
+            // Lower fidelity (0.2) lets Kling respect the requested aspect_ratio
+            // and prompt over the source image's geometry. At 0.5 the output
+            // tends to inherit the reference's framing/ratio.
+            requestBody.image_fidelity = 0.2
         }
 
         // Submit task

@@ -635,6 +635,12 @@ const ImagePreviewModal = ({
                         {currentIndex + 1} / {gallery.length}
                     </span>
 
+                    {previewMedia.providerName && (
+                        <span className="px-2 py-1 text-xs font-medium rounded bg-gray-200 text-gray-700 dark:bg-gray-700 dark:text-gray-200">
+                            {previewMedia.providerName}
+                        </span>
+                    )}
+
                     {/* Zoom Controls */}
                     {previewMedia.mediaType === 'IMAGE' && !isEditing && (
                         <div className="flex items-center gap-2 ml-auto">

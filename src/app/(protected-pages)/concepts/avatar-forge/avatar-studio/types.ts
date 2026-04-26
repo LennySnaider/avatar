@@ -68,6 +68,8 @@ export interface GeneratedMedia {
     metadata?: GenerationMetadata
     avatarInfo?: GeneratedAvatarInfo // Avatar used to create this media
     fullApiPrompt?: string // Full prompt sent to the API (for debugging)
+    /** Display name of the provider+model used (e.g. "Flux.1 Kontext Pro"). */
+    providerName?: string
 }
 
 // App states
