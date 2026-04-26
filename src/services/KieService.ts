@@ -34,6 +34,26 @@ function withTimeout<T>(p: Promise<T>, ms: number, label: string): Promise<T> {
     })
 }
 
+async function fetchWithAbort(
+    url: string,
+    init: RequestInit,
+    timeoutMs: number,
+): Promise<Response> {
+    const controller = new AbortController()
+    const timer = setTimeout(() => controller.abort(), timeoutMs)
+    try {
+        return await fetch(url, { ...init, signal: controller.signal })
+    } finally {
+        clearTimeout(timer)
+    }
+}
+
+function isAbortError(e: unknown): boolean {
+    return e instanceof Error && e.name === 'AbortError'
+}
+
+const POLL_FETCH_TIMEOUT_MS = 30_000
+
 async function submitTask(body: KieCreateTaskRequest): Promise<string> {
     const res = await fetch(`${KIE_API_BASE}/jobs/createTask`, {
         method: 'POST',
@@ -53,16 +73,28 @@ async function submitTask(body: KieCreateTaskRequest): Promise<string> {
 
 async function pollTask(
     taskId: string,
-    options?: { maxAttempts?: number; intervalMs?: number },
+    options?: { budgetMs?: number; intervalMs?: number },
 ): Promise<string[]> {
-    const maxAttempts = options?.maxAttempts ?? 120
+    const budgetMs = options?.budgetMs ?? 600_000
     const intervalMs = options?.intervalMs ?? 5000
+    const startedAt = Date.now()
 
-    for (let attempt = 0; attempt < maxAttempts; attempt++) {
-        const res = await fetch(
-            `${KIE_API_BASE}/jobs/recordInfo?taskId=${encodeURIComponent(taskId)}`,
-            { headers: authHeaders() },
-        )
+    while (Date.now() - startedAt < budgetMs) {
+        let res: Response
+        try {
+            res = await fetchWithAbort(
+                `${KIE_API_BASE}/jobs/recordInfo?taskId=${encodeURIComponent(taskId)}`,
+                { headers: authHeaders() },
+                POLL_FETCH_TIMEOUT_MS,
+            )
+        } catch (e) {
+            if (isAbortError(e)) {
+                console.warn(`[KIE] recordInfo fetch aborted (>${POLL_FETCH_TIMEOUT_MS}ms), retrying`)
+                await new Promise(resolve => setTimeout(resolve, intervalMs))
+                continue
+            }
+            throw e
+        }
         if (!res.ok) {
             const text = await res.text()
             throw new Error(`KIE recordInfo failed (${res.status}): ${text}`)
@@ -87,7 +119,7 @@ async function pollTask(
         }
         await new Promise(resolve => setTimeout(resolve, intervalMs))
     }
-    throw new Error(`KIE task timed out after ${(maxAttempts * intervalMs) / 1000}s`)
+    throw new Error(`KIE task timed out after ${budgetMs / 1000}s`)
 }
 
 /**
@@ -191,7 +223,7 @@ export async function generateImageKie(
         30_000,
         'KIE image submit',
     )
-    const urls = await pollTask(taskId, { maxAttempts: 60, intervalMs: 3000 })
+    const urls = await pollTask(taskId, { budgetMs: 180_000, intervalMs: 3000 })
     const persistedUrl = await persistToSupabase(urls[0], 'png', 'kie-images')
     return { url: persistedUrl, fullApiPrompt: prompt }
 }
@@ -243,18 +275,29 @@ async function generateImageFluxKontext(params: GenerateImageKieParams): Promise
     const taskId = submitJson.data.taskId
     console.log(`[KIE/Flux] Task submitted: ${taskId}`)
 
-    // Poll the dedicated record-info endpoint
     // Flux Kontext Max can take 3-8 min especially with reference images.
-    // 120 attempts × 5s = 10 min ceiling, well within Vercel Pro maxDuration of 800s.
-    const maxAttempts = 120
+    // Wall-clock budget so a hung fetch can't push real elapsed past Vercel Pro maxDuration (800s).
+    const budgetMs = 600_000
     const intervalMs = 5000
+    const startedAt = Date.now()
     let resultUrl: string | undefined
 
-    for (let attempt = 0; attempt < maxAttempts; attempt++) {
-        const res = await fetch(
-            `${KIE_API_BASE}/flux/kontext/record-info?taskId=${encodeURIComponent(taskId)}`,
-            { headers: authHeaders() },
-        )
+    while (Date.now() - startedAt < budgetMs) {
+        let res: Response
+        try {
+            res = await fetchWithAbort(
+                `${KIE_API_BASE}/flux/kontext/record-info?taskId=${encodeURIComponent(taskId)}`,
+                { headers: authHeaders() },
+                POLL_FETCH_TIMEOUT_MS,
+            )
+        } catch (e) {
+            if (isAbortError(e)) {
+                console.warn(`[KIE/Flux] poll fetch aborted (>${POLL_FETCH_TIMEOUT_MS}ms), retrying`)
+                await new Promise(resolve => setTimeout(resolve, intervalMs))
+                continue
+            }
+            throw e
+        }
         if (!res.ok) {
             const text = await res.text()
             throw new Error(`KIE Flux Kontext poll failed (${res.status}): ${text}`)
@@ -272,7 +315,7 @@ async function generateImageFluxKontext(params: GenerateImageKieParams): Promise
         await new Promise(resolve => setTimeout(resolve, intervalMs))
     }
     if (!resultUrl) {
-        throw new Error(`KIE Flux Kontext timed out after ${(maxAttempts * intervalMs) / 1000}s`)
+        throw new Error(`KIE Flux Kontext timed out after ${budgetMs / 1000}s`)
     }
 
     console.log(`[KIE/Flux] Generation complete: ${resultUrl}`)
@@ -346,16 +389,28 @@ async function generateImageGpt4o(params: GenerateImageKieParams): Promise<{ url
     const taskId = submitJson.data.taskId
     console.log(`[KIE/GPT4o] Task submitted: ${taskId}`)
 
-    // GPT 4o has its own /gpt4o-image/record-info with successFlag (0=running, 1=success)
-    const maxAttempts = 60
+    // GPT 4o /gpt4o-image/record-info: successFlag 0=running, 1=success, 2/3=fail.
+    const budgetMs = 300_000
     const intervalMs = 3000
+    const startedAt = Date.now()
     let resultUrl: string | undefined
 
-    for (let attempt = 0; attempt < maxAttempts; attempt++) {
-        const res = await fetch(
-            `${KIE_API_BASE}/gpt4o-image/record-info?taskId=${encodeURIComponent(taskId)}`,
-            { headers: authHeaders() },
-        )
+    while (Date.now() - startedAt < budgetMs) {
+        let res: Response
+        try {
+            res = await fetchWithAbort(
+                `${KIE_API_BASE}/gpt4o-image/record-info?taskId=${encodeURIComponent(taskId)}`,
+                { headers: authHeaders() },
+                POLL_FETCH_TIMEOUT_MS,
+            )
+        } catch (e) {
+            if (isAbortError(e)) {
+                console.warn(`[KIE/GPT4o] poll fetch aborted (>${POLL_FETCH_TIMEOUT_MS}ms), retrying`)
+                await new Promise(resolve => setTimeout(resolve, intervalMs))
+                continue
+            }
+            throw e
+        }
         if (!res.ok) {
             const text = await res.text()
             throw new Error(`KIE GPT4o poll failed (${res.status}): ${text}`)
@@ -384,7 +439,7 @@ async function generateImageGpt4o(params: GenerateImageKieParams): Promise<{ url
         await new Promise(resolve => setTimeout(resolve, intervalMs))
     }
     if (!resultUrl) {
-        throw new Error(`KIE GPT4o timed out after ${(maxAttempts * intervalMs) / 1000}s`)
+        throw new Error(`KIE GPT4o timed out after ${budgetMs / 1000}s`)
     }
 
     console.log(`[KIE/GPT4o] Generation complete: ${resultUrl}`)
@@ -428,7 +483,7 @@ export async function generateVideoKie(
     )
     console.log(`[KIE] Video task submitted: ${taskId}`)
 
-    const urls = await pollTask(taskId, { maxAttempts: 120, intervalMs: 5000 })
+    const urls = await pollTask(taskId, { budgetMs: 600_000, intervalMs: 5000 })
     console.log(`[KIE] Video task complete: ${urls[0]}`)
 
     const persistedUrl = await persistToSupabase(urls[0], 'mp4', 'kie-videos')
