@@ -892,32 +892,96 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
             editPrompt: string,
             maskBase64: string | null,
             editAspectRatio?: AspectRatio,
-            editAssets?: Array<{ id: string; url: string; base64: string; mimeType: string }>
+            editAssets?: Array<{ id: string; url: string; base64: string; mimeType: string }>,
+            editProviderId?: string,
         ) => {
             setIsGenerating(true)
             setAppState(AppState.GENERATING)
 
             const targetAspectRatio = editAspectRatio || media.aspectRatio || '1:1'
 
-            // Convert edit assets to the format expected by editImage
             const referenceAssets = editAssets?.map((asset) => ({
                 base64: asset.base64,
                 mimeType: asset.mimeType,
             }))
 
+            // Resolve which provider to use for this edit (override > active default)
+            const resolvedProvider = editProviderId
+                ? providers.find(p => p.id === editProviderId)
+                : getActiveProvider()
+
             try {
-                const resultUrl = await editImage(
-                    media.url,
-                    editPrompt,
-                    maskBase64,
-                    targetAspectRatio,
-                    referenceAssets
-                )
+                let resultUrl: string
+
+                if (!resolvedProvider || resolvedProvider.type === 'GOOGLE') {
+                    // Gemini retains its native edit endpoint with mask + multiple references
+                    resultUrl = await editImage(
+                        media.url,
+                        editPrompt,
+                        maskBase64,
+                        targetAspectRatio,
+                        referenceAssets,
+                    )
+                } else {
+                    // Non-Gemini providers don't have a true "edit" — we re-render
+                    // image-to-image using the source as reference. Fetch the source
+                    // and convert to base64 client-side first.
+                    const res = await fetch(media.url)
+                    if (!res.ok) {
+                        throw new Error(`Failed to fetch source image (${res.status})`)
+                    }
+                    const blob = await res.blob()
+                    const sourceBase64 = await new Promise<string>((resolve, reject) => {
+                        const reader = new FileReader()
+                        reader.onloadend = () => {
+                            const result = reader.result as string
+                            resolve(result.split(',')[1])
+                        }
+                        reader.onerror = () => reject(reader.error)
+                        reader.readAsDataURL(blob)
+                    })
+                    const sourceMime = blob.type || 'image/png'
+
+                    if (resolvedProvider.type === 'KLING') {
+                        const r = await generateImageKling({
+                            prompt: editPrompt,
+                            referenceImage: { base64: sourceBase64, mimeType: sourceMime },
+                            aspectRatio: targetAspectRatio,
+                            modelName: resolvedProvider.model || 'kling-v2-1',
+                        })
+                        resultUrl = r.url
+                    } else if (resolvedProvider.type === 'MINIMAX') {
+                        const r = await generateImageMiniMax({
+                            prompt: editPrompt,
+                            aspectRatio: targetAspectRatio,
+                            faceReferenceUrl: `data:${sourceMime};base64,${sourceBase64}`,
+                        })
+                        if (!r.success) throw new Error(r.error)
+                        resultUrl = r.url
+                    } else if (resolvedProvider.type === 'KIE') {
+                        const r = await generateImageKie({
+                            prompt: editPrompt,
+                            referenceImage: { base64: sourceBase64, mimeType: sourceMime },
+                            aspectRatio: targetAspectRatio,
+                            model: resolvedProvider.model || 'flux-kontext/text-to-image',
+                        })
+                        resultUrl = r.url
+                    } else {
+                        // Unknown provider type — fall back to Gemini
+                        resultUrl = await editImage(
+                            media.url,
+                            editPrompt,
+                            maskBase64,
+                            targetAspectRatio,
+                            referenceAssets,
+                        )
+                    }
+                }
 
                 const newMedia: GeneratedMedia = {
                     id: crypto.randomUUID(),
                     url: resultUrl,
-                    prompt: `Edit: ${editPrompt}`,
+                    prompt: `Edit (${resolvedProvider?.name ?? 'Gemini'}): ${editPrompt}`,
                     aspectRatio: targetAspectRatio,
                     timestamp: Date.now(),
                     mediaType: 'IMAGE',
@@ -934,7 +998,7 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                 setIsGenerating(false)
             }
         },
-        [getActiveProvider, addToGallery, setAppState, setErrorMsg, setIsGenerating]
+        [providers, getActiveProvider, addToGallery, setAppState, setErrorMsg, setIsGenerating]
     )
 
     // Editor Edit Handler (with assets support)

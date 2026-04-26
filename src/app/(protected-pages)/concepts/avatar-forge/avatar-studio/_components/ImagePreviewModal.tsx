@@ -41,7 +41,7 @@ interface EditAsset {
 }
 
 interface ImagePreviewModalProps {
-    onEdit?: (media: GeneratedMedia, editPrompt: string, maskBase64: string | null, aspectRatio: AspectRatio, editAssets: EditAsset[]) => Promise<void>
+    onEdit?: (media: GeneratedMedia, editPrompt: string, maskBase64: string | null, aspectRatio: AspectRatio, editAssets: EditAsset[], editProviderId?: string) => Promise<void>
     onAnimate?: (media: GeneratedMedia) => void
     onVariant?: (media: GeneratedMedia) => void
     onSave?: (media: GeneratedMedia) => Promise<void>
@@ -57,7 +57,10 @@ const ImagePreviewModal = ({
     onContinueVideo,
     onReuse,
 }: ImagePreviewModalProps) => {
-    const { gallery, previewMedia, setPreviewMedia, removeFromGallery, addToGallery, videoDialogue } = useAvatarStudioStore()
+    const { gallery, previewMedia, setPreviewMedia, removeFromGallery, addToGallery, videoDialogue, providers, activeProviderId } = useAvatarStudioStore()
+
+    // Image-supporting providers available for editing override
+    const imageProviders = providers.filter(p => p.supports_image)
 
     const [isEditing, setIsEditing] = useState(false)
     const [editPrompt, setEditPrompt] = useState('')
@@ -67,6 +70,7 @@ const ImagePreviewModal = ({
     const [isPlaying, setIsPlaying] = useState(false)
     const [brushSize, setBrushSize] = useState(30)
     const [editAspectRatio, setEditAspectRatio] = useState<AspectRatio>('1:1')
+    const [editProviderId, setEditProviderId] = useState<string | null>(null)
     const [cropPosition, setCropPosition] = useState({ x: 0, y: 0 })
     const [cropScale, setCropScale] = useState(100) // Percentage 30-100
     const [isDraggingCrop, setIsDraggingCrop] = useState(false)
@@ -274,7 +278,7 @@ const ImagePreviewModal = ({
             if (hasEditInstruction) {
                 // AI Edit - send to backend with reference assets
                 if (!onEdit) return
-                await onEdit(previewMedia, editPrompt, maskCanvas, editAspectRatio, editAssets)
+                await onEdit(previewMedia, editPrompt, maskCanvas, editAspectRatio, editAssets, editProviderId ?? activeProviderId ?? undefined)
                 handleClose()
             } else {
                 // Local Crop - process in browser
@@ -813,6 +817,21 @@ const ImagePreviewModal = ({
                                     <option value="9:16">9:16</option>
                                     <option value="4:3">4:3</option>
                                     <option value="3:4">3:4</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label className="text-xs text-gray-500 dark:text-gray-400 mb-1 block">
+                                    Provider
+                                </label>
+                                <select
+                                    value={editProviderId ?? activeProviderId ?? ''}
+                                    onChange={(e) => setEditProviderId(e.target.value || null)}
+                                    className="h-10 px-3 text-sm border rounded-lg bg-white border-gray-300 text-gray-900 dark:bg-gray-800 dark:border-gray-700 dark:text-gray-100 max-w-45"
+                                    title="Override provider for this edit (useful when default blocks the prompt)"
+                                >
+                                    {imageProviders.map(p => (
+                                        <option key={p.id} value={p.id}>{p.name}</option>
+                                    ))}
                                 </select>
                             </div>
                             <Button
