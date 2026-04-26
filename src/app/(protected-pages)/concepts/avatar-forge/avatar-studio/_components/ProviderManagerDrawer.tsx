@@ -64,6 +64,32 @@ export const DEFAULT_PROVIDERS: AIProvider[] = [
         api_key_env_var: 'KLING_ACCESS_KEY',
         created_at: null,
     },
+    {
+        id: 'kie-flux-kontext',
+        name: 'Flux.1 Kontext (KIE)',
+        type: 'KIE' as ProviderType,
+        model: 'flux-kontext/text-to-image',
+        endpoint: 'https://api.kie.ai/api/v1',
+        is_active: true,
+        supports_image: true,
+        supports_video: false,
+        requires_api_key: true,
+        api_key_env_var: 'KIE_API_KEY',
+        created_at: null,
+    },
+    {
+        id: 'kie-gpt-image-2',
+        name: 'GPT Image 2 (KIE)',
+        type: 'KIE' as ProviderType,
+        model: 'gpt-image-2/text-to-image',
+        endpoint: 'https://api.kie.ai/api/v1',
+        is_active: true,
+        supports_image: true,
+        supports_video: false,
+        requires_api_key: true,
+        api_key_env_var: 'KIE_API_KEY',
+        created_at: null,
+    },
     // Video Providers
     {
         id: 'gemini-veo3',
@@ -156,6 +182,19 @@ export const DEFAULT_PROVIDERS: AIProvider[] = [
         api_key_env_var: 'MINIMAX_API_KEY',
         created_at: null,
     },
+    {
+        id: 'kie-veo-3-1',
+        name: 'Google Veo 3.1 (KIE)',
+        type: 'KIE' as ProviderType,
+        model: 'veo-3.1/text-to-video',
+        endpoint: 'https://api.kie.ai/api/v1',
+        is_active: true,
+        supports_image: false,
+        supports_video: true,
+        requires_api_key: true,
+        api_key_env_var: 'KIE_API_KEY',
+        created_at: null,
+    },
 ]
 
 const ProviderManagerDrawer = () => {
@@ -229,6 +268,12 @@ const ProviderManagerDrawer = () => {
                         M
                     </div>
                 )
+            case 'KIE':
+                return (
+                    <div className="w-8 h-8 rounded-full bg-linear-to-br from-cyan-500 to-blue-600 flex items-center justify-center text-white font-bold text-sm">
+                        K
+                    </div>
+                )
             default:
                 return (
                     <div className="w-8 h-8 rounded-full bg-gray-500 flex items-center justify-center text-white font-bold text-sm">
@@ -258,6 +303,12 @@ const ProviderManagerDrawer = () => {
                 return 'Hailuo 2.3 Fast - m\u00e1s r\u00e1pido y econ\u00f3mico'
             case 'kling-kolors-v2-1':
                 return 'KOLORS v2.1, reference image fidelity, face/subject/restyle'
+            case 'kie-flux-kontext':
+                return 'Flux.1 Kontext - context-aware editing v\u00eda KIE aggregator'
+            case 'kie-gpt-image-2':
+                return 'OpenAI flagship image model v\u00eda KIE aggregator'
+            case 'kie-veo-3-1':
+                return 'Google Veo 3.1 - sucesor de Veo 3 v\u00eda KIE aggregator'
             case 'kling-v3-omni':
                 return 'Omni multi-reference hasta 4K, series generation, element control'
             default:

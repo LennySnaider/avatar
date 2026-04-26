@@ -39,6 +39,7 @@ import {
     generateVideoMiniMax,
 } from '@/services/MiniMaxService'
 import type { MiniMaxVideoModel } from '@/@types/minimax'
+import { generateImageKie, generateVideoKie } from '@/services/KieService'
 import { HiOutlineCog, HiOutlineBookOpen, HiX } from 'react-icons/hi'
 import { AppState } from '../types'
 import type { GeneratedMedia, ReferenceImage } from '../types'
@@ -452,6 +453,27 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
 
                     resultUrl = result.url
                     apiPrompt = result.fullApiPrompt
+                } else if (activeProvider?.type === 'KIE') {
+                    // KIE aggregator — single reference image (face > body > first general)
+                    const referenceImage =
+                        optimizedPayload.faceRef ??
+                        optimizedPayload.bodyRef ??
+                        optimizedPayload.generalRefs[0] ??
+                        null
+
+                    const kiePrompt = faceDescription?.trim()
+                        ? `[FACE: ${faceDescription.trim()}] ${fullPrompt}`
+                        : fullPrompt
+
+                    const result = await generateImageKie({
+                        prompt: kiePrompt,
+                        referenceImage,
+                        aspectRatio,
+                        model: activeProvider.model || 'flux-kontext/text-to-image',
+                    })
+
+                    resultUrl = result.url
+                    apiPrompt = result.fullApiPrompt
                 } else {
                     // Gemini — with auto-retry and optional MiniMax fallback on safety block
                     const result = await generateAvatar({
@@ -551,6 +573,16 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                             model: (activeProvider?.model as MiniMaxVideoModel) || 'MiniMax-Hailuo-2.3',
                             resolution: videoResolution,
                         })
+                    } else if (activeProvider?.type === 'KIE') {
+                        // KIE aggregator — image-to-video via aggregator
+                        resultUrl = await generateVideoKie({
+                            prompt: fullPrompt,
+                            firstFrameImage: optimizedVideoInput,
+                            model: activeProvider.model || 'veo-3.1/text-to-video',
+                            aspectRatio,
+                            duration: 5,
+                            resolution: videoResolution,
+                        })
                     } else {
                         // Use Gemini Service (default)
                         resultUrl = await generateVideoGemini({
@@ -621,6 +653,22 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                             prompt: fullPrompt,
                             characterImages: refs,
                             model: (activeProvider?.model as MiniMaxVideoModel) || 'MiniMax-Hailuo-2.3',
+                            resolution: videoResolution,
+                        })
+                    } else if (activeProvider?.type === 'KIE') {
+                        // KIE aggregator — single reference image as first frame (no native subject_reference)
+                        const firstRef =
+                            optimizedPayload.faceRef ??
+                            optimizedPayload.bodyRef ??
+                            optimizedPayload.generalRefs[0] ??
+                            null
+
+                        resultUrl = await generateVideoKie({
+                            prompt: fullPrompt,
+                            firstFrameImage: firstRef,
+                            model: activeProvider.model || 'veo-3.1/text-to-video',
+                            aspectRatio,
+                            duration: 5,
                             resolution: videoResolution,
                         })
                     } else {
