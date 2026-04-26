@@ -451,6 +451,10 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                         modelName: activeProvider?.model || 'kling-v2-1',
                     })
 
+                    if (!result.success) {
+                        throw new Error(result.error)
+                    }
+
                     resultUrl = result.url
                     apiPrompt = result.fullApiPrompt
                 } else if (activeProvider?.type === 'KIE') {
@@ -949,6 +953,7 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                             aspectRatio: targetAspectRatio,
                             modelName: resolvedProvider.model || 'kling-v2-1',
                         })
+                        if (!r.success) throw new Error(r.error)
                         resultUrl = r.url
                     } else if (resolvedProvider.type === 'MINIMAX') {
                         const r = await generateImageMiniMax({

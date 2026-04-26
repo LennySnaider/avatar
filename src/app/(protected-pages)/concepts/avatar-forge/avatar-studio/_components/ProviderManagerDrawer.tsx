@@ -52,19 +52,6 @@ export const DEFAULT_PROVIDERS: AIProvider[] = [
         created_at: null,
     },
     {
-        id: 'kling-v3-omni',
-        name: 'Kling v3 Omni (4K)',
-        type: 'KLING' as ProviderType,
-        model: 'kling-v3-omni',
-        endpoint: 'https://api-singapore.klingai.com',
-        is_active: true,
-        supports_image: true,
-        supports_video: false,
-        requires_api_key: true,
-        api_key_env_var: 'KLING_ACCESS_KEY',
-        created_at: null,
-    },
-    {
         id: 'kie-flux-kontext',
         name: 'Flux.1 Kontext (KIE)',
         type: 'KIE' as ProviderType,
@@ -309,8 +296,6 @@ const ProviderManagerDrawer = () => {
                 return 'OpenAI flagship image model v\u00eda KIE aggregator'
             case 'kie-veo-3-1':
                 return 'Google Veo 3.1 - sucesor de Veo 3 v\u00eda KIE aggregator'
-            case 'kling-v3-omni':
-                return 'Omni multi-reference hasta 4K, series generation, element control'
             default:
                 return provider.model
         }

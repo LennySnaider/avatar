@@ -45,6 +45,56 @@ function normalizeKlingModelName(modelName: string): string {
     return modelName.replace(/kling-v(\d+)\.(\d+)/g, 'kling-v$1-$2')
 }
 
+/**
+ * Reformat a prompt that uses Gemini-flavored bracket tags
+ * ([CLONE: ...], [POSE: ...], [FACE: ...], [BODY: ...]) into natural prose
+ * for Kling KOLORS. Kling does not understand those tags as semantic markers
+ * and reads the bracket text literally, which derails the generation.
+ *
+ * Order matters for Kling: scene + subject first (CLONE), then pose,
+ * then secondary identity reinforcement (FACE/BODY). Earlier tokens get
+ * more weight from the model.
+ */
+function formatPromptForKling(rawPrompt: string): string {
+    if (!rawPrompt) return ''
+
+    const extract = (tag: string): string | null => {
+        // Non-greedy, multiline-safe. Tags are flat (no nesting) — sanitizeCloneTags
+        // upstream flattens markdown inside [CLONE: ...] before this point.
+        const re = new RegExp(`\\[${tag}:\\s*([\\s\\S]+?)\\]`, 'i')
+        const match = rawPrompt.match(re)
+        return match ? match[1].trim() : null
+    }
+
+    const cloneText = extract('CLONE')
+    const poseText = extract('POSE')
+    const faceText = extract('FACE')
+    const bodyText = extract('BODY')
+
+    // Strip every known and unknown bracket tag of the form [TAG: content]
+    // so leftover text outside the recognized tags still gets used.
+    const stripped = rawPrompt
+        .replace(/\[[A-Z_][A-Z0-9_]*:\s*[\s\S]+?\]/gi, '')
+        .trim()
+
+    const ensurePeriod = (s: string) => {
+        const trimmed = s.trim().replace(/[\s.,;]+$/u, '')
+        return trimmed.length > 0 ? `${trimmed}.` : ''
+    }
+
+    // Main body: prefer the CLONE content (it carries the scene). Fall back to
+    // whatever prose remained after stripping recognized tags.
+    const main = cloneText || stripped
+
+    const parts: string[] = []
+    if (main) parts.push(ensurePeriod(main))
+    if (poseText) parts.push(`Pose: ${ensurePeriod(poseText)}`)
+    if (faceText) parts.push(`The subject has ${ensurePeriod(faceText)}`)
+    if (bodyText) parts.push(`Subject is ${ensurePeriod(bodyText)}`)
+
+    return parts.filter(Boolean).join(' ').trim()
+}
+
 // Kling API Configuration
 const KLING_API_BASE = 'https://api-singapore.klingai.com'
 
@@ -348,6 +398,10 @@ export async function generateVideo(params: {
 
 /**
  * Generate image using Kling Image Generation API
+ *
+ * Returns a tagged result so server-action errors surface to the client
+ * with the real message (instead of Next.js' generic "Server Components
+ * render" wrapper that hides the cause in production builds).
  */
 export async function generateImage(params: {
     prompt: string
@@ -355,7 +409,10 @@ export async function generateImage(params: {
     aspectRatio: AspectRatio
     modelName?: string
     n?: number // number of images
-}): Promise<{ url: string; fullApiPrompt: string }> {
+}): Promise<
+    | { success: true; url: string; fullApiPrompt: string }
+    | { success: false; error: string }
+> {
     const {
         prompt,
         referenceImage,
@@ -364,53 +421,73 @@ export async function generateImage(params: {
         n = 1,
     } = params
 
-    const normalizedModel = normalizeKlingModelName(modelName)
+    try {
+        const normalizedModel = normalizeKlingModelName(modelName)
 
-    console.log('[Kling] Starting image generation...')
-    console.log('[Kling] Prompt:', prompt.substring(0, 100) + '...')
-    console.log('[Kling] Model:', normalizedModel)
+        // Strip Gemini-flavored bracket tags and reorder into prose Kling can read.
+        // Without this Kling KOLORS reads "[CLONE: ...]" / "[POSE: ...]" literally
+        // and the prompt derails (e.g. anchors on "hands clasped" out of context).
+        const klingPrompt = formatPromptForKling(prompt) || prompt
 
-    const requestBody: Record<string, unknown> = {
-        model_name: normalizedModel,
-        prompt: prompt,
-        negative_prompt: 'blurry, distorted, low quality, watermark, text overlay, deformed',
-        n: n,
-        aspect_ratio: mapAspectRatio(aspectRatio),
-    }
+        console.log('[Kling] Starting image generation...')
+        console.log('[Kling] Original prompt:', prompt.substring(0, 120) + '...')
+        console.log('[Kling] Formatted prompt:', klingPrompt.substring(0, 120) + '...')
+        console.log('[Kling] Model:', normalizedModel)
 
-    // Add reference image if provided
-    if (referenceImage?.base64) {
-        requestBody.image = cleanBase64ForKling(referenceImage.base64) // Fixed: Kling requires base64 WITHOUT prefix
-        requestBody.image_fidelity = 0.5
-    }
+        const requestBody: Record<string, unknown> = {
+            model_name: normalizedModel,
+            prompt: klingPrompt,
+            negative_prompt: 'blurry, distorted, low quality, watermark, text overlay, deformed',
+            n: n,
+            aspect_ratio: mapAspectRatio(aspectRatio),
+        }
 
-    // Submit task
-    const submitResponse = await klingRequest<KlingTaskResponse>(
-        '/v1/images/generations',
-        'POST',
-        requestBody
-    )
+        // Add reference image if provided
+        if (referenceImage?.base64) {
+            requestBody.image = cleanBase64ForKling(referenceImage.base64) // Fixed: Kling requires base64 WITHOUT prefix
+            requestBody.image_fidelity = 0.5
+        }
 
-    if (submitResponse.code !== 0) {
-        throw new Error(`Kling Image API Error: ${submitResponse.message}`)
-    }
+        // Submit task
+        const submitResponse = await klingRequest<KlingTaskResponse>(
+            '/v1/images/generations',
+            'POST',
+            requestBody
+        )
 
-    const taskId = submitResponse.data.task_id
-    console.log('[Kling] Image task submitted:', taskId)
+        if (submitResponse.code !== 0) {
+            return {
+                success: false,
+                error: `Kling Image API Error: ${submitResponse.message}`,
+            }
+        }
 
-    // Poll for result
-    const result = await pollImageTaskResult(taskId)
+        const taskId = submitResponse.data.task_id
+        console.log('[Kling] Image task submitted:', taskId)
 
-    if (!result.task_result?.images?.[0]?.url) {
-        throw new Error('Kling image generation completed but no image URL returned')
-    }
+        // Poll for result
+        const result = await pollImageTaskResult(taskId)
 
-    const imageUrl = result.task_result.images[0].url
-    console.log('[Kling] Image generated successfully:', imageUrl)
+        if (!result.task_result?.images?.[0]?.url) {
+            return {
+                success: false,
+                error: 'Kling image generation completed but no image URL returned',
+            }
+        }
 
-    return {
-        url: imageUrl,
-        fullApiPrompt: prompt,
+        const imageUrl = result.task_result.images[0].url
+        console.log('[Kling] Image generated successfully:', imageUrl)
+
+        return {
+            success: true,
+            url: imageUrl,
+            fullApiPrompt: klingPrompt,
+        }
+    } catch (error) {
+        const message =
+            error instanceof Error ? error.message : 'Unknown Kling error'
+        console.error('[Kling] generateImage failed:', message)
+        return { success: false, error: message }
     }
 }
 
