@@ -244,8 +244,10 @@ async function generateImageFluxKontext(params: GenerateImageKieParams): Promise
     console.log(`[KIE/Flux] Task submitted: ${taskId}`)
 
     // Poll the dedicated record-info endpoint
-    const maxAttempts = 60
-    const intervalMs = 3000
+    // Flux Kontext Max can take 3-8 min especially with reference images.
+    // 120 attempts × 5s = 10 min ceiling, well within Vercel Pro maxDuration of 800s.
+    const maxAttempts = 120
+    const intervalMs = 5000
     let resultUrl: string | undefined
 
     for (let attempt = 0; attempt < maxAttempts; attempt++) {
