@@ -91,6 +91,37 @@ async function pollTask(
 }
 
 /**
+ * Upload a base64 image to Supabase Storage and return a public URL.
+ * Used to pass image references to KIE endpoints that only accept HTTP URLs
+ * (Flux Kontext, GPT 4o Image), not data URIs.
+ */
+async function uploadReferenceToSupabase(
+    base64: string,
+    mimeType: string,
+): Promise<string> {
+    const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL
+    if (!SUPABASE_URL) throw new Error('NEXT_PUBLIC_SUPABASE_URL is not defined')
+
+    const cleanBase64 = base64.includes(',') ? base64.split(',')[1] : base64
+    const buffer = Buffer.from(cleanBase64, 'base64')
+
+    const ext = mimeType.includes('png') ? 'png' : mimeType.includes('webp') ? 'webp' : 'jpg'
+    const fileName = `kie-refs/${Date.now()}-${Math.random().toString(36).substr(2, 9)}.${ext}`
+
+    const supabase = createServerSupabaseClient()
+    const { error } = await supabase.storage
+        .from('generations')
+        .upload(fileName, buffer, {
+            contentType: mimeType,
+            cacheControl: '300',
+            upsert: false,
+        })
+    if (error) throw new Error(`Failed to upload KIE reference: ${error.message}`)
+
+    return `${SUPABASE_URL}/storage/v1/object/public/generations/${fileName}`
+}
+
+/**
  * Download a result URL and re-upload to Supabase Storage so we have a stable
  * URL that doesn't depend on KIE's CDN expiration / CORS rules.
  */
@@ -142,6 +173,9 @@ export async function generateImageKie(
     if (model.startsWith('flux-kontext')) {
         return generateImageFluxKontext({ prompt, model, aspectRatio, referenceImage })
     }
+    if (model === 'gpt-4o-image') {
+        return generateImageGpt4o({ prompt, model, aspectRatio, referenceImage })
+    }
 
     // Fallback to generic createTask flow (Grok and others)
     const input: Record<string, unknown> = { prompt, aspect_ratio: aspectRatio }
@@ -178,7 +212,14 @@ async function generateImageFluxKontext(params: GenerateImageKieParams): Promise
         outputFormat: 'png',
     }
     if (referenceImage) {
-        body.inputImage = `data:${referenceImage.mimeType};base64,${referenceImage.base64}`
+        // Flux Kontext only accepts public HTTP URLs for inputImage, not data URIs.
+        // Upload to Supabase first to get a stable public URL.
+        const uploadedUrl = await uploadReferenceToSupabase(
+            referenceImage.base64,
+            referenceImage.mimeType,
+        )
+        console.log(`[KIE/Flux] Uploaded reference to: ${uploadedUrl}`)
+        body.inputImage = uploadedUrl
     }
 
     console.log(`[KIE/Flux] Submitting: model=${model}, hasReference=${!!referenceImage}`)
@@ -244,6 +285,109 @@ export interface GenerateVideoKieParams {
     aspectRatio?: string
     duration?: number
     resolution?: string
+}
+
+/**
+ * Map standard aspect ratios to GPT 4o Image's supported `size` values.
+ * GPT 4o only supports 1:1, 3:2, 2:3 — collapse other ratios to nearest.
+ */
+function aspectRatioToGptSize(aspectRatio: string): '1:1' | '3:2' | '2:3' {
+    if (aspectRatio === '1:1') return '1:1'
+    // Landscape variants → 3:2
+    if (aspectRatio === '16:9' || aspectRatio === '4:3' || aspectRatio === '3:2') return '3:2'
+    // Portrait variants → 2:3
+    return '2:3'
+}
+
+/**
+ * GPT 4o Image (OpenAI) via KIE's dedicated endpoint. Like Flux Kontext, it
+ * needs reference images uploaded to a public URL first — `filesUrl` is an
+ * array of URLs, NOT base64. Async pattern via taskId + recordInfo polling.
+ */
+async function generateImageGpt4o(params: GenerateImageKieParams): Promise<{ url: string; fullApiPrompt: string }> {
+    const { prompt, aspectRatio = '1:1', referenceImage } = params
+
+    const body: Record<string, unknown> = {
+        prompt,
+        size: aspectRatioToGptSize(aspectRatio),
+        nVariants: 1,
+        isEnhance: false,
+    }
+
+    if (referenceImage) {
+        const uploadedUrl = await uploadReferenceToSupabase(
+            referenceImage.base64,
+            referenceImage.mimeType,
+        )
+        console.log(`[KIE/GPT4o] Uploaded reference to: ${uploadedUrl}`)
+        body.filesUrl = [uploadedUrl]
+    }
+
+    console.log(`[KIE/GPT4o] Submitting, hasReference=${!!referenceImage}`)
+    const submitRes = await withTimeout(
+        fetch(`${KIE_API_BASE}/gpt4o-image/generate`, {
+            method: 'POST',
+            headers: authHeaders(),
+            body: JSON.stringify(body),
+        }),
+        30_000,
+        'KIE GPT4o submit',
+    )
+    if (!submitRes.ok) {
+        const text = await submitRes.text()
+        throw new Error(`KIE GPT4o submit failed (${submitRes.status}): ${text}`)
+    }
+    const submitJson: KieCreateTaskResponse = await submitRes.json()
+    if (submitJson.code !== 200 || !submitJson.data?.taskId) {
+        throw new Error(`KIE GPT4o submit error: code=${submitJson.code} msg=${submitJson.msg}`)
+    }
+    const taskId = submitJson.data.taskId
+    console.log(`[KIE/GPT4o] Task submitted: ${taskId}`)
+
+    // GPT 4o has its own /gpt4o-image/record-info with successFlag (0=running, 1=success)
+    const maxAttempts = 60
+    const intervalMs = 3000
+    let resultUrl: string | undefined
+
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+        const res = await fetch(
+            `${KIE_API_BASE}/gpt4o-image/record-info?taskId=${encodeURIComponent(taskId)}`,
+            { headers: authHeaders() },
+        )
+        if (!res.ok) {
+            const text = await res.text()
+            throw new Error(`KIE GPT4o poll failed (${res.status}): ${text}`)
+        }
+        const json = await res.json() as {
+            code: number
+            data: {
+                taskId: string
+                successFlag?: number
+                status?: string
+                response?: { resultUrls?: string[] }
+                errorCode?: string
+                errorMessage?: string
+            }
+        }
+        const flag = json.data?.successFlag
+        const urls = json.data?.response?.resultUrls
+
+        if (flag === 1 && urls && urls.length > 0) {
+            resultUrl = urls[0]
+            break
+        }
+        if (flag === 2 || flag === 3) {
+            throw new Error(`KIE GPT4o failed (flag=${flag}): ${json.data.errorMessage || 'Unknown'}`)
+        }
+        await new Promise(resolve => setTimeout(resolve, intervalMs))
+    }
+    if (!resultUrl) {
+        throw new Error(`KIE GPT4o timed out after ${(maxAttempts * intervalMs) / 1000}s`)
+    }
+
+    console.log(`[KIE/GPT4o] Generation complete: ${resultUrl}`)
+    const persistedUrl = await persistToSupabase(resultUrl, 'png', 'kie-images')
+    return { url: persistedUrl, fullApiPrompt: prompt }
 }
 
 /**

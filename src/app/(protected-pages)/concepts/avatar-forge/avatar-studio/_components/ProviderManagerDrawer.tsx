@@ -77,6 +77,19 @@ export const DEFAULT_PROVIDERS: AIProvider[] = [
         api_key_env_var: 'KIE_API_KEY',
         created_at: null,
     },
+    {
+        id: 'kie-gpt-4o-image',
+        name: 'GPT 4o Image (KIE)',
+        type: 'KIE' as ProviderType,
+        model: 'gpt-4o-image',
+        endpoint: 'https://api.kie.ai/api/v1',
+        is_active: true,
+        supports_image: true,
+        supports_video: false,
+        requires_api_key: true,
+        api_key_env_var: 'KIE_API_KEY',
+        created_at: null,
+    },
     // Video Providers
     {
         id: 'gemini-veo3',
@@ -281,6 +294,8 @@ const ProviderManagerDrawer = () => {
                 return 'Flux.1 Kontext Pro - context-aware editing, 8 unidades por imagen'
             case 'kie-flux-kontext-max':
                 return 'Flux.1 Kontext Max - mejor calidad para escenas complejas'
+            case 'kie-gpt-4o-image':
+                return 'OpenAI GPT 4o - photorealistic, mejor con texto en imagen'
             default:
                 return provider.model
         }
