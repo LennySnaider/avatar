@@ -1,30 +1,63 @@
 /// <reference no-default-lib="true" />
 /// <reference lib="esnext" />
 /// <reference lib="webworker" />
-import { CORE_URL, FFMessageType } from "./const.js";
-import { ERROR_UNKNOWN_MESSAGE_TYPE, ERROR_NOT_LOADED, ERROR_IMPORT_FAILURE, } from "./errors.js";
 
-// Surface every step inside the worker so we can see WHERE load() hangs from
-// the parent page's console (web worker console.* writes pipe through too).
+// Self-contained class worker for @ffmpeg/ffmpeg 0.12.15. Inlined from
+// node_modules/@ffmpeg/ffmpeg/dist/esm/{worker,const,errors}.js so the file
+// has zero relative imports — the previous version with `import "./const.js"`
+// hung silently when Vercel served the sibling files with a content-type
+// the module loader rejected. Re-copy from node_modules and re-inline if
+// the @ffmpeg/ffmpeg package is upgraded.
+
 const wlog = (...args) => console.log("[FFmpeg/worker]", ...args);
 wlog("worker module evaluated, awaiting LOAD message");
 
+// === inlined const.js =====================================================
+const CORE_VERSION = "0.12.9";
+const CORE_URL = `https://unpkg.com/@ffmpeg/core@${CORE_VERSION}/dist/umd/ffmpeg-core.js`;
+const FFMessageType = {
+    LOAD: "LOAD",
+    EXEC: "EXEC",
+    FFPROBE: "FFPROBE",
+    WRITE_FILE: "WRITE_FILE",
+    READ_FILE: "READ_FILE",
+    DELETE_FILE: "DELETE_FILE",
+    RENAME: "RENAME",
+    CREATE_DIR: "CREATE_DIR",
+    LIST_DIR: "LIST_DIR",
+    DELETE_DIR: "DELETE_DIR",
+    ERROR: "ERROR",
+    DOWNLOAD: "DOWNLOAD",
+    PROGRESS: "PROGRESS",
+    LOG: "LOG",
+    MOUNT: "MOUNT",
+    UNMOUNT: "UNMOUNT",
+};
+
+// === inlined errors.js ====================================================
+const ERROR_UNKNOWN_MESSAGE_TYPE = new Error("unknown message type");
+const ERROR_NOT_LOADED = new Error("ffmpeg is not loaded, call `await ffmpeg.load()` first");
+const ERROR_IMPORT_FAILURE = new Error("failed to import ffmpeg-core.js");
+
+// === worker logic =========================================================
 let ffmpeg;
 const load = async ({ coreURL: _coreURL, wasmURL: _wasmURL, workerURL: _workerURL, }) => {
-    wlog("load() received", { coreURL: _coreURL?.slice(0, 60), wasmURL: _wasmURL?.slice(0, 60), workerURL: _workerURL?.slice(0, 60) });
+    wlog("load() received", {
+        coreURL: _coreURL?.slice(0, 60),
+        wasmURL: _wasmURL?.slice(0, 60),
+        workerURL: _workerURL?.slice(0, 60),
+    });
     const first = !ffmpeg;
     try {
-        if (!_coreURL)
-            _coreURL = CORE_URL;
+        if (!_coreURL) _coreURL = CORE_URL;
         wlog("trying importScripts (classic worker path)");
-        // when web worker type is `classic`.
         importScripts(_coreURL);
         wlog("importScripts succeeded");
-    }
-    catch (e) {
+    } catch (e) {
         wlog("importScripts failed (expected in module worker), falling back to dynamic import:", e?.message || e);
-        if (!_coreURL || _coreURL === CORE_URL)
+        if (!_coreURL || _coreURL === CORE_URL) {
             _coreURL = CORE_URL.replace('/umd/', '/esm/');
+        }
         wlog("about to dynamic import:", _coreURL?.slice(0, 80));
         try {
             const mod = await import(/* @vite-ignore */ _coreURL);
@@ -47,8 +80,6 @@ const load = async ({ coreURL: _coreURL, wasmURL: _wasmURL, workerURL: _workerUR
     wlog("calling createFFmpegCore", { coreLen: coreURL.length, wasmLen: wasmURL.length });
     try {
         ffmpeg = await self.createFFmpegCore({
-            // Fix `Overload resolution failed.` when using multi-threaded ffmpeg-core.
-            // Encoded wasmURL and workerURL in the URL as a hack to fix locateFile issue.
             mainScriptUrlOrBlob: `${coreURL}#${btoa(JSON.stringify({ wasmURL, workerURL }))}`,
         });
         wlog("createFFmpegCore resolved");
@@ -83,7 +114,6 @@ const writeFile = ({ path, data }) => {
     return true;
 };
 const readFile = ({ path, encoding }) => ffmpeg.FS.readFile(path, { encoding });
-// TODO: check if deletion works.
 const deleteFile = ({ path }) => {
     ffmpeg.FS.unlink(path);
     return true;
@@ -92,7 +122,6 @@ const rename = ({ oldPath, newPath }) => {
     ffmpeg.FS.rename(oldPath, newPath);
     return true;
 };
-// TODO: check if creation works.
 const createDir = ({ path }) => {
     ffmpeg.FS.mkdir(path);
     return true;
@@ -107,16 +136,13 @@ const listDir = ({ path }) => {
     }
     return nodes;
 };
-// TODO: check if deletion works.
 const deleteDir = ({ path }) => {
     ffmpeg.FS.rmdir(path);
     return true;
 };
 const mount = ({ fsType, options, mountPoint }) => {
-    const str = fsType;
-    const fs = ffmpeg.FS.filesystems[str];
-    if (!fs)
-        return false;
+    const fs = ffmpeg.FS.filesystems[fsType];
+    if (!fs) return false;
     ffmpeg.FS.mount(fs, options, mountPoint);
     return true;
 };
@@ -128,8 +154,7 @@ self.onmessage = async ({ data: { id, type, data: _data }, }) => {
     const trans = [];
     let data;
     try {
-        if (type !== FFMessageType.LOAD && !ffmpeg)
-            throw ERROR_NOT_LOADED; // eslint-disable-line
+        if (type !== FFMessageType.LOAD && !ffmpeg) throw ERROR_NOT_LOADED;
         switch (type) {
             case FFMessageType.LOAD:
                 data = await load(_data);
@@ -170,13 +195,9 @@ self.onmessage = async ({ data: { id, type, data: _data }, }) => {
             default:
                 throw ERROR_UNKNOWN_MESSAGE_TYPE;
         }
-    }
-    catch (e) {
-        self.postMessage({
-            id,
-            type: FFMessageType.ERROR,
-            data: e.toString(),
-        });
+    } catch (e) {
+        wlog("onmessage caught error:", e?.message || e);
+        self.postMessage({ id, type: FFMessageType.ERROR, data: e.toString() });
         return;
     }
     if (data instanceof Uint8Array) {
