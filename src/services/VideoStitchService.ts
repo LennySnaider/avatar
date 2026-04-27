@@ -6,9 +6,10 @@ let isLoading = false
 let loadPromise: Promise<FFmpeg> | null = null
 
 const FFMPEG_CORE_VERSION = '0.12.6'
-const CDN_BASES = [
-    `https://cdn.jsdelivr.net/npm/@ffmpeg/core@${FFMPEG_CORE_VERSION}/dist/esm`,
-    `https://unpkg.com/@ffmpeg/core@${FFMPEG_CORE_VERSION}/dist/esm`,
+const FFMPEG_PKG_VERSION = '0.12.15'
+const CDN_HOSTS = [
+    'https://cdn.jsdelivr.net/npm',
+    'https://unpkg.com',
 ]
 
 /** Reject the inner promise if it doesn't settle before `ms` milliseconds. */
@@ -22,27 +23,38 @@ function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise
     })
 }
 
-async function fetchFromCdnWithFallback(path: string, mimeType: string): Promise<string> {
+async function fetchFromCdnWithFallback(
+    pkg: string,
+    version: string,
+    file: string,
+    mimeType: string,
+): Promise<string> {
     let lastError: unknown
-    for (const base of CDN_BASES) {
+    for (const host of CDN_HOSTS) {
+        const url = `${host}/${pkg}@${version}/dist/esm/${file}`
         try {
-            console.log(`[FFmpeg] Fetching ${path} from ${base}`)
+            console.log(`[FFmpeg] Fetching ${url}`)
             return await withTimeout(
-                toBlobURL(`${base}/${path}`, mimeType),
+                toBlobURL(url, mimeType),
                 20_000,
-                `Fetch ${path} from ${base}`,
+                `Fetch ${file} from ${host}`,
             )
         } catch (err) {
-            console.warn(`[FFmpeg] CDN ${base} failed for ${path}:`, err)
+            console.warn(`[FFmpeg] CDN ${host} failed for ${file}:`, err)
             lastError = err
         }
     }
-    throw lastError ?? new Error(`All CDNs failed for ${path}`)
+    throw lastError ?? new Error(`All CDNs failed for ${file}`)
 }
 
 /**
  * Initialize FFmpeg WASM with timeouts, CDN fallback, and cache reset on failure
  * so a hung load doesn't permanently poison the module state.
+ *
+ * Note: we fetch and pass `classWorkerURL` explicitly because @ffmpeg/ffmpeg
+ * 0.12.x resolves its bundled worker via `new URL("./worker.js", import.meta.url)`
+ * which Next.js/Webpack mangles in the client bundle on Vercel — the worker
+ * never spawns and ff.load() hangs until the timeout fires.
  */
 async function loadFFmpeg(): Promise<FFmpeg> {
     if (ffmpeg) return ffmpeg
@@ -59,16 +71,17 @@ async function loadFFmpeg(): Promise<FFmpeg> {
         })
 
         try {
-            const coreURL = await fetchFromCdnWithFallback('ffmpeg-core.js', 'text/javascript')
-            console.log('[FFmpeg] Core JS loaded')
-
-            const wasmURL = await fetchFromCdnWithFallback('ffmpeg-core.wasm', 'application/wasm')
-            console.log('[FFmpeg] WASM loaded')
+            const [coreURL, wasmURL, classWorkerURL] = await Promise.all([
+                fetchFromCdnWithFallback('@ffmpeg/core', FFMPEG_CORE_VERSION, 'ffmpeg-core.js', 'text/javascript'),
+                fetchFromCdnWithFallback('@ffmpeg/core', FFMPEG_CORE_VERSION, 'ffmpeg-core.wasm', 'application/wasm'),
+                fetchFromCdnWithFallback('@ffmpeg/ffmpeg', FFMPEG_PKG_VERSION, 'worker.js', 'text/javascript'),
+            ])
+            console.log('[FFmpeg] Core JS, WASM, and class worker fetched')
 
             console.log('[FFmpeg] Loading into FFmpeg instance...')
 
             await withTimeout(
-                ff.load({ coreURL, wasmURL }),
+                ff.load({ coreURL, wasmURL, classWorkerURL }),
                 45_000,
                 'FFmpeg instance load',
             )
