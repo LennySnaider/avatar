@@ -281,8 +281,10 @@ async function generateImageFluxKontext(params: GenerateImageKieParams): Promise
     const intervalMs = 5000
     const startedAt = Date.now()
     let resultUrl: string | undefined
+    let pollNum = 0
 
     while (Date.now() - startedAt < budgetMs) {
+        pollNum++
         let res: Response
         try {
             res = await fetchWithAbort(
@@ -303,15 +305,23 @@ async function generateImageFluxKontext(params: GenerateImageKieParams): Promise
             throw new Error(`KIE Flux Kontext poll failed (${res.status}): ${text}`)
         }
         const json: KieFluxKontextRecordInfoResponse = await res.json()
-        const flag = json.data?.successFlag
-        const url = json.data?.response?.resultImageUrl
+        const data = json.data as (typeof json.data & { resultImageUrl?: string }) | undefined
+        const flag = data?.successFlag
+        // KIE docs put resultImageUrl under data.response, but some fixtures
+        // have shown it at the top level — accept both rather than miss it.
+        const url = data?.response?.resultImageUrl ?? data?.resultImageUrl
+
+        if (pollNum === 1) {
+            console.log(`[KIE/Flux] first poll data: ${JSON.stringify(data).slice(0, 500)}`)
+        }
+        console.log(`[KIE/Flux] poll #${pollNum}: flag=${flag}, hasUrl=${!!url}`)
 
         if (flag === 1 && url) {
             resultUrl = url
             break
         }
         if (flag === 2 || flag === 3) {
-            throw new Error(`KIE Flux Kontext failed (flag=${flag}): ${json.data?.errorMessage || json.data?.errorCode || 'Unknown'}`)
+            throw new Error(`KIE Flux Kontext failed (flag=${flag}): ${data?.errorMessage || data?.errorCode || 'Unknown'}`)
         }
         await new Promise(resolve => setTimeout(resolve, intervalMs))
     }
