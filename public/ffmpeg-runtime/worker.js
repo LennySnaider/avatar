@@ -3,22 +3,39 @@
 /// <reference lib="webworker" />
 import { CORE_URL, FFMessageType } from "./const.js";
 import { ERROR_UNKNOWN_MESSAGE_TYPE, ERROR_NOT_LOADED, ERROR_IMPORT_FAILURE, } from "./errors.js";
+
+// Surface every step inside the worker so we can see WHERE load() hangs from
+// the parent page's console (web worker console.* writes pipe through too).
+const wlog = (...args) => console.log("[FFmpeg/worker]", ...args);
+wlog("worker module evaluated, awaiting LOAD message");
+
 let ffmpeg;
 const load = async ({ coreURL: _coreURL, wasmURL: _wasmURL, workerURL: _workerURL, }) => {
+    wlog("load() received", { coreURL: _coreURL?.slice(0, 60), wasmURL: _wasmURL?.slice(0, 60), workerURL: _workerURL?.slice(0, 60) });
     const first = !ffmpeg;
     try {
         if (!_coreURL)
             _coreURL = CORE_URL;
+        wlog("trying importScripts (classic worker path)");
         // when web worker type is `classic`.
         importScripts(_coreURL);
+        wlog("importScripts succeeded");
     }
-    catch {
+    catch (e) {
+        wlog("importScripts failed (expected in module worker), falling back to dynamic import:", e?.message || e);
         if (!_coreURL || _coreURL === CORE_URL)
             _coreURL = CORE_URL.replace('/umd/', '/esm/');
-        // when web worker type is `module`.
-        self.createFFmpegCore = (await import(
-        /* @vite-ignore */ _coreURL)).default;
+        wlog("about to dynamic import:", _coreURL?.slice(0, 80));
+        try {
+            const mod = await import(/* @vite-ignore */ _coreURL);
+            wlog("dynamic import resolved, keys:", Object.keys(mod || {}));
+            self.createFFmpegCore = mod.default;
+        } catch (impErr) {
+            wlog("dynamic import threw:", impErr?.message || impErr);
+            throw impErr;
+        }
         if (!self.createFFmpegCore) {
+            wlog("dynamic import returned no default export");
             throw ERROR_IMPORT_FAILURE;
         }
     }
@@ -27,16 +44,24 @@ const load = async ({ coreURL: _coreURL, wasmURL: _wasmURL, workerURL: _workerUR
     const workerURL = _workerURL
         ? _workerURL
         : _coreURL.replace(/.js$/g, ".worker.js");
-    ffmpeg = await self.createFFmpegCore({
-        // Fix `Overload resolution failed.` when using multi-threaded ffmpeg-core.
-        // Encoded wasmURL and workerURL in the URL as a hack to fix locateFile issue.
-        mainScriptUrlOrBlob: `${coreURL}#${btoa(JSON.stringify({ wasmURL, workerURL }))}`,
-    });
+    wlog("calling createFFmpegCore", { coreLen: coreURL.length, wasmLen: wasmURL.length });
+    try {
+        ffmpeg = await self.createFFmpegCore({
+            // Fix `Overload resolution failed.` when using multi-threaded ffmpeg-core.
+            // Encoded wasmURL and workerURL in the URL as a hack to fix locateFile issue.
+            mainScriptUrlOrBlob: `${coreURL}#${btoa(JSON.stringify({ wasmURL, workerURL }))}`,
+        });
+        wlog("createFFmpegCore resolved");
+    } catch (cErr) {
+        wlog("createFFmpegCore threw:", cErr?.message || cErr);
+        throw cErr;
+    }
     ffmpeg.setLogger((data) => self.postMessage({ type: FFMessageType.LOG, data }));
     ffmpeg.setProgress((data) => self.postMessage({
         type: FFMessageType.PROGRESS,
         data,
     }));
+    wlog("load() complete, first=", first);
     return first;
 };
 const exec = ({ args, timeout = -1 }) => {
