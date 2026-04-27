@@ -1146,6 +1146,10 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                 base64: frameBase64.split(',')[1] || frameBase64,
                 type: 'general',
             }
+            console.log('[AvatarStudio] handleContinueVideo: frame captured, queueing auto-generate', {
+                hasBase64: !!refImg.base64,
+                base64Length: refImg.base64.length,
+            })
             setVideoInputImage(refImg)
             setGenerationMode('VIDEO')
             setVideoSubMode('ANIMATE')
@@ -1159,17 +1163,30 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
         [setVideoInputImage, setGenerationMode, setVideoSubMode, setPrompt, setVideoDialogue, setAspectRatio]
     )
 
-    // Auto-generate when videoInputImage changes and pendingAutoGenerate is true
+    // Keep a ref to the latest handleGenerate so the auto-generate effect can
+    // call it without depending on its identity. handleGenerate's useCallback
+    // deps include several pieces of state that handleContinueVideo updates in
+    // the same tick, which used to make this effect fire twice — once with the
+    // stale ref and once after, with the cleanup of the first run cancelling
+    // the timer of the second.
+    const handleGenerateRef = useRef(handleGenerate)
     useEffect(() => {
-        if (pendingAutoGenerateRef.current && videoInputImage?.base64) {
-            pendingAutoGenerateRef.current = false
-            // Small delay to ensure all state updates have propagated
-            const timer = setTimeout(() => {
-                handleGenerate()
-            }, 50)
-            return () => clearTimeout(timer)
-        }
-    }, [videoInputImage, handleGenerate])
+        handleGenerateRef.current = handleGenerate
+    })
+
+    // Auto-generate when videoInputImage changes and pendingAutoGenerate is true.
+    // Intentionally does NOT depend on handleGenerate — see ref above.
+    useEffect(() => {
+        if (!pendingAutoGenerateRef.current) return
+        if (!videoInputImage?.base64) return
+        pendingAutoGenerateRef.current = false
+        console.log('[AvatarStudio] auto-generate fired with videoInputImage')
+        const timer = setTimeout(() => {
+            handleGenerateRef.current()
+        }, 100)
+        return () => clearTimeout(timer)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [videoInputImage])
 
     // Re-use Handler - copies prompt and sets image as clone reference
     const handleReuse = useCallback(
