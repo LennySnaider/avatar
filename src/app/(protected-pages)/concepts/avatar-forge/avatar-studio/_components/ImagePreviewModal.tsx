@@ -28,6 +28,7 @@ import {
     HiOutlineX,
     HiOutlineCamera,
 } from 'react-icons/hi'
+import { HiOutlineArrowUturnLeft, HiOutlineArrowUturnRight } from 'react-icons/hi2'
 import Tooltip from '@/components/ui/Tooltip'
 import type { GeneratedMedia } from '../types'
 import type { AspectRatio } from '@/@types/supabase'
@@ -93,6 +94,17 @@ const ImagePreviewModal = ({
     const isDrawingRef = useRef(false)
     const lastPosRef = useRef({ x: 0, y: 0 })
     const [canvasSize, setCanvasSize] = useState({ width: 500, height: 500 })
+
+    // Brush cursor preview — follows the mouse so the user sees the brush radius.
+    const [cursorPreview, setCursorPreview] = useState<{ x: number; y: number } | null>(null)
+
+    // Undo/redo history for the mask canvas. ImageData snapshots are kept in a
+    // ref (heavy, no re-render needed); the index lives in state so the
+    // disabled state of the buttons re-renders correctly.
+    const historyRef = useRef<ImageData[]>([])
+    const [historyIndex, setHistoryIndex] = useState(-1)
+    const canUndo = historyIndex > 0
+    const canRedo = historyIndex >= 0 && historyIndex < historyRef.current.length - 1
 
     const currentIndex = previewMedia
         ? gallery.findIndex((m) => m.id === previewMedia.id)
@@ -363,6 +375,11 @@ const ImagePreviewModal = ({
             }
             setMaskCanvas(null)
         }
+        // Reset history on every toggle — the empty initial state will be
+        // captured on the first stroke.
+        historyRef.current = []
+        setHistoryIndex(-1)
+        setCursorPreview(null)
     }
 
     // Update canvas size to match displayed image dimensions
@@ -404,19 +421,34 @@ const ImagePreviewModal = ({
         if (!isDrawingMask || !canvasRef.current) return
         isDrawingRef.current = true
         lastPosRef.current = getCanvasCoordinates(e)
+
+        // Snapshot the empty canvas as the first history entry so the user can
+        // undo all the way back to a blank mask.
+        if (historyRef.current.length === 0) {
+            const ctx = canvasRef.current.getContext('2d')
+            if (ctx) {
+                const empty = ctx.getImageData(0, 0, canvasRef.current.width, canvasRef.current.height)
+                historyRef.current = [empty]
+                setHistoryIndex(0)
+            }
+        }
     }
 
     const draw = (e: React.MouseEvent<HTMLCanvasElement>) => {
-        if (!isDrawingRef.current || !isDrawingMask || !canvasRef.current) return
+        if (!canvasRef.current) return
+        const coords = getCanvasCoordinates(e)
+        setCursorPreview(coords)
+
+        if (!isDrawingRef.current || !isDrawingMask) return
 
         const ctx = canvasRef.current.getContext('2d')
         if (!ctx) return
 
-        const coords = getCanvasCoordinates(e)
-
+        // Paint at full alpha; CSS opacity on the canvas element provides the
+        // see-through effect, while the exported mask data stays clean.
         ctx.beginPath()
-        ctx.strokeStyle = 'rgba(138, 43, 226, 0.6)'
-        ctx.fillStyle = 'rgba(138, 43, 226, 0.6)'
+        ctx.strokeStyle = 'rgb(138, 43, 226)'
+        ctx.fillStyle = 'rgb(138, 43, 226)'
         ctx.lineWidth = brushSize
         ctx.lineCap = 'round'
         ctx.lineJoin = 'round'
@@ -430,9 +462,64 @@ const ImagePreviewModal = ({
     const stopDrawing = () => {
         if (isDrawingRef.current && canvasRef.current) {
             isDrawingRef.current = false
-            setMaskCanvas(canvasRef.current.toDataURL('image/png'))
+            const canvas = canvasRef.current
+            setMaskCanvas(canvas.toDataURL('image/png'))
+
+            const ctx = canvas.getContext('2d')
+            if (!ctx) return
+            const snap = ctx.getImageData(0, 0, canvas.width, canvas.height)
+            setHistoryIndex(prev => {
+                const newIdx = prev + 1
+                historyRef.current = historyRef.current.slice(0, newIdx)
+                historyRef.current.push(snap)
+                return newIdx
+            })
         }
     }
+
+    const handleCanvasMouseLeave = () => {
+        setCursorPreview(null)
+        stopDrawing()
+    }
+
+    const handleUndo = useCallback(() => {
+        const canvas = canvasRef.current
+        if (!canvas || historyIndex <= 0) return
+        const ctx = canvas.getContext('2d')
+        if (!ctx) return
+        const newIdx = historyIndex - 1
+        ctx.putImageData(historyRef.current[newIdx], 0, 0)
+        setHistoryIndex(newIdx)
+        setMaskCanvas(canvas.toDataURL('image/png'))
+    }, [historyIndex])
+
+    const handleRedo = useCallback(() => {
+        const canvas = canvasRef.current
+        if (!canvas || historyIndex >= historyRef.current.length - 1) return
+        const ctx = canvas.getContext('2d')
+        if (!ctx) return
+        const newIdx = historyIndex + 1
+        ctx.putImageData(historyRef.current[newIdx], 0, 0)
+        setHistoryIndex(newIdx)
+        setMaskCanvas(canvas.toDataURL('image/png'))
+    }, [historyIndex])
+
+    // Keyboard shortcuts: Cmd/Ctrl+Z = undo, Cmd/Ctrl+Shift+Z = redo
+    useEffect(() => {
+        if (!isDrawingMask) return
+        const onKey = (e: KeyboardEvent) => {
+            if (!(e.metaKey || e.ctrlKey)) return
+            if (e.key.toLowerCase() !== 'z') return
+            e.preventDefault()
+            if (e.shiftKey) {
+                handleRedo()
+            } else {
+                handleUndo()
+            }
+        }
+        window.addEventListener('keydown', onKey)
+        return () => window.removeEventListener('keydown', onKey)
+    }, [isDrawingMask, handleUndo, handleRedo])
 
     // Calculate crop dimensions based on aspect ratio and scale
     const getCropDimensions = useCallback(() => {
@@ -743,17 +830,39 @@ const ImagePreviewModal = ({
                                 />
                                 {/* Drawing Canvas Overlay */}
                                 {isEditing && isDrawingMask && (
-                                    <canvas
-                                        ref={canvasRef}
-                                        width={canvasSize.width}
-                                        height={canvasSize.height}
-                                        className="absolute inset-0 cursor-crosshair"
-                                        style={{ width: canvasSize.width, height: canvasSize.height }}
-                                        onMouseDown={startDrawing}
-                                        onMouseMove={draw}
-                                        onMouseUp={stopDrawing}
-                                        onMouseLeave={stopDrawing}
-                                    />
+                                    <>
+                                        <canvas
+                                            ref={canvasRef}
+                                            width={canvasSize.width}
+                                            height={canvasSize.height}
+                                            className="absolute inset-0"
+                                            style={{
+                                                width: canvasSize.width,
+                                                height: canvasSize.height,
+                                                opacity: 0.5,
+                                                cursor: 'none',
+                                            }}
+                                            onMouseDown={startDrawing}
+                                            onMouseMove={draw}
+                                            onMouseUp={stopDrawing}
+                                            onMouseLeave={handleCanvasMouseLeave}
+                                        />
+                                        {/* Brush size cursor preview — sits on top of the canvas
+                                            but doesn't capture events so drawing still works. */}
+                                        {cursorPreview && (
+                                            <div
+                                                className="absolute pointer-events-none rounded-full border-2 border-white"
+                                                style={{
+                                                    left: cursorPreview.x - brushSize / 2,
+                                                    top: cursorPreview.y - brushSize / 2,
+                                                    width: brushSize,
+                                                    height: brushSize,
+                                                    boxShadow: '0 0 0 1px rgba(0, 0, 0, 0.7), inset 0 0 0 1px rgba(0, 0, 0, 0.7)',
+                                                    mixBlendMode: 'difference',
+                                                }}
+                                            />
+                                        )}
+                                    </>
                                 )}
                                 {/* Crop Overlay */}
                                 {isEditing && !isDrawingMask && (() => {
@@ -872,7 +981,27 @@ const ImagePreviewModal = ({
                                             max={100}
                                         />
                                     </div>
-                                    <span className="text-xs text-gray-500 dark:text-gray-400 w-8">{brushSize}px</span>
+                                    <span className="text-xs text-gray-500 dark:text-gray-400 w-10 text-right">{brushSize}px</span>
+                                    <Tooltip title="Undo (⌘Z)">
+                                        <Button
+                                            size="xs"
+                                            variant="plain"
+                                            shape="circle"
+                                            icon={<HiOutlineArrowUturnLeft />}
+                                            onClick={handleUndo}
+                                            disabled={!canUndo}
+                                        />
+                                    </Tooltip>
+                                    <Tooltip title="Redo (⌘⇧Z)">
+                                        <Button
+                                            size="xs"
+                                            variant="plain"
+                                            shape="circle"
+                                            icon={<HiOutlineArrowUturnRight />}
+                                            onClick={handleRedo}
+                                            disabled={!canRedo}
+                                        />
+                                    </Tooltip>
                                 </div>
                                 <p className="text-xs text-gray-500 dark:text-gray-400">
                                     Draw on the image to highlight the area you want to edit
