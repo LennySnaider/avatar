@@ -182,6 +182,40 @@ export async function stitchVideos(
 
         onProgress?.(35)
 
+        // Probe each input by running `ffmpeg -i <file>` (no output spec).
+        // This makes ffmpeg dump stream info to its log channel and exit
+        // with code 1, which is harmless — we just want to know whether
+        // each clip has an audio stream and how long it is. AI-generated
+        // videos are inconsistent: KIE/Veo usually carry audio, Kling and
+        // MiniMax often don't, and the concat filter blows up if even one
+        // input is missing the [N:a] stream.
+        console.log('[FFmpeg] Probing inputs for audio + duration...')
+        const probes = await Promise.all(
+            inputFiles.map(async (f) => {
+                let hasAudio = false
+                let durationSec = 5
+                const onLog = ({ message }: { message: string }) => {
+                    if (/Audio:/.test(message)) hasAudio = true
+                    const m = /Duration:\s*(\d+):(\d+):(\d+\.\d+)/.exec(message)
+                    if (m) {
+                        durationSec =
+                            parseInt(m[1]) * 3600 +
+                            parseInt(m[2]) * 60 +
+                            parseFloat(m[3])
+                    }
+                }
+                ff.on('log', onLog)
+                await ff.exec(['-i', f]).catch(() => undefined)
+                ff.off('log', onLog)
+                return { hasAudio, durationSec }
+            }),
+        )
+        for (let i = 0; i < probes.length; i++) {
+            console.log(
+                `[FFmpeg] input${i}: hasAudio=${probes[i].hasAudio}, duration=${probes[i].durationSec.toFixed(2)}s`,
+            )
+        }
+
         // Use the concat FILTER instead of the concat demuxer. The demuxer
         // pastes input bitstreams together at the byte level, which breaks
         // re-encoding because the decoder reads frames across the boundary
@@ -195,6 +229,11 @@ export async function stitchVideos(
         // normalisation the concat filter rejects inputs whose params don't
         // match exactly — even 2 pixels of height difference (e.g. Kling's
         // 716x1284 vs another 716x1286 output) is enough to kill it.
+        //
+        // For inputs with no audio stream we synthesise silence via the
+        // anullsrc source filter (trimmed to the clip's duration) so the
+        // concat node always sees both [v] and [a] for every clip — that's
+        // strictly required by concat=v=1:a=1.
         const TARGET_W = 720
         const TARGET_H = 1280
         const TARGET_FPS = 24
@@ -207,10 +246,21 @@ export async function stitchVideos(
                 `pad=${TARGET_W}:${TARGET_H}:(ow-iw)/2:(oh-ih)/2,` +
                 `setsar=1,fps=${TARGET_FPS},format=yuv420p,setpts=PTS-STARTPTS[v${i}]`,
             )
-            filterChainParts.push(
-                `[${i}:a]aresample=44100,aformat=sample_fmts=fltp:channel_layouts=stereo,` +
-                `asetpts=PTS-STARTPTS[a${i}]`,
-            )
+            if (probes[i].hasAudio) {
+                filterChainParts.push(
+                    `[${i}:a]aresample=44100,aformat=sample_fmts=fltp:channel_layouts=stereo,` +
+                    `asetpts=PTS-STARTPTS[a${i}]`,
+                )
+            } else {
+                // anullsrc is a SOURCE filter — no input bracket needed.
+                // atrim caps the silent stream to the matching clip duration
+                // so concat lines up audio and video segments correctly.
+                const dur = probes[i].durationSec.toFixed(3)
+                filterChainParts.push(
+                    `anullsrc=channel_layout=stereo:sample_rate=44100,` +
+                    `atrim=0:${dur},asetpts=PTS-STARTPTS[a${i}]`,
+                )
+            }
             concatInputs.push(`[v${i}][a${i}]`)
         }
         const filterComplex =
