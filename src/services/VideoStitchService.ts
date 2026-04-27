@@ -26,12 +26,13 @@ function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise
 async function fetchFromCdnWithFallback(
     pkg: string,
     version: string,
+    distDir: 'esm' | 'umd',
     file: string,
     mimeType: string,
 ): Promise<string> {
     let lastError: unknown
     for (const host of CDN_HOSTS) {
-        const url = `${host}/${pkg}@${version}/dist/esm/${file}`
+        const url = `${host}/${pkg}@${version}/dist/${distDir}/${file}`
         try {
             console.log(`[FFmpeg] Fetching ${url}`)
             return await withTimeout(
@@ -47,14 +48,23 @@ async function fetchFromCdnWithFallback(
     throw lastError ?? new Error(`All CDNs failed for ${file}`)
 }
 
+// Webpack chunk name for the UMD-built class worker. This file is the
+// fully-bundled, self-contained version of ffmpeg's hosting worker (no ES
+// imports, runs as a classic-or-module worker without resolving relative
+// paths). Chunk name is stable for FFMPEG_PKG_VERSION but may change on
+// upgrade — keep this in sync with `node_modules/@ffmpeg/ffmpeg/dist/umd/`.
+const FFMPEG_UMD_WORKER_CHUNK = '814.ffmpeg.js'
+
 /**
- * Initialize FFmpeg WASM with timeouts, CDN fallback, and cache reset on failure
- * so a hung load doesn't permanently poison the module state.
+ * Initialize FFmpeg WASM with timeouts and CDN fallback.
  *
- * Note: we fetch and pass `classWorkerURL` explicitly because @ffmpeg/ffmpeg
- * 0.12.x resolves its bundled worker via `new URL("./worker.js", import.meta.url)`
- * which Next.js/Webpack mangles in the client bundle on Vercel — the worker
- * never spawns and ff.load() hangs until the timeout fires.
+ * The ESM distributions of @ffmpeg/ffmpeg and @ffmpeg/core can't be loaded
+ * via blob URL — their files start with relative ES imports (e.g.
+ * `import { CORE_URL } from "./const.js"`) that the browser tries to
+ * resolve relative to the blob: origin, which fails silently and leaves
+ * ff.load() hanging until the watchdog fires. We use the UMD distribution
+ * everywhere instead: those files are fully bundled and have no top-level
+ * imports, so they work as blob URLs in both classic and module workers.
  */
 async function loadFFmpeg(): Promise<FFmpeg> {
     if (ffmpeg) return ffmpeg
@@ -72,11 +82,11 @@ async function loadFFmpeg(): Promise<FFmpeg> {
 
         try {
             const [coreURL, wasmURL, classWorkerURL] = await Promise.all([
-                fetchFromCdnWithFallback('@ffmpeg/core', FFMPEG_CORE_VERSION, 'ffmpeg-core.js', 'text/javascript'),
-                fetchFromCdnWithFallback('@ffmpeg/core', FFMPEG_CORE_VERSION, 'ffmpeg-core.wasm', 'application/wasm'),
-                fetchFromCdnWithFallback('@ffmpeg/ffmpeg', FFMPEG_PKG_VERSION, 'worker.js', 'text/javascript'),
+                fetchFromCdnWithFallback('@ffmpeg/core', FFMPEG_CORE_VERSION, 'umd', 'ffmpeg-core.js', 'text/javascript'),
+                fetchFromCdnWithFallback('@ffmpeg/core', FFMPEG_CORE_VERSION, 'umd', 'ffmpeg-core.wasm', 'application/wasm'),
+                fetchFromCdnWithFallback('@ffmpeg/ffmpeg', FFMPEG_PKG_VERSION, 'umd', FFMPEG_UMD_WORKER_CHUNK, 'text/javascript'),
             ])
-            console.log('[FFmpeg] Core JS, WASM, and class worker fetched')
+            console.log('[FFmpeg] UMD core, WASM, and class worker fetched')
 
             console.log('[FFmpeg] Loading into FFmpeg instance...')
 
