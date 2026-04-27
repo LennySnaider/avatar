@@ -6,7 +6,6 @@ let isLoading = false
 let loadPromise: Promise<FFmpeg> | null = null
 
 const FFMPEG_CORE_VERSION = '0.12.6'
-const FFMPEG_PKG_VERSION = '0.12.15'
 const CDN_HOSTS = [
     'https://cdn.jsdelivr.net/npm',
     'https://unpkg.com',
@@ -48,23 +47,21 @@ async function fetchFromCdnWithFallback(
     throw lastError ?? new Error(`All CDNs failed for ${file}`)
 }
 
-// Webpack chunk name for the UMD-built class worker. This file is the
-// fully-bundled, self-contained version of ffmpeg's hosting worker (no ES
-// imports, runs as a classic-or-module worker without resolving relative
-// paths). Chunk name is stable for FFMPEG_PKG_VERSION but may change on
-// upgrade — keep this in sync with `node_modules/@ffmpeg/ffmpeg/dist/umd/`.
-const FFMPEG_UMD_WORKER_CHUNK = '814.ffmpeg.js'
-
 /**
  * Initialize FFmpeg WASM with timeouts and CDN fallback.
  *
- * The ESM distributions of @ffmpeg/ffmpeg and @ffmpeg/core can't be loaded
- * via blob URL — their files start with relative ES imports (e.g.
- * `import { CORE_URL } from "./const.js"`) that the browser tries to
- * resolve relative to the blob: origin, which fails silently and leaves
- * ff.load() hanging until the watchdog fires. We use the UMD distribution
- * everywhere instead: those files are fully bundled and have no top-level
- * imports, so they work as blob URLs in both classic and module workers.
+ * The hosting class worker (worker.js) is served from /public so its
+ * relative imports `./const.js` and `./errors.js` resolve same-origin.
+ * Loading it via blob URL doesn't work — the browser tries to resolve
+ * those imports relative to the blob: origin, fails silently, and
+ * ff.load() hangs forever. The UMD worker doesn't work either: it
+ * uses webpack's require shim that throws "Cannot find module" when
+ * called in a module worker (which is the only mode @ffmpeg/ffmpeg
+ * supports for class workers).
+ *
+ * The ffmpeg-core comes from the ESM distribution because the worker
+ * dynamic-imports it (`await import(_coreURL)`) and that requires the
+ * file to be a real ES module with `export default`.
  */
 async function loadFFmpeg(): Promise<FFmpeg> {
     if (ffmpeg) return ffmpeg
@@ -81,12 +78,12 @@ async function loadFFmpeg(): Promise<FFmpeg> {
         })
 
         try {
-            const [coreURL, wasmURL, classWorkerURL] = await Promise.all([
-                fetchFromCdnWithFallback('@ffmpeg/core', FFMPEG_CORE_VERSION, 'umd', 'ffmpeg-core.js', 'text/javascript'),
-                fetchFromCdnWithFallback('@ffmpeg/core', FFMPEG_CORE_VERSION, 'umd', 'ffmpeg-core.wasm', 'application/wasm'),
-                fetchFromCdnWithFallback('@ffmpeg/ffmpeg', FFMPEG_PKG_VERSION, 'umd', FFMPEG_UMD_WORKER_CHUNK, 'text/javascript'),
+            const [coreURL, wasmURL] = await Promise.all([
+                fetchFromCdnWithFallback('@ffmpeg/core', FFMPEG_CORE_VERSION, 'esm', 'ffmpeg-core.js', 'text/javascript'),
+                fetchFromCdnWithFallback('@ffmpeg/core', FFMPEG_CORE_VERSION, 'esm', 'ffmpeg-core.wasm', 'application/wasm'),
             ])
-            console.log('[FFmpeg] UMD core, WASM, and class worker fetched')
+            const classWorkerURL = '/ffmpeg-runtime/worker.js'
+            console.log('[FFmpeg] Core (ESM), WASM fetched; class worker served from', classWorkerURL)
 
             console.log('[FFmpeg] Loading into FFmpeg instance...')
 
