@@ -22,33 +22,30 @@ const nextConfig = {
         ],
     },
     // Headers for FFmpeg WASM (requires SharedArrayBuffer)
-    // Using 'credentialless' instead of 'require-corp' to allow loading external resources
+    // Using 'credentialless' instead of 'require-corp' to allow loading external resources.
+    // Under COEP, even same-origin resources need CORP — without it, the
+    // FFmpeg class worker at /ffmpeg-runtime/worker.js is blocked silently
+    // (no error, just never executes), so we set CORP on that path too.
     async headers() {
+        const coepHeaders = [
+            { key: 'Cross-Origin-Opener-Policy', value: 'same-origin' },
+            { key: 'Cross-Origin-Embedder-Policy', value: 'credentialless' },
+        ];
         return [
             {
                 source: '/concepts/avatar-forge/avatar-studio',
-                headers: [
-                    {
-                        key: 'Cross-Origin-Opener-Policy',
-                        value: 'same-origin',
-                    },
-                    {
-                        key: 'Cross-Origin-Embedder-Policy',
-                        value: 'credentialless',
-                    },
-                ],
+                headers: coepHeaders,
             },
             {
                 source: '/concepts/avatar-forge/avatar-studio/:path*',
+                headers: coepHeaders,
+            },
+            {
+                source: '/ffmpeg-runtime/:path*',
                 headers: [
-                    {
-                        key: 'Cross-Origin-Opener-Policy',
-                        value: 'same-origin',
-                    },
-                    {
-                        key: 'Cross-Origin-Embedder-Policy',
-                        value: 'credentialless',
-                    },
+                    { key: 'Cross-Origin-Resource-Policy', value: 'same-origin' },
+                    { key: 'Cross-Origin-Embedder-Policy', value: 'credentialless' },
+                    { key: 'Content-Type', value: 'text/javascript; charset=utf-8' },
                 ],
             },
         ];
