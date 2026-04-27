@@ -7,6 +7,10 @@ import { HiOutlineFilm } from 'react-icons/hi'
 import { ASPECT_RATIOS } from '../types'
 import type { AspectRatio } from '../types'
 import { useAvatarStudioStore } from '../_store/avatarStudioStore'
+import {
+    getDurationOptionsForProvider,
+    clampDurationForProvider,
+} from '../_utils/providerCapabilities'
 
 interface ContinueVideoDialogProps {
     isOpen: boolean
@@ -39,7 +43,7 @@ const ContinueVideoDialog = ({
     onClose,
     onConfirm,
 }: ContinueVideoDialogProps) => {
-    const { providers, activeProviderId, setActiveProviderId } = useAvatarStudioStore()
+    const { providers, activeProviderId, setActiveProviderId, videoDuration, setVideoDuration } = useAvatarStudioStore()
 
     const videoProviders = useMemo(
         () => providers.filter((p) => p.supports_video && p.is_active !== false),
@@ -50,7 +54,17 @@ const ContinueVideoDialog = ({
     const [dialogue, setDialogue] = useState('')
     const [aspectRatio, setAspectRatio] = useState<AspectRatio>('16:9')
     const [selectedProviderId, setSelectedProviderId] = useState<string | null>(null)
+    const [selectedDuration, setSelectedDuration] = useState<number>(5)
     const [showOriginal, setShowOriginal] = useState(false)
+
+    const selectedProvider = useMemo(
+        () => videoProviders.find((p) => p.id === selectedProviderId) ?? null,
+        [videoProviders, selectedProviderId],
+    )
+    const durationOptions = useMemo(
+        () => getDurationOptionsForProvider(selectedProvider),
+        [selectedProvider],
+    )
 
     useEffect(() => {
         if (isOpen) {
@@ -65,26 +79,39 @@ const ContinueVideoDialog = ({
             const activeIsVideo = activeProviderId
                 ? videoProviders.some((p) => p.id === activeProviderId)
                 : false
-            setSelectedProviderId(
-                activeIsVideo ? activeProviderId : videoProviders[0]?.id ?? null,
-            )
+            const initialProviderId = activeIsVideo
+                ? activeProviderId
+                : videoProviders[0]?.id ?? null
+            setSelectedProviderId(initialProviderId)
+            const initialProvider = initialProviderId
+                ? videoProviders.find((p) => p.id === initialProviderId) ?? null
+                : null
+            setSelectedDuration(clampDurationForProvider(initialProvider, videoDuration))
         } else {
             setEditablePrompt('')
             setDialogue('')
             setShowOriginal(false)
         }
-    }, [isOpen, originalPrompt, originalDialogue, originalAspectRatio, activeProviderId, videoProviders])
+    }, [isOpen, originalPrompt, originalDialogue, originalAspectRatio, activeProviderId, videoProviders, videoDuration])
+
+    // When the user switches provider, snap duration to the closest valid value.
+    useEffect(() => {
+        setSelectedDuration((prev) => clampDurationForProvider(selectedProvider, prev))
+    }, [selectedProvider])
 
     const handleConfirm = useCallback(() => {
         const cleanPrompt = editablePrompt.trim()
         if (!cleanPrompt) return
-        // Apply provider selection globally before triggering generation —
-        // handleGenerate downstream reads from activeProviderId.
+        // Commit provider + duration selection to the store BEFORE invoking
+        // onConfirm so handleGenerate downstream reads the latest values.
         if (selectedProviderId && selectedProviderId !== activeProviderId) {
             setActiveProviderId(selectedProviderId)
         }
+        if (selectedDuration !== videoDuration) {
+            setVideoDuration(selectedDuration)
+        }
         onConfirm(cleanPrompt, dialogue.trim(), aspectRatio)
-    }, [editablePrompt, dialogue, aspectRatio, selectedProviderId, activeProviderId, setActiveProviderId, onConfirm])
+    }, [editablePrompt, dialogue, aspectRatio, selectedProviderId, activeProviderId, setActiveProviderId, selectedDuration, videoDuration, setVideoDuration, onConfirm])
 
     const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
         if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
@@ -184,6 +211,33 @@ const ContinueVideoDialog = ({
                                 </button>
                             ))}
                         </div>
+                    </div>
+
+                    {/* Duration Selector — options adapt to the selected model. */}
+                    <div>
+                        <label className="text-sm font-medium text-gray-700 dark:text-gray-200 mb-2 block">
+                            Duration
+                        </label>
+                        <div className="flex gap-2 flex-wrap">
+                            {durationOptions.map((d) => (
+                                <button
+                                    key={d}
+                                    onClick={() => setSelectedDuration(d)}
+                                    className={`px-3 py-1.5 text-xs rounded-lg border transition-colors ${
+                                        selectedDuration === d
+                                            ? 'border-purple-500 bg-purple-50 dark:bg-purple-500/20 text-purple-700 dark:text-purple-200 font-medium'
+                                            : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'
+                                    }`}
+                                >
+                                    {d}s
+                                </button>
+                            ))}
+                        </div>
+                        {durationOptions.length === 1 && (
+                            <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">
+                                This model uses a fixed duration.
+                            </p>
+                        )}
                     </div>
 
                     {/* Dialogue Input */}

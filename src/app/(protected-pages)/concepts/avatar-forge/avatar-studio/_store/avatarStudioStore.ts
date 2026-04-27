@@ -112,6 +112,11 @@ interface AvatarStudioState {
     klingKeepOriginalSound: boolean
     klingMotionDuration: '5' | '10' // Video duration in seconds
 
+    // Video duration in seconds applied to ANIMATE / AVATAR-mode video
+    // generation. Valid range depends on the active provider — see
+    // getDurationOptionsForProvider() in providerCapabilities.ts.
+    videoDuration: number
+
     // Provider
     providers: AIProvider[]
     activeProviderId: string | null
@@ -239,6 +244,7 @@ interface AvatarStudioState {
     setKlingMotionOrientation: (orientation: KlingMotionOrientation) => void
     setKlingKeepOriginalSound: (keep: boolean) => void
     setKlingMotionDuration: (duration: '5' | '10') => void
+    setVideoDuration: (seconds: number) => void
 
     // Actions - Provider
     setProviders: (providers: AIProvider[]) => void
@@ -384,6 +390,7 @@ const initialState = {
     klingMotionOrientation: 'video' as KlingMotionOrientation,
     klingKeepOriginalSound: false,
     klingMotionDuration: '5' as '5' | '10',
+    videoDuration: 5,
 
     providers: [],
     activeProviderId: null,
@@ -643,6 +650,7 @@ export const useAvatarStudioStore = create<AvatarStudioState>()(
     setKlingMotionOrientation: (orientation) => set({ klingMotionOrientation: orientation }),
     setKlingKeepOriginalSound: (keep) => set({ klingKeepOriginalSound: keep }),
     setKlingMotionDuration: (duration) => set({ klingMotionDuration: duration }),
+    setVideoDuration: (seconds) => set({ videoDuration: seconds }),
 
     // Actions - Provider
     setProviders: (providers) => set({ providers }),

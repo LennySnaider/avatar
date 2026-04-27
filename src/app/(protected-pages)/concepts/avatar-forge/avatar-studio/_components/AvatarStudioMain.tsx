@@ -74,6 +74,7 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
         videoSubMode,
         aspectRatio,
         videoResolution,
+        videoDuration,
         cameraMotion,
         cameraShot,
         cameraAngle,
@@ -564,7 +565,7 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                                 prompt: fullPrompt,
                                 imageInput: optimizedVideoInput,
                                 aspectRatio,
-                                duration: '5',
+                                duration: String(videoDuration) as '5' | '10',
                                 modelName: activeProvider?.model || 'kling-v1-6',
                             })
                         }
@@ -584,7 +585,7 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                             firstFrameImage: optimizedVideoInput,
                             model: activeProvider.model || 'veo-3.1/text-to-video',
                             aspectRatio,
-                            duration: 5,
+                            duration: videoDuration,
                             resolution: videoResolution,
                         })
                     } else {
@@ -636,7 +637,7 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                                 prompt: fullPrompt,
                                 avatarImage: avatarInput,
                                 aspectRatio,
-                                duration: '5',
+                                duration: String(videoDuration) as '5' | '10',
                                 modelName: activeProvider?.model || 'kling-v1-6',
                             })
                         }
@@ -672,7 +673,7 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                             firstFrameImage: firstRef,
                             model: activeProvider.model || 'veo-3.1/text-to-video',
                             aspectRatio,
-                            duration: 5,
+                            duration: videoDuration,
                             resolution: videoResolution,
                         })
                     } else {
@@ -743,6 +744,7 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
         angleRef,
         videoInputImage,
         aspectRatio,
+        videoDuration,
         cameraShot,
         cameraAngle,
         cinemaLens,
