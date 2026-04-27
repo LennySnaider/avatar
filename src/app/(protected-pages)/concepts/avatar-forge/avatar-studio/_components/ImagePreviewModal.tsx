@@ -28,6 +28,10 @@ import {
     HiOutlinePhotograph,
     HiOutlineX,
     HiOutlineCamera,
+    HiOutlineRewind,
+    HiOutlineFastForward,
+    HiOutlineChevronDoubleLeft,
+    HiOutlineChevronDoubleRight,
 } from 'react-icons/hi'
 import { HiOutlineArrowUturnLeft, HiOutlineArrowUturnRight } from 'react-icons/hi2'
 import Tooltip from '@/components/ui/Tooltip'
@@ -70,6 +74,8 @@ const ImagePreviewModal = ({
     const [maskCanvas, setMaskCanvas] = useState<string | null>(null)
     const [isSubmittingEdit, setIsSubmittingEdit] = useState(false)
     const [isPlaying, setIsPlaying] = useState(false)
+    const [videoCurrentTime, setVideoCurrentTime] = useState(0)
+    const [videoDuration, setVideoDuration] = useState(0)
     const [brushSize, setBrushSize] = useState(30)
     const [editAspectRatio, setEditAspectRatio] = useState<AspectRatio>('1:1')
     const [editProviderId, setEditProviderId] = useState<string | null>(null)
@@ -622,6 +628,50 @@ const ImagePreviewModal = ({
         setIsPlaying(!isPlaying)
     }
 
+    // Video transport: scrub, step (1/30s ≈ one frame at 30fps), jump.
+    const VIDEO_FRAME_STEP = 1 / 30
+    const formatVideoTime = (seconds: number) => {
+        if (!isFinite(seconds)) return '0:00'
+        const m = Math.floor(seconds / 60)
+        const s = Math.floor(seconds % 60).toString().padStart(2, '0')
+        return `${m}:${s}`
+    }
+    const handleVideoScrub = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const t = Number(e.target.value)
+        if (videoRef.current) videoRef.current.currentTime = t
+        setVideoCurrentTime(t)
+    }
+    const stepVideoFrame = (direction: -1 | 1) => {
+        const v = videoRef.current
+        if (!v || !videoDuration) return
+        if (!v.paused) {
+            v.pause()
+            setIsPlaying(false)
+        }
+        const next = Math.max(0, Math.min(videoDuration, v.currentTime + direction * VIDEO_FRAME_STEP))
+        v.currentTime = next
+        setVideoCurrentTime(next)
+    }
+    const jumpVideoTo = (time: number) => {
+        const v = videoRef.current
+        if (!v) return
+        if (!v.paused) {
+            v.pause()
+            setIsPlaying(false)
+        }
+        v.currentTime = time
+        setVideoCurrentTime(time)
+    }
+    const handleVideoLoadedMetadata = () => {
+        const v = videoRef.current
+        if (!v) return
+        setVideoDuration(v.duration)
+        setVideoCurrentTime(v.currentTime)
+    }
+    const handleVideoTimeUpdate = () => {
+        setVideoCurrentTime(videoRef.current?.currentTime ?? 0)
+    }
+
     // Open the frame extractor — user picks the exact frame they want before
     // we open the Continue dialog. The previous behaviour of grabbing the
     // currently-paused frame was unreliable for users who never paused at the
@@ -782,26 +832,85 @@ const ImagePreviewModal = ({
                         className="relative max-h-full max-w-full"
                     >
                         {previewMedia.mediaType === 'VIDEO' ? (
-                            <div className="relative">
-                                <video
-                                    ref={videoRef}
-                                    src={previewMedia.url}
-                                    crossOrigin="anonymous"
-                                    className="max-h-[60vh] rounded-lg"
-                                    controls={false}
-                                    loop
-                                    onClick={togglePlayback}
-                                />
-                                <button
-                                    onClick={togglePlayback}
-                                    className="absolute inset-0 flex items-center justify-center bg-black/30 opacity-0 hover:opacity-100 transition-opacity"
-                                >
-                                    {isPlaying ? (
-                                        <HiOutlinePause className="w-16 h-16 text-white" />
-                                    ) : (
-                                        <HiOutlinePlay className="w-16 h-16 text-white" />
-                                    )}
-                                </button>
+                            <div className="flex flex-col items-center gap-3">
+                                <div className="relative">
+                                    <video
+                                        ref={videoRef}
+                                        src={previewMedia.url}
+                                        crossOrigin="anonymous"
+                                        className="max-h-[55vh] rounded-lg"
+                                        controls={false}
+                                        loop
+                                        onClick={togglePlayback}
+                                        onLoadedMetadata={handleVideoLoadedMetadata}
+                                        onTimeUpdate={handleVideoTimeUpdate}
+                                        onPlay={() => setIsPlaying(true)}
+                                        onPause={() => setIsPlaying(false)}
+                                        onEnded={() => setIsPlaying(false)}
+                                    />
+                                    <button
+                                        onClick={togglePlayback}
+                                        className="absolute inset-0 flex items-center justify-center bg-black/30 opacity-0 hover:opacity-100 transition-opacity"
+                                    >
+                                        {isPlaying ? (
+                                            <HiOutlinePause className="w-16 h-16 text-white" />
+                                        ) : (
+                                            <HiOutlinePlay className="w-16 h-16 text-white" />
+                                        )}
+                                    </button>
+                                </div>
+
+                                {/* Transport controls */}
+                                <div className="flex items-center gap-2 w-full max-w-[700px] px-2">
+                                    <button
+                                        onClick={() => jumpVideoTo(0)}
+                                        title="Jump to start"
+                                        className="p-2 rounded-lg hover:bg-white/10 text-gray-300"
+                                    >
+                                        <HiOutlineChevronDoubleLeft className="w-5 h-5" />
+                                    </button>
+                                    <button
+                                        onClick={() => stepVideoFrame(-1)}
+                                        title="Previous frame"
+                                        className="p-2 rounded-lg hover:bg-white/10 text-gray-300"
+                                    >
+                                        <HiOutlineRewind className="w-5 h-5" />
+                                    </button>
+                                    <button
+                                        onClick={togglePlayback}
+                                        title={isPlaying ? 'Pause' : 'Play'}
+                                        className="w-10 h-10 rounded-full bg-purple-500/20 hover:bg-purple-500/30 text-purple-200 flex items-center justify-center"
+                                    >
+                                        {isPlaying ? <HiOutlinePause className="w-5 h-5" /> : <HiOutlinePlay className="w-5 h-5" />}
+                                    </button>
+                                    <button
+                                        onClick={() => stepVideoFrame(1)}
+                                        title="Next frame"
+                                        className="p-2 rounded-lg hover:bg-white/10 text-gray-300"
+                                    >
+                                        <HiOutlineFastForward className="w-5 h-5" />
+                                    </button>
+                                    <button
+                                        onClick={() => jumpVideoTo(Math.max(0, videoDuration - VIDEO_FRAME_STEP))}
+                                        title="Jump to end"
+                                        className="p-2 rounded-lg hover:bg-white/10 text-gray-300"
+                                    >
+                                        <HiOutlineChevronDoubleRight className="w-5 h-5" />
+                                    </button>
+                                    <input
+                                        type="range"
+                                        min={0}
+                                        max={videoDuration || 0}
+                                        step={0.01}
+                                        value={Math.min(videoCurrentTime, videoDuration || 0)}
+                                        onChange={handleVideoScrub}
+                                        className="flex-1 accent-purple-500"
+                                        disabled={!videoDuration}
+                                    />
+                                    <span className="text-xs text-gray-300 tabular-nums w-20 text-right">
+                                        {formatVideoTime(videoCurrentTime)} / {formatVideoTime(videoDuration)}
+                                    </span>
+                                </div>
                             </div>
                         ) : (
                             <div
