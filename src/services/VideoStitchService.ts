@@ -133,7 +133,13 @@ async function fetchVideoData(url: string): Promise<Uint8Array> {
 }
 
 /**
- * Concatenate multiple videos into one
+ * Concatenate multiple videos into one. Always re-encodes via libx264/aac
+ * because the previous "-c copy" fast path produced freezing output when
+ * the inputs had divergent DTS timelines (very common with provider-mixed
+ * videos — e.g. Kling + KIE — even when codecs nominally match). The
+ * non-monotonous DTS warnings end up baked into the muxed output and the
+ * player stalls on the last frame of the first segment.
+ *
  * @param videoUrls Array of video URLs to concatenate (in order)
  * @param onProgress Progress callback (0-100)
  * @returns Blob URL of the concatenated video
@@ -152,14 +158,12 @@ export async function stitchVideos(
     const ff = await loadFFmpeg()
     onProgress?.(10)
 
-    // Set up progress handler
     ff.on('progress', ({ progress }) => {
         const percent = 40 + Math.round(progress * 50) // 40-90%
         onProgress?.(percent)
     })
 
     try {
-        // Download all videos and write them to FFmpeg's virtual filesystem
         const inputFiles: string[] = []
 
         for (let i = 0; i < videoUrls.length; i++) {
@@ -178,21 +182,23 @@ export async function stitchVideos(
 
         onProgress?.(35)
 
-        // Create concat file list
         const concatList = inputFiles.map(f => `file '${f}'`).join('\n')
         console.log('[FFmpeg] Concat list:', concatList)
         await ff.writeFile('concat.txt', concatList)
 
         onProgress?.(40)
 
-        console.log('[FFmpeg] Running concat command...')
+        console.log('[FFmpeg] Running concat + re-encode command...')
 
-        // Run FFmpeg concat command
         await ff.exec([
             '-f', 'concat',
             '-safe', '0',
             '-i', 'concat.txt',
-            '-c', 'copy',
+            '-c:v', 'libx264',
+            '-preset', 'ultrafast',
+            '-crf', '23',
+            '-c:a', 'aac',
+            '-b:a', '128k',
             '-movflags', '+faststart',
             'output.mp4'
         ])
@@ -200,14 +206,12 @@ export async function stitchVideos(
         console.log('[FFmpeg] Concat complete, reading output...')
         onProgress?.(90)
 
-        // Read the output file
         const data = await ff.readFile('output.mp4')
         const blob = new Blob([data as BlobPart], { type: 'video/mp4' })
         const url = URL.createObjectURL(blob)
 
         console.log('[FFmpeg] Output URL created:', url)
 
-        // Clean up files
         console.log('[FFmpeg] Cleaning up temporary files...')
         for (const file of inputFiles) {
             await ff.deleteFile(file)
@@ -225,72 +229,6 @@ export async function stitchVideos(
     }
 }
 
-/**
- * Re-encode and concatenate videos (slower but more compatible)
- * Use this if the fast method fails due to codec incompatibility
- */
-export async function stitchVideosWithReencode(
-    videoUrls: string[],
-    onProgress?: (progress: number) => void
-): Promise<string> {
-    if (videoUrls.length < 2) {
-        throw new Error('At least 2 videos are required for stitching')
-    }
-
-    const ff = await loadFFmpeg()
-
-    ff.on('progress', ({ progress }) => {
-        onProgress?.(30 + Math.round(progress * 60)) // 30-90%
-    })
-
-    try {
-        const inputFiles: string[] = []
-
-        for (let i = 0; i < videoUrls.length; i++) {
-            const filename = `input${i}.mp4`
-            inputFiles.push(filename)
-
-            onProgress?.(Math.round((i / videoUrls.length) * 30))
-
-            const videoData = await fetchVideoData(videoUrls[i])
-            await ff.writeFile(filename, videoData)
-        }
-
-        const concatList = inputFiles.map(f => `file '${f}'`).join('\n')
-        await ff.writeFile('concat.txt', concatList)
-
-        // Re-encode with common settings for better compatibility
-        await ff.exec([
-            '-f', 'concat',
-            '-safe', '0',
-            '-i', 'concat.txt',
-            '-c:v', 'libx264',
-            '-preset', 'fast',
-            '-crf', '23',
-            '-c:a', 'aac',
-            '-b:a', '128k',
-            '-movflags', '+faststart',
-            'output.mp4'
-        ])
-
-        onProgress?.(95)
-
-        const data = await ff.readFile('output.mp4')
-        const blob = new Blob([data as BlobPart], { type: 'video/mp4' })
-        const url = URL.createObjectURL(blob)
-
-        // Clean up
-        for (const file of inputFiles) {
-            await ff.deleteFile(file)
-        }
-        await ff.deleteFile('concat.txt')
-        await ff.deleteFile('output.mp4')
-
-        onProgress?.(100)
-
-        return url
-    } catch (error) {
-        console.error('[FFmpeg] Stitch with re-encode error:', error)
-        throw new Error('Failed to stitch videos')
-    }
-}
+// Legacy alias for callers that imported the explicit re-encode variant.
+// Re-encoding is now the only path — see comment on stitchVideos.
+export const stitchVideosWithReencode = stitchVideos
