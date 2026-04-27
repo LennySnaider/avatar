@@ -185,18 +185,32 @@ export async function stitchVideos(
         // Use the concat FILTER instead of the concat demuxer. The demuxer
         // pastes input bitstreams together at the byte level, which breaks
         // re-encoding because the decoder reads frames across the boundary
-        // with mismatched SPS/PPS — the second clip "decodes" as garbage and
-        // the encoder bails out, producing an output that ends at the first
-        // clip. The filter decodes each input independently, normalises PTS
-        // so each clip starts at zero, and concatenates decoded frames
-        // before re-encoding. Slower per frame but always produces a valid
-        // continuous output regardless of timebase / SPS differences.
+        // with mismatched SPS/PPS. The filter decodes each input
+        // independently, normalises every stream to a common shape, and
+        // concatenates decoded frames before re-encoding. Always produces
+        // a valid output regardless of input differences.
+        //
+        // Each video stream is forced to 720x1280 / 24fps / yuv420p / SAR 1
+        // and each audio stream to 44100Hz stereo fltp. Without this
+        // normalisation the concat filter rejects inputs whose params don't
+        // match exactly — even 2 pixels of height difference (e.g. Kling's
+        // 716x1284 vs another 716x1286 output) is enough to kill it.
+        const TARGET_W = 720
+        const TARGET_H = 1280
+        const TARGET_FPS = 24
         const N = videoUrls.length
         const filterChainParts: string[] = []
         const concatInputs: string[] = []
         for (let i = 0; i < N; i++) {
-            filterChainParts.push(`[${i}:v]setpts=PTS-STARTPTS[v${i}]`)
-            filterChainParts.push(`[${i}:a]asetpts=PTS-STARTPTS[a${i}]`)
+            filterChainParts.push(
+                `[${i}:v]scale=${TARGET_W}:${TARGET_H}:force_original_aspect_ratio=decrease,` +
+                `pad=${TARGET_W}:${TARGET_H}:(ow-iw)/2:(oh-ih)/2,` +
+                `setsar=1,fps=${TARGET_FPS},format=yuv420p,setpts=PTS-STARTPTS[v${i}]`,
+            )
+            filterChainParts.push(
+                `[${i}:a]aresample=44100,aformat=sample_fmts=fltp:channel_layouts=stereo,` +
+                `asetpts=PTS-STARTPTS[a${i}]`,
+            )
             concatInputs.push(`[v${i}][a${i}]`)
         }
         const filterComplex =
@@ -211,7 +225,7 @@ export async function stitchVideos(
         console.log('[FFmpeg] Running concat-filter + re-encode command...')
         console.log('[FFmpeg] filter_complex:', filterComplex)
 
-        await ff.exec([
+        const exitCode = await ff.exec([
             ...inputArgs,
             '-filter_complex', filterComplex,
             '-map', '[v]',
@@ -224,6 +238,14 @@ export async function stitchVideos(
             '-movflags', '+faststart',
             'output.mp4'
         ])
+
+        if (exitCode !== 0) {
+            // Best-effort cleanup so the next attempt starts fresh.
+            for (const f of inputFiles) {
+                try { await ff.deleteFile(f) } catch { /* ignore */ }
+            }
+            throw new Error(`FFmpeg exited with code ${exitCode}. See [FFmpeg Log] lines above for the underlying cause.`)
+        }
 
         console.log('[FFmpeg] Concat complete, reading output...')
         onProgress?.(90)
