@@ -405,8 +405,10 @@ async function generateImageGpt4o(params: GenerateImageKieParams): Promise<{ url
     const intervalMs = 3000
     const startedAt = Date.now()
     let resultUrl: string | undefined
+    let pollNum = 0
 
     while (Date.now() - startedAt < budgetMs) {
+        pollNum++
         let res: Response
         try {
             res = await fetchWithAbort(
@@ -440,12 +442,28 @@ async function generateImageGpt4o(params: GenerateImageKieParams): Promise<{ url
         const flag = json.data?.successFlag
         const urls = json.data?.response?.resultUrls
 
+        if (pollNum === 1) {
+            console.log(`[KIE/GPT4o] first poll data: ${JSON.stringify(json.data).slice(0, 500)}`)
+        }
+        console.log(`[KIE/GPT4o] poll #${pollNum}: flag=${flag}, hasUrl=${!!(urls && urls.length)}`)
+
         if (flag === 1 && urls && urls.length > 0) {
             resultUrl = urls[0]
             break
         }
         if (flag === 2 || flag === 3) {
-            throw new Error(`KIE GPT4o failed (flag=${flag}): ${json.data.errorMessage || 'Unknown'}`)
+            // KIE proxies OpenAI for GPT 4o Image. When OpenAI's safety system
+            // refuses the request (people in revealing clothing, near-nudity,
+            // suggestive prompts, copyrighted likenesses, etc.), KIE relays it
+            // back as flag=3 with errorMessage "Internal Error" — opaque on
+            // purpose to avoid teaching users how to bypass moderation.
+            const code = json.data?.errorCode
+            const message = json.data?.errorMessage || 'Unknown'
+            const looksLikeModeration = /internal error/i.test(message) && !code
+            const hint = looksLikeModeration
+                ? ' (likely OpenAI content policy — try Flux Kontext for outfit/swimwear edits)'
+                : ''
+            throw new Error(`KIE GPT4o failed (flag=${flag}, code=${code || 'n/a'}): ${message}${hint}`)
         }
         await new Promise(resolve => setTimeout(resolve, intervalMs))
     }
