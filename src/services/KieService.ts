@@ -304,13 +304,14 @@ async function generateImageFluxKontext(params: GenerateImageKieParams): Promise
         }
         const json: KieFluxKontextRecordInfoResponse = await res.json()
         const flag = json.data?.successFlag
+        const url = json.data?.response?.resultImageUrl
 
-        if (flag === 1 && json.data.resultImageUrl) {
-            resultUrl = json.data.resultImageUrl
+        if (flag === 1 && url) {
+            resultUrl = url
             break
         }
         if (flag === 2 || flag === 3) {
-            throw new Error(`KIE Flux Kontext failed (flag=${flag}): ${json.data.errorMessage || 'Unknown'}`)
+            throw new Error(`KIE Flux Kontext failed (flag=${flag}): ${json.data?.errorMessage || json.data?.errorCode || 'Unknown'}`)
         }
         await new Promise(resolve => setTimeout(resolve, intervalMs))
     }

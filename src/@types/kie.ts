@@ -65,8 +65,13 @@ export interface KieFluxKontextRecordInfoResponse {
     data: {
         taskId: string
         successFlag: KieFluxKontextSuccessFlag
-        resultImageUrl?: string
-        originImageUrl?: string
+        // Per KIE docs: resultImageUrl + originImageUrl live INSIDE `response`,
+        // not at the top level of `data`.
+        response?: {
+            resultImageUrl?: string
+            originImageUrl?: string
+        }
         errorMessage?: string
+        errorCode?: string
     }
 }
