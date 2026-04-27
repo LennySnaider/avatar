@@ -289,6 +289,80 @@ export async function enhancePrompt(
     }
 }
 
+/**
+ * Generate a CONTINUATION prompt for the next clip in a video sequence.
+ * Receives the last frame of the previous clip plus the prompt that
+ * produced it (and optionally any spoken dialogue), and returns a short
+ * scene-direction-style prompt that describes what should plausibly
+ * happen next — preserving subject identity, framing continuity and
+ * narrative flow.
+ */
+export async function generateContinuationPrompt(params: {
+    frame: ImageData
+    originalPrompt?: string
+    originalDialogue?: string
+}): Promise<string> {
+    const { frame, originalPrompt, originalDialogue } = params
+    const apiKey = getApiKey()
+    const ai = new GoogleGenAI({ apiKey })
+
+    const instructions = `
+You are a cinematographer-screenwriter writing the prompt for the NEXT clip
+in a continuing AI-generated video sequence.
+
+INPUTS:
+- The image provided is the LAST frame of the clip just produced.
+- Original prompt (what produced the previous clip): ${originalPrompt ? `"${originalPrompt}"` : '(unknown — infer from the image)'}
+${originalDialogue ? `- Dialogue spoken in the previous clip: "${originalDialogue}"` : ''}
+
+YOUR JOB:
+Write the prompt for the NEXT 5–10 seconds of action. The new clip starts
+exactly at the frame shown, so the subject's pose, position, framing and
+environment must continue seamlessly. Describe the natural, plausible
+next motion or beat — no jarring cuts, no scene changes, no new characters.
+
+GUIDELINES:
+1. Begin from the exact pose and position visible in the frame.
+2. Describe a single coherent action that unfolds smoothly over 5–10s.
+3. Mention camera behaviour only if motion is intentional (e.g. slow push-in,
+   slight pan to follow the subject). Otherwise default to "camera fija" /
+   "static camera".
+4. Lighting and environment must match the frame.
+5. Length: 1–2 sentences, scene-direction style. No intro, no quotes,
+   no markdown.
+6. SAFETY: avoid the trigger vocabulary "bikini", "strapless", "lingerie",
+   "bralette" — use "swim top", "off-shoulder", "loungewear", "fitted top".
+7. Match the LANGUAGE of the original prompt when present (Spanish if the
+   original was Spanish, English otherwise).
+
+Output ONLY the prompt string for the next clip.
+    `.trim()
+
+    try {
+        const response = await ai.models.generateContent({
+            model: 'gemini-2.5-flash',
+            contents: {
+                parts: [
+                    {
+                        inlineData: {
+                            mimeType: frame.mimeType,
+                            data: cleanBase64Data(frame.base64),
+                        },
+                    },
+                    { text: instructions },
+                ],
+            },
+        })
+        const text = response.text?.trim()
+        if (!text) throw new Error('Empty continuation prompt')
+        // Strip any markdown wrappers the model occasionally adds.
+        return text.replace(/^["'`]+|["'`]+$/g, '').trim()
+    } catch (e) {
+        console.error('[GeminiService] generateContinuationPrompt failed:', e)
+        throw new Error('Failed to generate continuation prompt')
+    }
+}
+
 // =============================================
 // IMAGE DESCRIPTION
 // =============================================

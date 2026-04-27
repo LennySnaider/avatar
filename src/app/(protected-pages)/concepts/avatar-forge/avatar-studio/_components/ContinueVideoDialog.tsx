@@ -3,7 +3,8 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import Dialog from '@/components/ui/Dialog'
 import Button from '@/components/ui/Button'
-import { HiOutlineFilm } from 'react-icons/hi'
+import { HiOutlineFilm, HiOutlineSparkles } from 'react-icons/hi'
+import { generateContinuationPrompt } from '@/services/GeminiService'
 import { ASPECT_RATIOS } from '../types'
 import type { AspectRatio, VideoResolution } from '../types'
 import { useAvatarStudioStore } from '../_store/avatarStudioStore'
@@ -67,6 +68,8 @@ const ContinueVideoDialog = ({
     const [selectedDuration, setSelectedDuration] = useState<number>(5)
     const [selectedResolution, setSelectedResolution] = useState<VideoResolution>('720p')
     const [showOriginal, setShowOriginal] = useState(false)
+    const [isGeneratingAi, setIsGeneratingAi] = useState(false)
+    const [aiError, setAiError] = useState<string | null>(null)
 
     const selectedProvider = useMemo(
         () => videoProviders.find((p) => p.id === selectedProviderId) ?? null,
@@ -139,6 +142,36 @@ const ContinueVideoDialog = ({
             handleConfirm()
         }
     }, [handleConfirm])
+
+    // AI: ask Gemini to draft a continuation prompt based on the captured
+    // frame + the original prompt/dialogue. Replaces whatever is currently
+    // in the textarea so the user can iterate from a strong starting point.
+    const handleGenerateWithAi = useCallback(async () => {
+        if (!frameBase64) return
+        setIsGeneratingAi(true)
+        setAiError(null)
+        try {
+            const match = frameBase64.match(/^data:(.+);base64,(.+)$/)
+            if (!match) throw new Error('Captured frame has unexpected format')
+            const mimeType = match[1]
+            const base64 = match[2]
+            const suggestion = await generateContinuationPrompt({
+                frame: { base64, mimeType },
+                originalPrompt,
+                originalDialogue,
+            })
+            if (suggestion) setEditablePrompt(suggestion)
+        } catch (e) {
+            console.error('[ContinueVideoDialog] AI prompt generation failed:', e)
+            setAiError(
+                e instanceof Error
+                    ? e.message
+                    : 'Could not generate prompt — try again or write one manually.',
+            )
+        } finally {
+            setIsGeneratingAi(false)
+        }
+    }, [frameBase64, originalPrompt, originalDialogue])
 
     const canConfirm = editablePrompt.trim().length > 0 && !!selectedProviderId
 
@@ -304,9 +337,21 @@ const ContinueVideoDialog = ({
 
                     {/* Prompt Input */}
                     <div>
-                        <label className="text-sm font-medium text-gray-700 dark:text-gray-200 mb-2 block">
-                            Continuation Prompt
-                        </label>
+                        <div className="flex items-center justify-between mb-2">
+                            <label className="text-sm font-medium text-gray-700 dark:text-gray-200">
+                                Continuation Prompt
+                            </label>
+                            <button
+                                type="button"
+                                onClick={handleGenerateWithAi}
+                                disabled={isGeneratingAi || !frameBase64}
+                                className="flex items-center gap-1.5 px-2.5 py-1 text-xs rounded-lg border border-purple-300 dark:border-purple-500/40 bg-purple-50 dark:bg-purple-500/10 text-purple-700 dark:text-purple-200 hover:bg-purple-100 dark:hover:bg-purple-500/20 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                                title="Use the captured frame and original prompt to draft the next prompt"
+                            >
+                                <HiOutlineSparkles className={`w-3.5 h-3.5 ${isGeneratingAi ? 'animate-pulse' : ''}`} />
+                                {isGeneratingAi ? 'Generating…' : 'Generate with AI'}
+                            </button>
+                        </div>
                         <textarea
                             value={editablePrompt}
                             onChange={(e) => setEditablePrompt(e.target.value)}
@@ -316,6 +361,9 @@ const ContinueVideoDialog = ({
                             className="w-full p-3 border border-gray-300 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 resize-none text-sm text-gray-900 dark:text-gray-100 placeholder:text-gray-400 dark:placeholder:text-gray-500 focus:border-purple-500 focus:ring-2 focus:ring-purple-200 dark:focus:ring-purple-500/40 transition-all"
                             autoFocus
                         />
+                        {aiError && (
+                            <p className="text-xs text-red-500 dark:text-red-400 mt-1">{aiError}</p>
+                        )}
                         <div className="flex items-center justify-between mt-2">
                             <button
                                 onClick={() => setShowOriginal(!showOriginal)}
