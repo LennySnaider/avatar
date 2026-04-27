@@ -82,7 +82,13 @@ async function loadFFmpeg(): Promise<FFmpeg> {
                 fetchFromCdnWithFallback('@ffmpeg/core', FFMPEG_CORE_VERSION, 'esm', 'ffmpeg-core.js', 'text/javascript'),
                 fetchFromCdnWithFallback('@ffmpeg/core', FFMPEG_CORE_VERSION, 'esm', 'ffmpeg-core.wasm', 'application/wasm'),
             ])
-            const classWorkerURL = '/ffmpeg-runtime/worker.js'
+            // Must be absolute. @ffmpeg/ffmpeg does
+            // `new URL(classWorkerURL, import.meta.url)` and Next.js's bundle
+            // for `import.meta.url` resolves to a file:// stub, which makes a
+            // relative '/ffmpeg-runtime/worker.js' end up as
+            // file:///ffmpeg-runtime/worker.js — a SecurityError when the page
+            // is served over https://. Anchor explicitly to the page origin.
+            const classWorkerURL = `${window.location.origin}/ffmpeg-runtime/worker.js`
             console.log('[FFmpeg] Core (ESM), WASM fetched; class worker served from', classWorkerURL)
 
             console.log('[FFmpeg] Loading into FFmpeg instance...')
