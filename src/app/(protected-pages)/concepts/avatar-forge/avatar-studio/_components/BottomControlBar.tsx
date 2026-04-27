@@ -36,6 +36,12 @@ import {
     STYLE_CATEGORIES,
 } from '../types'
 import type { AspectRatio, CameraMotion, CameraShot, SubjectAction, VideoResolution } from '../types'
+import {
+    getDurationOptionsForProvider,
+    clampDurationForProvider,
+    getResolutionOptionsForProvider,
+    clampResolutionForProvider,
+} from '../_utils/providerCapabilities'
 import PromptTextareaWithTags from './PromptTextareaWithTags'
 import KlingVoiceControls from './KlingVoiceControls'
 import KlingMotionControlEditor from './KlingMotionControlEditor'
@@ -195,6 +201,8 @@ const BottomControlBar = ({
         setAspectRatio,
         videoResolution,
         setVideoResolution,
+        videoDuration,
+        setVideoDuration,
         cameraMotion,
         setCameraMotion,
         cameraShot,
@@ -250,6 +258,22 @@ const BottomControlBar = ({
     const activeProvider = getActiveProvider()
     const isKlingProvider = activeProvider?.type === 'KLING'
     const isKlingV26 = isKlingProvider && activeProvider?.model === 'kling-v2-6'
+
+    // Per-provider video capability menus. Resolution can be null when the
+    // provider doesn't expose a pixel choice (e.g. Kling) so the UI hides
+    // the dropdown entirely instead of showing values that get ignored.
+    const durationOptions = getDurationOptionsForProvider(activeProvider)
+    const resolutionOptions = getResolutionOptionsForProvider(activeProvider)
+
+    // Snap stale store values when the active provider changes so we never
+    // submit a duration / resolution the model rejects.
+    useEffect(() => {
+        const clampedDuration = clampDurationForProvider(activeProvider, videoDuration)
+        if (clampedDuration !== videoDuration) setVideoDuration(clampedDuration)
+        const clampedResolution = clampResolutionForProvider(activeProvider, videoResolution)
+        if (clampedResolution !== videoResolution) setVideoResolution(clampedResolution)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [activeProvider?.id])
 
     // Calculate refs count
     const refsCount = generalReferences.length + (faceRef ? 1 : 0)
@@ -1167,23 +1191,47 @@ const BottomControlBar = ({
                             </button>
                         </div>
 
-                        {/* Resolution */}
+                        {/* Resolution — only shown for providers that take a pixel resolution. */}
+                        {resolutionOptions && (
+                            <Dropdown
+                                placement="top-start"
+                                renderTitle={
+                                    <button className="px-2 py-1 text-xs bg-gray-100 dark:bg-gray-700 rounded hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors">
+                                        {videoResolution}
+                                    </button>
+                                }
+                            >
+                                {VIDEO_RESOLUTIONS.filter((r) => resolutionOptions.includes(r.value)).map((r) => (
+                                    <Dropdown.Item
+                                        key={r.value}
+                                        eventKey={r.value}
+                                        onClick={() => setVideoResolution(r.value)}
+                                        className={videoResolution === r.value ? 'bg-primary/10 text-primary' : ''}
+                                    >
+                                        {r.label}
+                                    </Dropdown.Item>
+                                ))}
+                            </Dropdown>
+                        )}
+
+                        {/* Duration — options adapt to the selected model. */}
                         <Dropdown
                             placement="top-start"
                             renderTitle={
-                                <button className="px-2 py-1 text-xs bg-gray-100 dark:bg-gray-700 rounded hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors">
-                                    {videoResolution}
+                                <button className="px-2 py-1 text-xs bg-gray-100 dark:bg-gray-700 rounded hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors flex items-center gap-1">
+                                    <span className="text-gray-500">Dur:</span>
+                                    <span>{videoDuration}s</span>
                                 </button>
                             }
                         >
-                            {VIDEO_RESOLUTIONS.map((r) => (
+                            {durationOptions.map((d) => (
                                 <Dropdown.Item
-                                    key={r.value}
-                                    eventKey={r.value}
-                                    onClick={() => setVideoResolution(r.value)}
-                                    className={videoResolution === r.value ? 'bg-primary/10 text-primary' : ''}
+                                    key={d}
+                                    eventKey={String(d)}
+                                    onClick={() => setVideoDuration(d)}
+                                    className={videoDuration === d ? 'bg-primary/10 text-primary' : ''}
                                 >
-                                    {r.label}
+                                    {d}s
                                 </Dropdown.Item>
                             ))}
                         </Dropdown>

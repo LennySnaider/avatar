@@ -5,11 +5,13 @@ import Dialog from '@/components/ui/Dialog'
 import Button from '@/components/ui/Button'
 import { HiOutlineFilm } from 'react-icons/hi'
 import { ASPECT_RATIOS } from '../types'
-import type { AspectRatio } from '../types'
+import type { AspectRatio, VideoResolution } from '../types'
 import { useAvatarStudioStore } from '../_store/avatarStudioStore'
 import {
     getDurationOptionsForProvider,
     clampDurationForProvider,
+    getResolutionOptionsForProvider,
+    clampResolutionForProvider,
 } from '../_utils/providerCapabilities'
 
 interface ContinueVideoDialogProps {
@@ -43,7 +45,15 @@ const ContinueVideoDialog = ({
     onClose,
     onConfirm,
 }: ContinueVideoDialogProps) => {
-    const { providers, activeProviderId, setActiveProviderId, videoDuration, setVideoDuration } = useAvatarStudioStore()
+    const {
+        providers,
+        activeProviderId,
+        setActiveProviderId,
+        videoDuration,
+        setVideoDuration,
+        videoResolution,
+        setVideoResolution,
+    } = useAvatarStudioStore()
 
     const videoProviders = useMemo(
         () => providers.filter((p) => p.supports_video && p.is_active !== false),
@@ -55,6 +65,7 @@ const ContinueVideoDialog = ({
     const [aspectRatio, setAspectRatio] = useState<AspectRatio>('16:9')
     const [selectedProviderId, setSelectedProviderId] = useState<string | null>(null)
     const [selectedDuration, setSelectedDuration] = useState<number>(5)
+    const [selectedResolution, setSelectedResolution] = useState<VideoResolution>('720p')
     const [showOriginal, setShowOriginal] = useState(false)
 
     const selectedProvider = useMemo(
@@ -63,6 +74,10 @@ const ContinueVideoDialog = ({
     )
     const durationOptions = useMemo(
         () => getDurationOptionsForProvider(selectedProvider),
+        [selectedProvider],
+    )
+    const resolutionOptions = useMemo(
+        () => getResolutionOptionsForProvider(selectedProvider),
         [selectedProvider],
     )
 
@@ -87,16 +102,18 @@ const ContinueVideoDialog = ({
                 ? videoProviders.find((p) => p.id === initialProviderId) ?? null
                 : null
             setSelectedDuration(clampDurationForProvider(initialProvider, videoDuration))
+            setSelectedResolution(clampResolutionForProvider(initialProvider, videoResolution))
         } else {
             setEditablePrompt('')
             setDialogue('')
             setShowOriginal(false)
         }
-    }, [isOpen, originalPrompt, originalDialogue, originalAspectRatio, activeProviderId, videoProviders, videoDuration])
+    }, [isOpen, originalPrompt, originalDialogue, originalAspectRatio, activeProviderId, videoProviders, videoDuration, videoResolution])
 
-    // When the user switches provider, snap duration to the closest valid value.
+    // When the user switches provider, snap duration + resolution to closest valid values.
     useEffect(() => {
         setSelectedDuration((prev) => clampDurationForProvider(selectedProvider, prev))
+        setSelectedResolution((prev) => clampResolutionForProvider(selectedProvider, prev))
     }, [selectedProvider])
 
     const handleConfirm = useCallback(() => {
@@ -110,8 +127,11 @@ const ContinueVideoDialog = ({
         if (selectedDuration !== videoDuration) {
             setVideoDuration(selectedDuration)
         }
+        if (selectedResolution !== videoResolution) {
+            setVideoResolution(selectedResolution)
+        }
         onConfirm(cleanPrompt, dialogue.trim(), aspectRatio)
-    }, [editablePrompt, dialogue, aspectRatio, selectedProviderId, activeProviderId, setActiveProviderId, selectedDuration, videoDuration, setVideoDuration, onConfirm])
+    }, [editablePrompt, dialogue, aspectRatio, selectedProviderId, activeProviderId, setActiveProviderId, selectedDuration, videoDuration, setVideoDuration, selectedResolution, videoResolution, setVideoResolution, onConfirm])
 
     const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
         if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
@@ -239,6 +259,30 @@ const ContinueVideoDialog = ({
                             </p>
                         )}
                     </div>
+
+                    {/* Resolution Selector — hidden for providers that don't expose pixel resolution. */}
+                    {resolutionOptions && (
+                        <div>
+                            <label className="text-sm font-medium text-gray-700 dark:text-gray-200 mb-2 block">
+                                Resolution
+                            </label>
+                            <div className="flex gap-2 flex-wrap">
+                                {resolutionOptions.map((r) => (
+                                    <button
+                                        key={r}
+                                        onClick={() => setSelectedResolution(r)}
+                                        className={`px-3 py-1.5 text-xs rounded-lg border transition-colors ${
+                                            selectedResolution === r
+                                                ? 'border-purple-500 bg-purple-50 dark:bg-purple-500/20 text-purple-700 dark:text-purple-200 font-medium'
+                                                : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'
+                                        }`}
+                                    >
+                                        {r}
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+                    )}
 
                     {/* Dialogue Input */}
                     <div>
