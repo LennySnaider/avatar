@@ -7,6 +7,7 @@ import Button from '@/components/ui/Button'
 import Input from '@/components/ui/Input'
 import Slider from '@/components/ui/Slider'
 import ContinueVideoDialog from './ContinueVideoDialog'
+import ExtractFrameDialog from './ExtractFrameDialog'
 import {
     HiOutlineDownload,
     HiOutlineChevronLeft,
@@ -84,6 +85,7 @@ const ImagePreviewModal = ({
     const [showApiPrompt, setShowApiPrompt] = useState(false)
     const [editAssets, setEditAssets] = useState<EditAsset[]>([])
     const [showContinueDialog, setShowContinueDialog] = useState(false)
+    const [showFrameExtractor, setShowFrameExtractor] = useState(false)
     const [capturedFrame, setCapturedFrame] = useState<string | null>(null)
 
     const canvasRef = useRef<HTMLCanvasElement>(null)
@@ -620,29 +622,25 @@ const ImagePreviewModal = ({
         setIsPlaying(!isPlaying)
     }
 
-    // Capture current frame of video for "Continue" functionality
+    // Open the frame extractor — user picks the exact frame they want before
+    // we open the Continue dialog. The previous behaviour of grabbing the
+    // currently-paused frame was unreliable for users who never paused at the
+    // moment they actually wanted as the seed.
     const captureFrame = useCallback(() => {
-        if (!videoRef.current || !previewMedia || !onContinueVideo) return
-
-        const video = videoRef.current
-
-        // Pause video if playing
-        if (!video.paused) {
-            video.pause()
+        if (!previewMedia || !onContinueVideo) return
+        if (!videoRef.current?.paused) {
+            videoRef.current?.pause()
             setIsPlaying(false)
         }
-
-        const canvas = document.createElement('canvas')
-        canvas.width = video.videoWidth
-        canvas.height = video.videoHeight
-        const ctx = canvas.getContext('2d')
-        if (!ctx) return
-
-        ctx.drawImage(video, 0, 0)
-        const frameBase64 = canvas.toDataURL('image/jpeg')
-        setCapturedFrame(frameBase64)
-        setShowContinueDialog(true)
+        setShowFrameExtractor(true)
     }, [previewMedia, onContinueVideo])
+
+    // Called when the extractor returns a captured frame.
+    const handleFrameExtracted = useCallback((frameBase64: string) => {
+        setCapturedFrame(frameBase64)
+        setShowFrameExtractor(false)
+        setShowContinueDialog(true)
+    }, [])
 
     // Capture current frame and download as image
     const captureFrameAsImage = useCallback(() => {
@@ -1259,6 +1257,14 @@ const ImagePreviewModal = ({
                     </div>
                 </div>
             </Dialog>
+
+            {/* Frame Extractor — runs before the Continue dialog */}
+            <ExtractFrameDialog
+                isOpen={showFrameExtractor}
+                videoUrl={previewMedia?.url || ''}
+                onClose={() => setShowFrameExtractor(false)}
+                onCapture={handleFrameExtracted}
+            />
 
             {/* Continue Video Dialog */}
             <ContinueVideoDialog
