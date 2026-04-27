@@ -182,18 +182,40 @@ export async function stitchVideos(
 
         onProgress?.(35)
 
-        const concatList = inputFiles.map(f => `file '${f}'`).join('\n')
-        console.log('[FFmpeg] Concat list:', concatList)
-        await ff.writeFile('concat.txt', concatList)
+        // Use the concat FILTER instead of the concat demuxer. The demuxer
+        // pastes input bitstreams together at the byte level, which breaks
+        // re-encoding because the decoder reads frames across the boundary
+        // with mismatched SPS/PPS — the second clip "decodes" as garbage and
+        // the encoder bails out, producing an output that ends at the first
+        // clip. The filter decodes each input independently, normalises PTS
+        // so each clip starts at zero, and concatenates decoded frames
+        // before re-encoding. Slower per frame but always produces a valid
+        // continuous output regardless of timebase / SPS differences.
+        const N = videoUrls.length
+        const filterChainParts: string[] = []
+        const concatInputs: string[] = []
+        for (let i = 0; i < N; i++) {
+            filterChainParts.push(`[${i}:v]setpts=PTS-STARTPTS[v${i}]`)
+            filterChainParts.push(`[${i}:a]asetpts=PTS-STARTPTS[a${i}]`)
+            concatInputs.push(`[v${i}][a${i}]`)
+        }
+        const filterComplex =
+            filterChainParts.join(';') +
+            `;${concatInputs.join('')}concat=n=${N}:v=1:a=1[v][a]`
+
+        const inputArgs: string[] = []
+        for (const f of inputFiles) inputArgs.push('-i', f)
 
         onProgress?.(40)
 
-        console.log('[FFmpeg] Running concat + re-encode command...')
+        console.log('[FFmpeg] Running concat-filter + re-encode command...')
+        console.log('[FFmpeg] filter_complex:', filterComplex)
 
         await ff.exec([
-            '-f', 'concat',
-            '-safe', '0',
-            '-i', 'concat.txt',
+            ...inputArgs,
+            '-filter_complex', filterComplex,
+            '-map', '[v]',
+            '-map', '[a]',
             '-c:v', 'libx264',
             '-preset', 'ultrafast',
             '-crf', '23',
@@ -216,7 +238,6 @@ export async function stitchVideos(
         for (const file of inputFiles) {
             await ff.deleteFile(file)
         }
-        await ff.deleteFile('concat.txt')
         await ff.deleteFile('output.mp4')
 
         onProgress?.(100)
