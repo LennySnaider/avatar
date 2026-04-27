@@ -182,6 +182,32 @@ export const DEFAULT_PROVIDERS: AIProvider[] = [
         api_key_env_var: 'MINIMAX_API_KEY',
         created_at: null,
     },
+    {
+        id: 'kie-seedance-2',
+        name: 'Seedance 2.0 (KIE)',
+        type: 'KIE' as ProviderType,
+        model: 'bytedance/seedance-2',
+        endpoint: 'https://api.kie.ai/api/v1',
+        is_active: true,
+        supports_image: false,
+        supports_video: true,
+        requires_api_key: true,
+        api_key_env_var: 'KIE_API_KEY',
+        created_at: null,
+    },
+    {
+        id: 'kie-wan-2-7',
+        name: 'Wan 2.7 i2v (KIE)',
+        type: 'KIE' as ProviderType,
+        model: 'wan/2-7-image-to-video',
+        endpoint: 'https://api.kie.ai/api/v1',
+        is_active: true,
+        supports_image: false,
+        supports_video: true,
+        requires_api_key: true,
+        api_key_env_var: 'KIE_API_KEY',
+        created_at: null,
+    },
 ]
 
 const ProviderManagerDrawer = () => {

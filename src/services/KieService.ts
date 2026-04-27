@@ -477,11 +477,20 @@ async function generateImageGpt4o(params: GenerateImageKieParams): Promise<{ url
 }
 
 /**
- * Generate a video via KIE AI. Submits task → polls (up to 10 min) → persists.
+ * Generate a video via KIE AI. Routes to the right adapter based on the
+ * model — newer KIE endpoints (Seedance, Wan) require HTTP-only references
+ * and integer durations, so they can't share the legacy generic body.
  */
 export async function generateVideoKie(
     params: GenerateVideoKieParams,
 ): Promise<string> {
+    if (params.model === 'bytedance/seedance-2') {
+        return generateVideoSeedance(params)
+    }
+    if (params.model === 'wan/2-7-image-to-video') {
+        return generateVideoWan27(params)
+    }
+
     const {
         prompt,
         model,
@@ -517,4 +526,90 @@ export async function generateVideoKie(
 
     const persistedUrl = await persistToSupabase(urls[0], 'mp4', 'kie-videos')
     return persistedUrl
+}
+
+/**
+ * ByteDance Seedance 2.0. Unified /jobs/createTask submit, polling via
+ * /jobs/recordInfo. Reference image must be a public HTTP URL (we upload
+ * to Supabase first), and duration must be an integer (not stringified).
+ */
+async function generateVideoSeedance(params: GenerateVideoKieParams): Promise<string> {
+    const {
+        prompt,
+        firstFrameImage,
+        aspectRatio = '16:9',
+        duration = 5,
+        resolution = '720p',
+    } = params
+
+    const input: Record<string, unknown> = {
+        prompt,
+        aspect_ratio: aspectRatio,
+        duration,
+        resolution,
+    }
+    if (firstFrameImage) {
+        const url = await uploadReferenceToSupabase(
+            firstFrameImage.base64,
+            firstFrameImage.mimeType,
+        )
+        console.log(`[KIE/Seedance] Uploaded reference to: ${url}`)
+        input.first_frame_url = url
+    }
+
+    console.log(`[KIE/Seedance] Submitting: duration=${duration}s, resolution=${resolution}, aspect=${aspectRatio}, hasReference=${!!firstFrameImage}`)
+    const taskId = await withTimeout(
+        submitTask({ model: 'bytedance/seedance-2', input }),
+        30_000,
+        'KIE Seedance submit',
+    )
+    console.log(`[KIE/Seedance] Task submitted: ${taskId}`)
+
+    const urls = await pollTask(taskId, { budgetMs: 600_000, intervalMs: 5000 })
+    console.log(`[KIE/Seedance] Generation complete: ${urls[0]}`)
+
+    return persistToSupabase(urls[0], 'mp4', 'kie-videos')
+}
+
+/**
+ * Wan 2.7 image-to-video. Requires a first frame; aspect ratio is inferred
+ * from the reference image rather than being a separate parameter.
+ */
+async function generateVideoWan27(params: GenerateVideoKieParams): Promise<string> {
+    const {
+        prompt,
+        firstFrameImage,
+        duration = 5,
+        resolution = '1080p',
+    } = params
+
+    if (!firstFrameImage) {
+        throw new Error('Wan 2.7 requires a reference image (first frame). Add a face or general reference and try again.')
+    }
+
+    const url = await uploadReferenceToSupabase(
+        firstFrameImage.base64,
+        firstFrameImage.mimeType,
+    )
+    console.log(`[KIE/Wan2.7] Uploaded reference to: ${url}`)
+
+    const input: Record<string, unknown> = {
+        prompt,
+        first_frame_url: url,
+        duration,
+        resolution,
+    }
+
+    console.log(`[KIE/Wan2.7] Submitting: duration=${duration}s, resolution=${resolution}`)
+    const taskId = await withTimeout(
+        submitTask({ model: 'wan/2-7-image-to-video', input }),
+        30_000,
+        'KIE Wan 2.7 submit',
+    )
+    console.log(`[KIE/Wan2.7] Task submitted: ${taskId}`)
+
+    const urls = await pollTask(taskId, { budgetMs: 600_000, intervalMs: 5000 })
+    console.log(`[KIE/Wan2.7] Generation complete: ${urls[0]}`)
+
+    return persistToSupabase(urls[0], 'mp4', 'kie-videos')
 }

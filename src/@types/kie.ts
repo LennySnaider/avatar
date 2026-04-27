@@ -11,8 +11,10 @@ export type KieImageModel =
     | 'flux-kontext-max'   // dedicated endpoint /api/v1/flux/kontext/generate
 
 export type KieVideoModel =
-    | 'veo-3.1'            // dedicated endpoint /api/v1/veo/generate (TBD wiring)
+    | 'veo-3.1'                    // dedicated endpoint /api/v1/veo/generate (TBD wiring)
     | 'veo-3.1-fast'
+    | 'bytedance/seedance-2'       // unified /jobs/createTask, first_frame_url HTTP, duration int
+    | 'wan/2-7-image-to-video'     // unified /jobs/createTask, first_frame_url HTTP required
 
 export interface KieCreateTaskRequest {
     model: string
