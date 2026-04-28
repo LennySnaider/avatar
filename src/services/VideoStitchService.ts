@@ -158,10 +158,16 @@ export async function stitchVideos(
     const ff = await loadFFmpeg()
     onProgress?.(10)
 
-    ff.on('progress', ({ progress }) => {
-        const percent = 40 + Math.round(progress * 50) // 40-90%
+    // Map FFmpeg's progress (0..~1.x — it can overshoot when the filter
+    // graph emits frames past the estimated total duration, common with
+    // concat + scale + pad chains) to the 40–89% slice. Clamping keeps the
+    // bar from jumping to 105% before the post-encode 90/100 hits land.
+    const onFfProgress = ({ progress }: { progress: number }) => {
+        const raw = 40 + Math.round(progress * 50)
+        const percent = Math.max(40, Math.min(89, raw))
         onProgress?.(percent)
-    })
+    }
+    ff.on('progress', onFfProgress)
 
     try {
         const inputFiles: string[] = []
@@ -336,6 +342,10 @@ export async function stitchVideos(
     } catch (error) {
         console.error('[FFmpeg] Stitch error:', error)
         throw new Error('Failed to stitch videos. The videos may have incompatible formats.')
+    } finally {
+        // Detach the progress listener so a follow-up stitch doesn't end up
+        // with N copies firing onProgress (the FFmpeg instance is cached).
+        ff.off('progress', onFfProgress)
     }
 }
 
