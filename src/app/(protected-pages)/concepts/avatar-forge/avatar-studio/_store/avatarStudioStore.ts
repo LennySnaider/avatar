@@ -144,6 +144,7 @@ interface AvatarStudioState {
     isMontageMode: boolean
     montageSelection: string[]
     isStitching: boolean
+    stitchProgress: number
 
     // Style Popover
     showStylePopover: boolean
@@ -278,6 +279,7 @@ interface AvatarStudioState {
     toggleMontageSelection: (id: string) => void
     clearMontageSelection: () => void
     setIsStitching: (stitching: boolean) => void
+    setStitchProgress: (progress: number) => void
 
     // Actions - Style Popover
     setShowStylePopover: (show: boolean) => void
@@ -413,6 +415,7 @@ const initialState = {
     isMontageMode: false,
     montageSelection: [],
     isStitching: false,
+    stitchProgress: 0,
 
     showStylePopover: false,
 
@@ -704,6 +707,7 @@ export const useAvatarStudioStore = create<AvatarStudioState>()(
         }),
     clearMontageSelection: () => set({ montageSelection: [] }),
     setIsStitching: (stitching) => set({ isStitching: stitching }),
+    setStitchProgress: (progress) => set({ stitchProgress: progress }),
 
     // Actions - Style Popover
     setShowStylePopover: (show) => set({ showStylePopover: show }),

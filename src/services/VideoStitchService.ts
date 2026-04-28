@@ -194,9 +194,17 @@ export async function stitchVideos(
             inputFiles.map(async (f) => {
                 let hasAudio = false
                 let durationSec = 5
+                // Match only the canonical stream descriptor lines —
+                // e.g. "Stream #0:0[0x1](und): Audio: aac (LC) (mp4a / 0x6134706D)..."
+                // The previous /Audio:/ regex matched any line that contained the
+                // word "Audio:" (including stale buffer text from earlier probes
+                // or unrelated diagnostic messages), so it false-positived on
+                // video-only inputs and the concat filter then died on [N:a].
+                const audioStreamRe = /^\s*Stream\s+#\d+:\d+.*?Audio:/
+                const durationRe = /Duration:\s*(\d+):(\d+):(\d+\.\d+)/
                 const onLog = ({ message }: { message: string }) => {
-                    if (/Audio:/.test(message)) hasAudio = true
-                    const m = /Duration:\s*(\d+):(\d+):(\d+\.\d+)/.exec(message)
+                    if (audioStreamRe.test(message)) hasAudio = true
+                    const m = durationRe.exec(message)
                     if (m) {
                         durationSec =
                             parseInt(m[1]) * 3600 +
@@ -205,8 +213,11 @@ export async function stitchVideos(
                     }
                 }
                 ff.on('log', onLog)
-                await ff.exec(['-i', f]).catch(() => undefined)
-                ff.off('log', onLog)
+                try {
+                    await ff.exec(['-i', f]).catch(() => undefined)
+                } finally {
+                    ff.off('log', onLog)
+                }
                 return { hasAudio, durationSec }
             }),
         )

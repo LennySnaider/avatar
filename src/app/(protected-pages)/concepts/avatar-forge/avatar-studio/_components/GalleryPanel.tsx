@@ -5,6 +5,7 @@ import { useAvatarStudioStore } from '../_store/avatarStudioStore'
 import Button from '@/components/ui/Button'
 import Card from '@/components/ui/Card'
 import Spinner from '@/components/ui/Spinner'
+import Progress from '@/components/ui/Progress'
 import ScrollBar from '@/components/ui/ScrollBar'
 import Notification from '@/components/ui/Notification'
 import toast from '@/components/ui/toast'
@@ -25,12 +26,14 @@ const GalleryPanel = ({ onAnimateImage, onSaveToGallery }: GalleryPanelProps) =>
         isMontageMode,
         montageSelection,
         isStitching,
+        stitchProgress,
         setPreviewMedia,
         removeFromGallery,
         toggleMontageSelection,
         setIsMontageMode,
         clearMontageSelection,
         setIsStitching,
+        setStitchProgress,
         addToGallery,
         openEditor,
     } = useAvatarStudioStore()
@@ -154,6 +157,7 @@ const GalleryPanel = ({ onAnimateImage, onSaveToGallery }: GalleryPanelProps) =>
         }
 
         setIsStitching(true)
+        setStitchProgress(0)
 
         toast.push(
             <Notification type="info" title="Stitching Videos">
@@ -163,9 +167,7 @@ const GalleryPanel = ({ onAnimateImage, onSaveToGallery }: GalleryPanelProps) =>
 
         try {
             const videoUrls = selectedVideos.map(v => v.url)
-            const stitchedUrl = await stitchVideos(videoUrls, (progress) => {
-                console.log(`Stitch progress: ${progress}%`)
-            })
+            const stitchedUrl = await stitchVideos(videoUrls, setStitchProgress)
 
             // Add stitched video to gallery
             const stitchedMedia: GeneratedMedia = {
@@ -277,6 +279,21 @@ const GalleryPanel = ({ onAnimateImage, onSaveToGallery }: GalleryPanelProps) =>
                                 <div className="flex flex-col items-center">
                                     <Spinner size={32} />
                                     <span className="text-xs text-primary mt-2 font-mono">Generating...</span>
+                                </div>
+                            </Card>
+                        )}
+
+                        {/* Stitching Placeholder */}
+                        {isStitching && (
+                            <Card className="h-64 flex items-center justify-center bg-gray-100 dark:bg-gray-800">
+                                <div className="flex flex-col items-center w-full px-6">
+                                    <HiOutlineFilm className="w-8 h-8 text-primary mb-2" />
+                                    <span className="text-xs text-primary mb-3 font-mono">
+                                        Stitching {montageSelection.length} videos...
+                                    </span>
+                                    <div className="w-full">
+                                        <Progress percent={stitchProgress} size="sm" />
+                                    </div>
                                 </div>
                             </Card>
                         )}
