@@ -190,37 +190,43 @@ export async function stitchVideos(
         // MiniMax often don't, and the concat filter blows up if even one
         // input is missing the [N:a] stream.
         console.log('[FFmpeg] Probing inputs for audio + duration...')
-        const probes = await Promise.all(
-            inputFiles.map(async (f) => {
-                let hasAudio = false
-                let durationSec = 5
-                // Match only the canonical stream descriptor lines —
-                // e.g. "Stream #0:0[0x1](und): Audio: aac (LC) (mp4a / 0x6134706D)..."
-                // The previous /Audio:/ regex matched any line that contained the
-                // word "Audio:" (including stale buffer text from earlier probes
-                // or unrelated diagnostic messages), so it false-positived on
-                // video-only inputs and the concat filter then died on [N:a].
-                const audioStreamRe = /^\s*Stream\s+#\d+:\d+.*?Audio:/
-                const durationRe = /Duration:\s*(\d+):(\d+):(\d+\.\d+)/
-                const onLog = ({ message }: { message: string }) => {
-                    if (audioStreamRe.test(message)) hasAudio = true
-                    const m = durationRe.exec(message)
-                    if (m) {
-                        durationSec =
-                            parseInt(m[1]) * 3600 +
-                            parseInt(m[2]) * 60 +
-                            parseFloat(m[3])
-                    }
+        // SERIALISED on purpose — @ffmpeg/ffmpeg has a single worker and the
+        // log channel is global. If we registered listeners for every input
+        // up-front and let Promise.all run the execs back-to-back, every
+        // listener would see every other input's log lines, so a clip with
+        // an "Audio:" stream descriptor would falsely flip hasAudio=true on
+        // a video-only sibling. Serialising guarantees exactly one listener
+        // is attached during each ff.exec, so its hasAudio reading reflects
+        // only the stream descriptors of the file actually being probed.
+        //
+        // The regex is also anchored to the canonical
+        //   "Stream #N:N[...]: Audio: <codec> ..."
+        // line so it doesn't match incidental occurrences of "Audio:" in
+        // headers, version lines, or diagnostic messages.
+        const audioStreamRe = /^\s*Stream\s+#\d+:\d+.*?Audio:/
+        const durationRe = /Duration:\s*(\d+):(\d+):(\d+\.\d+)/
+        const probes: { hasAudio: boolean; durationSec: number }[] = []
+        for (const f of inputFiles) {
+            let hasAudio = false
+            let durationSec = 5
+            const onLog = ({ message }: { message: string }) => {
+                if (audioStreamRe.test(message)) hasAudio = true
+                const m = durationRe.exec(message)
+                if (m) {
+                    durationSec =
+                        parseInt(m[1]) * 3600 +
+                        parseInt(m[2]) * 60 +
+                        parseFloat(m[3])
                 }
-                ff.on('log', onLog)
-                try {
-                    await ff.exec(['-i', f]).catch(() => undefined)
-                } finally {
-                    ff.off('log', onLog)
-                }
-                return { hasAudio, durationSec }
-            }),
-        )
+            }
+            ff.on('log', onLog)
+            try {
+                await ff.exec(['-i', f]).catch(() => undefined)
+            } finally {
+                ff.off('log', onLog)
+            }
+            probes.push({ hasAudio, durationSec })
+        }
         for (let i = 0; i < probes.length; i++) {
             console.log(
                 `[FFmpeg] input${i}: hasAudio=${probes[i].hasAudio}, duration=${probes[i].durationSec.toFixed(2)}s`,
