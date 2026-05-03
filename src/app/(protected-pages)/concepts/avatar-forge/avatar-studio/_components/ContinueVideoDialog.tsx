@@ -91,10 +91,17 @@ const ContinueVideoDialog = ({
     // provider is MiniMax — it's the only video provider whose API exposes
     // a subject_reference[] channel that can run alongside (or in this
     // case, instead of) a first-frame image. Kling and KIE/Veo only accept
-    // a single image input, so the toggle stays hidden for them.
+    // a single image input, so the section stays hidden for them entirely.
+    //
+    // We split visibility from "can actually enable": the section is shown
+    // for MiniMax always, but the checkbox is disabled when the user has
+    // no avatar references loaded — accompanied by a hint telling them
+    // what to do. This makes the feature discoverable instead of silently
+    // hidden when refs happen to be empty.
     const isMinimaxSelected = selectedProvider?.type === 'MINIMAX'
     const availableAvatarRefs = (faceRef ? 1 : 0) + generalReferences.length
-    const canUseAvatarIdentity = isMinimaxSelected && availableAvatarRefs > 0
+    const showIdentitySection = isMinimaxSelected
+    const canEnableIdentity = availableAvatarRefs > 0
 
     useEffect(() => {
         if (isOpen) {
@@ -151,12 +158,13 @@ const ContinueVideoDialog = ({
         if (selectedResolution !== videoResolution) {
             setVideoResolution(selectedResolution)
         }
-        // Only forward useAvatarIdentity when canUseAvatarIdentity is still
-        // true at submit time. The user could in theory toggle it on, then
-        // switch the provider to a non-MiniMax one in the same session —
-        // the gate prevents leaking an unsupported flag downstream.
-        onConfirm(cleanPrompt, dialogue.trim(), aspectRatio, useAvatarIdentity && canUseAvatarIdentity)
-    }, [editablePrompt, dialogue, aspectRatio, selectedProviderId, activeProviderId, setActiveProviderId, selectedDuration, videoDuration, setVideoDuration, selectedResolution, videoResolution, setVideoResolution, onConfirm, useAvatarIdentity, canUseAvatarIdentity])
+        // Forward useAvatarIdentity only when both gates pass at submit time:
+        // (1) provider is still MiniMax (could have changed since toggle), and
+        // (2) refs are still loaded. Prevents leaking an unsupported flag
+        // downstream if the user fiddled with provider after enabling.
+        const effectiveUseIdentity = useAvatarIdentity && showIdentitySection && canEnableIdentity
+        onConfirm(cleanPrompt, dialogue.trim(), aspectRatio, effectiveUseIdentity)
+    }, [editablePrompt, dialogue, aspectRatio, selectedProviderId, activeProviderId, setActiveProviderId, selectedDuration, videoDuration, setVideoDuration, selectedResolution, videoResolution, setVideoResolution, onConfirm, useAvatarIdentity, showIdentitySection, canEnableIdentity])
 
     const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
         if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
@@ -344,25 +352,34 @@ const ContinueVideoDialog = ({
                         subject_reference[] channel. When ON, the next request
                         skips first_frame_image and uses the avatar refs
                         instead, so identity is preserved at the cost of the
-                        captured frame's exact pose. */}
-                    {canUseAvatarIdentity && (
-                        <div className="border border-gray-200 dark:border-gray-700 rounded-lg p-3 bg-white dark:bg-gray-800">
-                            <label className="flex items-start gap-3 cursor-pointer">
+                        captured frame's exact pose. Hidden for non-MiniMax
+                        providers; rendered disabled with a hint when refs
+                        are missing so the feature stays discoverable. */}
+                    {showIdentitySection && (
+                        <div className={`border rounded-lg p-3 ${canEnableIdentity ? 'border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800' : 'border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900/40'}`}>
+                            <label className={`flex items-start gap-3 ${canEnableIdentity ? 'cursor-pointer' : 'cursor-not-allowed'}`}>
                                 <input
                                     type="checkbox"
-                                    checked={useAvatarIdentity}
+                                    checked={useAvatarIdentity && canEnableIdentity}
+                                    disabled={!canEnableIdentity}
                                     onChange={(e) => setUseAvatarIdentity(e.target.checked)}
-                                    className="mt-0.5 w-4 h-4 accent-purple-500 cursor-pointer"
+                                    className="mt-0.5 w-4 h-4 accent-purple-500 disabled:opacity-50 disabled:cursor-not-allowed"
                                 />
                                 <div className="flex-1">
-                                    <div className="text-sm font-medium text-gray-700 dark:text-gray-200">
+                                    <div className={`text-sm font-medium ${canEnableIdentity ? 'text-gray-700 dark:text-gray-200' : 'text-gray-500 dark:text-gray-400'}`}>
                                         Mantener identidad del avatar
                                     </div>
-                                    <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                                        Usa la cara del avatar como referencia ({availableAvatarRefs}{' '}
-                                        {availableAvatarRefs === 1 ? 'imagen' : 'imágenes'}). El video no continuará
-                                        desde el frame exacto, pero la identidad será consistente.
-                                    </div>
+                                    {canEnableIdentity ? (
+                                        <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                                            Usa la cara del avatar como referencia ({availableAvatarRefs}{' '}
+                                            {availableAvatarRefs === 1 ? 'imagen' : 'imágenes'}). El video no continuará
+                                            desde el frame exacto, pero la identidad será consistente.
+                                        </div>
+                                    ) : (
+                                        <div className="text-xs text-amber-600 dark:text-amber-400 mt-1">
+                                            Carga la imagen del avatar (Face Ref o General Ref) en el panel de Avatar para activar esta opción.
+                                        </div>
+                                    )}
                                 </div>
                             </label>
                         </div>
