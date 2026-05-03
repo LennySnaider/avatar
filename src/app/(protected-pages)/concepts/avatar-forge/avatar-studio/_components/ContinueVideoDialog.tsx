@@ -102,6 +102,10 @@ const ContinueVideoDialog = ({
     const availableAvatarRefs = (faceRef ? 1 : 0) + generalReferences.length
     const showIdentitySection = isMinimaxSelected
     const canEnableIdentity = availableAvatarRefs > 0
+    // When identity mode is actually engaged we route to S2V-01, which
+    // ignores aspect_ratio / duration / resolution. Fade those selectors
+    // so the user sees that their selection won't be honoured.
+    const identityActive = showIdentitySection && canEnableIdentity && useAvatarIdentity
 
     useEffect(() => {
         if (isOpen) {
@@ -273,79 +277,90 @@ const ContinueVideoDialog = ({
                         )}
                     </div>
 
-                    {/* Aspect Ratio Selector */}
-                    <div>
-                        <label className="text-sm font-medium text-gray-700 dark:text-gray-200 mb-2 block">
-                            Aspect Ratio
-                        </label>
-                        <div className="flex gap-2 flex-wrap">
-                            {ASPECT_RATIOS.map((r) => (
-                                <button
-                                    key={r.value}
-                                    onClick={() => setAspectRatio(r.value as AspectRatio)}
-                                    className={`flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-lg border transition-colors ${
-                                        aspectRatio === r.value
-                                            ? 'border-purple-500 bg-purple-50 dark:bg-purple-500/20 text-purple-700 dark:text-purple-200 font-medium'
-                                            : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'
-                                    }`}
-                                >
-                                    <AspectRatioIcon ratio={r.value} isSelected={aspectRatio === r.value} />
-                                    {r.label}
-                                </button>
-                            ))}
-                        </div>
-                    </div>
-
-                    {/* Duration Selector — options adapt to the selected model. */}
-                    <div>
-                        <label className="text-sm font-medium text-gray-700 dark:text-gray-200 mb-2 block">
-                            Duration
-                        </label>
-                        <div className="flex gap-2 flex-wrap">
-                            {durationOptions.map((d) => (
-                                <button
-                                    key={d}
-                                    onClick={() => setSelectedDuration(d)}
-                                    className={`px-3 py-1.5 text-xs rounded-lg border transition-colors ${
-                                        selectedDuration === d
-                                            ? 'border-purple-500 bg-purple-50 dark:bg-purple-500/20 text-purple-700 dark:text-purple-200 font-medium'
-                                            : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'
-                                    }`}
-                                >
-                                    {d}s
-                                </button>
-                            ))}
-                        </div>
-                        {durationOptions.length === 1 && (
-                            <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">
-                                This model uses a fixed duration.
-                            </p>
-                        )}
-                    </div>
-
-                    {/* Resolution Selector — hidden for providers that don't expose pixel resolution. */}
-                    {resolutionOptions && (
+                    {/* Aspect Ratio / Duration / Resolution selectors —
+                        faded when identity mode is ON because S2V-01 ignores
+                        them and produces a fixed-shape output. We keep them
+                        rendered (not unmounted) so the user can still see
+                        their previous selection and toggle identity off if
+                        the trade-off isn't worth it. */}
+                    <div className={identityActive ? 'opacity-40 pointer-events-none' : ''} aria-disabled={identityActive}>
+                        {/* Aspect Ratio Selector */}
                         <div>
                             <label className="text-sm font-medium text-gray-700 dark:text-gray-200 mb-2 block">
-                                Resolution
+                                Aspect Ratio
+                                {identityActive && <span className="ml-2 text-xs text-amber-600 dark:text-amber-400">(ignorado por S2V-01)</span>}
                             </label>
                             <div className="flex gap-2 flex-wrap">
-                                {resolutionOptions.map((r) => (
+                                {ASPECT_RATIOS.map((r) => (
                                     <button
-                                        key={r}
-                                        onClick={() => setSelectedResolution(r)}
-                                        className={`px-3 py-1.5 text-xs rounded-lg border transition-colors ${
-                                            selectedResolution === r
+                                        key={r.value}
+                                        onClick={() => setAspectRatio(r.value as AspectRatio)}
+                                        className={`flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-lg border transition-colors ${
+                                            aspectRatio === r.value
                                                 ? 'border-purple-500 bg-purple-50 dark:bg-purple-500/20 text-purple-700 dark:text-purple-200 font-medium'
                                                 : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'
                                         }`}
                                     >
-                                        {r}
+                                        <AspectRatioIcon ratio={r.value} isSelected={aspectRatio === r.value} />
+                                        {r.label}
                                     </button>
                                 ))}
                             </div>
                         </div>
-                    )}
+
+                        {/* Duration Selector — options adapt to the selected model. */}
+                        <div className="mt-4">
+                            <label className="text-sm font-medium text-gray-700 dark:text-gray-200 mb-2 block">
+                                Duration
+                                {identityActive && <span className="ml-2 text-xs text-amber-600 dark:text-amber-400">(ignorado por S2V-01)</span>}
+                            </label>
+                            <div className="flex gap-2 flex-wrap">
+                                {durationOptions.map((d) => (
+                                    <button
+                                        key={d}
+                                        onClick={() => setSelectedDuration(d)}
+                                        className={`px-3 py-1.5 text-xs rounded-lg border transition-colors ${
+                                            selectedDuration === d
+                                                ? 'border-purple-500 bg-purple-50 dark:bg-purple-500/20 text-purple-700 dark:text-purple-200 font-medium'
+                                                : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'
+                                        }`}
+                                    >
+                                        {d}s
+                                    </button>
+                                ))}
+                            </div>
+                            {durationOptions.length === 1 && (
+                                <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">
+                                    This model uses a fixed duration.
+                                </p>
+                            )}
+                        </div>
+
+                        {/* Resolution Selector — hidden for providers that don't expose pixel resolution. */}
+                        {resolutionOptions && (
+                            <div className="mt-4">
+                                <label className="text-sm font-medium text-gray-700 dark:text-gray-200 mb-2 block">
+                                    Resolution
+                                    {identityActive && <span className="ml-2 text-xs text-amber-600 dark:text-amber-400">(ignorado por S2V-01)</span>}
+                                </label>
+                                <div className="flex gap-2 flex-wrap">
+                                    {resolutionOptions.map((r) => (
+                                        <button
+                                            key={r}
+                                            onClick={() => setSelectedResolution(r)}
+                                            className={`px-3 py-1.5 text-xs rounded-lg border transition-colors ${
+                                                selectedResolution === r
+                                                    ? 'border-purple-500 bg-purple-50 dark:bg-purple-500/20 text-purple-700 dark:text-purple-200 font-medium'
+                                                    : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'
+                                            }`}
+                                        >
+                                            {r}
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+                    </div>
 
                     {/* Avatar Identity Toggle — only meaningful for MiniMax,
                         which is the only video provider that exposes a
@@ -370,10 +385,16 @@ const ContinueVideoDialog = ({
                                         Mantener identidad del avatar
                                     </div>
                                     {canEnableIdentity ? (
-                                        <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                                            Usa la cara del avatar como referencia ({availableAvatarRefs}{' '}
-                                            {availableAvatarRefs === 1 ? 'imagen' : 'imágenes'}). El video no continuará
-                                            desde el frame exacto, pero la identidad será consistente.
+                                        <div className="text-xs text-gray-500 dark:text-gray-400 mt-1 space-y-1">
+                                            <div>
+                                                Usa la cara del avatar como referencia (modelo MiniMax S2V-01).
+                                                La identidad facial será consistente en el nuevo clip.
+                                            </div>
+                                            <div className="text-amber-600 dark:text-amber-400">
+                                                ⚠ Trade-offs del modelo: el video no continuará desde el frame exacto,
+                                                y el aspect ratio / duración / resolución seleccionados arriba serán
+                                                ignorados (S2V-01 produce un shape de video fijo).
+                                            </div>
                                         </div>
                                     ) : (
                                         <div className="text-xs text-amber-600 dark:text-amber-400 mt-1">
