@@ -108,7 +108,11 @@ export type MiniMaxVideoResolution = '768P' | '1080P'
 
 export interface MiniMaxSubjectReference {
     type: 'character'
-    image: string[] // Public URLs or base64 data URIs (1-8 items)
+    // Despite being an array, S2V-01 only accepts ONE reference image —
+    // additional entries cause the API to reject the request. Public URL
+    // or base64 data URI; <20MB; JPG/JPEG/PNG/WebP; shorter side >300px;
+    // aspect ratio between 2:5 and 5:2.
+    image: string[]
 }
 
 export interface MiniMaxVideoGenerationRequest {

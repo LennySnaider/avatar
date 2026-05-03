@@ -466,9 +466,15 @@ export async function generateVideoMiniMax(params: GenerateMiniMaxVideoParams): 
     } else if (mode === 'subject') {
         const uris = (characterImages ?? []).map(coerceImage).filter((u): u is string => !!u)
         if (uris.length === 0) {
-            throw new Error('characterImages (1-8) required for mode "subject"')
+            throw new Error('characterImages required for mode "subject"')
         }
-        body.subject_reference = [{ type: 'character', image: uris.slice(0, 8) }]
+        // S2V-01 only accepts ONE reference image despite the field being an
+        // array — sending multiple gets rejected with a 500. We take the first
+        // entry; callers should pass faceRef as index 0 when they want
+        // identity preservation (the rest of the array is ignored).
+        // Image requirements per MiniMax docs: JPG/JPEG/PNG/WebP, <20MB,
+        // shorter side >300px, aspect ratio between 2:5 and 5:2.
+        body.subject_reference = [{ type: 'character', image: [uris[0]] }]
     } else if (mode === 'startEnd') {
         const firstUri = coerceImage(firstFrameImage)
         const lastUri = coerceImage(lastFrameImage)
