@@ -22,7 +22,7 @@ interface ContinueVideoDialogProps {
     originalDialogue?: string
     originalAspectRatio?: AspectRatio
     onClose: () => void
-    onConfirm: (prompt: string, dialogue: string, aspectRatio: AspectRatio) => void
+    onConfirm: (prompt: string, dialogue: string, aspectRatio: AspectRatio, useAvatarIdentity: boolean) => void
 }
 
 const AspectRatioIcon = ({ ratio, isSelected }: { ratio: string; isSelected: boolean }) => {
@@ -54,6 +54,8 @@ const ContinueVideoDialog = ({
         setVideoDuration,
         videoResolution,
         setVideoResolution,
+        faceRef,
+        generalReferences,
     } = useAvatarStudioStore()
 
     const videoProviders = useMemo(
@@ -70,6 +72,7 @@ const ContinueVideoDialog = ({
     const [showOriginal, setShowOriginal] = useState(false)
     const [isGeneratingAi, setIsGeneratingAi] = useState(false)
     const [aiError, setAiError] = useState<string | null>(null)
+    const [useAvatarIdentity, setUseAvatarIdentity] = useState(false)
 
     const selectedProvider = useMemo(
         () => videoProviders.find((p) => p.id === selectedProviderId) ?? null,
@@ -83,6 +86,15 @@ const ContinueVideoDialog = ({
         () => getResolutionOptionsForProvider(selectedProvider),
         [selectedProvider],
     )
+
+    // The avatar-identity toggle is only meaningful when the selected
+    // provider is MiniMax — it's the only video provider whose API exposes
+    // a subject_reference[] channel that can run alongside (or in this
+    // case, instead of) a first-frame image. Kling and KIE/Veo only accept
+    // a single image input, so the toggle stays hidden for them.
+    const isMinimaxSelected = selectedProvider?.type === 'MINIMAX'
+    const availableAvatarRefs = (faceRef ? 1 : 0) + generalReferences.length
+    const canUseAvatarIdentity = isMinimaxSelected && availableAvatarRefs > 0
 
     useEffect(() => {
         if (isOpen) {
@@ -110,13 +122,19 @@ const ContinueVideoDialog = ({
             setEditablePrompt('')
             setDialogue('')
             setShowOriginal(false)
+            setUseAvatarIdentity(false)
         }
     }, [isOpen, originalPrompt, originalDialogue, originalAspectRatio, activeProviderId, videoProviders, videoDuration, videoResolution])
 
     // When the user switches provider, snap duration + resolution to closest valid values.
+    // Also reset useAvatarIdentity when the new provider can't honour it,
+    // so the user doesn't see a stale "ON" state while the toggle is hidden.
     useEffect(() => {
         setSelectedDuration((prev) => clampDurationForProvider(selectedProvider, prev))
         setSelectedResolution((prev) => clampResolutionForProvider(selectedProvider, prev))
+        if (selectedProvider?.type !== 'MINIMAX') {
+            setUseAvatarIdentity(false)
+        }
     }, [selectedProvider])
 
     const handleConfirm = useCallback(() => {
@@ -133,8 +151,12 @@ const ContinueVideoDialog = ({
         if (selectedResolution !== videoResolution) {
             setVideoResolution(selectedResolution)
         }
-        onConfirm(cleanPrompt, dialogue.trim(), aspectRatio)
-    }, [editablePrompt, dialogue, aspectRatio, selectedProviderId, activeProviderId, setActiveProviderId, selectedDuration, videoDuration, setVideoDuration, selectedResolution, videoResolution, setVideoResolution, onConfirm])
+        // Only forward useAvatarIdentity when canUseAvatarIdentity is still
+        // true at submit time. The user could in theory toggle it on, then
+        // switch the provider to a non-MiniMax one in the same session —
+        // the gate prevents leaking an unsupported flag downstream.
+        onConfirm(cleanPrompt, dialogue.trim(), aspectRatio, useAvatarIdentity && canUseAvatarIdentity)
+    }, [editablePrompt, dialogue, aspectRatio, selectedProviderId, activeProviderId, setActiveProviderId, selectedDuration, videoDuration, setVideoDuration, selectedResolution, videoResolution, setVideoResolution, onConfirm, useAvatarIdentity, canUseAvatarIdentity])
 
     const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
         if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
@@ -314,6 +336,35 @@ const ContinueVideoDialog = ({
                                     </button>
                                 ))}
                             </div>
+                        </div>
+                    )}
+
+                    {/* Avatar Identity Toggle — only meaningful for MiniMax,
+                        which is the only video provider that exposes a
+                        subject_reference[] channel. When ON, the next request
+                        skips first_frame_image and uses the avatar refs
+                        instead, so identity is preserved at the cost of the
+                        captured frame's exact pose. */}
+                    {canUseAvatarIdentity && (
+                        <div className="border border-gray-200 dark:border-gray-700 rounded-lg p-3 bg-white dark:bg-gray-800">
+                            <label className="flex items-start gap-3 cursor-pointer">
+                                <input
+                                    type="checkbox"
+                                    checked={useAvatarIdentity}
+                                    onChange={(e) => setUseAvatarIdentity(e.target.checked)}
+                                    className="mt-0.5 w-4 h-4 accent-purple-500 cursor-pointer"
+                                />
+                                <div className="flex-1">
+                                    <div className="text-sm font-medium text-gray-700 dark:text-gray-200">
+                                        Mantener identidad del avatar
+                                    </div>
+                                    <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                                        Usa la cara del avatar como referencia ({availableAvatarRefs}{' '}
+                                        {availableAvatarRefs === 1 ? 'imagen' : 'imágenes'}). El video no continuará
+                                        desde el frame exacto, pero la identidad será consistente.
+                                    </div>
+                                </div>
+                            </label>
                         </div>
                     )}
 

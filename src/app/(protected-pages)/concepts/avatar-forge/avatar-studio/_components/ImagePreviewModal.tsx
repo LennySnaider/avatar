@@ -51,7 +51,7 @@ interface ImagePreviewModalProps {
     onAnimate?: (media: GeneratedMedia) => void
     onVariant?: (media: GeneratedMedia) => void
     onSave?: (media: GeneratedMedia) => Promise<void>
-    onContinueVideo?: (frameBase64: string, promptSuggestion: string, dialogue: string, aspectRatio: AspectRatio) => void
+    onContinueVideo?: (frameBase64: string, promptSuggestion: string, dialogue: string, aspectRatio: AspectRatio, useAvatarIdentity: boolean) => void
     onReuse?: (media: GeneratedMedia) => void
 }
 
@@ -718,9 +718,9 @@ const ImagePreviewModal = ({
     }, [])
 
     // Handle confirm continue from dialog
-    const handleConfirmContinue = useCallback((prompt: string, dialogue: string, aspectRatio: AspectRatio) => {
+    const handleConfirmContinue = useCallback((prompt: string, dialogue: string, aspectRatio: AspectRatio, useAvatarIdentity: boolean) => {
         if (!capturedFrame || !previewMedia || !onContinueVideo) return
-        onContinueVideo(capturedFrame, prompt, dialogue, aspectRatio)
+        onContinueVideo(capturedFrame, prompt, dialogue, aspectRatio, useAvatarIdentity)
         setShowContinueDialog(false)
         setCapturedFrame(null)
         handleClose()

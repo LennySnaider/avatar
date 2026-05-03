@@ -99,6 +99,7 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
         errorMsg,
         isGenerating,
         isLoadingReferences,
+        continueUseAvatarIdentity,
 
         // Actions
         setAvatarId,
@@ -130,6 +131,7 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
         setActiveProviderId,
         setVideoDialogue,
         setAspectRatio,
+        setContinueUseAvatarIdentity,
         geminiAutoFallback,
     } = useAvatarStudioStore()
 
@@ -570,14 +572,48 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                             })
                         }
                     } else if (isMinimaxProvider) {
-                        // MiniMax Hailuo image-to-video
-                        resultUrl = await generateVideoMiniMax({
-                            mode: 'image',
-                            prompt: fullPrompt,
-                            firstFrameImage: optimizedVideoInput,
-                            model: (activeProvider?.model as MiniMaxVideoModel) || 'MiniMax-Hailuo-2.3',
-                            resolution: videoResolution,
-                        })
+                        if (continueUseAvatarIdentity) {
+                            // Continue Video with avatar identity preserved.
+                            // MiniMax 'subject' mode is mutually exclusive with
+                            // 'image' mode (it doesn't accept first_frame_image
+                            // alongside subject_reference), so we trade the
+                            // exact pose of the captured frame for consistent
+                            // facial identity across the cut. Refs come from
+                            // the optimised payload — same shape and order
+                            // used by the standalone AVATAR mode below.
+                            const identityRefs = [
+                                optimizedPayload.faceRef,
+                                ...optimizedPayload.generalRefs,
+                            ]
+                                .filter((r): r is { base64: string; mimeType: string } => !!r)
+                                .slice(0, 8)
+
+                            if (identityRefs.length === 0) {
+                                throw new Error('No avatar references available for identity-preserving continue')
+                            }
+
+                            console.log('[AvatarStudio] Continue with avatar identity → MiniMax subject mode', {
+                                refCount: identityRefs.length,
+                            })
+
+                            resultUrl = await generateVideoMiniMax({
+                                mode: 'subject',
+                                prompt: fullPrompt,
+                                characterImages: identityRefs,
+                                model: (activeProvider?.model as MiniMaxVideoModel) || 'MiniMax-Hailuo-2.3',
+                                resolution: videoResolution,
+                            })
+                        } else {
+                            // Default: MiniMax Hailuo image-to-video using the
+                            // captured frame as the literal start frame.
+                            resultUrl = await generateVideoMiniMax({
+                                mode: 'image',
+                                prompt: fullPrompt,
+                                firstFrameImage: optimizedVideoInput,
+                                model: (activeProvider?.model as MiniMaxVideoModel) || 'MiniMax-Hailuo-2.3',
+                                resolution: videoResolution,
+                            })
+                        }
                     } else if (activeProvider?.type === 'KIE') {
                         // KIE aggregator — image-to-video via aggregator
                         resultUrl = await generateVideoKie({
@@ -730,6 +766,9 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
             )
         } finally {
             setIsGenerating(false)
+            // Always clear the Continue-with-Identity flag so a follow-up
+            // standalone Animate doesn't accidentally inherit subject mode.
+            setContinueUseAvatarIdentity(false)
         }
     }, [
         isGenerating,
@@ -776,6 +815,8 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
         setIsGenerating,
         prepareAvatarPayload,
         optimizeImage,
+        continueUseAvatarIdentity,
+        setContinueUseAvatarIdentity,
     ])
 
     // Enhance Prompt Handler
@@ -1140,7 +1181,7 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
 
     // Continue Video Handler
     const handleContinueVideo = useCallback(
-        (frameBase64: string, promptSuggestion: string, dialogue: string, originalAspectRatio: AspectRatio) => {
+        (frameBase64: string, promptSuggestion: string, dialogue: string, originalAspectRatio: AspectRatio, useAvatarIdentity: boolean) => {
             const refImg: ReferenceImage = {
                 id: `continue-${Date.now()}`,
                 url: frameBase64,
@@ -1151,7 +1192,13 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
             console.log('[AvatarStudio] handleContinueVideo: frame captured, queueing auto-generate', {
                 hasBase64: !!refImg.base64,
                 base64Length: refImg.base64.length,
+                useAvatarIdentity,
             })
+            // Store the identity-preserve flag BEFORE the auto-generate effect
+            // fires, so handleGenerate's MiniMax ANIMATE branch can read it.
+            // It's reset to false in handleGenerate's finally so a follow-up
+            // standalone Animate doesn't accidentally inherit subject mode.
+            setContinueUseAvatarIdentity(useAvatarIdentity)
             setVideoInputImage(refImg)
             setGenerationMode('VIDEO')
             setVideoSubMode('ANIMATE')
@@ -1162,7 +1209,7 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
             // Mark for auto-generation after state updates
             pendingAutoGenerateRef.current = true
         },
-        [setVideoInputImage, setGenerationMode, setVideoSubMode, setPrompt, setVideoDialogue, setAspectRatio]
+        [setVideoInputImage, setGenerationMode, setVideoSubMode, setPrompt, setVideoDialogue, setAspectRatio, setContinueUseAvatarIdentity]
     )
 
     // Keep a ref to the latest handleGenerate so the auto-generate effect can

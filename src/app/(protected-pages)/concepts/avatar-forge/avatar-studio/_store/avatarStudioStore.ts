@@ -146,6 +146,15 @@ interface AvatarStudioState {
     isStitching: boolean
     stitchProgress: number
 
+    // Continue Video — transient flag set by ContinueVideoDialog and read by
+    // handleGenerate's MiniMax ANIMATE branch. When true, the next MiniMax
+    // ANIMATE generation switches from mode:'image' (first_frame_image) to
+    // mode:'subject' (subject_reference[]), preserving avatar identity at
+    // the cost of not continuing from the captured frame's exact pose.
+    // Reset in handleGenerate's finally so a follow-up Animate doesn't
+    // inherit it.
+    continueUseAvatarIdentity: boolean
+
     // Style Popover
     showStylePopover: boolean
 
@@ -280,6 +289,7 @@ interface AvatarStudioState {
     clearMontageSelection: () => void
     setIsStitching: (stitching: boolean) => void
     setStitchProgress: (progress: number) => void
+    setContinueUseAvatarIdentity: (value: boolean) => void
 
     // Actions - Style Popover
     setShowStylePopover: (show: boolean) => void
@@ -416,6 +426,7 @@ const initialState = {
     montageSelection: [],
     isStitching: false,
     stitchProgress: 0,
+    continueUseAvatarIdentity: false,
 
     showStylePopover: false,
 
@@ -708,6 +719,7 @@ export const useAvatarStudioStore = create<AvatarStudioState>()(
     clearMontageSelection: () => set({ montageSelection: [] }),
     setIsStitching: (stitching) => set({ isStitching: stitching }),
     setStitchProgress: (progress) => set({ stitchProgress: progress }),
+    setContinueUseAvatarIdentity: (value) => set({ continueUseAvatarIdentity: value }),
 
     // Actions - Style Popover
     setShowStylePopover: (show) => set({ showStylePopover: show }),
