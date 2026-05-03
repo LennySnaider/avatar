@@ -437,12 +437,26 @@ export async function generateVideoMiniMax(params: GenerateMiniMaxVideoParams): 
         promptOptimizer = true,
     } = params
 
+    // subject_reference is only accepted by the S2V-01 model per the
+    // official MiniMax API reference (Hailuo-2.3 / 2.3-Fast / 02 are all
+    // I2V or T2V only). Forcing the model here makes the feature work
+    // regardless of which Hailuo variant the user has selected as their
+    // active video provider.
+    //
+    // S2V-01 also doesn't accept duration or resolution — its output
+    // shape is fixed — so we strip those fields when switching modes
+    // to avoid the API rejecting the request payload.
+    const effectiveModel: MiniMaxVideoModel = mode === 'subject' ? 'S2V-01' : model
+
     const body: MiniMaxVideoGenerationRequest = {
-        model,
+        model: effectiveModel,
         prompt: prompt.slice(0, 2000),
-        duration,
-        resolution: normalizeVideoResolution(resolution),
         prompt_optimizer: promptOptimizer,
+    }
+
+    if (mode !== 'subject') {
+        body.duration = duration
+        body.resolution = normalizeVideoResolution(resolution)
     }
 
     if (mode === 'image') {
@@ -465,7 +479,7 @@ export async function generateVideoMiniMax(params: GenerateMiniMaxVideoParams): 
         body.last_frame_image = lastUri
     }
 
-    console.log(`[MiniMaxService] Submitting video: mode=${mode}, model=${model}, duration=${duration}s`)
+    console.log(`[MiniMaxService] Submitting video: mode=${mode}, model=${effectiveModel} (requested=${model}), duration=${mode === 'subject' ? 'fixed' : `${duration}s`}`)
     const taskId = await submitVideoTask(body)
     console.log(`[MiniMaxService] Task submitted: ${taskId}`)
 

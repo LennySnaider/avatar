@@ -101,6 +101,7 @@ export type MiniMaxVideoModel =
     | 'MiniMax-Hailuo-2.3-Fast'
     | 'MiniMax-Hailuo-02'
     | 'I2V-01-Director'
+    | 'S2V-01' // Subject-to-Video — the only model that accepts subject_reference[]
 
 export type MiniMaxVideoDuration = 6 | 10
 export type MiniMaxVideoResolution = '768P' | '1080P'
