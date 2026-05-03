@@ -79,7 +79,10 @@ const ContinueVideoDialog = ({
     const [isGeneratingAi, setIsGeneratingAi] = useState(false)
     const [aiError, setAiError] = useState<string | null>(null)
     const [useAvatarIdentity, setUseAvatarIdentity] = useState(false)
-    const [identityModel, setIdentityModel] = useState<'seedance' | 'kling-omni'>('seedance')
+    // Default to Kling Omni: it's the only model in our integration that
+    // preserves first_frame AND identity refs together. Seedance-2's API
+    // forces a hybrid mode where the frame becomes a soft reference.
+    const [identityModel, setIdentityModel] = useState<'seedance' | 'kling-omni'>('kling-omni')
 
     const selectedProvider = useMemo(
         () => videoProviders.find((p) => p.id === selectedProviderId) ?? null,
@@ -132,7 +135,7 @@ const ContinueVideoDialog = ({
             setDialogue('')
             setShowOriginal(false)
             setUseAvatarIdentity(false)
-            setIdentityModel('seedance')
+            setIdentityModel('kling-omni')
         }
     }, [isOpen, originalPrompt, originalDialogue, originalAspectRatio, activeProviderId, videoProviders, videoDuration, videoResolution])
 
@@ -370,8 +373,8 @@ const ContinueVideoDialog = ({
                                 </div>
                                 {canEnableIdentity ? (
                                     <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                                        Continúa desde el frame capturado y mantiene la cara del avatar
-                                        consistente. Respeta el aspect ratio, duración y resolución seleccionados arriba.
+                                        Mantiene la cara del avatar consistente en el clip nuevo.
+                                        Respeta aspect ratio, duración y resolución seleccionados arriba.
                                     </div>
                                 ) : (
                                     <div className="text-xs text-amber-600 dark:text-amber-400 mt-1">
@@ -380,21 +383,18 @@ const ContinueVideoDialog = ({
                                 )}
 
                                 {/* Identity model selector — only shown when toggle is ON.
-                                    Lets the user pick between Seedance-2 (faster, cheaper)
-                                    and Kling v3 Omni (higher quality, slower). */}
+                                    Two models with different trade-offs:
+                                    - Kling v3 Omni: usa first_frame + refs como canales separados,
+                                      preserva el frame literal Y la identidad. Más caro y lento.
+                                    - Seedance 2.0: sus modos first-frame y refs son mutuamente
+                                      exclusivos en la API, así que mandamos el frame DENTRO de
+                                      reference_image_urls — identidad sí, pero el frame es solo
+                                      contextual (la pose puede no continuar exacta).
+                                    Default es Kling porque es la única que mantiene continuidad
+                                    real del frame. Seedance queda como alternativa rápida si la
+                                    fidelidad del frame no importa tanto. */}
                                 {useAvatarIdentity && canEnableIdentity && (
                                     <div className="mt-3 flex gap-2 flex-wrap" onClick={(e) => e.preventDefault()}>
-                                        <button
-                                            type="button"
-                                            onClick={() => setIdentityModel('seedance')}
-                                            className={`px-3 py-1.5 text-xs rounded-lg border transition-colors ${
-                                                identityModel === 'seedance'
-                                                    ? 'border-purple-500 bg-purple-50 dark:bg-purple-500/20 text-purple-700 dark:text-purple-200 font-medium'
-                                                    : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'
-                                            }`}
-                                        >
-                                            Seedance 2.0 · rápido
-                                        </button>
                                         <button
                                             type="button"
                                             onClick={() => setIdentityModel('kling-omni')}
@@ -404,7 +404,18 @@ const ContinueVideoDialog = ({
                                                     : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'
                                             }`}
                                         >
-                                            Kling v3 Omni · más calidad
+                                            Kling v3 Omni · frame + identidad
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => setIdentityModel('seedance')}
+                                            className={`px-3 py-1.5 text-xs rounded-lg border transition-colors ${
+                                                identityModel === 'seedance'
+                                                    ? 'border-purple-500 bg-purple-50 dark:bg-purple-500/20 text-purple-700 dark:text-purple-200 font-medium'
+                                                    : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'
+                                            }`}
+                                        >
+                                            Seedance 2.0 · solo identidad
                                         </button>
                                     </div>
                                 )}

@@ -785,7 +785,7 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
             // Always clear the Continue-with-Identity flags so a follow-up
             // standalone Animate doesn't accidentally inherit them.
             setContinueUseAvatarIdentity(false)
-            setContinueIdentityModel('seedance')
+            setContinueIdentityModel('kling-omni')
         }
     }, [
         isGenerating,

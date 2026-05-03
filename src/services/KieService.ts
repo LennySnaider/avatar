@@ -556,27 +556,47 @@ async function generateVideoSeedance(params: GenerateVideoKieParams): Promise<st
         duration,
         resolution,
     }
-    if (firstFrameImage) {
+
+    // Seedance 2.0 supports THREE mutually-exclusive scenarios per the
+    // official docs (https://docs.kie.ai/market/bytedance/seedance-2):
+    //   1. Image-to-Video (First Frame) — first_frame_url alone
+    //   2. Image-to-Video (First & Last) — first_frame_url + last_frame_url
+    //   3. Multimodal Reference-to-Video — reference_image_urls alone
+    // Mixing first_frame_url with reference_image_urls causes the API to
+    // silently ignore the refs (which is exactly the bug we hit when the
+    // generated continuation didn't preserve the avatar's face).
+    //
+    // For Continue-Video-with-Identity we need both signals, so we use the
+    // hybrid approach the docs explicitly suggest:
+    //   "Multimodal Reference-to-Video can simulate a 'First Frame +
+    //    Multimodal Reference' effect by using reference images as prompts
+    //    for the first or last frames."
+    // i.e. drop first_frame_url and stuff the captured frame into
+    // reference_image_urls[0] alongside the avatar refs. The model picks
+    // up the frame as a contextual reference rather than a literal start
+    // — pose continuity is approximate but identity is preserved.
+    if (referenceImages && referenceImages.length > 0) {
+        const allRefs: Array<{ base64: string; mimeType: string }> = []
+        if (firstFrameImage) allRefs.push(firstFrameImage)
+        allRefs.push(...referenceImages)
+
+        const refUrls = await Promise.all(
+            allRefs.slice(0, 9).map((ref) =>
+                uploadReferenceToSupabase(ref.base64, ref.mimeType),
+            ),
+        )
+        console.log(
+            `[KIE/Seedance] Reference-to-Video mode: ${refUrls.length} refs ` +
+            `(frame=${firstFrameImage ? '1' : '0'}, avatar=${referenceImages.length})`,
+        )
+        input.reference_image_urls = refUrls
+    } else if (firstFrameImage) {
         const url = await uploadReferenceToSupabase(
             firstFrameImage.base64,
             firstFrameImage.mimeType,
         )
-        console.log(`[KIE/Seedance] Uploaded first frame to: ${url}`)
+        console.log(`[KIE/Seedance] First-frame mode: uploaded to ${url}`)
         input.first_frame_url = url
-    }
-
-    // Identity references: Seedance-2 honours these alongside first_frame_url
-    // (unlike MiniMax S2V-01, where the two are mutually exclusive). Each
-    // ref must be uploaded to a public URL because the API doesn't accept
-    // base64 here. Capped to 4 to keep the upload+submit budget reasonable.
-    if (referenceImages && referenceImages.length > 0) {
-        const refUrls = await Promise.all(
-            referenceImages.slice(0, 4).map((ref) =>
-                uploadReferenceToSupabase(ref.base64, ref.mimeType),
-            ),
-        )
-        console.log(`[KIE/Seedance] Uploaded ${refUrls.length} identity reference(s)`)
-        input.reference_image_urls = refUrls
     }
 
     console.log(`[KIE/Seedance] Submitting: duration=${duration}s, resolution=${resolution}, aspect=${aspectRatio}, hasFirstFrame=${!!firstFrameImage}, refsCount=${referenceImages?.length ?? 0}`)

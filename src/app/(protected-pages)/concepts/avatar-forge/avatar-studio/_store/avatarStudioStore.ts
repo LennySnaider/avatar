@@ -429,7 +429,11 @@ const initialState = {
     isStitching: false,
     stitchProgress: 0,
     continueUseAvatarIdentity: false,
-    continueIdentityModel: 'seedance' as const,
+    // Kling Omni is the only model in our integration that preserves
+    // first_frame AND identity refs together; Seedance has to fall back
+    // to a hybrid reference-only mode. Default to the one that actually
+    // continues the clip.
+    continueIdentityModel: 'kling-omni' as const,
 
     showStylePopover: false,
 
