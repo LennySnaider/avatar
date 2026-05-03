@@ -538,7 +538,38 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                         throw new Error('Failed to optimize video input image')
                     }
 
-                    if (isKlingProvider) {
+                    // Continue Video with avatar identity → Seedance-2 (KIE).
+                    // Seedance-2 is the only model in our catalogue that
+                    // accepts first_frame_url + reference_image_urls[]
+                    // simultaneously WHILE honouring aspect_ratio, duration
+                    // and resolution. We override whichever provider the user
+                    // has selected because no Kling/MiniMax/Veo model in our
+                    // current integration supports both channels at once.
+                    if (continueUseAvatarIdentity) {
+                        const identityRefs = [
+                            optimizedPayload.faceRef,
+                            ...optimizedPayload.generalRefs,
+                        ].filter((r): r is { base64: string; mimeType: string } => !!r)
+
+                        if (identityRefs.length === 0) {
+                            throw new Error('No avatar references available for identity-preserving continue')
+                        }
+
+                        console.log('[AvatarStudio] Continue with identity → routing to Seedance-2', {
+                            refCount: identityRefs.length,
+                            originalProvider: activeProvider?.type,
+                        })
+
+                        resultUrl = await generateVideoKie({
+                            prompt: fullPrompt,
+                            firstFrameImage: optimizedVideoInput,
+                            referenceImages: identityRefs,
+                            model: 'bytedance/seedance-2',
+                            aspectRatio,
+                            duration: videoDuration,
+                            resolution: videoResolution,
+                        })
+                    } else if (isKlingProvider) {
                         // Check if Motion Control is enabled (v2.6+ only)
                         if (klingMotionControlEnabled && (klingMotionVideoBase64 || klingMotionVideoUrl || klingPresetMotion)) {
                             console.log('[AvatarStudio] Using Motion Control generation')
@@ -572,48 +603,17 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                             })
                         }
                     } else if (isMinimaxProvider) {
-                        if (continueUseAvatarIdentity) {
-                            // Continue Video with avatar identity preserved.
-                            // MiniMax 'subject' mode is mutually exclusive with
-                            // 'image' mode (it doesn't accept first_frame_image
-                            // alongside subject_reference), so we trade the
-                            // exact pose of the captured frame for consistent
-                            // facial identity across the cut. Refs come from
-                            // the optimised payload — same shape and order
-                            // used by the standalone AVATAR mode below.
-                            const identityRefs = [
-                                optimizedPayload.faceRef,
-                                ...optimizedPayload.generalRefs,
-                            ]
-                                .filter((r): r is { base64: string; mimeType: string } => !!r)
-                                .slice(0, 8)
-
-                            if (identityRefs.length === 0) {
-                                throw new Error('No avatar references available for identity-preserving continue')
-                            }
-
-                            console.log('[AvatarStudio] Continue with avatar identity → MiniMax subject mode', {
-                                refCount: identityRefs.length,
-                            })
-
-                            resultUrl = await generateVideoMiniMax({
-                                mode: 'subject',
-                                prompt: fullPrompt,
-                                characterImages: identityRefs,
-                                model: (activeProvider?.model as MiniMaxVideoModel) || 'MiniMax-Hailuo-2.3',
-                                resolution: videoResolution,
-                            })
-                        } else {
-                            // Default: MiniMax Hailuo image-to-video using the
-                            // captured frame as the literal start frame.
-                            resultUrl = await generateVideoMiniMax({
-                                mode: 'image',
-                                prompt: fullPrompt,
-                                firstFrameImage: optimizedVideoInput,
-                                model: (activeProvider?.model as MiniMaxVideoModel) || 'MiniMax-Hailuo-2.3',
-                                resolution: videoResolution,
-                            })
-                        }
+                        // MiniMax Hailuo image-to-video. Identity preservation
+                        // is handled upstream by the Seedance-2 branch, so
+                        // this path stays focused on the literal first-frame
+                        // case.
+                        resultUrl = await generateVideoMiniMax({
+                            mode: 'image',
+                            prompt: fullPrompt,
+                            firstFrameImage: optimizedVideoInput,
+                            model: (activeProvider?.model as MiniMaxVideoModel) || 'MiniMax-Hailuo-2.3',
+                            resolution: videoResolution,
+                        })
                     } else if (activeProvider?.type === 'KIE') {
                         // KIE aggregator — image-to-video via aggregator
                         resultUrl = await generateVideoKie({

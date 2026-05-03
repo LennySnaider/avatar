@@ -338,6 +338,13 @@ export interface GenerateVideoKieParams {
     prompt: string
     model: string
     firstFrameImage?: { base64: string; mimeType: string } | null
+    /**
+     * Optional avatar reference images (face, body, generals) to anchor
+     * identity across the cut. Currently only honoured by Seedance-2 via
+     * the model's `reference_image_urls[]` channel — other KIE-hosted
+     * models that don't expose a reference channel ignore this silently.
+     */
+    referenceImages?: Array<{ base64: string; mimeType: string }>
     aspectRatio?: string
     duration?: number
     resolution?: string
@@ -537,6 +544,7 @@ async function generateVideoSeedance(params: GenerateVideoKieParams): Promise<st
     const {
         prompt,
         firstFrameImage,
+        referenceImages,
         aspectRatio = '16:9',
         duration = 5,
         resolution = '720p',
@@ -553,11 +561,25 @@ async function generateVideoSeedance(params: GenerateVideoKieParams): Promise<st
             firstFrameImage.base64,
             firstFrameImage.mimeType,
         )
-        console.log(`[KIE/Seedance] Uploaded reference to: ${url}`)
+        console.log(`[KIE/Seedance] Uploaded first frame to: ${url}`)
         input.first_frame_url = url
     }
 
-    console.log(`[KIE/Seedance] Submitting: duration=${duration}s, resolution=${resolution}, aspect=${aspectRatio}, hasReference=${!!firstFrameImage}`)
+    // Identity references: Seedance-2 honours these alongside first_frame_url
+    // (unlike MiniMax S2V-01, where the two are mutually exclusive). Each
+    // ref must be uploaded to a public URL because the API doesn't accept
+    // base64 here. Capped to 4 to keep the upload+submit budget reasonable.
+    if (referenceImages && referenceImages.length > 0) {
+        const refUrls = await Promise.all(
+            referenceImages.slice(0, 4).map((ref) =>
+                uploadReferenceToSupabase(ref.base64, ref.mimeType),
+            ),
+        )
+        console.log(`[KIE/Seedance] Uploaded ${refUrls.length} identity reference(s)`)
+        input.reference_image_urls = refUrls
+    }
+
+    console.log(`[KIE/Seedance] Submitting: duration=${duration}s, resolution=${resolution}, aspect=${aspectRatio}, hasFirstFrame=${!!firstFrameImage}, refsCount=${referenceImages?.length ?? 0}`)
     const taskId = await withTimeout(
         submitTask({ model: 'bytedance/seedance-2', input }),
         30_000,

@@ -87,25 +87,16 @@ const ContinueVideoDialog = ({
         [selectedProvider],
     )
 
-    // The avatar-identity toggle is only meaningful when the selected
-    // provider is MiniMax — it's the only video provider whose API exposes
-    // a subject_reference[] channel that can run alongside (or in this
-    // case, instead of) a first-frame image. Kling and KIE/Veo only accept
-    // a single image input, so the section stays hidden for them entirely.
-    //
-    // We split visibility from "can actually enable": the section is shown
-    // for MiniMax always, but the checkbox is disabled when the user has
-    // no avatar references loaded — accompanied by a hint telling them
-    // what to do. This makes the feature discoverable instead of silently
-    // hidden when refs happen to be empty.
-    const isMinimaxSelected = selectedProvider?.type === 'MINIMAX'
+    // The avatar-identity toggle is now provider-agnostic. Internally,
+    // when ON, handleGenerate routes the request to Seedance-2 (the only
+    // model in our catalogue that accepts first_frame_url +
+    // reference_image_urls[] simultaneously while honouring aspect_ratio,
+    // duration and resolution). We always show the section so the feature
+    // is discoverable; the checkbox is disabled when the avatar has no
+    // refs loaded, with an inline hint about what to do.
     const availableAvatarRefs = (faceRef ? 1 : 0) + generalReferences.length
-    const showIdentitySection = isMinimaxSelected
+    const showIdentitySection = true
     const canEnableIdentity = availableAvatarRefs > 0
-    // When identity mode is actually engaged we route to S2V-01, which
-    // ignores aspect_ratio / duration / resolution. Fade those selectors
-    // so the user sees that their selection won't be honoured.
-    const identityActive = showIdentitySection && canEnableIdentity && useAvatarIdentity
 
     useEffect(() => {
         if (isOpen) {
@@ -138,14 +129,12 @@ const ContinueVideoDialog = ({
     }, [isOpen, originalPrompt, originalDialogue, originalAspectRatio, activeProviderId, videoProviders, videoDuration, videoResolution])
 
     // When the user switches provider, snap duration + resolution to closest valid values.
-    // Also reset useAvatarIdentity when the new provider can't honour it,
-    // so the user doesn't see a stale "ON" state while the toggle is hidden.
+    // The identity toggle is provider-agnostic now (routes to Seedance-2
+    // internally regardless of which provider was selected), so we don't
+    // touch useAvatarIdentity here.
     useEffect(() => {
         setSelectedDuration((prev) => clampDurationForProvider(selectedProvider, prev))
         setSelectedResolution((prev) => clampResolutionForProvider(selectedProvider, prev))
-        if (selectedProvider?.type !== 'MINIMAX') {
-            setUseAvatarIdentity(false)
-        }
     }, [selectedProvider])
 
     const handleConfirm = useCallback(() => {
@@ -162,13 +151,12 @@ const ContinueVideoDialog = ({
         if (selectedResolution !== videoResolution) {
             setVideoResolution(selectedResolution)
         }
-        // Forward useAvatarIdentity only when both gates pass at submit time:
-        // (1) provider is still MiniMax (could have changed since toggle), and
-        // (2) refs are still loaded. Prevents leaking an unsupported flag
-        // downstream if the user fiddled with provider after enabling.
-        const effectiveUseIdentity = useAvatarIdentity && showIdentitySection && canEnableIdentity
+        // Only forward identity flag when refs are actually available.
+        // The downstream branch in handleGenerate routes to Seedance-2
+        // regardless of which provider is selected here.
+        const effectiveUseIdentity = useAvatarIdentity && canEnableIdentity
         onConfirm(cleanPrompt, dialogue.trim(), aspectRatio, effectiveUseIdentity)
-    }, [editablePrompt, dialogue, aspectRatio, selectedProviderId, activeProviderId, setActiveProviderId, selectedDuration, videoDuration, setVideoDuration, selectedResolution, videoResolution, setVideoResolution, onConfirm, useAvatarIdentity, showIdentitySection, canEnableIdentity])
+    }, [editablePrompt, dialogue, aspectRatio, selectedProviderId, activeProviderId, setActiveProviderId, selectedDuration, videoDuration, setVideoDuration, selectedResolution, videoResolution, setVideoResolution, onConfirm, useAvatarIdentity, canEnableIdentity])
 
     const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
         if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
@@ -277,134 +265,114 @@ const ContinueVideoDialog = ({
                         )}
                     </div>
 
-                    {/* Aspect Ratio / Duration / Resolution selectors —
-                        faded when identity mode is ON because S2V-01 ignores
-                        them and produces a fixed-shape output. We keep them
-                        rendered (not unmounted) so the user can still see
-                        their previous selection and toggle identity off if
-                        the trade-off isn't worth it. */}
-                    <div className={identityActive ? 'opacity-40 pointer-events-none' : ''} aria-disabled={identityActive}>
-                        {/* Aspect Ratio Selector */}
-                        <div>
-                            <label className="text-sm font-medium text-gray-700 dark:text-gray-200 mb-2 block">
-                                Aspect Ratio
-                                {identityActive && <span className="ml-2 text-xs text-amber-600 dark:text-amber-400">(ignorado por S2V-01)</span>}
-                            </label>
-                            <div className="flex gap-2 flex-wrap">
-                                {ASPECT_RATIOS.map((r) => (
-                                    <button
-                                        key={r.value}
-                                        onClick={() => setAspectRatio(r.value as AspectRatio)}
-                                        className={`flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-lg border transition-colors ${
-                                            aspectRatio === r.value
-                                                ? 'border-purple-500 bg-purple-50 dark:bg-purple-500/20 text-purple-700 dark:text-purple-200 font-medium'
-                                                : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'
-                                        }`}
-                                    >
-                                        <AspectRatioIcon ratio={r.value} isSelected={aspectRatio === r.value} />
-                                        {r.label}
-                                    </button>
-                                ))}
-                            </div>
+                    {/* Aspect Ratio Selector */}
+                    <div>
+                        <label className="text-sm font-medium text-gray-700 dark:text-gray-200 mb-2 block">
+                            Aspect Ratio
+                        </label>
+                        <div className="flex gap-2 flex-wrap">
+                            {ASPECT_RATIOS.map((r) => (
+                                <button
+                                    key={r.value}
+                                    onClick={() => setAspectRatio(r.value as AspectRatio)}
+                                    className={`flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-lg border transition-colors ${
+                                        aspectRatio === r.value
+                                            ? 'border-purple-500 bg-purple-50 dark:bg-purple-500/20 text-purple-700 dark:text-purple-200 font-medium'
+                                            : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'
+                                    }`}
+                                >
+                                    <AspectRatioIcon ratio={r.value} isSelected={aspectRatio === r.value} />
+                                    {r.label}
+                                </button>
+                            ))}
                         </div>
+                    </div>
 
-                        {/* Duration Selector — options adapt to the selected model. */}
-                        <div className="mt-4">
-                            <label className="text-sm font-medium text-gray-700 dark:text-gray-200 mb-2 block">
-                                Duration
-                                {identityActive && <span className="ml-2 text-xs text-amber-600 dark:text-amber-400">(ignorado por S2V-01)</span>}
-                            </label>
-                            <div className="flex gap-2 flex-wrap">
-                                {durationOptions.map((d) => (
-                                    <button
-                                        key={d}
-                                        onClick={() => setSelectedDuration(d)}
-                                        className={`px-3 py-1.5 text-xs rounded-lg border transition-colors ${
-                                            selectedDuration === d
-                                                ? 'border-purple-500 bg-purple-50 dark:bg-purple-500/20 text-purple-700 dark:text-purple-200 font-medium'
-                                                : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'
-                                        }`}
-                                    >
-                                        {d}s
-                                    </button>
-                                ))}
-                            </div>
-                            {durationOptions.length === 1 && (
-                                <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">
-                                    This model uses a fixed duration.
-                                </p>
-                            )}
+                    {/* Duration Selector — options adapt to the selected model. */}
+                    <div>
+                        <label className="text-sm font-medium text-gray-700 dark:text-gray-200 mb-2 block">
+                            Duration
+                        </label>
+                        <div className="flex gap-2 flex-wrap">
+                            {durationOptions.map((d) => (
+                                <button
+                                    key={d}
+                                    onClick={() => setSelectedDuration(d)}
+                                    className={`px-3 py-1.5 text-xs rounded-lg border transition-colors ${
+                                        selectedDuration === d
+                                            ? 'border-purple-500 bg-purple-50 dark:bg-purple-500/20 text-purple-700 dark:text-purple-200 font-medium'
+                                            : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'
+                                    }`}
+                                >
+                                    {d}s
+                                </button>
+                            ))}
                         </div>
-
-                        {/* Resolution Selector — hidden for providers that don't expose pixel resolution. */}
-                        {resolutionOptions && (
-                            <div className="mt-4">
-                                <label className="text-sm font-medium text-gray-700 dark:text-gray-200 mb-2 block">
-                                    Resolution
-                                    {identityActive && <span className="ml-2 text-xs text-amber-600 dark:text-amber-400">(ignorado por S2V-01)</span>}
-                                </label>
-                                <div className="flex gap-2 flex-wrap">
-                                    {resolutionOptions.map((r) => (
-                                        <button
-                                            key={r}
-                                            onClick={() => setSelectedResolution(r)}
-                                            className={`px-3 py-1.5 text-xs rounded-lg border transition-colors ${
-                                                selectedResolution === r
-                                                    ? 'border-purple-500 bg-purple-50 dark:bg-purple-500/20 text-purple-700 dark:text-purple-200 font-medium'
-                                                    : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'
-                                            }`}
-                                        >
-                                            {r}
-                                        </button>
-                                    ))}
-                                </div>
-                            </div>
+                        {durationOptions.length === 1 && (
+                            <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">
+                                This model uses a fixed duration.
+                            </p>
                         )}
                     </div>
 
-                    {/* Avatar Identity Toggle — only meaningful for MiniMax,
-                        which is the only video provider that exposes a
-                        subject_reference[] channel. When ON, the next request
-                        skips first_frame_image and uses the avatar refs
-                        instead, so identity is preserved at the cost of the
-                        captured frame's exact pose. Hidden for non-MiniMax
-                        providers; rendered disabled with a hint when refs
-                        are missing so the feature stays discoverable. */}
-                    {showIdentitySection && (
-                        <div className={`border rounded-lg p-3 ${canEnableIdentity ? 'border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800' : 'border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900/40'}`}>
-                            <label className={`flex items-start gap-3 ${canEnableIdentity ? 'cursor-pointer' : 'cursor-not-allowed'}`}>
-                                <input
-                                    type="checkbox"
-                                    checked={useAvatarIdentity && canEnableIdentity}
-                                    disabled={!canEnableIdentity}
-                                    onChange={(e) => setUseAvatarIdentity(e.target.checked)}
-                                    className="mt-0.5 w-4 h-4 accent-purple-500 disabled:opacity-50 disabled:cursor-not-allowed"
-                                />
-                                <div className="flex-1">
-                                    <div className={`text-sm font-medium ${canEnableIdentity ? 'text-gray-700 dark:text-gray-200' : 'text-gray-500 dark:text-gray-400'}`}>
-                                        Mantener identidad del avatar
-                                    </div>
-                                    {canEnableIdentity ? (
-                                        <div className="text-xs text-gray-500 dark:text-gray-400 mt-1 space-y-1">
-                                            <div>
-                                                Usa la cara del avatar como referencia (modelo MiniMax S2V-01).
-                                                La identidad facial será consistente en el nuevo clip.
-                                            </div>
-                                            <div className="text-amber-600 dark:text-amber-400">
-                                                ⚠ Trade-offs del modelo: el video no continuará desde el frame exacto,
-                                                y el aspect ratio / duración / resolución seleccionados arriba serán
-                                                ignorados (S2V-01 produce un shape de video fijo).
-                                            </div>
-                                        </div>
-                                    ) : (
-                                        <div className="text-xs text-amber-600 dark:text-amber-400 mt-1">
-                                            Carga la imagen del avatar (Face Ref o General Ref) en el panel de Avatar para activar esta opción.
-                                        </div>
-                                    )}
-                                </div>
+                    {/* Resolution Selector — hidden for providers that don't expose pixel resolution. */}
+                    {resolutionOptions && (
+                        <div>
+                            <label className="text-sm font-medium text-gray-700 dark:text-gray-200 mb-2 block">
+                                Resolution
                             </label>
+                            <div className="flex gap-2 flex-wrap">
+                                {resolutionOptions.map((r) => (
+                                    <button
+                                        key={r}
+                                        onClick={() => setSelectedResolution(r)}
+                                        className={`px-3 py-1.5 text-xs rounded-lg border transition-colors ${
+                                            selectedResolution === r
+                                                ? 'border-purple-500 bg-purple-50 dark:bg-purple-500/20 text-purple-700 dark:text-purple-200 font-medium'
+                                                : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'
+                                        }`}
+                                    >
+                                        {r}
+                                    </button>
+                                ))}
+                            </div>
                         </div>
                     )}
+
+                    {/* Avatar Identity Toggle — when ON, handleGenerate
+                        routes the request to Seedance-2 (KIE) which is the
+                        only model in our catalogue that accepts
+                        first_frame_url + reference_image_urls[]
+                        simultaneously while honouring aspect_ratio,
+                        duration and resolution. Provider-agnostic from the
+                        UI's point of view. */}
+                    <div className={`border rounded-lg p-3 ${canEnableIdentity ? 'border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800' : 'border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900/40'}`}>
+                        <label className={`flex items-start gap-3 ${canEnableIdentity ? 'cursor-pointer' : 'cursor-not-allowed'}`}>
+                            <input
+                                type="checkbox"
+                                checked={useAvatarIdentity && canEnableIdentity}
+                                disabled={!canEnableIdentity}
+                                onChange={(e) => setUseAvatarIdentity(e.target.checked)}
+                                className="mt-0.5 w-4 h-4 accent-purple-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                            />
+                            <div className="flex-1">
+                                <div className={`text-sm font-medium ${canEnableIdentity ? 'text-gray-700 dark:text-gray-200' : 'text-gray-500 dark:text-gray-400'}`}>
+                                    Mantener identidad del avatar
+                                </div>
+                                {canEnableIdentity ? (
+                                    <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                                        Continúa desde el frame capturado y mantiene la cara del avatar
+                                        consistente. Usa Seedance 2.0 internamente y respeta el aspect ratio,
+                                        duración y resolución seleccionados arriba.
+                                    </div>
+                                ) : (
+                                    <div className="text-xs text-amber-600 dark:text-amber-400 mt-1">
+                                        Carga la imagen del avatar (Face Ref o General Ref) en el panel de Avatar para activar esta opción.
+                                    </div>
+                                )}
+                            </div>
+                        </label>
+                    </div>
 
                     {/* Dialogue Input */}
                     <div>
