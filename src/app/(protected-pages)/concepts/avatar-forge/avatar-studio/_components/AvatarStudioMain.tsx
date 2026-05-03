@@ -33,6 +33,7 @@ import {
     generateAvatarVideo as generateAvatarVideoKling,
     generateVideoWithMotionControl as generateMotionControlKling,
     generateImage as generateImageKling,
+    generateVideoOmniKling,
 } from '@/services/KlingService'
 import {
     generateImage as generateImageMiniMax,
@@ -100,6 +101,7 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
         isGenerating,
         isLoadingReferences,
         continueUseAvatarIdentity,
+        continueIdentityModel,
 
         // Actions
         setAvatarId,
@@ -132,6 +134,7 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
         setVideoDialogue,
         setAspectRatio,
         setContinueUseAvatarIdentity,
+        setContinueIdentityModel,
         geminiAutoFallback,
     } = useAvatarStudioStore()
 
@@ -538,13 +541,14 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                         throw new Error('Failed to optimize video input image')
                     }
 
-                    // Continue Video with avatar identity → Seedance-2 (KIE).
-                    // Seedance-2 is the only model in our catalogue that
-                    // accepts first_frame_url + reference_image_urls[]
-                    // simultaneously WHILE honouring aspect_ratio, duration
-                    // and resolution. We override whichever provider the user
-                    // has selected because no Kling/MiniMax/Veo model in our
-                    // current integration supports both channels at once.
+                    // Continue Video with avatar identity → Seedance-2 OR
+                    // Kling v3 Omni. Both accept first_frame + reference
+                    // images simultaneously while honouring aspect_ratio /
+                    // duration / resolution; the user picks via the model
+                    // selector inside the Continue dialog. Whichever upstream
+                    // provider the user had selected is overridden here
+                    // because no other model in our integration supports
+                    // both channels at once.
                     if (continueUseAvatarIdentity) {
                         const identityRefs = [
                             optimizedPayload.faceRef,
@@ -555,20 +559,32 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                             throw new Error('No avatar references available for identity-preserving continue')
                         }
 
-                        console.log('[AvatarStudio] Continue with identity → routing to Seedance-2', {
+                        console.log('[AvatarStudio] Continue with identity', {
+                            model: continueIdentityModel,
                             refCount: identityRefs.length,
                             originalProvider: activeProvider?.type,
                         })
 
-                        resultUrl = await generateVideoKie({
-                            prompt: fullPrompt,
-                            firstFrameImage: optimizedVideoInput,
-                            referenceImages: identityRefs,
-                            model: 'bytedance/seedance-2',
-                            aspectRatio,
-                            duration: videoDuration,
-                            resolution: videoResolution,
-                        })
+                        if (continueIdentityModel === 'kling-omni') {
+                            resultUrl = await generateVideoOmniKling({
+                                prompt: fullPrompt,
+                                firstFrameImage: optimizedVideoInput,
+                                referenceImages: identityRefs,
+                                aspectRatio,
+                                duration: String(videoDuration) as '5' | '10',
+                                modelName: 'kling-v3-omni',
+                            })
+                        } else {
+                            resultUrl = await generateVideoKie({
+                                prompt: fullPrompt,
+                                firstFrameImage: optimizedVideoInput,
+                                referenceImages: identityRefs,
+                                model: 'bytedance/seedance-2',
+                                aspectRatio,
+                                duration: videoDuration,
+                                resolution: videoResolution,
+                            })
+                        }
                     } else if (isKlingProvider) {
                         // Check if Motion Control is enabled (v2.6+ only)
                         if (klingMotionControlEnabled && (klingMotionVideoBase64 || klingMotionVideoUrl || klingPresetMotion)) {
@@ -766,9 +782,10 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
             )
         } finally {
             setIsGenerating(false)
-            // Always clear the Continue-with-Identity flag so a follow-up
-            // standalone Animate doesn't accidentally inherit subject mode.
+            // Always clear the Continue-with-Identity flags so a follow-up
+            // standalone Animate doesn't accidentally inherit them.
             setContinueUseAvatarIdentity(false)
+            setContinueIdentityModel('seedance')
         }
     }, [
         isGenerating,
@@ -816,7 +833,9 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
         prepareAvatarPayload,
         optimizeImage,
         continueUseAvatarIdentity,
+        continueIdentityModel,
         setContinueUseAvatarIdentity,
+        setContinueIdentityModel,
     ])
 
     // Enhance Prompt Handler
@@ -1181,7 +1200,14 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
 
     // Continue Video Handler
     const handleContinueVideo = useCallback(
-        (frameBase64: string, promptSuggestion: string, dialogue: string, originalAspectRatio: AspectRatio, useAvatarIdentity: boolean) => {
+        (
+            frameBase64: string,
+            promptSuggestion: string,
+            dialogue: string,
+            originalAspectRatio: AspectRatio,
+            useAvatarIdentity: boolean,
+            identityModel: 'seedance' | 'kling-omni',
+        ) => {
             const refImg: ReferenceImage = {
                 id: `continue-${Date.now()}`,
                 url: frameBase64,
@@ -1193,12 +1219,14 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                 hasBase64: !!refImg.base64,
                 base64Length: refImg.base64.length,
                 useAvatarIdentity,
+                identityModel,
             })
-            // Store the identity-preserve flag BEFORE the auto-generate effect
-            // fires, so handleGenerate's MiniMax ANIMATE branch can read it.
-            // It's reset to false in handleGenerate's finally so a follow-up
-            // standalone Animate doesn't accidentally inherit subject mode.
+            // Persist both flags BEFORE the auto-generate effect fires so
+            // handleGenerate can read them. Both reset to defaults in
+            // handleGenerate's finally so a follow-up standalone Animate
+            // doesn't inherit them.
             setContinueUseAvatarIdentity(useAvatarIdentity)
+            setContinueIdentityModel(identityModel)
             setVideoInputImage(refImg)
             setGenerationMode('VIDEO')
             setVideoSubMode('ANIMATE')
@@ -1209,7 +1237,7 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
             // Mark for auto-generation after state updates
             pendingAutoGenerateRef.current = true
         },
-        [setVideoInputImage, setGenerationMode, setVideoSubMode, setPrompt, setVideoDialogue, setAspectRatio, setContinueUseAvatarIdentity]
+        [setVideoInputImage, setGenerationMode, setVideoSubMode, setPrompt, setVideoDialogue, setAspectRatio, setContinueUseAvatarIdentity, setContinueIdentityModel]
     )
 
     // Keep a ref to the latest handleGenerate so the auto-generate effect can

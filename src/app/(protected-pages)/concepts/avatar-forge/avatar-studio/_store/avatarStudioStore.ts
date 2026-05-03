@@ -146,14 +146,15 @@ interface AvatarStudioState {
     isStitching: boolean
     stitchProgress: number
 
-    // Continue Video — transient flag set by ContinueVideoDialog and read by
-    // handleGenerate's MiniMax ANIMATE branch. When true, the next MiniMax
-    // ANIMATE generation switches from mode:'image' (first_frame_image) to
-    // mode:'subject' (subject_reference[]), preserving avatar identity at
-    // the cost of not continuing from the captured frame's exact pose.
-    // Reset in handleGenerate's finally so a follow-up Animate doesn't
-    // inherit it.
+    // Continue Video — transient flags set by ContinueVideoDialog and read
+    // by handleGenerate's identity branch. When `continueUseAvatarIdentity`
+    // is true the next ANIMATE generation routes to a model that accepts
+    // first_frame + reference_images simultaneously (Seedance-2 or Kling
+    // Omni, picked via `continueIdentityModel`). Both flags reset in
+    // handleGenerate's finally so a follow-up plain Animate doesn't
+    // inherit them.
     continueUseAvatarIdentity: boolean
+    continueIdentityModel: 'seedance' | 'kling-omni'
 
     // Style Popover
     showStylePopover: boolean
@@ -290,6 +291,7 @@ interface AvatarStudioState {
     setIsStitching: (stitching: boolean) => void
     setStitchProgress: (progress: number) => void
     setContinueUseAvatarIdentity: (value: boolean) => void
+    setContinueIdentityModel: (value: 'seedance' | 'kling-omni') => void
 
     // Actions - Style Popover
     setShowStylePopover: (show: boolean) => void
@@ -427,6 +429,7 @@ const initialState = {
     isStitching: false,
     stitchProgress: 0,
     continueUseAvatarIdentity: false,
+    continueIdentityModel: 'seedance' as const,
 
     showStylePopover: false,
 
@@ -720,6 +723,7 @@ export const useAvatarStudioStore = create<AvatarStudioState>()(
     setIsStitching: (stitching) => set({ isStitching: stitching }),
     setStitchProgress: (progress) => set({ stitchProgress: progress }),
     setContinueUseAvatarIdentity: (value) => set({ continueUseAvatarIdentity: value }),
+    setContinueIdentityModel: (value) => set({ continueIdentityModel: value }),
 
     // Actions - Style Popover
     setShowStylePopover: (show) => set({ showStylePopover: show }),

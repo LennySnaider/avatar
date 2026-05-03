@@ -1224,3 +1224,140 @@ export async function generateVideoWithMotionControl(params: {
         }
     }
 }
+
+/**
+ * Kling V3 Omni — POST /v1/videos/omni-video
+ *
+ * The OmniVideo endpoint is the only Kling path that accepts a first_frame
+ * image AND additional reference images simultaneously, while honouring
+ * aspect_ratio and duration. We use it for "Continue Video with avatar
+ * identity": the captured frame goes in as image_list[0] with type='first_frame',
+ * the avatar refs follow as untyped entries (treated as character/scene refs).
+ *
+ * Image list constraints (from Kling docs):
+ * - up to 7 images total when there's no reference video / only multi-image elements
+ * - dimensions ≥300px, aspect ratio between 1:2.5 and 2.5:1, ≤10MB each
+ * - URLs preferred over base64 to keep request body small (we upload to Supabase)
+ */
+export async function generateVideoOmniKling(params: {
+    prompt: string
+    firstFrameImage: ImageData
+    referenceImages: ImageData[]
+    aspectRatio: AspectRatio
+    duration: '5' | '10'
+    mode?: 'std' | 'pro'
+    modelName?: 'kling-v3-omni' | 'kling-video-o1'
+}): Promise<string> {
+    const {
+        prompt,
+        firstFrameImage,
+        referenceImages,
+        aspectRatio,
+        duration,
+        mode = 'pro',
+        modelName = 'kling-v3-omni',
+    } = params
+
+    const tempFilePaths: string[] = []
+
+    try {
+        // Upload first frame to public storage so the request body stays
+        // small. Kling accepts base64 too, but for 5+ images that adds
+        // megabytes to the JWT-authenticated request.
+        const firstFrameUpload = await uploadToTempStorage(
+            firstFrameImage.base64,
+            firstFrameImage.mimeType,
+            'image',
+        )
+        tempFilePaths.push(firstFrameUpload.path)
+
+        // Upload up to 6 reference images (cap at 6 so total list stays
+        // ≤7 entries with the first_frame).
+        const refUploads = await Promise.all(
+            referenceImages.slice(0, 6).map((ref) =>
+                uploadToTempStorage(ref.base64, ref.mimeType, 'image'),
+            ),
+        )
+        for (const u of refUploads) tempFilePaths.push(u.path)
+
+        const imageList: Array<{ image_url: string; type?: 'first_frame' | 'end_frame' }> = [
+            { image_url: firstFrameUpload.url, type: 'first_frame' },
+            ...refUploads.map((u) => ({ image_url: u.url })),
+        ]
+
+        const body: Record<string, unknown> = {
+            model_name: modelName,
+            prompt: formatPromptForKling(prompt),
+            image_list: imageList,
+            duration,
+            mode,
+            aspect_ratio: mapAspectRatio(aspectRatio),
+        }
+
+        console.log(
+            `[Kling/Omni] Submitting: model=${modelName}, refs=${refUploads.length}, ` +
+            `aspect=${aspectRatio}, duration=${duration}s, mode=${mode}`,
+        )
+
+        const submitResp = await klingRequest<KlingTaskResponse>(
+            '/v1/videos/omni-video',
+            'POST',
+            body,
+        )
+
+        if (submitResp.code !== 0) {
+            throw new Error(`Kling Omni submit failed: code=${submitResp.code} msg=${submitResp.message}`)
+        }
+
+        const taskId = submitResp.data.task_id
+        console.log(`[Kling/Omni] Task submitted: ${taskId}`)
+
+        // Polling reuses the standard Kling pattern but against the
+        // omni-video endpoint. Same task lifecycle: submitted → processing
+        // → succeed/failed.
+        const result = await pollOmniTaskResult(taskId)
+
+        const videoUrl = result.task_result?.videos?.[0]?.url
+        if (!videoUrl) {
+            throw new Error('Kling Omni completed but returned no video URL')
+        }
+        console.log(`[Kling/Omni] Generation complete: ${videoUrl}`)
+
+        return videoUrl
+    } finally {
+        if (tempFilePaths.length > 0) {
+            setTimeout(() => {
+                cleanupTempFiles(tempFilePaths)
+            }, 60_000)
+        }
+    }
+}
+
+async function pollOmniTaskResult(
+    taskId: string,
+    maxAttempts = 160,
+    intervalMs = 5000,
+): Promise<KlingTaskResultResponse['data']> {
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+        const result = await klingRequest<KlingTaskResultResponse>(
+            `/v1/videos/omni-video/${taskId}`,
+            'GET',
+        )
+
+        console.log(
+            `[Kling/Omni] Task ${taskId} status: ${result.data.task_status} ` +
+            `(attempt ${attempt + 1}/${maxAttempts})`,
+        )
+
+        if (result.data.task_status === 'succeed') return result.data
+        if (result.data.task_status === 'failed') {
+            throw new Error(
+                `Kling Omni task failed: ${result.data.task_status_msg || 'Unknown error'}`,
+            )
+        }
+
+        await new Promise((resolve) => setTimeout(resolve, intervalMs))
+    }
+
+    throw new Error('Kling Omni task timed out waiting for completion')
+}

@@ -22,7 +22,13 @@ interface ContinueVideoDialogProps {
     originalDialogue?: string
     originalAspectRatio?: AspectRatio
     onClose: () => void
-    onConfirm: (prompt: string, dialogue: string, aspectRatio: AspectRatio, useAvatarIdentity: boolean) => void
+    onConfirm: (
+        prompt: string,
+        dialogue: string,
+        aspectRatio: AspectRatio,
+        useAvatarIdentity: boolean,
+        identityModel: 'seedance' | 'kling-omni',
+    ) => void
 }
 
 const AspectRatioIcon = ({ ratio, isSelected }: { ratio: string; isSelected: boolean }) => {
@@ -73,6 +79,7 @@ const ContinueVideoDialog = ({
     const [isGeneratingAi, setIsGeneratingAi] = useState(false)
     const [aiError, setAiError] = useState<string | null>(null)
     const [useAvatarIdentity, setUseAvatarIdentity] = useState(false)
+    const [identityModel, setIdentityModel] = useState<'seedance' | 'kling-omni'>('seedance')
 
     const selectedProvider = useMemo(
         () => videoProviders.find((p) => p.id === selectedProviderId) ?? null,
@@ -125,6 +132,7 @@ const ContinueVideoDialog = ({
             setDialogue('')
             setShowOriginal(false)
             setUseAvatarIdentity(false)
+            setIdentityModel('seedance')
         }
     }, [isOpen, originalPrompt, originalDialogue, originalAspectRatio, activeProviderId, videoProviders, videoDuration, videoResolution])
 
@@ -152,11 +160,12 @@ const ContinueVideoDialog = ({
             setVideoResolution(selectedResolution)
         }
         // Only forward identity flag when refs are actually available.
-        // The downstream branch in handleGenerate routes to Seedance-2
-        // regardless of which provider is selected here.
+        // The downstream branch in handleGenerate routes to Seedance-2 or
+        // Kling Omni based on identityModel, regardless of which provider
+        // is selected up top.
         const effectiveUseIdentity = useAvatarIdentity && canEnableIdentity
-        onConfirm(cleanPrompt, dialogue.trim(), aspectRatio, effectiveUseIdentity)
-    }, [editablePrompt, dialogue, aspectRatio, selectedProviderId, activeProviderId, setActiveProviderId, selectedDuration, videoDuration, setVideoDuration, selectedResolution, videoResolution, setVideoResolution, onConfirm, useAvatarIdentity, canEnableIdentity])
+        onConfirm(cleanPrompt, dialogue.trim(), aspectRatio, effectiveUseIdentity, identityModel)
+    }, [editablePrompt, dialogue, aspectRatio, selectedProviderId, activeProviderId, setActiveProviderId, selectedDuration, videoDuration, setVideoDuration, selectedResolution, videoResolution, setVideoResolution, onConfirm, useAvatarIdentity, canEnableIdentity, identityModel])
 
     const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
         if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
@@ -362,12 +371,41 @@ const ContinueVideoDialog = ({
                                 {canEnableIdentity ? (
                                     <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">
                                         Continúa desde el frame capturado y mantiene la cara del avatar
-                                        consistente. Usa Seedance 2.0 internamente y respeta el aspect ratio,
-                                        duración y resolución seleccionados arriba.
+                                        consistente. Respeta el aspect ratio, duración y resolución seleccionados arriba.
                                     </div>
                                 ) : (
                                     <div className="text-xs text-amber-600 dark:text-amber-400 mt-1">
                                         Carga la imagen del avatar (Face Ref o General Ref) en el panel de Avatar para activar esta opción.
+                                    </div>
+                                )}
+
+                                {/* Identity model selector — only shown when toggle is ON.
+                                    Lets the user pick between Seedance-2 (faster, cheaper)
+                                    and Kling v3 Omni (higher quality, slower). */}
+                                {useAvatarIdentity && canEnableIdentity && (
+                                    <div className="mt-3 flex gap-2 flex-wrap" onClick={(e) => e.preventDefault()}>
+                                        <button
+                                            type="button"
+                                            onClick={() => setIdentityModel('seedance')}
+                                            className={`px-3 py-1.5 text-xs rounded-lg border transition-colors ${
+                                                identityModel === 'seedance'
+                                                    ? 'border-purple-500 bg-purple-50 dark:bg-purple-500/20 text-purple-700 dark:text-purple-200 font-medium'
+                                                    : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'
+                                            }`}
+                                        >
+                                            Seedance 2.0 · rápido
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => setIdentityModel('kling-omni')}
+                                            className={`px-3 py-1.5 text-xs rounded-lg border transition-colors ${
+                                                identityModel === 'kling-omni'
+                                                    ? 'border-purple-500 bg-purple-50 dark:bg-purple-500/20 text-purple-700 dark:text-purple-200 font-medium'
+                                                    : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'
+                                            }`}
+                                        >
+                                            Kling v3 Omni · más calidad
+                                        </button>
                                     </div>
                                 )}
                             </div>
