@@ -424,6 +424,20 @@ export async function generateImage(params: {
     try {
         const normalizedModel = normalizeKlingModelName(modelName)
 
+        // Omni image models use a different endpoint with a different
+        // parameter shape (image_list[] instead of single image, no
+        // image_fidelity, supports 4K). Route them through the Omni helper
+        // so the regular path can stay focused on the legacy/v3 base API.
+        if (normalizedModel === 'kling-v3-omni' || normalizedModel === 'kling-image-o1') {
+            return generateOmniImage({
+                prompt,
+                referenceImage,
+                aspectRatio,
+                modelName: normalizedModel,
+                n,
+            })
+        }
+
         // Strip Gemini-flavored bracket tags and reorder into prose Kling can read.
         // Without this Kling KOLORS reads "[CLONE: ...]" / "[POSE: ...]" literally
         // and the prompt derails (e.g. anchors on "hands clasped" out of context).
@@ -506,6 +520,127 @@ export async function generateImage(params: {
         console.error('[Kling] generateImage failed:', message)
         return { success: false, error: message }
     }
+}
+
+/**
+ * Kling Omni Image — POST /v1/images/omni-image
+ *
+ * Different endpoint from the regular /v1/images/generations path. Accepts
+ * model_name 'kling-image-o1' (older) or 'kling-v3-omni' (latest). Key
+ * differences vs the regular API:
+ *   - reference image goes inside image_list[].image (not top-level "image")
+ *   - no image_fidelity parameter (model decides automatically)
+ *   - resolution can go up to 4K (regular caps at 2K)
+ *   - supports series-image generation via result_type='series'
+ *   - prompt can use <<<image_1>>> templating to point at refs explicitly
+ *
+ * For the avatar-studio integration we keep result_type='single' and let
+ * n control fan-out — series mode is a future enhancement that needs UI
+ * support to pick the count and lay them out.
+ */
+async function generateOmniImage(params: {
+    prompt: string
+    referenceImage?: ImageData | null
+    aspectRatio: AspectRatio
+    modelName: string
+    n: number
+}): Promise<
+    | { success: true; url: string; fullApiPrompt: string }
+    | { success: false; error: string }
+> {
+    const { prompt, referenceImage, aspectRatio, modelName, n } = params
+
+    try {
+        const klingPrompt = formatPromptForKling(prompt) || prompt
+
+        console.log('[Kling/Omni-Image] Starting omni image generation...')
+        console.log('[Kling/Omni-Image] Model:', modelName)
+        console.log('[Kling/Omni-Image] Prompt:', klingPrompt.substring(0, 120) + '...')
+
+        const requestBody: Record<string, unknown> = {
+            model_name: modelName,
+            prompt: klingPrompt,
+            n,
+            aspect_ratio: mapAspectRatio(aspectRatio),
+            // 2K is the sweet spot for avatar refs — the gallery thumbnails
+            // and downstream image-to-video paths handle 2K well, while 4K
+            // bloats payloads and slows the pipeline without visible gain
+            // on a 1024px display target.
+            resolution: '2k',
+            result_type: 'single',
+        }
+
+        if (referenceImage?.base64) {
+            // Omni accepts URL or base64 inside image_list. Base64 stays
+            // simpler than uploading to Supabase first, and the JWT'd
+            // request can absorb a single ~1MB image without issue.
+            requestBody.image_list = [
+                { image: cleanBase64ForKling(referenceImage.base64) },
+            ]
+        }
+
+        const submitResponse = await klingRequest<KlingTaskResponse>(
+            '/v1/images/omni-image',
+            'POST',
+            requestBody,
+        )
+
+        if (submitResponse.code !== 0) {
+            return {
+                success: false,
+                error: `Kling Omni Image submit failed: ${submitResponse.message}`,
+            }
+        }
+
+        const taskId = submitResponse.data.task_id
+        console.log('[Kling/Omni-Image] Task submitted:', taskId)
+
+        const result = await pollOmniImageTaskResult(taskId)
+
+        const imageUrl = result.task_result?.images?.[0]?.url
+        if (!imageUrl) {
+            return {
+                success: false,
+                error: 'Kling Omni Image completed but no image URL returned',
+            }
+        }
+
+        console.log('[Kling/Omni-Image] Generated:', imageUrl)
+        return { success: true, url: imageUrl, fullApiPrompt: klingPrompt }
+    } catch (error) {
+        const message = error instanceof Error ? error.message : 'Unknown Kling Omni error'
+        console.error('[Kling/Omni-Image] failed:', message)
+        return { success: false, error: message }
+    }
+}
+
+async function pollOmniImageTaskResult(
+    taskId: string,
+    maxAttempts = 80,
+    intervalMs = 3000,
+): Promise<KlingTaskResultResponse['data']> {
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+        const result = await klingRequest<KlingTaskResultResponse>(
+            `/v1/images/omni-image/${taskId}`,
+            'GET',
+        )
+
+        console.log(
+            `[Kling/Omni-Image] Task ${taskId} status: ${result.data.task_status} ` +
+            `(attempt ${attempt + 1}/${maxAttempts})`,
+        )
+
+        if (result.data.task_status === 'succeed') return result.data
+        if (result.data.task_status === 'failed') {
+            throw new Error(
+                `Kling Omni Image task failed: ${result.data.task_status_msg || 'Unknown error'}`,
+            )
+        }
+
+        await new Promise((resolve) => setTimeout(resolve, intervalMs))
+    }
+
+    throw new Error('Kling Omni Image task timed out waiting for completion')
 }
 
 /**

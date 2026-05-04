@@ -52,6 +52,19 @@ export const DEFAULT_PROVIDERS: AIProvider[] = [
         created_at: null,
     },
     {
+        id: 'kling-v3-omni-image',
+        name: 'Kling v3 Omni (Image)',
+        type: 'KLING' as ProviderType,
+        model: 'kling-v3-omni',
+        endpoint: 'https://api-singapore.klingai.com',
+        is_active: true,
+        supports_image: true,
+        supports_video: false,
+        requires_api_key: true,
+        api_key_env_var: 'KLING_ACCESS_KEY',
+        created_at: null,
+    },
+    {
         id: 'kie-flux-kontext',
         name: 'Flux.1 Kontext Pro (KIE)',
         type: 'KIE' as ProviderType,
@@ -316,6 +329,8 @@ const ProviderManagerDrawer = () => {
                 return 'Hailuo 2.3 Fast - m\u00e1s r\u00e1pido y econ\u00f3mico'
             case 'kling-v3-image':
                 return 'Kling v3 image - latest base model, mejor calidad y prompt fidelity'
+            case 'kling-v3-omni-image':
+                return 'Kling v3 Omni - resolución 2K/4K, multi-imagen blending, series mode'
             case 'kie-flux-kontext':
                 return 'Flux.1 Kontext Pro - context-aware editing, 8 unidades por imagen'
             case 'kie-flux-kontext-max':
