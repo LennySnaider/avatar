@@ -97,15 +97,13 @@ const ContinueVideoDialog = ({
         [selectedProvider],
     )
 
-    // The avatar-identity toggle is now provider-agnostic. Internally,
-    // when ON, handleGenerate routes the request to Seedance-2 (the only
-    // model in our catalogue that accepts first_frame_url +
-    // reference_image_urls[] simultaneously while honouring aspect_ratio,
-    // duration and resolution). We always show the section so the feature
-    // is discoverable; the checkbox is disabled when the avatar has no
-    // refs loaded, with an inline hint about what to do.
+    // The avatar-identity toggle is provider-agnostic. When ON,
+    // handleGenerate routes the request to whichever identity model the
+    // user picked (Kling Omni or Seedance) regardless of the upstream
+    // provider selected at the top. We always render the section so the
+    // feature is discoverable; the checkbox is disabled when the avatar
+    // has no refs loaded, with an inline hint about what to do.
     const availableAvatarRefs = (faceRef ? 1 : 0) + generalReferences.length
-    const showIdentitySection = true
     const canEnableIdentity = availableAvatarRefs > 0
 
     useEffect(() => {
