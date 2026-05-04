@@ -417,7 +417,7 @@ export async function generateImage(params: {
         prompt,
         referenceImage,
         aspectRatio,
-        modelName = 'kling-v2-1',
+        modelName = 'kling-v3',
         n = 1,
     } = params
 
@@ -437,18 +437,32 @@ export async function generateImage(params: {
         const requestBody: Record<string, unknown> = {
             model_name: normalizedModel,
             prompt: klingPrompt,
-            negative_prompt: 'blurry, distorted, low quality, watermark, text overlay, deformed',
             n: n,
             aspect_ratio: mapAspectRatio(aspectRatio),
+        }
+
+        // negative_prompt is rejected by Kling in image-to-image mode for some
+        // models (the API returns "negative_prompt is not supported"). Only
+        // include it for text-to-image, which is when there's no reference.
+        if (!referenceImage?.base64) {
+            requestBody.negative_prompt =
+                'blurry, distorted, low quality, watermark, text overlay, deformed'
         }
 
         // Add reference image if provided
         if (referenceImage?.base64) {
             requestBody.image = cleanBase64ForKling(referenceImage.base64) // Fixed: Kling requires base64 WITHOUT prefix
-            // Lower fidelity (0.2) lets Kling respect the requested aspect_ratio
-            // and prompt over the source image's geometry. At 0.5 the output
-            // tends to inherit the reference's framing/ratio.
-            requestBody.image_fidelity = 0.2
+            // image_fidelity per docs is only honoured by kling-v1 and
+            // kling-v1-5; newer models (v2, v2-new, v2-1, v3) ignore it
+            // silently and let the prompt+aspect_ratio drive the output
+            // geometry. Skip the field for those to avoid sending stale
+            // params that future API versions might reject.
+            const legacyFidelityModels = ['kling-v1', 'kling-v1-5']
+            if (legacyFidelityModels.includes(normalizedModel)) {
+                // Lower fidelity (0.2) lets Kling respect the requested
+                // aspect_ratio and prompt over the source image's geometry.
+                requestBody.image_fidelity = 0.2
+            }
         }
 
         // Submit task
