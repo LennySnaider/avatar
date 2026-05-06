@@ -27,7 +27,7 @@ interface ContinueVideoDialogProps {
         dialogue: string,
         aspectRatio: AspectRatio,
         useAvatarIdentity: boolean,
-        identityModel: 'seedance' | 'kling-omni',
+        identityModel: 'seedance' | 'kling-omni' | 'veo-3-1',
     ) => void
 }
 
@@ -79,10 +79,10 @@ const ContinueVideoDialog = ({
     const [isGeneratingAi, setIsGeneratingAi] = useState(false)
     const [aiError, setAiError] = useState<string | null>(null)
     const [useAvatarIdentity, setUseAvatarIdentity] = useState(false)
-    // Default to Kling Omni: it's the only model in our integration that
-    // preserves first_frame AND identity refs together. Seedance-2's API
-    // forces a hybrid mode where the frame becomes a soft reference.
-    const [identityModel, setIdentityModel] = useState<'seedance' | 'kling-omni'>('kling-omni')
+    // Default to Veo 3.1: most complete option (first_frame + 3 refs +
+    // native audio + 9:16 vertical). Kling Omni and Seedance follow as
+    // alternatives — see the selector below for trade-offs.
+    const [identityModel, setIdentityModel] = useState<'seedance' | 'kling-omni' | 'veo-3-1'>('veo-3-1')
 
     const selectedProvider = useMemo(
         () => videoProviders.find((p) => p.id === selectedProviderId) ?? null,
@@ -133,7 +133,7 @@ const ContinueVideoDialog = ({
             setDialogue('')
             setShowOriginal(false)
             setUseAvatarIdentity(false)
-            setIdentityModel('kling-omni')
+            setIdentityModel('veo-3-1')
         }
     }, [isOpen, originalPrompt, originalDialogue, originalAspectRatio, activeProviderId, videoProviders, videoDuration, videoResolution])
 
@@ -393,6 +393,17 @@ const ContinueVideoDialog = ({
                                     fidelidad del frame no importa tanto. */}
                                 {useAvatarIdentity && canEnableIdentity && (
                                     <div className="mt-3 flex gap-2 flex-wrap" onClick={(e) => e.preventDefault()}>
+                                        <button
+                                            type="button"
+                                            onClick={() => setIdentityModel('veo-3-1')}
+                                            className={`px-3 py-1.5 text-xs rounded-lg border transition-colors ${
+                                                identityModel === 'veo-3-1'
+                                                    ? 'border-purple-500 bg-purple-50 dark:bg-purple-500/20 text-purple-700 dark:text-purple-200 font-medium'
+                                                    : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'
+                                            }`}
+                                        >
+                                            Veo 3.1 · frame + identidad + audio
+                                        </button>
                                         <button
                                             type="button"
                                             onClick={() => setIdentityModel('kling-omni')}

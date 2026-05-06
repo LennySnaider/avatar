@@ -57,7 +57,7 @@ interface ImagePreviewModalProps {
         dialogue: string,
         aspectRatio: AspectRatio,
         useAvatarIdentity: boolean,
-        identityModel: 'seedance' | 'kling-omni',
+        identityModel: 'seedance' | 'kling-omni' | 'veo-3-1',
     ) => void
     onReuse?: (media: GeneratedMedia) => void
 }
@@ -730,7 +730,7 @@ const ImagePreviewModal = ({
         dialogue: string,
         aspectRatio: AspectRatio,
         useAvatarIdentity: boolean,
-        identityModel: 'seedance' | 'kling-omni',
+        identityModel: 'seedance' | 'kling-omni' | 'veo-3-1',
     ) => {
         if (!capturedFrame || !previewMedia || !onContinueVideo) return
         onContinueVideo(capturedFrame, prompt, dialogue, aspectRatio, useAvatarIdentity, identityModel)

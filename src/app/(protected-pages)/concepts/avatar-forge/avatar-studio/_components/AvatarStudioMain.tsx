@@ -541,14 +541,12 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                         throw new Error('Failed to optimize video input image')
                     }
 
-                    // Continue Video with avatar identity → Seedance-2 OR
-                    // Kling v3 Omni. Both accept first_frame + reference
-                    // images simultaneously while honouring aspect_ratio /
-                    // duration / resolution; the user picks via the model
-                    // selector inside the Continue dialog. Whichever upstream
-                    // provider the user had selected is overridden here
-                    // because no other model in our integration supports
-                    // both channels at once.
+                    // Continue Video with avatar identity → Veo 3.1, Kling
+                    // Omni or Seedance. The user picks via the model
+                    // selector inside the Continue dialog. Whichever
+                    // upstream provider the user had selected up top is
+                    // overridden because most models in our integration
+                    // don't support first_frame + multi-image refs at once.
                     if (continueUseAvatarIdentity) {
                         const identityRefs = [
                             optimizedPayload.faceRef,
@@ -565,7 +563,28 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                             originalProvider: activeProvider?.type,
                         })
 
-                        if (continueIdentityModel === 'kling-omni') {
+                        if (continueIdentityModel === 'veo-3-1') {
+                            // Veo 3.1 accepts up to 3 reference images of
+                            // type 'asset' alongside the first frame. Our
+                            // Gemini service maps faceRef → primary ref and
+                            // generalRefs → additional refs (cap 3).
+                            const refsForVeo = identityRefs.slice(0, 3)
+                            resultUrl = await generateVideoGemini({
+                                prompt: fullPrompt,
+                                imageInput: optimizedVideoInput,
+                                avatarReferences: refsForVeo.slice(1),
+                                faceRefImage: refsForVeo[0],
+                                aspectRatio,
+                                resolution: videoResolution,
+                                cameraMotion,
+                                subjectAction,
+                                dialogue: videoDialogue,
+                                voiceStyle,
+                                noMusic,
+                                noBackgroundEffects,
+                                modelName: 'veo-3.1-generate-preview',
+                            })
+                        } else if (continueIdentityModel === 'kling-omni') {
                             resultUrl = await generateVideoOmniKling({
                                 prompt: fullPrompt,
                                 firstFrameImage: optimizedVideoInput,
@@ -785,7 +804,7 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
             // Always clear the Continue-with-Identity flags so a follow-up
             // standalone Animate doesn't accidentally inherit them.
             setContinueUseAvatarIdentity(false)
-            setContinueIdentityModel('kling-omni')
+            setContinueIdentityModel('veo-3-1')
         }
     }, [
         isGenerating,
@@ -1206,7 +1225,7 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
             dialogue: string,
             originalAspectRatio: AspectRatio,
             useAvatarIdentity: boolean,
-            identityModel: 'seedance' | 'kling-omni',
+            identityModel: 'seedance' | 'kling-omni' | 'veo-3-1',
         ) => {
             const refImg: ReferenceImage = {
                 id: `continue-${Date.now()}`,

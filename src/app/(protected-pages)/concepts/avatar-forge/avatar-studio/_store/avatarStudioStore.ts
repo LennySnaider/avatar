@@ -154,7 +154,7 @@ interface AvatarStudioState {
     // handleGenerate's finally so a follow-up plain Animate doesn't
     // inherit them.
     continueUseAvatarIdentity: boolean
-    continueIdentityModel: 'seedance' | 'kling-omni'
+    continueIdentityModel: 'seedance' | 'kling-omni' | 'veo-3-1'
 
     // Style Popover
     showStylePopover: boolean
@@ -291,7 +291,7 @@ interface AvatarStudioState {
     setIsStitching: (stitching: boolean) => void
     setStitchProgress: (progress: number) => void
     setContinueUseAvatarIdentity: (value: boolean) => void
-    setContinueIdentityModel: (value: 'seedance' | 'kling-omni') => void
+    setContinueIdentityModel: (value: 'seedance' | 'kling-omni' | 'veo-3-1') => void
 
     // Actions - Style Popover
     setShowStylePopover: (show: boolean) => void
@@ -429,11 +429,10 @@ const initialState = {
     isStitching: false,
     stitchProgress: 0,
     continueUseAvatarIdentity: false,
-    // Kling Omni is the only model in our integration that preserves
-    // first_frame AND identity refs together; Seedance has to fall back
-    // to a hybrid reference-only mode. Default to the one that actually
-    // continues the clip.
-    continueIdentityModel: 'kling-omni' as const,
+    // Veo 3.1 is the most complete option (first_frame + 3 refs + native
+    // audio + 9:16 vertical). Kling Omni and Seedance follow as
+    // alternatives. See ContinueVideoDialog's selector for trade-offs.
+    continueIdentityModel: 'veo-3-1' as const,
 
     showStylePopover: false,
 

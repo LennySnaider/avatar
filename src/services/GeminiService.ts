@@ -1656,10 +1656,15 @@ export async function generateVideo(params: {
         targetResolution = '720p'
     }
 
-    // Prepare reference images (max 3)
+    // Prepare reference images (Veo 3.1 accepts up to 3 of type 'asset',
+    // alongside an optional first-frame `image`). Earlier code gated this
+    // on `!imageInput` because Veo 3.0 didn't allow both channels — Veo 3.1
+    // explicitly supports first_frame + reference_images together for
+    // character lock with continuity. Removing the gate so the animate
+    // (image-to-video) path can also benefit from identity refs.
     const referenceImagesPayload: unknown[] = []
 
-    if (hasRefs && !imageInput) {
+    if (hasRefs) {
         if (faceRefImage) {
             const resized = await resizeBase64Image(faceRefImage.base64)
             referenceImagesPayload.push({
@@ -1756,17 +1761,30 @@ export async function generateVideo(params: {
         let operation
 
         if (imageInput) {
-            // Animate mode
+            // Animate mode — first frame + (optional) identity refs.
+            // Veo 3.1 accepts up to 3 reference images alongside the first
+            // frame for character lock; when refs are present we switch to
+            // the full preview model (the fast variant doesn't expose
+            // referenceImages per the docs) and force durationSeconds='8'
+            // (required when reference images are used).
             const resizedInput = await resizeBase64Image(imageInput.base64)
+            const animateConfig: Record<string, unknown> = {
+                numberOfVideos: 1,
+                resolution: targetResolution,
+                aspectRatio: targetAspectRatio,
+            }
+            if (referenceImagesPayload.length > 0) {
+                animateConfig.referenceImages = referenceImagesPayload
+                animateConfig.durationSeconds = '8'
+            }
+
             operation = await ai.models.generateVideos({
-                model: 'veo-3.1-fast-generate-preview',
+                model: referenceImagesPayload.length > 0
+                    ? 'veo-3.1-generate-preview'
+                    : 'veo-3.1-fast-generate-preview',
                 prompt: finalPrompt || 'Animate this scene naturally.',
                 image: { imageBytes: resizedInput, mimeType: 'image/jpeg' },
-                config: {
-                    numberOfVideos: 1,
-                    resolution: targetResolution,
-                    aspectRatio: targetAspectRatio,
-                },
+                config: animateConfig,
             })
         } else {
             // Avatar mode

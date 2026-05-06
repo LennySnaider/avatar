@@ -105,10 +105,10 @@ export const DEFAULT_PROVIDERS: AIProvider[] = [
     },
     // Video Providers
     {
-        id: 'gemini-veo3',
-        name: 'Gemini Veo 3',
+        id: 'gemini-veo-3-1',
+        name: 'Gemini Veo 3.1',
         type: 'GOOGLE' as ProviderType,
-        model: 'veo-3.0-generate-preview',
+        model: 'veo-3.1-fast-generate-preview',
         endpoint: null,
         is_active: true,
         supports_image: false,
@@ -313,8 +313,8 @@ const ProviderManagerDrawer = () => {
         switch (provider.id) {
             case 'gemini-nano-banana':
                 return 'Studio-quality images, text rendering, multi-image blending'
-            case 'gemini-veo3':
-                return 'Video HD con audio generado, efectos cinematicos'
+            case 'gemini-veo-3-1':
+                return 'Veo 3.1 - audio nativo, hasta 3 ref images + first frame, 9:16 vertical'
             case 'kling-v1-6':
                 return 'Video estable, motion brush, camera control'
             case 'kling-v2-6':
