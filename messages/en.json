@@ -16,6 +16,8 @@
             "providersDesc": "Configure AI providers",
             "imageEditor": "Image Editor",
             "imageEditorDesc": "Edit images with AI",
+            "videoEditor": "Video Editor",
+            "videoEditorDesc": "Remove watermarks, trim and crop videos",
             "voiceStudio": "Voice Studio",
             "voiceStudioDesc": "Clone voices and generate scripts",
             "videoFlows": "Video Flows",

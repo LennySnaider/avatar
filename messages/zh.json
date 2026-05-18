@@ -16,6 +16,8 @@
             "providersDesc": "配置AI提供商",
             "imageEditor": "图像编辑器",
             "imageEditorDesc": "使用AI编辑图像",
+            "videoEditor": "视频编辑器",
+            "videoEditorDesc": "去除水印、裁剪和修剪视频",
             "voiceStudio": "语音工作室",
             "voiceStudioDesc": "克隆语音并生成脚本",
             "videoFlows": "视频流程",

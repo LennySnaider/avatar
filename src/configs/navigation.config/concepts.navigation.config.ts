@@ -71,6 +71,25 @@ const conceptsNavigationConfig: NavigationTree[] = [
                 subMenu: [],
             },
             {
+                key: 'avatarForge.videoEditor',
+                path: `${CONCEPTS_PREFIX_PATH}/avatar-forge/video-editor`,
+                title: 'Video Editor',
+                translateKey: 'nav.avatarForge.videoEditor',
+                // Reuse imageEdit icon for now — the icon registry has scissor/film
+                // alternatives but adding a new one requires touching the icon map
+                // separately. imageEdit visually fits the editor family.
+                icon: 'imageEdit',
+                type: NAV_ITEM_TYPE_ITEM,
+                authority: [ADMIN, USER],
+                meta: {
+                    description: {
+                        translateKey: 'nav.avatarForge.videoEditorDesc',
+                        label: 'Remove watermarks, trim and crop videos',
+                    },
+                },
+                subMenu: [],
+            },
+            {
                 key: 'avatarForge.voiceStudio',
                 path: `${CONCEPTS_PREFIX_PATH}/avatar-forge/voice-studio`,
                 title: 'Voice Studio',

@@ -16,6 +16,8 @@
             "providersDesc": "تكوين مزودي الذكاء الاصطناعي",
             "imageEditor": "محرر الصور",
             "imageEditorDesc": "تحرير الصور بالذكاء الاصطناعي",
+            "videoEditor": "محرر الفيديو",
+            "videoEditorDesc": "إزالة العلامات المائية واقتصاص ومونتاج الفيديو",
             "voiceStudio": "استوديو الصوت",
             "voiceStudioDesc": "استنساخ الأصوات وإنشاء النصوص",
             "videoFlows": "تدفقات الفيديو",

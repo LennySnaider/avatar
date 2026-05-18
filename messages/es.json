@@ -16,6 +16,8 @@
             "providersDesc": "Configurar proveedores de IA",
             "imageEditor": "Editor de Imágenes",
             "imageEditorDesc": "Editar imágenes con IA",
+            "videoEditor": "Editor de Videos",
+            "videoEditorDesc": "Remover watermark, recortar y trim",
             "voiceStudio": "Estudio de Voz",
             "voiceStudioDesc": "Clonar voces y generar guiones",
             "videoFlows": "Video Flows",
