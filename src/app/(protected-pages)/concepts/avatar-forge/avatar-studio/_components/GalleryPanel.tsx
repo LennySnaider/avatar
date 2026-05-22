@@ -9,7 +9,8 @@ import Progress from '@/components/ui/Progress'
 import ScrollBar from '@/components/ui/ScrollBar'
 import Notification from '@/components/ui/Notification'
 import toast from '@/components/ui/toast'
-import { HiOutlineTrash, HiOutlineDownload, HiOutlineFilm, HiOutlinePhotograph, HiOutlinePencilAlt, HiOutlineUpload } from 'react-icons/hi'
+import { HiOutlineTrash, HiOutlineDownload, HiOutlineFilm, HiOutlinePhotograph, HiOutlinePencilAlt, HiOutlineUpload, HiOutlineScissors } from 'react-icons/hi'
+import { useRouter } from 'next/navigation'
 import { stitchVideos } from '@/services/VideoStitchService'
 import type { GeneratedMedia, AspectRatio } from '../types'
 
@@ -39,6 +40,18 @@ const GalleryPanel = ({ onAnimateImage, onSaveToGallery }: GalleryPanelProps) =>
     } = useAvatarStudioStore()
 
     const uploadInputRef = useRef<HTMLInputElement>(null)
+    const router = useRouter()
+
+    // Open the Video Editor with the selected video preloaded. The editor
+    // reads `videoEditorImport` from sessionStorage on mount and calls its
+    // own loadVideo() — same pattern as the Avatar Studio "studioImport".
+    const handleEditVideo = (media: GeneratedMedia) => {
+        sessionStorage.setItem(
+            'videoEditorImport',
+            JSON.stringify({ url: media.url, prompt: media.prompt }),
+        )
+        router.push('/concepts/avatar-forge/video-editor')
+    }
 
     const detectAspectRatio = (width: number, height: number): AspectRatio => {
         const ratio = width / height
@@ -401,6 +414,20 @@ const GalleryPanel = ({ onAnimateImage, onSaveToGallery }: GalleryPanelProps) =>
                                                             onClick={(e) => {
                                                                 e.stopPropagation()
                                                                 openEditor(media)
+                                                            }}
+                                                        >
+                                                            <span>Edit</span>
+                                                        </Button>
+                                                    )}
+                                                    {media.mediaType === 'VIDEO' && (
+                                                        <Button
+                                                            size="xs"
+                                                            variant="solid"
+                                                            color="blue"
+                                                            icon={<HiOutlineScissors />}
+                                                            onClick={(e) => {
+                                                                e.stopPropagation()
+                                                                handleEditVideo(media)
                                                             }}
                                                         >
                                                             <span>Edit</span>

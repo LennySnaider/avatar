@@ -17,24 +17,39 @@ import {
     HiOutlineChevronRight,
     HiOutlineTrash,
     HiOutlineSave,
+    HiOutlineClock,
+    HiOutlineSelector,
 } from 'react-icons/hi'
 import { useAvatarStudioStore } from '../../avatar-studio/_store/avatarStudioStore'
 import {
     probeVideo,
     removeWatermark,
+    trimVideo,
+    cropVideo,
     type VideoRegion,
 } from '@/services/VideoEditService'
+
+type EditOperation = 'delogo' | 'trim' | 'crop'
 
 type EditedVideo = {
     id: string
     url: string
     label: string
-    operation: 'delogo'
+    operation: EditOperation
     params: Record<string, unknown>
     timestamp: number
 }
 
-type EditMode = 'watermark' // 'trim' | 'crop' come in Phase 2
+type EditMode = 'watermark' | 'trim' | 'crop'
+
+const CROP_ASPECTS: Array<{ value: 'free' | '1:1' | '16:9' | '9:16' | '4:3' | '3:4'; label: string }> = [
+    { value: 'free', label: 'Libre' },
+    { value: '1:1', label: '1:1' },
+    { value: '16:9', label: '16:9' },
+    { value: '9:16', label: '9:16' },
+    { value: '4:3', label: '4:3' },
+    { value: '3:4', label: '3:4' },
+]
 
 interface VideoEditorMainProps {
     userId?: string
@@ -54,10 +69,17 @@ const VideoEditorMain = ({ userId }: VideoEditorMainProps) => {
     const [currentIndex, setCurrentIndex] = useState(-1) // -1 = original
 
     // Edit mode + rectangle drag state
-    const [editMode] = useState<EditMode>('watermark')
+    const [editMode, setEditMode] = useState<EditMode>('watermark')
     const [rect, setRect] = useState<VideoRegion | null>(null)
     const [isDraggingRect, setIsDraggingRect] = useState(false)
     const [dragStart, setDragStart] = useState({ x: 0, y: 0 })
+
+    // Trim state — start/end in seconds within the current video
+    const [trimStart, setTrimStart] = useState(0)
+    const [trimEnd, setTrimEnd] = useState(0)
+
+    // Crop aspect ratio (drives the rectangle drag in crop mode)
+    const [cropAspect, setCropAspect] = useState<typeof CROP_ASPECTS[number]['value']>('free')
 
     // Processing state
     const [isProcessing, setIsProcessing] = useState(false)
@@ -114,11 +136,22 @@ const VideoEditorMain = ({ userId }: VideoEditorMainProps) => {
                 width: video.videoWidth || 1,
                 height: video.videoHeight || 1,
             })
-            setVideoDuration(video.duration || 0)
+            const dur = video.duration || 0
+            setVideoDuration(dur)
+            // Snap trim range to the full video duration whenever a new
+            // clip loads so the user starts with "trim nothing" by default.
+            setTrimStart(0)
+            setTrimEnd(dur)
         }
         video.addEventListener('loadedmetadata', onMeta)
         return () => video.removeEventListener('loadedmetadata', onMeta)
     }, [currentUrl])
+
+    // Reset rect when changing modes so the user doesn't carry over a
+    // watermark selection into crop mode (different semantics).
+    useEffect(() => {
+        setRect(null)
+    }, [editMode])
 
     // ─── File upload handler ────────────────────────────────────────
     const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -167,7 +200,21 @@ const VideoEditorMain = ({ userId }: VideoEditorMainProps) => {
         const minY = Math.min(dragStart.y, y)
         const maxX = Math.max(dragStart.x, x)
         const maxY = Math.max(dragStart.y, y)
-        setRect({ x: minX, y: minY, w: maxX - minX, h: maxY - minY })
+        let w = maxX - minX
+        let h = maxY - minY
+
+        // In crop mode with a fixed aspect ratio, snap height to match width.
+        // Watermark mode is always free-form (you don't want the rect snapping
+        // to a ratio just to cover a logo).
+        if (editMode === 'crop' && cropAspect !== 'free') {
+            const [arW, arH] = cropAspect.split(':').map(Number)
+            const ratio = arW / arH
+            // Use whichever drag dimension is larger to drive the other.
+            if (w / h > ratio) w = h * ratio
+            else h = w / ratio
+        }
+
+        setRect({ x: minX, y: minY, w, h })
     }
 
     const handleRectMouseUp = () => {
@@ -176,68 +223,64 @@ const VideoEditorMain = ({ userId }: VideoEditorMainProps) => {
         if (rect && (rect.w < 4 || rect.h < 4)) setRect(null)
     }
 
-    // ─── Apply watermark removal ─────────────────────────────────────
-    const handleRemoveWatermark = useCallback(async () => {
-        if (!currentUrl || !rect) return
-
+    // Translate a display-pixel rect (drawn on top of the <video>) to the
+    // corresponding source-video-pixel rect. The <video> uses object-contain
+    // so it may be letterboxed inside its container; we compute the rendered
+    // video box first, then scale. Returns null if the rect doesn't actually
+    // overlap the rendered video (e.g. drawn entirely on the letterbox).
+    const rectToSourcePixels = useCallback((r: VideoRegion): VideoRegion | null => {
         const container = canvasContainerRef.current
-        if (!container) return
-        const containerRect = container.getBoundingClientRect()
-
-        // Translate display-pixel rect to source-video-pixel rect.
-        // The <video> uses object-contain so it might be letterboxed —
-        // compute the actual rendered video box first, then scale.
-        const containerW = containerRect.width
-        const containerH = containerRect.height
+        if (!container) return null
+        const cr = container.getBoundingClientRect()
         const vw = videoSize.width
         const vh = videoSize.height
+        if (vw <= 0 || vh <= 0) return null
 
-        const containerAR = containerW / containerH
+        const containerAR = cr.width / cr.height
         const videoAR = vw / vh
-        let renderedW = containerW
-        let renderedH = containerH
+        let renderedW = cr.width
+        let renderedH = cr.height
         let offsetX = 0
         let offsetY = 0
         if (videoAR > containerAR) {
-            // Video is wider than container → letterbox top/bottom
-            renderedH = containerW / videoAR
-            offsetY = (containerH - renderedH) / 2
+            renderedH = cr.width / videoAR
+            offsetY = (cr.height - renderedH) / 2
         } else {
-            renderedW = containerH * videoAR
-            offsetX = (containerW - renderedW) / 2
+            renderedW = cr.height * videoAR
+            offsetX = (cr.width - renderedW) / 2
         }
 
         const scaleX = vw / renderedW
         const scaleY = vh / renderedH
 
         const region: VideoRegion = {
-            x: Math.max(0, (rect.x - offsetX) * scaleX),
-            y: Math.max(0, (rect.y - offsetY) * scaleY),
-            w: Math.min(vw, rect.w * scaleX),
-            h: Math.min(vh, rect.h * scaleY),
+            x: Math.max(0, (r.x - offsetX) * scaleX),
+            y: Math.max(0, (r.y - offsetY) * scaleY),
+            w: Math.min(vw, r.w * scaleX),
+            h: Math.min(vh, r.h * scaleY),
         }
+        if (region.w < 4 || region.h < 4) return null
+        return region
+    }, [videoSize])
 
-        if (region.w < 4 || region.h < 4) {
-            toast.push(
-                <Notification type="warning" title="Region too small">
-                    Draw a larger rectangle over the watermark.
-                </Notification>,
-            )
-            return
-        }
-
+    // ─── Generic edit runner (shared progress + history + error UX) ──
+    const runEdit = useCallback(async (
+        label: string,
+        operation: EditOperation,
+        params: Record<string, unknown>,
+        executor: (onProgress: (p: number) => void) => Promise<string>,
+    ) => {
         setIsProcessing(true)
         setProgress(0)
-        setProgressLabel('Removing watermark…')
-
+        setProgressLabel(label)
         try {
-            const outputUrl = await removeWatermark(currentUrl, region, setProgress)
+            const outputUrl = await executor(setProgress)
             const edit: EditedVideo = {
                 id: `edit-${Date.now()}`,
                 url: outputUrl,
-                label: 'Watermark removed',
-                operation: 'delogo',
-                params: region,
+                label,
+                operation,
+                params,
                 timestamp: Date.now(),
             }
             setHistory((prev) => [...prev, edit])
@@ -245,12 +288,12 @@ const VideoEditorMain = ({ userId }: VideoEditorMainProps) => {
             setRect(null)
             toast.push(
                 <Notification type="success" title="Done">
-                    Watermark removed. Result added to history.
+                    {label}. Result added to history.
                 </Notification>,
             )
         } catch (err) {
             const message = err instanceof Error ? err.message : 'Unknown error'
-            console.error('[VideoEditor] removeWatermark failed:', err)
+            console.error(`[VideoEditor] ${operation} failed:`, err)
             toast.push(
                 <Notification type="danger" title="Edit failed">
                     {message}
@@ -260,7 +303,61 @@ const VideoEditorMain = ({ userId }: VideoEditorMainProps) => {
             setIsProcessing(false)
             setProgress(0)
         }
-    }, [currentUrl, rect, videoSize, history.length])
+    }, [history.length])
+
+    // ─── Apply watermark removal ─────────────────────────────────────
+    const handleRemoveWatermark = useCallback(async () => {
+        if (!currentUrl || !rect) return
+        const region = rectToSourcePixels(rect)
+        if (!region) {
+            toast.push(
+                <Notification type="warning" title="Region too small">
+                    Draw a larger rectangle over the watermark.
+                </Notification>,
+            )
+            return
+        }
+        await runEdit('Watermark removed', 'delogo', region, (onP) =>
+            removeWatermark(currentUrl, region, onP),
+        )
+    }, [currentUrl, rect, rectToSourcePixels, runEdit])
+
+    // ─── Apply trim ──────────────────────────────────────────────────
+    const handleApplyTrim = useCallback(async () => {
+        if (!currentUrl) return
+        const start = Math.max(0, trimStart)
+        const end = Math.min(videoDuration, trimEnd)
+        if (end - start < 0.1) {
+            toast.push(
+                <Notification type="warning" title="Range too small">
+                    Trim range must be at least 0.1 seconds.
+                </Notification>,
+            )
+            return
+        }
+        const label = `Trimmed ${start.toFixed(1)}s → ${end.toFixed(1)}s`
+        await runEdit(label, 'trim', { startSec: start, endSec: end }, (onP) =>
+            trimVideo(currentUrl, start, end, onP),
+        )
+    }, [currentUrl, trimStart, trimEnd, videoDuration, runEdit])
+
+    // ─── Apply crop ──────────────────────────────────────────────────
+    const handleApplyCrop = useCallback(async () => {
+        if (!currentUrl || !rect) return
+        const region = rectToSourcePixels(rect)
+        if (!region) {
+            toast.push(
+                <Notification type="warning" title="Region too small">
+                    Draw a larger rectangle to crop.
+                </Notification>,
+            )
+            return
+        }
+        const label = `Cropped ${Math.round(region.w)}×${Math.round(region.h)}`
+        await runEdit(label, 'crop', region, (onP) =>
+            cropVideo(currentUrl, region, onP),
+        )
+    }, [currentUrl, rect, rectToSourcePixels, runEdit])
 
     // ─── Probe with FFmpeg if DOM metadata not yet loaded ────────────
     // The native <video> tag usually populates videoWidth/videoHeight as
@@ -435,11 +532,17 @@ const VideoEditorMain = ({ userId }: VideoEditorMainProps) => {
                         <div
                             ref={canvasContainerRef}
                             className="relative max-w-full max-h-full inline-block"
-                            onMouseDown={handleRectMouseDown}
-                            onMouseMove={handleRectMouseMove}
-                            onMouseUp={handleRectMouseUp}
-                            onMouseLeave={handleRectMouseUp}
-                            style={{ cursor: isProcessing ? 'wait' : 'crosshair' }}
+                            onMouseDown={editMode === 'trim' ? undefined : handleRectMouseDown}
+                            onMouseMove={editMode === 'trim' ? undefined : handleRectMouseMove}
+                            onMouseUp={editMode === 'trim' ? undefined : handleRectMouseUp}
+                            onMouseLeave={editMode === 'trim' ? undefined : handleRectMouseUp}
+                            style={{
+                                cursor: isProcessing
+                                    ? 'wait'
+                                    : editMode === 'trim'
+                                        ? 'default'
+                                        : 'crosshair',
+                            }}
                         >
                             <video
                                 ref={videoRef}
@@ -482,15 +585,31 @@ const VideoEditorMain = ({ userId }: VideoEditorMainProps) => {
                         <div className="flex items-center gap-2 mb-3">
                             <Button
                                 size="xs"
-                                variant="solid"
+                                variant={editMode === 'watermark' ? 'solid' : 'plain'}
                                 icon={<HiOutlineScissors />}
+                                onClick={() => setEditMode('watermark')}
+                                disabled={isProcessing}
                             >
                                 Watermark
                             </Button>
-                            {/* Trim and Crop come in Phase 2 */}
-                            <span className="text-xs text-gray-400 dark:text-gray-500 ml-2">
-                                Trim y Crop: próximamente
-                            </span>
+                            <Button
+                                size="xs"
+                                variant={editMode === 'trim' ? 'solid' : 'plain'}
+                                icon={<HiOutlineClock />}
+                                onClick={() => setEditMode('trim')}
+                                disabled={isProcessing}
+                            >
+                                Trim
+                            </Button>
+                            <Button
+                                size="xs"
+                                variant={editMode === 'crop' ? 'solid' : 'plain'}
+                                icon={<HiOutlineSelector />}
+                                onClick={() => setEditMode('crop')}
+                                disabled={isProcessing}
+                            >
+                                Crop
+                            </Button>
                         </div>
 
                         {editMode === 'watermark' && (
@@ -514,6 +633,125 @@ const VideoEditorMain = ({ userId }: VideoEditorMainProps) => {
                                 >
                                     Remove Watermark
                                 </Button>
+                            </div>
+                        )}
+
+                        {editMode === 'trim' && (
+                            <div className="space-y-3">
+                                {/* Two-handle scrubber over the full duration */}
+                                <div className="relative h-2 bg-gray-200 dark:bg-gray-700 rounded">
+                                    {/* Selected range bar */}
+                                    <div
+                                        className="absolute h-full bg-purple-500/40 rounded"
+                                        style={{
+                                            left: `${(trimStart / Math.max(0.1, videoDuration)) * 100}%`,
+                                            width: `${((trimEnd - trimStart) / Math.max(0.1, videoDuration)) * 100}%`,
+                                        }}
+                                    />
+                                </div>
+                                <div className="flex items-center gap-3">
+                                    <label className="text-xs text-gray-500 dark:text-gray-400 flex items-center gap-2">
+                                        Start
+                                        <input
+                                            type="number"
+                                            min={0}
+                                            max={trimEnd}
+                                            step={0.1}
+                                            value={trimStart.toFixed(2)}
+                                            onChange={(e) =>
+                                                setTrimStart(
+                                                    Math.min(
+                                                        trimEnd,
+                                                        Math.max(0, parseFloat(e.target.value) || 0),
+                                                    ),
+                                                )
+                                            }
+                                            className="w-20 px-2 py-1 border border-gray-300 dark:border-gray-700 rounded text-xs bg-white dark:bg-gray-800"
+                                        />
+                                        s
+                                    </label>
+                                    <label className="text-xs text-gray-500 dark:text-gray-400 flex items-center gap-2">
+                                        End
+                                        <input
+                                            type="number"
+                                            min={trimStart}
+                                            max={videoDuration}
+                                            step={0.1}
+                                            value={trimEnd.toFixed(2)}
+                                            onChange={(e) =>
+                                                setTrimEnd(
+                                                    Math.max(
+                                                        trimStart,
+                                                        Math.min(
+                                                            videoDuration,
+                                                            parseFloat(e.target.value) || videoDuration,
+                                                        ),
+                                                    ),
+                                                )
+                                            }
+                                            className="w-20 px-2 py-1 border border-gray-300 dark:border-gray-700 rounded text-xs bg-white dark:bg-gray-800"
+                                        />
+                                        s
+                                    </label>
+                                    <span className="text-xs text-gray-400 dark:text-gray-500 flex-1">
+                                        Duración resultante: {(trimEnd - trimStart).toFixed(2)}s
+                                    </span>
+                                    <Button
+                                        size="sm"
+                                        variant="solid"
+                                        onClick={handleApplyTrim}
+                                        disabled={isProcessing || trimEnd - trimStart < 0.1}
+                                        icon={<HiOutlineClock />}
+                                    >
+                                        Apply Trim
+                                    </Button>
+                                </div>
+                            </div>
+                        )}
+
+                        {editMode === 'crop' && (
+                            <div className="space-y-3">
+                                <div className="flex items-center gap-2 flex-wrap">
+                                    <span className="text-xs text-gray-500 dark:text-gray-400 mr-1">
+                                        Aspect:
+                                    </span>
+                                    {CROP_ASPECTS.map((opt) => (
+                                        <button
+                                            key={opt.value}
+                                            type="button"
+                                            onClick={() => {
+                                                setCropAspect(opt.value)
+                                                setRect(null)
+                                            }}
+                                            disabled={isProcessing}
+                                            className={`px-2.5 py-1 text-xs rounded-lg border transition-colors ${
+                                                cropAspect === opt.value
+                                                    ? 'border-purple-500 bg-purple-50 dark:bg-purple-500/20 text-purple-700 dark:text-purple-200 font-medium'
+                                                    : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'
+                                            }`}
+                                        >
+                                            {opt.label}
+                                        </button>
+                                    ))}
+                                </div>
+                                <div className="flex items-center justify-between gap-4">
+                                    <div className="text-xs text-gray-500 dark:text-gray-400 flex-1">
+                                        {showRect ? (
+                                            <>Recorte: {Math.round(rect!.w)}×{Math.round(rect!.h)}px.</>
+                                        ) : (
+                                            <>Dibujá el rectángulo de recorte sobre el video.</>
+                                        )}
+                                    </div>
+                                    <Button
+                                        size="sm"
+                                        variant="solid"
+                                        onClick={handleApplyCrop}
+                                        disabled={!canApply}
+                                        icon={<HiOutlineSelector />}
+                                    >
+                                        Apply Crop
+                                    </Button>
+                                </div>
                             </div>
                         )}
                     </div>
