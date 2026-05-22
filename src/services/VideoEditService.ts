@@ -89,24 +89,27 @@ export async function probeVideo(videoUrl: string): Promise<VideoProbeResult> {
 }
 
 /**
- * Remove a static watermark by heavily blurring the selected region.
+ * Remove a static watermark with two combined techniques:
  *
- * We tried `delogo` and `removelogo` (both interpolation-based filters
- * that try to RECONSTRUCT what's behind the watermark). On real footage
- * — especially clips with people / movement near the corner logo —
- * those filters produced visible color-stretching artifacts (a pink /
- * purple smudge appears because the algorithm samples colors from the
- * wrong side of the rectangle). User testing confirmed pure gaussian
- * blur looked better despite leaving a visible fuzzy patch: it can't
- * invent colors that aren't in the region, so it can't distort.
+ *   1) `delogo` on the user's exact rectangle: erases the watermark
+ *      content. It can introduce mild color smudges where neighbors
+ *      differ in brightness, but those stay contained inside the
+ *      rectangle.
  *
- * Strategy: split the frame, crop the region of interest, apply a
- * strong `gblur` (sigma=20), and composite the blurred patch back over
- * the rest of the frame (which stays untouched and sharp).
+ *   2) `gblur` (sigma=20) on the rectangle EXPANDED by ~20px on each
+ *      side, composited back over the cleaned frame. The padded area
+ *      means the blur boundary doesn't align with the original rect
+ *      edges, so the user no longer sees a sharp square cutout —
+ *      the blurred zone reads as a natural out-of-focus patch and
+ *      simultaneously hides whatever interpolation noise delogo left
+ *      behind.
  *
- * Future improvement: client-side AI inpainting (LaMa via ONNX Runtime
- * Web + WebGPU) for the cases where blur isn't acceptable. Tracked as
- * "Path B" in the editor plan.
+ * This avoids both prior failure modes:
+ *  - Pure delogo/removelogo left visible color distortion smudges.
+ *  - Pure blur left a sharp-edged blurry square that the eye spotted.
+ *
+ * Future improvement: AI inpainting with temporal consistency (LaMa
+ * via ONNX Runtime Web + WebGPU). Tracked as Path B in the editor plan.
  */
 export async function removeWatermark(
     videoUrl: string,
@@ -131,7 +134,7 @@ export async function removeWatermark(
     const output = `out-${Date.now()}.mp4`
 
     try {
-        console.log('[VideoEdit] Removing watermark (blur), region:', region)
+        console.log('[VideoEdit] Removing watermark, region:', region)
         onProgress?.(10)
 
         const data = await fetchVideoData(videoUrl)
@@ -144,14 +147,40 @@ export async function removeWatermark(
         const w = Math.max(4, Math.round(region.w))
         const h = Math.max(4, Math.round(region.h))
 
-        // Single-pass: blur ONLY the rectangle, leave the rest sharp.
-        // We tried two-pass with removelogo first but the interpolation
-        // produced visible color distortion (pink/purple smudges on real
-        // footage). Pure blur can't invent colors so it can't distort.
+        // Probe to get video dimensions — we need them to clamp the
+        // expanded blur rectangle so it doesn't run past the frame edge.
+        const probe = await probeVideo(videoUrl)
+        if (probe.width <= 0 || probe.height <= 0) {
+            throw new Error('Could not determine video dimensions for watermark removal')
+        }
+        const vw = probe.width
+        const vh = probe.height
+
+        // Padding around the user's rectangle for the blur layer. Bigger
+        // padding = softer edges and more "out of focus" feel, but also
+        // blurs more of the surrounding scene. 20px is a balance that
+        // works for typical corner watermarks at 720p/1080p; we may
+        // expose it as a slider if more tuning is needed.
+        const padding = 20
+        const blurX = Math.max(0, x - padding)
+        const blurY = Math.max(0, y - padding)
+        const blurW = Math.min(vw - blurX, w + padding * 2)
+        const blurH = Math.min(vh - blurY, h + padding * 2)
+
+        // Two-pass filtergraph:
+        //   1) delogo wipes the exact watermark rectangle. Any colour
+        //      smudge introduced by interpolation stays inside [x,y,w,h].
+        //   2) split the cleaned frame, crop a LARGER rect ([blurX, blurY,
+        //      blurW, blurH]) that overlaps the surrounding clean area,
+        //      blur it heavily, overlay back at the padded origin. The
+        //      enlarged blur boundary doesn't coincide with the original
+        //      rect edges, so the user no longer perceives a sharp
+        //      square cutout — it reads as a soft out-of-focus patch.
         const vfilter =
-            `[0:v]split=2[base][region_src];` +
-            `[region_src]crop=${w}:${h}:${x}:${y},gblur=sigma=20[blurred];` +
-            `[base][blurred]overlay=${x}:${y}`
+            `[0:v]delogo=x=${x}:y=${y}:w=${w}:h=${h}:show=0[clean];` +
+            `[clean]split=2[base][region_src];` +
+            `[region_src]crop=${blurW}:${blurH}:${blurX}:${blurY},gblur=sigma=20[blurred];` +
+            `[base][blurred]overlay=${blurX}:${blurY}`
 
         const exitCode = await ff.exec([
             '-i', input,
