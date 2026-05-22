@@ -31,7 +31,6 @@ import {
     trimVideo,
     cropVideo,
     type VideoRegion,
-    type WatermarkMode,
 } from '@/services/VideoEditService'
 
 type EditOperation = 'delogo' | 'trim' | 'crop'
@@ -79,10 +78,6 @@ const VideoEditorMain = ({ userId }: VideoEditorMainProps) => {
     const [isDraggingRect, setIsDraggingRect] = useState(false)
     const [dragStart, setDragStart] = useState({ x: 0, y: 0 })
 
-    // Watermark sub-mode. 'inpaint' uses FFmpeg delogo (best for static
-    // backgrounds), 'blur' uses gaussian blur over the region (best when
-    // something moves through the watermark area — no pixel stretching).
-    const [watermarkMode, setWatermarkMode] = useState<WatermarkMode>('inpaint')
 
     // Trim state — start/end in seconds within the current video
     const [trimStart, setTrimStart] = useState(0)
@@ -382,11 +377,10 @@ const VideoEditorMain = ({ userId }: VideoEditorMainProps) => {
             )
             return
         }
-        const label = watermarkMode === 'blur' ? 'Watermark blurred' : 'Watermark removed'
-        await runEdit(label, 'delogo', { ...region, mode: watermarkMode }, (onP) =>
-            removeWatermark(currentUrl, region, watermarkMode, onP),
+        await runEdit('Watermark removed', 'delogo', region, (onP) =>
+            removeWatermark(currentUrl, region, onP),
         )
-    }, [currentUrl, rect, rectToSourcePixels, runEdit, watermarkMode])
+    }, [currentUrl, rect, rectToSourcePixels, runEdit])
 
     // ─── Apply trim ──────────────────────────────────────────────────
     const handleApplyTrim = useCallback(async () => {
@@ -730,78 +724,26 @@ const VideoEditorMain = ({ userId }: VideoEditorMainProps) => {
                         </div>
 
                         {editMode === 'watermark' && (
-                            <div className="space-y-3">
-                                {/* Sub-mode selector. Inpaint vs Blur is the
-                                    most useful trade-off without going to AI:
-                                    inpaint reconstructs, blur hides. */}
-                                <div className="flex items-center gap-2 flex-wrap">
-                                    <span className="text-xs text-gray-500 dark:text-gray-400 mr-1">
-                                        Método:
-                                    </span>
-                                    <button
-                                        type="button"
-                                        onClick={() => setWatermarkMode('inpaint')}
-                                        disabled={isProcessing}
-                                        className={`px-2.5 py-1 text-xs rounded-lg border transition-colors ${
-                                            watermarkMode === 'inpaint'
-                                                ? 'border-purple-500 bg-purple-50 dark:bg-purple-500/20 text-purple-700 dark:text-purple-200 font-medium'
-                                                : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'
-                                        }`}
-                                    >
-                                        Inpaint · fondo estático
-                                    </button>
-                                    <button
-                                        type="button"
-                                        onClick={() => setWatermarkMode('blur')}
-                                        disabled={isProcessing}
-                                        className={`px-2.5 py-1 text-xs rounded-lg border transition-colors ${
-                                            watermarkMode === 'blur'
-                                                ? 'border-purple-500 bg-purple-50 dark:bg-purple-500/20 text-purple-700 dark:text-purple-200 font-medium'
-                                                : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'
-                                        }`}
-                                    >
-                                        Blur · con movimiento cerca
-                                    </button>
-                                </div>
-
-                                {/* Educational hint. Spelled out so the user
-                                    can pick consciously instead of guessing. */}
-                                <div className="text-[11px] text-amber-600 dark:text-amber-400 leading-relaxed">
-                                    {watermarkMode === 'inpaint' ? (
+                            <div className="flex items-center justify-between gap-4">
+                                <div className="text-xs text-gray-500 dark:text-gray-400 flex-1">
+                                    {showRect ? (
                                         <>
-                                            ⚠ Inpaint reconstruye el fondo interpolando los pixels alrededor del rectángulo.
-                                            Si algo (una persona, un objeto) pasa por encima de la zona, el color se &quot;estira&quot;
-                                            hacia adentro y se ve un artifact. Para esos casos usá Blur.
+                                            Región seleccionada: {Math.round(rect!.w)}×{Math.round(rect!.h)}px.
+                                            Hacé click en &quot;Remove Watermark&quot;.
                                         </>
                                     ) : (
-                                        <>
-                                            ⚠ Blur difumina la zona en vez de reconstruir el fondo. El watermark deja de ser legible
-                                            pero queda un parche borroso. No genera artifacts de estiramiento cuando hay movimiento
-                                            sobre la zona.
-                                        </>
+                                        <>Dibujá un rectángulo encima del watermark con el mouse.</>
                                     )}
                                 </div>
-
-                                <div className="flex items-center justify-between gap-4">
-                                    <div className="text-xs text-gray-500 dark:text-gray-400 flex-1">
-                                        {showRect ? (
-                                            <>
-                                                Región seleccionada: {Math.round(rect!.w)}×{Math.round(rect!.h)}px.
-                                            </>
-                                        ) : (
-                                            <>Dibujá un rectángulo encima del watermark con el mouse.</>
-                                        )}
-                                    </div>
-                                    <Button
-                                        size="sm"
-                                        variant="solid"
-                                        onClick={handleRemoveWatermark}
-                                        disabled={!canApply}
-                                        icon={<HiOutlineScissors />}
-                                    >
-                                        {watermarkMode === 'blur' ? 'Blur Watermark' : 'Remove Watermark'}
-                                    </Button>
-                                </div>
+                                <Button
+                                    size="sm"
+                                    variant="solid"
+                                    onClick={handleRemoveWatermark}
+                                    disabled={!canApply}
+                                    icon={<HiOutlineScissors />}
+                                >
+                                    Remove Watermark
+                                </Button>
                             </div>
                         )}
 
