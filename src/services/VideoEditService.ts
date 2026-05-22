@@ -133,6 +133,8 @@ export async function removeWatermark(
     const input = `in-${Date.now()}.mp4`
     const output = `out-${Date.now()}.mp4`
 
+    const maskFile = `feather-${Date.now()}.png`
+
     try {
         console.log('[VideoEdit] Removing watermark, region:', region)
         onProgress?.(10)
@@ -156,34 +158,53 @@ export async function removeWatermark(
         const vw = probe.width
         const vh = probe.height
 
-        // Padding around the user's rectangle for the blur layer. Bigger
-        // padding = softer edges and more "out of focus" feel, but also
-        // blurs more of the surrounding scene. 20px is a balance that
-        // works for typical corner watermarks at 720p/1080p; we may
-        // expose it as a slider if more tuning is needed.
-        const padding = 20
-        const blurX = Math.max(0, x - padding)
-        const blurY = Math.max(0, y - padding)
-        const blurW = Math.min(vw - blurX, w + padding * 2)
-        const blurH = Math.min(vh - blurY, h + padding * 2)
+        // Padding around the user's rectangle. The blur layer is composited
+        // back via a FEATHERED alpha mask, so:
+        //   - the user's rect is fully blurred (alpha=1 in the mask center)
+        //   - the surrounding `featherPx` px transitions gradually to alpha=0
+        //   - past that, the original frame is untouched
+        // This kills the "square cutout" perception the user reported with
+        // hard-edged blur.
+        const featherPx = 25
+        const blurX = Math.max(0, x - featherPx)
+        const blurY = Math.max(0, y - featherPx)
+        const blurW = Math.min(vw - blurX, w + featherPx * 2)
+        const blurH = Math.min(vh - blurY, h + featherPx * 2)
 
-        // Two-pass filtergraph:
-        //   1) delogo wipes the exact watermark rectangle. Any colour
-        //      smudge introduced by interpolation stays inside [x,y,w,h].
-        //   2) split the cleaned frame, crop a LARGER rect ([blurX, blurY,
-        //      blurW, blurH]) that overlaps the surrounding clean area,
-        //      blur it heavily, overlay back at the padded origin. The
-        //      enlarged blur boundary doesn't coincide with the original
-        //      rect edges, so the user no longer perceives a sharp
-        //      square cutout — it reads as a soft out-of-focus patch.
+        // Generate the feathered alpha mask. White interior matches the
+        // user's rect, then fades to black over `featherPx` so the overlay
+        // blends seamlessly with the surrounding sharp pixels.
+        const innerLeft = x - blurX
+        const innerTop = y - blurY
+        const maskBytes = await generateFeatherMaskPng(
+            blurW, blurH,
+            innerLeft, innerTop, w, h,
+            featherPx,
+        )
+        await ff.writeFile(maskFile, maskBytes)
+        console.log(
+            `[VideoEdit] Feather mask: ${blurW}×${blurH}, inner rect ${w}×${h} at (${innerLeft},${innerTop}), feather=${featherPx}px`,
+        )
+
+        // Filtergraph:
+        //   1) delogo wipes the exact watermark rect; any color distortion
+        //      stays inside [x, y, w, h].
+        //   2) split → crop the padded rect → gblur → format=yuva420p so the
+        //      result has an alpha channel → alphamerge with our feather PNG
+        //      (loaded as 2nd input [1:v]) → overlay back on the base. The
+        //      overlay uses the alpha from the mask, so the edges blend out
+        //      instead of showing a hard rectangle.
         const vfilter =
             `[0:v]delogo=x=${x}:y=${y}:w=${w}:h=${h}:show=0[clean];` +
             `[clean]split=2[base][region_src];` +
-            `[region_src]crop=${blurW}:${blurH}:${blurX}:${blurY},gblur=sigma=20[blurred];` +
-            `[base][blurred]overlay=${blurX}:${blurY}`
+            `[region_src]crop=${blurW}:${blurH}:${blurX}:${blurY},gblur=sigma=20,format=yuva420p[blurred];` +
+            `[1:v]format=gray[mask];` +
+            `[blurred][mask]alphamerge[feathered];` +
+            `[base][feathered]overlay=${blurX}:${blurY}`
 
         const exitCode = await ff.exec([
             '-i', input,
+            '-i', maskFile,
             '-filter_complex', vfilter,
             '-c:v', 'libx264',
             '-preset', 'ultrafast',
@@ -210,7 +231,84 @@ export async function removeWatermark(
         // Cleanup so FS stays bounded — these accumulate fast with repeated edits.
         try { await ff.deleteFile(input) } catch { /* ignore */ }
         try { await ff.deleteFile(output) } catch { /* ignore */ }
+        try { await ff.deleteFile(maskFile) } catch { /* ignore */ }
     }
+}
+
+/**
+ * Build a grayscale alpha mask PNG with a soft-edge rectangle.
+ *
+ * Output dimensions are `width × height` (the padded rectangle around the
+ * user's watermark selection). Inside the white area at
+ * (innerX, innerY, innerW, innerH) the alpha is fully opaque; the edges
+ * fade to transparent over `featherPx` pixels using a CSS canvas blur.
+ *
+ * FFmpeg's `alphamerge` filter reads this as the alpha channel of the
+ * blurred overlay, so the result composites smoothly into the underlying
+ * frame without a visible rectangular edge.
+ */
+async function generateFeatherMaskPng(
+    width: number,
+    height: number,
+    innerX: number,
+    innerY: number,
+    innerW: number,
+    innerH: number,
+    featherPx: number,
+): Promise<Uint8Array> {
+    const useOffscreen = typeof OffscreenCanvas !== 'undefined'
+
+    // Step 1: draw a sharp white rectangle on a black background.
+    const sharp = useOffscreen
+        ? new OffscreenCanvas(width, height)
+        : (() => {
+            const c = document.createElement('canvas')
+            c.width = width
+            c.height = height
+            return c
+        })()
+    const sctx = sharp.getContext('2d') as
+        | CanvasRenderingContext2D
+        | OffscreenCanvasRenderingContext2D
+        | null
+    if (!sctx) throw new Error('Canvas 2d context unavailable')
+    sctx.fillStyle = 'black'
+    sctx.fillRect(0, 0, width, height)
+    sctx.fillStyle = 'white'
+    sctx.fillRect(innerX, innerY, innerW, innerH)
+
+    // Step 2: copy into a second canvas with a blur filter applied — this
+    // softens the rectangle edges into a smooth gradient. CSS `filter:
+    // blur(...)` runs as part of the drawImage call, not on existing
+    // pixels, which is why two canvases are needed.
+    const blurred = useOffscreen
+        ? new OffscreenCanvas(width, height)
+        : (() => {
+            const c = document.createElement('canvas')
+            c.width = width
+            c.height = height
+            return c
+        })()
+    const bctx = blurred.getContext('2d') as
+        | CanvasRenderingContext2D
+        | OffscreenCanvasRenderingContext2D
+        | null
+    if (!bctx) throw new Error('Canvas 2d context unavailable')
+    // featherPx / 2 produces a fade roughly featherPx wide on either side
+    // of the rect edges (gaussian standard deviation works that way).
+    bctx.filter = `blur(${Math.max(1, Math.round(featherPx / 2))}px)`
+    bctx.drawImage(sharp as CanvasImageSource, 0, 0)
+
+    const blob: Blob = useOffscreen
+        ? await (blurred as OffscreenCanvas).convertToBlob({ type: 'image/png' })
+        : await new Promise<Blob>((resolve, reject) =>
+            (blurred as HTMLCanvasElement).toBlob(
+                (b) => (b ? resolve(b) : reject(new Error('toBlob returned null'))),
+                'image/png',
+            ),
+        )
+
+    return new Uint8Array(await blob.arrayBuffer())
 }
 
 /**

@@ -231,14 +231,18 @@ const VideoEditorMain = ({ userId }: VideoEditorMainProps) => {
     }
 
     // ─── Rectangle drag (watermark / crop selector) ──────────────────
-    // Coordinates here are in DISPLAY pixels (the container size). When
-    // we send to FFmpeg we scale up to source video pixels using
-    // videoSize / containerSize. This keeps the math simple and the
-    // overlay accurate as the video is responsively sized.
-    const getContainerCoords = (e: React.MouseEvent): { x: number; y: number } => {
-        const container = canvasContainerRef.current
-        if (!container) return { x: 0, y: 0 }
-        const r = container.getBoundingClientRect()
+    // Coordinates are measured against the actual <video> element's
+    // bounding rect, not the wrapper container. The wrapper is
+    // inline-block which can pick up baseline padding or minor offsets,
+    // making the rect overlay drift away from where the user dragged.
+    // Measuring against the video itself sidesteps that — its
+    // boundingClientRect always reflects exactly what's rendered, and
+    // the overlay div sits in the same coordinate space because it's
+    // a sibling positioned absolutely against the same wrapper.
+    const getVideoCoords = (e: React.MouseEvent): { x: number; y: number } => {
+        const video = videoRef.current
+        if (!video) return { x: 0, y: 0 }
+        const r = video.getBoundingClientRect()
         return {
             x: Math.max(0, Math.min(r.width, e.clientX - r.left)),
             y: Math.max(0, Math.min(r.height, e.clientY - r.top)),
@@ -247,7 +251,7 @@ const VideoEditorMain = ({ userId }: VideoEditorMainProps) => {
 
     const handleRectMouseDown = (e: React.MouseEvent) => {
         if (isProcessing) return
-        const { x, y } = getContainerCoords(e)
+        const { x, y } = getVideoCoords(e)
         setIsDraggingRect(true)
         setDragStart({ x, y })
         setRect({ x, y, w: 0, h: 0 })
@@ -255,7 +259,7 @@ const VideoEditorMain = ({ userId }: VideoEditorMainProps) => {
 
     const handleRectMouseMove = (e: React.MouseEvent) => {
         if (!isDraggingRect) return
-        const { x, y } = getContainerCoords(e)
+        const { x, y } = getVideoCoords(e)
         const minX = Math.min(dragStart.x, x)
         const minY = Math.min(dragStart.y, y)
         const maxX = Math.max(dragStart.x, x)
@@ -284,38 +288,27 @@ const VideoEditorMain = ({ userId }: VideoEditorMainProps) => {
     }
 
     // Translate a display-pixel rect (drawn on top of the <video>) to the
-    // corresponding source-video-pixel rect. The <video> uses object-contain
-    // so it may be letterboxed inside its container; we compute the rendered
-    // video box first, then scale. Returns null if the rect doesn't actually
-    // overlap the rendered video (e.g. drawn entirely on the letterbox).
+    // corresponding source-video-pixel rect. We measure the <video> element
+    // directly — its boundingClientRect is the exact rendered display size,
+    // so scaling to source pixels is a clean linear factor with no
+    // letterbox math required. Previous version measured the container
+    // wrapper which was sometimes a few pixels taller than the video due
+    // to inline-block baseline behaviour, producing a rect that didn't
+    // align with the visible affected area.
     const rectToSourcePixels = useCallback((r: VideoRegion): VideoRegion | null => {
-        const container = canvasContainerRef.current
-        if (!container) return null
-        const cr = container.getBoundingClientRect()
+        const video = videoRef.current
+        if (!video) return null
+        const vr = video.getBoundingClientRect()
         const vw = videoSize.width
         const vh = videoSize.height
-        if (vw <= 0 || vh <= 0) return null
+        if (vw <= 0 || vh <= 0 || vr.width <= 0 || vr.height <= 0) return null
 
-        const containerAR = cr.width / cr.height
-        const videoAR = vw / vh
-        let renderedW = cr.width
-        let renderedH = cr.height
-        let offsetX = 0
-        let offsetY = 0
-        if (videoAR > containerAR) {
-            renderedH = cr.width / videoAR
-            offsetY = (cr.height - renderedH) / 2
-        } else {
-            renderedW = cr.height * videoAR
-            offsetX = (cr.width - renderedW) / 2
-        }
-
-        const scaleX = vw / renderedW
-        const scaleY = vh / renderedH
+        const scaleX = vw / vr.width
+        const scaleY = vh / vr.height
 
         const region: VideoRegion = {
-            x: Math.max(0, (r.x - offsetX) * scaleX),
-            y: Math.max(0, (r.y - offsetY) * scaleY),
+            x: Math.max(0, r.x * scaleX),
+            y: Math.max(0, r.y * scaleY),
             w: Math.min(vw, r.w * scaleX),
             h: Math.min(vh, r.h * scaleY),
         }
