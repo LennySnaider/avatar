@@ -89,26 +89,24 @@ export async function probeVideo(videoUrl: string): Promise<VideoProbeResult> {
 }
 
 /**
- * Remove a static watermark with a two-pass filter:
+ * Remove a static watermark by heavily blurring the selected region.
  *
- *   1) `removelogo=filename=mask.png` — interpolates pixels inside the
- *      white area of a same-size PNG mask using the surrounding pixels.
- *      The mask is generated in the browser from the user's selected
- *      rectangle (black background + white rectangle) and written to
- *      the WASM filesystem.
+ * We tried `delogo` and `removelogo` (both interpolation-based filters
+ * that try to RECONSTRUCT what's behind the watermark). On real footage
+ * — especially clips with people / movement near the corner logo —
+ * those filters produced visible color-stretching artifacts (a pink /
+ * purple smudge appears because the algorithm samples colors from the
+ * wrong side of the rectangle). User testing confirmed pure gaussian
+ * blur looked better despite leaving a visible fuzzy patch: it can't
+ * invent colors that aren't in the region, so it can't distort.
  *
- *   2) A very light `gblur` (sigma=2) applied ONLY to the just-inpainted
- *      region, composited back over the cleaned frame. Hides the seam
- *      between the inpainted patch and the rest of the frame without
- *      sacrificing sharpness elsewhere.
+ * Strategy: split the frame, crop the region of interest, apply a
+ * strong `gblur` (sigma=20), and composite the blurred patch back over
+ * the rest of the frame (which stays untouched and sharp).
  *
- * Trade-off the user should know about: `removelogo` reads pixels right
- * around the masked area to reconstruct what's inside. If something
- * MOVES across the rectangle's border (a leg walking past the corner
- * logo), the filter samples the moving color into the patch and creates
- * a visible "stretch" artifact. This is a fundamental limitation of
- * single-frame interpolation; properly fixing it requires temporal
- * propagation (ProPainter / LaMa via WebGPU), planned as a follow-up.
+ * Future improvement: client-side AI inpainting (LaMa via ONNX Runtime
+ * Web + WebGPU) for the cases where blur isn't acceptable. Tracked as
+ * "Path B" in the editor plan.
  */
 export async function removeWatermark(
     videoUrl: string,
@@ -132,10 +130,8 @@ export async function removeWatermark(
     const input = `in-${Date.now()}.mp4`
     const output = `out-${Date.now()}.mp4`
 
-    const maskFile = `mask-${Date.now()}.png`
-
     try {
-        console.log('[VideoEdit] Removing watermark, region:', region)
+        console.log('[VideoEdit] Removing watermark (blur), region:', region)
         onProgress?.(10)
 
         const data = await fetchVideoData(videoUrl)
@@ -148,28 +144,14 @@ export async function removeWatermark(
         const w = Math.max(4, Math.round(region.w))
         const h = Math.max(4, Math.round(region.h))
 
-        // Probe the video for its dimensions so we can generate a same-size
-        // mask PNG. removelogo requires the mask to match the video frame
-        // dimensions exactly — feeding it a smaller/scaled mask fails.
-        const probe = await probeVideo(videoUrl)
-        if (probe.width <= 0 || probe.height <= 0) {
-            throw new Error('Could not determine video dimensions for watermark removal')
-        }
-        const maskBytes = await generateRectMaskPng(probe.width, probe.height, {
-            x, y, w, h,
-        })
-        await ff.writeFile(maskFile, maskBytes)
-        console.log(`[VideoEdit] Mask: ${probe.width}×${probe.height}, rect ${w}×${h} @ (${x},${y})`)
-
-        // Two-pass filtergraph:
-        //   1) removelogo reconstructs the masked area from surrounding pixels
-        //   2) split the cleaned frame, blur only the patch (sigma=2), overlay
-        //      it back — hides the seam between the inpaint and the original
+        // Single-pass: blur ONLY the rectangle, leave the rest sharp.
+        // We tried two-pass with removelogo first but the interpolation
+        // produced visible color distortion (pink/purple smudges on real
+        // footage). Pure blur can't invent colors so it can't distort.
         const vfilter =
-            `[0:v]removelogo=filename=${maskFile}[clean];` +
-            `[clean]split=2[base][region_src];` +
-            `[region_src]crop=${w}:${h}:${x}:${y},gblur=sigma=2[smoothed];` +
-            `[base][smoothed]overlay=${x}:${y}`
+            `[0:v]split=2[base][region_src];` +
+            `[region_src]crop=${w}:${h}:${x}:${y},gblur=sigma=20[blurred];` +
+            `[base][blurred]overlay=${x}:${y}`
 
         const exitCode = await ff.exec([
             '-i', input,
@@ -199,55 +181,7 @@ export async function removeWatermark(
         // Cleanup so FS stays bounded — these accumulate fast with repeated edits.
         try { await ff.deleteFile(input) } catch { /* ignore */ }
         try { await ff.deleteFile(output) } catch { /* ignore */ }
-        try { await ff.deleteFile(maskFile) } catch { /* ignore */ }
     }
-}
-
-/**
- * Generate a black-and-white mask PNG matching the video dimensions, with
- * a white rectangle over the watermark region. White = "this is the area
- * to inpaint/remove", black = "leave this alone". Required input format
- * for the `removelogo` filter.
- *
- * Uses OffscreenCanvas where available (most modern browsers); falls back
- * to a hidden DOM canvas for older Safari versions.
- */
-async function generateRectMaskPng(
-    videoWidth: number,
-    videoHeight: number,
-    region: VideoRegion,
-): Promise<Uint8Array> {
-    const hasOffscreen = typeof OffscreenCanvas !== 'undefined'
-    let blob: Blob
-
-    if (hasOffscreen) {
-        const canvas = new OffscreenCanvas(videoWidth, videoHeight)
-        const ctx = canvas.getContext('2d')
-        if (!ctx) throw new Error('OffscreenCanvas 2d context unavailable')
-        ctx.fillStyle = 'black'
-        ctx.fillRect(0, 0, videoWidth, videoHeight)
-        ctx.fillStyle = 'white'
-        ctx.fillRect(region.x, region.y, region.w, region.h)
-        blob = await canvas.convertToBlob({ type: 'image/png' })
-    } else {
-        const canvas = document.createElement('canvas')
-        canvas.width = videoWidth
-        canvas.height = videoHeight
-        const ctx = canvas.getContext('2d')
-        if (!ctx) throw new Error('Canvas 2d context unavailable')
-        ctx.fillStyle = 'black'
-        ctx.fillRect(0, 0, videoWidth, videoHeight)
-        ctx.fillStyle = 'white'
-        ctx.fillRect(region.x, region.y, region.w, region.h)
-        blob = await new Promise<Blob>((resolve, reject) => {
-            canvas.toBlob(
-                (b) => (b ? resolve(b) : reject(new Error('toBlob returned null'))),
-                'image/png',
-            )
-        })
-    }
-
-    return new Uint8Array(await blob.arrayBuffer())
 }
 
 /**
