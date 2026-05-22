@@ -19,6 +19,10 @@ import {
     HiOutlineSave,
     HiOutlineClock,
     HiOutlineSelector,
+    HiOutlinePlay,
+    HiOutlinePause,
+    HiOutlineVolumeOff,
+    HiOutlineVolumeUp,
 } from 'react-icons/hi'
 import { useAvatarStudioStore } from '../../avatar-studio/_store/avatarStudioStore'
 import {
@@ -86,6 +90,16 @@ const VideoEditorMain = ({ userId }: VideoEditorMainProps) => {
     const [progress, setProgress] = useState(0)
     const [progressLabel, setProgressLabel] = useState('')
 
+    // Custom video player state. We replaced the native `controls` attribute
+    // with our own UI because the native player's shadow DOM intercepted
+    // mouse events over the bottom half of the video, blocking the
+    // watermark/crop drag rectangle. Custom controls live OUTSIDE the
+    // drag container so the entire video surface is free to receive
+    // mousedown/move events for the rect overlay.
+    const [isPlaying, setIsPlaying] = useState(false)
+    const [currentTime, setCurrentTime] = useState(0)
+    const [isMuted, setIsMuted] = useState(false)
+
     // DOM refs
     const videoRef = useRef<HTMLVideoElement>(null)
     const canvasContainerRef = useRef<HTMLDivElement>(null)
@@ -143,9 +157,54 @@ const VideoEditorMain = ({ userId }: VideoEditorMainProps) => {
             setTrimStart(0)
             setTrimEnd(dur)
         }
+        const onTimeUpdate = () => setCurrentTime(video.currentTime)
+        const onPlay = () => setIsPlaying(true)
+        const onPause = () => setIsPlaying(false)
+        const onEnded = () => setIsPlaying(false)
+
         video.addEventListener('loadedmetadata', onMeta)
-        return () => video.removeEventListener('loadedmetadata', onMeta)
+        video.addEventListener('timeupdate', onTimeUpdate)
+        video.addEventListener('play', onPlay)
+        video.addEventListener('pause', onPause)
+        video.addEventListener('ended', onEnded)
+        return () => {
+            video.removeEventListener('loadedmetadata', onMeta)
+            video.removeEventListener('timeupdate', onTimeUpdate)
+            video.removeEventListener('play', onPlay)
+            video.removeEventListener('pause', onPause)
+            video.removeEventListener('ended', onEnded)
+        }
     }, [currentUrl])
+
+    // ─── Custom video control handlers ──────────────────────────────
+    const togglePlay = () => {
+        const v = videoRef.current
+        if (!v) return
+        if (v.paused) v.play().catch(() => { /* ignore autoplay rejection */ })
+        else v.pause()
+    }
+
+    const handleSeek = (e: React.MouseEvent<HTMLDivElement>) => {
+        const v = videoRef.current
+        if (!v || !videoDuration) return
+        const bar = e.currentTarget.getBoundingClientRect()
+        const ratio = Math.max(0, Math.min(1, (e.clientX - bar.left) / bar.width))
+        v.currentTime = ratio * videoDuration
+    }
+
+    const toggleMute = () => {
+        const v = videoRef.current
+        if (!v) return
+        v.muted = !v.muted
+        setIsMuted(v.muted)
+    }
+
+    const fmtTime = (s: number): string => {
+        if (!Number.isFinite(s) || s < 0) return '0:00'
+        const mm = Math.floor(s / 60)
+        const ss = Math.floor(s % 60)
+        return `${mm}:${ss.toString().padStart(2, '0')}`
+    }
 
     // Reset rect when changing modes so the user doesn't carry over a
     // watermark selection into crop mode (different semantics).
@@ -528,10 +587,15 @@ const VideoEditorMain = ({ userId }: VideoEditorMainProps) => {
             <div className="flex-1 flex min-h-0">
                 {/* Center: video + canvas overlay */}
                 <div className="flex-1 flex flex-col min-w-0">
-                    <div className="flex-1 flex items-center justify-center bg-gray-100 dark:bg-gray-900 p-6 relative">
+                    <div className="flex-1 flex flex-col items-center justify-center bg-gray-100 dark:bg-gray-900 p-6 relative gap-3">
+                        {/* Drag container — full mouse capture for rect drawing.
+                            Native <video> controls are intentionally omitted; they
+                            steal pointer events from the lower half of the video
+                            and break the drag-to-select watermark interaction.
+                            Use the custom player below the drag area instead. */}
                         <div
                             ref={canvasContainerRef}
-                            className="relative max-w-full max-h-full inline-block"
+                            className="relative max-w-full inline-block"
                             onMouseDown={editMode === 'trim' ? undefined : handleRectMouseDown}
                             onMouseMove={editMode === 'trim' ? undefined : handleRectMouseMove}
                             onMouseUp={editMode === 'trim' ? undefined : handleRectMouseUp}
@@ -547,13 +611,13 @@ const VideoEditorMain = ({ userId }: VideoEditorMainProps) => {
                             <video
                                 ref={videoRef}
                                 src={currentUrl ?? undefined}
-                                controls
-                                className="max-w-full max-h-[60vh] block"
+                                playsInline
+                                className="max-w-full max-h-[60vh] block bg-black"
                                 style={{
-                                    pointerEvents: isProcessing ? 'none' : 'auto',
+                                    pointerEvents: 'none',
                                 }}
                             />
-                            {/* Rectangle overlay for watermark region */}
+                            {/* Rectangle overlay for watermark/crop region */}
                             {showRect && (
                                 <div
                                     className="absolute border-2 border-purple-500 bg-purple-500/20 pointer-events-none"
@@ -577,6 +641,52 @@ const VideoEditorMain = ({ userId }: VideoEditorMainProps) => {
                                     </Card>
                                 </div>
                             )}
+                        </div>
+
+                        {/* Custom player controls — sit BELOW the drag area, so
+                            they don't intercept mouse events meant for the rect
+                            overlay. Click anywhere on the video itself also
+                            toggles play (cheap fallback for users used to it). */}
+                        <div className="w-full max-w-2xl flex items-center gap-3 bg-white/5 dark:bg-gray-800/40 backdrop-blur rounded-lg px-3 py-2">
+                            <button
+                                type="button"
+                                onClick={togglePlay}
+                                disabled={isProcessing || !currentUrl}
+                                className="text-gray-700 dark:text-gray-200 hover:text-purple-500 disabled:opacity-30 transition-colors"
+                                aria-label={isPlaying ? 'Pause' : 'Play'}
+                            >
+                                {isPlaying ? (
+                                    <HiOutlinePause className="w-6 h-6" />
+                                ) : (
+                                    <HiOutlinePlay className="w-6 h-6" />
+                                )}
+                            </button>
+                            <div
+                                className="flex-1 h-2 bg-gray-200 dark:bg-gray-700 rounded cursor-pointer relative group"
+                                onClick={handleSeek}
+                            >
+                                <div
+                                    className="absolute h-full bg-purple-500 rounded transition-[width] duration-100"
+                                    style={{
+                                        width: `${videoDuration ? (currentTime / videoDuration) * 100 : 0}%`,
+                                    }}
+                                />
+                            </div>
+                            <span className="text-xs font-mono text-gray-500 dark:text-gray-400 min-w-[80px] text-right">
+                                {fmtTime(currentTime)} / {fmtTime(videoDuration)}
+                            </span>
+                            <button
+                                type="button"
+                                onClick={toggleMute}
+                                className="text-gray-500 dark:text-gray-400 hover:text-purple-500 transition-colors"
+                                aria-label={isMuted ? 'Unmute' : 'Mute'}
+                            >
+                                {isMuted ? (
+                                    <HiOutlineVolumeOff className="w-5 h-5" />
+                                ) : (
+                                    <HiOutlineVolumeUp className="w-5 h-5" />
+                                )}
+                            </button>
                         </div>
                     </div>
 
