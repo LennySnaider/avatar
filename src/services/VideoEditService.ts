@@ -88,20 +88,38 @@ export async function probeVideo(videoUrl: string): Promise<VideoProbeResult> {
     return { durationSec, width, height, hasAudio }
 }
 
+export type WatermarkMode = 'inpaint' | 'blur'
+
 /**
- * Remove a static watermark using FFmpeg's `delogo` filter. The filter
- * interpolates pixels around a rectangle to mask the logo — it's not AI
- * inpainting, so a slight blur is normal in the area, but it's fast,
- * client-side and free.
+ * Remove a static watermark by either interpolating the area (delogo) or
+ * blurring it (gblur with a mask). Pick the mode based on what's happening
+ * around the watermark:
+ *
+ *  - `inpaint` (default): FFmpeg `delogo` filter. Reads a "band" of pixels
+ *    around the rectangle and interpolates inward. Cleanest result when
+ *    the background behind the logo is static (e.g. a wall, sky, blurred
+ *    bokeh). When something MOVES across the rectangle's border — a leg
+ *    walking past, an arm swinging — the filter pulls the moving color
+ *    inward and creates a visible "stretch" artifact. We use `band=8`
+ *    (default is 4) to soften the gradient at the cost of a slightly
+ *    softer edge.
+ *
+ *  - `blur`: applies a heavy gaussian blur over the rectangle only,
+ *    leaving the rest of the frame untouched. The logo becomes a fuzzy
+ *    smudge but doesn't bleed into the moving subject. Use when the
+ *    watermark sits in an area with movement (foot of the frame, where
+ *    a person walks past, etc.).
  *
  * @param videoUrl   Source video URL (blob: or http).
  * @param region     Rectangle in source-video pixels.
+ * @param mode       'inpaint' (delogo) or 'blur' (gblur on the region).
  * @param onProgress Progress callback (0–100).
  * @returns          Blob URL of the cleaned video.
  */
 export async function removeWatermark(
     videoUrl: string,
     region: VideoRegion,
+    mode: WatermarkMode = 'inpaint',
     onProgress?: (percent: number) => void,
 ): Promise<string> {
     const ff = await loadFFmpeg()
@@ -122,22 +140,44 @@ export async function removeWatermark(
     const output = `out-${Date.now()}.mp4`
 
     try {
-        console.log('[VideoEdit] Removing watermark, region:', region)
+        console.log(`[VideoEdit] Removing watermark (mode=${mode}), region:`, region)
         onProgress?.(10)
 
         const data = await fetchVideoData(videoUrl)
         await ff.writeFile(input, data)
         onProgress?.(35)
 
-        // Round coords to integers — delogo rejects fractional values.
+        // Round coords to integers — both filters reject fractional values.
         const x = Math.max(0, Math.round(region.x))
         const y = Math.max(0, Math.round(region.y))
         const w = Math.max(4, Math.round(region.w))
         const h = Math.max(4, Math.round(region.h))
 
+        // Build the filtergraph based on the chosen mode. delogo runs as
+        // a single filter; blur composites a gaussian-blurred crop of the
+        // region back over the original frame so only that rectangle is
+        // affected (the rest of the frame stays pristine).
+        let vfilter: string
+        if (mode === 'blur') {
+            // Split the stream → blur a cropped region → overlay it back
+            // at (x,y). sigma=20 gives a fuzz strong enough to hide most
+            // logos without being a black box. We could expose sigma as a
+            // user knob later; for now this default works for the typical
+            // KlingAI / TikTok corner watermark.
+            vfilter =
+                `[0:v]split=2[base][region_src];` +
+                `[region_src]crop=${w}:${h}:${x}:${y},gblur=sigma=20[blurred];` +
+                `[base][blurred]overlay=${x}:${y}`
+        } else {
+            // delogo with band=8 (default is 4). The thicker interpolation
+            // band reduces the visible "stretch" artifact when something
+            // moves close to the rectangle edges — not a fix, but softer.
+            vfilter = `delogo=x=${x}:y=${y}:w=${w}:h=${h}:band=8:show=0`
+        }
+
         const exitCode = await ff.exec([
             '-i', input,
-            '-vf', `delogo=x=${x}:y=${y}:w=${w}:h=${h}:show=0`,
+            mode === 'blur' ? '-filter_complex' : '-vf', vfilter,
             '-c:v', 'libx264',
             '-preset', 'ultrafast',
             '-crf', '23',
@@ -147,7 +187,7 @@ export async function removeWatermark(
         ])
 
         if (exitCode !== 0) {
-            throw new Error(`FFmpeg delogo exited with code ${exitCode}. See [FFmpeg Log] for details.`)
+            throw new Error(`FFmpeg ${mode} exited with code ${exitCode}. See [FFmpeg Log] for details.`)
         }
 
         onProgress?.(90)
