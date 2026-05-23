@@ -165,11 +165,20 @@ export async function removeWatermark(
         //   - past that, the original frame is untouched
         // This kills the "square cutout" perception the user reported with
         // hard-edged blur.
+        //
+        // Width and height must be EVEN: yuv420p (the format alphamerge
+        // operates on) requires even dimensions because its chroma planes
+        // are 2:1 subsampled. When FFmpeg's crop receives odd values it
+        // rounds down silently, while our mask PNG keeps the odd dims —
+        // alphamerge then aborts with "Input frame sizes do not match".
+        // Forcing even on this side keeps both sides aligned.
         const featherPx = 25
         const blurX = Math.max(0, x - featherPx)
         const blurY = Math.max(0, y - featherPx)
-        const blurW = Math.min(vw - blurX, w + featherPx * 2)
-        const blurH = Math.min(vh - blurY, h + featherPx * 2)
+        const rawW = Math.min(vw - blurX, w + featherPx * 2)
+        const rawH = Math.min(vh - blurY, h + featherPx * 2)
+        const blurW = rawW - (rawW % 2)
+        const blurH = rawH - (rawH % 2)
 
         // Generate the feathered alpha mask. White interior matches the
         // user's rect, then fades to black over `featherPx` so the overlay
