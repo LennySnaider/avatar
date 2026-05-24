@@ -964,6 +964,11 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                     setGenerationMode('VIDEO')
                     setVideoSubMode('ANIMATE')
                     setPrompt('Cinematic movement, slow motion, high quality.')
+                    // Auto-fire generation once videoInputImage lands in the
+                    // store — same pattern Continue Video uses. Without this
+                    // the button only flips state silently and the user sees
+                    // no immediate effect, which reads as "broken".
+                    pendingAutoGenerateRef.current = true
                 }
             }
             reader.readAsDataURL(blob)
