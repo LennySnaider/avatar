@@ -23,6 +23,9 @@ import {
     HiOutlinePause,
     HiOutlineVolumeOff,
     HiOutlineVolumeUp,
+    HiOutlineMenuAlt4,
+    HiOutlineX,
+    HiOutlinePlus,
 } from 'react-icons/hi'
 import { useAvatarStudioStore } from '../../avatar-studio/_store/avatarStudioStore'
 import {
@@ -32,8 +35,9 @@ import {
     cropVideo,
     type VideoRegion,
 } from '@/services/VideoEditService'
+import { stitchVideos } from '@/services/VideoStitchService'
 
-type EditOperation = 'delogo' | 'trim' | 'crop'
+type EditOperation = 'delogo' | 'trim' | 'crop' | 'stitch'
 
 type EditedVideo = {
     id: string
@@ -44,7 +48,13 @@ type EditedVideo = {
     timestamp: number
 }
 
-type EditMode = 'watermark' | 'trim' | 'crop'
+type EditMode = 'watermark' | 'trim' | 'crop' | 'combine'
+
+type CombineVideoItem = {
+    id: string
+    url: string
+    name: string
+}
 
 const CROP_ASPECTS: Array<{ value: 'free' | '1:1' | '16:9' | '9:16' | '4:3' | '3:4'; label: string }> = [
     { value: 'free', label: 'Libre' },
@@ -85,6 +95,13 @@ const VideoEditorMain = ({ userId }: VideoEditorMainProps) => {
 
     // Crop aspect ratio (drives the rectangle drag in crop mode)
     const [cropAspect, setCropAspect] = useState<typeof CROP_ASPECTS[number]['value']>('free')
+
+    // Combine mode — ordered list of videos to stitch. Lives outside of
+    // `sourceUrl` / `history` because the combine flow takes multiple
+    // inputs and produces a single output that joins the regular history.
+    const [combineVideos, setCombineVideos] = useState<CombineVideoItem[]>([])
+    const [dragOverIdx, setDragOverIdx] = useState<number | null>(null)
+    const dragSourceIdxRef = useRef<number | null>(null)
 
     // Processing state
     const [isProcessing, setIsProcessing] = useState(false)
@@ -214,20 +231,94 @@ const VideoEditorMain = ({ userId }: VideoEditorMainProps) => {
     }, [editMode])
 
     // ─── File upload handler ────────────────────────────────────────
+    // In single-video modes (watermark/trim/crop) we replace the source.
+    // In combine mode we APPEND the dropped/picked files to the queue so
+    // the user can build up the list across multiple picker invocations.
     const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-        const file = e.target.files?.[0]
-        if (!file) return
-        if (!file.type.startsWith('video/')) {
+        const files = e.target.files
+        if (!files || files.length === 0) return
+        const videoFiles = Array.from(files).filter((f) => f.type.startsWith('video/'))
+        if (videoFiles.length === 0) {
             toast.push(
-                <Notification type="warning" title="Invalid File">
+                <Notification type="warning" title="Invalid Files">
                     Only video files are supported.
                 </Notification>,
             )
+            e.target.value = ''
             return
         }
-        const url = URL.createObjectURL(file)
-        loadVideo(url)
+        if (editMode === 'combine') {
+            const items: CombineVideoItem[] = videoFiles.map((f) => ({
+                id: `combine-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+                url: URL.createObjectURL(f),
+                name: f.name,
+            }))
+            setCombineVideos((prev) => [...prev, ...items])
+        } else {
+            // Single-video modes: only first file matters, replaces source.
+            const url = URL.createObjectURL(videoFiles[0])
+            loadVideo(url)
+        }
         e.target.value = ''
+    }
+
+    // ─── Drag-and-drop file handlers for the Combine dropzone ───────
+    const handleDropzoneDragOver = (e: React.DragEvent<HTMLDivElement>) => {
+        e.preventDefault()
+        e.dataTransfer.dropEffect = 'copy'
+    }
+
+    const handleDropzoneDrop = (e: React.DragEvent<HTMLDivElement>) => {
+        e.preventDefault()
+        const files = Array.from(e.dataTransfer.files || []).filter((f) =>
+            f.type.startsWith('video/'),
+        )
+        if (files.length === 0) return
+        const items: CombineVideoItem[] = files.map((f) => ({
+            id: `combine-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+            url: URL.createObjectURL(f),
+            name: f.name,
+        }))
+        setCombineVideos((prev) => [...prev, ...items])
+    }
+
+    // ─── Reorder + remove items in the Combine list ─────────────────
+    // HTML5 drag-and-drop: we track the source index via a ref (not state)
+    // so the drop handler doesn't race against React batching. dragOverIdx
+    // is purely visual (shows where the dragged item will land).
+    const handleItemDragStart = (idx: number) => () => {
+        dragSourceIdxRef.current = idx
+    }
+    const handleItemDragOver = (idx: number) => (e: React.DragEvent<HTMLDivElement>) => {
+        e.preventDefault()
+        setDragOverIdx(idx)
+    }
+    const handleItemDrop = (idx: number) => (e: React.DragEvent<HTMLDivElement>) => {
+        e.preventDefault()
+        const from = dragSourceIdxRef.current
+        dragSourceIdxRef.current = null
+        setDragOverIdx(null)
+        if (from === null || from === idx) return
+        setCombineVideos((prev) => {
+            const next = [...prev]
+            const [moved] = next.splice(from, 1)
+            next.splice(idx, 0, moved)
+            return next
+        })
+    }
+    const handleItemDragEnd = () => {
+        dragSourceIdxRef.current = null
+        setDragOverIdx(null)
+    }
+
+    const handleRemoveCombineItem = (id: string) => {
+        setCombineVideos((prev) => {
+            const removed = prev.find((p) => p.id === id)
+            if (removed) {
+                try { URL.revokeObjectURL(removed.url) } catch { /* ignore */ }
+            }
+            return prev.filter((p) => p.id !== id)
+        })
     }
 
     // ─── Rectangle drag (watermark / crop selector) ──────────────────
@@ -412,6 +503,26 @@ const VideoEditorMain = ({ userId }: VideoEditorMainProps) => {
         )
     }, [currentUrl, rect, rectToSourcePixels, runEdit])
 
+    // ─── Combine multiple videos into one (stitch) ──────────────────
+    // Multi-input flow: pulls URLs from the combineVideos queue in order,
+    // delegates to VideoStitchService (which shares the same FFmpeg WASM
+    // runtime as the watermark/trim/crop paths), and feeds the result
+    // through the same runEdit pipeline so the output lands in the
+    // History panel and is selectable as the current preview.
+    const handleCombine = useCallback(async () => {
+        if (combineVideos.length < 2) return
+        const urls = combineVideos.map((v) => v.url)
+        const count = urls.length
+        await runEdit(`Combined ${count} videos`, 'stitch', { count }, (onP) =>
+            stitchVideos(urls, onP),
+        )
+        // Drop the queue after a successful combine so the next session
+        // starts fresh. The blob URLs the queue held are still owned by
+        // the items, but each handleRemoveCombineItem also revoked them
+        // individually so there's no leak.
+        setCombineVideos([])
+    }, [combineVideos, runEdit])
+
     // ─── Probe with FFmpeg if DOM metadata not yet loaded ────────────
     // The native <video> tag usually populates videoWidth/videoHeight as
     // soon as loadedmetadata fires, so we rarely need this fallback.
@@ -493,14 +604,17 @@ const VideoEditorMain = ({ userId }: VideoEditorMainProps) => {
     }
 
     // ─── Empty state ─────────────────────────────────────────────────
-    if (!sourceUrl) {
+    // Shown until the user either uploads a single video for editing OR
+    // starts queuing videos for combine. After that the main editor UI
+    // takes over with its mode selector and the chosen mode visible.
+    if (!sourceUrl && combineVideos.length === 0) {
         return (
             <div className="h-full flex flex-col">
                 <div className="border-b border-gray-200 dark:border-gray-700 p-4 flex items-center justify-between">
                     <div>
                         <h2 className="text-lg font-semibold">Video Editor</h2>
                         <p className="text-xs text-gray-500 dark:text-gray-400">
-                            Watermark removal · trim · crop (próximamente)
+                            Watermark removal · trim · crop · combine
                         </p>
                     </div>
                 </div>
@@ -509,25 +623,45 @@ const VideoEditorMain = ({ userId }: VideoEditorMainProps) => {
                         <div className="w-16 h-16 mx-auto rounded-full border-2 border-gray-300 dark:border-gray-600 flex items-center justify-center mb-4">
                             <HiOutlineFilm className="w-8 h-8 text-gray-400" />
                         </div>
-                        <h3 className="text-base font-semibold mb-2">Sube un video para editar</h3>
+                        <h3 className="text-base font-semibold mb-2">¿Qué querés hacer?</h3>
                         <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
-                            Dibujá un rectángulo sobre el watermark y removelo sin AI, todo
-                            en tu navegador con FFmpeg.
+                            Editá un video (watermark / trim / crop) o combiná varios
+                            en uno solo. Todo corre en tu navegador con FFmpeg.
                         </p>
                         <input
                             ref={fileInputRef}
                             type="file"
                             accept="video/*"
+                            multiple={editMode === 'combine'}
                             className="hidden"
                             onChange={handleFileUpload}
                         />
-                        <Button
-                            variant="solid"
-                            icon={<HiOutlineUpload />}
-                            onClick={() => fileInputRef.current?.click()}
-                        >
-                            Upload Video
-                        </Button>
+                        <div className="flex gap-2 justify-center">
+                            <Button
+                                variant="solid"
+                                icon={<HiOutlineUpload />}
+                                onClick={() => {
+                                    // Switching to a single-video mode ensures the
+                                    // file input opens without multiple-select.
+                                    if (editMode === 'combine') setEditMode('watermark')
+                                    setTimeout(() => fileInputRef.current?.click(), 0)
+                                }}
+                            >
+                                Editar un video
+                            </Button>
+                            <Button
+                                variant="default"
+                                icon={<HiOutlineFilm />}
+                                onClick={() => {
+                                    setEditMode('combine')
+                                    // Defer so the `multiple` attribute on the
+                                    // input updates before the picker opens.
+                                    setTimeout(() => fileInputRef.current?.click(), 0)
+                                }}
+                            >
+                                Combinar varios
+                            </Button>
+                        </div>
                     </Card>
                 </div>
             </div>
@@ -579,8 +713,119 @@ const VideoEditorMain = ({ userId }: VideoEditorMainProps) => {
 
             {/* Main area: video preview + history sidebar */}
             <div className="flex-1 flex min-h-0">
-                {/* Center: video + canvas overlay */}
+                {/* Center: video + canvas overlay (single-video modes)
+                    OR the combine queue (combine mode). */}
                 <div className="flex-1 flex flex-col min-w-0">
+                    {editMode === 'combine' ? (
+                        <div className="flex-1 flex flex-col bg-gray-100 dark:bg-gray-900 p-6 overflow-hidden">
+                            {combineVideos.length === 0 ? (
+                                // Empty Combine queue: full-area dropzone.
+                                <div
+                                    onDragOver={handleDropzoneDragOver}
+                                    onDrop={handleDropzoneDrop}
+                                    className="flex-1 flex flex-col items-center justify-center border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-lg p-8 text-center"
+                                >
+                                    <HiOutlineFilm className="w-12 h-12 text-gray-400 mb-4" />
+                                    <h3 className="text-base font-semibold mb-2">
+                                        Arrastrá 2+ videos para combinar
+                                    </h3>
+                                    <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
+                                        Se concatenan en el orden en que los pongas.
+                                        Podés reordenar después.
+                                    </p>
+                                    <input
+                                        ref={fileInputRef}
+                                        type="file"
+                                        accept="video/*"
+                                        multiple
+                                        className="hidden"
+                                        onChange={handleFileUpload}
+                                    />
+                                    <Button
+                                        variant="solid"
+                                        icon={<HiOutlineUpload />}
+                                        onClick={() => fileInputRef.current?.click()}
+                                    >
+                                        Subir videos
+                                    </Button>
+                                </div>
+                            ) : (
+                                // Queue with items: ordered list + add-more + progress.
+                                <div className="flex-1 flex flex-col gap-3 overflow-hidden">
+                                    <div className="flex items-center justify-between">
+                                        <h3 className="text-sm font-semibold">
+                                            {combineVideos.length} video{combineVideos.length === 1 ? '' : 's'} en cola
+                                        </h3>
+                                        <input
+                                            ref={fileInputRef}
+                                            type="file"
+                                            accept="video/*"
+                                            multiple
+                                            className="hidden"
+                                            onChange={handleFileUpload}
+                                        />
+                                        <Button
+                                            size="xs"
+                                            variant="plain"
+                                            icon={<HiOutlinePlus />}
+                                            onClick={() => fileInputRef.current?.click()}
+                                        >
+                                            Agregar
+                                        </Button>
+                                    </div>
+                                    <ScrollBar className="flex-1" autoHide={false}>
+                                        <div className="space-y-2 pr-2">
+                                            {combineVideos.map((item, idx) => (
+                                                <div
+                                                    key={item.id}
+                                                    draggable
+                                                    onDragStart={handleItemDragStart(idx)}
+                                                    onDragOver={handleItemDragOver(idx)}
+                                                    onDrop={handleItemDrop(idx)}
+                                                    onDragEnd={handleItemDragEnd}
+                                                    className={`flex items-center gap-3 p-2 bg-white dark:bg-gray-800 border rounded-lg transition-colors ${
+                                                        dragOverIdx === idx
+                                                            ? 'border-purple-500 bg-purple-50 dark:bg-purple-500/10'
+                                                            : 'border-gray-200 dark:border-gray-700'
+                                                    }`}
+                                                >
+                                                    <HiOutlineMenuAlt4 className="w-5 h-5 text-gray-400 cursor-move flex-shrink-0" />
+                                                    <span className="text-xs font-mono font-semibold w-6 text-center text-gray-500">
+                                                        {idx + 1}
+                                                    </span>
+                                                    <video
+                                                        src={item.url}
+                                                        muted
+                                                        preload="metadata"
+                                                        className="w-28 h-16 object-cover bg-black rounded flex-shrink-0"
+                                                    />
+                                                    <span className="flex-1 text-xs truncate text-gray-700 dark:text-gray-300">
+                                                        {item.name}
+                                                    </span>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => handleRemoveCombineItem(item.id)}
+                                                        className="text-gray-400 hover:text-red-500 transition-colors flex-shrink-0 p-1"
+                                                        aria-label="Remove"
+                                                    >
+                                                        <HiOutlineX className="w-4 h-4" />
+                                                    </button>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </ScrollBar>
+                                    {isProcessing && (
+                                        <Card className="px-4 py-3 text-center">
+                                            <div className="text-xs font-mono text-primary mb-2">
+                                                {progressLabel}
+                                            </div>
+                                            <Progress percent={progress} size="sm" />
+                                        </Card>
+                                    )}
+                                </div>
+                            )}
+                        </div>
+                    ) : (
                     <div className="flex-1 flex flex-col items-center justify-center bg-gray-100 dark:bg-gray-900 p-6 relative gap-3">
                         {/* Drag container — full mouse capture for rect drawing.
                             Native <video> controls are intentionally omitted; they
@@ -683,6 +928,7 @@ const VideoEditorMain = ({ userId }: VideoEditorMainProps) => {
                             </button>
                         </div>
                     </div>
+                    )}
 
                     {/* Tools bar */}
                     <div className="border-t border-gray-200 dark:border-gray-700 p-4">
@@ -713,6 +959,15 @@ const VideoEditorMain = ({ userId }: VideoEditorMainProps) => {
                                 disabled={isProcessing}
                             >
                                 Crop
+                            </Button>
+                            <Button
+                                size="xs"
+                                variant={editMode === 'combine' ? 'solid' : 'plain'}
+                                icon={<HiOutlineFilm />}
+                                onClick={() => setEditMode('combine')}
+                                disabled={isProcessing}
+                            >
+                                Combine
                             </Button>
                         </div>
 
@@ -856,6 +1111,32 @@ const VideoEditorMain = ({ userId }: VideoEditorMainProps) => {
                                         Apply Crop
                                     </Button>
                                 </div>
+                            </div>
+                        )}
+
+                        {editMode === 'combine' && (
+                            <div className="flex items-center justify-between gap-4">
+                                <div className="text-xs text-gray-500 dark:text-gray-400 flex-1">
+                                    {combineVideos.length === 0 ? (
+                                        <>Subí o arrastrá 2+ videos al área central.</>
+                                    ) : combineVideos.length === 1 ? (
+                                        <>Necesitás al menos 2 videos para combinar.</>
+                                    ) : (
+                                        <>
+                                            {combineVideos.length} videos en cola.
+                                            Se concatenan en el orden de la lista.
+                                        </>
+                                    )}
+                                </div>
+                                <Button
+                                    size="sm"
+                                    variant="solid"
+                                    onClick={handleCombine}
+                                    disabled={combineVideos.length < 2 || isProcessing}
+                                    icon={<HiOutlineFilm />}
+                                >
+                                    Combine {combineVideos.length >= 2 ? `${combineVideos.length} videos` : 'videos'}
+                                </Button>
                             </div>
                         )}
                     </div>

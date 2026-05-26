@@ -5,13 +5,11 @@ import { useAvatarStudioStore } from '../_store/avatarStudioStore'
 import Button from '@/components/ui/Button'
 import Card from '@/components/ui/Card'
 import Spinner from '@/components/ui/Spinner'
-import Progress from '@/components/ui/Progress'
 import ScrollBar from '@/components/ui/ScrollBar'
 import Notification from '@/components/ui/Notification'
 import toast from '@/components/ui/toast'
 import { HiOutlineTrash, HiOutlineDownload, HiOutlineFilm, HiOutlinePhotograph, HiOutlinePencilAlt, HiOutlineUpload, HiOutlineScissors } from 'react-icons/hi'
 import { useRouter } from 'next/navigation'
-import { stitchVideos } from '@/services/VideoStitchService'
 import type { GeneratedMedia, AspectRatio } from '../types'
 
 interface GalleryPanelProps {
@@ -24,17 +22,8 @@ const GalleryPanel = ({ onAnimateImage, onSaveToGallery }: GalleryPanelProps) =>
     const {
         gallery,
         isGenerating,
-        isMontageMode,
-        montageSelection,
-        isStitching,
-        stitchProgress,
         setPreviewMedia,
         removeFromGallery,
-        toggleMontageSelection,
-        setIsMontageMode,
-        clearMontageSelection,
-        setIsStitching,
-        setStitchProgress,
         addToGallery,
         openEditor,
     } = useAvatarStudioStore()
@@ -145,75 +134,9 @@ const GalleryPanel = ({ onAnimateImage, onSaveToGallery }: GalleryPanelProps) =>
         }
     }
 
-    const handleToggleMontage = () => {
-        setIsMontageMode(!isMontageMode)
-        if (isMontageMode) {
-            clearMontageSelection()
-        }
-    }
-
-    const handleStitch = async () => {
-        if (montageSelection.length < 2) return
-
-        // Get video URLs in selection order
-        const selectedVideos = montageSelection
-            .map(id => gallery.find(m => m.id === id))
-            .filter((m): m is GeneratedMedia => m !== undefined && m.mediaType === 'VIDEO')
-
-        if (selectedVideos.length < 2) {
-            toast.push(
-                <Notification type="warning" title="Not Enough Videos">
-                    Please select at least 2 videos to stitch
-                </Notification>
-            )
-            return
-        }
-
-        setIsStitching(true)
-        setStitchProgress(0)
-
-        toast.push(
-            <Notification type="info" title="Stitching Videos">
-                Combining {selectedVideos.length} videos... This may take a moment.
-            </Notification>
-        )
-
-        try {
-            const videoUrls = selectedVideos.map(v => v.url)
-            const stitchedUrl = await stitchVideos(videoUrls, setStitchProgress)
-
-            // Add stitched video to gallery
-            const stitchedMedia: GeneratedMedia = {
-                id: `stitch-${Date.now()}`,
-                url: stitchedUrl,
-                prompt: `Stitched video (${montageSelection.length} clips)`,
-                aspectRatio: selectedVideos[0]?.aspectRatio || '16:9',
-                timestamp: Date.now(),
-                mediaType: 'VIDEO',
-            }
-
-            addToGallery(stitchedMedia)
-            clearMontageSelection()
-            setIsMontageMode(false)
-
-            toast.push(
-                <Notification type="success" title="Stitch Complete">
-                    Videos have been combined successfully!
-                </Notification>
-            )
-        } catch (error) {
-            console.error('Stitch failed:', error)
-            toast.push(
-                <Notification type="danger" title="Stitch Failed">
-                    {error instanceof Error ? error.message : 'Failed to stitch videos'}
-                </Notification>
-            )
-        } finally {
-            setIsStitching(false)
-        }
-    }
-
-    const hasVideos = gallery.some((m) => m.mediaType === 'VIDEO')
+    // Stitch/montage moved to the Video Editor as the "Combine" mode —
+    // see src/app/.../video-editor/_components/VideoEditorMain.tsx.
+    // The gallery no longer manages selection or processing state.
 
     return (
         <div className="h-full flex flex-col">
@@ -241,27 +164,6 @@ const GalleryPanel = ({ onAnimateImage, onSaveToGallery }: GalleryPanelProps) =>
                             >
                                 <span>Upload</span>
                             </Button>
-                            {hasVideos && (
-                                <Button
-                                    size="xs"
-                                    variant={isMontageMode ? 'solid' : 'plain'}
-                                    color={isMontageMode ? 'green' : 'gray'}
-                                    onClick={handleToggleMontage}
-                                    icon={<HiOutlineFilm />}
-                                >
-                                    <span>{isMontageMode ? 'Exit Studio' : 'Video Studio'}</span>
-                                </Button>
-                            )}
-                            {isMontageMode && montageSelection.length >= 2 && (
-                                <Button
-                                    size="xs"
-                                    variant="solid"
-                                    loading={isStitching}
-                                    onClick={handleStitch}
-                                >
-                                    Stitch ({montageSelection.length})
-                                </Button>
-                            )}
                         </div>
                     </div>
 
@@ -296,47 +198,13 @@ const GalleryPanel = ({ onAnimateImage, onSaveToGallery }: GalleryPanelProps) =>
                             </Card>
                         )}
 
-                        {/* Stitching Placeholder */}
-                        {isStitching && (
-                            <Card className="h-64 flex items-center justify-center bg-gray-100 dark:bg-gray-800">
-                                <div className="flex flex-col items-center w-full px-6">
-                                    <HiOutlineFilm className="w-8 h-8 text-primary mb-2" />
-                                    <span className="text-xs text-primary mb-3 font-mono">
-                                        Stitching {montageSelection.length} videos...
-                                    </span>
-                                    <div className="w-full">
-                                        <Progress percent={stitchProgress} size="sm" />
-                                    </div>
-                                </div>
-                            </Card>
-                        )}
-
                         {/* Gallery Items */}
                         {gallery.map((media) => {
-                            const isSelected = montageSelection.includes(media.id)
-                            const selectionIndex = montageSelection.indexOf(media.id)
-
                             return (
                                 <Card
                                     key={media.id}
-                                    className={`relative group overflow-hidden cursor-pointer transition-all ${
-                                        isMontageMode
-                                            ? isSelected
-                                                ? 'ring-2 ring-green-500'
-                                                : media.mediaType !== 'VIDEO'
-                                                ? 'opacity-50 grayscale'
-                                                : ''
-                                            : 'hover:shadow-lg'
-                                    }`}
-                                    onClick={() => {
-                                        if (isMontageMode) {
-                                            if (media.mediaType === 'VIDEO') {
-                                                toggleMontageSelection(media.id)
-                                            }
-                                        } else {
-                                            setPreviewMedia(media)
-                                        }
-                                    }}
+                                    className="relative group overflow-hidden cursor-pointer transition-all hover:shadow-lg"
+                                    onClick={() => setPreviewMedia(media)}
                                 >
                                     {/* Media Content */}
                                     <div className="bg-gray-100 dark:bg-gray-800">
@@ -346,7 +214,7 @@ const GalleryPanel = ({ onAnimateImage, onSaveToGallery }: GalleryPanelProps) =>
                                                 className="w-full h-auto"
                                                 muted
                                                 loop
-                                                onMouseOver={(e) => !isMontageMode && e.currentTarget.play()}
+                                                onMouseOver={(e) => e.currentTarget.play()}
                                                 onMouseOut={(e) => e.currentTarget.pause()}
                                             />
                                         ) : (
@@ -357,13 +225,6 @@ const GalleryPanel = ({ onAnimateImage, onSaveToGallery }: GalleryPanelProps) =>
                                             />
                                         )}
                                     </div>
-
-                                    {/* Selection Badge (Montage Mode) */}
-                                    {isMontageMode && isSelected && (
-                                        <div className="absolute top-2 left-2 w-6 h-6 bg-green-500 text-white rounded-full flex items-center justify-center text-xs font-bold">
-                                            {selectionIndex + 1}
-                                        </div>
-                                    )}
 
                                     {/* Media Type Badge */}
                                     <div className="absolute top-2 right-2">
@@ -388,8 +249,7 @@ const GalleryPanel = ({ onAnimateImage, onSaveToGallery }: GalleryPanelProps) =>
                                     )}
 
                                     {/* Overlay Actions */}
-                                    {!isMontageMode && (
-                                        <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-end">
+                                    <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-end">
                                             <div className="w-full p-3 space-y-2">
                                                 {/* Prompt Preview */}
                                                 <p className="text-xs text-white line-clamp-2">{media.prompt}</p>
@@ -472,7 +332,6 @@ const GalleryPanel = ({ onAnimateImage, onSaveToGallery }: GalleryPanelProps) =>
                                                 </div>
                                             </div>
                                         </div>
-                                    )}
                                 </Card>
                             )
                         })}

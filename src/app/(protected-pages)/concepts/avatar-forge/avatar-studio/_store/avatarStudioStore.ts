@@ -140,12 +140,6 @@ interface AvatarStudioState {
     isEnhancingPrompt: boolean
     isDescribingImage: boolean
 
-    // Montage/Studio Mode
-    isMontageMode: boolean
-    montageSelection: string[]
-    isStitching: boolean
-    stitchProgress: number
-
     // Continue Video — transient flags set by ContinueVideoDialog and read
     // by handleGenerate's identity branch. When `continueUseAvatarIdentity`
     // is true the next ANIMATE generation routes to a model that accepts
@@ -284,12 +278,6 @@ interface AvatarStudioState {
     setIsEnhancingPrompt: (enhancing: boolean) => void
     setIsDescribingImage: (describing: boolean) => void
 
-    // Actions - Montage
-    setIsMontageMode: (mode: boolean) => void
-    toggleMontageSelection: (id: string) => void
-    clearMontageSelection: () => void
-    setIsStitching: (stitching: boolean) => void
-    setStitchProgress: (progress: number) => void
     setContinueUseAvatarIdentity: (value: boolean) => void
     setContinueIdentityModel: (value: 'seedance' | 'kling-omni' | 'veo-3-1') => void
 
@@ -424,10 +412,6 @@ const initialState = {
     isEnhancingPrompt: false,
     isDescribingImage: false,
 
-    isMontageMode: false,
-    montageSelection: [],
-    isStitching: false,
-    stitchProgress: 0,
     continueUseAvatarIdentity: false,
     // Veo 3.1 is the most complete option (first_frame + 3 refs + native
     // audio + 9:16 vertical). Kling Omni and Seedance follow as
@@ -693,10 +677,9 @@ export const useAvatarStudioStore = create<AvatarStudioState>()(
         set((state) => ({
             gallery: state.gallery.filter((m) => m.id !== id),
             previewMedia: state.previewMedia?.id === id ? null : state.previewMedia,
-            montageSelection: state.montageSelection.filter((mid) => mid !== id),
         })),
     setPreviewMedia: (media) => set({ previewMedia: media }),
-    clearGallery: () => set({ gallery: [], previewMedia: null, montageSelection: [] }),
+    clearGallery: () => set({ gallery: [], previewMedia: null }),
 
     // Actions - Safety
     setIsAnalyzing: (analyzing) => set({ isAnalyzing: analyzing }),
@@ -707,24 +690,6 @@ export const useAvatarStudioStore = create<AvatarStudioState>()(
     setIsEnhancingPrompt: (enhancing) => set({ isEnhancingPrompt: enhancing }),
     setIsDescribingImage: (describing) => set({ isDescribingImage: describing }),
 
-    // Actions - Montage
-    setIsMontageMode: (mode) =>
-        set({
-            isMontageMode: mode,
-            montageSelection: mode ? [] : get().montageSelection,
-        }),
-    toggleMontageSelection: (id) =>
-        set((state) => {
-            const isSelected = state.montageSelection.includes(id)
-            return {
-                montageSelection: isSelected
-                    ? state.montageSelection.filter((mid) => mid !== id)
-                    : [...state.montageSelection, id],
-            }
-        }),
-    clearMontageSelection: () => set({ montageSelection: [] }),
-    setIsStitching: (stitching) => set({ isStitching: stitching }),
-    setStitchProgress: (progress) => set({ stitchProgress: progress }),
     setContinueUseAvatarIdentity: (value) => set({ continueUseAvatarIdentity: value }),
     setContinueIdentityModel: (value) => set({ continueIdentityModel: value }),
 
