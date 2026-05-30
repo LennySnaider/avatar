@@ -2,6 +2,7 @@
 
 import { useRef } from 'react'
 import { useAvatarStudioStore } from '../_store/avatarStudioStore'
+import { downloadMediaUrl } from '../../_utils/mediaDownload'
 import Button from '@/components/ui/Button'
 import Card from '@/components/ui/Card'
 import Spinner from '@/components/ui/Spinner'
@@ -111,46 +112,12 @@ const GalleryPanel = ({ onAnimateImage, onSaveToGallery }: GalleryPanelProps) =>
         e.target.value = ''
     }
 
-    // Pick the right file extension from the blob's actual MIME type, not
-    // from a hardcoded guess. GPT 4o / Gemini / Imagen often deliver PNG;
-    // forcing `.jpg` mislabels the file and some image viewers refuse to
-    // open the saved file when extension and content don't agree.
-    const extensionForBlob = (blob: Blob, fallback: string): string => {
-        const t = (blob.type || '').toLowerCase()
-        if (t === 'image/png') return 'png'
-        if (t === 'image/jpeg' || t === 'image/jpg') return 'jpg'
-        if (t === 'image/webp') return 'webp'
-        if (t === 'image/gif') return 'gif'
-        if (t.startsWith('video/mp4')) return 'mp4'
-        if (t.startsWith('video/webm')) return 'webm'
-        if (t.startsWith('video/quicktime')) return 'mov'
-        return fallback
-    }
-
     const handleDownload = async (media: GeneratedMedia) => {
-        try {
-            // For external URLs (like Kling), fetch and download as blob.
-            const response = await fetch(media.url)
-            const blob = await response.blob()
-            const blobUrl = window.URL.createObjectURL(blob)
-
-            const fallback = media.mediaType === 'VIDEO' ? 'mp4' : 'png'
-            const ext = extensionForBlob(blob, fallback)
-
-            const link = document.createElement('a')
-            link.href = blobUrl
-            link.download = `avatar-${media.mediaType.toLowerCase()}-${Date.now()}.${ext}`
-            document.body.appendChild(link)
-            link.click()
-            document.body.removeChild(link)
-
-            // Clean up blob URL
-            window.URL.revokeObjectURL(blobUrl)
-        } catch (error) {
-            console.error('Download failed:', error)
-            // Fallback: open in new tab
-            window.open(media.url, '_blank')
-        }
+        await downloadMediaUrl(
+            media.url,
+            `avatar-${media.mediaType.toLowerCase()}-${Date.now()}`,
+            media.mediaType === 'VIDEO',
+        )
     }
 
     // Stitch/montage moved to the Video Editor as the "Combine" mode —

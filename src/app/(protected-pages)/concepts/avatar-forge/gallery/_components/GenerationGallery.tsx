@@ -9,6 +9,7 @@ import ConfirmDialog from '@/components/shared/ConfirmDialog'
 import Notification from '@/components/ui/Notification'
 import toast from '@/components/ui/toast'
 import { apiDeleteGeneration } from '@/services/AvatarForgeService'
+import { downloadMediaUrl } from '../../_utils/mediaDownload'
 import {
     HiOutlineSearch,
     HiOutlineDownload,
@@ -51,13 +52,11 @@ const GenerationGallery = ({ generations: initialGenerations }: GenerationGaller
 
     const handleDownload = async (gen: GenerationWithUrl) => {
         if (!gen.signedUrl) return
-
-        const link = document.createElement('a')
-        link.href = gen.signedUrl
-        link.download = `generation-${gen.id}.${gen.media_type === 'VIDEO' ? 'mp4' : 'jpg'}`
-        document.body.appendChild(link)
-        link.click()
-        document.body.removeChild(link)
+        await downloadMediaUrl(
+            gen.signedUrl,
+            `generation-${gen.id}`,
+            gen.media_type === 'VIDEO',
+        )
     }
 
     const handleDelete = async () => {

@@ -2,6 +2,7 @@
 
 import { useState, useRef, useEffect, useCallback } from 'react'
 import { useAvatarStudioStore } from '../_store/avatarStudioStore'
+import { downloadMediaUrl } from '../../_utils/mediaDownload'
 import Dialog from '@/components/ui/Dialog'
 import Button from '@/components/ui/Button'
 import Input from '@/components/ui/Input'
@@ -255,40 +256,11 @@ const ImagePreviewModal = ({
 
     const handleDownload = async () => {
         if (!previewMedia) return
-        try {
-            // For external URLs (like Kling), fetch and download as blob.
-            const response = await fetch(previewMedia.url)
-            const blob = await response.blob()
-            const blobUrl = window.URL.createObjectURL(blob)
-
-            // Derive extension from blob.type, not the media type — image
-            // providers return PNG / WebP / JPEG depending on the model
-            // (GPT 4o gives PNG, Gemini gives PNG, some give JPEG). Forcing
-            // `.jpg` mislabels the file and breaks image viewers.
-            const t = (blob.type || '').toLowerCase()
-            let ext: string
-            if (previewMedia.mediaType === 'VIDEO') {
-                ext = t.includes('webm') ? 'webm' : 'mp4'
-            } else if (t === 'image/png') ext = 'png'
-            else if (t === 'image/jpeg' || t === 'image/jpg') ext = 'jpg'
-            else if (t === 'image/webp') ext = 'webp'
-            else if (t === 'image/gif') ext = 'gif'
-            else ext = 'png'
-
-            const link = document.createElement('a')
-            link.href = blobUrl
-            link.download = `avatar-${previewMedia.mediaType.toLowerCase()}-${Date.now()}.${ext}`
-            document.body.appendChild(link)
-            link.click()
-            document.body.removeChild(link)
-
-            // Clean up blob URL
-            window.URL.revokeObjectURL(blobUrl)
-        } catch (error) {
-            console.error('Download failed:', error)
-            // Fallback: open in new tab
-            window.open(previewMedia.url, '_blank')
-        }
+        await downloadMediaUrl(
+            previewMedia.url,
+            `avatar-${previewMedia.mediaType.toLowerCase()}-${Date.now()}`,
+            previewMedia.mediaType === 'VIDEO',
+        )
     }
 
     const handleDelete = () => {
