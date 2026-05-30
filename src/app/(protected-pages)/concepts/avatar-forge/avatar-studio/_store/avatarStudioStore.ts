@@ -15,7 +15,7 @@ import type {
     CinemaFocalLength,
     CinemaAperture,
 } from '../types'
-import type { Avatar, AIProvider, Prompt } from '@/@types/supabase'
+import type { Avatar, AIProvider, Prompt, SkinTone } from '@/@types/supabase'
 import type {
     KlingCameraControlType,
     KlingCameraSimpleConfig,
@@ -543,7 +543,7 @@ export const useAvatarStudioStore = create<AvatarStudioState>()(
     clearDetectedTerms: () => set({ detectedTerms: [] }),
     getFullPrompt: () => {
         const state = get()
-        const { prompt: rawPrompt, measurements } = state
+        const { prompt: rawPrompt, measurements, faceDescription } = state
 
         // If there's no prompt, return empty
         if (!rawPrompt.trim()) return ''
@@ -575,11 +575,31 @@ export const useAvatarStudioStore = create<AvatarStudioState>()(
         if (measurements.hips) {
             bodyParts.push(`hips ${measurements.hips}cm`)
         }
+        // Skin tone + hair color also live in the UI but were previously dropped
+        // before reaching the model. Both are optional on PhysicalMeasurements.
+        if (measurements.skinTone) {
+            bodyParts.push(`${skinToneToWords(measurements.skinTone)} skin`)
+        }
+        if (measurements.hairColor) {
+            bodyParts.push(`${measurements.hairColor.replace(/-/g, ' ')} hair`)
+        }
 
-        // Body tag goes at the BEGINNING for priority
+        // Assemble the leading tags. Order: [BODY:] then [FACE:] then the
+        // user prompt. KlingService.formatPromptForKling already translates
+        // both tags into prose; other providers read them as semantic text.
+        const tags: string[] = []
         if (bodyParts.length > 0) {
-            const bodyTag = `[BODY: ${bodyParts.join(', ')}]`
-            return `${bodyTag} ${prompt}`
+            tags.push(`[BODY: ${bodyParts.join(', ')}]`)
+        }
+        // The dense Auto-Analyze face descriptor was never sent to the model.
+        // Injecting it as [FACE: ...] is the single highest-impact change for
+        // likeness/consistency.
+        if (faceDescription.trim()) {
+            tags.push(`[FACE: ${faceDescription.trim()}]`)
+        }
+
+        if (tags.length > 0) {
+            return `${tags.join(' ')} ${prompt}`
         }
 
         return prompt
@@ -772,6 +792,19 @@ export const useAvatarStudioStore = create<AvatarStudioState>()(
         }
     )
 )
+
+/**
+ * Map the 1-9 skin tone scale (loosely Fitzpatrick: 1=very fair/porcelain,
+ * 9=very dark/ebony) to natural-language descriptors the image models
+ * understand. The numeric value alone is meaningless to a text-to-image model.
+ */
+function skinToneToWords(tone: SkinTone): string {
+    if (tone <= 2) return 'fair'
+    if (tone === 3) return 'light'
+    if (tone <= 5) return 'medium'
+    if (tone <= 7) return 'tan olive'
+    return 'deep dark'
+}
 
 /**
  * Flatten markdown structure inside a [CLONE: ...] tag. Headers, bullets,

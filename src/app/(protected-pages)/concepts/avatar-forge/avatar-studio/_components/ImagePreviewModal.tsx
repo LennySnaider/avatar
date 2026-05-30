@@ -256,16 +256,28 @@ const ImagePreviewModal = ({
     const handleDownload = async () => {
         if (!previewMedia) return
         try {
-            // For external URLs (like Kling), fetch and download as blob
+            // For external URLs (like Kling), fetch and download as blob.
             const response = await fetch(previewMedia.url)
             const blob = await response.blob()
             const blobUrl = window.URL.createObjectURL(blob)
 
+            // Derive extension from blob.type, not the media type — image
+            // providers return PNG / WebP / JPEG depending on the model
+            // (GPT 4o gives PNG, Gemini gives PNG, some give JPEG). Forcing
+            // `.jpg` mislabels the file and breaks image viewers.
+            const t = (blob.type || '').toLowerCase()
+            let ext: string
+            if (previewMedia.mediaType === 'VIDEO') {
+                ext = t.includes('webm') ? 'webm' : 'mp4'
+            } else if (t === 'image/png') ext = 'png'
+            else if (t === 'image/jpeg' || t === 'image/jpg') ext = 'jpg'
+            else if (t === 'image/webp') ext = 'webp'
+            else if (t === 'image/gif') ext = 'gif'
+            else ext = 'png'
+
             const link = document.createElement('a')
             link.href = blobUrl
-            link.download = `avatar-${previewMedia.mediaType.toLowerCase()}-${Date.now()}.${
-                previewMedia.mediaType === 'VIDEO' ? 'mp4' : 'jpg'
-            }`
+            link.download = `avatar-${previewMedia.mediaType.toLowerCase()}-${Date.now()}.${ext}`
             document.body.appendChild(link)
             link.click()
             document.body.removeChild(link)
@@ -711,12 +723,15 @@ const ImagePreviewModal = ({
         if (!ctx) return
 
         ctx.drawImage(video, 0, 0)
+        // PNG by default — lossless capture of the frame. JPG would
+        // re-compress and the user has no good reason to lose quality
+        // here; the file is also small (one frame).
         canvas.toBlob((blob) => {
             if (!blob) return
             const blobUrl = URL.createObjectURL(blob)
             const link = document.createElement('a')
             link.href = blobUrl
-            link.download = `avatar-frame-${Date.now()}.jpg`
+            link.download = `avatar-frame-${Date.now()}.png`
             document.body.appendChild(link)
             link.click()
             document.body.removeChild(link)

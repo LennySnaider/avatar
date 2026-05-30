@@ -405,15 +405,33 @@ const ImageEditorMain = ({ userId }: ImageEditorMainProps) => {
         }
     }
 
-    // Download
-    const handleDownload = () => {
+    // Download — derive the file extension from the actual MIME type so the
+    // saved file matches its content. `displayImage` can be a data URL
+    // (data:image/png;base64,...) or a blob URL; fetch handles both and
+    // gives us a blob with the right `type`.
+    const handleDownload = async () => {
         if (!displayImage) return
-        const link = document.createElement('a')
-        link.href = displayImage
-        link.download = `edited-image-${Date.now()}.jpg`
-        document.body.appendChild(link)
-        link.click()
-        document.body.removeChild(link)
+        try {
+            const resp = await fetch(displayImage)
+            const blob = await resp.blob()
+            const t = (blob.type || '').toLowerCase()
+            const ext =
+                t === 'image/png' ? 'png'
+                : t === 'image/jpeg' || t === 'image/jpg' ? 'jpg'
+                : t === 'image/webp' ? 'webp'
+                : t === 'image/gif' ? 'gif'
+                : 'png'
+            const blobUrl = URL.createObjectURL(blob)
+            const link = document.createElement('a')
+            link.href = blobUrl
+            link.download = `edited-image-${Date.now()}.${ext}`
+            document.body.appendChild(link)
+            link.click()
+            document.body.removeChild(link)
+            URL.revokeObjectURL(blobUrl)
+        } catch (err) {
+            console.error('[ImageEditor] Download failed:', err)
+        }
     }
 
     // Keyboard shortcuts
