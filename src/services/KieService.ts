@@ -378,14 +378,6 @@ function aspectRatioToGptSize(aspectRatio: string): '1:1' | '3:2' | '2:3' {
 }
 
 /**
- * Whether the supplied aspect ratio is rendered EXACTLY by GPT 4o Image.
- * Used by the UI to show a "this ratio will be approximated" warning.
- */
-export function isExactGpt4oAspectRatio(aspectRatio: string): boolean {
-    return aspectRatio === '1:1' || aspectRatio === '3:2' || aspectRatio === '2:3'
-}
-
-/**
  * GPT 4o Image (OpenAI) via KIE's dedicated endpoint. Like Flux Kontext, it
  * needs reference images uploaded to a public URL first — `filesUrl` is an
  * array of URLs, NOT base64. Async pattern via taskId + recordInfo polling.
