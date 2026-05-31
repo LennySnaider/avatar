@@ -207,6 +207,9 @@ export async function generateImageKie(
     if (model === 'gpt-4o-image') {
         return generateImageGpt4o({ prompt, model, aspectRatio, referenceImage })
     }
+    if (model === 'nano-banana-pro') {
+        return generateImageNanoBananaPro({ prompt, model, aspectRatio, referenceImage })
+    }
 
     // Fallback to generic createTask flow (Grok and others)
     const input: Record<string, unknown> = { prompt, aspect_ratio: aspectRatio }
@@ -503,6 +506,49 @@ async function generateImageGpt4o(params: GenerateImageKieParams): Promise<{ url
     // comes back shorter than Gemini's. Crop to the requested ratio so output
     // proportions match across providers. No-ops when the ratio already matches.
     const persistedUrl = await persistToSupabase(resultUrl, 'png', 'kie-images', aspectRatio)
+    return { url: persistedUrl, fullApiPrompt: prompt }
+}
+
+/**
+ * Nano Banana Pro (Google Gemini 3 Pro Image) via KIE's unified createTask.
+ *
+ * Same underlying model as the direct Gemini path, but ~30% cheaper through
+ * KIE's discounted reselling. Unlike GPT-4o it honors aspect_ratio NATIVELY
+ * (incl. 9:16), so no center-crop is needed. Reference images go as an array
+ * of public URLs in `image_input` (not base64), so we upload first.
+ *
+ * Note: 1K and 2K cost the same on KIE (18 credits / ~$0.09), so we request 2K
+ * for better quality at no extra cost.
+ */
+async function generateImageNanoBananaPro(
+    params: GenerateImageKieParams,
+): Promise<{ url: string; fullApiPrompt: string }> {
+    const { prompt, aspectRatio = '1:1', referenceImage } = params
+
+    const input: Record<string, unknown> = {
+        prompt,
+        aspect_ratio: aspectRatio,
+        resolution: '2K',
+        output_format: 'png',
+    }
+    if (referenceImage) {
+        const uploadedUrl = await uploadReferenceToSupabase(
+            referenceImage.base64,
+            referenceImage.mimeType,
+        )
+        console.log(`[KIE/NanoBananaPro] Uploaded reference to: ${uploadedUrl}`)
+        input.image_input = [uploadedUrl]
+    }
+
+    console.log(`[KIE/NanoBananaPro] Submitting: hasReference=${!!referenceImage}, ratio=${aspectRatio}`)
+    const taskId = await withTimeout(
+        submitTask({ model: 'nano-banana-pro', input }),
+        30_000,
+        'KIE Nano Banana Pro submit',
+    )
+    const urls = await pollTask(taskId, { budgetMs: 180_000, intervalMs: 3000 })
+    // nano-banana-pro honors aspect_ratio natively — no crop needed.
+    const persistedUrl = await persistToSupabase(urls[0], 'png', 'kie-images')
     return { url: persistedUrl, fullApiPrompt: prompt }
 }
 

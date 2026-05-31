@@ -26,6 +26,19 @@ export const DEFAULT_PROVIDERS: AIProvider[] = [
         created_at: null,
     },
     {
+        id: 'kie-nano-banana-pro',
+        name: 'Nano Banana Pro · KIE',
+        type: 'KIE' as ProviderType,
+        model: 'nano-banana-pro',
+        endpoint: 'https://api.kie.ai/api/v1',
+        is_active: true,
+        supports_image: true,
+        supports_video: false,
+        requires_api_key: true,
+        api_key_env_var: 'KIE_API_KEY',
+        created_at: null,
+    },
+    {
         id: 'minimax-image-01',
         name: 'MiniMax image-01',
         type: 'MINIMAX' as ProviderType,
@@ -373,6 +386,8 @@ const ProviderManagerDrawer = () => {
                 return 'OpenAI GPT Image 2 vía Vercel AI Gateway - modelo nuevo (requiere créditos pagos)'
             case 'gateway-seedream-4':
                 return 'ByteDance Seedream 4.0 vía Vercel AI Gateway - funciona en free tier, billing sin markup'
+            case 'kie-nano-banana-pro':
+                return 'Gemini 3 Pro Image vía KIE - mismo modelo que el directo, ~30% más barato, 9:16 nativo, 2K'
             default:
                 return provider.model
         }
