@@ -21,6 +21,25 @@ Varios modelos corren por **servicios dedicados** con features que KIE (acceso "
 
 Mover esos modelos a KIE por precio puede **degradar identidad/quitar features**. Cheapest ≠ best para avatares.
 
+## 🧬 Las features de identidad son PROMPT-ENGINEERING, no del proveedor
+
+Aclaración clave para no confundirse a futuro: **face/body/angle refs separados, "identity weight" y "scene composite" NO son parámetros de API de ningún modelo ni del Vercel Gateway.** Son un harness de prompt que vive en [`GeminiService`](../src/services/GeminiService.ts):
+
+- **Identity weight** = texto literal en el prompt (`FACE IDENTITY: HIGH CONSISTENCY (Identity Weight: N%)`) + ramas de comportamiento según el valor. No hay "knob" nativo.
+- **Face/body/angle** = varias imágenes inline, cada una con una **etiqueta de rol en texto** (`FACE_ANCHOR`, `ANGLE_SHEET`, `BODY_SHAPE`).
+- **Scene composite** = imagen de escena + instrucciones según `styleWeight`.
+
+Implicaciones:
+
+| Ruta | ¿Puede replicar el harness? |
+|---|---|
+| **Directo (GeminiService)** | ✅ Ya lo hace. |
+| **KIE `nano-banana-pro`** | ✅ Acepta `image_input[]` (hasta 8 imgs); las etiquetas de rol e identity-weight van **en el texto del prompt** (hay que portar la lógica). |
+| **Vercel Gateway · `experimental_generateImage`** | ❌ NO acepta imágenes de entrada (solo texto→imagen). |
+| **Vercel Gateway · `generateText` multimodal** | ✅ Técnicamente sí, pero reimplementando el harness sobre el AI SDK. |
+
+**Conclusión:** la ventaja de identidad es **código tuyo (portable)**, no un lock-in de proveedor. Quien rutee mantiene la calidad **solo si mantiene ese harness**. El Gateway **no aporta nada** para esto — su primitiva de imagen ni siquiera acepta refs.
+
 ## 🖼️ Imagen (por imagen)
 
 | Modelo | KIE | Directo (oficial) | Vercel Gateway | Ruteo recomendado |
