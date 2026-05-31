@@ -465,19 +465,17 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                     resultUrl = result.url
                     apiPrompt = result.fullApiPrompt
                 } else if (activeProvider?.type === 'KIE') {
-                    // KIE aggregator — single reference image (face > body > first general)
+                    // KIE aggregator — single reference image (face > body > first general).
+                    // fullPrompt already carries [FACE:]/[BODY:] from getFullPrompt();
+                    // don't prepend [FACE:] again here (it would duplicate the tag).
                     const referenceImage =
                         optimizedPayload.faceRef ??
                         optimizedPayload.bodyRef ??
                         optimizedPayload.generalRefs[0] ??
                         null
 
-                    const kiePrompt = faceDescription?.trim()
-                        ? `[FACE: ${faceDescription.trim()}] ${fullPrompt}`
-                        : fullPrompt
-
                     const result = await generateImageKie({
-                        prompt: kiePrompt,
+                        prompt: fullPrompt,
                         referenceImage,
                         aspectRatio,
                         model: activeProvider.model || 'flux-kontext/text-to-image',
