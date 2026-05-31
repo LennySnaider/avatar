@@ -41,6 +41,7 @@ import {
 } from '@/services/MiniMaxService'
 import type { MiniMaxVideoModel } from '@/@types/minimax'
 import { generateImageKie, generateVideoKie } from '@/services/KieService'
+import { generateImageViaGateway } from '@/services/GatewayService'
 import { HiOutlineCog, HiOutlineBookOpen, HiX } from 'react-icons/hi'
 import { AppState } from '../types'
 import type { GeneratedMedia, ReferenceImage } from '../types'
@@ -481,6 +482,21 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                         aspectRatio,
                         model: activeProvider.model || 'flux-kontext/text-to-image',
                     })
+
+                    resultUrl = result.url
+                    apiPrompt = result.fullApiPrompt
+                } else if (activeProvider?.type === 'GATEWAY') {
+                    // Vercel AI Gateway — unified hub. fullPrompt already carries
+                    // [BODY:]/[FACE:] descriptors (identity via text in this spike).
+                    const result = await generateImageViaGateway({
+                        prompt: fullPrompt,
+                        aspectRatio,
+                        modelName: activeProvider.model,
+                    })
+
+                    if (!result.success) {
+                        throw new Error(result.error)
+                    }
 
                     resultUrl = result.url
                     apiPrompt = result.fullApiPrompt

@@ -16,6 +16,8 @@ const ProviderList = ({ providers }: ProviderListProps) => {
                 return '🔵'
             case 'KLING':
                 return '🟣'
+            case 'GATEWAY':
+                return '▲'
             case 'OPENAI':
                 return '🟢'
             case 'RUNWAY':

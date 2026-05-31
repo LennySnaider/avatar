@@ -25,6 +25,10 @@ export function getDurationOptionsForProvider(provider: AIProvider | null): numb
             if (provider.model === 'wan/2-7-image-to-video') return [2, 5, 7, 10, 12, 15]
             // Older KIE models (Veo via aggregator, etc.) — sane default.
             return [5]
+        case 'GATEWAY':
+            // Image-only in the current spike; duration is unused. When video
+            // models land, branch on provider.model here (kling/veo/seedance).
+            return [5]
         default:
             return [5]
     }
@@ -72,6 +76,9 @@ export function getResolutionOptionsForProvider(
             if (provider.model === 'bytedance/seedance-2') return ['480p', '720p', '1080p']
             if (provider.model === 'wan/2-7-image-to-video') return ['720p', '1080p']
             // Other KIE models (legacy Veo wiring, etc.) don't expose resolution.
+            return null
+        case 'GATEWAY':
+            // Image-only spike — no video resolution control yet.
             return null
         default:
             return null

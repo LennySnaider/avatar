@@ -1,7 +1,7 @@
 'use server'
 
-import sharp from 'sharp'
 import { createServerSupabaseClient } from '@/lib/supabase'
+import { centerCropToAspect, uploadBufferToGenerations } from '@/lib/mediaPersist'
 import type {
     KieCreateTaskRequest,
     KieCreateTaskResponse,
@@ -158,59 +158,15 @@ async function uploadReferenceToSupabase(
  * Download a result URL and re-upload to Supabase Storage so we have a stable
  * URL that doesn't depend on KIE's CDN expiration / CORS rules.
  */
-/**
- * Center-crop an image buffer to an exact aspect ratio (e.g. "9:16").
- *
- * Used to normalize GPT-4o Image output: the model only renders 1:1 / 3:2 /
- * 2:3, so a requested 9:16 comes back as the shorter 2:3 — visibly "less tall"
- * than the same prompt through Gemini. Because every UI ratio is narrower (or
- * wider) than what GPT-4o produces, the target rectangle always fits inside the
- * source, so a center-crop is enough and never needs padding. We trim the
- * excess WIDTH (not height), which leaves the image as tall as Gemini's.
- */
-async function centerCropToAspect(buffer: Buffer, aspectRatio: string): Promise<Buffer> {
-    const [wRatio, hRatio] = aspectRatio.split(':').map(Number)
-    if (!wRatio || !hRatio) return buffer
-
-    const targetRatio = wRatio / hRatio
-    const image = sharp(buffer)
-    const { width, height } = await image.metadata()
-    if (!width || !height) return buffer
-
-    const currentRatio = width / height
-    // Already matches (within ~1%): nothing to do.
-    if (Math.abs(currentRatio - targetRatio) / targetRatio < 0.01) return buffer
-
-    let cropW = width
-    let cropH = height
-    if (currentRatio > targetRatio) {
-        // Source is too wide → trim width.
-        cropW = Math.round(height * targetRatio)
-    } else {
-        // Source is too tall → trim height.
-        cropH = Math.round(width / targetRatio)
-    }
-
-    const left = Math.round((width - cropW) / 2)
-    const top = Math.round((height - cropH) / 2)
-
-    return image
-        .extract({ left, top, width: cropW, height: cropH })
-        .toBuffer()
-}
-
 async function persistToSupabase(
     sourceUrl: string,
     extension: 'mp4' | 'png' | 'jpg',
     subfolder: string,
     cropToAspect?: string,
 ): Promise<string> {
-    const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL
-    if (!SUPABASE_URL) throw new Error('NEXT_PUBLIC_SUPABASE_URL is not defined')
-
     const res = await fetch(sourceUrl)
     if (!res.ok) throw new Error(`Failed to download KIE result (${res.status})`)
-    let buffer: Buffer<ArrayBufferLike> = Buffer.from(await res.arrayBuffer())
+    let buffer: Buffer = Buffer.from(await res.arrayBuffer())
 
     // Normalize image proportions when a provider can't honor the requested
     // aspect ratio natively (e.g. GPT-4o Image). Videos are never cropped.
@@ -225,17 +181,7 @@ async function persistToSupabase(
     const contentType = extension === 'mp4' ? 'video/mp4' : `image/${extension === 'jpg' ? 'jpeg' : 'png'}`
     const fileName = `${subfolder}/${Date.now()}-${Math.random().toString(36).substr(2, 9)}.${extension}`
 
-    const supabase = createServerSupabaseClient()
-    const { error } = await supabase.storage
-        .from('generations')
-        .upload(fileName, buffer, {
-            contentType,
-            cacheControl: '3600',
-            upsert: false,
-        })
-    if (error) throw new Error(`Failed to persist KIE result: ${error.message}`)
-
-    return `${SUPABASE_URL}/storage/v1/object/public/generations/${fileName}`
+    return uploadBufferToGenerations(buffer, fileName, contentType)
 }
 
 export interface GenerateImageKieParams {

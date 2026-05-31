@@ -103,6 +103,32 @@ export const DEFAULT_PROVIDERS: AIProvider[] = [
         api_key_env_var: 'KIE_API_KEY',
         created_at: null,
     },
+    {
+        id: 'gateway-gpt-image-2',
+        name: 'GPT Image 2 · Gateway',
+        type: 'GATEWAY' as ProviderType,
+        model: 'openai/gpt-image-2',
+        endpoint: 'https://ai-gateway.vercel.sh',
+        is_active: true,
+        supports_image: true,
+        supports_video: false,
+        requires_api_key: true,
+        api_key_env_var: 'AI_GATEWAY_API_KEY',
+        created_at: null,
+    },
+    {
+        id: 'gateway-seedream-4',
+        name: 'Seedream 4.0 · Gateway',
+        type: 'GATEWAY' as ProviderType,
+        model: 'bytedance/seedream-4.0',
+        endpoint: 'https://ai-gateway.vercel.sh',
+        is_active: true,
+        supports_image: true,
+        supports_video: false,
+        requires_api_key: true,
+        api_key_env_var: 'AI_GATEWAY_API_KEY',
+        created_at: null,
+    },
     // Video Providers
     {
         id: 'gemini-veo-3-1',
@@ -300,6 +326,12 @@ const ProviderManagerDrawer = () => {
                         K
                     </div>
                 )
+            case 'GATEWAY':
+                return (
+                    <div className="w-8 h-8 rounded-full bg-linear-to-br from-slate-700 to-black flex items-center justify-center text-white font-bold text-sm">
+                        ▲
+                    </div>
+                )
             default:
                 return (
                     <div className="w-8 h-8 rounded-full bg-gray-500 flex items-center justify-center text-white font-bold text-sm">
@@ -337,6 +369,10 @@ const ProviderManagerDrawer = () => {
                 return 'Flux.1 Kontext Max - mejor calidad para escenas complejas'
             case 'kie-gpt-4o-image':
                 return 'OpenAI GPT 4o - photorealistic, mejor con texto en imagen'
+            case 'gateway-gpt-image-2':
+                return 'OpenAI GPT Image 2 vía Vercel AI Gateway - modelo nuevo (requiere créditos pagos)'
+            case 'gateway-seedream-4':
+                return 'ByteDance Seedream 4.0 vía Vercel AI Gateway - funciona en free tier, billing sin markup'
             default:
                 return provider.model
         }
