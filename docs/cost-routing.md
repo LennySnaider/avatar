@@ -37,6 +37,16 @@ EDIT**, imitando ChatGPT consumer:
 - **Prompt limpio y natural** (`buildLeanIdentityPrompt`, no el harness):
   *"Image 1 = foto a recrear exacta; Image 2 = cara a swapear; funde la cara con
   la luz/piel de Image 1; manos anatómicas."*
+- **STRIP del harness (`stripHarnessForFaceSwap`):** en un EDIT la imagen es la
+  fuente de verdad del cuerpo/pose/escena. Las tags `[BODY:]` (medidas en cm) y
+  `[CLONE:]` (re-descripción automática, incompleta) **pelean contra "copiá
+  Image 1 exacta"** → deforma el cuerpo, reencuadra (corta pies) y tira detalles
+  que solo viven en la foto (celular, collar). Se borran `[BODY:]`+`[CLONE:]`,
+  se mantiene `[FACE:]` + el texto del usuario, y se agrega una **lista de
+  preservación GENÉRICA** ("cualquier objeto en las manos, cualquier collar…").
+  ⚠️ Genérica a propósito: nombrar "el celular" haría que lo **alucine** en
+  fotos que no lo tienen. Guía oficial de OpenAI para edits: *"cambia solo X,
+  mantén todo lo demás idéntico"* (NO re-describir la escena).
 - **Resolución 1K** — KIE's gpt-image-2 i2i a 2K **se cuelga** (3 refs → 500/15min;
   2 refs → "running" indefinido). 1K completa rápido.
 - Clona de **imagen** (no de texto). Por eso necesita el **Clone Ref cargado**.

@@ -54,6 +54,32 @@ export function buildLeanIdentityPrompt(prompt: string, refRoles: RefRole[]): st
     return `Photorealistic editorial photograph. ${note}\n\n${prompt}`
 }
 
+/**
+ * For gpt-image-2 face-swap (image-to-image) the reference IMAGE is the sole
+ * source of truth for body, pose, scene, framing and held/worn objects. The
+ * Gemini text-to-image harness FIGHTS that: the `[BODY:]` cm measurements
+ * re-impose the avatar's configured shape over the photo's real body (distorted
+ * legs/proportions), and the auto `[CLONE:]` scene re-description is both
+ * INCOMPLETE (it never detected the phone/necklace, so re-describing the scene
+ * without them tells the model to drop them) and CONTRADICTORY ("medium shot"
+ * reframes to waist-up, cutting the feet). OpenAI's own GPT Image edit guidance
+ * is "change only X, keep everything else identical" — do NOT re-describe the
+ * scene. So strip `[BODY:]` and `[CLONE:]`, keep `[FACE:]` (the swap target) and
+ * the user's typed text, then append a GENERIC, subject-agnostic preserve list.
+ * The list is deliberately generic — naming a specific object (e.g. "the phone")
+ * would make the model HALLUCINATE it on clones that don't have one.
+ */
+export function stripHarnessForFaceSwap(fullPrompt: string): string {
+    const cleaned = fullPrompt
+        .replace(/\[BODY:[^\]]*\]/gi, '')
+        .replace(/\[CLONE:[^\]]*\]/gi, '')
+        .replace(/\s{2,}/g, ' ')
+        .trim()
+    const preserve =
+        'Keep everything else from Image 1 exactly as-is: the full body including legs and feet, the exact pose and body proportions, any object held in the hands, any necklace or jewelry, the clothing, and the original camera framing and angle. Do not crop or re-frame the image. Change ONLY the face/head.'
+    return cleaned ? `${cleaned}\n\n${preserve}` : preserve
+}
+
 // 1-9 skin tone scale → complexion description (verbatim from GeminiService).
 function getSkinToneDescription(tone?: number): string {
     if (!tone) return ''

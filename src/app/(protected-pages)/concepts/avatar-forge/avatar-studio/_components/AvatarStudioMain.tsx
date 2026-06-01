@@ -42,7 +42,7 @@ import {
 import type { MiniMaxVideoModel } from '@/@types/minimax'
 import { generateImageKie, generateVideoKie, submitKieImageTask, checkKieImageTask } from '@/services/KieService'
 import { generateImageViaGateway } from '@/services/GatewayService'
-import { buildAvatarPrompt, buildLeanIdentityPrompt, type RefRole } from '@/utils/avatarPromptBuilder'
+import { buildAvatarPrompt, buildLeanIdentityPrompt, stripHarnessForFaceSwap, type RefRole } from '@/utils/avatarPromptBuilder'
 import { HiOutlineCog, HiOutlineBookOpen, HiX } from 'react-icons/hi'
 import { AppState } from '../types'
 import type { GeneratedMedia, ReferenceImage } from '../types'
@@ -539,7 +539,15 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                                     { ...optimizedCloneRef, role: 'scene' as const },
                                     ...faceRefs,
                                 ]
-                                kiePrompt = buildLeanIdentityPrompt(fullPrompt, ['scene', 'face'])
+                                // Face-swap i2i: strip the Gemini harness ([BODY:]
+                                // measurements + the incomplete/contradictory auto
+                                // [CLONE:] scene re-description) so the IMAGE — not
+                                // text — drives body/pose/scene. Keeps [FACE:] +
+                                // user text + a generic preserve list.
+                                kiePrompt = buildLeanIdentityPrompt(
+                                    stripHarnessForFaceSwap(fullPrompt),
+                                    ['scene', 'face'],
+                                )
                             } else {
                                 kieRefsToSend = faceRefs
                                 kiePrompt = buildLeanIdentityPrompt(fullPrompt, ['face'])
