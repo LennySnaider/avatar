@@ -190,6 +190,9 @@ export interface GenerateImageKieParams {
     model: string
     aspectRatio?: string
     referenceImage?: { base64: string; mimeType: string } | null
+    // Multiple references for models that accept them (Nano Banana Pro → up to
+    // 8 image_input). Order = identity, geometry, body, pose, scene.
+    referenceImages?: Array<{ base64: string; mimeType: string }>
 }
 
 /**
@@ -203,7 +206,7 @@ export async function generateImageKie(
     | { success: true; url: string; fullApiPrompt: string }
     | { success: false; error: string }
 > {
-    const { model, aspectRatio = '1:1', referenceImage } = params
+    const { model, aspectRatio = '1:1', referenceImage, referenceImages } = params
 
     // Sanitize the prompt for content moderation. KIE/OpenAI image models
     // reject risky terms (bikini, swimsuit, body emphasis…) — the direct
@@ -222,7 +225,7 @@ export async function generateImageKie(
             return { success: true, ...(await generateImageGpt4o({ prompt, model, aspectRatio, referenceImage })) }
         }
         if (model === 'nano-banana-pro') {
-            return { success: true, ...(await generateImageNanoBananaPro({ prompt, model, aspectRatio, referenceImage })) }
+            return { success: true, ...(await generateImageNanoBananaPro({ prompt, model, aspectRatio, referenceImage, referenceImages })) }
         }
         if (model === 'gpt-image-2-text-to-image') {
             return { success: true, ...(await generateImageGptImage2({ prompt, model, aspectRatio, referenceImage })) }
@@ -540,7 +543,7 @@ async function generateImageGpt4o(params: GenerateImageKieParams): Promise<{ url
 async function generateImageNanoBananaPro(
     params: GenerateImageKieParams,
 ): Promise<{ url: string; fullApiPrompt: string }> {
-    const { prompt, aspectRatio = '1:1', referenceImage } = params
+    const { prompt, aspectRatio = '1:1', referenceImage, referenceImages } = params
 
     const input: Record<string, unknown> = {
         prompt,
@@ -548,16 +551,24 @@ async function generateImageNanoBananaPro(
         resolution: '2K',
         output_format: 'png',
     }
-    if (referenceImage) {
-        const uploadedUrl = await uploadReferenceToSupabase(
-            referenceImage.base64,
-            referenceImage.mimeType,
+
+    // Nano Banana Pro accepts up to 8 reference images. Prefer the full set
+    // (face + angle + body + pose + scene) so it matches the rich Gemini path;
+    // fall back to the single face ref. Upload all to public URLs first.
+    const refs = (referenceImages && referenceImages.length > 0)
+        ? referenceImages.slice(0, 8)
+        : referenceImage
+            ? [referenceImage]
+            : []
+    if (refs.length > 0) {
+        const urls = await Promise.all(
+            refs.map((r) => uploadReferenceToSupabase(r.base64, r.mimeType)),
         )
-        console.log(`[KIE/NanoBananaPro] Uploaded reference to: ${uploadedUrl}`)
-        input.image_input = [uploadedUrl]
+        input.image_input = urls
+        console.log(`[KIE/NanoBananaPro] Uploaded ${urls.length} reference image(s)`)
     }
 
-    console.log(`[KIE/NanoBananaPro] Submitting: hasReference=${!!referenceImage}, ratio=${aspectRatio}`)
+    console.log(`[KIE/NanoBananaPro] Submitting: refs=${refs.length}, ratio=${aspectRatio}`)
     const taskId = await withTimeout(
         submitTask({ model: 'nano-banana-pro', input }),
         30_000,

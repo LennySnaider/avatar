@@ -67,6 +67,7 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
         bodyRef,
         assetImages,
         sceneImage,
+        poseImage,
         videoInputImage,
         identityWeight,
         measurements,
@@ -405,6 +406,23 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                 ? await optimizeImage({ base64: angleRef.base64, mimeType: angleRef.mimeType })
                 : null
 
+            // Optimize pose ref (session tool) — drives body position. Gemini
+            // already handles poseRefImage; we also forward it to KIE multi-ref.
+            const optimizedPoseRef = poseImage?.base64
+                ? await optimizeImage({ base64: poseImage.base64, mimeType: poseImage.mimeType })
+                : null
+
+            // All reference images for providers that accept multiple inputs
+            // (Nano Banana Pro via KIE takes up to 8). Order = identity first,
+            // then geometry/body/pose/scene. Matches what the Gemini path sends.
+            const kieReferenceImages = [
+                optimizedPayload.faceRef,
+                optimizedAngleRef,
+                optimizedPayload.bodyRef,
+                optimizedPoseRef,
+                optimizedPayload.sceneImage,
+            ].filter((r): r is { base64: string; mimeType: string } => !!r?.base64)
+
             let apiPrompt: string | undefined
 
             if (generationMode === 'IMAGE') {
@@ -477,6 +495,7 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                     const result = await generateImageKie({
                         prompt: fullPrompt,
                         referenceImage,
+                        referenceImages: kieReferenceImages,
                         aspectRatio,
                         model: activeProvider.model || 'flux-kontext/text-to-image',
                     })
@@ -511,7 +530,7 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                         faceRefImage: optimizedPayload.faceRef,
                         bodyRefImage: optimizedPayload.bodyRef,
                         angleRefImage: optimizedAngleRef,
-                        poseRefImage: null,
+                        poseRefImage: optimizedPoseRef,
                         aspectRatio,
                         cameraShot,
                         cameraAngle,
