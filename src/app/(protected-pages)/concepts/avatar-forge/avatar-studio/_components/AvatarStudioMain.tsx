@@ -42,7 +42,7 @@ import {
 import type { MiniMaxVideoModel } from '@/@types/minimax'
 import { generateImageKie, generateVideoKie } from '@/services/KieService'
 import { generateImageViaGateway } from '@/services/GatewayService'
-import { buildAvatarPrompt, type RefRole } from '@/utils/avatarPromptBuilder'
+import { buildAvatarPrompt, buildLeanIdentityPrompt, type RefRole } from '@/utils/avatarPromptBuilder'
 import { HiOutlineCog, HiOutlineBookOpen, HiX } from 'react-icons/hi'
 import { AppState } from '../types'
 import type { GeneratedMedia, ReferenceImage } from '../types'
@@ -495,27 +495,32 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                         optimizedPayload.generalRefs[0] ??
                         null
 
-                    // For multi-reference models (Nano Banana Pro = same model as
-                    // direct Gemini; GPT Image 2 image-to-image) build the SAME
-                    // rich harness prompt Gemini uses, so identity/body/pose match.
-                    // Other KIE models keep the lighter fullPrompt.
+                    // Per-model prompt strategy:
+                    // - Nano Banana Pro (= same model as direct Gemini): the FULL
+                    //   Gemini harness — it loves the verbose, structured prompt.
+                    // - GPT Image 2 (OpenAI): a LEAN, natural prompt. The harness's
+                    //   "DEEPFAKE/FACE SWAP" language trips OpenAI moderation and its
+                    //   size causes timeouts; OpenAI clones identity from clean
+                    //   prompts + the reference images (as in ChatGPT itself).
                     const kieModel = activeProvider.model || ''
-                    const isRichRefModel =
-                        kieModel === 'nano-banana-pro' ||
-                        kieModel === 'gpt-image-2-text-to-image'
+                    const refRoles = kieReferenceImages.map((r) => r.role as RefRole)
                     let kiePrompt = fullPrompt
-                    if (isRichRefModel && kieReferenceImages.length > 0) {
-                        const { systemPreamble, finalPrompt } = buildAvatarPrompt({
-                            prompt: fullPrompt,
-                            aspectRatio,
-                            measurements,
-                            faceDescription,
-                            identityWeight,
-                            cameraShot,
-                            cameraAngle,
-                            refRoles: kieReferenceImages.map((r) => r.role as RefRole),
-                        })
-                        kiePrompt = `${systemPreamble}\n\n${finalPrompt}`
+                    if (kieReferenceImages.length > 0) {
+                        if (kieModel === 'nano-banana-pro') {
+                            const { systemPreamble, finalPrompt } = buildAvatarPrompt({
+                                prompt: fullPrompt,
+                                aspectRatio,
+                                measurements,
+                                faceDescription,
+                                identityWeight,
+                                cameraShot,
+                                cameraAngle,
+                                refRoles,
+                            })
+                            kiePrompt = `${systemPreamble}\n\n${finalPrompt}`
+                        } else if (kieModel === 'gpt-image-2-text-to-image') {
+                            kiePrompt = buildLeanIdentityPrompt(fullPrompt, refRoles)
+                        }
                     }
 
                     const result = await generateImageKie({

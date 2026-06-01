@@ -28,6 +28,22 @@ export interface AvatarPromptOptions {
     refRoles: RefRole[]
 }
 
+/**
+ * Lean, natural prompt for OpenAI's GPT Image (and other models that prefer
+ * concise instructions). Deliberately AVOIDS the verbose Gemini harness and the
+ * words "deepfake/face swap" — those trip OpenAI moderation and bloat the
+ * request (slow → timeout). The reference images carry the identity; the prompt
+ * carries the scene. Mirrors how the same model clones faces in ChatGPT itself.
+ */
+export function buildLeanIdentityPrompt(prompt: string, refRoles: RefRole[]): string {
+    if (!refRoles.includes('face')) return prompt
+    const note =
+        refRoles.length > 1
+            ? 'Use the attached reference images as the subject: keep the exact same face, facial features and likeness as the person shown, and match their body proportions.'
+            : 'Keep the exact same face, facial features and likeness as the person in the attached reference image.'
+    return `Photorealistic editorial photograph. ${note}\n\n${prompt}`
+}
+
 // 1-9 skin tone scale → complexion description (verbatim from GeminiService).
 function getSkinToneDescription(tone?: number): string {
     if (!tone) return ''
