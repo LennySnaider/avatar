@@ -500,7 +500,9 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                     resultUrl = result.url
                     apiPrompt = result.fullApiPrompt
                 } else if (isKlingProvider) {
-                    // Kling KOLORS — single reference image (face > body > first general)
+                    // Kling — single reference image (face > body > first general).
+                    // Base/KOLORS models clone the scene only via the [CLONE:] text
+                    // in fullPrompt (1 image slot, used for the face).
                     const referenceImage =
                         optimizedPayload.faceRef ??
                         optimizedPayload.bodyRef ??
@@ -513,11 +515,22 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                         ? `[FACE: ${faceDescription.trim()}] ${fullPrompt}`
                         : fullPrompt
 
+                    // Kling v3 Omni takes a multi-image list — feed the avatar face
+                    // (identity, slot 1) + the Clone (pose/outfit/scene, slot 2) so it
+                    // clones from the IMAGE like nano-banana. Other Kling models are
+                    // single-ref, so the clone rides only on the [CLONE:] text.
+                    const klingModel = activeProvider?.model || 'kling-v2-1'
+                    const klingRefImages =
+                        klingModel === 'kling-v3-omni' && optimizedCloneRef && referenceImage
+                            ? [referenceImage, optimizedCloneRef]
+                            : undefined
+
                     const result = await generateImageKling({
                         prompt: klingPrompt,
                         referenceImage,
+                        referenceImages: klingRefImages,
                         aspectRatio,
-                        modelName: activeProvider?.model || 'kling-v2-1',
+                        modelName: klingModel,
                     })
 
                     if (!result.success) {
@@ -545,6 +558,10 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                     let refRoles = kieReferenceImages.map((r) => r.role as RefRole)
                     let kiePrompt = fullPrompt
                     let kieRefsToSend = kieReferenceImages
+                    // The single ref passed to the sync adapters (flux-kontext /
+                    // gpt-4o / generic). Defaults to the face; flux-kontext edit
+                    // mode overrides it to the Clone (the canvas to edit).
+                    let kieSingleRef = referenceImage
 
                     // Nano Banana Pro ONLY: feed the Clone Ref IMAGE (not just the
                     // [CLONE:] text) so it clones the EXACT pose/outfit/framing/scene
@@ -565,7 +582,13 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                         refRoles = kieRefsToSend.map((r) => r.role as RefRole)
                     }
 
-                    if (kieRefsToSend.length > 0) {
+                    if (
+                        kieRefsToSend.length > 0 ||
+                        (kieModel.startsWith('flux-kontext') && optimizedCloneRef)
+                    ) {
+                        // Flux is single-input (edit on the Clone canvas) so it can run
+                        // with ONLY a clone and no avatar ref images; the others need
+                        // their ref array, hence the length>0 path above.
                         if (kieModel === 'nano-banana-pro') {
                             const { systemPreamble, finalPrompt } = buildAvatarPrompt({
                                 prompt: fullPrompt,
@@ -603,6 +626,19 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                                 kieRefsToSend = faceRefs
                                 kiePrompt = buildLeanIdentityPrompt(fullPrompt, ['face'])
                             }
+                        } else if (kieModel.startsWith('flux-kontext') && optimizedCloneRef) {
+                            // Flux Kontext = instruction EDIT model. Feed the Clone as
+                            // the single canvas image (generateImageFluxKontext puts the
+                            // referenceImage into body.inputImage) and let the avatar
+                            // face ride on the [FACE:] text + relight/preserve-skin
+                            // clause — Flux is single-input, so there is no second face
+                            // image. Same lean strategy as GPT Image 2; strip the Gemini
+                            // harness ([BODY:]/[CLONE:]) that fights an edit canvas.
+                            kieSingleRef = optimizedCloneRef
+                            kiePrompt = buildLeanIdentityPrompt(
+                                stripHarnessForFaceSwap(fullPrompt),
+                                ['scene', 'face'],
+                            )
                         }
                     }
 
@@ -610,7 +646,7 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                         // ASYNC submit + browser poll (see pollKieImageTask).
                         const polled = await pollKieImageTask({
                             prompt: kiePrompt,
-                            referenceImage,
+                            referenceImage: kieSingleRef,
                             referenceImages: kieRefsToSend,
                             aspectRatio,
                             model: kieModel,
@@ -620,7 +656,7 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                     } else {
                         const result = await generateImageKie({
                             prompt: kiePrompt,
-                            referenceImage,
+                            referenceImage: kieSingleRef,
                             referenceImages: kieRefsToSend,
                             aspectRatio,
                             model: activeProvider.model || 'flux-kontext/text-to-image',
@@ -979,6 +1015,8 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
         faceRef,
         bodyRef,
         angleRef,
+        poseImage,
+        cloneImage,
         videoInputImage,
         aspectRatio,
         videoDuration,

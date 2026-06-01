@@ -20,7 +20,11 @@ Los dos motores de identidad funcionan; se elige según la foto.
 | **Nano Banana Pro · KIE** | harness rico + refs (de **texto/refs**) | ✅ = Gemini | **Ruta principal** (barato) |
 | **Gemini 3 Pro Image (directo)** | harness rico (de **texto**) | ✅ campeón | Respaldo premium / no-tattoo |
 | **GPT Image 2 · KIE** | **face-swap EDIT** (de **imagen**) | ✅ con el flujo correcto | **Funciona** según la foto |
-| GPT 4o Image (KIE) | — | ⚠️ flojo | secundario |
+| **Flux.1 Kontext Pro/Max · KIE** | **face-swap EDIT** (clone=canvas, cara por `[FACE:]` texto) | ✅ (single-input) | clona pose/outfit/escena, bleed bajo |
+| **Kling v3 Omni · KIE/Kling** | **GENERACIÓN multi-ref** (`image_list`: cara=slot1, clone=slot2, guard mannequin) | ✅ con guard | único Kling que clona; bleed medio |
+| GPT 4o Image (KIE) | — | ⚠️ flojo | secundario (no cableado al clone) |
+| MiniMax image-01 / Kling v3 base | **solo texto** (`[CLONE:]` en prosa) | ⚠️ techo de texto | API: 1 sola ref=cara, NO reciben la imagen del clone |
+| Seedream 4.0 · Gateway | — | ❌ | bug 404 Vercel/ByteDance con imágenes; text-only |
 
 ### Receta de cada motor (lo que lo hizo funcionar)
 

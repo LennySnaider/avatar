@@ -406,6 +406,7 @@ export async function generateVideo(params: {
 export async function generateImage(params: {
     prompt: string
     referenceImage?: ImageData | null
+    referenceImages?: ImageData[] // Omni only: multi-image list (e.g. [face, clone])
     aspectRatio: AspectRatio
     modelName?: string
     n?: number // number of images
@@ -416,6 +417,7 @@ export async function generateImage(params: {
     const {
         prompt,
         referenceImage,
+        referenceImages,
         aspectRatio,
         modelName = 'kling-v3',
         n = 1,
@@ -432,6 +434,7 @@ export async function generateImage(params: {
             return generateOmniImage({
                 prompt,
                 referenceImage,
+                referenceImages,
                 aspectRatio,
                 modelName: normalizedModel,
                 n,
@@ -541,6 +544,7 @@ export async function generateImage(params: {
 async function generateOmniImage(params: {
     prompt: string
     referenceImage?: ImageData | null
+    referenceImages?: ImageData[]
     aspectRatio: AspectRatio
     modelName: string
     n: number
@@ -548,10 +552,26 @@ async function generateOmniImage(params: {
     | { success: true; url: string; fullApiPrompt: string }
     | { success: false; error: string }
 > {
-    const { prompt, referenceImage, aspectRatio, modelName, n } = params
+    const { prompt, referenceImage, referenceImages, aspectRatio, modelName, n } = params
 
     try {
-        const klingPrompt = formatPromptForKling(prompt) || prompt
+        // Omni accepts up to 10 images in image_list[]. Prefer the explicit
+        // multi-ref array (e.g. [face, clone]); fall back to the single ref.
+        const refsForList =
+            referenceImages && referenceImages.length > 0
+                ? referenceImages.slice(0, 10)
+                : referenceImage
+                    ? [referenceImage]
+                    : []
+
+        let klingPrompt = formatPromptForKling(prompt) || prompt
+        if (refsForList.length > 1) {
+            // Multi-ref clone: tell Omni which slot is identity vs scene, and
+            // guard against bleeding the clone subject's face/hair (it is a
+            // GENERATION model — text guard, same lever as nano-banana).
+            klingPrompt +=
+                ' Use <<<image_1>>> as the person\'s exact face and identity — keep it. Recreate the EXACT pose, outfit, body position, framing and setting from <<<image_2>>>, but the person shown in <<<image_2>>> is a faceless mannequin: do NOT copy their face, hair or skin tone — the face and identity come ONLY from <<<image_1>>>.'
+        }
 
         console.log('[Kling/Omni-Image] Starting omni image generation...')
         console.log('[Kling/Omni-Image] Model:', modelName)
@@ -570,13 +590,13 @@ async function generateOmniImage(params: {
             result_type: 'single',
         }
 
-        if (referenceImage?.base64) {
-            // Omni accepts URL or base64 inside image_list. Base64 stays
-            // simpler than uploading to Supabase first, and the JWT'd
-            // request can absorb a single ~1MB image without issue.
-            requestBody.image_list = [
-                { image: cleanBase64ForKling(referenceImage.base64) },
-            ]
+        if (refsForList.length > 0) {
+            // Omni accepts URL or base64 inside image_list (slot order =
+            // <<<image_1>>>, <<<image_2>>>, …). Base64 stays simpler than
+            // uploading to Supabase first.
+            requestBody.image_list = refsForList.map((r) => ({
+                image: cleanBase64ForKling(r.base64),
+            }))
         }
 
         const submitResponse = await klingRequest<KlingTaskResponse>(
