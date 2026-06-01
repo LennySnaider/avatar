@@ -528,17 +528,20 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                             })
                             kiePrompt = `${systemPreamble}\n\n${finalPrompt}`
                         } else if (kieModel === 'gpt-image-2-text-to-image') {
-                            // Mirror what worked in ChatGPT: face + the Clone/original
-                            // image. OpenAI clones body/outfit/pose from the IMAGE,
-                            // not text. Send [face, clone] (2 refs — light enough to
-                            // avoid the KIE 500 that 3 refs caused). Drop angle-sheet.
+                            // Face-swap EDIT, mirroring how ChatGPT processes it:
+                            // Clone/original FIRST (the canvas to recreate exactly)
+                            // + face SECOND (swap in the avatar's face). 2 refs,
+                            // light enough to avoid the KIE 500. No angle-sheet.
                             const faceOnly = kieReferenceImages.filter((r) => r.role === 'face')
-                            const baseRefs = faceOnly.length > 0 ? faceOnly : [kieReferenceImages[0]]
+                            const faceRefs = faceOnly.length > 0 ? faceOnly : [kieReferenceImages[0]]
                             if (optimizedCloneRef) {
-                                kieRefsToSend = [...baseRefs, { ...optimizedCloneRef, role: 'scene' as const }]
-                                kiePrompt = buildLeanIdentityPrompt(fullPrompt, ['face', 'scene'])
+                                kieRefsToSend = [
+                                    { ...optimizedCloneRef, role: 'scene' as const },
+                                    ...faceRefs,
+                                ]
+                                kiePrompt = buildLeanIdentityPrompt(fullPrompt, ['scene', 'face'])
                             } else {
-                                kieRefsToSend = baseRefs
+                                kieRefsToSend = faceRefs
                                 kiePrompt = buildLeanIdentityPrompt(fullPrompt, ['face'])
                             }
                         }
