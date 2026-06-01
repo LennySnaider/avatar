@@ -396,7 +396,7 @@ const ProviderManagerDrawer = () => {
             case 'kie-gpt-4o-image':
                 return 'OpenAI GPT 4o - photorealistic, mejor con texto en imagen'
             case 'kie-gpt-image-2':
-                return 'OpenAI GPT Image 2 vía KIE - modelo nuevo, 9:16 nativo, 2K, mejor que 4o'
+                return 'OpenAI GPT Image 2 vía KIE - usa refs (image-to-image, hasta 16), 9:16 nativo, 2K'
             case 'gateway-gpt-image-2':
                 return 'OpenAI GPT Image 2 vía Vercel AI Gateway - modelo nuevo (requiere créditos pagos)'
             case 'gateway-seedream-4':

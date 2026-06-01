@@ -228,7 +228,7 @@ export async function generateImageKie(
             return { success: true, ...(await generateImageNanoBananaPro({ prompt, model, aspectRatio, referenceImage, referenceImages })) }
         }
         if (model === 'gpt-image-2-text-to-image') {
-            return { success: true, ...(await generateImageGptImage2({ prompt, model, aspectRatio, referenceImage })) }
+            return { success: true, ...(await generateImageGptImage2({ prompt, model, aspectRatio, referenceImage, referenceImages })) }
         }
 
         // Fallback to generic createTask flow (Grok and others)
@@ -583,15 +583,19 @@ async function generateImageNanoBananaPro(
 /**
  * GPT Image 2 (OpenAI's newest image model) via KIE's unified createTask.
  *
- * Newer than gpt-4o-image and — unlike it — honors aspect_ratio NATIVELY
- * (incl. 9:16), so no center-crop is needed. This is a text-to-image endpoint
- * (no reference image input); identity comes from the [FACE:]/[BODY:] text
- * descriptors. Requests 2K for better quality.
+ * Newer than gpt-4o-image and honors aspect_ratio NATIVELY (incl. 9:16), so no
+ * center-crop is needed. Picks the right KIE endpoint by whether references are
+ * present: with refs → `gpt-image-2-image-to-image` (input_urls, up to 16) so
+ * it can match the avatar's identity; without refs → `gpt-image-2-text-to-image`.
+ * Requests 2K for better quality.
+ *
+ * Note: OpenAI moderation is strict on real-person/suggestive content — it may
+ * still refuse some references even though the API accepts them.
  */
 async function generateImageGptImage2(
     params: GenerateImageKieParams,
 ): Promise<{ url: string; fullApiPrompt: string }> {
-    const { prompt, aspectRatio = '1:1' } = params
+    const { prompt, aspectRatio = '1:1', referenceImage, referenceImages } = params
 
     const input: Record<string, unknown> = {
         prompt,
@@ -599,9 +603,25 @@ async function generateImageGptImage2(
         resolution: '2K',
     }
 
-    console.log(`[KIE/GptImage2] Submitting: ratio=${aspectRatio}`)
+    const refs = (referenceImages && referenceImages.length > 0)
+        ? referenceImages.slice(0, 16)
+        : referenceImage
+            ? [referenceImage]
+            : []
+
+    let kieModel = 'gpt-image-2-text-to-image'
+    if (refs.length > 0) {
+        const urls = await Promise.all(
+            refs.map((r) => uploadReferenceToSupabase(r.base64, r.mimeType)),
+        )
+        input.input_urls = urls
+        kieModel = 'gpt-image-2-image-to-image'
+        console.log(`[KIE/GptImage2] Image-to-image with ${urls.length} reference(s)`)
+    }
+
+    console.log(`[KIE/GptImage2] Submitting: model=${kieModel}, ratio=${aspectRatio}`)
     const taskId = await withTimeout(
-        submitTask({ model: 'gpt-image-2-text-to-image', input }),
+        submitTask({ model: kieModel, input }),
         30_000,
         'KIE GPT Image 2 submit',
     )
