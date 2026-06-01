@@ -413,15 +413,19 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                 : null
 
             // All reference images for providers that accept multiple inputs
-            // (Nano Banana Pro via KIE takes up to 8). Order = identity first,
-            // then geometry/body/pose/scene. Matches what the Gemini path sends.
+            // (Nano Banana Pro / GPT Image 2 via KIE). Each carries a `role` so
+            // KieService can label it in the prompt ("Image 1 is the face…") —
+            // without labels the model blends them and loses identity.
             const kieReferenceImages = [
-                optimizedPayload.faceRef,
-                optimizedAngleRef,
-                optimizedPayload.bodyRef,
-                optimizedPoseRef,
-                optimizedPayload.sceneImage,
-            ].filter((r): r is { base64: string; mimeType: string } => !!r?.base64)
+                optimizedPayload.faceRef && { ...optimizedPayload.faceRef, role: 'face' },
+                optimizedAngleRef && { ...optimizedAngleRef, role: 'angle' },
+                optimizedPayload.bodyRef && { ...optimizedPayload.bodyRef, role: 'body' },
+                optimizedPoseRef && { ...optimizedPoseRef, role: 'pose' },
+                optimizedPayload.sceneImage && { ...optimizedPayload.sceneImage, role: 'scene' },
+            ].filter(
+                (r): r is { base64: string; mimeType: string; role: string } =>
+                    Boolean(r && r.base64),
+            )
 
             let apiPrompt: string | undefined
 
