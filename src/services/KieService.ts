@@ -530,34 +530,15 @@ async function generateImageGpt4o(params: GenerateImageKieParams): Promise<{ url
     return { url: persistedUrl, fullApiPrompt: prompt }
 }
 
-// Per-role instruction text so the model knows what each reference image is
-// for. Without this, multiple unlabeled images get blended and identity is
-// lost — OpenAI/Google both recommend labeling each reference (Image 1, …).
-const REF_ROLE_INSTRUCTION: Record<string, string> = {
-    face: "the subject's exact face and identity — replicate this face, features, bone structure and likeness PRECISELY and do not change it",
-    angle: "the subject's face from multiple angles — use only to keep facial geometry consistent",
-    body: 'the body silhouette — match the waist, hips, bust and overall proportions exactly',
-    pose: 'the desired pose — copy ONLY the body position from it, do NOT copy its face',
-    scene: 'the scene/background to place the subject in',
-}
-
 /**
- * Upload references to public URLs and build a prompt "legend" mapping each
- * image index to its role, so models that take a flat image_input[] still know
- * which image is the face to replicate. Mirrors GeminiService's labeled refs.
+ * Upload reference images to public URLs (KIE needs URLs, not base64), in the
+ * given order. The prompt's REFERENCE MAPPING (built by avatarPromptBuilder)
+ * labels them as Image 1..N, so order here must match the caller's role order.
  */
-async function uploadRefsWithLegend(
-    refs: Array<{ base64: string; mimeType: string; role?: string }>,
-): Promise<{ urls: string[]; legend: string }> {
-    const urls = await Promise.all(
-        refs.map((r) => uploadReferenceToSupabase(r.base64, r.mimeType)),
-    )
-    const lines = refs.map((r, i) => {
-        const instr = (r.role && REF_ROLE_INSTRUCTION[r.role]) || 'a visual reference'
-        return `Image ${i + 1} is ${instr}.`
-    })
-    const legend = `You are given ${refs.length} reference image(s). ${lines.join(' ')} The generated person MUST keep the exact face from the identity image.`
-    return { urls, legend }
+async function uploadRefs(
+    refs: Array<{ base64: string; mimeType: string }>,
+): Promise<string[]> {
+    return Promise.all(refs.map((r) => uploadReferenceToSupabase(r.base64, r.mimeType)))
 }
 
 /**
@@ -576,29 +557,24 @@ async function generateImageNanoBananaPro(
 ): Promise<{ url: string; fullApiPrompt: string }> {
     const { prompt, aspectRatio = '1:1', referenceImage, referenceImages } = params
 
-    // Nano Banana Pro accepts up to 8 reference images. Prefer the full labeled
-    // set (face + angle + body + pose + scene) so it matches the rich Gemini
-    // path; fall back to the single face ref. Labels go in the prompt so the
-    // model knows which image is the face to replicate.
+    // Nano Banana Pro accepts up to 8 reference images. Send the full set
+    // (face + angle + body + pose + scene); the prompt already carries the
+    // REFERENCE MAPPING describing each. Fall back to the single face ref.
     const refs = (referenceImages && referenceImages.length > 0)
         ? referenceImages.slice(0, 8)
         : referenceImage
-            ? [{ ...referenceImage, role: 'face' }]
+            ? [referenceImage]
             : []
 
-    let finalPrompt = prompt
     const input: Record<string, unknown> = {
+        prompt,
         aspect_ratio: aspectRatio,
         resolution: '2K',
         output_format: 'png',
     }
     if (refs.length > 0) {
-        const { urls, legend } = await uploadRefsWithLegend(refs)
-        input.image_input = urls
-        finalPrompt = `${legend}\n\n${prompt}`
-        console.log(`[KIE/NanoBananaPro] ${urls.length} labeled reference(s)`)
+        input.image_input = await uploadRefs(refs)
     }
-    input.prompt = finalPrompt
 
     console.log(`[KIE/NanoBananaPro] Submitting: refs=${refs.length}, ratio=${aspectRatio}`)
     const taskId = await withTimeout(
@@ -632,23 +608,20 @@ async function generateImageGptImage2(
     const refs = (referenceImages && referenceImages.length > 0)
         ? referenceImages.slice(0, 16)
         : referenceImage
-            ? [{ ...referenceImage, role: 'face' }]
+            ? [referenceImage]
             : []
 
-    let finalPrompt = prompt
     const input: Record<string, unknown> = {
+        prompt,
         aspect_ratio: aspectRatio,
         resolution: '2K',
     }
     let kieModel = 'gpt-image-2-text-to-image'
     if (refs.length > 0) {
-        const { urls, legend } = await uploadRefsWithLegend(refs)
-        input.input_urls = urls
-        finalPrompt = `${legend}\n\n${prompt}`
+        input.input_urls = await uploadRefs(refs)
         kieModel = 'gpt-image-2-image-to-image'
-        console.log(`[KIE/GptImage2] Image-to-image with ${urls.length} labeled reference(s)`)
+        console.log(`[KIE/GptImage2] Image-to-image with ${refs.length} reference(s)`)
     }
-    input.prompt = finalPrompt
 
     console.log(`[KIE/GptImage2] Submitting: model=${kieModel}, ratio=${aspectRatio}`)
     const taskId = await withTimeout(

@@ -42,6 +42,7 @@ import {
 import type { MiniMaxVideoModel } from '@/@types/minimax'
 import { generateImageKie, generateVideoKie } from '@/services/KieService'
 import { generateImageViaGateway } from '@/services/GatewayService'
+import { buildAvatarPrompt, type RefRole } from '@/utils/avatarPromptBuilder'
 import { HiOutlineCog, HiOutlineBookOpen, HiX } from 'react-icons/hi'
 import { AppState } from '../types'
 import type { GeneratedMedia, ReferenceImage } from '../types'
@@ -488,16 +489,37 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                     apiPrompt = result.fullApiPrompt
                 } else if (activeProvider?.type === 'KIE') {
                     // KIE aggregator — single reference image (face > body > first general).
-                    // fullPrompt already carries [FACE:]/[BODY:] from getFullPrompt();
-                    // don't prepend [FACE:] again here (it would duplicate the tag).
                     const referenceImage =
                         optimizedPayload.faceRef ??
                         optimizedPayload.bodyRef ??
                         optimizedPayload.generalRefs[0] ??
                         null
 
+                    // For multi-reference models (Nano Banana Pro = same model as
+                    // direct Gemini; GPT Image 2 image-to-image) build the SAME
+                    // rich harness prompt Gemini uses, so identity/body/pose match.
+                    // Other KIE models keep the lighter fullPrompt.
+                    const kieModel = activeProvider.model || ''
+                    const isRichRefModel =
+                        kieModel === 'nano-banana-pro' ||
+                        kieModel === 'gpt-image-2-text-to-image'
+                    let kiePrompt = fullPrompt
+                    if (isRichRefModel && kieReferenceImages.length > 0) {
+                        const { systemPreamble, finalPrompt } = buildAvatarPrompt({
+                            prompt: fullPrompt,
+                            aspectRatio,
+                            measurements,
+                            faceDescription,
+                            identityWeight,
+                            cameraShot,
+                            cameraAngle,
+                            refRoles: kieReferenceImages.map((r) => r.role as RefRole),
+                        })
+                        kiePrompt = `${systemPreamble}\n\n${finalPrompt}`
+                    }
+
                     const result = await generateImageKie({
-                        prompt: fullPrompt,
+                        prompt: kiePrompt,
                         referenceImage,
                         referenceImages: kieReferenceImages,
                         aspectRatio,
