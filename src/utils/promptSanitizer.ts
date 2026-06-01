@@ -118,3 +118,27 @@ export function aggressiveSanitize(prompt: string): {
 
     return { sanitized: result, wasModified }
 }
+
+/**
+ * Make negations actually work for image models. They DRAW the nouns you
+ * mention and IGNORE "no X" — so "No tattoos" + "[CLONE: …tattoo on the upper
+ * back…]" yields a tattoo. When a no-tattoo intent is present we REMOVE every
+ * tattoo mention (incl. the one the Clone auto-analysis injects), so the model
+ * never sees it. Applied at getFullPrompt() so ALL providers benefit.
+ */
+export function stripNegatedTattoos(prompt: string): string {
+    if (!/\b(no|without)\s+tatt?oos?\b|\bsin\s+tatuaj/i.test(prompt)) return prompt
+    return prompt
+        // the explicit negative the user typed
+        .replace(/\b(no|without)\s+tatt?oos?\b/gi, '')
+        .replace(/\bsin\s+tatuaj\w*/gi, '')
+        // descriptive tattoo clauses (e.g. "a small script tattoo on her upper back")
+        .replace(/\b(revealing|with|showing|featuring)?\s*(a|an|small|large|tiny|visible|script)?\s*tatt?oos?\b(\s+on\s+[^,.\]\n]+)?/gi, '')
+        .replace(/\btatuaj\w*[^,.\]\n]*/gi, '')
+        // tidy up leftovers
+        .replace(/\(\s*\)/g, '')
+        .replace(/,\s*,/g, ',')
+        .replace(/\s{2,}/g, ' ')
+        .replace(/\s+([,.;])/g, '$1')
+        .trim()
+}

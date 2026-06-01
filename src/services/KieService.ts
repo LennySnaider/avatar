@@ -2,7 +2,7 @@
 
 import { createServerSupabaseClient } from '@/lib/supabase'
 import { centerCropToAspect, uploadBufferToGenerations } from '@/lib/mediaPersist'
-import { sanitizePromptForGeneration, aggressiveSanitize } from '@/utils/promptSanitizer'
+import { sanitizePromptForGeneration, aggressiveSanitize, stripNegatedTattoos } from '@/utils/promptSanitizer'
 import type {
     KieCreateTaskRequest,
     KieCreateTaskResponse,
@@ -194,30 +194,6 @@ export interface GenerateImageKieParams {
     // 8 image_input). `role` lets us label each image in the prompt so the
     // model knows which one is the face to replicate (critical for identity).
     referenceImages?: Array<{ base64: string; mimeType: string; role?: string }>
-}
-
-/**
- * Make negations actually work for image models. They DRAW the nouns you
- * mention and ignore "no X" — so "No tattoos" + "[CLONE: …tattoo on the upper
- * back…]" yields a tattoo. When a no-tattoo intent is present we REMOVE every
- * tattoo mention (incl. the one the Clone auto-analysis injected), so the model
- * never sees it. Generalizable per-term; tattoos is the common case.
- */
-function stripNegatedTattoos(prompt: string): string {
-    if (!/\b(no|without)\s+tatt?oos?\b|\bsin\s+tatuaj/i.test(prompt)) return prompt
-    return prompt
-        // the explicit negative the user typed
-        .replace(/\b(no|without)\s+tatt?oos?\b/gi, '')
-        .replace(/\bsin\s+tatuaj\w*/gi, '')
-        // descriptive tattoo clauses (e.g. "revealing a tattoo on the upper back")
-        .replace(/\b(revealing|with|showing|featuring)?\s*(a|an|small|large|tiny|visible)?\s*tatt?oos?\b(\s+on\s+[^,.\]\n]+)?/gi, '')
-        .replace(/\btatuaj\w*[^,.\]\n]*/gi, '')
-        // tidy up leftovers
-        .replace(/\(\s*\)/g, '')
-        .replace(/,\s*,/g, ',')
-        .replace(/\s{2,}/g, ' ')
-        .replace(/\s+([,.;])/g, '$1')
-        .trim()
 }
 
 /**
@@ -647,10 +623,10 @@ async function generateImageGptImage2(
     const input: Record<string, unknown> = {
         prompt,
         aspect_ratio: aspectRatio,
-        // 1K (not 2K): gpt-image-2 i2i at 2K + multiple refs made KIE choke
-        // (ran ~15 min then returned 500 "Internal Error"). 1K is far lighter
-        // and faster; bump back to 2K only once KIE proves stable for this model.
-        resolution: '1K',
+        // 2K: the earlier KIE 500/15-min was caused by 3 refs at 2K. Now GPT
+        // Image 2 sends a SINGLE face ref (much lighter), so 2K is back for
+        // quality. If KIE 500s again here, drop to 1K.
+        resolution: '2K',
     }
     let kieModel = 'gpt-image-2-text-to-image'
     if (refs.length > 0) {

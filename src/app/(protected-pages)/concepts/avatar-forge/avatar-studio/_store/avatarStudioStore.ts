@@ -17,6 +17,7 @@ import type {
 } from '../types'
 import type { Avatar, AIProvider, Prompt, SkinTone } from '@/@types/supabase'
 import { describeBody } from '@/utils/bodyDescriptors'
+import { stripNegatedTattoos } from '@/utils/promptSanitizer'
 import type {
     KlingCameraControlType,
     KlingCameraSimpleConfig,
@@ -603,11 +604,11 @@ export const useAvatarStudioStore = create<AvatarStudioState>()(
             tags.push(`[FACE: ${faceDescription.trim()}]`)
         }
 
-        if (tags.length > 0) {
-            return `${tags.join(' ')} ${prompt}`
-        }
-
-        return prompt
+        // Honor "no tattoos / sin tatuajes" for ALL providers: remove tattoo
+        // mentions (incl. the one the Clone auto-analysis injects) so image
+        // models — which draw mentioned nouns and ignore "no X" — don't render it.
+        const assembled = tags.length > 0 ? `${tags.join(' ')} ${prompt}` : prompt
+        return stripNegatedTattoos(assembled)
     },
     setGenerationMode: (mode) =>
         set((state) => ({
