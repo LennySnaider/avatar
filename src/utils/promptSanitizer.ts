@@ -132,8 +132,9 @@ export function stripNegatedTattoos(prompt: string): string {
         // the explicit negative the user typed
         .replace(/\b(no|without)\s+tatt?oos?\b/gi, '')
         .replace(/\bsin\s+tatuaj\w*/gi, '')
-        // descriptive tattoo clauses (e.g. "a small script tattoo on her upper back")
-        .replace(/\b(revealing|with|showing|featuring)?\s*(a|an|small|large|tiny|visible|script)?\s*tatt?oos?\b(\s+on\s+[^,.\]\n]+)?/gi, '')
+        // descriptive tattoo clauses, any run of leading modifiers, e.g.
+        // "with a small script tattoo on her upper back"
+        .replace(/\b(?:revealing\s+|with\s+|showing\s+|featuring\s+|a\s+|an\s+|small\s+|large\s+|tiny\s+|visible\s+|script\s+|little\s+|delicate\s+|fine\s+|cursive\s+)*tatt?oos?\b(?:\s+on\s+[^,.\]\n]+)?/gi, '')
         .replace(/\btatuaj\w*[^,.\]\n]*/gi, '')
         // tidy up leftovers
         .replace(/\(\s*\)/g, '')
