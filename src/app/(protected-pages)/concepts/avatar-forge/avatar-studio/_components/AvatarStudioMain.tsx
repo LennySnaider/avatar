@@ -511,10 +511,30 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                     //   size causes timeouts; OpenAI clones identity from clean
                     //   prompts + the reference images (as in ChatGPT itself).
                     const kieModel = activeProvider.model || ''
-                    const refRoles = kieReferenceImages.map((r) => r.role as RefRole)
+                    let refRoles = kieReferenceImages.map((r) => r.role as RefRole)
                     let kiePrompt = fullPrompt
                     let kieRefsToSend = kieReferenceImages
-                    if (kieReferenceImages.length > 0) {
+
+                    // Nano Banana Pro ONLY: feed the Clone Ref IMAGE (not just the
+                    // [CLONE:] text) so it clones the EXACT pose/outfit/framing/scene
+                    // — same lever that fixed GPT Image 2. Appended LAST so
+                    // FACE_ANCHOR stays slot 1 (high-fidelity identity) and the
+                    // image_input order == refRoles order for the prompt's mapping.
+                    // Guarded on kieReferenceImages.length so we never send a lone
+                    // clone with no FACE_ANCHOR image to back the [FACE_ANCHOR] label.
+                    if (
+                        kieModel === 'nano-banana-pro' &&
+                        optimizedCloneRef &&
+                        kieReferenceImages.length > 0
+                    ) {
+                        kieRefsToSend = [
+                            ...kieReferenceImages,
+                            { ...optimizedCloneRef, role: 'clone' as const },
+                        ]
+                        refRoles = kieRefsToSend.map((r) => r.role as RefRole)
+                    }
+
+                    if (kieRefsToSend.length > 0) {
                         if (kieModel === 'nano-banana-pro') {
                             const { systemPreamble, finalPrompt } = buildAvatarPrompt({
                                 prompt: fullPrompt,

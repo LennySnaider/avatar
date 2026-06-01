@@ -13,7 +13,7 @@ import { getBodyDescriptors } from '@/utils/bodyDescriptors'
  *   FACE_ANCHOR, ANGLE_SHEET, BODY_SHAPE, POSE_REF, STYLE, ASSET…
  */
 
-export type RefRole = 'face' | 'angle' | 'body' | 'pose' | 'scene' | 'asset'
+export type RefRole = 'face' | 'angle' | 'body' | 'pose' | 'scene' | 'clone' | 'asset'
 
 export interface AvatarPromptOptions {
     prompt: string
@@ -230,8 +230,8 @@ THIS IS A FACE SWAP / DEEPFAKE OPERATION:
 - [FACE_ANCHOR] is the ONLY source for the face. NO EXCEPTIONS.
 - Copy EXACT facial features: eye shape, nose structure, lips, jawline, skin tone, ethnicity
 - The face MUST be 100% recognizable as the same person in [FACE_ANCHOR]
-${hasPoseOrStyle ? `- [POSE_REF] and [STYLE_REF] are ONLY for pose/style - IGNORE their faces completely
-- Treat [POSE_REF]/[STYLE_REF] as faceless mannequins with NO identity` : ''}
+${hasPoseOrStyle ? `- [POSE_REF], [STYLE_REF] and [CLONE_REF] are ONLY for pose/style/scene - IGNORE their faces completely
+- Treat [POSE_REF]/[STYLE_REF]/[CLONE_REF] as faceless mannequins with NO identity` : ''}
 
 IDENTITY CHECKLIST (ALL MUST BE TRUE):
 ✓ Eye shape, nose, lips, jawline, skin tone and ethnicity match [FACE_ANCHOR]
@@ -242,7 +242,7 @@ FACE IDENTITY: HIGH CONSISTENCY (Identity Weight: ${identityWeight}%)
 ═══════════════════════════════════════════════════════════════
 - Use [FACE_ANCHOR] as the PRIMARY face reference
 - The character must be clearly recognizable as the person in [FACE_ANCHOR]
-${hasPoseOrStyle ? `- Do NOT copy faces from [POSE_REF] or [STYLE_REF]; those are for pose/style only` : ''}`
+${hasPoseOrStyle ? `- Do NOT copy faces from [POSE_REF], [STYLE_REF] or [CLONE_REF]; those are for pose/style/scene only` : ''}`
 }
 
 const FRAMING_DESCRIPTIONS: Record<string, string> = {
@@ -283,6 +283,7 @@ const ROLE_LABEL: Record<RefRole, string> = {
     body: 'BODY_SHAPE',
     pose: 'POSE_REF',
     scene: 'STYLE_REF',
+    clone: 'CLONE_REF',
     asset: 'ASSET',
 }
 
@@ -292,6 +293,7 @@ const ROLE_DESC: Record<RefRole, string> = {
     body: 'CRITICAL BODY REFERENCE — COPY THIS EXACT SILHOUETTE (waist, hips, bust, curves). MANDATORY',
     pose: 'POSE ONLY REFERENCE — copy ONLY the body position/pose, NOT the face or proportions',
     scene: 'STYLE/SCENE reference — use for setting/composition, REPLACE the subject with [FACE_ANCHOR]',
+    clone: 'CLONE SOURCE — copy the EXACT pose, body position, outfit, hands, any object held (e.g. a phone), framing, camera angle, lighting and setting from this image. The person shown is a FACELESS MANNEQUIN — IGNORE their face/identity. Take the face ONLY from [FACE_ANCHOR].',
     asset: 'Item to include',
 }
 
@@ -315,7 +317,8 @@ export function buildAvatarPrompt(opts: AvatarPromptOptions): { systemPreamble: 
     const hasBody = refRoles.includes('body')
     const hasPose = refRoles.includes('pose')
     const hasScene = refRoles.includes('scene')
-    const hasPoseOrStyle = hasPose || hasScene
+    const hasClone = refRoles.includes('clone')
+    const hasPoseOrStyle = hasPose || hasScene || hasClone
     const isHighStyle = styleWeight > 85
 
     const inlineBody = buildInlineBodyDescription(measurements)
@@ -367,6 +370,14 @@ ${identityInstructions}`
 🚨 FORBIDDEN: do NOT copy the face, facial features, skin tone or proportions from [POSE_REF] — use [FACE_ANCHOR] for the face.`
         : ''
 
+    const cloneBlock = hasClone
+        ? `╔═══════════════════════════════════════════════════════════════╗
+║ CLONE REFERENCE: [CLONE_REF] — RECREATE THIS PHOTO            ║
+╚═══════════════════════════════════════════════════════════════╝
+[CLONE_REF] is the photo to recreate. Copy its EXACT pose, body position, limb/hand placement, any object held in the hands (e.g. a phone), the clothing/outfit, the framing, camera angle, lighting and the full scene/background.${hasPose ? '\n[CLONE_REF] is the PRIMARY source for the pose; treat [POSE_REF] as secondary.' : ''}
+🚨 FORBIDDEN: the person in [CLONE_REF] is a FACELESS MANNEQUIN — do NOT copy their face, facial features, skin tone, hair or identity. Take the face and identity ONLY from [FACE_ANCHOR]. Replace the mannequin's head/face with [FACE_ANCHOR]; keep EVERYTHING else in [CLONE_REF] identical.`
+        : ''
+
     const cameraInstructions = buildCameraInstructions(cameraShot, cameraAngle)
 
     const finalPrompt = `═══════════════════════════════════════════════════════════════
@@ -383,22 +394,26 @@ TASK: Generate a photorealistic image of this EXACT character:
 REFERENCE MAPPING:
 ${refMapping}
 ${poseBlock}
+${cloneBlock}
 ${cameraInstructions}
 
 RENDERING ORDER (FOLLOW STRICTLY):
 1. BODY FIRST: ${hasBody ? 'Clone the body from [BODY_SHAPE] image' : inlineBody}
 2. FACE SECOND: Apply face from [FACE_ANCHOR]${faceDescription.trim() ? `: ${faceDescription.trim()}` : ''}
 ${hasPose ? '3. POSE: Apply EXACT pose from [POSE_REF] (position only, not the face)' : ''}
+${hasClone ? `${hasPose ? '4' : '3'}. CLONE: Replicate the EXACT pose, outfit, hands, held objects, framing, lighting and scene from [CLONE_REF] — keep everything except the face identical to [CLONE_REF]` : ''}
 
 ⛔ FAILURE CONDITIONS (ABSOLUTELY FORBIDDEN):
 - Using a face that is NOT from [FACE_ANCHOR] → CRITICAL FAILURE
 ${hasPose ? '- Copying the face from [POSE_REF] → CRITICAL FAILURE' : ''}
+${hasClone ? '- Copying the face from [CLONE_REF] (it is a faceless mannequin) → CRITICAL FAILURE\n- Substituting a generic pose instead of the EXACT pose/scene in [CLONE_REF] → FAILURE' : ''}
 - Average/slim body when curvy is specified, or ignoring the body proportions → WRONG
 
 ✅ SUCCESS CRITERIA:
 - Face is IDENTICAL to [FACE_ANCHOR] (same person)
 - Body proportions match ${hasBody ? '[BODY_SHAPE] reference' : 'the specifications above'}
-${hasPose ? '- Pose matches [POSE_REF] (position only, not the person)' : ''}`
+${hasPose ? '- Pose matches [POSE_REF] (position only, not the person)' : ''}
+${hasClone ? '- Pose, outfit, held objects, framing and scene match [CLONE_REF] exactly; only the face is from [FACE_ANCHOR]' : ''}`
 
     return { systemPreamble, finalPrompt }
 }

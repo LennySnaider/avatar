@@ -28,6 +28,14 @@ Los dos motores de identidad funcionan; se elige según la foto.
 Recibe el **harness completo** de `avatarPromptBuilder` (systemPreamble + identity
 + body specs + REFERENCE MAPPING etiquetado) + refs (face/angle/body/pose/scene).
 Clona de **texto+refs**. Es el que mejor respeta "no tattoos" (strip de texto).
+- **Clone Ref → nano-banana (rol `clone`/`CLONE_REF`):** si hay Clone Ref cargado,
+  la IMAGEN también se le manda a nano-banana (antes solo iba a GPT Image 2), como
+  última ref. El harness la trata de mannequin SIN cara: *"copia pose/outfit/
+  manos/objeto-en-mano/encuadre/escena EXACTOS; la cara SOLO de [FACE_ANCHOR]"*.
+  Así clona la pose como GPT Image 2. ⚠️ Blindaje identity-bleed: `buildIdentityInstructions`
+  nombra `[CLONE_REF]` junto a POSE_REF/STYLE_REF como mannequin sin identidad,
+  más cláusula FORBIDDEN explícita — si no, copiaría la cara de la persona original.
+  (Soporta hasta 8 image_input; face/angle/body/pose/scene + clone = 6.)
 
 **GPT Image 2 (OpenAI, vía KIE):** NO le sirve el harness de Gemini (su lenguaje
 "DEEPFAKE/FACE SWAP" dispara moderación y lo confunde). Funciona como **face-swap
