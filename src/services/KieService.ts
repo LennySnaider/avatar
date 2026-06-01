@@ -125,6 +125,44 @@ async function pollTask(
 }
 
 /**
+ * Single status check (one recordInfo fetch) for the ASYNC client-polling flow.
+ * Returns the current state without holding the server function open — the
+ * browser calls this repeatedly so a slow KIE task (12+ min) never trips the
+ * Vercel function timeout, and we never abandon a task that's still running.
+ */
+async function checkTaskOnce(
+    taskId: string,
+): Promise<{ state: 'running' } | { state: 'success'; urls: string[] } | { state: 'fail'; error: string }> {
+    let res: Response
+    try {
+        res = await fetchWithAbort(
+            `${KIE_API_BASE}/jobs/recordInfo?taskId=${encodeURIComponent(taskId)}`,
+            { headers: authHeaders() },
+            POLL_FETCH_TIMEOUT_MS,
+        )
+    } catch (e) {
+        if (isAbortError(e)) return { state: 'running' } // transient — keep polling
+        throw e
+    }
+    if (!res.ok) {
+        const text = await res.text()
+        throw new Error(`KIE recordInfo failed (${res.status}): ${text}`)
+    }
+    const json: KieRecordInfoResponse = await res.json()
+    const state = json.data?.state
+    if (state === 'success') {
+        const parsed: KieResultJsonShape = json.data.resultJson ? JSON.parse(json.data.resultJson) : {}
+        const urls = parsed.resultUrls ?? []
+        if (urls.length === 0) return { state: 'fail', error: 'KIE task succeeded but returned no resultUrls' }
+        return { state: 'success', urls }
+    }
+    if (state === 'fail') {
+        return { state: 'fail', error: `${json.data.failCode || ''} ${json.data.failMsg || 'Unknown error'}`.trim() }
+    }
+    return { state: 'running' }
+}
+
+/**
  * Upload a base64 image to Supabase Storage and return a public URL.
  * Used to pass image references to KIE endpoints that only accept HTTP URLs
  * (Flux Kontext, GPT 4o Image), not data URIs.
@@ -265,6 +303,66 @@ export async function generateImageKie(
         const message = err instanceof Error ? err.message : String(err)
         console.error('[KIE] Image generation failed:', message)
         return { success: false, error: message }
+    }
+}
+
+/**
+ * ASYNC submit for unified-createTask image models (gpt-image-2, nano-banana-pro).
+ * Returns a taskId immediately (no long poll) so the browser can poll
+ * `checkKieImageTask` — KIE can take 12+ min and the old synchronous poll
+ * abandoned slow tasks at 600s (orphaned results + wasted credits + phantom
+ * re-runs). Use this for those two models; flux/gpt-4o stay on generateImageKie.
+ */
+export async function submitKieImageTask(
+    params: GenerateImageKieParams,
+): Promise<{ success: true; taskId: string; fullApiPrompt: string } | { success: false; error: string }> {
+    const { model, aspectRatio = '1:1', referenceImage, referenceImages } = params
+    const { sanitized: prompt } = sanitizePromptForGeneration(stripNegatedTattoos(params.prompt))
+    try {
+        if (model === 'nano-banana-pro') {
+            const refs = referenceImages && referenceImages.length > 0
+                ? referenceImages.slice(0, 8)
+                : referenceImage ? [referenceImage] : []
+            const input: Record<string, unknown> = { prompt, aspect_ratio: aspectRatio, resolution: '2K', output_format: 'png' }
+            if (refs.length > 0) input.image_input = await uploadRefs(refs)
+            const taskId = await withTimeout(submitTask({ model: 'nano-banana-pro', input }), 30_000, 'KIE Nano Banana Pro submit')
+            return { success: true, taskId, fullApiPrompt: prompt }
+        }
+        if (model === 'gpt-image-2-text-to-image') {
+            const refs = referenceImages && referenceImages.length > 0
+                ? referenceImages.slice(0, 16)
+                : referenceImage ? [referenceImage] : []
+            const input: Record<string, unknown> = { prompt, aspect_ratio: aspectRatio, resolution: '1K' }
+            let kieModel = 'gpt-image-2-text-to-image'
+            if (refs.length > 0) { input.input_urls = await uploadRefs(refs); kieModel = 'gpt-image-2-image-to-image' }
+            const taskId = await withTimeout(submitTask({ model: kieModel, input }), 30_000, 'KIE GPT Image 2 submit')
+            return { success: true, taskId, fullApiPrompt: prompt }
+        }
+        return { success: false, error: `submitKieImageTask: modelo no soportado (${model})` }
+    } catch (err) {
+        const message = err instanceof Error ? err.message : String(err)
+        console.error('[KIE] submit failed:', message)
+        return { success: false, error: message }
+    }
+}
+
+/**
+ * Poll a single KIE image task (one quick check). The browser calls this every
+ * few seconds. On success it persists the result to Supabase and returns the URL.
+ */
+export async function checkKieImageTask(
+    taskId: string,
+): Promise<{ status: 'running' } | { status: 'done'; url: string } | { status: 'failed'; error: string }> {
+    try {
+        const r = await checkTaskOnce(taskId)
+        if (r.state === 'running') return { status: 'running' }
+        if (r.state === 'fail') return { status: 'failed', error: r.error }
+        // success → persist (gpt-image-2 & nano-banana-pro honor aspect_ratio natively, no crop)
+        const url = await persistToSupabase(r.urls[0], 'png', 'kie-images')
+        return { status: 'done', url }
+    } catch (err) {
+        const message = err instanceof Error ? err.message : String(err)
+        return { status: 'failed', error: message }
     }
 }
 
@@ -635,6 +733,11 @@ async function generateImageGptImage2(
         console.log(`[KIE/GptImage2] Image-to-image with ${refs.length} reference(s)`)
     }
 
+    // Healthy gpt-image-2 i2i tasks vary widely (≈213s … 355s, sometimes more);
+    // a few hang forever (intermittent KIE bug). Poll a generous budget so slow-
+    // but-healthy tasks complete; the rare hang fails at the budget and the user
+    // just regenerates. (No short-budget auto-retry: it would abandon legit slow
+    // tasks, and two long attempts can't fit under Vercel's 800s maxDuration.)
     console.log(`[KIE/GptImage2] Submitting: model=${kieModel}, ratio=${aspectRatio}`)
     const taskId = await withTimeout(
         submitTask({ model: kieModel, input }),

@@ -40,7 +40,7 @@ import {
     generateVideoMiniMax,
 } from '@/services/MiniMaxService'
 import type { MiniMaxVideoModel } from '@/@types/minimax'
-import { generateImageKie, generateVideoKie } from '@/services/KieService'
+import { generateImageKie, generateVideoKie, submitKieImageTask, checkKieImageTask } from '@/services/KieService'
 import { generateImageViaGateway } from '@/services/GatewayService'
 import { buildAvatarPrompt, buildLeanIdentityPrompt, type RefRole } from '@/utils/avatarPromptBuilder'
 import { HiOutlineCog, HiOutlineBookOpen, HiX } from 'react-icons/hi'
@@ -547,19 +547,53 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                         }
                     }
 
-                    const result = await generateImageKie({
-                        prompt: kiePrompt,
-                        referenceImage,
-                        referenceImages: kieRefsToSend,
-                        aspectRatio,
-                        model: activeProvider.model || 'flux-kontext/text-to-image',
-                    })
-
-                    if (!result.success) {
-                        throw new Error(result.error)
+                    if (kieModel === 'nano-banana-pro' || kieModel === 'gpt-image-2-text-to-image') {
+                        // ASYNC: submit returns a taskId fast, then the browser polls.
+                        // KIE can take 12+ min; a synchronous poll abandoned slow tasks
+                        // at 600s (orphaned result, wasted credits, phantom re-runs).
+                        // Client-side polling never holds the server function open.
+                        const sub = await submitKieImageTask({
+                            prompt: kiePrompt,
+                            referenceImage,
+                            referenceImages: kieRefsToSend,
+                            aspectRatio,
+                            model: kieModel,
+                        })
+                        if (!sub.success) {
+                            throw new Error(sub.error)
+                        }
+                        apiPrompt = sub.fullApiPrompt
+                        const deadlineMs = Date.now() + 18 * 60 * 1000
+                        let polledUrl: string | null = null
+                        while (Date.now() < deadlineMs) {
+                            await new Promise((r) => setTimeout(r, 5000))
+                            const st = await checkKieImageTask(sub.taskId)
+                            if (st.status === 'done') {
+                                polledUrl = st.url
+                                break
+                            }
+                            if (st.status === 'failed') {
+                                throw new Error(st.error)
+                            }
+                        }
+                        if (!polledUrl) {
+                            throw new Error('KIE tardó demasiado (>18 min). Intenta de nuevo.')
+                        }
+                        resultUrl = polledUrl
+                    } else {
+                        const result = await generateImageKie({
+                            prompt: kiePrompt,
+                            referenceImage,
+                            referenceImages: kieRefsToSend,
+                            aspectRatio,
+                            model: activeProvider.model || 'flux-kontext/text-to-image',
+                        })
+                        if (!result.success) {
+                            throw new Error(result.error)
+                        }
+                        resultUrl = result.url
+                        apiPrompt = result.fullApiPrompt
                     }
-                    resultUrl = result.url
-                    apiPrompt = result.fullApiPrompt
                 } else if (activeProvider?.type === 'GATEWAY') {
                     // Vercel AI Gateway — unified hub. fullPrompt already carries
                     // [BODY:]/[FACE:] descriptors (identity via text in this spike).
