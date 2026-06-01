@@ -623,10 +623,10 @@ async function generateImageGptImage2(
     const input: Record<string, unknown> = {
         prompt,
         aspect_ratio: aspectRatio,
-        // 2K: the earlier KIE 500/15-min was caused by 3 refs at 2K. Now GPT
-        // Image 2 sends a SINGLE face ref (much lighter), so 2K is back for
-        // quality. If KIE 500s again here, drop to 1K.
-        resolution: '2K',
+        // 1K (not 2K): KIE's gpt-image-2 i2i at 2K is unusably slow — it hangs
+        // for many minutes (3 refs → 500/15-min; even 2 refs stays "running").
+        // 1K completes fast and reliably; KIE just can't do 2K on this model.
+        resolution: '1K',
     }
     let kieModel = 'gpt-image-2-text-to-image'
     if (refs.length > 0) {
