@@ -620,7 +620,10 @@ async function generateImageGptImage2(
     const input: Record<string, unknown> = {
         prompt,
         aspect_ratio: aspectRatio,
-        resolution: '2K',
+        // 1K (not 2K): gpt-image-2 i2i at 2K + multiple refs made KIE choke
+        // (ran ~15 min then returned 500 "Internal Error"). 1K is far lighter
+        // and faster; bump back to 2K only once KIE proves stable for this model.
+        resolution: '1K',
     }
     let kieModel = 'gpt-image-2-text-to-image'
     if (refs.length > 0) {

@@ -505,6 +505,7 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                     const kieModel = activeProvider.model || ''
                     const refRoles = kieReferenceImages.map((r) => r.role as RefRole)
                     let kiePrompt = fullPrompt
+                    let kieRefsToSend = kieReferenceImages
                     if (kieReferenceImages.length > 0) {
                         if (kieModel === 'nano-banana-pro') {
                             const { systemPreamble, finalPrompt } = buildAvatarPrompt({
@@ -519,14 +520,19 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                             })
                             kiePrompt = `${systemPreamble}\n\n${finalPrompt}`
                         } else if (kieModel === 'gpt-image-2-text-to-image') {
-                            kiePrompt = buildLeanIdentityPrompt(fullPrompt, refRoles)
+                            // Mirror what worked in ChatGPT: ONE clean face reference
+                            // + a natural prompt. Drop the angle-sheet (a grid of
+                            // faces) and body ref, which confuse OpenAI's editor.
+                            const faceOnly = kieReferenceImages.filter((r) => r.role === 'face')
+                            kieRefsToSend = faceOnly.length > 0 ? faceOnly : [kieReferenceImages[0]]
+                            kiePrompt = buildLeanIdentityPrompt(fullPrompt, ['face'])
                         }
                     }
 
                     const result = await generateImageKie({
                         prompt: kiePrompt,
                         referenceImage,
-                        referenceImages: kieReferenceImages,
+                        referenceImages: kieRefsToSend,
                         aspectRatio,
                         model: activeProvider.model || 'flux-kontext/text-to-image',
                     })
