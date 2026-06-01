@@ -63,10 +63,14 @@ EDIT**, imitando ChatGPT consumer:
   reforzó con el phrasing exacto de OpenAI (*"match lighting, shadows and color
   temperature … not pasted on"*) + 4 sub-cláusulas **solo-para-la-cara**:
   (1) reiluminar a la luz/dirección/temperatura de Image 1; (2) fundir bordes
-  con feathering en cabello/orejas/mandíbula/cuello (sin costura); (3) continuidad
-  de tono+subtono con el cuello/cuerpo; (4) igualar grano/ruido/foco/DOF. Marco
+  con feathering en cabello/orejas/mandíbula/cuello (sin costura); (3) **preservar
+  la TEZ propia del avatar** (de Image 2/`[FACE:]`) e igualar solo la LUZ, NUNCA el
+  pigmento del cuerpo del clone — y resolver la costura del cuello **hacia la tez
+  del sujeto** (como Gemini, que no la pisa); (4) igualar grano/ruido/foco/DOF. Marco
   "una sola foto, no un sticker". ⚠️ El re-light va con scope "For the new face
   only" para no contradecir el "keep EXACT lighting" global de la escena.
+  ⚠️ Ojo: la versión vieja decía "igualar la tez al cuerpo de Image 1" → corría la
+  tez del avatar hacia la del clone. Se invirtió para respetar la config del avatar.
 - **NO hay param de fidelidad en KIE:** verificado en la docu — gpt-image-2 i2i
   solo acepta `{prompt, input_urls, aspect_ratio, resolution}`. `input_fidelity`
   era de gpt-image-1 (API directa de OpenAI); **no agregarlo** (el request fallaría),

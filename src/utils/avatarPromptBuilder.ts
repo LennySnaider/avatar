@@ -43,7 +43,7 @@ export function buildLeanIdentityPrompt(prompt: string, refRoles: RefRole[]): st
         // a face-swap EDIT, mirroring how ChatGPT processes scene + face.
         // The blend/skin/hands clause fixes gpt-image's usual face-swap tells
         // (over-lit, plastic skin, mangled fingers).
-        note = 'Image 1 is the photo to recreate: keep its EXACT pose, outfit, body shape, framing, lighting and setting. Image 2 is the FACE: replace ONLY the face/head in Image 1 with this exact person — same face, features and likeness — keeping everything else in Image 1 identical. Match the new face\'s lighting, shadows and color temperature to Image 1\'s so the face integrates photorealistically and does NOT look pasted on or composited. For the new face only: re-light it with Image 1\'s own light (same direction, angle, intensity, contrast and warm/cool color temperature) and cast the scene\'s natural shadows onto the face where they fall, matching the existing shadow direction and softness — no studio-added or extra lighting. Blend the edges seamlessly at the hairline, ears, jawline and neck with a soft feathered transition — no visible seam, hard edge, outline, halo or fringe. Match the face\'s skin tone and undertone to the neck and body already in Image 1 so face and neck are one continuous surface with no break at the jaw. Give the face the same film grain, noise, sharpness, focus and depth-of-field as the rest of Image 1 — not cleaner or sharper than the photo it sits in. The result must read as one single photograph taken in one shot with one camera, not a face stickered or overlaid onto another photo. Keep natural matte skin with realistic texture and pores, NOT over-exposed, smoothed or plastic-looking. Render hands anatomically correct with five natural fingers and natural skin color.'
+        note = 'Image 1 is the photo to recreate: keep its EXACT pose, outfit, body shape, framing, lighting and setting. Image 2 is the FACE: replace ONLY the face/head in Image 1 with this exact person — same face, features and likeness — keeping everything else in Image 1 identical. Match the new face\'s lighting, shadows and color temperature to Image 1\'s so the face integrates photorealistically and does NOT look pasted on or composited. For the new face only: re-light it with Image 1\'s own light (same direction, angle, intensity, contrast and warm/cool color temperature) and cast the scene\'s natural shadows onto the face where they fall, matching the existing shadow direction and softness — no studio-added or extra lighting. Blend the edges seamlessly at the hairline, ears, jawline and neck with a soft feathered transition — no visible seam, hard edge, outline, halo or fringe. Preserve the new face\'s OWN skin tone, undertone and complexion from Image 2 exactly as it is — do NOT re-tone, re-pigment or color-shift the face to match the body in Image 1; only match the scene\'s LIGHT on it (exposure, brightness, contrast and warm/cool color temperature), never the body\'s skin color. Then carry the face\'s own complexion down through the jaw and neck transition so the harmonized seam reads as one continuous surface — resolve any tone mismatch toward the SUBJECT\'s face color, not the body\'s, with no hard break at the jaw. Give the face the same film grain, noise, sharpness, focus and depth-of-field as the rest of Image 1 — not cleaner or sharper than the photo it sits in. The result must read as one single photograph taken in one shot with one camera, not a face stickered or overlaid onto another photo. Keep natural matte skin with realistic texture and pores, NOT over-exposed, smoothed or plastic-looking. Render hands anatomically correct with five natural fingers and natural skin color.'
     } else if (refRoles.includes('scene')) {
         note = 'You are given two reference images. Image 1 is the FACE — keep this exact face, features and likeness. Image 2 is the SCENE — replicate its pose, outfit, body shape, framing and setting EXACTLY, but with the face and identity from Image 1.'
     } else if (refRoles.length > 1) {
@@ -237,11 +237,23 @@ IDENTITY CHECKLIST (ALL MUST BE TRUE):
 ✓ Eye shape, nose, lips, jawline, skin tone and ethnicity match [FACE_ANCHOR]
 ✓ Overall face is the SAME PERSON as [FACE_ANCHOR]`
     }
-    return `═══════════════════════════════════════════════════════════════
+    if (identityWeight > 50) {
+        return `═══════════════════════════════════════════════════════════════
 FACE IDENTITY: HIGH CONSISTENCY (Identity Weight: ${identityWeight}%)
 ═══════════════════════════════════════════════════════════════
 - Use [FACE_ANCHOR] as the PRIMARY face reference
 - The character must be clearly recognizable as the person in [FACE_ANCHOR]
+${hasPoseOrStyle ? `- Do NOT copy faces from [POSE_REF], [STYLE_REF] or [CLONE_REF]; those are for pose/style/scene only` : ''}`
+    }
+    // Flexible (<=50): the slider's third zone — use the avatar as loose guidance,
+    // prioritize scene/style over an exact-likeness lock. Maps the UI's "Flexible"
+    // label (ReferencePanel / AvatarCreator) to actual prompt behavior.
+    return `═══════════════════════════════════════════════════════════════
+FACE IDENTITY: FLEXIBLE (Identity Weight: ${identityWeight}%)
+═══════════════════════════════════════════════════════════════
+- Use [FACE_ANCHOR] as loose inspiration and guidance for the face, NOT a strict template
+- A general family resemblance to [FACE_ANCHOR] is enough — allow natural variation in features and expression
+- Prioritize the scene, mood and style over exact likeness; the face does NOT need to be an exact match
 ${hasPoseOrStyle ? `- Do NOT copy faces from [POSE_REF], [STYLE_REF] or [CLONE_REF]; those are for pose/style/scene only` : ''}`
 }
 
