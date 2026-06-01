@@ -117,6 +117,19 @@ export const DEFAULT_PROVIDERS: AIProvider[] = [
         created_at: null,
     },
     {
+        id: 'kie-gpt-image-2',
+        name: 'GPT Image 2 · KIE',
+        type: 'KIE' as ProviderType,
+        model: 'gpt-image-2-text-to-image',
+        endpoint: 'https://api.kie.ai/api/v1',
+        is_active: true,
+        supports_image: true,
+        supports_video: false,
+        requires_api_key: true,
+        api_key_env_var: 'KIE_API_KEY',
+        created_at: null,
+    },
+    {
         id: 'gateway-gpt-image-2',
         name: 'GPT Image 2 · Gateway',
         type: 'GATEWAY' as ProviderType,
@@ -382,6 +395,8 @@ const ProviderManagerDrawer = () => {
                 return 'Flux.1 Kontext Max - mejor calidad para escenas complejas'
             case 'kie-gpt-4o-image':
                 return 'OpenAI GPT 4o - photorealistic, mejor con texto en imagen'
+            case 'kie-gpt-image-2':
+                return 'OpenAI GPT Image 2 vía KIE - modelo nuevo, 9:16 nativo, 2K, mejor que 4o'
             case 'gateway-gpt-image-2':
                 return 'OpenAI GPT Image 2 vía Vercel AI Gateway - modelo nuevo (requiere créditos pagos)'
             case 'gateway-seedream-4':

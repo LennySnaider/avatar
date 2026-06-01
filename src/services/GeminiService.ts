@@ -4,6 +4,7 @@ import { GoogleGenAI, Type } from '@google/genai'
 import type { PhysicalMeasurements, AspectRatio } from '@/@types/supabase'
 import { filterKnownSafeCorrections } from '@/app/(protected-pages)/concepts/avatar-forge/avatar-studio/_constants/knownSafeWords'
 import { sanitizePromptForGeneration, aggressiveSanitize } from '@/utils/promptSanitizer'
+import { getBodyDescriptors } from '@/utils/bodyDescriptors'
 import type { CinemaLens, CinemaFocalLength, CinemaAperture } from '@/app/(protected-pages)/concepts/avatar-forge/avatar-studio/types'
 import { CINEMA_LENSES, CINEMA_FOCAL_LENGTHS, CINEMA_APERTURES } from '@/app/(protected-pages)/concepts/avatar-forge/avatar-studio/_constants/cinemaPresets'
 import { generateImage as generateImageWithMiniMax } from '@/services/MiniMaxService'
@@ -84,55 +85,8 @@ const getHairColorDescription = (hairColor?: string): string => {
     return descriptions[hairColor] || hairColor.replace('-', ' ') + ' hair'
 }
 
-// Helper to translate measurements to professional fashion/modeling body descriptors
-// Uses safe terminology that won't trigger content filters
-const getBodyDescriptors = (m: PhysicalMeasurements): string => {
-    const descriptors: string[] = []
-    const hipWaistRatio = m.hips / m.waist
-    const bustWaistRatio = m.bust / m.waist
-
-    // Upper torso proportions (fashion terminology)
-    if (m.bust >= 100) {
-        descriptors.push('fuller upper silhouette', 'generous torso proportions')
-    } else if (m.bust >= 90) {
-        descriptors.push('balanced upper proportions', 'well-defined torso')
-    } else if (m.bust <= 80) {
-        descriptors.push('slender upper frame', 'petite torso')
-    }
-
-    // Midsection definition
-    if (m.waist <= 60) {
-        descriptors.push('very defined waistline', 'narrow midsection', 'cinched waist')
-    } else if (m.waist <= 68) {
-        descriptors.push('defined waist', 'tapered midsection')
-    } else if (m.waist >= 80) {
-        descriptors.push('straight waistline', 'less defined midsection')
-    }
-
-    // Lower body proportions (fashion terminology)
-    if (m.hips >= 100) {
-        descriptors.push('wide lower frame', 'generous hip width', 'full lower silhouette')
-    } else if (m.hips >= 92) {
-        descriptors.push('proportionate hips', 'balanced lower body')
-    } else if (m.hips <= 85) {
-        descriptors.push('narrow hip width', 'slim lower frame')
-    }
-
-    // Overall figure type (standard fashion industry terms)
-    if (hipWaistRatio >= 1.5 && bustWaistRatio >= 1.45) {
-        descriptors.push('classic hourglass silhouette', 'defined waist-to-hip ratio')
-    } else if (hipWaistRatio >= 1.35 || bustWaistRatio >= 1.35) {
-        descriptors.push('hourglass body type', 'proportionate figure')
-    } else if (hipWaistRatio <= 1.15 && bustWaistRatio <= 1.15) {
-        descriptors.push('athletic body type', 'rectangular silhouette', 'straight figure')
-    } else if (hipWaistRatio > bustWaistRatio + 0.15) {
-        descriptors.push('pear body type', 'hip-emphasized proportions')
-    } else if (bustWaistRatio > hipWaistRatio + 0.15) {
-        descriptors.push('inverted triangle body type', 'shoulder-emphasized proportions')
-    }
-
-    return descriptors.join(', ')
-}
+// getBodyDescriptors moved to @/utils/bodyDescriptors (shared with getFullPrompt
+// so KIE/Gateway/Flux get the same body translation as the direct Gemini path).
 
 // Clean base64 data by removing data URI prefix if present
 const cleanBase64Data = (base64: string): string => {

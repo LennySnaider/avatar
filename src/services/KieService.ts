@@ -210,6 +210,9 @@ export async function generateImageKie(
     if (model === 'nano-banana-pro') {
         return generateImageNanoBananaPro({ prompt, model, aspectRatio, referenceImage })
     }
+    if (model === 'gpt-image-2-text-to-image') {
+        return generateImageGptImage2({ prompt, model, aspectRatio, referenceImage })
+    }
 
     // Fallback to generic createTask flow (Grok and others)
     const input: Record<string, unknown> = { prompt, aspect_ratio: aspectRatio }
@@ -540,6 +543,37 @@ async function generateImageNanoBananaPro(
     )
     const urls = await pollTask(taskId, { budgetMs: 180_000, intervalMs: 3000 })
     // nano-banana-pro honors aspect_ratio natively — no crop needed.
+    const persistedUrl = await persistToSupabase(urls[0], 'png', 'kie-images')
+    return { url: persistedUrl, fullApiPrompt: prompt }
+}
+
+/**
+ * GPT Image 2 (OpenAI's newest image model) via KIE's unified createTask.
+ *
+ * Newer than gpt-4o-image and — unlike it — honors aspect_ratio NATIVELY
+ * (incl. 9:16), so no center-crop is needed. This is a text-to-image endpoint
+ * (no reference image input); identity comes from the [FACE:]/[BODY:] text
+ * descriptors. Requests 2K for better quality.
+ */
+async function generateImageGptImage2(
+    params: GenerateImageKieParams,
+): Promise<{ url: string; fullApiPrompt: string }> {
+    const { prompt, aspectRatio = '1:1' } = params
+
+    const input: Record<string, unknown> = {
+        prompt,
+        aspect_ratio: aspectRatio,
+        resolution: '2K',
+    }
+
+    console.log(`[KIE/GptImage2] Submitting: ratio=${aspectRatio}`)
+    const taskId = await withTimeout(
+        submitTask({ model: 'gpt-image-2-text-to-image', input }),
+        30_000,
+        'KIE GPT Image 2 submit',
+    )
+    const urls = await pollTask(taskId, { budgetMs: 180_000, intervalMs: 3000 })
+    // gpt-image-2 honors aspect_ratio natively — no crop needed.
     const persistedUrl = await persistToSupabase(urls[0], 'png', 'kie-images')
     return { url: persistedUrl, fullApiPrompt: prompt }
 }

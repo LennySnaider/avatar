@@ -16,6 +16,7 @@ import type {
     CinemaAperture,
 } from '../types'
 import type { Avatar, AIProvider, Prompt, SkinTone } from '@/@types/supabase'
+import { describeBody } from '@/utils/bodyDescriptors'
 import type {
     KlingCameraControlType,
     KlingCameraSimpleConfig,
@@ -552,28 +553,24 @@ export const useAvatarStudioStore = create<AvatarStudioState>()(
         // image model doesn't read headers/bullets as "generate a spec sheet".
         const prompt = sanitizeCloneTags(rawPrompt)
 
-        // Build body measurements string to reinforce avatar's body type
-        // This ensures Clone Ref doesn't override the avatar's physical characteristics
-        // PRIORITY: Body measurements go FIRST in the prompt for maximum weight
+        // Build body measurements string to reinforce avatar's body type.
+        // PRIORITY: Body goes FIRST in the prompt for maximum weight.
+        // Lead with DESCRIPTIVE terms (what image models actually follow) and
+        // append the exact cm at the end (precision, in case a provider uses it).
+        // Image models largely ignore raw cm — describeBody() translates the
+        // avatar's own measurements into fashion descriptors. Same brain the
+        // direct Gemini path uses, now shared with KIE/Gateway/Flux.
         const bodyParts: string[] = []
 
-        if (measurements.bodyType) {
-            bodyParts.push(measurements.bodyType)
+        const bodyPhrase = describeBody(measurements)
+        if (bodyPhrase) {
+            bodyParts.push(bodyPhrase)
         }
         if (measurements.age) {
             bodyParts.push(`${measurements.age} years old`)
         }
         if (measurements.height) {
             bodyParts.push(`${measurements.height}cm tall`)
-        }
-        if (measurements.bust) {
-            bodyParts.push(`bust ${measurements.bust}cm`)
-        }
-        if (measurements.waist) {
-            bodyParts.push(`waist ${measurements.waist}cm`)
-        }
-        if (measurements.hips) {
-            bodyParts.push(`hips ${measurements.hips}cm`)
         }
         // Skin tone + hair color also live in the UI but were previously dropped
         // before reaching the model. Both are optional on PhysicalMeasurements.
@@ -582,6 +579,14 @@ export const useAvatarStudioStore = create<AvatarStudioState>()(
         }
         if (measurements.hairColor) {
             bodyParts.push(`${measurements.hairColor.replace(/-/g, ' ')} hair`)
+        }
+        // Exact measurements kept as a parenthetical suffix — no info lost.
+        const cmParts: string[] = []
+        if (measurements.bust) cmParts.push(`bust ${measurements.bust}cm`)
+        if (measurements.waist) cmParts.push(`waist ${measurements.waist}cm`)
+        if (measurements.hips) cmParts.push(`hips ${measurements.hips}cm`)
+        if (cmParts.length > 0) {
+            bodyParts.push(`(${cmParts.join(', ')})`)
         }
 
         // Assemble the leading tags. Order: [BODY:] then [FACE:] then the
