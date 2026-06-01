@@ -13,24 +13,51 @@ Se validó en producción que **Nano Banana Pro · KIE = Gemini 3 Pro Image**
 ANGLE_SHEET, BODY_SHAPE, POSE_REF), **clona la identidad igual que el path
 directo de Gemini, a ~30% menos costo**. Ruta de producción para identidad.
 
-| Modelo | Identidad | Contenido bikini/sensible | Veredicto |
+Los dos motores de identidad funcionan; se elige según la foto.
+
+| Modelo | Cómo clona | Identidad | Veredicto |
 |---|---|---|---|
-| **Nano Banana Pro · KIE** | ✅ clona (= Gemini) | ✅ con retry `aggressiveSanitize` | **Ruta principal** |
-| **Gemini 3 Pro Image (directo)** | ✅ campeón | ✅ (tu key, sanitización agresiva) | Respaldo premium |
-| **GPT Image 2 / GPT 4o (KIE/OpenAI)** | ⚠️ "parecida", no clona (anti-deepfake de OpenAI) | ❌ moderación bloquea | **Descartado** para este nicho |
+| **Nano Banana Pro · KIE** | harness rico + refs (de **texto/refs**) | ✅ = Gemini | **Ruta principal** (barato) |
+| **Gemini 3 Pro Image (directo)** | harness rico (de **texto**) | ✅ campeón | Respaldo premium / no-tattoo |
+| **GPT Image 2 · KIE** | **face-swap EDIT** (de **imagen**) | ✅ con el flujo correcto | **Funciona** según la foto |
+| GPT 4o Image (KIE) | — | ⚠️ flojo | secundario |
 
-Notas de implementación que lo hicieron funcionar:
-- El recipe de identidad es **prompt-engineering portable**, no del proveedor →
-  extraído a `avatarPromptBuilder` y compartido (KIE recibe el mismo que Gemini).
-- KIE modera más estricto que la key directa de Google → 2 intentos (sanitize →
-  aggressiveSanitize) en `generateImageKie`, igual que el path Gemini.
-- GPT Image 2 image-to-image con refs + 2K es lento → poll budget 600s
-  (avatar-studio: `maxDuration = 800`).
-- Errores de KIE se **retornan como dato** (no throw) para que el motivo real
-  (moderación, timeout) llegue a la UI en vez de un 500 genérico.
+### Receta de cada motor (lo que lo hizo funcionar)
 
-> ⚠️ GPT Image 2 NO es viable para bikini + clonado de cara real: techo de
-> política de OpenAI (moderación + anti-deepfake), no de prompt.
+**Nano Banana Pro (= Gemini 3 Pro Image, vía KIE):** mismo modelo que el directo.
+Recibe el **harness completo** de `avatarPromptBuilder` (systemPreamble + identity
++ body specs + REFERENCE MAPPING etiquetado) + refs (face/angle/body/pose/scene).
+Clona de **texto+refs**. Es el que mejor respeta "no tattoos" (strip de texto).
+
+**GPT Image 2 (OpenAI, vía KIE):** NO le sirve el harness de Gemini (su lenguaje
+"DEEPFAKE/FACE SWAP" dispara moderación y lo confunde). Funciona como **face-swap
+EDIT**, imitando ChatGPT consumer:
+- **2 imágenes:** Clone/original PRIMERO (canvas a recrear: pose/outfit/cuerpo/
+  escena) + cara SEGUNDO (se reemplaza solo el rostro). Sin hoja de ángulos.
+- **Prompt limpio y natural** (`buildLeanIdentityPrompt`, no el harness):
+  *"Image 1 = foto a recrear exacta; Image 2 = cara a swapear; funde la cara con
+  la luz/piel de Image 1; manos anatómicas."*
+- **Resolución 1K** — KIE's gpt-image-2 i2i a 2K **se cuelga** (3 refs → 500/15min;
+  2 refs → "running" indefinido). 1K completa rápido.
+- Clona de **imagen** (no de texto). Por eso necesita el **Clone Ref cargado**.
+
+### Reglas generales (todos los KIE)
+- **Errores como dato, no throw:** `generateImageKie` devuelve `{success,error}`
+  para que el motivo real sobreviva el boundary server→cliente (sino, 500 genérico
+  en prod oculta el mensaje).
+- **Moderación:** 2 intentos (sanitize ligero → `aggressiveSanitize`) ante
+  "flagged as sensitive".
+- **"No tattoos":** los modelos de imagen **dibujan lo que mencionas e ignoran "no X"**
+  → `stripNegatedTattoos` (en `getFullPrompt`, todos los providers) borra la mención.
+  ⚠️ Si el tatuaje está en la **imagen** de referencia (no en texto), el strip no
+  basta — hay que editar esa imagen (afecta a GPT Image 2 que clona de imagen).
+- **Poll budget 600s** (avatar-studio `maxDuration = 800`).
+
+### Límite real: ChatGPT consumer ≠ KIE gpt-image-2
+La app de chatgpt.com corre un pipeline más sofisticado que el modelo crudo de la
+API que expone KIE. KIE's gpt-image-2 **funciona** (face-swap), pero su techo de
+calidad/manos/piel lo pone OpenAI. Para máxima fidelidad estilo-ChatGPT habría que
+ir a la **API directa de OpenAI** (descartado por decisión: se va con KIE).
 
 ## Cómo cobra cada proveedor
 
