@@ -146,6 +146,14 @@ async function checkTaskOnce(
     }
     if (!res.ok) {
         const text = await res.text()
+        // 5xx = KIE infra hiccup (502/503/504), NOT a task failure — keep polling
+        // (same treatment as a network AbortError above). A long task makes many
+        // poll calls, so a single transient 5xx must not abandon a running task.
+        // 4xx stays terminal (a 400/404 is a real misconfigured request).
+        if (res.status >= 500) {
+            console.warn(`[KIE] recordInfo transient ${res.status}; still polling`)
+            return { state: 'running' }
+        }
         throw new Error(`KIE recordInfo failed (${res.status}): ${text}`)
     }
     const json: KieRecordInfoResponse = await res.json()

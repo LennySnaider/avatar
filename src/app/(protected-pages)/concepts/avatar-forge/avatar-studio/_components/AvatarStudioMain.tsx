@@ -53,6 +53,37 @@ interface AvatarStudioMainProps {
     userId?: string
 }
 
+/**
+ * Submit a KIE image task and poll it from the BROWSER until done (up to 18 min).
+ * nano-banana-pro and gpt-image-2 can run 12+ min; the old synchronous server
+ * poll abandoned slow tasks at 600s (orphaned result, wasted credits, phantom
+ * re-runs). Client-side polling never holds a server function open. Shared by
+ * handleGenerate AND handleEditImage so both routes get the async behavior.
+ */
+async function pollKieImageTask(
+    params: Parameters<typeof submitKieImageTask>[0],
+): Promise<{ url: string; fullApiPrompt: string }> {
+    const sub = await submitKieImageTask(params)
+    if (!sub.success) {
+        throw new Error(sub.error)
+    }
+    const deadlineMs = Date.now() + 18 * 60 * 1000
+    while (Date.now() < deadlineMs) {
+        await new Promise((r) => setTimeout(r, 5000))
+        const st = await checkKieImageTask(sub.taskId)
+        if (st.status === 'done') {
+            return { url: st.url, fullApiPrompt: sub.fullApiPrompt }
+        }
+        if (st.status === 'failed') {
+            throw new Error(st.error)
+        }
+    }
+    throw new Error('KIE tardó demasiado (>18 min). Intenta de nuevo.')
+}
+
+/** KIE models that use the unified async createTask + client-poll flow. */
+const KIE_ASYNC_MODELS = ['nano-banana-pro', 'gpt-image-2-text-to-image']
+
 const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
     const [isAvatarSelectorOpen, setIsAvatarSelectorOpen] = useState(false)
     const [isAvatarEditOpen, setIsAvatarEditOpen] = useState(false)
@@ -575,39 +606,17 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                         }
                     }
 
-                    if (kieModel === 'nano-banana-pro' || kieModel === 'gpt-image-2-text-to-image') {
-                        // ASYNC: submit returns a taskId fast, then the browser polls.
-                        // KIE can take 12+ min; a synchronous poll abandoned slow tasks
-                        // at 600s (orphaned result, wasted credits, phantom re-runs).
-                        // Client-side polling never holds the server function open.
-                        const sub = await submitKieImageTask({
+                    if (KIE_ASYNC_MODELS.includes(kieModel)) {
+                        // ASYNC submit + browser poll (see pollKieImageTask).
+                        const polled = await pollKieImageTask({
                             prompt: kiePrompt,
                             referenceImage,
                             referenceImages: kieRefsToSend,
                             aspectRatio,
                             model: kieModel,
                         })
-                        if (!sub.success) {
-                            throw new Error(sub.error)
-                        }
-                        apiPrompt = sub.fullApiPrompt
-                        const deadlineMs = Date.now() + 18 * 60 * 1000
-                        let polledUrl: string | null = null
-                        while (Date.now() < deadlineMs) {
-                            await new Promise((r) => setTimeout(r, 5000))
-                            const st = await checkKieImageTask(sub.taskId)
-                            if (st.status === 'done') {
-                                polledUrl = st.url
-                                break
-                            }
-                            if (st.status === 'failed') {
-                                throw new Error(st.error)
-                            }
-                        }
-                        if (!polledUrl) {
-                            throw new Error('KIE tardó demasiado (>18 min). Intenta de nuevo.')
-                        }
-                        resultUrl = polledUrl
+                        resultUrl = polled.url
+                        apiPrompt = polled.fullApiPrompt
                     } else {
                         const result = await generateImageKie({
                             prompt: kiePrompt,
@@ -1204,16 +1213,31 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                         if (!r.success) throw new Error(r.error)
                         resultUrl = r.url
                     } else if (resolvedProvider.type === 'KIE') {
-                        const r = await generateImageKie({
-                            prompt: editPrompt,
-                            referenceImage: { base64: sourceBase64, mimeType: sourceMime },
-                            aspectRatio: targetAspectRatio,
-                            model: resolvedProvider.model || 'flux-kontext/text-to-image',
-                        })
-                        if (!r.success) {
-                            throw new Error(r.error)
+                        const editModel = resolvedProvider.model || 'flux-kontext/text-to-image'
+                        const editRef = { base64: sourceBase64, mimeType: sourceMime }
+                        if (KIE_ASYNC_MODELS.includes(editModel)) {
+                            // Same async submit+poll as handleGenerate — otherwise the
+                            // edit path falls back to the retired 600s sync poll that
+                            // abandons slow nano-banana/gpt-image-2 tasks (phantom dupes).
+                            const polled = await pollKieImageTask({
+                                prompt: editPrompt,
+                                referenceImage: editRef,
+                                aspectRatio: targetAspectRatio,
+                                model: editModel,
+                            })
+                            resultUrl = polled.url
+                        } else {
+                            const r = await generateImageKie({
+                                prompt: editPrompt,
+                                referenceImage: editRef,
+                                aspectRatio: targetAspectRatio,
+                                model: editModel,
+                            })
+                            if (!r.success) {
+                                throw new Error(r.error)
+                            }
+                            resultUrl = r.url
                         }
-                        resultUrl = r.url
                     } else {
                         // Unknown provider type — fall back to Gemini
                         resultUrl = await editImage(
