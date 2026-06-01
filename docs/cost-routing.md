@@ -5,6 +5,33 @@
 > Google Vertex y la lista del Vercel AI Gateway). Verificar periódicamente —
 > los precios cambian.
 
+## ✅ Conclusión validada (avatares con identidad)
+
+Se validó en producción que **Nano Banana Pro · KIE = Gemini 3 Pro Image**
+(MISMO modelo). Enviándole el prompt-harness completo de Gemini (vía
+`@/utils/avatarPromptBuilder`) + las referencias etiquetadas (FACE_ANCHOR,
+ANGLE_SHEET, BODY_SHAPE, POSE_REF), **clona la identidad igual que el path
+directo de Gemini, a ~30% menos costo**. Ruta de producción para identidad.
+
+| Modelo | Identidad | Contenido bikini/sensible | Veredicto |
+|---|---|---|---|
+| **Nano Banana Pro · KIE** | ✅ clona (= Gemini) | ✅ con retry `aggressiveSanitize` | **Ruta principal** |
+| **Gemini 3 Pro Image (directo)** | ✅ campeón | ✅ (tu key, sanitización agresiva) | Respaldo premium |
+| **GPT Image 2 / GPT 4o (KIE/OpenAI)** | ⚠️ "parecida", no clona (anti-deepfake de OpenAI) | ❌ moderación bloquea | **Descartado** para este nicho |
+
+Notas de implementación que lo hicieron funcionar:
+- El recipe de identidad es **prompt-engineering portable**, no del proveedor →
+  extraído a `avatarPromptBuilder` y compartido (KIE recibe el mismo que Gemini).
+- KIE modera más estricto que la key directa de Google → 2 intentos (sanitize →
+  aggressiveSanitize) en `generateImageKie`, igual que el path Gemini.
+- GPT Image 2 image-to-image con refs + 2K es lento → poll budget 600s
+  (avatar-studio: `maxDuration = 800`).
+- Errores de KIE se **retornan como dato** (no throw) para que el motivo real
+  (moderación, timeout) llegue a la UI en vez de un 500 genérico.
+
+> ⚠️ GPT Image 2 NO es viable para bikini + clonado de cara real: techo de
+> política de OpenAI (moderación + anti-deepfake), no de prompt.
+
 ## Cómo cobra cada proveedor
 
 | Proveedor | Modelo de cobro | Implicación |
