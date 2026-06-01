@@ -197,6 +197,30 @@ export interface GenerateImageKieParams {
 }
 
 /**
+ * Make negations actually work for image models. They DRAW the nouns you
+ * mention and ignore "no X" — so "No tattoos" + "[CLONE: …tattoo on the upper
+ * back…]" yields a tattoo. When a no-tattoo intent is present we REMOVE every
+ * tattoo mention (incl. the one the Clone auto-analysis injected), so the model
+ * never sees it. Generalizable per-term; tattoos is the common case.
+ */
+function stripNegatedTattoos(prompt: string): string {
+    if (!/\b(no|without)\s+tatt?oos?\b|\bsin\s+tatuaj/i.test(prompt)) return prompt
+    return prompt
+        // the explicit negative the user typed
+        .replace(/\b(no|without)\s+tatt?oos?\b/gi, '')
+        .replace(/\bsin\s+tatuaj\w*/gi, '')
+        // descriptive tattoo clauses (e.g. "revealing a tattoo on the upper back")
+        .replace(/\b(revealing|with|showing|featuring)?\s*(a|an|small|large|tiny|visible)?\s*tatt?oos?\b(\s+on\s+[^,.\]\n]+)?/gi, '')
+        .replace(/\btatuaj\w*[^,.\]\n]*/gi, '')
+        // tidy up leftovers
+        .replace(/\(\s*\)/g, '')
+        .replace(/,\s*,/g, ',')
+        .replace(/\s{2,}/g, ' ')
+        .replace(/\s+([,.;])/g, '$1')
+        .trim()
+}
+
+/**
  * Generate an image via KIE AI. Routes to the right endpoint based on the
  * model family — KIE has dedicated endpoints per family, not a single unified
  * createTask for everything.
@@ -241,9 +265,12 @@ export async function generateImageKie(
     const isSensitiveBlock = (m: string) =>
         /flagged as sensitive|sensitive|safety|content policy|moderat|violat/i.test(m)
 
+    // Honor "no tattoos / sin tatuajes" by removing tattoo mentions up front.
+    const promptIn = stripNegatedTattoos(params.prompt)
+
     try {
         // Attempt 1: light sanitization (bikini → swim set, etc.).
-        const { sanitized } = sanitizePromptForGeneration(params.prompt)
+        const { sanitized } = sanitizePromptForGeneration(promptIn)
         try {
             return { success: true, ...(await runWithPrompt(sanitized)) }
         } catch (err) {
@@ -251,7 +278,7 @@ export async function generateImageKie(
             if (!isSensitiveBlock(msg)) throw err
             // Attempt 2: aggressive sanitization (strip revealing/swimwear terms
             // entirely) — same recovery the direct Gemini path uses on a block.
-            const { sanitized: aggressive } = aggressiveSanitize(params.prompt)
+            const { sanitized: aggressive } = aggressiveSanitize(promptIn)
             console.warn('[KIE] Sensitive-content block — retrying with aggressive sanitization')
             return { success: true, ...(await runWithPrompt(aggressive)) }
         }
