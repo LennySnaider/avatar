@@ -58,6 +58,19 @@ EDIT**, imitando ChatGPT consumer:
 - **Resolución 1K** — KIE's gpt-image-2 i2i a 2K **se cuelga** (3 refs → 500/15min;
   2 refs → "running" indefinido). 1K completa rápido.
 - Clona de **imagen** (no de texto). Por eso necesita el **Clone Ref cargado**.
+- **Relighting (cara "sobrepuesta"):** el face-swap dejaba la cara como pegada
+  (luz/color/grano no coincidían con el cuerpo). La cláusula de blend en L46 se
+  reforzó con el phrasing exacto de OpenAI (*"match lighting, shadows and color
+  temperature … not pasted on"*) + 4 sub-cláusulas **solo-para-la-cara**:
+  (1) reiluminar a la luz/dirección/temperatura de Image 1; (2) fundir bordes
+  con feathering en cabello/orejas/mandíbula/cuello (sin costura); (3) continuidad
+  de tono+subtono con el cuello/cuerpo; (4) igualar grano/ruido/foco/DOF. Marco
+  "una sola foto, no un sticker". ⚠️ El re-light va con scope "For the new face
+  only" para no contradecir el "keep EXACT lighting" global de la escena.
+- **NO hay param de fidelidad en KIE:** verificado en la docu — gpt-image-2 i2i
+  solo acepta `{prompt, input_urls, aspect_ratio, resolution}`. `input_fidelity`
+  era de gpt-image-1 (API directa de OpenAI); **no agregarlo** (el request fallaría),
+  y de existir *empeoraría* (preserva la cara original vs reiluminar). Fix = 100% prompt.
 
 ### Reglas generales (todos los KIE)
 - **Errores como dato, no throw:** `generateImageKie` devuelve `{success,error}`
