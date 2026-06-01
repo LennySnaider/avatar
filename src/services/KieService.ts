@@ -232,7 +232,7 @@ export async function generateImageKie(
         }
         console.log(`[KIE] Submitting generic image task: model=${resolvedModel}`)
         const taskId = await withTimeout(submitTask({ model: resolvedModel, input }), 30_000, 'KIE image submit')
-        const urls = await pollTask(taskId, { budgetMs: 180_000, intervalMs: 3000 })
+        const urls = await pollTask(taskId, { budgetMs: 600_000, intervalMs: 3000 })
         const persistedUrl = await persistToSupabase(urls[0], 'png', 'kie-images')
         return { url: persistedUrl, fullApiPrompt: promptText }
     }
@@ -588,7 +588,7 @@ async function generateImageNanoBananaPro(
         30_000,
         'KIE Nano Banana Pro submit',
     )
-    const urls = await pollTask(taskId, { budgetMs: 180_000, intervalMs: 3000 })
+    const urls = await pollTask(taskId, { budgetMs: 600_000, intervalMs: 3000 })
     // nano-banana-pro honors aspect_ratio natively — no crop needed.
     const persistedUrl = await persistToSupabase(urls[0], 'png', 'kie-images')
     return { url: persistedUrl, fullApiPrompt: prompt }
@@ -635,7 +635,7 @@ async function generateImageGptImage2(
         30_000,
         'KIE GPT Image 2 submit',
     )
-    const urls = await pollTask(taskId, { budgetMs: 180_000, intervalMs: 3000 })
+    const urls = await pollTask(taskId, { budgetMs: 600_000, intervalMs: 3000 })
     // gpt-image-2 honors aspect_ratio natively — no crop needed.
     const persistedUrl = await persistToSupabase(urls[0], 'png', 'kie-images')
     return { url: persistedUrl, fullApiPrompt: prompt }
