@@ -481,6 +481,9 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                         model: activeProvider.model || 'flux-kontext/text-to-image',
                     })
 
+                    if (!result.success) {
+                        throw new Error(result.error)
+                    }
                     resultUrl = result.url
                     apiPrompt = result.fullApiPrompt
                 } else if (activeProvider?.type === 'GATEWAY') {
@@ -1071,6 +1074,9 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                             aspectRatio: targetAspectRatio,
                             model: resolvedProvider.model || 'flux-kontext/text-to-image',
                         })
+                        if (!r.success) {
+                            throw new Error(r.error)
+                        }
                         resultUrl = r.url
                     } else {
                         // Unknown provider type — fall back to Gemini

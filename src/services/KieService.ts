@@ -2,6 +2,7 @@
 
 import { createServerSupabaseClient } from '@/lib/supabase'
 import { centerCropToAspect, uploadBufferToGenerations } from '@/lib/mediaPersist'
+import { sanitizePromptForGeneration } from '@/utils/promptSanitizer'
 import type {
     KieCreateTaskRequest,
     KieCreateTaskResponse,
@@ -198,39 +199,60 @@ export interface GenerateImageKieParams {
  */
 export async function generateImageKie(
     params: GenerateImageKieParams,
-): Promise<{ url: string; fullApiPrompt: string }> {
-    const { prompt, model, aspectRatio = '1:1', referenceImage } = params
+): Promise<
+    | { success: true; url: string; fullApiPrompt: string }
+    | { success: false; error: string }
+> {
+    const { model, aspectRatio = '1:1', referenceImage } = params
 
-    if (model.startsWith('flux-kontext')) {
-        return generateImageFluxKontext({ prompt, model, aspectRatio, referenceImage })
-    }
-    if (model === 'gpt-4o-image') {
-        return generateImageGpt4o({ prompt, model, aspectRatio, referenceImage })
-    }
-    if (model === 'nano-banana-pro') {
-        return generateImageNanoBananaPro({ prompt, model, aspectRatio, referenceImage })
-    }
-    if (model === 'gpt-image-2-text-to-image') {
-        return generateImageGptImage2({ prompt, model, aspectRatio, referenceImage })
-    }
-
-    // Fallback to generic createTask flow (Grok and others)
-    const input: Record<string, unknown> = { prompt, aspect_ratio: aspectRatio }
-    let resolvedModel = model
-    if (referenceImage) {
-        resolvedModel = model.replace('/text-to-image', '/image-to-image')
-        input.image_url = `data:${referenceImage.mimeType};base64,${referenceImage.base64}`
+    // Sanitize the prompt for content moderation. KIE/OpenAI image models
+    // reject risky terms (bikini, swimsuit, body emphasis…) — the direct
+    // Gemini path already does this, so KIE/Flux/Nano need it too or they 500
+    // on the exact same prompts that Gemini handles fine.
+    const { sanitized: prompt, replacements } = sanitizePromptForGeneration(params.prompt)
+    if (replacements.length > 0) {
+        console.log(`[KIE] Sanitized prompt — ${replacements.length} replacement(s):`, replacements)
     }
 
-    console.log(`[KIE] Submitting generic image task: model=${resolvedModel}`)
-    const taskId = await withTimeout(
-        submitTask({ model: resolvedModel, input }),
-        30_000,
-        'KIE image submit',
-    )
-    const urls = await pollTask(taskId, { budgetMs: 180_000, intervalMs: 3000 })
-    const persistedUrl = await persistToSupabase(urls[0], 'png', 'kie-images')
-    return { url: persistedUrl, fullApiPrompt: prompt }
+    try {
+        if (model.startsWith('flux-kontext')) {
+            return { success: true, ...(await generateImageFluxKontext({ prompt, model, aspectRatio, referenceImage })) }
+        }
+        if (model === 'gpt-4o-image') {
+            return { success: true, ...(await generateImageGpt4o({ prompt, model, aspectRatio, referenceImage })) }
+        }
+        if (model === 'nano-banana-pro') {
+            return { success: true, ...(await generateImageNanoBananaPro({ prompt, model, aspectRatio, referenceImage })) }
+        }
+        if (model === 'gpt-image-2-text-to-image') {
+            return { success: true, ...(await generateImageGptImage2({ prompt, model, aspectRatio, referenceImage })) }
+        }
+
+        // Fallback to generic createTask flow (Grok and others)
+        const input: Record<string, unknown> = { prompt, aspect_ratio: aspectRatio }
+        let resolvedModel = model
+        if (referenceImage) {
+            resolvedModel = model.replace('/text-to-image', '/image-to-image')
+            input.image_url = `data:${referenceImage.mimeType};base64,${referenceImage.base64}`
+        }
+
+        console.log(`[KIE] Submitting generic image task: model=${resolvedModel}`)
+        const taskId = await withTimeout(
+            submitTask({ model: resolvedModel, input }),
+            30_000,
+            'KIE image submit',
+        )
+        const urls = await pollTask(taskId, { budgetMs: 180_000, intervalMs: 3000 })
+        const persistedUrl = await persistToSupabase(urls[0], 'png', 'kie-images')
+        return { success: true, url: persistedUrl, fullApiPrompt: prompt }
+    } catch (err) {
+        // Return the real error as DATA so it survives the server→client
+        // boundary (thrown server-action errors get sanitized to a generic
+        // 500 in production, hiding the actual KIE/moderation message).
+        const message = err instanceof Error ? err.message : String(err)
+        console.error('[KIE] Image generation failed:', message)
+        return { success: false, error: message }
+    }
 }
 
 /**
