@@ -37,8 +37,12 @@ export interface AvatarPromptOptions {
  */
 export function buildLeanIdentityPrompt(prompt: string, refRoles: RefRole[]): string {
     if (!refRoles.includes('face')) return prompt
-    const note =
-        refRoles.length > 1
+    const note = refRoles.includes('scene')
+        ? // face + a structural reference (the Clone/original): clone its body,
+          // outfit, pose and setting but swap in the avatar's face. This is the
+          // ChatGPT workflow (face image + scene image).
+          'You are given two reference images. Image 1 is the FACE — keep this exact face, features and likeness. Image 2 is the SCENE — replicate its pose, outfit, body shape, framing and setting EXACTLY, but with the face and identity from Image 1.'
+        : refRoles.length > 1
             ? 'Use the attached reference images as the subject: keep the exact same face, facial features and likeness as the person shown, and match their body proportions.'
             : 'Keep the exact same face, facial features and likeness as the person in the attached reference image.'
     return `Photorealistic editorial photograph. ${note}\n\n${prompt}`

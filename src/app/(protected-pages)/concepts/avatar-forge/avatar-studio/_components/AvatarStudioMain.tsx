@@ -69,6 +69,7 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
         assetImages,
         sceneImage,
         poseImage,
+        cloneImage,
         videoInputImage,
         identityWeight,
         measurements,
@@ -413,6 +414,13 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                 ? await optimizeImage({ base64: poseImage.base64, mimeType: poseImage.mimeType })
                 : null
 
+            // Optimize the Clone Ref IMAGE (the original to replicate). Image
+            // models like GPT Image 2 can't clone body/outfit/pose from text —
+            // they need the actual image (as you did in ChatGPT: face + scene).
+            const optimizedCloneRef = cloneImage?.base64
+                ? await optimizeImage({ base64: cloneImage.base64, mimeType: cloneImage.mimeType })
+                : null
+
             // All reference images for providers that accept multiple inputs
             // (Nano Banana Pro / GPT Image 2 via KIE). Each carries a `role` so
             // KieService can label it in the prompt ("Image 1 is the face…") —
@@ -520,12 +528,19 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                             })
                             kiePrompt = `${systemPreamble}\n\n${finalPrompt}`
                         } else if (kieModel === 'gpt-image-2-text-to-image') {
-                            // Mirror what worked in ChatGPT: ONE clean face reference
-                            // + a natural prompt. Drop the angle-sheet (a grid of
-                            // faces) and body ref, which confuse OpenAI's editor.
+                            // Mirror what worked in ChatGPT: face + the Clone/original
+                            // image. OpenAI clones body/outfit/pose from the IMAGE,
+                            // not text. Send [face, clone] (2 refs — light enough to
+                            // avoid the KIE 500 that 3 refs caused). Drop angle-sheet.
                             const faceOnly = kieReferenceImages.filter((r) => r.role === 'face')
-                            kieRefsToSend = faceOnly.length > 0 ? faceOnly : [kieReferenceImages[0]]
-                            kiePrompt = buildLeanIdentityPrompt(fullPrompt, ['face'])
+                            const baseRefs = faceOnly.length > 0 ? faceOnly : [kieReferenceImages[0]]
+                            if (optimizedCloneRef) {
+                                kieRefsToSend = [...baseRefs, { ...optimizedCloneRef, role: 'scene' as const }]
+                                kiePrompt = buildLeanIdentityPrompt(fullPrompt, ['face', 'scene'])
+                            } else {
+                                kieRefsToSend = baseRefs
+                                kiePrompt = buildLeanIdentityPrompt(fullPrompt, ['face'])
+                            }
                         }
                     }
 
