@@ -35,15 +35,35 @@ export interface AvatarPromptOptions {
  * request (slow → timeout). The reference images carry the identity; the prompt
  * carries the scene. Mirrors how the same model clones faces in ChatGPT itself.
  */
-export function buildLeanIdentityPrompt(prompt: string, refRoles: RefRole[]): string {
+export function buildLeanIdentityPrompt(
+    prompt: string,
+    refRoles: RefRole[],
+    // True when a REAL avatar face image is sent as a second reference
+    // (gpt-image-2 = [clone, face]). False for single-input edits (Flux
+    // Kontext = [clone] only) where the avatar face rides ONLY on the [FACE:]
+    // text. ANY caller hitting the scene-first branch with a text-only face
+    // MUST pass false — the default (true) emits an "Image 2 is the FACE" note
+    // that misleads the model when no second image exists.
+    faceIsImage = true,
+): string {
     if (!refRoles.includes('face')) return prompt
     let note: string
     if (refRoles[0] === 'scene') {
-        // Scene/Clone FIRST as the canvas, face SECOND as the swap source —
-        // a face-swap EDIT, mirroring how ChatGPT processes scene + face.
-        // The blend/skin/hands clause fixes gpt-image's usual face-swap tells
-        // (over-lit, plastic skin, mangled fingers).
-        note = 'Image 1 is the photo to recreate: keep its EXACT pose, outfit, body shape, framing, lighting and setting. Image 2 is the FACE: replace ONLY the face/head in Image 1 with this exact person — same face, features and likeness — keeping everything else in Image 1 identical. Match the new face\'s lighting, shadows and color temperature to Image 1\'s so the face integrates photorealistically and does NOT look pasted on or composited. For the new face only: re-light it with Image 1\'s own light (same direction, angle, intensity, contrast and warm/cool color temperature) and cast the scene\'s natural shadows onto the face where they fall, matching the existing shadow direction and softness — no studio-added or extra lighting. Blend the edges seamlessly at the hairline, ears, jawline and neck with a soft feathered transition — no visible seam, hard edge, outline, halo or fringe. Preserve the new face\'s OWN skin tone, undertone and complexion from Image 2 exactly as it is — do NOT re-tone, re-pigment or color-shift the face to match the body in Image 1; only match the scene\'s LIGHT on it (exposure, brightness, contrast and warm/cool color temperature), never the body\'s skin color. Then carry the face\'s own complexion down through the jaw and neck transition so the harmonized seam reads as one continuous surface — resolve any tone mismatch toward the SUBJECT\'s face color, not the body\'s, with no hard break at the jaw. Give the face the same film grain, noise, sharpness, focus and depth-of-field as the rest of Image 1 — not cleaner or sharper than the photo it sits in. The result must read as one single photograph taken in one shot with one camera, not a face stickered or overlaid onto another photo. Keep natural matte skin with realistic texture and pores, NOT over-exposed, smoothed or plastic-looking. Render hands anatomically correct with five natural fingers and natural skin color.'
+        // Scene/Clone FIRST as the canvas, face SECOND as the swap source — a
+        // face-swap EDIT. The opening ADOPTS the avatar face and DISCARDS the
+        // face already in Image 1, forbidding any blend/average (otherwise
+        // gpt-image hybridizes the two — losing distinctive features like green
+        // eyes/freckles). For gpt-image-2 the face is a real Image 2; for Flux
+        // it is the [FACE:] text only. The shared tail keeps the validated
+        // relight + preserve-avatar-skin-tone + grain + hands clauses.
+        const skinSource = faceIsImage
+            ? 'from Image 2'
+            : 'as given in the [FACE:] description'
+        const tail = `Match the new face's lighting, shadows and color temperature to Image 1's so the face integrates photorealistically and does NOT look pasted on or composited. For the new face only: re-light it with Image 1's own light (same direction, angle, intensity, contrast and warm/cool color temperature) and cast the scene's natural shadows onto the face where they fall, matching the existing shadow direction and softness — no studio-added or extra lighting. Blend the edges seamlessly at the hairline, ears, jawline and neck with a soft feathered transition — no visible seam, hard edge, outline, halo or fringe. Preserve the new face's OWN skin tone, undertone and complexion ${skinSource} exactly as it is — do NOT re-tone, re-pigment or color-shift the face to match the body in Image 1; only match the scene's LIGHT on it (exposure, brightness, contrast and warm/cool color temperature), never the body's skin color. Then carry the face's own complexion down through the jaw and neck transition so the harmonized seam reads as one continuous surface — resolve any tone mismatch toward the SUBJECT's face color, not the body's, with no hard break at the jaw. Give the face the same film grain, noise, sharpness, focus and depth-of-field as the rest of Image 1 — not cleaner or sharper than the photo it sits in. The result must read as one single photograph taken in one shot with one camera, not a face stickered or overlaid onto another photo. Keep natural matte skin with realistic texture and pores, NOT over-exposed, smoothed or plastic-looking. Render hands anatomically correct with five natural fingers and natural skin color.`
+        const opening = faceIsImage
+            ? `Image 1 is the photo to recreate: keep its EXACT pose, outfit, body shape, framing, lighting and setting — but the FACE of the person in Image 1 is the WRONG identity and must be entirely replaced. Take the face and head identity ENTIRELY from Image 2. Completely DISCARD and ERASE Image 1's original face: do NOT keep, blend, average, mix, merge or interpolate ANY of its facial features (eyes, eyebrows, nose, lips, cheekbones, jaw, face shape, freckles, moles or skin marks). The output face must be 100% the person in Image 2 and 0% the person originally in Image 1 — recognizably the SAME individual as Image 2, never a hybrid of the two. Copy Image 2's defining features EXACTLY: the exact eye shape AND eye color (e.g. green, hazel, blue — match the precise hue), the eyebrow shape, every freckle, mole or beauty mark, the skin texture, and the overall face shape. If Image 1's original face had different eyes, brows, marks or face shape, OVERRIDE them with Image 2's. Replace ONLY the face/head; keep everything else in Image 1 identical.`
+            : `Image 1 is the photo to recreate: keep its EXACT pose, outfit, body shape, framing, lighting and setting — but the FACE of the person in Image 1 is the WRONG identity and must be entirely replaced. There is NO face reference image; the avatar's face identity is given ONLY by the [FACE: ...] description in the prompt below — treat that text as the SOLE and AUTHORITATIVE source of truth for the new face. Completely DISCARD and ERASE Image 1's original face: do NOT keep any of its facial features (eyes, eyebrows, nose, lips, cheekbones, jaw, face shape, freckles, moles or skin marks). Render a new face that matches the [FACE:] description EXACTLY: the exact eye shape AND eye color (match the precise hue named there, e.g. green, hazel, blue), the eyebrow shape, every freckle, mole or beauty mark, the skin texture and the overall face shape. If Image 1's original face differs from the [FACE:] description, OVERRIDE it to match the description. Replace ONLY the face/head; keep everything else in Image 1 identical.`
+        note = `${opening} ${tail}`
     } else if (refRoles.includes('scene')) {
         note = 'You are given two reference images. Image 1 is the FACE — keep this exact face, features and likeness. Image 2 is the SCENE — replicate its pose, outfit, body shape, framing and setting EXACTLY, but with the face and identity from Image 1.'
     } else if (refRoles.length > 1) {

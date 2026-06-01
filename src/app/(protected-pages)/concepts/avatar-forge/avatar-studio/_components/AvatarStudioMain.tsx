@@ -617,10 +617,12 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                                 // measurements + the incomplete/contradictory auto
                                 // [CLONE:] scene re-description) so the IMAGE — not
                                 // text — drives body/pose/scene. Keeps [FACE:] +
-                                // user text + a generic preserve list.
+                                // user text + a generic preserve list. faceIsImage
+                                // = true: the avatar face IS a real 2nd image here.
                                 kiePrompt = buildLeanIdentityPrompt(
                                     stripHarnessForFaceSwap(fullPrompt),
                                     ['scene', 'face'],
+                                    true,
                                 )
                             } else {
                                 kieRefsToSend = faceRefs
@@ -635,9 +637,13 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                             // image. Same lean strategy as GPT Image 2; strip the Gemini
                             // harness ([BODY:]/[CLONE:]) that fights an edit canvas.
                             kieSingleRef = optimizedCloneRef
+                            // faceIsImage = false: Flux is single-input (only the
+                            // clone is sent), so identity rides on the [FACE:] text,
+                            // not a non-existent "Image 2".
                             kiePrompt = buildLeanIdentityPrompt(
                                 stripHarnessForFaceSwap(fullPrompt),
                                 ['scene', 'face'],
+                                false,
                             )
                         }
                     }
