@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
 import { auth } from '@/auth'
-import { BROWSER_UA, isAllowedMediaHost } from '../_lib/instagram'
+import { BROWSER_UA, igFetch, isAllowedMediaHost } from '../_lib/instagram'
 
 // Reels are short but can be a few MB; allow time to stream from the CDN.
 export const maxDuration = 60
@@ -42,7 +42,7 @@ export async function GET(req: NextRequest) {
     }
 
     try {
-        const upstream = await fetch(parsed.toString(), {
+        const upstream = await igFetch(parsed.toString(), {
             headers: {
                 'User-Agent': BROWSER_UA,
                 // Instagram CDN sometimes 403s without a Referer from its origin.
