@@ -59,7 +59,7 @@ v3 directo (para A/B y para mantener el directo intacto en voz/Omni). Sin tocar
 | 5 | `_components/KlingMotionControlEditor.tsx` (+ sus 2 render sites: `BottomControlBar.tsx:1356`, `GenerationControls.tsx:898`) | Extender el gate en ambos render sites para mostrar el editor cuando el provider activo es `kie-kling-3-0` (hoy se muestra para Kling directo). Dentro del editor, **ocultar la sección de presets** cuando el provider es KIE (KIE requiere video driver). |
 | 6 | `_components/AvatarStudioMain.tsx` | En la rama `type === 'KIE'` (×2: ANIMATE y AVATAR): si `model === 'kling-3.0/video'` + motion-control on + video presente → `generateMotionControlKie`; si no → `generateVideoKie` (que rutea `kling-3.0/video` internamente). Pasar `sound: klingNativeAudioEnabled`. |
 | 7 | `_components/BottomControlBar.tsx` (+ `GenerationControls.tsx`) | Switch de audio nativo (lee/escribe `klingNativeAudioEnabled`), visible solo para `kie-kling-3-0`, junto a los selectores de resolución/duración (BottomControlBar L266-267 ya consume `providerCapabilities`). Ambas superficies de controles deben tenerlo para consistencia. |
-| 8 | `_utils/providerCapabilities.ts` | Para `kie-kling-3-0`: duración `['5','10']`, resolución `['720p','1080p']`, aspect ratios `['16:9','9:16','1:1']`. |
+| 8 | `_utils/providerCapabilities.ts` | Para `kie-kling-3-0`: `getDurationOptionsForProvider` → `[5,10]`, `getResolutionOptionsForProvider` → `['720p','1080p']`. **Aspect ratio NO se gestiona aquí** (esta utilidad solo tiene duración+resolución); se hace **clamp server-side** en `generateVideoKling3` (16:9/9:16/1:1; 4:3→16:9, 3:4→9:16, resto→9:16). |
 
 > Nota de codebase: los controles de generación están **duplicados** en
 > `BottomControlBar.tsx` y `GenerationControls.tsx` (ambos renderizan
@@ -139,8 +139,9 @@ requiere video driver; no hay presets).
 
 ## Restricciones / edge cases
 
-- **Aspect ratio:** solo 16:9 / 9:16 / 1:1. Se restringe en `providerCapabilities`
-  para que el dropdown no ofrezca 4:3/3:4 con este provider (sin clamp silencioso).
+- **Aspect ratio:** solo 16:9 / 9:16 / 1:1. **Clamp server-side** en
+  `generateVideoKling3` (4:3→16:9, 3:4→9:16, resto→9:16) para que el request
+  nunca falle (no hay función de aspect en `providerCapabilities`).
 - **Audio default OFF** — tier sin audio es −19.6% vs −10.7% con audio. El toggle
   permite subirlo cuando se quiera.
 - **Motion-control = solo video-driven** en KIE. Presets ocultos para el provider KIE.
