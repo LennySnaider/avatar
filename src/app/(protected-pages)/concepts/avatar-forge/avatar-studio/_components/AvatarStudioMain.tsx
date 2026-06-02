@@ -388,11 +388,20 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
         }
 
         try {
+            // Resize each ref to ~1024px before sending — full-res photos blow
+            // past Vercel's ~4.5MB server-action body cap (413). Browser canvas.
+            const optimizedRefs = (
+                await Promise.all(
+                    validRefs.map((img) =>
+                        optimizeImage({ base64: img.base64, mimeType: img.mimeType }),
+                    ),
+                )
+            ).filter((r): r is { base64: string; mimeType: string } => !!r)
             const description = await analyzeFaceFromImages(
-                validRefs.map((img) => ({
+                (optimizedRefs.length > 0 ? optimizedRefs : validRefs).map((img) => ({
                     base64: img.base64,
                     mimeType: img.mimeType,
-                }))
+                })),
             )
             if (description) {
                 setFaceDescription(description)
@@ -405,7 +414,7 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                 </Notification>
             )
         }
-    }, [faceRef, generalReferences, setFaceDescription])
+    }, [faceRef, generalReferences, setFaceDescription, optimizeImage])
 
     // Generate Handler
     const handleGenerate = useCallback(async () => {
@@ -1139,11 +1148,17 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
         async (image: { base64: string; mimeType: string }) => {
             setIsDescribingImage(true)
             try {
+                // Resize to ~1024px BEFORE sending. A full-res photo's base64
+                // easily exceeds Vercel's ~4.5MB server-action body limit and
+                // gets rejected with 413 (Content Too Large) before reaching the
+                // function — next.config's 50mb bodySizeLimit can't override the
+                // platform cap. optimizeImage runs in the browser (canvas).
+                const optimized = (await optimizeImage(image)) ?? image
                 const description = await describeImageForPrompt({
                     id: crypto.randomUUID(),
-                    url: `data:${image.mimeType};base64,${image.base64}`,
-                    base64: image.base64,
-                    mimeType: image.mimeType,
+                    url: `data:${optimized.mimeType};base64,${optimized.base64}`,
+                    base64: optimized.base64,
+                    mimeType: optimized.mimeType,
                 })
                 if (description) {
                     // Set prompt and analyze for contaminating terms
@@ -1165,7 +1180,7 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                 setIsDescribingImage(false)
             }
         },
-        [setIsDescribingImage, setPromptAndAnalyze]
+        [setIsDescribingImage, setPromptAndAnalyze, optimizeImage]
     )
 
     // Animate Image Handler

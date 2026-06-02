@@ -3,6 +3,7 @@
 import { useRef, useState, useCallback, useEffect } from 'react'
 import { useAvatarStudioStore } from '../_store/avatarStudioStore'
 import { analyzePoseFromImage, analyzeImageForClone, analyzeImageForPlace } from '@/services/GeminiService'
+import { resizeBase64Image } from '@/utils/imageOptimization'
 import Button from '@/components/ui/Button'
 import Notification from '@/components/ui/Notification'
 import Spinner from '@/components/ui/Spinner'
@@ -353,9 +354,13 @@ const BottomControlBar = ({
         // analyze is still in-flight.
         setIsAnalyzingClone(true)
         try {
+            // Resize before sending — a full-res photo's base64 exceeds Vercel's
+            // ~4.5MB server-action body cap and gets rejected with 413 (Content
+            // Too Large) before reaching the function. Browser canvas resize.
+            const apiBase64 = await resizeBase64Image(base64, 'API')
             const ANALYZE_TIMEOUT_MS = 60_000
             const description = await Promise.race([
-                analyzeImageForClone({ base64, mimeType }),
+                analyzeImageForClone({ base64: apiBase64, mimeType: 'image/jpeg' }),
                 new Promise<never>((_, reject) =>
                     setTimeout(
                         () => reject(new Error('Clone analysis timed out after 60s')),
@@ -405,7 +410,9 @@ const BottomControlBar = ({
         // Analyze pose from image and extract text description
         setIsAnalyzingPose(true)
         try {
-            const description = await analyzePoseFromImage({ base64, mimeType })
+            // Resize before sending (avoids Vercel's ~4.5MB 413 on full-res photos)
+            const apiBase64 = await resizeBase64Image(base64, 'API')
+            const description = await analyzePoseFromImage({ base64: apiBase64, mimeType: 'image/jpeg' })
             setPoseDescription(description)
 
             // Add pose description to prompt so user can edit it
@@ -440,7 +447,9 @@ const BottomControlBar = ({
         // Analyze place from image and extract text description
         setIsAnalyzingPlace(true)
         try {
-            const description = await analyzeImageForPlace({ base64, mimeType })
+            // Resize before sending (avoids Vercel's ~4.5MB 413 on full-res photos)
+            const apiBase64 = await resizeBase64Image(base64, 'API')
+            const description = await analyzeImageForPlace({ base64: apiBase64, mimeType: 'image/jpeg' })
             setPlaceDescription(description)
 
             // Add place description to prompt so user can edit it
