@@ -383,8 +383,18 @@ export async function checkKieImageTask(
 async function generateImageFluxKontext(params: GenerateImageKieParams): Promise<{ url: string; fullApiPrompt: string }> {
     const { prompt, model, aspectRatio = '1:1', referenceImage } = params
 
+    // KIE Flux Kontext hard-caps the prompt at 3000 chars (422 otherwise). The
+    // compact lean note keeps us well under, but a long [FACE:]/user text could
+    // still push over — trim as a safety net (the leading instruction is the
+    // most important; the tail [FACE:]/preserve text is least critical to cut).
+    const FLUX_PROMPT_MAX = 3000
+    const safePrompt = prompt.length > FLUX_PROMPT_MAX ? prompt.slice(0, FLUX_PROMPT_MAX) : prompt
+    if (safePrompt.length < prompt.length) {
+        console.warn(`[KIE/Flux] prompt ${prompt.length} chars > ${FLUX_PROMPT_MAX}; truncated`)
+    }
+
     const body: Record<string, unknown> = {
-        prompt,
+        prompt: safePrompt,
         model,
         aspectRatio,
         outputFormat: 'png',
