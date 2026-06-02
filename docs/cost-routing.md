@@ -142,6 +142,15 @@ Implicaciones:
 | GPT Image 2 | $0.03 (1K) · $0.05 (2K) · $0.08 (4K) | token-based | ~$0.04–0.13 (+ top-up gate) | **KIE** (fijo, sin gate) |
 | Flux Kontext Pro/Max | "mitad de precio" (marketing) | — | $0.04 / $0.08 | **KIE** (ya en uso) |
 | Seedream 4.0 | ~$0.03 | — | $0.03 | empate |
+| **Kling v3 Omni (Image O1)** | ❌ **KIE NO tiene Kling imagen** (solo video) | **$0.028** (2K, multi-ref incl.) · $0.056 (4K Image-3O) | — | **DEJAR DIRECTO** (no migrable; ver abajo) |
+
+> **Kling Omni imagen → NO migrable a KIE.** Verificado (jun-2026): en `docs.kie.ai`
+> TODO lo de Kling es **video** (kling-3.0/video, i2v, motion-control, avatar). La
+> generación de imagen Omni (`POST /v1/images/omni-image`, `kling-v3-omni`, multi-ref
+> `image_list[]`) solo existe en fal.ai / WaveSpeed / Freepik / PiAPI, NO en KIE. Es
+> brecha de **capacidad**, no de precio. Además el directo ($0.028/2K) es **más barato**
+> que la única alternativa en KIE (cambiar a Nano Banana Pro $0.09 → más caro + ya lo
+> tenemos). Se queda en **Kling directo** (KlingService, tu key de Kling).
 
 ## 🎬 Video (por segundo)
 
