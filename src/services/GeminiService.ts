@@ -1710,8 +1710,10 @@ export async function generateVideo(params: {
         finalPrompt += ' The character must resemble the provided reference assets.'
     }
 
-    // Execute video generation
-    try {
+    // Execute video generation. Generate + poll + download for a given prompt
+    // text — extracted so we can retry with a more sanitized prompt on a RAI
+    // (safety) block, the same recovery generateAvatar uses for images.
+    const runWithPrompt = async (promptText: string): Promise<string> => {
         let operation
 
         if (imageInput) {
@@ -1736,7 +1738,7 @@ export async function generateVideo(params: {
                 model: referenceImagesPayload.length > 0
                     ? 'veo-3.1-generate-preview'
                     : 'veo-3.1-fast-generate-preview',
-                prompt: finalPrompt || 'Animate this scene naturally.',
+                prompt: promptText || 'Animate this scene naturally.',
                 image: { imageBytes: resizedInput, mimeType: 'image/jpeg' },
                 config: animateConfig,
             })
@@ -1754,7 +1756,7 @@ export async function generateVideo(params: {
 
             operation = await ai.models.generateVideos({
                 model: hasRefs ? 'veo-3.1-generate-preview' : modelName,
-                prompt: finalPrompt,
+                prompt: promptText,
                 config: config,
             })
         }
@@ -1800,9 +1802,26 @@ export async function generateVideo(params: {
         const base64Video = Buffer.from(buffer).toString('base64')
 
         return `data:video/mp4;base64,${base64Video}`
+    }
+
+    // Veo's RAI safety filter is strict — especially with face references (the
+    // identity-preserving path). Attempt 1: light sanitization (bikini→swim set,
+    // etc.). On a RAI/safety block, retry once with aggressive sanitization
+    // (strips revealing/suggestive terms entirely). The first frame carries the
+    // visual, so stripping prompt text is low-cost for a continuation video.
+    const isRaiBlock = (m: string) => /RAI_FILTERED|safety|sensitive|polic/i.test(m)
+    const { sanitized: lightPrompt } = sanitizePromptForGeneration(finalPrompt)
+    try {
+        return await runWithPrompt(lightPrompt)
     } catch (error) {
-        console.error('Video Generation Error:', error)
-        throw error
+        const msg = error instanceof Error ? error.message : String(error)
+        if (!isRaiBlock(msg)) {
+            console.error('Video Generation Error:', error)
+            throw error
+        }
+        console.warn('[Gemini/Video] RAI/safety block — retrying with aggressive sanitization')
+        const { sanitized: aggressivePrompt } = aggressiveSanitize(finalPrompt)
+        return await runWithPrompt(aggressivePrompt)
     }
 }
 
