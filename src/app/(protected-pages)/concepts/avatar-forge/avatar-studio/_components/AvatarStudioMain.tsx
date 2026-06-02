@@ -1170,11 +1170,11 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                     setGenerationMode('VIDEO')
                     setVideoSubMode('ANIMATE')
                     setPrompt('Cinematic movement, slow motion, high quality.')
-                    // Auto-fire generation once videoInputImage lands in the
-                    // store — same pattern Continue Video uses. Without this
-                    // the button only flips state silently and the user sees
-                    // no immediate effect, which reads as "broken".
-                    pendingAutoGenerateRef.current = true
+                    // Do NOT auto-generate. "Animate" only OPENS the video config
+                    // (switches to VIDEO/ANIMATE with the image loaded + a starter
+                    // prompt) so the user can edit the prompt, pick the model and
+                    // review BEFORE clicking "Generar". (Continue Video keeps its
+                    // own auto-fire via pendingAutoGenerateRef.)
                 }
             }
             reader.readAsDataURL(blob)
