@@ -1806,6 +1806,27 @@ export async function generateVideo(params: {
     }
 }
 
+/**
+ * Error-surfacing wrapper for generateVideo. The raw function THROWS on failure,
+ * which a 'use server' action sanitizes to a generic 500 (digest, no message)
+ * across the RSC boundary — the user just sees "An error occurred in the Server
+ * Components render". This wraps the WHOLE call (incl. pre-flight ref resize /
+ * API-key checks) and returns the real error as DATA so the client can show it
+ * (same pattern as KieService.generateImageKie).
+ */
+export async function generateVideoSafe(
+    params: Parameters<typeof generateVideo>[0],
+): Promise<{ success: true; url: string } | { success: false; error: string }> {
+    try {
+        const url = await generateVideo(params)
+        return { success: true, url }
+    } catch (err) {
+        const message = err instanceof Error ? err.message : String(err)
+        console.error('[Gemini/Video] generation failed:', message)
+        return { success: false, error: message }
+    }
+}
+
 // =============================================
 // IMAGE EDITING
 // =============================================

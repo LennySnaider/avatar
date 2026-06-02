@@ -21,7 +21,7 @@ import {
 } from '@/services/AvatarForgeService'
 import {
     generateAvatar,
-    generateVideo as generateVideoGemini,
+    generateVideoSafe as generateVideoGeminiSafe,
     enhancePrompt,
     analyzeFaceFromImages,
     editImage,
@@ -83,6 +83,22 @@ async function pollKieImageTask(
 
 /** KIE models that use the unified async createTask + client-poll flow. */
 const KIE_ASYNC_MODELS = ['nano-banana-pro', 'gpt-image-2-text-to-image']
+
+/**
+ * Client-side unwrap for generateVideoGeminiSafe. The server action returns the
+ * error as DATA; we re-throw it HERE (client code) so handleGenerate's catch
+ * shows the REAL message instead of the sanitized server-action 500 ("An error
+ * occurred in the Server Components render"). Returns the video URL on success.
+ */
+async function genVideoGemini(
+    params: Parameters<typeof generateVideoGeminiSafe>[0],
+): Promise<string> {
+    const r = await generateVideoGeminiSafe(params)
+    if (!r.success) {
+        throw new Error(r.error)
+    }
+    return r.url
+}
 
 const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
     const [isAvatarSelectorOpen, setIsAvatarSelectorOpen] = useState(false)
@@ -773,7 +789,7 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                             // Gemini service maps faceRef → primary ref and
                             // generalRefs → additional refs (cap 3).
                             const refsForVeo = identityRefs.slice(0, 3)
-                            resultUrl = await generateVideoGemini({
+                            resultUrl = await genVideoGemini({
                                 prompt: fullPrompt,
                                 imageInput: optimizedVideoInput,
                                 avatarReferences: refsForVeo.slice(1),
@@ -865,7 +881,7 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                         })
                     } else {
                         // Use Gemini Service (default)
-                        resultUrl = await generateVideoGemini({
+                        resultUrl = await genVideoGemini({
                             prompt: fullPrompt,
                             imageInput: optimizedVideoInput,
                             aspectRatio,
@@ -953,7 +969,7 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                         })
                     } else {
                         // Use Gemini Service (default)
-                        resultUrl = await generateVideoGemini({
+                        resultUrl = await genVideoGemini({
                             prompt: fullPrompt,
                             imageInput: null,
                             avatarReferences: optimizedPayload.generalRefs,
