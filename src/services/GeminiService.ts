@@ -746,6 +746,78 @@ Focus on the atmosphere, setting, and visual elements that define this place.`,
 }
 
 // =============================================
+// REEL MOTION ANALYSIS
+// =============================================
+
+/**
+ * Analyzes an ordered set of frames sampled from a short vertical video
+ * (Instagram Reel / TikTok) and returns a description of the MOTION between
+ * them — camera movement, subject action, transitions, pacing and visual
+ * effects. Used by the "Reel Remix" section to turn a viral Reel into a video
+ * prompt so the avatar can recreate it. The frames must be passed in temporal
+ * order (start → middle → end). Companion to analyzeImageForClone (which covers
+ * the static scene/outfit) — this one covers what changes over time.
+ */
+export async function analyzeReelMotion(
+    frames: { base64: string; mimeType: string }[],
+): Promise<string> {
+    const apiKey = getApiKey()
+    const ai = new GoogleGenAI({ apiKey })
+
+    if (!frames.length) {
+        throw new Error('analyzeReelMotion requires at least one frame')
+    }
+
+    try {
+        const imageParts = frames.map((frame) => ({
+            inlineData: {
+                mimeType: frame.mimeType,
+                data: cleanBase64Data(frame.base64),
+            },
+        }))
+
+        const response = await ai.models.generateContent({
+            model: 'gemini-2.5-flash',
+            contents: {
+                parts: [
+                    ...imageParts,
+                    {
+                        text: `These ${frames.length} images are frames sampled in chronological order (start, then middle, then end) from a short vertical social-media video (an Instagram Reel).
+
+Infer and describe ONLY what MOVES or CHANGES across the frames, so a video-generation model can recreate the same motion. Cover:
+1. Camera movement (static, push-in, pull-out, pan left/right, tilt, handheld shake, orbit, whip)
+2. Subject action and body motion (walking, turning, dancing, hair flip, gesture, outfit reveal, pose change)
+3. Transitions between shots (hard cut, match cut, swipe, zoom transition, snap/beat-synced cut)
+4. Pacing and energy (slow and smooth, fast and punchy, beat-synced)
+5. Visual effects (speed ramp / slow-mo, motion blur, glitch, light leaks, color grade shift)
+
+CRITICAL OUTPUT FORMAT:
+- ONE flowing paragraph of natural prose separated by commas
+- NO headers, NO numbered sections, NO bullet points, NO markdown
+- Keep under 400 characters
+- It must read like the motion half of a video-generation prompt
+
+DO NOT describe: the person's face or identity, exact outfit colors, or the static background (those are captured separately).
+
+Example output (format to match): "starts on a slow push-in as the subject stands still, then a beat-synced hard cut to a quick 180-degree turn with a hair flip, brief slow-motion on the turn with subtle motion blur, handheld energy throughout, punchy fast pacing with a final snap zoom on the last beat"`,
+                    },
+                ],
+            },
+        })
+
+        const text = response.text?.trim()
+        if (!text) {
+            throw new Error('No motion description generated from the analysis')
+        }
+
+        return text
+    } catch (e) {
+        console.error('Reel Motion Analysis Failed', e)
+        throw e instanceof Error ? e : new Error('Reel motion analysis failed')
+    }
+}
+
+// =============================================
 // IMAGE GENERATION
 // =============================================
 
@@ -1610,15 +1682,28 @@ export async function generateVideo(params: {
         targetResolution = '720p'
     }
 
-    // Prepare reference images (Veo 3.1 accepts up to 3 of type 'asset',
-    // alongside an optional first-frame `image`). Earlier code gated this
-    // on `!imageInput` because Veo 3.0 didn't allow both channels — Veo 3.1
-    // explicitly supports first_frame + reference_images together for
-    // character lock with continuity. Removing the gate so the animate
-    // (image-to-video) path can also benefit from identity refs.
+    // Prepare reference images (Veo accepts up to 3 of type 'asset').
+    //
+    // IMPORTANT — Gemini Developer API (ai.google.dev, API-key) constraint:
+    // `referenceImages` is ONLY accepted when there is NO first-frame `image`
+    // (and no `lastFrame`). Sending `image` + `referenceImages` together is
+    // rejected server-side with:
+    //   400 INVALID_ARGUMENT "Unsupported video generation request."
+    // The @google/genai SDK happily serializes both into instances[0]
+    // (see generateVideosParametersToMldev / generateVideosConfigToMldev in
+    // v1.33.0), so there is no client-side guard — the rejection is purely a
+    // server capability limit. (Combining first_frame + asset refs IS possible
+    // on Vertex AI, but we use the Developer API here.)
+    //
+    // Therefore: only build the referenceImages payload when there is NO
+    // first frame. In animate / "Continue Video" mode the first frame itself
+    // carries the avatar's appearance, so it acts as the implicit identity
+    // anchor. For STRONG identity-preserving continuation the caller should
+    // route to kling-omni or seedance (see AvatarStudioMain continue-identity
+    // branch), which support first_frame + multi-ref through non-Gemini APIs.
     const referenceImagesPayload: unknown[] = []
 
-    if (hasRefs) {
+    if (hasRefs && !imageInput) {
         if (faceRefImage) {
             const resized = await resizeBase64Image(faceRefImage.base64)
             referenceImagesPayload.push({
@@ -1717,27 +1802,24 @@ export async function generateVideo(params: {
         let operation
 
         if (imageInput) {
-            // Animate mode — first frame + (optional) identity refs.
-            // Veo 3.1 accepts up to 3 reference images alongside the first
-            // frame for character lock; when refs are present we switch to
-            // the full preview model (the fast variant doesn't expose
-            // referenceImages per the docs) and force durationSeconds='8'
-            // (required when reference images are used).
+            // Animate / "Continue Video" mode — first frame only.
+            //
+            // The Gemini Developer API does NOT support a first-frame `image`
+            // together with `referenceImages` (it returns 400 "Unsupported
+            // video generation request"). `referenceImagesPayload` is gated on
+            // `!imageInput` above, so it is always empty here — the first frame
+            // is the sole identity/continuity anchor on this path. (Strong
+            // identity-preserving continuation is handled by the kling-omni /
+            // seedance branches in AvatarStudioMain, which don't use Gemini.)
             const resizedInput = await resizeBase64Image(imageInput.base64)
             const animateConfig: Record<string, unknown> = {
                 numberOfVideos: 1,
                 resolution: targetResolution,
                 aspectRatio: targetAspectRatio,
             }
-            if (referenceImagesPayload.length > 0) {
-                animateConfig.referenceImages = referenceImagesPayload
-                animateConfig.durationSeconds = '8'
-            }
 
             operation = await ai.models.generateVideos({
-                model: referenceImagesPayload.length > 0
-                    ? 'veo-3.1-generate-preview'
-                    : 'veo-3.1-fast-generate-preview',
+                model: modelName,
                 prompt: promptText || 'Animate this scene naturally.',
                 image: { imageBytes: resizedInput, mimeType: 'image/jpeg' },
                 config: animateConfig,

@@ -784,16 +784,21 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                         })
 
                         if (continueIdentityModel === 'veo-3-1') {
-                            // Veo 3.1 accepts up to 3 reference images of
-                            // type 'asset' alongside the first frame. Our
-                            // Gemini service maps faceRef → primary ref and
-                            // generalRefs → additional refs (cap 3).
-                            const refsForVeo = identityRefs.slice(0, 3)
+                            // Veo on the Gemini Developer API CANNOT combine a
+                            // first frame with `referenceImages` (asset/identity
+                            // refs) — that returns 400 "Unsupported video
+                            // generation request" (the combined mode is Vertex
+                            // AI-only). For "Continue Video" the first frame is
+                            // inherently present, so we do NOT send identity
+                            // refs here: the first frame is the continuity +
+                            // appearance anchor. Identity lock is therefore
+                            // approximate on Veo. For STRONG identity
+                            // preservation the user should pick kling-omni or
+                            // seedance below, which support first_frame +
+                            // multi-ref via non-Gemini APIs.
                             resultUrl = await genVideoGemini({
                                 prompt: fullPrompt,
                                 imageInput: optimizedVideoInput,
-                                avatarReferences: refsForVeo.slice(1),
-                                faceRefImage: refsForVeo[0],
                                 aspectRatio,
                                 resolution: videoResolution,
                                 cameraMotion,
