@@ -157,10 +157,36 @@ Implicaciones:
 | Modelo | KIE | Directo (oficial) | Vercel Gateway | Ruteo recomendado |
 |---|---|---|---|---|
 | **Veo 3** | Fast **$0.05/s** ($0.40/8s) · Quality $0.25/s | Vertex **$0.75/s** | fast $0.10/s · full $0.20/s | **KIE si el costo manda**; directo si necesitas audio/multi-ref de GeminiService |
-| **Kling** (i2v / motion) | v2.6 ~$0.04–0.07/s · v3 motion $0.10–0.135/s | oficial Kling | v2.6-i2v $0.07/s · v3.0-i2v $0.17/s | **DEJAR DIRECTO** (KlingService: motion control, voz, Omni) |
+| **Kling** (i2v / motion / v2v) | v3 sin audio $0.07 (720p)·$0.09 (1080p) · con audio $0.10/$0.135 · 4K $0.335 · motion-ctrl v2v $0.10–0.135 · v2.6 ~$0.04–0.07 | **oficial Kling API ≈ $0.014/cr:** 720p $0.084 · 1080p $0.112 (s/audio)/$0.168 (audio) · 4K $0.42 · motion $0.126–0.168 | v2.6-i2v $0.07/s · v3.0-i2v $0.17/s | **DEJAR DIRECTO por features, NO por precio** — KIE es −16% a −21% (ver nota ▼) |
 | **Seedance 2.0** | 480p $0.0575/s · 720p $0.125/s · 1080p $0.31/s | — | **$0.07/s** (base) | Vercel a 720p · KIE a 480p |
 | **Wan 2.7 / 2.6** | 720p ~$0.08/s · 1080p ~$0.12/s | — | wan-2.6 $0.05–0.10/s | empate (versiones distintas) |
 | MiniMax Hailuo 2.3 | — | oficial MiniMax | — | **DEJAR DIRECTO** (subject reference / avatar lock) |
+
+> **Kling video — KIE es −16% a −21% más barato, y es apples-to-apples.** Verificado
+> (jun-2026, pricing público de KIE + guide oficial Kling 3.0 de feb-2026). El guide
+> oficial cobra en **créditos/s** (720p 6·1080p 8 sin audio; 9·12 con audio; +2 voice-
+> control). El crédito **oficial de Kling API es $0.0125 (volumen) a $0.0151 (top-up
+> chico)**; KIE benchmarkea contra **~$0.014/cr** (= 12 cr × $0.014 = $0.168 a 1080p
+> con audio, que cuadra exacto con su columna "Official/Fal"). KIE cobra el equivalente
+> a **~$0.011/cr-Kling** (27 cr-KIE × $0.005 = $0.135 ÷ 12 cr-Kling). Tabla real $/s:
+>
+> | Variante (Kling 3.0) | Oficial / directo | KIE | Δ |
+> |---|---|---|---|
+> | 720p sin audio | $0.084 | $0.07 | −16.7% |
+> | 720p con audio | $0.112 | $0.10 | −10.7% |
+> | 1080p sin audio | $0.112 | $0.09 | −19.6% |
+> | 1080p con audio | $0.168 | $0.135 | −19.6% |
+> | 4K (con/sin audio) | $0.42 | $0.335 | −20.2% |
+> | motion-control v2v 720p | $0.126 | $0.10 | −20.6% |
+> | motion-control v2v 1080p | $0.168 | $0.135 | −19.6% |
+>
+> **Por qué se queda directo igual:** el ahorro es real, pero el motivo de ruteo es
+> **features**, no precio. Dos matices honestos: (1) **KIE SÍ expone `kling 3.0 motion
+> control` (v2v)** — el gap real frente a KlingService no es el motion control sino
+> **voz/lip-sync** y **Omni multi-ref**; (2) el "oficial" de la tabla es el rate
+> **API pay-as-you-go**; si compras créditos Kling en **volumen ($0.0125/cr)** el
+> descuento de KIE se encoge a **~−10%**. Regla: i2v/t2v plano sin voz/Omni → KIE es
+> migrable (~−20%, ~−10% si compras Kling en volumen); con voz/lip-sync/Omni → directo.
 
 ## Por qué Veo y Nano Banana ganan en KIE
 
