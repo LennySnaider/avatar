@@ -307,6 +307,14 @@ const conceptsRoute: Routes = {
         },
         dynamicRoute: true,
     },
+    '/concepts/avatar-forge/reel-remix': {
+        key: 'concepts.avatarForge.reelRemix',
+        authority: [ADMIN, USER],
+        meta: {
+            pageContainerType: 'contained',
+            pageBackgroundType: 'plain',
+        },
+    },
     '/concepts/avatar-forge/prompt-library': {
         key: 'concepts.avatarForge.promptLibrary',
         authority: [ADMIN, USER],

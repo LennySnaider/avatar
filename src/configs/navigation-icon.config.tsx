@@ -99,6 +99,7 @@ import {
     PiPlugsDuotone,
     PiMicrophoneDuotone,
     PiFlowArrowDuotone,
+    PiInstagramLogoDuotone,
 } from 'react-icons/pi'
 
 import type { JSX } from 'react'
@@ -210,6 +211,7 @@ const navigationIcon: NavigationIcons = {
     avatarForge: <PiMagicWandDuotone />,
     avatarCreator: <PiUserFocusDuotone />,
     avatarStudio: <PiFilmSlateDuotone />,
+    reelRemix: <PiInstagramLogoDuotone />,
     avatarList: <PiUserSquareDuotone />,
     avatarGallery: <PiImageSquareDuotone />,
     promptLibrary: <PiBookmarksDuotone />,

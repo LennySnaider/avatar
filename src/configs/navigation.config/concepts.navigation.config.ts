@@ -55,6 +55,22 @@ const conceptsNavigationConfig: NavigationTree[] = [
                 subMenu: [],
             },
             {
+                key: 'avatarForge.reelRemix',
+                path: `${CONCEPTS_PREFIX_PATH}/avatar-forge/reel-remix`,
+                title: 'Reel Remix',
+                translateKey: 'nav.avatarForge.reelRemix',
+                icon: 'reelRemix',
+                type: NAV_ITEM_TYPE_ITEM,
+                authority: [ADMIN, USER],
+                meta: {
+                    description: {
+                        translateKey: 'nav.avatarForge.reelRemixDesc',
+                        label: 'Turn Instagram Reels into avatar prompts',
+                    },
+                },
+                subMenu: [],
+            },
+            {
                 key: 'avatarForge.imageEditor',
                 path: `${CONCEPTS_PREFIX_PATH}/avatar-forge/image-editor`,
                 title: 'Image Editor',
