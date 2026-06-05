@@ -113,6 +113,8 @@ interface AvatarStudioState {
     klingMotionOrientation: KlingMotionOrientation
     klingKeepOriginalSound: boolean
     klingMotionDuration: '5' | '10' // Video duration in seconds
+    // Kling 3.0 (KIE) native audio — `sound` param. OFF by default (cheaper tier).
+    klingNativeAudioEnabled: boolean
 
     // Video duration in seconds applied to ANIMATE / AVATAR-mode video
     // generation. Valid range depends on the active provider — see
@@ -251,6 +253,7 @@ interface AvatarStudioState {
     setKlingMotionOrientation: (orientation: KlingMotionOrientation) => void
     setKlingKeepOriginalSound: (keep: boolean) => void
     setKlingMotionDuration: (duration: '5' | '10') => void
+    setKlingNativeAudioEnabled: (enabled: boolean) => void
     setVideoDuration: (seconds: number) => void
 
     // Actions - Provider
@@ -394,6 +397,7 @@ const initialState = {
     klingMotionOrientation: 'video' as KlingMotionOrientation,
     klingKeepOriginalSound: false,
     klingMotionDuration: '5' as '5' | '10',
+    klingNativeAudioEnabled: false,
     videoDuration: 5,
 
     providers: [],
@@ -670,6 +674,7 @@ export const useAvatarStudioStore = create<AvatarStudioState>()(
             klingMotionOrientation: 'video',
             klingKeepOriginalSound: false,
             klingMotionDuration: '5',
+            klingNativeAudioEnabled: false,
         }),
 
     // Actions - Kling Motion Control
@@ -680,6 +685,7 @@ export const useAvatarStudioStore = create<AvatarStudioState>()(
     setKlingMotionOrientation: (orientation) => set({ klingMotionOrientation: orientation }),
     setKlingKeepOriginalSound: (keep) => set({ klingKeepOriginalSound: keep }),
     setKlingMotionDuration: (duration) => set({ klingMotionDuration: duration }),
+    setKlingNativeAudioEnabled: (enabled) => set({ klingNativeAudioEnabled: enabled }),
     setVideoDuration: (seconds) => set({ videoDuration: seconds }),
 
     // Actions - Provider
