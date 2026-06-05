@@ -35,6 +35,7 @@ import KlingVoiceControls from './KlingVoiceControls'
 import KlingCameraControls from './KlingCameraControls'
 import KlingMotionBrushEditor from './KlingMotionBrushEditor'
 import KlingMotionControlEditor from './KlingMotionControlEditor'
+import KlingNativeAudioToggle from './KlingNativeAudioToggle'
 import CinemaCameraControls from './CinemaCameraControls'
 
 interface ClonedVoice {
@@ -148,6 +149,7 @@ const GenerationControls = ({
     // Check if current provider is Kling
     const activeProvider = getActiveProvider()
     const isKlingProvider = activeProvider?.type === 'KLING'
+    const isKieKling = activeProvider?.model === 'kling-3.0/video'
 
     const handleCloneUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
         const files = event.target.files
@@ -881,8 +883,8 @@ const GenerationControls = ({
                 />
             </div>
 
-            {/* Kling AI Controls - Show only when Kling provider is selected in VIDEO mode */}
-            {generationMode === 'VIDEO' && isKlingProvider && (
+            {/* Kling AI Controls - Kling provider (direct) OR Kling 3.0 via KIE, in VIDEO mode */}
+            {generationMode === 'VIDEO' && (isKlingProvider || isKieKling) && (
                 <div className="space-y-3 pt-4 border-t border-orange-700/50">
                     <div className="flex items-center gap-2 mb-2">
                         <div className="w-5 h-5 rounded-full bg-linear-to-br from-orange-500 to-red-500 flex items-center justify-center text-white font-bold text-[10px]">
@@ -891,16 +893,23 @@ const GenerationControls = ({
                         <span className="text-sm font-medium text-orange-300">Kling Features</span>
                         <span className="text-xs text-gray-500">({activeProvider?.model})</span>
                     </div>
-                    {/* Voice and Motion Control only for v2.6+ */}
+                    {/* Voice — direct Kling v2.6 only (KIE plain video has no voice synthesis) */}
                     {activeProvider?.model === 'kling-v2-6' && (
+                        <KlingVoiceControls disabled={isGenerating} />
+                    )}
+                    {/* Motion Control — direct Kling v2.6+ or Kling 3.0 via KIE */}
+                    {(activeProvider?.model === 'kling-v2-6' || isKieKling) && (
+                        <KlingMotionControlEditor disabled={isGenerating} allowPresets={!isKieKling} />
+                    )}
+                    {/* Native audio — KIE Kling 3.0 only */}
+                    {isKieKling && <KlingNativeAudioToggle disabled={isGenerating} />}
+                    {/* Camera + Motion Brush — direct Kling only (not exposed by KIE Kling API) */}
+                    {isKlingProvider && (
                         <>
-                            <KlingVoiceControls disabled={isGenerating} />
-                            <KlingMotionControlEditor disabled={isGenerating} />
+                            <KlingCameraControls disabled={isGenerating} />
+                            <KlingMotionBrushEditor disabled={isGenerating} />
                         </>
                     )}
-                    {/* Camera and Motion Brush for all Kling models */}
-                    <KlingCameraControls disabled={isGenerating} />
-                    <KlingMotionBrushEditor disabled={isGenerating} />
                 </div>
             )}
 
