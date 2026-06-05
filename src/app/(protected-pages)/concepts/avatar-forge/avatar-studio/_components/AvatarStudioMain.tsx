@@ -40,7 +40,7 @@ import {
     generateVideoMiniMax,
 } from '@/services/MiniMaxService'
 import type { MiniMaxVideoModel } from '@/@types/minimax'
-import { generateImageKie, generateVideoKie, submitKieImageTask, checkKieImageTask } from '@/services/KieService'
+import { generateImageKie, generateVideoKie, generateMotionControlKie, submitKieImageTask, checkKieImageTask } from '@/services/KieService'
 import { generateImageViaGateway } from '@/services/GatewayService'
 import { buildAvatarPrompt, buildLeanIdentityPrompt, stripHarnessForFaceSwap, type RefRole } from '@/utils/avatarPromptBuilder'
 import { HiOutlineCog, HiOutlineBookOpen, HiX } from 'react-icons/hi'
@@ -146,6 +146,7 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
         klingMotionOrientation,
         klingKeepOriginalSound,
         klingMotionDuration,
+        klingNativeAudioEnabled,
         activeProviderId,
         providers,
         errorMsg,
@@ -884,15 +885,30 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                             resolution: videoResolution,
                         })
                     } else if (activeProvider?.type === 'KIE') {
-                        // KIE aggregator — image-to-video via aggregator
-                        resultUrl = await generateVideoKie({
-                            prompt: fullPrompt,
-                            firstFrameImage: optimizedVideoInput,
-                            model: activeProvider.model || 'veo-3.1/text-to-video',
-                            aspectRatio,
-                            duration: videoDuration,
-                            resolution: videoResolution,
-                        })
+                        const isKieKling = activeProvider.model === 'kling-3.0/video'
+                        const hasMotionVideo = !!(klingMotionVideoBase64 || klingMotionVideoUrl)
+                        if (isKieKling && klingMotionControlEnabled && hasMotionVideo) {
+                            // KIE Kling 3.0 motion-control (v2v)
+                            resultUrl = await generateMotionControlKie({
+                                characterImage: optimizedVideoInput,
+                                motionVideoUrl: klingMotionVideoUrl || undefined,
+                                motionVideoBase64: klingMotionVideoBase64 || undefined,
+                                prompt: fullPrompt,
+                                resolution: videoResolution,
+                                characterOrientation: klingMotionOrientation,
+                            })
+                        } else {
+                            // KIE aggregator — plain video (Kling 3.0 / Seedance / Wan / Veo)
+                            resultUrl = await generateVideoKie({
+                                prompt: fullPrompt,
+                                firstFrameImage: optimizedVideoInput,
+                                model: activeProvider.model || 'veo-3.1/text-to-video',
+                                aspectRatio,
+                                duration: videoDuration,
+                                resolution: videoResolution,
+                                sound: isKieKling ? klingNativeAudioEnabled : undefined,
+                            })
+                        }
                     } else {
                         // Use Gemini Service (default)
                         resultUrl = await genVideoGemini({
@@ -972,15 +988,30 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                             optimizedPayload.bodyRef ??
                             optimizedPayload.generalRefs[0] ??
                             null
+                        const isKieKling = activeProvider.model === 'kling-3.0/video'
+                        const hasMotionVideo = !!(klingMotionVideoBase64 || klingMotionVideoUrl)
 
-                        resultUrl = await generateVideoKie({
-                            prompt: fullPrompt,
-                            firstFrameImage: firstRef,
-                            model: activeProvider.model || 'veo-3.1/text-to-video',
-                            aspectRatio,
-                            duration: videoDuration,
-                            resolution: videoResolution,
-                        })
+                        if (isKieKling && klingMotionControlEnabled && hasMotionVideo && firstRef) {
+                            // KIE Kling 3.0 motion-control (v2v)
+                            resultUrl = await generateMotionControlKie({
+                                characterImage: firstRef,
+                                motionVideoUrl: klingMotionVideoUrl || undefined,
+                                motionVideoBase64: klingMotionVideoBase64 || undefined,
+                                prompt: fullPrompt,
+                                resolution: videoResolution,
+                                characterOrientation: klingMotionOrientation,
+                            })
+                        } else {
+                            resultUrl = await generateVideoKie({
+                                prompt: fullPrompt,
+                                firstFrameImage: firstRef,
+                                model: activeProvider.model || 'veo-3.1/text-to-video',
+                                aspectRatio,
+                                duration: videoDuration,
+                                resolution: videoResolution,
+                                sound: isKieKling ? klingNativeAudioEnabled : undefined,
+                            })
+                        }
                     } else {
                         // Use Gemini Service (default)
                         resultUrl = await genVideoGemini({
