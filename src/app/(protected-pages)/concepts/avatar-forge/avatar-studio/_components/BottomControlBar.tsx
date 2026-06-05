@@ -1365,10 +1365,12 @@ const BottomControlBar = ({
                                         </div>
                                     )}
 
-                                    {/* Camera Controls - Available for all Kling versions */}
-                                    <div className="mb-3">
-                                        <KlingCameraControls disabled={isGenerating} />
-                                    </div>
+                                    {/* Camera Controls - direct Kling only (not exposed by KIE Kling API) */}
+                                    {isKlingProvider && (
+                                        <div className="mb-3">
+                                            <KlingCameraControls disabled={isGenerating} />
+                                        </div>
+                                    )}
 
                                     {/* Motion Brush - Available for v1.6+ */}
                                     {(activeProvider?.model === 'kling-v1-6' || isKlingV26) && (
