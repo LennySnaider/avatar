@@ -855,23 +855,28 @@ Después de la línea 261 (`const isKlingV26 = isKlingProvider && activeProvider
     const isKieKling = activeProvider?.model === 'kling-3.0/video'
 ```
 
-- [ ] **Step 3: Mostrar el trigger del popover para KIE Kling**
+- [ ] **Step 3: Extender el gate EXTERIOR del Dropdown "Kling AI" (corrección)**
 
-En la línea 1339, reemplazar:
+⚠️ El panel completo está envuelto por un gate exterior en la **línea 1333**
+(`{isKlingProvider && (` justo después de `{/* Kling AI Controls … */}`). Como el
+provider KIE tiene `type === 'KIE'`, `isKlingProvider` es `false` y el Dropdown
+entero NO renderiza — por eso hay que extender este gate, no el badge interno.
+
+En la línea 1333, reemplazar:
 
 ```tsx
-                                        {isKlingV26 && (
+                        {isKlingProvider && (
 ```
 
 por:
 
 ```tsx
-                                        {(isKlingV26 || isKieKling) && (
+                        {(isKlingProvider || isKieKling) && (
 ```
 
-> Nota: si el `<span>v2.6</span>` dentro de ese trigger queda visible para KIE
-> Kling, es cosmético; opcionalmente cambiarlo por `{isKlingV26 ? 'v2.6' : 'v3'}`.
-> No es bloqueante.
+> El badge interno de la línea 1339 (`{isKlingV26 && <span>v2.6</span>}`) se **deja
+> tal cual** — para KIE Kling simplemente no se muestra badge (no queremos un "v2.6"
+> engañoso). No tocar la línea 1339.
 
 - [ ] **Step 4: Mostrar Motion Control + audio para KIE Kling**
 
