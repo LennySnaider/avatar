@@ -273,6 +273,19 @@ export const DEFAULT_PROVIDERS: AIProvider[] = [
         api_key_env_var: 'KIE_API_KEY',
         created_at: null,
     },
+    {
+        id: 'kie-kling-3-0',
+        name: 'Kling 3.0 · KIE',
+        type: 'KIE' as ProviderType,
+        model: 'kling-3.0/video',
+        endpoint: 'https://api.kie.ai/api/v1',
+        is_active: true,
+        supports_image: false,
+        supports_video: true,
+        requires_api_key: true,
+        api_key_env_var: 'KIE_API_KEY',
+        created_at: null,
+    },
 ]
 
 const ProviderManagerDrawer = () => {
@@ -397,6 +410,8 @@ const ProviderManagerDrawer = () => {
                 return 'OpenAI GPT 4o - photorealistic, mejor con texto en imagen'
             case 'kie-gpt-image-2':
                 return 'OpenAI GPT Image 2 vía KIE - usa refs (image-to-image, hasta 16), 9:16 nativo, 2K'
+            case 'kie-kling-3-0':
+                return 'Kling 3.0 vía KIE — video i2v/t2v + motion-control v2v, audio nativo opcional, ~20% más barato que el directo'
             case 'gateway-gpt-image-2':
                 return 'OpenAI GPT Image 2 vía Vercel AI Gateway - modelo nuevo (requiere créditos pagos)'
             case 'gateway-seedream-4':
