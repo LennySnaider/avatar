@@ -1109,6 +1109,7 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
         klingMotionOrientation,
         klingKeepOriginalSound,
         klingMotionDuration,
+        klingNativeAudioEnabled,
         geminiAutoFallback,
         getActiveProvider,
         getFullPrompt,
