@@ -504,6 +504,8 @@ export interface GenerateVideoKieParams {
     aspectRatio?: string
     duration?: number
     resolution?: string
+    /** Kling 3.0 native audio (`sound`). Ignored by other KIE models. */
+    sound?: boolean
 }
 
 /**
@@ -769,6 +771,65 @@ async function generateImageGptImage2(
 }
 
 /**
+ * KIE Kling 3.0 only accepts 16:9, 9:16, 1:1. Map other ratios to the nearest
+ * supported one rather than letting the API 400.
+ */
+function clampKlingAspect(aspect: string): '16:9' | '9:16' | '1:1' {
+    if (aspect === '16:9' || aspect === '9:16' || aspect === '1:1') return aspect
+    if (aspect === '4:3') return '16:9'
+    if (aspect === '3:4') return '9:16'
+    return '9:16' // avatar default is vertical
+}
+
+/**
+ * Kling 3.0 video (kling-3.0/video) via the unified /jobs/createTask flow.
+ * Native audio via `sound`; quality via `mode` (std=720p, pro=1080p) — NO
+ * separate `resolution` field (unlike Seedance/Wan). Image, if present, must
+ * be a public HTTP URL (uploaded to Supabase first) → image-to-video; absent
+ * → text-to-video.
+ */
+async function generateVideoKling3(params: GenerateVideoKieParams): Promise<string> {
+    const {
+        prompt,
+        firstFrameImage,
+        aspectRatio = '9:16',
+        duration = 5,
+        resolution,
+        sound = false,
+    } = params
+
+    const input: Record<string, unknown> = {
+        prompt,
+        sound,
+        duration: Number(duration),
+        aspect_ratio: clampKlingAspect(aspectRatio),
+        mode: resolution === '1080p' ? 'pro' : 'std',
+    }
+
+    if (firstFrameImage) {
+        const url = await uploadReferenceToSupabase(
+            firstFrameImage.base64,
+            firstFrameImage.mimeType,
+        )
+        console.log(`[KIE/Kling3] Uploaded first frame to: ${url}`)
+        input.image_urls = [url]
+    }
+
+    console.log(`[KIE/Kling3] Submitting: duration=${duration}s, mode=${input.mode}, aspect=${input.aspect_ratio}, sound=${sound}, i2v=${!!firstFrameImage}`)
+    const taskId = await withTimeout(
+        submitTask({ model: 'kling-3.0/video', input }),
+        30_000,
+        'KIE Kling 3.0 submit',
+    )
+    console.log(`[KIE/Kling3] Task submitted: ${taskId}`)
+
+    const urls = await pollTask(taskId, { budgetMs: 600_000, intervalMs: 5000 })
+    console.log(`[KIE/Kling3] Generation complete: ${urls[0]}`)
+
+    return persistToSupabase(urls[0], 'mp4', 'kie-videos')
+}
+
+/**
  * Generate a video via KIE AI. Routes to the right adapter based on the
  * model — newer KIE endpoints (Seedance, Wan) require HTTP-only references
  * and integer durations, so they can't share the legacy generic body.
@@ -781,6 +842,9 @@ export async function generateVideoKie(
     }
     if (params.model === 'wan/2-7-image-to-video') {
         return generateVideoWan27(params)
+    }
+    if (params.model === 'kling-3.0/video') {
+        return generateVideoKling3(params)
     }
 
     const {
