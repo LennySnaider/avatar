@@ -46,6 +46,7 @@ import {
 import PromptTextareaWithTags from './PromptTextareaWithTags'
 import KlingVoiceControls from './KlingVoiceControls'
 import KlingMotionControlEditor from './KlingMotionControlEditor'
+import KlingNativeAudioToggle from './KlingNativeAudioToggle'
 import KlingCameraControls from './KlingCameraControls'
 import KlingMotionBrushEditor from './KlingMotionBrushEditor'
 
@@ -259,6 +260,7 @@ const BottomControlBar = ({
     const activeProvider = getActiveProvider()
     const isKlingProvider = activeProvider?.type === 'KLING'
     const isKlingV26 = isKlingProvider && activeProvider?.model === 'kling-v2-6'
+    const isKieKling = activeProvider?.model === 'kling-3.0/video'
 
     // Per-provider video capability menus. Resolution can be null when the
     // provider doesn't expose a pixel choice (e.g. Kling) so the UI hides
@@ -1329,8 +1331,8 @@ const BottomControlBar = ({
                             </div>
                         </Dropdown>
 
-                        {/* Kling AI Controls - Only show when Kling provider is active */}
-                        {isKlingProvider && (
+                        {/* Kling AI Controls - direct Kling provider OR Kling 3.0 via KIE */}
+                        {(isKlingProvider || isKieKling) && (
                             <Dropdown
                                 placement="top-start"
                                 renderTitle={
@@ -1350,10 +1352,16 @@ const BottomControlBar = ({
                                         </div>
                                     )}
 
-                                    {/* Motion Control - Only for v2.6+ */}
-                                    {isKlingV26 && (
+                                    {/* Motion Control - direct v2.6+ or Kling 3.0 via KIE */}
+                                    {(isKlingV26 || isKieKling) && (
                                         <div className="mb-3">
-                                            <KlingMotionControlEditor disabled={isGenerating} />
+                                            <KlingMotionControlEditor disabled={isGenerating} allowPresets={!isKieKling} />
+                                        </div>
+                                    )}
+                                    {/* Native audio - KIE Kling 3.0 only */}
+                                    {isKieKling && (
+                                        <div className="mb-3">
+                                            <KlingNativeAudioToggle disabled={isGenerating} />
                                         </div>
                                     )}
 
