@@ -185,7 +185,7 @@ async function uploadReferenceToSupabase(
     const cleanBase64 = base64.includes(',') ? base64.split(',')[1] : base64
     const buffer = Buffer.from(cleanBase64, 'base64')
 
-    const ext = mimeType.includes('png') ? 'png' : mimeType.includes('webp') ? 'webp' : 'jpg'
+    const ext = mimeType.includes('mp4') ? 'mp4' : mimeType.includes('png') ? 'png' : mimeType.includes('webp') ? 'webp' : 'jpg'
     const fileName = `kie-refs/${Date.now()}-${Math.random().toString(36).substr(2, 9)}.${ext}`
 
     const supabase = createServerSupabaseClient()
@@ -825,6 +825,82 @@ async function generateVideoKling3(params: GenerateVideoKieParams): Promise<stri
 
     const urls = await pollTask(taskId, { budgetMs: 600_000, intervalMs: 5000 })
     console.log(`[KIE/Kling3] Generation complete: ${urls[0]}`)
+
+    return persistToSupabase(urls[0], 'mp4', 'kie-videos')
+}
+
+export interface GenerateMotionControlKieParams {
+    characterImage: { base64: string; mimeType: string }
+    /** Driving video as a public HTTP URL (preferred — already hosted). */
+    motionVideoUrl?: string | null
+    /** OR a base64 video to upload to Supabase first. */
+    motionVideoBase64?: string | null
+    prompt?: string
+    /** Our VideoResolution string; '1080p' → pro, else → std (720p). */
+    resolution?: string
+    characterOrientation?: 'video' | 'image'
+}
+
+/**
+ * Kling 3.0 motion-control (kling-3.0/motion-control), video-to-video. Needs
+ * BOTH a character image (input_urls) and a driving video (video_urls), each
+ * as a public HTTP URL. NO preset motions (KIE doesn't expose them). Quality
+ * via `mode` (std=720p, pro=1080p).
+ */
+export async function generateMotionControlKie(
+    params: GenerateMotionControlKieParams,
+): Promise<string> {
+    const {
+        characterImage,
+        motionVideoUrl,
+        motionVideoBase64,
+        prompt,
+        resolution,
+        characterOrientation = 'video',
+    } = params
+
+    // Validate before any side-effectful upload: a driving video is required.
+    // An empty-string URL counts as absent.
+    if (!motionVideoUrl && !motionVideoBase64) {
+        throw new Error(
+            'Kling 3.0 motion-control (KIE) requires a driving video (upload or URL). Presets are not supported on KIE.',
+        )
+    }
+
+    const imageUrl = await uploadReferenceToSupabase(
+        characterImage.base64,
+        characterImage.mimeType,
+    )
+
+    let videoUrl: string | null = motionVideoUrl || null // '' → null
+    if (!videoUrl && motionVideoBase64) {
+        videoUrl = await uploadReferenceToSupabase(motionVideoBase64, 'video/mp4')
+    }
+    if (!videoUrl) {
+        throw new Error(
+            'Kling 3.0 motion-control (KIE) requires a driving video (upload or URL). Presets are not supported on KIE.',
+        )
+    }
+
+    const input: Record<string, unknown> = {
+        input_urls: [imageUrl],
+        video_urls: [videoUrl],
+        mode: resolution === '1080p' ? 'pro' : 'std',
+        character_orientation: characterOrientation,
+        background_source: 'input_video',
+    }
+    if (prompt) input.prompt = prompt
+
+    console.log(`[KIE/Kling3-MC] Submitting motion-control: mode=${input.mode}, orientation=${characterOrientation}`)
+    const taskId = await withTimeout(
+        submitTask({ model: 'kling-3.0/motion-control', input }),
+        30_000,
+        'KIE Kling 3.0 motion-control submit',
+    )
+    console.log(`[KIE/Kling3-MC] Task submitted: ${taskId}`)
+
+    const urls = await pollTask(taskId, { budgetMs: 600_000, intervalMs: 5000 })
+    console.log(`[KIE/Kling3-MC] Generation complete: ${urls[0]}`)
 
     return persistToSupabase(urls[0], 'mp4', 'kie-videos')
 }
