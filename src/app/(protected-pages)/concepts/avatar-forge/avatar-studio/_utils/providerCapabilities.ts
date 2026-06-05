@@ -21,6 +21,7 @@ export function getDurationOptionsForProvider(provider: AIProvider | null): numb
             // Veo 3 has a fixed duration; expose a single option for clarity.
             return [8]
         case 'KIE':
+            if (provider.model === 'kling-3.0/video') return [5, 10]
             if (provider.model === 'bytedance/seedance-2') return [4, 5, 6, 8, 10, 12, 15]
             if (provider.model === 'wan/2-7-image-to-video') return [2, 5, 7, 10, 12, 15]
             // Older KIE models (Veo via aggregator, etc.) — sane default.
@@ -73,6 +74,7 @@ export function getResolutionOptionsForProvider(
         case 'GOOGLE':
             return ['720p', '1080p']
         case 'KIE':
+            if (provider.model === 'kling-3.0/video') return ['720p', '1080p']
             if (provider.model === 'bytedance/seedance-2') return ['480p', '720p', '1080p']
             if (provider.model === 'wan/2-7-image-to-video') return ['720p', '1080p']
             // Other KIE models (legacy Veo wiring, etc.) don't expose resolution.
