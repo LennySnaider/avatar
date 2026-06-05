@@ -12,11 +12,13 @@ import { HiOutlineFilm, HiOutlineX, HiOutlineVolumeUp, HiOutlineLink, HiOutlineU
 
 interface KlingMotionControlEditorProps {
     disabled?: boolean
+    /** Presets are direct-Kling only; KIE motion-control needs a driving video. */
+    allowPresets?: boolean
 }
 
 type MotionSourceTab = 'preset' | 'upload' | 'url'
 
-const KlingMotionControlEditor = ({ disabled = false }: KlingMotionControlEditorProps) => {
+const KlingMotionControlEditor = ({ disabled = false, allowPresets = true }: KlingMotionControlEditorProps) => {
     const {
         klingMotionControlEnabled,
         klingMotionVideoBase64,
@@ -41,7 +43,7 @@ const KlingMotionControlEditor = ({ disabled = false }: KlingMotionControlEditor
     const getActiveTab = (): MotionSourceTab => {
         if (klingMotionVideoBase64) return 'upload'
         if (klingMotionVideoUrl) return 'url'
-        return 'preset'
+        return allowPresets ? 'preset' : 'upload'
     }
 
     const [activeTab, setActiveTab] = useState<MotionSourceTab>(getActiveTab())
@@ -153,17 +155,19 @@ const KlingMotionControlEditor = ({ disabled = false }: KlingMotionControlEditor
                     <>
                         {/* Motion Source Tabs - 3 options */}
                         <div className="flex gap-1 p-1 bg-gray-900/50 rounded-lg">
-                            <button
-                                onClick={() => handleTabChange('preset')}
-                                className={`flex-1 py-2 px-2 rounded text-xs font-medium transition-colors ${
-                                    activeTab === 'preset'
-                                        ? 'bg-cyan-600 text-white'
-                                        : 'text-gray-400 hover:text-white'
-                                }`}
-                                disabled={disabled}
-                            >
-                                Presets
-                            </button>
+                            {allowPresets && (
+                                <button
+                                    onClick={() => handleTabChange('preset')}
+                                    className={`flex-1 py-2 px-2 rounded text-xs font-medium transition-colors ${
+                                        activeTab === 'preset'
+                                            ? 'bg-cyan-600 text-white'
+                                            : 'text-gray-400 hover:text-white'
+                                    }`}
+                                    disabled={disabled}
+                                >
+                                    Presets
+                                </button>
+                            )}
                             <button
                                 onClick={() => handleTabChange('upload')}
                                 className={`flex-1 py-2 px-2 rounded text-xs font-medium transition-colors flex items-center justify-center gap-1 ${
@@ -191,7 +195,7 @@ const KlingMotionControlEditor = ({ disabled = false }: KlingMotionControlEditor
                         </div>
 
                         {/* Preset Motion Grid */}
-                        {activeTab === 'preset' && (
+                        {allowPresets && activeTab === 'preset' && (
                             <div>
                                 <label className="block text-xs text-gray-400 mb-2">Select Motion Preset</label>
                                 <div className="grid grid-cols-3 gap-2">
