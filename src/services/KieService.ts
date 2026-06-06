@@ -801,6 +801,10 @@ async function generateVideoKling3(params: GenerateVideoKieParams): Promise<stri
     const input: Record<string, unknown> = {
         prompt,
         sound,
+        // KIE requires `multi_shots` explicitly even for a normal single-shot
+        // video (omitting it → 422 "multi_shots cannot be empty"). false = use
+        // the top-level `prompt` as one continuous shot (no `multi_prompt`).
+        multi_shots: false,
         duration: Number(duration),
         aspect_ratio: clampKlingAspect(aspectRatio),
         mode: resolution === '1080p' ? 'pro' : 'std',
