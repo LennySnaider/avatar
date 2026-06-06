@@ -40,7 +40,7 @@ import {
     generateVideoMiniMax,
 } from '@/services/MiniMaxService'
 import type { MiniMaxVideoModel } from '@/@types/minimax'
-import { generateImageKie, generateVideoKie, generateMotionControlKie, submitKieImageTask, checkKieImageTask } from '@/services/KieService'
+import { generateImageKie, generateVideoKieSafe, generateMotionControlKieSafe, submitKieImageTask, checkKieImageTask } from '@/services/KieService'
 import { generateImageViaGateway } from '@/services/GatewayService'
 import { buildAvatarPrompt, buildLeanIdentityPrompt, stripHarnessForFaceSwap, type RefRole } from '@/utils/avatarPromptBuilder'
 import { HiOutlineCog, HiOutlineBookOpen, HiX } from 'react-icons/hi'
@@ -98,6 +98,32 @@ async function genVideoGemini(
         throw new Error(r.error)
     }
     return r.url
+}
+
+/**
+ * Client unwrap for generateVideoKieSafe / generateMotionControlKieSafe. The
+ * server returns the KIE error as DATA (a thrown 'use server' error is masked as
+ * a generic 500 in prod); we re-throw the REAL message HERE so handleGenerate's
+ * catch shows it. Mirrors genVideoGemini.
+ */
+async function genVideoKie(
+    params: Parameters<typeof generateVideoKieSafe>[0],
+): Promise<string> {
+    const r = await generateVideoKieSafe(params)
+    if (!r.success) {
+        throw new Error(r.error)
+    }
+    return r.url as string
+}
+
+async function genMotionControlKie(
+    params: Parameters<typeof generateMotionControlKieSafe>[0],
+): Promise<string> {
+    const r = await generateMotionControlKieSafe(params)
+    if (!r.success) {
+        throw new Error(r.error)
+    }
+    return r.url as string
 }
 
 const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
@@ -829,7 +855,7 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                                 modelName: 'kling-v3-omni',
                             })
                         } else {
-                            resultUrl = await generateVideoKie({
+                            resultUrl = await genVideoKie({
                                 prompt: fullPrompt,
                                 firstFrameImage: optimizedVideoInput,
                                 referenceImages: identityRefs,
@@ -889,7 +915,7 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                         const hasMotionVideo = !!(klingMotionVideoBase64 || klingMotionVideoUrl)
                         if (isKieKling && klingMotionControlEnabled && hasMotionVideo) {
                             // KIE Kling 3.0 motion-control (v2v)
-                            resultUrl = await generateMotionControlKie({
+                            resultUrl = await genMotionControlKie({
                                 characterImage: optimizedVideoInput,
                                 motionVideoUrl: klingMotionVideoUrl || undefined,
                                 motionVideoBase64: klingMotionVideoBase64 || undefined,
@@ -899,7 +925,7 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                             })
                         } else {
                             // KIE aggregator — plain video (Kling 3.0 / Seedance / Wan / Veo)
-                            resultUrl = await generateVideoKie({
+                            resultUrl = await genVideoKie({
                                 prompt: fullPrompt,
                                 firstFrameImage: optimizedVideoInput,
                                 model: activeProvider.model || 'veo-3.1/text-to-video',
@@ -993,7 +1019,7 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
 
                         if (isKieKling && klingMotionControlEnabled && hasMotionVideo && firstRef) {
                             // KIE Kling 3.0 motion-control (v2v)
-                            resultUrl = await generateMotionControlKie({
+                            resultUrl = await genMotionControlKie({
                                 characterImage: firstRef,
                                 motionVideoUrl: klingMotionVideoUrl || undefined,
                                 motionVideoBase64: klingMotionVideoBase64 || undefined,
@@ -1002,7 +1028,7 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                                 characterOrientation: klingMotionOrientation,
                             })
                         } else {
-                            resultUrl = await generateVideoKie({
+                            resultUrl = await genVideoKie({
                                 prompt: fullPrompt,
                                 firstFrameImage: firstRef,
                                 model: activeProvider.model || 'veo-3.1/text-to-video',

@@ -909,6 +909,42 @@ export async function generateMotionControlKie(
     return persistToSupabase(urls[0], 'mp4', 'kie-videos')
 }
 
+export interface KieVideoSafeResult {
+    success: boolean
+    url?: string
+    error?: string
+}
+
+/**
+ * Error-as-data wrappers for the KIE video generators. A thrown error from a
+ * `'use server'` action is masked as a generic 500 ("An error occurred in the
+ * Server Components render") in production, hiding the real reason. Returning the
+ * message as DATA lets the client surface the actual KIE error (422 missing field,
+ * RAI moderation, rate-limit, etc.) — same pattern as `generateImageKie` and
+ * `GeminiService.generateVideoSafe`.
+ */
+export async function generateVideoKieSafe(
+    params: GenerateVideoKieParams,
+): Promise<KieVideoSafeResult> {
+    try {
+        const url = await generateVideoKie(params)
+        return { success: true, url }
+    } catch (e) {
+        return { success: false, error: e instanceof Error ? e.message : String(e) }
+    }
+}
+
+export async function generateMotionControlKieSafe(
+    params: GenerateMotionControlKieParams,
+): Promise<KieVideoSafeResult> {
+    try {
+        const url = await generateMotionControlKie(params)
+        return { success: true, url }
+    } catch (e) {
+        return { success: false, error: e instanceof Error ? e.message : String(e) }
+    }
+}
+
 /**
  * Generate a video via KIE AI. Routes to the right adapter based on the
  * model — newer KIE endpoints (Seedance, Wan) require HTTP-only references
