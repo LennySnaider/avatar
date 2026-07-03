@@ -16,7 +16,7 @@ export type KieVideoModel =
     | 'bytedance/seedance-2'       // unified /jobs/createTask, first_frame_url HTTP, duration int
     | 'wan/2-7-image-to-video'     // unified /jobs/createTask, first_frame_url HTTP required
     | 'kling-3.0/video'            // unified /jobs/createTask; image_urls[], sound, mode std/pro
-    | 'kling-3.0/motion-control'   // unified /jobs/createTask; input_urls[]+video_urls[] (v2v)
+    | 'kling-3.0/motion-control'   // unified /jobs/createTask; input_urls[]+video_urls[] (v2v), mode 720p/1080p (NOT std/pro)
 
 export interface KieCreateTaskRequest {
     model: string

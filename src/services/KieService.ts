@@ -840,7 +840,7 @@ export interface GenerateMotionControlKieParams {
     /** OR a base64 video to upload to Supabase first. */
     motionVideoBase64?: string | null
     prompt?: string
-    /** Our VideoResolution string; '1080p' → pro, else → std (720p). */
+    /** Our VideoResolution string; '1080p' → mode '1080p', else → '720p'. */
     resolution?: string
     characterOrientation?: 'video' | 'image'
 }
@@ -849,7 +849,9 @@ export interface GenerateMotionControlKieParams {
  * Kling 3.0 motion-control (kling-3.0/motion-control), video-to-video. Needs
  * BOTH a character image (input_urls) and a driving video (video_urls), each
  * as a public HTTP URL. NO preset motions (KIE doesn't expose them). Quality
- * via `mode` (std=720p, pro=1080p).
+ * via `mode` ('720p' | '1080p') — a DIFFERENT enum from kling-3.0/video's
+ * std/pro; sending std/pro here → 500 "mode is not within the range of
+ * allowed options".
  */
 export async function generateMotionControlKie(
     params: GenerateMotionControlKieParams,
@@ -889,7 +891,7 @@ export async function generateMotionControlKie(
     const input: Record<string, unknown> = {
         input_urls: [imageUrl],
         video_urls: [videoUrl],
-        mode: resolution === '1080p' ? 'pro' : 'std',
+        mode: resolution === '1080p' ? '1080p' : '720p',
         character_orientation: characterOrientation,
         background_source: 'input_video',
     }
