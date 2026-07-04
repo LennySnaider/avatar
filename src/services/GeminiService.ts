@@ -318,6 +318,105 @@ Output ONLY the prompt string for the next clip.
 }
 
 // =============================================
+// VIDEO → PROMPT (imitate a reference video)
+// =============================================
+
+const MAX_ANALYZE_VIDEO_BYTES = 20 * 1024 * 1024 // Gemini inline-data limit
+
+export interface AnalyzeVideoResult {
+    success: boolean
+    prompt?: string
+    suggestedDurationSeconds?: number
+    error?: string
+}
+
+/**
+ * Analyze a reference video and produce a detailed cinematic i2v prompt that
+ * imitates it: action beats, camera work, pacing, scene, lighting, mood.
+ * NEVER describes the person's appearance — the avatar's [BODY]/[FACE]
+ * harness owns identity. Error-as-data: a throw from a 'use server' action
+ * reaches the client as a masked 500.
+ */
+export async function analyzeVideoForPrompt(
+    videoUrl: string,
+): Promise<AnalyzeVideoResult> {
+    try {
+        const res = await fetch(videoUrl)
+        if (!res.ok) {
+            return { success: false, error: `Could not fetch video from URL (HTTP ${res.status})` }
+        }
+        const buffer = Buffer.from(await res.arrayBuffer())
+        if (buffer.byteLength > MAX_ANALYZE_VIDEO_BYTES) {
+            return {
+                success: false,
+                error: `Video too large to analyze (${Math.round(buffer.byteLength / 1024 / 1024)}MB, max 20MB) — trim or compress it`,
+            }
+        }
+        const mimeType = res.headers.get('content-type')?.split(';')[0] || 'video/mp4'
+        if (!mimeType.startsWith('video/')) {
+            return { success: false, error: `URL did not return a video (got ${mimeType})` }
+        }
+
+        const apiKey = getApiKey()
+        const ai = new GoogleGenAI({ apiKey })
+
+        const instructions = `
+You are a film director analyzing a reference video to recreate its ENERGY with a DIFFERENT actor.
+
+Watch the video and write ONE cinematic image-to-video prompt (English, 100-200 words) that reproduces:
+1. ACTION, beat by beat with timing: what the subject does first, next, last (gestures, head/body movement, expression changes as actions — e.g. "breaks into a smile", not descriptions of the face itself).
+2. CAMERA: framing (close-up/medium/wide), movement (locked-off, handheld sway, push-in, orbit, pan, tilt), lens feel (shallow depth of field, wide angle distortion).
+3. PACING & MOOD: slow/fast, smooth/energetic, the overall vibe.
+4. SCENE: environment, background elements, lighting (source, warmth, time of day), color grade.
+
+ABSOLUTE PROHIBITIONS — the prompt must contain ZERO physical description of the person in the video:
+- No face, skin, hair color/style, body shape, age, ethnicity.
+- No clothing or accessories.
+- Refer to the performer only as "the subject".
+Ignore any text overlays, captions, stickers or watermarks in the video.
+
+Also report the video's approximate duration in seconds.
+`
+
+        const response = await ai.models.generateContent({
+            model: 'gemini-2.5-flash',
+            contents: {
+                parts: [
+                    { inlineData: { mimeType, data: buffer.toString('base64') } },
+                    { text: instructions },
+                ],
+            },
+            config: {
+                responseMimeType: 'application/json',
+                responseSchema: {
+                    type: Type.OBJECT,
+                    properties: {
+                        prompt: { type: Type.STRING },
+                        durationSeconds: { type: Type.NUMBER },
+                    },
+                    required: ['prompt'],
+                },
+            },
+        })
+
+        const raw = response.text
+        if (!raw) return { success: false, error: 'Gemini returned an empty analysis' }
+        const parsed = JSON.parse(raw) as { prompt: string; durationSeconds?: number }
+        if (!parsed.prompt?.trim()) {
+            return { success: false, error: 'Gemini returned an empty prompt' }
+        }
+        return {
+            success: true,
+            prompt: parsed.prompt.trim(),
+            suggestedDurationSeconds: parsed.durationSeconds,
+        }
+    } catch (e) {
+        console.error('[GeminiService] analyzeVideoForPrompt failed', e)
+        return { success: false, error: e instanceof Error ? e.message : String(e) }
+    }
+}
+
+// =============================================
 // IMAGE DESCRIPTION
 // =============================================
 
