@@ -17,6 +17,7 @@ import {
     HiOutlineSparkles,
     HiOutlinePhotograph,
     HiOutlineVideoCamera,
+    HiOutlineFilm,
     HiOutlineUpload,
     HiOutlineX,
     HiOutlineCog,
@@ -49,6 +50,7 @@ import KlingMotionControlEditor from './KlingMotionControlEditor'
 import KlingNativeAudioToggle from './KlingNativeAudioToggle'
 import KlingCameraControls from './KlingCameraControls'
 import KlingMotionBrushEditor from './KlingMotionBrushEditor'
+import VideoToPromptDialog from './VideoToPromptDialog'
 
 // Aspect Ratio Icon Component - renders visual representation of each ratio
 const AspectRatioIcon = ({ ratio, isSelected }: { ratio: string; isSelected: boolean }) => {
@@ -182,6 +184,7 @@ const BottomControlBar = ({
     const [isAnalyzingClone, setIsAnalyzingClone] = useState(false)
     const [isAnalyzingPlace, setIsAnalyzingPlace] = useState(false)
     const [describeInputImage, setDescribeInputImage] = useState<string | null>(null) // URL for visual preview
+    const [isVideoToPromptOpen, setIsVideoToPromptOpen] = useState(false)
 
     // Prevent hydration mismatch with FloatingUI-generated IDs
     useEffect(() => {
@@ -668,6 +671,14 @@ const BottomControlBar = ({
                                         ) : (
                                             <HiOutlineSparkles className="w-4 h-4" />
                                         )}
+                                    </button>
+                                </Tooltip>
+                                <Tooltip title="Prompt from video">
+                                    <button
+                                        onClick={() => setIsVideoToPromptOpen(true)}
+                                        className="p-1.5 text-gray-400 hover:text-purple-500 transition-colors border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800"
+                                    >
+                                        <HiOutlineFilm className="w-4 h-4" />
                                     </button>
                                 </Tooltip>
                                 <Tooltip title="Clear prompt">
@@ -1550,6 +1561,11 @@ const BottomControlBar = ({
                 ))}
             </div>
             )}
+
+            <VideoToPromptDialog
+                isOpen={isVideoToPromptOpen}
+                onClose={() => setIsVideoToPromptOpen(false)}
+            />
         </div>
     )
 }
