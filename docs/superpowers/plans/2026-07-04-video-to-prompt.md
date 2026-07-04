@@ -38,7 +38,7 @@
   export async function analyzeVideoForPrompt(videoUrl: string): Promise<AnalyzeVideoResult>
   ```
 
-- [ ] **Step 1: Append the implementation to `src/services/GeminiService.ts`**
+- [x] **Step 1: Append the implementation to `src/services/GeminiService.ts`**
 
 ```ts
 // =============================================
@@ -141,14 +141,14 @@ Also report the video's approximate duration in seconds.
 }
 ```
 
-- [ ] **Step 2: Type-check**
+- [x] **Step 2: Type-check**
 
 Run: `npx tsc --noEmit 2>&1 | grep "error TS" | grep -v "\.next/"`
 Expected: empty output.
 
 If `config` is rejected by the installed `@google/genai` version, check an existing structured-output call in this same file (search `responseSchema`) and mirror its exact option shape.
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add src/services/GeminiService.ts
@@ -170,7 +170,7 @@ git commit -m "feat(avatar-studio): analyzeVideoForPrompt server action (video -
   export default VideoToPromptDialog
   ```
 
-- [ ] **Step 1: Create the component file**
+- [x] **Step 1: Create the component file**
 
 ```tsx
 'use client'
@@ -463,12 +463,12 @@ const VideoToPromptDialog = ({ isOpen, onClose }: VideoToPromptDialogProps) => {
 export default VideoToPromptDialog
 ```
 
-- [ ] **Step 2: Type-check**
+- [x] **Step 2: Type-check**
 
 Run: `npx tsc --noEmit 2>&1 | grep "error TS" | grep -v "\.next/"`
 Expected: empty. If `Input`'s `size="sm"` errors, drop the prop (ECME Input sizes vary); if `Button` lacks `loading`, replace with `disabled={isAnalyzing}`.
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add "src/app/(protected-pages)/concepts/avatar-forge/avatar-studio/_components/VideoToPromptDialog.tsx"
@@ -486,7 +486,7 @@ git commit -m "feat(avatar-studio): VideoToPromptDialog (reference video -> edit
 **Interfaces:**
 - Consumes: `VideoToPromptDialog` default export (Task 2).
 
-- [ ] **Step 1: Add import and state**
+- [x] **Step 1: Add import and state**
 
 Add to imports:
 ```tsx
@@ -499,7 +499,7 @@ Inside the component, next to the other `useState` calls:
 const [isVideoToPromptOpen, setIsVideoToPromptOpen] = useState(false)
 ```
 
-- [ ] **Step 2: Add the button to the `rightContent` grid**
+- [x] **Step 2: Add the button to the `rightContent` grid**
 
 Inside `<div className="grid grid-cols-2 gap-1">` (line ~632), after the "Enhance prompt with AI" Tooltip block:
 ```tsx
@@ -513,7 +513,7 @@ Inside `<div className="grid grid-cols-2 gap-1">` (line ~632), after the "Enhanc
 </Tooltip>
 ```
 
-- [ ] **Step 3: Render the dialog**
+- [x] **Step 3: Render the dialog**
 
 Immediately before the component's closing fragment/root element (where other overlays render):
 ```tsx
@@ -523,12 +523,12 @@ Immediately before the component's closing fragment/root element (where other ov
 />
 ```
 
-- [ ] **Step 4: Type-check**
+- [x] **Step 4: Type-check**
 
 Run: `npx tsc --noEmit 2>&1 | grep "error TS" | grep -v "\.next/"`
 Expected: empty.
 
-- [ ] **Step 5: Manual E2E verification**
+- [x] **Step 5: Manual E2E verification**
 
 1. `npm run dev` → http://localhost:3030 → Avatar Studio.
 2. Click the film button next to the prompt textarea → dialog opens.
@@ -539,7 +539,7 @@ Expected: empty.
 7. URL tab: paste a direct .mp4 URL (e.g. a Supabase public URL from the bucket) → analyze works.
 8. Negative: paste a URL to an HTML page → friendly "did not return a video" error in the dialog.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add "src/app/(protected-pages)/concepts/avatar-forge/avatar-studio/_components/BottomControlBar.tsx"
