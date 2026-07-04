@@ -11,6 +11,12 @@ interface ImageData {
 
 type ApiSizePreset = Extract<keyof typeof IMAGE_SIZES, 'API' | 'API_HIGH' | 'API_FULL'>
 
+// Vercel caps request bodies at ~4.5MB (platform limit). Keep a single
+// image's base64 under this so the whole action payload (frame + identity
+// refs + prompt) stays clear of a 413.
+const MAX_BASE64_CHARS = 2_500_000
+const PRESET_LADDER: ApiSizePreset[] = ['API_FULL', 'API_HIGH', 'API']
+
 /**
  * Hook to optimize images before sending to AI APIs
  * Resizes images to 1024px max dimension to reduce latency and cost
@@ -26,7 +32,17 @@ export function useImageOptimization() {
         if (!image || !image.base64) return null
 
         try {
-            const optimizedBase64 = await resizeBase64Image(image.base64, preset)
+            let optimizedBase64 = await resizeBase64Image(image.base64, preset)
+            // Step down the ladder if the result would blow the request cap
+            let step = PRESET_LADDER.indexOf(preset)
+            while (
+                optimizedBase64.length > MAX_BASE64_CHARS &&
+                step >= 0 &&
+                step < PRESET_LADDER.length - 1
+            ) {
+                step += 1
+                optimizedBase64 = await resizeBase64Image(image.base64, PRESET_LADDER[step])
+            }
             return {
                 base64: optimizedBase64,
                 mimeType: 'image/jpeg', // Standardize to JPEG for smaller size

@@ -2,6 +2,8 @@
 
 import { useRef, useState } from 'react'
 import { useAvatarStudioStore } from '../_store/avatarStudioStore'
+import { supabase } from '@/lib/supabase'
+import { createMotionVideoUploadUrl } from '@/services/KieService'
 import Checkbox from '@/components/ui/Checkbox'
 import Card from '@/components/ui/Card'
 import Button from '@/components/ui/Button'
@@ -38,18 +40,26 @@ const KlingMotionControlEditor = ({ disabled = false, allowPresets = true }: Kli
 
     const videoInputRef = useRef<HTMLInputElement>(null)
     const [urlInput, setUrlInput] = useState(klingMotionVideoUrl || '')
+    const [isUploadingVideo, setIsUploadingVideo] = useState(false)
+
+    // Uploaded files land in our own storage bucket as a URL (they bypass the
+    // server action to dodge Vercel's ~4.5MB body cap) — recognize them so the
+    // Upload tab, not the URL tab, owns them.
+    const isUploadedUrl = !!klingMotionVideoUrl?.includes('/generations/kie-refs/motion-')
 
     // Determine active tab based on current state
     const getActiveTab = (): MotionSourceTab => {
-        if (klingMotionVideoBase64) return 'upload'
+        if (klingMotionVideoBase64 || isUploadedUrl) return 'upload'
         if (klingMotionVideoUrl) return 'url'
         return allowPresets ? 'preset' : 'upload'
     }
 
     const [activeTab, setActiveTab] = useState<MotionSourceTab>(getActiveTab())
 
-    // Handle video file upload
-    const handleVideoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    // Handle video file upload — straight to Supabase Storage via a signed
+    // URL. Sending the video as base64 through the server action 413s past
+    // ~3.4MB (Vercel's 4.5MB request cap), so only the resulting URL travels.
+    const handleVideoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0]
         if (!file) return
 
@@ -65,19 +75,31 @@ const KlingMotionControlEditor = ({ disabled = false, allowPresets = true }: Kli
             return
         }
 
-        // Convert to base64
-        const reader = new FileReader()
-        reader.onload = () => {
-            const base64 = reader.result as string
-            setKlingMotionVideoBase64(base64)
+        setIsUploadingVideo(true)
+        try {
+            const ticket = await createMotionVideoUploadUrl(file.type)
+            const { error } = await supabase.storage
+                .from('generations')
+                .uploadToSignedUrl(ticket.path, ticket.token, file, {
+                    contentType: file.type,
+                })
+            if (error) throw new Error(error.message)
+
+            setKlingMotionVideoUrl(ticket.publicUrl)
+            setKlingMotionVideoBase64(null)
             setKlingPresetMotion(null) // Clear preset when custom video is uploaded
             setUrlInput('') // Clear URL input
+        } catch (err) {
+            alert(`Video upload failed: ${err instanceof Error ? err.message : String(err)}`)
+        } finally {
+            setIsUploadingVideo(false)
+            if (videoInputRef.current) videoInputRef.current.value = ''
         }
-        reader.readAsDataURL(file)
     }
 
     const clearMotionVideo = () => {
         setKlingMotionVideoBase64(null)
+        if (isUploadedUrl) setKlingMotionVideoUrl(null)
         if (videoInputRef.current) {
             videoInputRef.current.value = ''
         }
@@ -100,10 +122,10 @@ const KlingMotionControlEditor = ({ disabled = false, allowPresets = true }: Kli
             setUrlInput('')
             if (videoInputRef.current) videoInputRef.current.value = ''
         } else if (tab === 'upload') {
-            setKlingMotionVideoUrl(null)
+            if (!isUploadedUrl) setKlingMotionVideoUrl(null)
             setKlingPresetMotion(null)
             setUrlInput('')
-            videoInputRef.current?.click()
+            if (!isUploadedUrl) videoInputRef.current?.click()
         } else if (tab === 'url') {
             setKlingMotionVideoBase64(null)
             setKlingPresetMotion(null)
@@ -234,7 +256,7 @@ const KlingMotionControlEditor = ({ disabled = false, allowPresets = true }: Kli
 
                         {activeTab === 'upload' && (
                             <div className="space-y-3">
-                                {klingMotionVideoBase64 ? (
+                                {klingMotionVideoBase64 || isUploadedUrl ? (
                                     <>
                                         <div className="flex items-center justify-between">
                                             <label className="text-xs text-gray-400">Custom Motion Video</label>
@@ -250,12 +272,17 @@ const KlingMotionControlEditor = ({ disabled = false, allowPresets = true }: Kli
                                         </div>
                                         <div className="relative rounded-lg overflow-hidden bg-gray-900/50 border border-gray-700">
                                             <video
-                                                src={klingMotionVideoBase64}
+                                                src={klingMotionVideoBase64 || klingMotionVideoUrl || undefined}
                                                 className="w-full max-h-40 object-contain"
                                                 controls
                                             />
                                         </div>
                                     </>
+                                ) : isUploadingVideo ? (
+                                    <div className="border-2 border-dashed border-cyan-600 rounded-lg p-6 text-center">
+                                        <HiOutlineUpload className="w-8 h-8 mx-auto text-cyan-400 mb-2 animate-pulse" />
+                                        <p className="text-sm text-cyan-300">Uploading video…</p>
+                                    </div>
                                 ) : (
                                     <div
                                         onClick={() => videoInputRef.current?.click()}
@@ -263,7 +290,7 @@ const KlingMotionControlEditor = ({ disabled = false, allowPresets = true }: Kli
                                     >
                                         <HiOutlineUpload className="w-8 h-8 mx-auto text-gray-400 mb-2" />
                                         <p className="text-sm text-gray-400">Click to upload video</p>
-                                        <p className="text-xs text-gray-500 mt-1">Max 50MB</p>
+                                        <p className="text-xs text-gray-500 mt-1">Max 50MB · upper body fully visible, 3–30s</p>
                                     </div>
                                 )}
                             </div>

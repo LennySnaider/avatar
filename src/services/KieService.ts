@@ -833,6 +833,42 @@ async function generateVideoKling3(params: GenerateVideoKieParams): Promise<stri
     return persistToSupabase(urls[0], 'mp4', 'kie-videos')
 }
 
+export interface MotionVideoUploadTicket {
+    path: string
+    token: string
+    publicUrl: string
+}
+
+/**
+ * Signed upload URL so the browser can PUT large driving videos straight to
+ * Supabase Storage. Vercel caps request bodies at ~4.5MB (platform limit —
+ * next.config's bodySizeLimit can't raise it), so base64 videos inside a
+ * server-action POST 413 on anything but tiny clips.
+ */
+export async function createMotionVideoUploadUrl(
+    mimeType: string,
+): Promise<MotionVideoUploadTicket> {
+    const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL
+    if (!SUPABASE_URL) throw new Error('NEXT_PUBLIC_SUPABASE_URL is not defined')
+
+    const ext = mimeType.includes('quicktime') ? 'mov' : 'mp4'
+    const path = `kie-refs/motion-${Date.now()}-${Math.random().toString(36).slice(2, 11)}.${ext}`
+
+    const supabase = createServerSupabaseClient()
+    const { data, error } = await supabase.storage
+        .from('generations')
+        .createSignedUploadUrl(path)
+    if (error || !data) {
+        throw new Error(`Failed to create motion video upload URL: ${error?.message ?? 'no data'}`)
+    }
+
+    return {
+        path,
+        token: data.token,
+        publicUrl: `${SUPABASE_URL}/storage/v1/object/public/generations/${path}`,
+    }
+}
+
 export interface GenerateMotionControlKieParams {
     characterImage: { base64: string; mimeType: string }
     /** Driving video as a public HTTP URL (preferred — already hosted). */
