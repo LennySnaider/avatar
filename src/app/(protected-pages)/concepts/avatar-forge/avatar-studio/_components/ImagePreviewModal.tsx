@@ -107,6 +107,7 @@ const ImagePreviewModal = ({
     const imageRef = useRef<HTMLImageElement>(null)
     const videoRef = useRef<HTMLVideoElement>(null)
     const mediaContainerRef = useRef<HTMLDivElement>(null)
+    const viewportRef = useRef<HTMLDivElement>(null)
     const isDrawingRef = useRef(false)
     const lastPosRef = useRef({ x: 0, y: 0 })
     const [canvasSize, setCanvasSize] = useState({ width: 500, height: 500 })
@@ -223,6 +224,20 @@ const ImagePreviewModal = ({
         return () => el.removeEventListener('wheel', onWheel)
     }, [isEditing, handleZoomIn, handleZoomOut, previewMedia])
 
+    // Clamp pan to the actual overflow of the rendered image vs the viewport,
+    // so any zoomed-in region (including the bottom of tall images) is reachable.
+    const clampPan = useCallback((pos: { x: number; y: number }) => {
+        const img = imageRef.current
+        const viewport = viewportRef.current
+        if (!img || !viewport) return pos
+        const maxX = Math.max(0, (img.offsetWidth - viewport.clientWidth) / 2)
+        const maxY = Math.max(0, (img.offsetHeight - viewport.clientHeight) / 2)
+        return {
+            x: Math.max(-maxX, Math.min(pos.x, maxX)),
+            y: Math.max(-maxY, Math.min(pos.y, maxY)),
+        }
+    }, [])
+
     // Pan handlers for zoomed image
     const handlePanStart = useCallback((e: React.MouseEvent) => {
         if (zoomLevel <= 1 || isEditing) return
@@ -233,15 +248,19 @@ const ImagePreviewModal = ({
 
     const handlePanMove = useCallback((e: MouseEvent) => {
         if (!isPanning) return
-        const maxPan = (zoomLevel - 1) * 200
-        const newX = Math.max(-maxPan, Math.min(e.clientX - panStart.x, maxPan))
-        const newY = Math.max(-maxPan, Math.min(e.clientY - panStart.y, maxPan))
-        setPanPosition({ x: newX, y: newY })
-    }, [isPanning, panStart, zoomLevel])
+        setPanPosition(clampPan({ x: e.clientX - panStart.x, y: e.clientY - panStart.y }))
+    }, [isPanning, panStart, clampPan])
 
     const handlePanEnd = useCallback(() => {
         setIsPanning(false)
     }, [])
+
+    // Re-clamp pan when zoom changes (after the 0.2s max-height/max-width
+    // transition settles, so the measured image size is final).
+    useEffect(() => {
+        const t = setTimeout(() => setPanPosition(prev => clampPan(prev)), 220)
+        return () => clearTimeout(t)
+    }, [zoomLevel, clampPan])
 
     useEffect(() => {
         if (isPanning) {
@@ -807,7 +826,10 @@ const ImagePreviewModal = ({
                 </div>
 
                 {/* Media Content */}
-                <div className="flex-1 relative flex items-center justify-center p-4 bg-gray-100 dark:bg-gray-800 overflow-hidden">
+                <div
+                    ref={viewportRef}
+                    className="flex-1 relative flex items-center justify-center p-4 bg-gray-100 dark:bg-gray-800 overflow-hidden"
+                >
                     {/* Navigation Arrows */}
                     {hasPrev && (
                         <button
