@@ -13,6 +13,9 @@ export const IMAGE_SIZES = {
     PREVIEW: { maxWidth: 400, maxHeight: 400, quality: 0.85 },
     API: { maxWidth: 1024, maxHeight: 1024, quality: 0.9 },
     API_HIGH: { maxWidth: 1536, maxHeight: 1536, quality: 0.9 },
+    // Video first-frames: the frame drives the whole clip's quality, so keep
+    // full 720p/1080p resolution (1080x1920 portrait fits) and near-lossless.
+    API_FULL: { maxWidth: 1920, maxHeight: 1920, quality: 0.95 },
 }
 
 type ImageSizePreset = keyof typeof IMAGE_SIZES
@@ -77,10 +80,11 @@ export async function resizeBase64Image(
 
         img.onerror = () => reject(new Error('Failed to load image'))
 
-        // Handle both raw base64 and data URI formats
+        // Handle both raw base64 and data URI formats. Raw PNG base64 starts
+        // with 'iVBOR' (magic bytes) — label it correctly instead of assuming JPEG.
         const dataUri = base64.startsWith('data:')
             ? base64
-            : `data:image/jpeg;base64,${base64}`
+            : `data:${base64.startsWith('iVBOR') ? 'image/png' : 'image/jpeg'};base64,${base64}`
         img.src = dataUri
     })
 }

@@ -1,13 +1,15 @@
 'use client'
 
 import { useCallback } from 'react'
-import { optimizeForApi, cleanBase64 } from '@/utils/imageOptimization'
+import { resizeBase64Image, cleanBase64, IMAGE_SIZES } from '@/utils/imageOptimization'
 import type { ReferenceImage } from '../types'
 
 interface ImageData {
     base64: string
     mimeType: string
 }
+
+type ApiSizePreset = Extract<keyof typeof IMAGE_SIZES, 'API' | 'API_HIGH' | 'API_FULL'>
 
 /**
  * Hook to optimize images before sending to AI APIs
@@ -17,11 +19,14 @@ export function useImageOptimization() {
     /**
      * Optimize a single image for API submission
      */
-    const optimizeImage = useCallback(async (image: ImageData | null): Promise<ImageData | null> => {
+    const optimizeImage = useCallback(async (
+        image: ImageData | null,
+        preset: ApiSizePreset = 'API',
+    ): Promise<ImageData | null> => {
         if (!image || !image.base64) return null
 
         try {
-            const optimizedBase64 = await optimizeForApi(image.base64, false)
+            const optimizedBase64 = await resizeBase64Image(image.base64, preset)
             return {
                 base64: optimizedBase64,
                 mimeType: 'image/jpeg', // Standardize to JPEG for smaller size
@@ -46,7 +51,7 @@ export function useImageOptimization() {
             refs.map(async (ref) => {
                 if (!ref.base64) return null
                 try {
-                    const optimizedBase64 = await optimizeForApi(ref.base64, false)
+                    const optimizedBase64 = await resizeBase64Image(ref.base64, 'API')
                     return {
                         base64: optimizedBase64,
                         mimeType: 'image/jpeg',

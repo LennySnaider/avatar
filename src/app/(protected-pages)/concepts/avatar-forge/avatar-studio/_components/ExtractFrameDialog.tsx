@@ -169,7 +169,10 @@ const ExtractFrameDialog = ({
         const ctx = canvas.getContext('2d')
         if (!ctx) return
         ctx.drawImage(v, 0, 0)
-        const base64 = canvas.toDataURL('image/jpeg', 0.95)
+        // PNG = lossless capture. The frame is re-encoded once (JPEG 0.95,
+        // API_FULL) before hitting the API, so avoid stacking a second lossy
+        // pass here on top of the video compression.
+        const base64 = canvas.toDataURL('image/png')
         onCapture(base64)
     }, [onCapture])
 

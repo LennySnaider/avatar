@@ -787,11 +787,16 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                     if (!videoInputImage || !videoInputImage.base64) {
                         throw new Error('Please upload an image to animate')
                     }
-                    // Optimize video input image
-                    const optimizedVideoInput = await optimizeImage({
-                        base64: videoInputImage.base64,
-                        mimeType: videoInputImage.mimeType,
-                    })
+                    // First frame drives the whole clip's quality — keep full
+                    // resolution (API_FULL) instead of the 1024px API preset,
+                    // otherwise continued videos come out visibly softer.
+                    const optimizedVideoInput = await optimizeImage(
+                        {
+                            base64: videoInputImage.base64,
+                            mimeType: videoInputImage.mimeType,
+                        },
+                        'API_FULL',
+                    )
 
                     if (!optimizedVideoInput) {
                         throw new Error('Failed to optimize video input image')
@@ -1553,7 +1558,10 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
             const refImg: ReferenceImage = {
                 id: `continue-${Date.now()}`,
                 url: frameBase64,
-                mimeType: 'image/jpeg',
+                // Extracted frames are PNG data URIs; derive instead of assuming JPEG
+                mimeType: frameBase64.startsWith('data:')
+                    ? frameBase64.slice(5, frameBase64.indexOf(';'))
+                    : 'image/png',
                 base64: frameBase64.split(',')[1] || frameBase64,
                 type: 'general',
             }
