@@ -62,8 +62,8 @@ const VideoToPromptDialog = ({ isOpen, onClose }: VideoToPromptDialogProps) => {
             setError('Please select a video file')
             return
         }
-        if (file.size > 50 * 1024 * 1024) {
-            setError('Video file must be less than 50MB')
+        if (file.size > 20 * 1024 * 1024) {
+            setError('Video file must be less than 20MB (analysis limit)')
             return
         }
         setError(null)
@@ -102,6 +102,8 @@ const VideoToPromptDialog = ({ isOpen, onClose }: VideoToPromptDialogProps) => {
             }
             setResultPrompt(result.prompt)
             setSuggestedDuration(result.suggestedDurationSeconds ?? videoDuration)
+        } catch (err) {
+            setError(err instanceof Error ? err.message : String(err))
         } finally {
             setIsAnalyzing(false)
         }
