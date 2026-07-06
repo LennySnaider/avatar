@@ -18,6 +18,7 @@ import {
     apiUploadReference,
 } from '@/services/AvatarForgeService'
 import { analyzeFaceFromImages, generateAvatar } from '@/services/GeminiService'
+import { resizeBase64Image } from '@/utils/imageOptimization'
 import {
     HiOutlineUpload,
     HiOutlineX,
@@ -193,7 +194,21 @@ const AvatarCreatorMain = ({ userId, existingAvatar }: AvatarCreatorMainProps) =
 
         setIsAnalyzing(true)
         try {
-            const description = await analyzeFaceFromImages(imagesToAnalyze)
+            // Resize each ref to ~1024px before sending — full-res photos blow
+            // past Vercel's ~4.5MB server-action body cap (413). Browser canvas.
+            const optimizedToAnalyze = await Promise.all(
+                imagesToAnalyze.map(async (img) => {
+                    try {
+                        return {
+                            base64: await resizeBase64Image(img.base64, 'API'),
+                            mimeType: 'image/jpeg',
+                        }
+                    } catch {
+                        return img
+                    }
+                }),
+            )
+            const description = await analyzeFaceFromImages(optimizedToAnalyze)
 
             if (!description || description.trim().length === 0) {
                 throw new Error('Empty description returned')

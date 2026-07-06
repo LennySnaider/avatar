@@ -23,7 +23,7 @@ import {
 } from 'react-icons/hi'
 import { generateAvatar, analyzeFaceFromImages } from '@/services/GeminiService'
 import type { PhysicalMeasurements } from '@/@types/supabase'
-import { createThumbnail } from '@/utils/imageOptimization'
+import { createThumbnail, resizeBase64Image } from '@/utils/imageOptimization'
 
 // Reference image interface
 export interface AvatarReferenceImage {
@@ -67,6 +67,8 @@ const defaultMeasurements: PhysicalMeasurements = {
     bust: 90,
     waist: 60,
     hips: 90,
+    skinTone: 5,
+    hairColor: 'brown',
 }
 
 const AvatarEditDrawer = ({
@@ -266,12 +268,21 @@ const AvatarEditDrawer = ({
 
         setIsAnalyzingFace(true)
         try {
-            const description = await analyzeFaceFromImages(
-                validRefs.map((img) => ({
-                    base64: img.base64,
-                    mimeType: img.mimeType,
-                }))
+            // Resize each ref to ~1024px before sending — full-res photos blow
+            // past Vercel's ~4.5MB server-action body cap (413). Browser canvas.
+            const optimizedRefs = await Promise.all(
+                validRefs.map(async (img) => {
+                    try {
+                        return {
+                            base64: await resizeBase64Image(img.base64, 'API'),
+                            mimeType: 'image/jpeg',
+                        }
+                    } catch {
+                        return { base64: img.base64, mimeType: img.mimeType }
+                    }
+                }),
             )
+            const description = await analyzeFaceFromImages(optimizedRefs)
             if (description) {
                 setLocalFaceDescription(description)
                 toast.push(
@@ -595,6 +606,94 @@ const AvatarEditDrawer = ({
                                             ))}
                                         </div>
                                     </div>
+
+                                    {/* Skin Tone */}
+                                    <div>
+                                        <div className="flex items-center justify-between mb-2">
+                                            <label className="text-xs text-gray-500">Skin Tone</label>
+                                            <span className="text-xs font-mono text-primary">
+                                                {localMeasurements.skinTone === 1 ? 'Very Fair' :
+                                                 localMeasurements.skinTone === 2 ? 'Fair' :
+                                                 localMeasurements.skinTone === 3 ? 'Light' :
+                                                 localMeasurements.skinTone === 4 ? 'Light-Medium' :
+                                                 localMeasurements.skinTone === 5 ? 'Medium' :
+                                                 localMeasurements.skinTone === 6 ? 'Medium-Tan' :
+                                                 localMeasurements.skinTone === 7 ? 'Tan' :
+                                                 localMeasurements.skinTone === 8 ? 'Dark' :
+                                                 'Very Dark'}
+                                            </span>
+                                        </div>
+                                        <div className="relative mb-1">
+                                            <div className="h-3 rounded-full overflow-hidden flex">
+                                                {[1, 2, 3, 4, 5, 6, 7, 8, 9].map((tone) => (
+                                                    <button
+                                                        key={tone}
+                                                        onClick={() => setLocalMeasurements({ ...localMeasurements, skinTone: tone as 1|2|3|4|5|6|7|8|9 })}
+                                                        className={`flex-1 transition-all ${
+                                                            localMeasurements.skinTone === tone ? 'ring-2 ring-primary ring-offset-1 z-10 scale-110' : ''
+                                                        }`}
+                                                        style={{
+                                                            backgroundColor:
+                                                                tone === 1 ? '#FFECD2' :
+                                                                tone === 2 ? '#FFE4C4' :
+                                                                tone === 3 ? '#F5D5B8' :
+                                                                tone === 4 ? '#E8C4A0' :
+                                                                tone === 5 ? '#D4A574' :
+                                                                tone === 6 ? '#C68642' :
+                                                                tone === 7 ? '#A0522D' :
+                                                                tone === 8 ? '#6B4423' :
+                                                                '#3D2314'
+                                                        }}
+                                                    />
+                                                ))}
+                                            </div>
+                                        </div>
+                                        <Slider
+                                            value={localMeasurements.skinTone || 5}
+                                            onChange={(val) => setLocalMeasurements({ ...localMeasurements, skinTone: val as 1|2|3|4|5|6|7|8|9 })}
+                                            min={1}
+                                            max={9}
+                                            step={1}
+                                        />
+                                    </div>
+
+                                    {/* Hair Color */}
+                                    <div>
+                                        <label className="text-xs text-gray-500 block mb-2">Hair Color</label>
+                                        <div className="flex flex-wrap gap-2">
+                                            {([
+                                                { value: 'black', color: '#0a0a0a', label: 'Black' },
+                                                { value: 'dark-brown', color: '#3b2314', label: 'Dark Brown' },
+                                                { value: 'brown', color: '#6b4423', label: 'Brown' },
+                                                { value: 'light-brown', color: '#a0522d', label: 'Light Brown' },
+                                                { value: 'dark-blonde', color: '#b8860b', label: 'Dark Blonde' },
+                                                { value: 'blonde', color: '#daa520', label: 'Blonde' },
+                                                { value: 'platinum-blonde', color: '#f5f5dc', label: 'Platinum' },
+                                                { value: 'red', color: '#8b0000', label: 'Red' },
+                                                { value: 'auburn', color: '#a52a2a', label: 'Auburn' },
+                                                { value: 'ginger', color: '#ff6347', label: 'Ginger' },
+                                                { value: 'gray', color: '#808080', label: 'Gray' },
+                                                { value: 'silver', color: '#c0c0c0', label: 'Silver' },
+                                                { value: 'white', color: '#f8f8ff', label: 'White' },
+                                            ] as const).map((hair) => (
+                                                <Tooltip key={hair.value} title={hair.label}>
+                                                    <button
+                                                        onClick={() => setLocalMeasurements({ ...localMeasurements, hairColor: hair.value })}
+                                                        className={`w-7 h-7 rounded-full border-2 transition-all ${
+                                                            localMeasurements.hairColor === hair.value
+                                                                ? 'ring-2 ring-primary ring-offset-2 scale-110'
+                                                                : 'border-gray-300 dark:border-gray-600 hover:scale-105'
+                                                        }`}
+                                                        style={{ backgroundColor: hair.color }}
+                                                    />
+                                                </Tooltip>
+                                            ))}
+                                        </div>
+                                        <p className="text-xs text-gray-400 mt-2">
+                                            Selected: <span className="capitalize text-primary">{localMeasurements.hairColor?.replace('-', ' ') || 'Brown'}</span>
+                                        </p>
+                                    </div>
+
                                     {/* Measurements */}
                                     <div className="flex gap-2 flex-wrap">
                                         <div className="w-20">

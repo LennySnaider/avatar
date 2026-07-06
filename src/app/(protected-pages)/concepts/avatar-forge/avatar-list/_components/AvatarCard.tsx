@@ -16,7 +16,7 @@ import { AvatarEditDrawer, type AvatarEditData, type AvatarReferenceImage } from
 import { useAvatarListStore } from '../_store/avatarListStore'
 import { apiDeleteAvatar, apiUpdateAvatar, apiUploadReference, apiDeleteAvatarReference } from '@/services/AvatarForgeService'
 import { supabase } from '@/lib/supabase'
-import { createThumbnail } from '@/utils/imageOptimization'
+import { createThumbnail, resizeBase64Image } from '@/utils/imageOptimization'
 import type { AvatarWithReferences } from '../types'
 import type { PhysicalMeasurements } from '@/@types/supabase'
 import {
@@ -215,24 +215,40 @@ const AvatarCard = ({ avatar }: AvatarCardProps) => {
                 ...(data.bodyRef && !data.bodyRef.storagePath ? [data.bodyRef] : []),
             ]
 
+            const uploadedRefs: AvatarWithReferences['avatar_references'] = []
+            const failedUploads: string[] = []
             for (const ref of allNewRefs) {
                 try {
-                    const byteString = atob(ref.base64)
+                    // Shrink to ~1024px before rebuilding the File — full-res photos
+                    // blow past Vercel's ~4.5MB server-action body cap (413), which
+                    // used to fail silently and save the avatar with zero images.
+                    let uploadBase64 = ref.base64
+                    let uploadMime = ref.mimeType
+                    try {
+                        uploadBase64 = await resizeBase64Image(ref.base64, 'API')
+                        uploadMime = 'image/jpeg'
+                    } catch {
+                        // Fall back to the original bytes if canvas resize fails
+                    }
+                    const byteString = atob(uploadBase64)
                     const arrayBuffer = new ArrayBuffer(byteString.length)
                     const uint8Array = new Uint8Array(arrayBuffer)
                     for (let i = 0; i < byteString.length; i++) {
                         uint8Array[i] = byteString.charCodeAt(i)
                     }
-                    const blob = new Blob([uint8Array], { type: ref.mimeType })
-                    const file = new File([blob], `${ref.type}-${Date.now()}.jpg`, { type: ref.mimeType })
+                    const blob = new Blob([uint8Array], { type: uploadMime })
+                    const ext = uploadMime === 'image/jpeg' ? 'jpg' : uploadMime.split('/')[1] || 'jpg'
+                    const file = new File([blob], `${ref.type}-${Date.now()}.${ext}`, { type: uploadMime })
 
-                    await apiUploadReference(avatar.id, avatar.user_id || '', file, ref.type)
+                    const saved = await apiUploadReference(avatar.id, avatar.user_id || '', file, ref.type)
+                    uploadedRefs.push(saved)
                 } catch (err) {
                     console.error('Failed to upload reference:', err)
+                    failedUploads.push(ref.type)
                 }
             }
 
-            // Update avatar metadata
+            // Update avatar metadata (always persist the text/measurement edits)
             await apiUpdateAvatar(avatar.id, {
                 name: name,
                 identity_weight: data.identityWeight,
@@ -240,19 +256,35 @@ const AvatarCard = ({ avatar }: AvatarCardProps) => {
                 measurements: data.measurements,
             })
 
-            // Update local store
+            // Rebuild the reference list: survivors (not deleted) + newly uploaded,
+            // so the card thumbnail and "refs" badge refresh without a page reload.
+            const nextRefs = [
+                ...(avatar.avatar_references || []).filter(r => !refsToDelete.includes(r.id)),
+                ...uploadedRefs,
+            ]
             updateAvatar(avatar.id, {
                 name: name,
                 identity_weight: data.identityWeight,
                 face_description: data.faceDescription,
                 measurements: data.measurements,
+                avatar_references: nextRefs,
             })
 
-            toast.push(
-                <Notification type="success" title="Saved">
-                    Avatar updated successfully
-                </Notification>
-            )
+            if (failedUploads.length > 0) {
+                // Don't claim success when new photos silently failed to upload —
+                // that was exactly how avatars ended up saved with zero images.
+                toast.push(
+                    <Notification type="warning" title="Saved without some photos">
+                        {`${failedUploads.length} reference image(s) couldn't be uploaded. Your text and settings were saved — try re-adding the photos.`}
+                    </Notification>
+                )
+            } else {
+                toast.push(
+                    <Notification type="success" title="Saved">
+                        Avatar updated successfully
+                    </Notification>
+                )
+            }
             setEditDrawerOpen(false)
         } catch (error) {
             console.error('Failed to save:', error)
