@@ -26,6 +26,7 @@ import { generateAvatar, analyzeFaceFromImages } from '@/services/GeminiService'
 import type { ReferenceImage } from '../types'
 import type { PhysicalMeasurements } from '@/@types/supabase'
 import { createThumbnail } from '@/utils/imageOptimization'
+import HairColorPicker from '@/components/shared/HairColorPicker'
 
 interface AvatarEditDrawerProps {
     isOpen: boolean
@@ -638,41 +639,10 @@ const AvatarEditDrawer = ({ isOpen, onClose, onSaveAvatar }: AvatarEditDrawerPro
                                     </div>
 
                                     {/* Hair Color */}
-                                    <div>
-                                        <label className="text-xs text-gray-500 block mb-2">Hair Color</label>
-                                        <div className="flex flex-wrap gap-2">
-                                            {([
-                                                { value: 'black', color: '#0a0a0a', label: 'Black' },
-                                                { value: 'dark-brown', color: '#3b2314', label: 'Dark Brown' },
-                                                { value: 'brown', color: '#6b4423', label: 'Brown' },
-                                                { value: 'light-brown', color: '#a0522d', label: 'Light Brown' },
-                                                { value: 'dark-blonde', color: '#b8860b', label: 'Dark Blonde' },
-                                                { value: 'blonde', color: '#daa520', label: 'Blonde' },
-                                                { value: 'platinum-blonde', color: '#f5f5dc', label: 'Platinum' },
-                                                { value: 'red', color: '#8b0000', label: 'Red' },
-                                                { value: 'auburn', color: '#a52a2a', label: 'Auburn' },
-                                                { value: 'ginger', color: '#ff6347', label: 'Ginger' },
-                                                { value: 'gray', color: '#808080', label: 'Gray' },
-                                                { value: 'silver', color: '#c0c0c0', label: 'Silver' },
-                                                { value: 'white', color: '#f8f8ff', label: 'White' },
-                                            ] as const).map((hair) => (
-                                                <Tooltip key={hair.value} title={hair.label}>
-                                                    <button
-                                                        onClick={() => setLocalMeasurements({ ...localMeasurements, hairColor: hair.value })}
-                                                        className={`w-7 h-7 rounded-full border-2 transition-all ${
-                                                            localMeasurements.hairColor === hair.value
-                                                                ? 'ring-2 ring-primary ring-offset-2 scale-110'
-                                                                : 'border-gray-300 dark:border-gray-600 hover:scale-105'
-                                                        }`}
-                                                        style={{ backgroundColor: hair.color }}
-                                                    />
-                                                </Tooltip>
-                                            ))}
-                                        </div>
-                                        <p className="text-xs text-gray-400 mt-2">
-                                            Selected: <span className="capitalize text-primary">{localMeasurements.hairColor?.replace('-', ' ') || 'Brown'}</span>
-                                        </p>
-                                    </div>
+                                    <HairColorPicker
+                                        value={localMeasurements.hairColor}
+                                        onChange={(c) => setLocalMeasurements({ ...localMeasurements, hairColor: c })}
+                                    />
 
                                     {/* Measurements */}
                                     <div className="flex gap-2 flex-wrap">

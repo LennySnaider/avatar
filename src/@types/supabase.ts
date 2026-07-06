@@ -303,6 +303,17 @@ export type HairColor =
     | 'gray'
     | 'silver'
     | 'white'
+    // Fashion colors
+    | 'purple'
+    | 'pink'
+    | 'blue'
+    | 'green'
+    | 'teal'
+    | 'lavender'
+    | 'rose-gold'
+    | 'burgundy'
+    // Free-text custom color (any name); `& {}` keeps literal autocomplete
+    | (string & {})
 
 export interface PhysicalMeasurements {
     age: number

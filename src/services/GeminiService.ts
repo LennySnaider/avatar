@@ -80,9 +80,19 @@ const getHairColorDescription = (hairColor?: string): string => {
         'gray': 'gray hair, salt and pepper hair',
         'silver': 'silver hair, metallic gray hair',
         'white': 'white hair, snow white hair',
+        // Fashion colors
+        'purple': 'vibrant purple hair, violet dyed hair',
+        'pink': 'pink hair, rose pink dyed hair',
+        'blue': 'blue hair, electric blue dyed hair',
+        'green': 'green hair, emerald green dyed hair',
+        'teal': 'teal hair, blue-green dyed hair',
+        'lavender': 'lavender hair, pastel purple dyed hair',
+        'rose-gold': 'rose gold hair, pinkish blonde dyed hair',
+        'burgundy': 'burgundy hair, deep wine red dyed hair',
     }
 
-    return descriptions[hairColor] || hairColor.replace('-', ' ') + ' hair'
+    // Free-text custom colors fall through to a "<name> hair" description.
+    return descriptions[hairColor] || hairColor.replace(/-/g, ' ') + ' hair'
 }
 
 // getBodyDescriptors moved to @/utils/bodyDescriptors (shared with getFullPrompt
