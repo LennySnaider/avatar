@@ -1181,6 +1181,23 @@ export async function generateAvatar(params: {
     const skinToneSpecDesc = getSkinToneDescription(measurements.skinTone)
     const hairColorSpecDesc = getHairColorDescription(measurements.hairColor)
 
+    // When the user sets a hair color, the reference images and the stored
+    // face_description often show the ORIGINAL color — with no arbiter, the
+    // model follows the images. This override tells it, as the last and
+    // highest-priority instruction, to recolor the hair while keeping identity.
+    const hairColorOverride = hairColorSpecDesc ? `
+    ╔═══════════════════════════════════════════════════════════════╗
+    ║  🎨 HAIR COLOR OVERRIDE — HIGHEST PRIORITY (READ LAST)         ║
+    ╚═══════════════════════════════════════════════════════════════╝
+    The reference images ([FACE_ANCHOR], [ANGLE_SHEET]) and any hair color
+    written in the facial description may show a DIFFERENT hair color. That is
+    intentional — you MUST RECOLOR the hair.
+    → The character's hair (head hair AND eyebrows) MUST be: ${hairColorSpecDesc.toUpperCase()}
+    → This OVERRIDES any hair color visible in the reference images or written
+      in the description above. Do NOT keep the reference hair color.
+    → Change ONLY the hair COLOR. Keep the exact face identity, bone structure,
+      hairstyle, length and texture from the references.` : ''
+
     const bodySpecification = `
 ╔═══════════════════════════════════════════════════════════════════════════════╗
 ║  🚨 MANDATORY BODY SPECIFICATIONS - READ CAREFULLY 🚨                          ║
@@ -1252,7 +1269,7 @@ ${hairColorSpecDesc ? `- EXACT HAIR COLOR: ${hairColorSpecDesc}` : ''}
     if (activeFaceDescription.trim()) {
         physicalInstructions += `
     FACIAL FEATURES (HARD CONSTRAINT):
-    - ${activeFaceDescription}
+    - ${activeFaceDescription}${hairColorSpecDesc ? '\n    ⚠️ Ignore any HAIR COLOR mentioned above — it is overridden. Use the color in the HAIR COLOR OVERRIDE section instead.' : ''}
     `
     }
 
@@ -1566,6 +1583,8 @@ ${hairColorSpecDesc ? `- EXACT HAIR COLOR: ${hairColorSpecDesc}` : ''}
     ${hasPoseRef ? '- Pose matches [POSE_REF] (position only, not the person)' : ''}
     ${cameraShot !== 'AUTO' ? `- Framing is ${cameraShot.replace(/_/g, ' ')}` : ''}
     ${cameraAngle !== null ? `- Camera angle is ${cameraAngle.replace(/_/g, ' ')}` : ''}
+    ${hairColorSpecDesc ? `- Hair color is ${hairColorSpecDesc} (RECOLORED from the reference, NOT the reference's color)` : ''}
+    ${hairColorOverride}
   `
 
     // Sanitize prompt to replace words that trigger image generation safety filters

@@ -356,6 +356,22 @@ export function buildAvatarPrompt(opts: AvatarPromptOptions): { systemPreamble: 
 
     const inlineBody = buildInlineBodyDescription(measurements)
     const bodyAdjectives = getBodyDescriptors(measurements)
+
+    // A UI-set hair color must beat the reference images / face description,
+    // which otherwise show the original color and win by default (identity
+    // bleed). Highest-priority override, injected last; keeps face identity.
+    const hairColorSpecDesc = getHairColorDescription(measurements.hairColor)
+    const hairColorOverride = hairColorSpecDesc ? `
+╔═══════════════════════════════════════════════════════════════╗
+║  🎨 HAIR COLOR OVERRIDE — HIGHEST PRIORITY (READ LAST)         ║
+╚═══════════════════════════════════════════════════════════════╝
+The reference images and any hair color written in the facial description may
+show a DIFFERENT hair color. That is intentional — you MUST RECOLOR the hair.
+→ The character's hair (head hair AND eyebrows) MUST be: ${hairColorSpecDesc.toUpperCase()}
+→ This OVERRIDES any hair color visible in the reference images or written in
+  the description. Do NOT keep the reference hair color.
+→ Change ONLY the hair COLOR. Keep the exact face identity, bone structure,
+  hairstyle, length and texture from the references.` : ''
     const selectedBodyType = (measurements.bodyType || 'average').toUpperCase()
     const heightLabel = (measurements.height || 165) < 160 ? 'PETITE/SHORT' : (measurements.height || 165) < 170 ? 'AVERAGE HEIGHT' : 'TALL'
 
@@ -370,7 +386,7 @@ HEIGHT: ${measurements.height || 165}cm (${heightLabel})
 
 BODY TYPE DETAILS:
 ${bodyAdjectives}
-${faceDescription.trim() ? `\nFACIAL FEATURES (HARD CONSTRAINT):\n- ${faceDescription.trim()}` : ''}
+${faceDescription.trim() ? `\nFACIAL FEATURES (HARD CONSTRAINT):\n- ${faceDescription.trim()}${hairColorSpecDesc ? '\n⚠️ Ignore any HAIR COLOR mentioned above — it is overridden by the HAIR COLOR OVERRIDE section.' : ''}` : ''}
 
 ⚠️ CRITICAL: These body proportions are NON-NEGOTIABLE and must be CONSISTENT across all generations.`
 
@@ -446,7 +462,9 @@ ${hasClone ? '- Copying the face from [CLONE_REF] (it is a faceless mannequin) �
 - Face is IDENTICAL to [FACE_ANCHOR] (same person)
 - Body proportions match ${hasBody ? '[BODY_SHAPE] reference' : 'the specifications above'}
 ${hasPose ? '- Pose matches [POSE_REF] (position only, not the person)' : ''}
-${hasClone ? '- Pose, outfit, held objects, framing and scene match [CLONE_REF] exactly; only the face is from [FACE_ANCHOR]' : ''}`
+${hasClone ? '- Pose, outfit, held objects, framing and scene match [CLONE_REF] exactly; only the face is from [FACE_ANCHOR]' : ''}
+${hairColorSpecDesc ? `- Hair color is ${hairColorSpecDesc} (RECOLORED from the reference, NOT the reference's color)` : ''}
+${hairColorOverride}`
 
     return { systemPreamble, finalPrompt }
 }
