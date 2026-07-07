@@ -4,7 +4,7 @@ import { GoogleGenAI, Type } from '@google/genai'
 import type { PhysicalMeasurements, AspectRatio } from '@/@types/supabase'
 import { filterKnownSafeCorrections } from '@/app/(protected-pages)/concepts/avatar-forge/avatar-studio/_constants/knownSafeWords'
 import { sanitizePromptForGeneration, aggressiveSanitize } from '@/utils/promptSanitizer'
-import { getBodyDescriptors } from '@/utils/bodyDescriptors'
+import { getBodyDescriptors, getSkinToneDescription, getHairColorDescription } from '@/utils/bodyDescriptors'
 import type { CinemaLens, CinemaFocalLength, CinemaAperture } from '@/app/(protected-pages)/concepts/avatar-forge/avatar-studio/types'
 import { CINEMA_LENSES, CINEMA_FOCAL_LENGTHS, CINEMA_APERTURES } from '@/app/(protected-pages)/concepts/avatar-forge/avatar-studio/_constants/cinemaPresets'
 import { generateImage as generateImageWithMiniMax } from '@/services/MiniMaxService'
@@ -43,57 +43,8 @@ const getApiKey = (): string => {
     return apiKey
 }
 
-// Helper to convert skin tone number (1-9) to descriptive text
-const getSkinToneDescription = (skinTone?: number): string => {
-    if (!skinTone) return ''
-
-    const descriptions: Record<number, string> = {
-        1: 'very fair porcelain skin, pale ivory complexion',
-        2: 'fair skin, light complexion with pink undertones',
-        3: 'light skin, cream colored complexion',
-        4: 'light-medium skin, warm beige complexion',
-        5: 'medium skin, golden warm complexion',
-        6: 'medium-tan skin, warm olive complexion',
-        7: 'tan skin, caramel brown complexion',
-        8: 'dark skin, rich brown complexion',
-        9: 'very dark skin, deep ebony complexion',
-    }
-
-    return descriptions[skinTone] || ''
-}
-
-// Helper to convert hair color to descriptive text
-const getHairColorDescription = (hairColor?: string): string => {
-    if (!hairColor) return ''
-
-    const descriptions: Record<string, string> = {
-        'black': 'jet black hair, dark raven colored hair',
-        'dark-brown': 'dark brown hair, deep brunette hair',
-        'brown': 'brown hair, medium brunette hair',
-        'light-brown': 'light brown hair, chestnut colored hair',
-        'dark-blonde': 'dark blonde hair, dirty blonde hair, honey colored hair',
-        'blonde': 'blonde hair, golden blonde hair',
-        'platinum-blonde': 'platinum blonde hair, very light blonde, almost white hair',
-        'red': 'red hair, deep red colored hair',
-        'auburn': 'auburn hair, reddish brown hair',
-        'ginger': 'ginger hair, bright orange-red hair, copper colored hair',
-        'gray': 'gray hair, salt and pepper hair',
-        'silver': 'silver hair, metallic gray hair',
-        'white': 'white hair, snow white hair',
-        // Fashion colors
-        'purple': 'vibrant purple hair, violet dyed hair',
-        'pink': 'pink hair, rose pink dyed hair',
-        'blue': 'blue hair, electric blue dyed hair',
-        'green': 'green hair, emerald green dyed hair',
-        'teal': 'teal hair, blue-green dyed hair',
-        'lavender': 'lavender hair, pastel purple dyed hair',
-        'rose-gold': 'rose gold hair, pinkish blonde dyed hair',
-        'burgundy': 'burgundy hair, deep wine red dyed hair',
-    }
-
-    // Free-text custom colors fall through to a "<name> hair" description.
-    return descriptions[hairColor] || hairColor.replace(/-/g, ' ') + ' hair'
-}
+// Skin-tone and hair-color descriptors are shared with the KIE prompt builder
+// via bodyDescriptors (imported below) so the two paths never drift apart.
 
 // getBodyDescriptors moved to @/utils/bodyDescriptors (shared with getFullPrompt
 // so KIE/Gateway/Flux get the same body translation as the direct Gemini path).

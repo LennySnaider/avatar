@@ -84,3 +84,58 @@ export function describeBody(m: PhysicalMeasurements): string {
     if (derived) parts.push(derived)
     return parts.join(', ')
 }
+
+/**
+ * Translate a 1–9 skin-tone value into prompt-ready complexion text.
+ * Shared by both prompt builders (direct-Gemini and KIE) so they stay in sync.
+ */
+export function getSkinToneDescription(skinTone?: number): string {
+    if (!skinTone) return ''
+    const descriptions: Record<number, string> = {
+        1: 'very fair porcelain skin, pale ivory complexion',
+        2: 'fair skin, light complexion with pink undertones',
+        3: 'light skin, cream colored complexion',
+        4: 'light-medium skin, warm beige complexion',
+        5: 'medium skin, golden warm complexion',
+        6: 'medium-tan skin, warm olive complexion',
+        7: 'tan skin, caramel brown complexion',
+        8: 'dark skin, rich brown complexion',
+        9: 'very dark skin, deep ebony complexion',
+    }
+    return descriptions[skinTone] || ''
+}
+
+/**
+ * Translate a hair-color value into prompt-ready text. Handles the 13 natural
+ * colors, the fashion colors, and any free-text custom color via the
+ * `"<name> hair"` fallback. Shared by both prompt builders so they stay in sync.
+ */
+export function getHairColorDescription(hairColor?: string): string {
+    if (!hairColor) return ''
+    const descriptions: Record<string, string> = {
+        'black': 'jet black hair, dark raven colored hair',
+        'dark-brown': 'dark brown hair, deep brunette hair',
+        'brown': 'brown hair, medium brunette hair',
+        'light-brown': 'light brown hair, chestnut colored hair',
+        'dark-blonde': 'dark blonde hair, dirty blonde hair, honey colored hair',
+        'blonde': 'blonde hair, golden blonde hair',
+        'platinum-blonde': 'platinum blonde hair, very light blonde, almost white hair',
+        'red': 'red hair, deep red colored hair',
+        'auburn': 'auburn hair, reddish brown hair',
+        'ginger': 'ginger hair, bright orange-red hair, copper colored hair',
+        'gray': 'gray hair, salt and pepper hair',
+        'silver': 'silver hair, metallic gray hair',
+        'white': 'white hair, snow white hair',
+        // Fashion colors
+        'purple': 'vibrant purple hair, violet dyed hair',
+        'pink': 'pink hair, rose pink dyed hair',
+        'blue': 'blue hair, electric blue dyed hair',
+        'green': 'green hair, emerald green dyed hair',
+        'teal': 'teal hair, blue-green dyed hair',
+        'lavender': 'lavender hair, pastel purple dyed hair',
+        'rose-gold': 'rose gold hair, pinkish blonde dyed hair',
+        'burgundy': 'burgundy hair, deep wine red dyed hair',
+    }
+    // Free-text custom colors fall through to a "<name> hair" description.
+    return descriptions[hairColor] || hairColor.replace(/-/g, ' ') + ' hair'
+}

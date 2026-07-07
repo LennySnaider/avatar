@@ -1,5 +1,5 @@
 import type { PhysicalMeasurements } from '@/@types/supabase'
-import { getBodyDescriptors } from '@/utils/bodyDescriptors'
+import { getBodyDescriptors, getSkinToneDescription, getHairColorDescription } from '@/utils/bodyDescriptors'
 
 /**
  * Shared avatar prompt recipe — a faithful port of the harness in
@@ -101,51 +101,8 @@ export function stripHarnessForFaceSwap(fullPrompt: string): string {
     return cleaned ? `${cleaned}\n\n${preserve}` : preserve
 }
 
-// 1-9 skin tone scale → complexion description (verbatim from GeminiService).
-function getSkinToneDescription(tone?: number): string {
-    if (!tone) return ''
-    const map: Record<number, string> = {
-        1: 'very fair porcelain skin, pale ivory complexion',
-        2: 'fair skin, light complexion with pink undertones',
-        3: 'light skin, cream colored complexion',
-        4: 'light-medium skin, warm beige complexion',
-        5: 'medium skin, golden warm complexion',
-        6: 'medium-tan skin, warm olive complexion',
-        7: 'tan skin, caramel brown complexion',
-        8: 'dark skin, rich brown complexion',
-        9: 'very dark skin, deep ebony complexion',
-    }
-    return map[tone] || ''
-}
-
-function getHairColorDescription(hairColor?: string): string {
-    if (!hairColor) return ''
-    const map: Record<string, string> = {
-        black: 'jet black hair, dark raven colored hair',
-        'dark-brown': 'dark brown hair, deep brunette hair',
-        brown: 'brown hair, medium brunette hair',
-        'light-brown': 'light brown hair, chestnut colored hair',
-        'dark-blonde': 'dark blonde hair, dirty blonde hair, honey colored hair',
-        blonde: 'blonde hair, golden blonde hair',
-        'platinum-blonde': 'platinum blonde hair, very light blonde, almost white hair',
-        red: 'red hair, deep red colored hair',
-        auburn: 'auburn hair, reddish brown hair',
-        ginger: 'ginger hair, bright orange-red hair, copper colored hair',
-        gray: 'gray hair, salt and pepper hair',
-        silver: 'silver hair, metallic gray hair',
-        white: 'white hair, snow white hair',
-        // Fashion colors (parity with GeminiService.getHairColorDescription)
-        purple: 'vibrant purple hair, violet dyed hair',
-        pink: 'pink hair, rose pink dyed hair',
-        blue: 'blue hair, electric blue dyed hair',
-        green: 'green hair, emerald green dyed hair',
-        teal: 'teal hair, blue-green dyed hair',
-        lavender: 'lavender hair, pastel purple dyed hair',
-        'rose-gold': 'rose gold hair, pinkish blonde dyed hair',
-        burgundy: 'burgundy hair, deep wine red dyed hair',
-    }
-    return map[hairColor] || hairColor.replace(/-/g, ' ') + ' hair'
-}
+// Skin-tone and hair-color descriptors now live in bodyDescriptors (imported
+// at the top of this file) so this path and the direct-Gemini path stay in sync.
 
 function getHeightDesc(height: number): string {
     if (height < 155) return "petite height (under 5'1\")"
