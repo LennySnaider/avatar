@@ -82,32 +82,55 @@ export default function AudioPreview() {
     const [bass, setBass] = useState(0)
     const [treble, setTreble] = useState(0)
     const [isApplyingEq, setIsApplyingEq] = useState(false)
+    const [eqError, setEqError] = useState<string | null>(null)
     const audioCtxRef = useRef<AudioContext | null>(null)
     const bassNodeRef = useRef<BiquadFilterNode | null>(null)
     const trebleNodeRef = useRef<BiquadFilterNode | null>(null)
+    // Elemento al que está conectado el grafo: si React/HMR recrea el <audio>,
+    // hay que reconstruir (un MediaElementSource ligado a un nodo desmontado
+    // reproduce por el camino normal y el EQ "no hace nada").
+    const boundElRef = useRef<HTMLAudioElement | null>(null)
 
-    // El grafo se monta una sola vez por elemento <audio> (la fuente queda
-    // ligada al elemento, sobrevive a cambios de src).
     const ensureEqGraph = () => {
         const el = audioRef.current
-        if (!el || audioCtxRef.current) return
-        const ctx = new AudioContext()
-        const source = ctx.createMediaElementSource(el)
-        const bassNode = ctx.createBiquadFilter()
-        bassNode.type = 'lowshelf'
-        bassNode.frequency.value = 200
-        const trebleNode = ctx.createBiquadFilter()
-        trebleNode.type = 'highshelf'
-        trebleNode.frequency.value = 3000
-        source.connect(bassNode).connect(trebleNode).connect(ctx.destination)
-        audioCtxRef.current = ctx
-        bassNodeRef.current = bassNode
-        trebleNodeRef.current = trebleNode
+        if (!el) return
+        if (audioCtxRef.current && boundElRef.current === el) {
+            // Autoplay policy puede dejar el contexto suspendido.
+            if (audioCtxRef.current.state === 'suspended') audioCtxRef.current.resume()
+            return
+        }
+        try {
+            // Elemento nuevo → desechar el grafo viejo.
+            audioCtxRef.current?.close().catch(() => {})
+            const ctx = new AudioContext()
+            const source = ctx.createMediaElementSource(el)
+            const bassNode = ctx.createBiquadFilter()
+            bassNode.type = 'lowshelf'
+            bassNode.frequency.value = 200
+            bassNode.gain.value = bass
+            const trebleNode = ctx.createBiquadFilter()
+            trebleNode.type = 'highshelf'
+            trebleNode.frequency.value = 3000
+            trebleNode.gain.value = treble
+            source.connect(bassNode).connect(trebleNode).connect(ctx.destination)
+            if (ctx.state === 'suspended') ctx.resume()
+            audioCtxRef.current = ctx
+            bassNodeRef.current = bassNode
+            trebleNodeRef.current = trebleNode
+            boundElRef.current = el
+            setEqError(null)
+        } catch (err) {
+            console.error('[AudioPreview] EQ graph failed:', err)
+            setEqError('Live EQ unavailable in this session — "Apply EQ to file" still works.')
+        }
     }
 
     useEffect(() => {
+        // El drag del slider es gesto de usuario válido para crear el contexto.
+        ensureEqGraph()
         if (bassNodeRef.current) bassNodeRef.current.gain.value = bass
         if (trebleNodeRef.current) trebleNodeRef.current.gain.value = treble
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [bass, treble])
 
     /** Codifica un AudioBuffer a WAV PCM16 (el navegador no trae encoder mp3). */
@@ -430,6 +453,7 @@ export default function AudioPreview() {
                                     Apply EQ to file
                                 </Button>
                             )}
+                            {eqError && <p className="text-[10px] text-amber-500">{eqError}</p>}
                             <p className="text-[10px] text-gray-400 -mt-1">
                                 Bass/Treble preview live while playing. &quot;Apply EQ to file&quot; bakes
                                 them into the audio so Lipsync and Speak use exactly what you hear.
