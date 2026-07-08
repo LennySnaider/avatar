@@ -75,6 +75,9 @@ export interface VoiceStudioState {
     mergedVideoUrl: string | null
     isMerging: boolean
 
+    // Voice <-> avatar default overrides (avatarId -> voiceId)
+    defaultVoiceOverrides: Record<string, string>
+
     // Actions
     setVoices: (voices: ClonedVoice[]) => void
     setSelectedVoiceId: (id: string | null) => void
@@ -92,5 +95,6 @@ export interface VoiceStudioState {
     setSelectedVideoUrl: (url: string | null) => void
     setMergedVideoUrl: (url: string | null) => void
     setIsMerging: (v: boolean) => void
+    setDefaultVoiceOverride: (avatarId: string, voiceId: string) => void
     reset: () => void
 }

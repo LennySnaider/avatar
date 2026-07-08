@@ -12,18 +12,20 @@ interface VoiceClonePanelProps {
 }
 
 export default function VoiceClonePanel({ avatars }: VoiceClonePanelProps) {
-    const { setVoices, voices, setIsCloning, isCloning } = useVoiceStudioStore()
+    const { setVoices, voices, setIsCloning, isCloning, setDefaultVoiceOverride } = useVoiceStudioStore()
     const [name, setName] = useState('')
     const [language, setLanguage] = useState('es')
     const [audioFile, setAudioFile] = useState<File | null>(null)
     const [avatarId, setAvatarId] = useState('')
     const [setAsDefault, setSetAsDefault] = useState(true)
+    const [warning, setWarning] = useState<string | null>(null)
     const fileInputRef = useRef<HTMLInputElement>(null)
 
     const handleClone = async () => {
         if (!audioFile || !name) return
 
         setIsCloning(true)
+        setWarning(null)
         try {
             const formData = new FormData()
             formData.append('audio', audioFile)
@@ -44,8 +46,13 @@ export default function VoiceClonePanel({ avatars }: VoiceClonePanelProps) {
                 throw new Error(error)
             }
 
-            const { voice } = await res.json()
+            const { voice, defaultVoiceSet } = await res.json()
             setVoices([voice, ...voices])
+            if (defaultVoiceSet === true) {
+                setDefaultVoiceOverride(avatarId, voice.id)
+            } else if (avatarId && setAsDefault) {
+                setWarning("Voice cloned, but it could not be set as the avatar's main voice.")
+            }
             setName('')
             setAudioFile(null)
             if (fileInputRef.current) fileInputRef.current.value = ''
@@ -126,6 +133,8 @@ export default function VoiceClonePanel({ avatars }: VoiceClonePanelProps) {
                 >
                     {isCloning ? 'Cloning voice...' : 'Clone Voice'}
                 </Button>
+
+                {warning && <p className="text-xs text-amber-500">{warning}</p>}
             </div>
         </Card>
     )

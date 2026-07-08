@@ -1,6 +1,5 @@
 'use client'
 
-import { useState } from 'react'
 import { useVoiceStudioStore } from '../_store/voiceStudioStore'
 import Card from '@/components/ui/Card'
 import Button from '@/components/ui/Button'
@@ -11,9 +10,14 @@ interface VoiceLibraryProps {
 }
 
 export default function VoiceLibrary({ avatars }: VoiceLibraryProps) {
-    const { voices, selectedVoiceId, setSelectedVoiceId, setVoices } = useVoiceStudioStore()
-    // Overrides locales tras pulsar "Make main" (los props del server no se refrescan solos).
-    const [defaultOverrides, setDefaultOverrides] = useState<Record<string, string>>({})
+    const {
+        voices,
+        selectedVoiceId,
+        setSelectedVoiceId,
+        setVoices,
+        defaultVoiceOverrides,
+        setDefaultVoiceOverride,
+    } = useVoiceStudioStore()
 
     const handleDelete = async (id: string) => {
         const res = await fetch('/api/voice/delete', {
@@ -34,13 +38,16 @@ export default function VoiceLibrary({ avatars }: VoiceLibraryProps) {
             body: JSON.stringify({ voiceId }),
         })
         if (res.ok) {
-            setDefaultOverrides((prev) => ({ ...prev, [avatarId]: voiceId }))
+            setDefaultVoiceOverride(avatarId, voiceId)
+        } else {
+            const { error } = await res.json()
+            console.error('[voice-library] Failed to set default voice:', error)
         }
     }
 
     const isMainVoice = (voice: { id: string; avatar_id: string | null }) => {
         if (!voice.avatar_id) return false
-        const overridden = defaultOverrides[voice.avatar_id]
+        const overridden = defaultVoiceOverrides[voice.avatar_id]
         if (overridden) return overridden === voice.id
         return avatars.find((a) => a.id === voice.avatar_id)?.default_voice_id === voice.id
     }

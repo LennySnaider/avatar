@@ -18,6 +18,7 @@ const initialState = {
     selectedVideoUrl: null as string | null,
     mergedVideoUrl: null as string | null,
     isMerging: false,
+    defaultVoiceOverrides: {} as Record<string, string>,
 }
 
 export const useVoiceStudioStore = create<VoiceStudioState>((set) => ({
@@ -38,5 +39,9 @@ export const useVoiceStudioStore = create<VoiceStudioState>((set) => ({
     setSelectedVideoUrl: (url) => set({ selectedVideoUrl: url }),
     setMergedVideoUrl: (url) => set({ mergedVideoUrl: url }),
     setIsMerging: (v) => set({ isMerging: v }),
+    setDefaultVoiceOverride: (avatarId, voiceId) =>
+        set((state) => ({
+            defaultVoiceOverrides: { ...state.defaultVoiceOverrides, [avatarId]: voiceId },
+        })),
     reset: () => set(initialState),
 }))

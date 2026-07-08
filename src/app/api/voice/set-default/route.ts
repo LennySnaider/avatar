@@ -29,14 +29,18 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: 'Voice is not linked to an avatar' }, { status: 400 })
     }
 
-    const { error: updateError } = await supabase
+    const { data: updatedAvatars, error: updateError } = await supabase
         .from('avatars')
         .update({ default_voice_id: voice.id })
         .eq('id', voice.avatar_id)
         .eq('user_id', session.user.id)
+        .select('id')
 
     if (updateError) {
         return NextResponse.json({ error: updateError.message }, { status: 500 })
+    }
+    if (!updatedAvatars || updatedAvatars.length === 0) {
+        return NextResponse.json({ error: 'Avatar not found or not owned by you' }, { status: 404 })
     }
     return NextResponse.json({ success: true })
 }

@@ -24,6 +24,20 @@ export async function POST(req: NextRequest) {
     const userId = session.user.id
 
     try {
+        // 0. Verify avatar ownership before accepting a client-supplied avatarId
+        if (avatarId) {
+            const { data: ownedAvatar, error: avatarLookupError } = await supabase
+                .from('avatars')
+                .select('id')
+                .eq('id', avatarId)
+                .eq('user_id', userId)
+                .single()
+
+            if (avatarLookupError || !ownedAvatar) {
+                return NextResponse.json({ error: 'Avatar not found' }, { status: 400 })
+            }
+        }
+
         // 1. Upload original to Supabase Storage (keep original)
         const storagePath = `${userId}/voices/${Date.now()}-${audioFile.name}`
         const audioBuffer = Buffer.from(await audioFile.arrayBuffer())
@@ -68,15 +82,16 @@ export async function POST(req: NextRequest) {
         // 5. Optionally set as the avatar's main voice
         let defaultVoiceSet = false
         if (avatarId && setAsDefault && voice) {
-            const { error: avatarError } = await supabase
+            const { data: updatedAvatars, error: avatarError } = await supabase
                 .from('avatars')
                 .update({ default_voice_id: voice.id })
                 .eq('id', avatarId)
                 .eq('user_id', userId)
+                .select('id')
             if (avatarError) {
                 console.error('[voice/clone] Failed to set default voice:', avatarError.message)
             } else {
-                defaultVoiceSet = true
+                defaultVoiceSet = (updatedAvatars?.length ?? 0) > 0
             }
         }
 
