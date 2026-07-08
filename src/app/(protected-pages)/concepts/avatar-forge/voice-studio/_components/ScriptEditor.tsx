@@ -52,7 +52,10 @@ export default function ScriptEditor() {
                 }),
             })
 
-            if (!res.ok) throw new Error('Generation failed')
+            if (!res.ok) {
+                const { error } = await res.json().catch(() => ({ error: null }))
+                throw new Error(error || 'Generation failed')
+            }
             const { script } = await res.json()
             setCurrentScript(script)
         } catch (err) {
