@@ -17,6 +17,7 @@ export type Database = {
                     identity_weight: number | null
                     face_description: string | null
                     measurements: PhysicalMeasurements | null
+                    default_voice_id: string | null
                     created_at: string | null
                     updated_at: string | null
                 }
@@ -27,6 +28,7 @@ export type Database = {
                     identity_weight?: number | null
                     face_description?: string | null
                     measurements?: PhysicalMeasurements | null
+                    default_voice_id?: string | null
                     created_at?: string | null
                     updated_at?: string | null
                 }
@@ -37,6 +39,7 @@ export type Database = {
                     identity_weight?: number | null
                     face_description?: string | null
                     measurements?: PhysicalMeasurements | null
+                    default_voice_id?: string | null
                     created_at?: string | null
                     updated_at?: string | null
                 }
