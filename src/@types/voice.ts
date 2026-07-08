@@ -70,10 +70,10 @@ export interface VoiceStudioState {
     previewAudioUrl: string | null
     isGeneratingAudio: boolean
 
-    // Merge
+    // Lipsync (antes "Merge")
     selectedVideoUrl: string | null
-    mergedVideoUrl: string | null
-    isMerging: boolean
+    lipsyncedVideoUrl: string | null
+    isLipsyncing: boolean
 
     // Voice <-> avatar default overrides (avatarId -> voiceId)
     defaultVoiceOverrides: Record<string, string>
@@ -93,8 +93,8 @@ export interface VoiceStudioState {
     setPreviewAudioUrl: (url: string | null) => void
     setIsGeneratingAudio: (v: boolean) => void
     setSelectedVideoUrl: (url: string | null) => void
-    setMergedVideoUrl: (url: string | null) => void
-    setIsMerging: (v: boolean) => void
+    setLipsyncedVideoUrl: (url: string | null) => void
+    setIsLipsyncing: (v: boolean) => void
     setDefaultVoiceOverride: (avatarId: string, voiceId: string) => void
     reset: () => void
 }

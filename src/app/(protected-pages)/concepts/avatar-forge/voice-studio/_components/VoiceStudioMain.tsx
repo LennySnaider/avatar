@@ -6,7 +6,7 @@ import VoiceLibrary from './VoiceLibrary'
 import VoiceClonePanel from './VoiceClonePanel'
 import ScriptEditor from './ScriptEditor'
 import AudioPreview from './AudioPreview'
-import AudioMergePanel from './AudioMergePanel'
+import LipsyncPanel from './LipsyncPanel'
 import type { ClonedVoice } from '@/@types/voice'
 import type { Avatar } from '@/@types/supabase'
 
@@ -48,7 +48,7 @@ export default function VoiceStudioMain({ userId, avatars }: VoiceStudioMainProp
                 {/* Right column: Preview & merge */}
                 <div className="flex flex-col gap-4">
                     <AudioPreview />
-                    <AudioMergePanel />
+                    <LipsyncPanel userId={userId} />
                 </div>
             </div>
         </div>

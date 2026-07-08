@@ -16,8 +16,8 @@ const initialState = {
     previewAudioUrl: null as string | null,
     isGeneratingAudio: false,
     selectedVideoUrl: null as string | null,
-    mergedVideoUrl: null as string | null,
-    isMerging: false,
+    lipsyncedVideoUrl: null as string | null,
+    isLipsyncing: false,
     defaultVoiceOverrides: {} as Record<string, string>,
 }
 
@@ -37,8 +37,8 @@ export const useVoiceStudioStore = create<VoiceStudioState>((set) => ({
     setPreviewAudioUrl: (url) => set({ previewAudioUrl: url }),
     setIsGeneratingAudio: (v) => set({ isGeneratingAudio: v }),
     setSelectedVideoUrl: (url) => set({ selectedVideoUrl: url }),
-    setMergedVideoUrl: (url) => set({ mergedVideoUrl: url }),
-    setIsMerging: (v) => set({ isMerging: v }),
+    setLipsyncedVideoUrl: (url) => set({ lipsyncedVideoUrl: url }),
+    setIsLipsyncing: (v) => set({ isLipsyncing: v }),
     setDefaultVoiceOverride: (avatarId, voiceId) =>
         set((state) => ({
             defaultVoiceOverrides: { ...state.defaultVoiceOverrides, [avatarId]: voiceId },
