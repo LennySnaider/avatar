@@ -20,6 +20,7 @@ import {
     HiOutlineX,
     HiOutlinePencil,
     HiOutlineFilm,
+    HiOutlineShare,
 } from 'react-icons/hi'
 import { useRouter } from 'next/navigation'
 import type { Generation, MediaType } from '@/@types/supabase'
@@ -247,6 +248,18 @@ const GenerationGallery = ({ generations: initialGenerations }: GenerationGaller
                                     onClick={() => handleDownload(selectedGeneration)}
                                 >
                                     <span>Download</span>
+                                </Button>
+                                <Button
+                                    size="sm"
+                                    variant="plain"
+                                    icon={<HiOutlineShare />}
+                                    onClick={() =>
+                                        router.push(
+                                            `/concepts/avatar-forge/social/composer?generationId=${selectedGeneration.id}`,
+                                        )
+                                    }
+                                >
+                                    <span>Publish</span>
                                 </Button>
                                 {selectedGeneration.media_type === 'IMAGE' && (
                                     <>
