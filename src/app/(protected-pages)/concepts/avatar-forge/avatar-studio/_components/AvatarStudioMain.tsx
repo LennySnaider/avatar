@@ -189,6 +189,7 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
         setFaceDescription,
         clearAvatarReferences,
         unlockAvatar,
+        setAvatarDefaultVoice,
         setPrompt,
         setGenerationMode,
         setVideoSubMode,
@@ -790,7 +791,7 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                     if (!avatarDefaultVoice) {
                         throw new Error('This avatar has no main voice. Clone one in Voice Studio and set it as main.')
                     }
-                    const script = prompt.trim()
+                    const script = useAvatarStudioStore.getState().prompt.trim()
                     if (!script) {
                         throw new Error('Write what the avatar should say in the prompt box')
                     }
@@ -1802,6 +1803,7 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                     setCurrentAvatar(null)
                     clearAvatarReferences()
                     unlockAvatar()
+                    setAvatarDefaultVoice(null)
                 }}
                 onEditAvatar={() => setIsAvatarEditOpen(true)}
                 onEnhancePrompt={handleEnhancePrompt}

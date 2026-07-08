@@ -58,6 +58,7 @@ export default function VoiceClonePanel({ avatars }: VoiceClonePanelProps) {
             if (fileInputRef.current) fileInputRef.current.value = ''
         } catch (err) {
             console.error('Clone failed:', err)
+            setWarning(err instanceof Error ? err.message : 'Voice cloning failed')
         } finally {
             setIsCloning(false)
         }
