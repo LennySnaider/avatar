@@ -1074,8 +1074,8 @@ const BottomControlBar = ({
                         </div>
                     )}
 
-                    {/* Video Input Image (VIDEO ANIMATE mode) */}
-                    {generationMode === 'VIDEO' && videoSubMode === 'ANIMATE' && (
+                    {/* Video Input Image (VIDEO ANIMATE + SPEAK modes; optional in SPEAK — falls back to the avatar's face ref) */}
+                    {generationMode === 'VIDEO' && (videoSubMode === 'ANIMATE' || videoSubMode === 'SPEAK') && (
                         <div className="flex flex-col items-center gap-0.5">
                             {videoInputImage ? (
                                 <div className="relative group">
@@ -1099,7 +1099,9 @@ const BottomControlBar = ({
                                     <HiOutlineVideoCamera className="w-4 h-4 text-purple-500" />
                                 </div>
                             )}
-                            <span className="text-[9px] text-purple-500 font-medium">Input*</span>
+                            <span className="text-[9px] text-purple-500 font-medium">
+                                {videoSubMode === 'SPEAK' ? 'Input' : 'Input*'}
+                            </span>
                             <input
                                 ref={videoInputRef}
                                 type="file"
