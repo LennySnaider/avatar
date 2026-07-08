@@ -791,10 +791,14 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                     if (!avatarDefaultVoice) {
                         throw new Error('This avatar has no main voice. Clone one in Voice Studio and set it as main.')
                     }
-                    const script = useAvatarStudioStore.getState().prompt.trim()
+                    // El guion vive en videoDialogue (diálogo del botón 🎤), NO en el
+                    // prompt principal — así Img→Prompt no puede sobreescribirlo. El
+                    // prompt principal queda como descripción visual opcional.
+                    const script = useAvatarStudioStore.getState().videoDialogue.trim()
                     if (!script) {
-                        throw new Error('Write what the avatar should say in the prompt box')
+                        throw new Error('Add a script first — click the 🎤 microphone button next to the prompt box')
                     }
+                    const visualPrompt = useAvatarStudioStore.getState().prompt.trim()
 
                     const speakImage = optimizedPayload.faceRef || optimizedPayload.generalRefs[0]
                     if (!speakImage) {
@@ -824,6 +828,7 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                     const speakResult = await generateTalkingVideoKieSafe({
                         image: speakImage,
                         audioUrl,
+                        prompt: visualPrompt || undefined,
                         resolution: '720p',
                     })
                     if (!speakResult.success || !speakResult.url) {

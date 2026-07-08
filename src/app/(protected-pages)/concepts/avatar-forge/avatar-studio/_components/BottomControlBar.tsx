@@ -26,6 +26,7 @@ import {
     HiOutlineExclamation,
     HiOutlineTrash,
     HiOutlineCheck,
+    HiOutlineMicrophone,
 } from 'react-icons/hi'
 import { PiLightningFill } from 'react-icons/pi'
 import { MODEL_ACTION_PRESETS } from '../_constants/modelActionPresets'
@@ -51,6 +52,7 @@ import KlingNativeAudioToggle from './KlingNativeAudioToggle'
 import KlingCameraControls from './KlingCameraControls'
 import KlingMotionBrushEditor from './KlingMotionBrushEditor'
 import VideoToPromptDialog from './VideoToPromptDialog'
+import SpeakScriptDialog from './SpeakScriptDialog'
 
 // Aspect Ratio Icon Component - renders visual representation of each ratio
 const AspectRatioIcon = ({ ratio, isSelected }: { ratio: string; isSelected: boolean }) => {
@@ -185,6 +187,7 @@ const BottomControlBar = ({
     const [isAnalyzingPlace, setIsAnalyzingPlace] = useState(false)
     const [describeInputImage, setDescribeInputImage] = useState<string | null>(null) // URL for visual preview
     const [isVideoToPromptOpen, setIsVideoToPromptOpen] = useState(false)
+    const [isSpeakDialogOpen, setIsSpeakDialogOpen] = useState(false)
 
     // Prevent hydration mismatch with FloatingUI-generated IDs
     useEffect(() => {
@@ -532,6 +535,11 @@ const BottomControlBar = ({
     }
 
     const canGenerate = () => {
+        // Speak mode: the script (videoDialogue) drives generation; the main
+        // prompt is only an optional scene description.
+        if (generationMode === 'VIDEO' && videoSubMode === 'SPEAK') {
+            return !!videoDialogue.trim()
+        }
         if (!prompt.trim()) return false
         if (generationMode === 'VIDEO' && videoSubMode === 'ANIMATE' && !videoInputImage) {
             return false
@@ -633,7 +641,7 @@ const BottomControlBar = ({
                         placeholder={
                             generationMode === 'VIDEO'
                                 ? videoSubMode === 'SPEAK'
-                                    ? 'Write what the avatar should say...'
+                                    ? 'Optional: describe the scene — the script is set with the 🎤 button'
                                     : 'Describe the scene and action...'
                                 : 'Describe the image you want to generate...'
                         }
@@ -701,6 +709,23 @@ const BottomControlBar = ({
                                         <HiOutlineTrash className="w-4 h-4" />
                                     </button>
                                 </Tooltip>
+                                {generationMode === 'VIDEO' && (
+                                    <Tooltip title="Speak — script for talking avatar">
+                                        <button
+                                            onClick={() => setIsSpeakDialogOpen(true)}
+                                            className={`relative p-1.5 transition-colors border rounded bg-white dark:bg-gray-800 ${
+                                                videoSubMode === 'SPEAK'
+                                                    ? 'text-purple-500 border-purple-500'
+                                                    : 'text-gray-400 hover:text-purple-500 border-gray-300 dark:border-gray-600'
+                                            }`}
+                                        >
+                                            <HiOutlineMicrophone className="w-4 h-4" />
+                                            {videoDialogue.trim() && (
+                                                <span className="absolute -top-1 -right-1 w-2 h-2 rounded-full bg-purple-500" />
+                                            )}
+                                        </button>
+                                    </Tooltip>
+                                )}
                             </div>
                         }
                     />
@@ -1601,6 +1626,10 @@ const BottomControlBar = ({
             <VideoToPromptDialog
                 isOpen={isVideoToPromptOpen}
                 onClose={() => setIsVideoToPromptOpen(false)}
+            />
+            <SpeakScriptDialog
+                isOpen={isSpeakDialogOpen}
+                onClose={() => setIsSpeakDialogOpen(false)}
             />
         </div>
     )
