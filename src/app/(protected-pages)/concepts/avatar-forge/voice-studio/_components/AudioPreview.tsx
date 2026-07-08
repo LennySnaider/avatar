@@ -21,7 +21,7 @@ export default function AudioPreview() {
 
         setIsGeneratingAudio(true)
         try {
-            const res = await fetch('/api/voice/tts', {
+            const res = await fetch('/api/voice/tts-file', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -31,10 +31,11 @@ export default function AudioPreview() {
                 }),
             })
 
-            if (!res.ok) throw new Error('TTS failed')
-            const { audio, mimeType } = await res.json()
-
-            const audioUrl = `data:${mimeType};base64,${audio}`
+            if (!res.ok) {
+                const { error } = await res.json()
+                throw new Error(error || 'TTS failed')
+            }
+            const { audioUrl } = await res.json()
             setPreviewAudioUrl(audioUrl)
         } catch (err) {
             console.error('TTS generation failed:', err)
