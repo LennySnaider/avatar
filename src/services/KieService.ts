@@ -1201,7 +1201,9 @@ export async function submitTalkingVideoKieTask(
             ? {
                   image_url: imageUrl,
                   audio_url: params.audioUrl,
-                  prompt: (params.prompt || DEFAULT_TALKING_PROMPT).slice(0, 1000),
+                  // La doc dice "máx 1000, 300 recomendado" pero el API rechaza
+                  // >300 con 422 "prompt must be <= 300 characters".
+                  prompt: (params.prompt || DEFAULT_TALKING_PROMPT).slice(0, 300),
                   // '720' | '1080' — 720 mantiene el costo a raya para clips cortos.
                   output_resolution: '720',
               }
