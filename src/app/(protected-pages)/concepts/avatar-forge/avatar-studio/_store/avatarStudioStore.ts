@@ -84,6 +84,8 @@ interface AvatarStudioState {
     videoSubMode: VideoSubMode
     avatarDefaultVoice: ClonedVoice | null
     speakModel: SpeakModel
+    /** Audio ya generado (Voice Studio) para usar en Speak SIN re-generar TTS. */
+    speakAudioUrl: string | null
     aspectRatio: AspectRatio
     videoResolution: VideoResolution
     cameraMotion: CameraMotion
@@ -224,6 +226,7 @@ interface AvatarStudioState {
     setVideoSubMode: (mode: VideoSubMode) => void
     setAvatarDefaultVoice: (voice: ClonedVoice | null) => void
     setSpeakModel: (model: SpeakModel) => void
+    setSpeakAudioUrl: (url: string | null) => void
     setAspectRatio: (ratio: AspectRatio) => void
     setVideoResolution: (resolution: VideoResolution) => void
     setCameraMotion: (motion: CameraMotion) => void
@@ -373,6 +376,7 @@ const initialState = {
     videoSubMode: 'ANIMATE' as VideoSubMode,
     avatarDefaultVoice: null as ClonedVoice | null,
     speakModel: 'infinitalk' as SpeakModel,
+    speakAudioUrl: null as string | null,
     aspectRatio: '1:1' as AspectRatio,
     videoResolution: '720p' as VideoResolution,
     cameraMotion: 'NONE' as CameraMotion,
@@ -632,6 +636,7 @@ export const useAvatarStudioStore = create<AvatarStudioState>()(
     setVideoSubMode: (mode) => set({ videoSubMode: mode }),
     setAvatarDefaultVoice: (voice) => set({ avatarDefaultVoice: voice }),
     setSpeakModel: (model) => set({ speakModel: model }),
+    setSpeakAudioUrl: (url) => set({ speakAudioUrl: url }),
     setAspectRatio: (ratio) => set({ aspectRatio: ratio }),
     setVideoResolution: (resolution) => set({ videoResolution: resolution }),
     setCameraMotion: (motion) => set({ cameraMotion: motion }),

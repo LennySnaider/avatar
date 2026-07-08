@@ -221,6 +221,7 @@ const BottomControlBar = ({
         subjectAction,
         setSubjectAction,
         videoDialogue,
+        speakAudioUrl,
         noMusic,
         setNoMusic,
         noBackgroundEffects,
@@ -534,10 +535,10 @@ const BottomControlBar = ({
     }
 
     const canGenerate = () => {
-        // Speak mode: the script (videoDialogue) drives generation; the main
-        // prompt is only an optional scene description.
+        // Speak mode: script (videoDialogue) o audio ya generado (Voice Studio)
+        // habilitan Generate; el prompt principal es solo descripción opcional.
         if (generationMode === 'VIDEO' && videoSubMode === 'SPEAK') {
-            return !!videoDialogue.trim()
+            return !!videoDialogue.trim() || !!speakAudioUrl
         }
         if (!prompt.trim()) return false
         if (generationMode === 'VIDEO' && videoSubMode === 'ANIMATE' && !videoInputImage) {
@@ -719,7 +720,7 @@ const BottomControlBar = ({
                                             }`}
                                         >
                                             <HiOutlineMicrophone className="w-4 h-4" />
-                                            {videoDialogue.trim() && (
+                                            {(videoDialogue.trim() || speakAudioUrl) && (
                                                 <span className="absolute -top-1 -right-1 w-2 h-2 rounded-full bg-purple-500" />
                                             )}
                                         </button>

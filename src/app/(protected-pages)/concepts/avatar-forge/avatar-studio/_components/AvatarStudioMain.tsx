@@ -812,16 +812,17 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                 console.log('[AvatarStudio] Is MiniMax Provider:', isMinimaxProvider)
 
                 if (videoSubMode === 'SPEAK') {
-                    // Talking-head: texto → TTS (voz clonada del avatar) → InfiniteTalk.
-                    // Ignora el proveedor seleccionado arriba: siempre KIE InfiniteTalk.
-                    if (!avatarDefaultVoice) {
-                        throw new Error('This avatar has no main voice. Clone one in Voice Studio and set it as main.')
-                    }
+                    // Talking-head: audio ya generado (Voice Studio) O texto → TTS
+                    // con la voz clonada del avatar; luego el motor elegido.
+                    const presetAudioUrl = useAvatarStudioStore.getState().speakAudioUrl
                     // El guion vive en videoDialogue (diálogo del botón 🎤), NO en el
                     // prompt principal — así Img→Prompt no puede sobreescribirlo. El
                     // prompt principal queda como descripción visual opcional.
                     const script = useAvatarStudioStore.getState().videoDialogue.trim()
-                    if (!script) {
+                    if (!presetAudioUrl && !avatarDefaultVoice) {
+                        throw new Error('This avatar has no main voice. Clone one in Voice Studio and set it as main.')
+                    }
+                    if (!presetAudioUrl && !script) {
                         throw new Error('Add a script first — click the 🎤 microphone button next to the prompt box')
                     }
                     const visualPrompt = useAvatarStudioStore.getState().prompt.trim()
@@ -845,31 +846,49 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                         throw new Error('Add avatar references (a face photo) or load an image before generating a talking video')
                     }
 
-                    // 1. TTS con la voz principal del avatar → URL pública en Storage
-                    const langMap: Record<string, string> = {
-                        es: 'Spanish', en: 'English', pt: 'Portuguese', fr: 'French',
+                    // 1. Audio: reusar el ya generado en Voice Studio (salta el TTS)
+                    // o sintetizar al vuelo con la voz principal del avatar.
+                    let audioUrl: string
+                    let durationMs: number | undefined
+                    if (presetAudioUrl) {
+                        audioUrl = presetAudioUrl
+                        // Duración real del mp3 (dimensiona el video de Kling).
+                        durationMs = await new Promise<number | undefined>((resolve) => {
+                            const probe = new Audio(presetAudioUrl)
+                            probe.onloadedmetadata = () =>
+                                resolve(Number.isFinite(probe.duration) ? probe.duration * 1000 : undefined)
+                            probe.onerror = () => resolve(undefined)
+                        })
+                    } else {
+                        const langMap: Record<string, string> = {
+                            es: 'Spanish', en: 'English', pt: 'Portuguese', fr: 'French',
+                        }
+                        // Entrega guardada de la voz (speed/pitch/emotion/acento,
+                        // ajustada en Voice Studio → Audio Preview). El guard de
+                        // arriba garantiza que hay voz cuando no hay preset audio.
+                        const voice = avatarDefaultVoice!
+                        const voiceSettings = voice.tts_settings ?? {}
+                        const ttsRes = await fetch('/api/voice/tts-file', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                text: script,
+                                voiceId: voice.provider_voice_id,
+                                // 'auto' deja mandar el acento de la muestra clonada.
+                                language: voiceSettings.useAutoAccent
+                                    ? 'auto'
+                                    : langMap[voice.language] ?? voice.language,
+                                ...voiceSettings,
+                            }),
+                        })
+                        if (!ttsRes.ok) {
+                            const { error: ttsError } = await ttsRes.json()
+                            throw new Error(ttsError || 'Voice generation (TTS) failed')
+                        }
+                        const ttsJson = await ttsRes.json()
+                        audioUrl = ttsJson.audioUrl
+                        durationMs = ttsJson.durationMs
                     }
-                    // Entrega guardada de la voz (speed/pitch/emotion/acento,
-                    // ajustada en Voice Studio → Audio Preview).
-                    const voiceSettings = avatarDefaultVoice.tts_settings ?? {}
-                    const ttsRes = await fetch('/api/voice/tts-file', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                            text: script,
-                            voiceId: avatarDefaultVoice.provider_voice_id,
-                            // 'auto' deja mandar el acento de la muestra clonada.
-                            language: voiceSettings.useAutoAccent
-                                ? 'auto'
-                                : langMap[avatarDefaultVoice.language] ?? avatarDefaultVoice.language,
-                            ...voiceSettings,
-                        }),
-                    })
-                    if (!ttsRes.ok) {
-                        const { error: ttsError } = await ttsRes.json()
-                        throw new Error(ttsError || 'Voice generation (TTS) failed')
-                    }
-                    const { audioUrl, durationMs } = await ttsRes.json()
 
                     // 2. Talking-head con el motor elegido (InfiniteTalk / OmniHuman /
                     // Kling 3.0 con audio element) — submit async + poll desde el

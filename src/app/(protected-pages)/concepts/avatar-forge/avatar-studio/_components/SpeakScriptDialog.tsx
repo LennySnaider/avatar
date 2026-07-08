@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import Dialog from '@/components/ui/Dialog'
 import Button from '@/components/ui/Button'
 import { useAvatarStudioStore } from '../_store/avatarStudioStore'
+import { useVoiceStudioStore } from '../../voice-studio/_store/voiceStudioStore'
 import { HiOutlineMicrophone } from 'react-icons/hi'
 
 interface SpeakScriptDialogProps {
@@ -23,13 +24,19 @@ const SpeakScriptDialog = ({ isOpen, onClose }: SpeakScriptDialogProps) => {
     const avatarDefaultVoice = useAvatarStudioStore((s) => s.avatarDefaultVoice)
     const speakModel = useAvatarStudioStore((s) => s.speakModel)
     const setSpeakModel = useAvatarStudioStore((s) => s.setSpeakModel)
+    const speakAudioUrl = useAvatarStudioStore((s) => s.speakAudioUrl)
+    const setSpeakAudioUrl = useAvatarStudioStore((s) => s.setSpeakAudioUrl)
+
+    // Trabajo hecho en Voice Studio (misma sesión de navegación): audio ya
+    // generado + guion — para reusarlos sin re-escribir ni re-pagar TTS.
+    const voiceStudioAudioUrl = useVoiceStudioStore((s) => s.previewAudioUrl)
+    const voiceStudioScript = useVoiceStudioStore((s) => s.currentScript)
 
     const [script, setScript] = useState('')
 
-    // Re-sync from the store each time the dialog opens (the "More" dropdown
-    // edits the same field).
+    // Re-sync al abrir; si no hay guion propio, precargar el de Voice Studio.
     useEffect(() => {
-        if (isOpen) setScript(videoDialogue)
+        if (isOpen) setScript(videoDialogue || voiceStudioScript || '')
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [isOpen])
 
@@ -39,6 +46,17 @@ const SpeakScriptDialog = ({ isOpen, onClose }: SpeakScriptDialogProps) => {
 
     const handleUseScript = () => {
         setVideoDialogue(script.trim())
+        // Guion nuevo → el TTS se genera al vuelo (descartar audio preseleccionado).
+        setSpeakAudioUrl(null)
+        setVideoSubMode('SPEAK')
+        onClose()
+    }
+
+    const handleUseExistingAudio = () => {
+        if (!voiceStudioAudioUrl) return
+        setSpeakAudioUrl(voiceStudioAudioUrl)
+        // Conservar el guion como referencia/metadata (no se re-sintetiza).
+        setVideoDialogue((script || voiceStudioScript || '').trim())
         setVideoSubMode('SPEAK')
         onClose()
     }
@@ -68,6 +86,25 @@ const SpeakScriptDialog = ({ isOpen, onClose }: SpeakScriptDialogProps) => {
                     The avatar will speak this script with its cloned voice and synced
                     lips. The main prompt box is only an optional scene description.
                 </p>
+
+                {voiceStudioAudioUrl && (
+                    <div className={`flex flex-col gap-2 p-2 rounded-lg border ${
+                        speakAudioUrl === voiceStudioAudioUrl
+                            ? 'border-emerald-500 bg-emerald-500/5'
+                            : 'border-gray-200 dark:border-gray-700'
+                    }`}>
+                        <span className="text-xs font-medium">
+                            🎧 Audio ready from Voice Studio
+                            {speakAudioUrl === voiceStudioAudioUrl && (
+                                <span className="ml-1 text-emerald-500">— selected, TTS will be skipped</span>
+                            )}
+                        </span>
+                        <audio controls src={voiceStudioAudioUrl} className="w-full h-8" />
+                        <Button size="xs" variant="default" onClick={handleUseExistingAudio}>
+                            Use this audio (skip voice generation)
+                        </Button>
+                    </div>
+                )}
 
                 <textarea
                     value={script}
