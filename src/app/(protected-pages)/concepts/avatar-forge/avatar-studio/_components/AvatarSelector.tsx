@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useAvatarStudioStore } from '../_store/avatarStudioStore'
 import Dialog from '@/components/ui/Dialog'
 import Button from '@/components/ui/Button'
@@ -32,6 +32,9 @@ const AvatarSelector = ({ userId, isOpen, onClose }: AvatarSelectorProps) => {
     const [avatars, setAvatars] = useState<AvatarWithRefs[]>([])
     const [isLoading, setIsLoading] = useState(false)
     const [selectedAvatarId, setSelectedAvatarId] = useState<string | null>(null)
+    // Tracks the most recent selection synchronously so late async results
+    // (e.g. a slow voice fetch for a previously clicked avatar) are dropped.
+    const latestSelectionRef = useRef<string | null>(null)
 
     const {
         avatarId: currentAvatarId,
@@ -162,6 +165,7 @@ const AvatarSelector = ({ userId, isOpen, onClose }: AvatarSelectorProps) => {
 
     const handleSelectAvatar = async (avatar: AvatarWithRefs) => {
         setSelectedAvatarId(avatar.id)
+        latestSelectionRef.current = avatar.id
 
         // Clear the previous avatar's voice immediately so a later TTS call
         // never picks up a stale voice while the new one is being resolved.
@@ -216,7 +220,13 @@ const AvatarSelector = ({ userId, isOpen, onClose }: AvatarSelectorProps) => {
             if (avatar.default_voice_id) {
                 try {
                     const res = await fetch('/api/voice/list')
-                    if (res.ok) {
+                    // Drop the response if the user switched avatars while the
+                    // fetch was in flight — a late result for a no-longer-selected
+                    // avatar must not clobber the current avatar's voice.
+                    const isStale =
+                        latestSelectionRef.current !== avatar.id ||
+                        useAvatarStudioStore.getState().avatarId !== avatar.id
+                    if (!isStale && res.ok) {
                         const { voices } = (await res.json()) as { voices: ClonedVoice[] }
                         const defaultVoice = voices.find((v) => v.id === avatar.default_voice_id)
                         if (defaultVoice) {
