@@ -1158,3 +1158,111 @@ async function generateVideoWan27(params: GenerateVideoKieParams): Promise<strin
 
     return persistToSupabase(urls[0], 'mp4', 'kie-videos')
 }
+
+// =============================================
+// TALKING HEAD (InfiniteTalk) & LIPSYNC (Volcengine)
+// =============================================
+
+export interface GenerateTalkingVideoKieParams {
+    /** Imagen de retrato del avatar (face ref o primera general ref). */
+    image: { base64: string; mimeType: string }
+    /** URL pública del audio TTS (bucket generations). Máx 10MB. */
+    audioUrl: string
+    /** Guía visual opcional (máx 5000 chars). */
+    prompt?: string
+    resolution?: '480p' | '720p'
+}
+
+const DEFAULT_TALKING_PROMPT =
+    'A person speaking naturally to the camera, natural facial expressions and head movement, lips moving in perfect sync with the audio'
+
+/**
+ * InfiniteTalk (infinitalk/from-audio): imagen de retrato + audio → video
+ * talking-head con lipsync real. La imagen se sube a Supabase primero porque
+ * KIE solo acepta URLs HTTP.
+ */
+export async function generateTalkingVideoKie(
+    params: GenerateTalkingVideoKieParams,
+): Promise<string> {
+    const imageUrl = await uploadReferenceToSupabase(params.image.base64, params.image.mimeType)
+
+    const input: Record<string, unknown> = {
+        image_url: imageUrl,
+        audio_url: params.audioUrl,
+        prompt: (params.prompt || DEFAULT_TALKING_PROMPT).slice(0, 5000),
+        resolution: params.resolution ?? '720p',
+    }
+
+    console.log('[KIE] Submitting infinitalk task')
+    const taskId = await withTimeout(
+        submitTask({ model: 'infinitalk/from-audio', input }),
+        30_000,
+        'KIE infinitalk submit',
+    )
+    console.log(`[KIE] Infinitalk task submitted: ${taskId}`)
+
+    const urls = await pollTask(taskId, { budgetMs: 600_000, intervalMs: 5000 })
+    console.log(`[KIE] Infinitalk task complete: ${urls[0]}`)
+
+    return persistToSupabase(urls[0], 'mp4', 'kie-videos')
+}
+
+export interface LipsyncVideoKieParams {
+    /** URL pública del video existente (galería / bucket generations). */
+    videoUrl: string
+    /** URL pública del audio TTS. Máx 10MB. */
+    audioUrl: string
+    /** 'lite' re-sincroniza labios rápido; 'basic' soporta escenas múltiples. */
+    mode?: 'lite' | 'basic'
+}
+
+/**
+ * Volcengine video-to-video lipsync: re-anima la boca de un video existente
+ * para seguir el audio dado. Sustituye al viejo mux ffmpeg (que no movía
+ * los labios y no funcionaba en Vercel).
+ */
+export async function lipsyncVideoKie(params: LipsyncVideoKieParams): Promise<string> {
+    const input: Record<string, unknown> = {
+        mode: params.mode ?? 'lite',
+        video_url: params.videoUrl,
+        audio_url: params.audioUrl,
+        align_audio: true,
+    }
+
+    console.log('[KIE] Submitting volcengine lipsync task')
+    const taskId = await withTimeout(
+        submitTask({ model: 'volcengine/video-to-video-lip-sync', input }),
+        30_000,
+        'KIE lipsync submit',
+    )
+    console.log(`[KIE] Lipsync task submitted: ${taskId}`)
+
+    const urls = await pollTask(taskId, { budgetMs: 600_000, intervalMs: 5000 })
+    console.log(`[KIE] Lipsync task complete: ${urls[0]}`)
+
+    return persistToSupabase(urls[0], 'mp4', 'kie-videos')
+}
+
+// Error-as-data wrappers (mismo patrón que generateVideoKieSafe): los errores
+// de 'use server' se enmascaran como 500 genérico en prod.
+export async function generateTalkingVideoKieSafe(
+    params: GenerateTalkingVideoKieParams,
+): Promise<KieVideoSafeResult> {
+    try {
+        const url = await generateTalkingVideoKie(params)
+        return { success: true, url }
+    } catch (e) {
+        return { success: false, error: e instanceof Error ? e.message : String(e) }
+    }
+}
+
+export async function lipsyncVideoKieSafe(
+    params: LipsyncVideoKieParams,
+): Promise<KieVideoSafeResult> {
+    try {
+        const url = await lipsyncVideoKie(params)
+        return { success: true, url }
+    } catch (e) {
+        return { success: false, error: e instanceof Error ? e.message : String(e) }
+    }
+}
