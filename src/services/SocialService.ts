@@ -8,7 +8,7 @@ import { validatePostForPlatforms } from '@/lib/social/platformValidators'
 import { appendHashtagsToCaption } from '@/lib/social/hashtagHelpers'
 import { ALL_PLATFORMS } from '@/@types/social'
 import type { Platform, PlatformTarget } from '@/@types/social'
-import type { PublishResponse } from '@/lib/social/providers/SocialProvider'
+import type { PublishResponse, ScheduledPost } from '@/lib/social/providers/SocialProvider'
 import type { Database as BaseDatabase, Json } from '@/@types/supabase'
 
 /**
@@ -188,6 +188,30 @@ function toValidatedPlatforms(raw: string[]): { platforms: Platform[]; invalid: 
     return { platforms, invalid }
 }
 
+const SCHEDULE_MATCH_WINDOW_MS = 2 * 60 * 1000
+
+/**
+ * Match a locally-known {scheduledAt, caption} pair against Upload-Post's
+ * `listScheduled` results, to recover the `jobId` that `PublishResponse`
+ * never carries (see task-3 report addendum). A job matches when its
+ * `scheduledAt` is within a 2-minute window of ours AND our caption starts
+ * with its `title` (Upload-Post may truncate the title it stores).
+ */
+function findMatchingScheduledJob(
+    jobs: ScheduledPost[],
+    targetScheduledAt: string | Date,
+    caption: string,
+): ScheduledPost | undefined {
+    const targetMs = new Date(targetScheduledAt).getTime()
+    if (Number.isNaN(targetMs)) return undefined
+    return jobs.find((job) => {
+        if (!job.title || !caption.startsWith(job.title)) return false
+        const jobMs = new Date(job.scheduledAt).getTime()
+        if (Number.isNaN(jobMs)) return false
+        return Math.abs(jobMs - targetMs) <= SCHEDULE_MATCH_WINDOW_MS
+    })
+}
+
 export async function ensureSocialProfile(): Promise<SocialResult<SocialProfileRow>> {
     try {
         await requireSession()
@@ -339,6 +363,21 @@ export async function createSocialPost(input: CreateSocialPostInput): Promise<So
             dispatch = await provider.publishText(publishBase)
         }
 
+        // Best-effort backfill: PublishResponse never carries Upload-Post's
+        // internal schedule job id, so a scheduled dispatch is otherwise
+        // uncancellable on the provider side (see task-3 report addendum).
+        // Losing this lookup must never fail the publish that already
+        // succeeded above.
+        let uploadPostJobId: string | null = null
+        if (input.scheduledAt) {
+            try {
+                const scheduled = await provider.listScheduled(SOCIAL_USERNAME)
+                uploadPostJobId = findMatchingScheduledJob(scheduled, input.scheduledAt, caption)?.jobId ?? null
+            } catch (e) {
+                console.warn('[SocialService] listScheduled backfill failed', e)
+            }
+        }
+
         const { data: row, error: insErr } = await supabase
             .from('social_posts')
             .insert({
@@ -353,6 +392,7 @@ export async function createSocialPost(input: CreateSocialPostInput): Promise<So
                 status: input.scheduledAt ? 'scheduled' : 'processing',
                 scheduled_at: input.scheduledAt ?? null,
                 upload_post_request_id: dispatch.requestId ?? null,
+                upload_post_job_id: uploadPostJobId,
                 upload_post_response: toJson(dispatch),
             })
             .select('*')
@@ -388,13 +428,42 @@ export async function cancelScheduledPost(postId: string): Promise<SocialResult<
             .from('social_posts').select('*').eq('id', postId).single()
         if (!post) return { success: false, error: 'Post not found' }
         if (post.status !== 'scheduled') return { success: false, error: `Cannot cancel a ${post.status} post` }
-        if (post.upload_post_job_id) {
+
+        const provider = getSocialProvider()
+        const cannotCancel = {
+            success: false as const,
+            error: 'Could not cancel on Upload-Post — the post may still publish. Try again or remove the connected account.',
+        }
+
+        // Resolve the provider job id: prefer the one backfilled at creation
+        // time, else fall back to the same listScheduled match (covers rows
+        // created before the backfill existed, or whose backfill missed).
+        let jobId = post.upload_post_job_id
+        if (!jobId && post.scheduled_at) {
             try {
-                await getSocialProvider().cancelScheduled(post.upload_post_job_id)
+                const scheduled = await provider.listScheduled(SOCIAL_USERNAME)
+                jobId = findMatchingScheduledJob(scheduled, post.scheduled_at, post.caption)?.jobId ?? null
             } catch (e) {
-                console.warn('[SocialService] provider cancel failed, marking cancelled anyway', e)
+                // Couldn't verify whether a remote job exists — do NOT mark
+                // cancelled DB-only on an unverified guess (that's the exact
+                // silent-failure bug this rewrite exists to close).
+                console.warn('[SocialService] listScheduled lookup for cancel failed', e)
+                return cannotCancel
             }
         }
+
+        if (jobId) {
+            try {
+                await provider.cancelScheduled(jobId)
+            } catch (e) {
+                console.warn('[SocialService] provider cancel failed', e)
+                return cannotCancel
+            }
+        }
+        // else: no matching provider job at all (already fired, or never
+        // made it to Upload-Post) — nothing exists remotely to cancel, so a
+        // DB-only cancel below is honest, not a guess.
+
         const { data: row, error } = await supabase
             .from('social_posts')
             .update({ status: 'cancelled', updated_at: new Date().toISOString() })
