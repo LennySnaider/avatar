@@ -26,11 +26,11 @@
  * HMAC verification (SHA-256) is attempted when both a secret
  * (`UPLOAD_POST_WEBHOOK_SECRET`) and the `x-upload-post-signature` header
  * are present; a mismatch is logged and the event is dropped (no DB write)
- * but the endpoint still answers 200 — see the always-200 note below. If
- * `UPLOAD_POST_WEBHOOK_SECRET` IS configured but the signature header is
- * MISSING, the payload is unverifiable and is dropped the same way (no DB
- * write, still 200) rather than accepted — only when no secret is
- * configured at all do we fall back to accepting unsigned payloads.
+ * but the endpoint still answers 200 — see the always-200 note below.
+ * Unsigned payloads are ACCEPTED (with a warning): verified empirically,
+ * Upload-Post's notifications endpoint ignores any `secret` field, so real
+ * webhooks always arrive unsigned; the handler's writes are keyed by the
+ * unguessable `upload_post_request_id`, bounding the blast radius.
  *
  * Error-as-data: this route ALWAYS returns `{ ok: true }` with a 200
  * status, regardless of what happens internally (bad signature, bad JSON,
@@ -213,15 +213,19 @@ export async function POST(req: NextRequest) {
     const secret = process.env.UPLOAD_POST_WEBHOOK_SECRET
 
     // -------------------------------------------------------------------------
-    // 1. Signature gate (best-effort, same policy as agentsoft's handler)
+    // 1. Signature gate (best-effort)
     //
-    // Upload-Post's public docs do not currently document an HMAC signature
-    // header for outbound webhooks. Behavior:
-    //   - If both `signature` AND `secret` are present, we MUST validate.
-    //     Mismatch ⇒ log + skip the DB write, but still answer 200 (see
-    //     always-200 note at the top of this file).
-    //   - If signature is absent, we let the request through but log a
-    //     warning — Upload-Post may not sign webhooks on this plan yet.
+    // Verified empirically (2026-07-07): Upload-Post's notifications config
+    // stores ONLY `webhook_url` — a `secret` field sent to
+    // POST /api/uploadposts/users/notifications is silently ignored, so the
+    // provider has no shared secret to sign with and real webhooks arrive
+    // UNSIGNED. Dropping unsigned events would therefore drop every real
+    // event. Behavior:
+    //   - If a signature header IS present and a secret is configured,
+    //     validate it; mismatch ⇒ log + skip the DB write, still 200.
+    //   - If no signature header, accept-but-log. Blast radius is bounded:
+    //     the only state this handler mutates is keyed by the unguessable
+    //     `upload_post_request_id`, and only status/timestamps change.
     // -------------------------------------------------------------------------
     if (signature && secret) {
         const provider = new UploadPostProvider('unused', 'unused')
@@ -229,24 +233,12 @@ export async function POST(req: NextRequest) {
             console.log('[upload-post webhook] invalid_signature — dropping event')
             return NextResponse.json({ ok: true })
         }
-    } else if (secret && !signature) {
-        // A secret IS configured, so we're able to verify — but this
-        // request didn't carry the signature header at all. Never mutate
-        // state on a payload we can't authenticate; still ack 200 to avoid
-        // a provider retry storm (same policy as the invalid-signature case
-        // above).
-        console.log(
-            '[upload-post webhook] secret configured but missing x-upload-post-signature header — dropping unverified event',
-        )
-        return NextResponse.json({ ok: true })
     } else if (!signature) {
         console.warn(
-            '[upload-post webhook] No x-upload-post-signature header — accepting unverified. ' +
-                'Provider may not sign webhooks on this plan.',
+            '[upload-post webhook] No x-upload-post-signature header — accepting unverified ' +
+                '(Upload-Post does not support webhook secrets; writes are request_id-keyed).',
         )
     }
-    // (signature present + secret missing) is intentionally treated as
-    // unverified-but-accepted: the env was simply not configured yet.
 
     // -------------------------------------------------------------------------
     // 2. Parse body
