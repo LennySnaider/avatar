@@ -188,28 +188,55 @@ function toValidatedPlatforms(raw: string[]): { platforms: Platform[]; invalid: 
     return { platforms, invalid }
 }
 
-const SCHEDULE_MATCH_WINDOW_MS = 2 * 60 * 1000
+const SCHEDULE_MATCH_WINDOW_MS = 60 * 1000
+const AMBIGUOUS_CANCEL_WINDOW_MS = 10 * 60 * 1000
+
+/** Narrow a `platforms` jsonb value down to a `Set<Platform>` for comparison. */
+function toPlatformSet(platforms: Json): Set<Platform> {
+    if (!Array.isArray(platforms)) return new Set()
+    return new Set(platforms.filter((p): p is Platform => typeof p === 'string') as Platform[])
+}
+
+function platformSetsEqual(a: Set<Platform>, b: Set<Platform>): boolean {
+    if (a.size === 0 || a.size !== b.size) return false
+    for (const platform of a) if (!b.has(platform)) return false
+    return true
+}
 
 /**
- * Match a locally-known {scheduledAt, caption} pair against Upload-Post's
+ * Match a locally-known {scheduledAt, platforms} pair against Upload-Post's
  * `listScheduled` results, to recover the `jobId` that `PublishResponse`
- * never carries (see task-3 report addendum). A job matches when its
- * `scheduledAt` is within a 2-minute window of ours AND our caption starts
- * with its `title` (Upload-Post may truncate the title it stores).
+ * never carries (see task-3 report addendum).
+ *
+ * This mirrors the cron's conservative `findScheduledMatch` in
+ * `src/app/api/cron/social-reconcile/route.ts` (same rule, duplicated here
+ * as a small pure function rather than importing across the route/service
+ * boundary): a candidate must have (a) `scheduledAt` within 60 seconds of
+ * ours, (b) an EXACT (non-empty) platform-set match, and (c) be the ONLY
+ * candidate satisfying both — otherwise this refuses to guess and returns
+ * `null`. The previous caption/title-prefix + 2-minute-window heuristic
+ * ignored platforms entirely and used `.find()` (first match, no ambiguity
+ * check), which could correlate to the WRONG provider job; since callers
+ * use the result to cancel that job, a wrong match cancels someone else's
+ * post instead of this one.
  */
 function findMatchingScheduledJob(
     jobs: ScheduledPost[],
     targetScheduledAt: string | Date,
-    caption: string,
-): ScheduledPost | undefined {
+    platforms: Json,
+): ScheduledPost | null {
     const targetMs = new Date(targetScheduledAt).getTime()
-    if (Number.isNaN(targetMs)) return undefined
-    return jobs.find((job) => {
-        if (!job.title || !caption.startsWith(job.title)) return false
+    if (Number.isNaN(targetMs)) return null
+    const targetPlatforms = toPlatformSet(platforms)
+    if (targetPlatforms.size === 0) return null
+
+    const candidates = jobs.filter((job) => {
         const jobMs = new Date(job.scheduledAt).getTime()
-        if (Number.isNaN(jobMs)) return false
-        return Math.abs(jobMs - targetMs) <= SCHEDULE_MATCH_WINDOW_MS
+        if (Number.isNaN(jobMs) || Math.abs(jobMs - targetMs) > SCHEDULE_MATCH_WINDOW_MS) return false
+        return platformSetsEqual(targetPlatforms, new Set(job.platforms))
     })
+
+    return candidates.length === 1 ? candidates[0] : null
 }
 
 export async function ensureSocialProfile(): Promise<SocialResult<SocialProfileRow>> {
@@ -372,7 +399,7 @@ export async function createSocialPost(input: CreateSocialPostInput): Promise<So
         if (input.scheduledAt) {
             try {
                 const scheduled = await provider.listScheduled(SOCIAL_USERNAME)
-                uploadPostJobId = findMatchingScheduledJob(scheduled, input.scheduledAt, caption)?.jobId ?? null
+                uploadPostJobId = findMatchingScheduledJob(scheduled, input.scheduledAt, toJson(platforms))?.jobId ?? null
             } catch (e) {
                 console.warn('[SocialService] listScheduled backfill failed', e)
             }
@@ -439,10 +466,21 @@ export async function cancelScheduledPost(postId: string): Promise<SocialResult<
         // time, else fall back to the same listScheduled match (covers rows
         // created before the backfill existed, or whose backfill missed).
         let jobId = post.upload_post_job_id
+        // When no confident match is found, jobs scheduled near this post's
+        // time (but not confidently matched) — used below to distinguish
+        // "nothing exists remotely" from "something's there but ambiguous".
+        let nearbyJobs: ScheduledPost[] | null = null
         if (!jobId && post.scheduled_at) {
             try {
                 const scheduled = await provider.listScheduled(SOCIAL_USERNAME)
-                jobId = findMatchingScheduledJob(scheduled, post.scheduled_at, post.caption)?.jobId ?? null
+                jobId = findMatchingScheduledJob(scheduled, post.scheduled_at, post.platforms)?.jobId ?? null
+                if (!jobId) {
+                    const targetMs = new Date(post.scheduled_at).getTime()
+                    nearbyJobs = scheduled.filter((job) => {
+                        const jobMs = new Date(job.scheduledAt).getTime()
+                        return Number.isFinite(jobMs) && Math.abs(jobMs - targetMs) <= AMBIGUOUS_CANCEL_WINDOW_MS
+                    })
+                }
             } catch (e) {
                 // Couldn't verify whether a remote job exists — do NOT mark
                 // cancelled DB-only on an unverified guess (that's the exact
@@ -459,10 +497,22 @@ export async function cancelScheduledPost(postId: string): Promise<SocialResult<
                 console.warn('[SocialService] provider cancel failed', e)
                 return cannotCancel
             }
+        } else if (nearbyJobs && nearbyJobs.length > 0) {
+            // listScheduled succeeded and found jobs plausibly close (within
+            // 10 minutes) to this post's scheduled time, but none confidently
+            // matched (ambiguous or platform mismatch) — refuse to guess
+            // which one is ours, and do NOT mark this row cancelled DB-only
+            // while a live provider job may still be the real one and fire.
+            return {
+                success: false,
+                error:
+                    "Could not confidently identify this post's scheduled job on Upload-Post — cancel it from the Upload-Post dashboard, then refresh",
+            }
         }
-        // else: no matching provider job at all (already fired, or never
-        // made it to Upload-Post) — nothing exists remotely to cancel, so a
-        // DB-only cancel below is honest, not a guess.
+        // else: no plausible provider job at all near this post's scheduled
+        // time (already fired, never made it to Upload-Post, or we had no
+        // scheduled_at to check against) — nothing exists remotely to
+        // cancel, so a DB-only cancel below is honest, not a guess.
 
         const { data: row, error } = await supabase
             .from('social_posts')
