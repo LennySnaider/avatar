@@ -40,7 +40,7 @@ import {
     generateVideoMiniMax,
 } from '@/services/MiniMaxService'
 import type { MiniMaxVideoModel } from '@/@types/minimax'
-import { generateImageKie, generateVideoKieSafe, generateMotionControlKieSafe, submitKieImageTask, checkKieImageTask } from '@/services/KieService'
+import { generateImageKie, generateVideoKieSafe, generateMotionControlKieSafe, submitKieImageTask, checkKieImageTask, generateTalkingVideoKieSafe } from '@/services/KieService'
 import { generateImageViaGateway } from '@/services/GatewayService'
 import { buildAvatarPrompt, buildLeanIdentityPrompt, stripHarnessForFaceSwap, type RefRole } from '@/utils/avatarPromptBuilder'
 import { HiOutlineCog, HiOutlineBookOpen, HiX } from 'react-icons/hi'
@@ -150,6 +150,7 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
         prompt,
         generationMode,
         videoSubMode,
+        avatarDefaultVoice,
         aspectRatio,
         videoResolution,
         videoDuration,
@@ -783,7 +784,56 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                 console.log('[AvatarStudio] Is Kling Provider:', isKlingProvider)
                 console.log('[AvatarStudio] Is MiniMax Provider:', isMinimaxProvider)
 
-                if (videoSubMode === 'ANIMATE') {
+                if (videoSubMode === 'SPEAK') {
+                    // Talking-head: texto → TTS (voz clonada del avatar) → InfiniteTalk.
+                    // Ignora el proveedor seleccionado arriba: siempre KIE InfiniteTalk.
+                    if (!avatarDefaultVoice) {
+                        throw new Error('This avatar has no main voice. Clone one in Voice Studio and set it as main.')
+                    }
+                    const script = prompt.trim()
+                    if (!script) {
+                        throw new Error('Write what the avatar should say in the prompt box')
+                    }
+
+                    const speakImage = optimizedPayload.faceRef || optimizedPayload.generalRefs[0]
+                    if (!speakImage) {
+                        throw new Error('Add avatar references (a face photo) before generating a talking video')
+                    }
+
+                    // 1. TTS con la voz principal del avatar → URL pública en Storage
+                    const langMap: Record<string, string> = {
+                        es: 'Spanish', en: 'English', pt: 'Portuguese', fr: 'French',
+                    }
+                    const ttsRes = await fetch('/api/voice/tts-file', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            text: script,
+                            voiceId: avatarDefaultVoice.provider_voice_id,
+                            language: langMap[avatarDefaultVoice.language] ?? avatarDefaultVoice.language,
+                        }),
+                    })
+                    if (!ttsRes.ok) {
+                        const { error: ttsError } = await ttsRes.json()
+                        throw new Error(ttsError || 'Voice generation (TTS) failed')
+                    }
+                    const { audioUrl } = await ttsRes.json()
+
+                    // 2. InfiniteTalk: imagen del avatar + audio → video con lipsync
+                    const speakResult = await generateTalkingVideoKieSafe({
+                        image: speakImage,
+                        audioUrl,
+                        resolution: '720p',
+                    })
+                    if (!speakResult.success || !speakResult.url) {
+                        // El audio ya quedó generado y persistido; que el error lo diga
+                        // para no perder ese contexto (sin fallbacks silenciosos).
+                        throw new Error(
+                            `Talking video failed: ${speakResult.error || 'unknown error'}. The audio was generated: ${audioUrl}`,
+                        )
+                    }
+                    resultUrl = speakResult.url
+                } else if (videoSubMode === 'ANIMATE') {
                     if (!videoInputImage || !videoInputImage.base64) {
                         throw new Error('Please upload an image to animate')
                     }
@@ -1107,6 +1157,7 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
         isLoadingReferences,
         generationMode,
         videoSubMode,
+        avatarDefaultVoice,
         generalReferences,
         assetImages,
         sceneImage,

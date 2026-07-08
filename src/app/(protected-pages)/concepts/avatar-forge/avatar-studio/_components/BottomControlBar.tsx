@@ -202,6 +202,7 @@ const BottomControlBar = ({
         setGenerationMode,
         videoSubMode,
         setVideoSubMode,
+        avatarDefaultVoice,
         aspectRatio,
         setAspectRatio,
         videoResolution,
@@ -629,7 +630,13 @@ const BottomControlBar = ({
                                 onGenerate()
                             }
                         }}
-                        placeholder={generationMode === 'VIDEO' ? 'Describe the scene and action...' : 'Describe the image you want to generate...'}
+                        placeholder={
+                            generationMode === 'VIDEO'
+                                ? videoSubMode === 'SPEAK'
+                                    ? 'Write what the avatar should say...'
+                                    : 'Describe the scene and action...'
+                                : 'Describe the image you want to generate...'
+                        }
                         rows={6}
                         rightContent={
                             <div className="grid grid-cols-2 gap-1">
@@ -1211,7 +1218,32 @@ const BottomControlBar = ({
                             >
                                 Avatar
                             </button>
+                            <button
+                                onClick={() => setVideoSubMode('SPEAK')}
+                                className={`px-2 py-0.5 text-[10px] font-medium rounded transition-colors ${
+                                    videoSubMode === 'SPEAK'
+                                        ? 'bg-purple-500 text-white'
+                                        : 'text-gray-500'
+                                }`}
+                            >
+                                Speak
+                            </button>
                         </div>
+
+                        {videoSubMode === 'SPEAK' && (
+                            avatarDefaultVoice ? (
+                                <span className="px-2 py-1 text-[10px] rounded bg-purple-500/10 text-purple-400 flex items-center gap-1">
+                                    🎤 {avatarDefaultVoice.name}
+                                </span>
+                            ) : (
+                                <a
+                                    href="/concepts/avatar-forge/voice-studio"
+                                    className="px-2 py-1 text-[10px] rounded bg-amber-500/10 text-amber-500 underline"
+                                >
+                                    No voice — clone one in Voice Studio
+                                </a>
+                            )
+                        )}
 
                         {/* Resolution — only shown for providers that take a pixel resolution. */}
                         {resolutionOptions && (
@@ -1236,49 +1268,53 @@ const BottomControlBar = ({
                             </Dropdown>
                         )}
 
-                        {/* Duration — options adapt to the selected model. */}
-                        <Dropdown
-                            placement="top-start"
-                            renderTitle={
-                                <button className="px-2 py-1 text-xs bg-gray-100 dark:bg-gray-700 rounded hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors flex items-center gap-1">
-                                    <span className="text-gray-500">Dur:</span>
-                                    <span>{videoDuration}s</span>
-                                </button>
-                            }
-                        >
-                            {durationOptions.map((d) => (
-                                <Dropdown.Item
-                                    key={d}
-                                    eventKey={String(d)}
-                                    onClick={() => setVideoDuration(d)}
-                                    className={videoDuration === d ? 'bg-primary/10 text-primary' : ''}
-                                >
-                                    {d}s
-                                </Dropdown.Item>
-                            ))}
-                        </Dropdown>
+                        {/* Duration — options adapt to the selected model. Dictated by the audio in Speak mode. */}
+                        {videoSubMode !== 'SPEAK' && (
+                            <Dropdown
+                                placement="top-start"
+                                renderTitle={
+                                    <button className="px-2 py-1 text-xs bg-gray-100 dark:bg-gray-700 rounded hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors flex items-center gap-1">
+                                        <span className="text-gray-500">Dur:</span>
+                                        <span>{videoDuration}s</span>
+                                    </button>
+                                }
+                            >
+                                {durationOptions.map((d) => (
+                                    <Dropdown.Item
+                                        key={d}
+                                        eventKey={String(d)}
+                                        onClick={() => setVideoDuration(d)}
+                                        className={videoDuration === d ? 'bg-primary/10 text-primary' : ''}
+                                    >
+                                        {d}s
+                                    </Dropdown.Item>
+                                ))}
+                            </Dropdown>
+                        )}
 
-                        {/* Camera Motion */}
-                        <Dropdown
-                            placement="top-start"
-                            renderTitle={
-                                <button className="px-2 py-1 text-xs bg-gray-100 dark:bg-gray-700 rounded hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors flex items-center gap-1">
-                                    <span className="text-gray-500">Cam:</span>
-                                    <span>{cameraMotion || 'None'}</span>
-                                </button>
-                            }
-                        >
-                            {CAMERA_MOTIONS.map((m) => (
-                                <Dropdown.Item
-                                    key={m.value}
-                                    eventKey={m.value}
-                                    onClick={() => setCameraMotion(m.value as CameraMotion)}
-                                    className={cameraMotion === m.value ? 'bg-primary/10 text-primary' : ''}
-                                >
-                                    {m.label}
-                                </Dropdown.Item>
-                            ))}
-                        </Dropdown>
+                        {/* Camera Motion — not used in Speak mode (talking-head only). */}
+                        {videoSubMode !== 'SPEAK' && (
+                            <Dropdown
+                                placement="top-start"
+                                renderTitle={
+                                    <button className="px-2 py-1 text-xs bg-gray-100 dark:bg-gray-700 rounded hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors flex items-center gap-1">
+                                        <span className="text-gray-500">Cam:</span>
+                                        <span>{cameraMotion || 'None'}</span>
+                                    </button>
+                                }
+                            >
+                                {CAMERA_MOTIONS.map((m) => (
+                                    <Dropdown.Item
+                                        key={m.value}
+                                        eventKey={m.value}
+                                        onClick={() => setCameraMotion(m.value as CameraMotion)}
+                                        className={cameraMotion === m.value ? 'bg-primary/10 text-primary' : ''}
+                                    >
+                                        {m.label}
+                                    </Dropdown.Item>
+                                ))}
+                            </Dropdown>
+                        )}
 
                         {/* Subject Action */}
                         <Dropdown
