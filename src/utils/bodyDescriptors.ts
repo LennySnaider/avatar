@@ -139,3 +139,17 @@ export function getHairColorDescription(hairColor?: string): string {
     // Free-text custom colors fall through to a "<name> hair" description.
     return descriptions[hairColor] || hairColor.replace(/-/g, ' ') + ' hair'
 }
+
+const NATURAL_HAIR_COLORS = new Set([
+    'black', 'dark-brown', 'brown', 'light-brown', 'dark-blonde', 'blonde',
+    'platinum-blonde', 'red', 'auburn', 'ginger', 'gray', 'silver', 'white',
+])
+
+/**
+ * True for fashion/unnatural or free-text hair colors (purple, pink, blue,
+ * lavender, custom names…). Used so the generation prompt tints only the head
+ * hair for these — eyebrows must stay a natural neutral tone, not dyed pink.
+ */
+export function isFashionHairColor(hairColor?: string): boolean {
+    return !!hairColor && !NATURAL_HAIR_COLORS.has(hairColor)
+}

@@ -1,5 +1,5 @@
 import type { PhysicalMeasurements } from '@/@types/supabase'
-import { getBodyDescriptors, getSkinToneDescription, getHairColorDescription } from '@/utils/bodyDescriptors'
+import { getBodyDescriptors, getSkinToneDescription, getHairColorDescription, isFashionHairColor } from '@/utils/bodyDescriptors'
 
 /**
  * Shared avatar prompt recipe — a faithful port of the harness in
@@ -183,7 +183,7 @@ function buildBodySpecification(m: PhysicalMeasurements): string {
 HEIGHT: ${heightLabel} (${height}cm)
 BODY TYPE: ${bodyTypeLabel}
 ${skin ? `\n▓▓▓ SKIN TONE ▓▓▓\n${skin.toUpperCase()}\nThis is the EXACT skin complexion the character MUST have.` : ''}
-${hair ? `\n▓▓▓ HAIR COLOR ▓▓▓\n${hair.toUpperCase()}\nThe character's hair (head hair, eyebrows) MUST be this color.` : ''}
+${hair ? `\n▓▓▓ HAIR COLOR ▓▓▓\n${hair.toUpperCase()}\nThe character's HEAD HAIR MUST be this color. ${isFashionHairColor(m.hairColor) ? 'Keep eyebrows a natural neutral tone (not dyed this color).' : 'Eyebrows follow the hair color naturally.'}` : ''}
 
 ▓▓▓ BUST/CHEST ▓▓▓
 ${bustDesc}
@@ -327,19 +327,36 @@ export function buildAvatarPrompt(opts: AvatarPromptOptions): { systemPreamble: 
     // which otherwise show the original color and win by default (identity
     // bleed). Highest-priority override, injected last; keeps face identity.
     const hairColorSpecDesc = getHairColorDescription(measurements.hairColor)
+    // Fashion colors tint only the head hair — dyed eyebrows look unnatural.
+    const eyebrowRule = isFashionHairColor(measurements.hairColor)
+        ? '→ EYEBROWS: keep them a natural neutral tone (soft brown/dark to suit the face). Do NOT dye the eyebrows this color — colored eyebrows look unnatural.'
+        : '→ Eyebrows follow the hair color naturally.'
     const hairColorOverride = hairColorSpecDesc ? `
 ╔═══════════════════════════════════════════════════════════════╗
 ║  🎨 HAIR COLOR OVERRIDE — HIGHEST PRIORITY (READ LAST)         ║
 ╚═══════════════════════════════════════════════════════════════╝
 The reference images and any hair color written in the facial description may
-show a DIFFERENT hair color. That is intentional — you MUST RECOLOR the hair.
-→ The character's hair (head hair AND eyebrows) MUST be: ${hairColorSpecDesc.toUpperCase()}
+show a DIFFERENT hair color. That is intentional — you MUST RECOLOR the head hair.
+→ The character's HEAD HAIR MUST be: ${hairColorSpecDesc.toUpperCase()}
+${eyebrowRule}
 → This OVERRIDES any hair color visible in the reference images or written in
   the description. Do NOT keep the reference hair color.
 → Change ONLY the hair COLOR. Keep the exact face identity, bone structure,
   hairstyle, length and texture from the references.` : ''
     const selectedBodyType = (measurements.bodyType || 'average').toUpperCase()
     const heightLabel = (measurements.height || 165) < 160 ? 'PETITE/SHORT' : (measurements.height || 165) < 170 ? 'AVERAGE HEIGHT' : 'TALL'
+
+    // Body proportions override — same rationale as hair: the FACE/ANGLE refs
+    // are identity-only; without a dedicated body image the text specs must win.
+    const bodyProportionsOverride = `
+╔═══════════════════════════════════════════════════════════════╗
+║  📐 BODY PROPORTIONS OVERRIDE — HIGHEST PRIORITY (READ LAST)   ║
+╚═══════════════════════════════════════════════════════════════╝
+The reference images are for FACE IDENTITY ONLY. Do NOT copy the body build,
+weight or proportions of the person in them.
+→ The character's body MUST be: ${selectedBodyType} build — ${bodyAdjectives}
+→ If the person in the references looks slimmer or curvier than specified,
+  RESHAPE the body to match these specs — keep only the face identity.`
 
     const physicalInstructions = `═══════════════════════════════════════════════════════════════
 CHARACTER PHYSICAL SPECIFICATIONS (MANDATORY - CONSISTENCY CRITICAL)
@@ -430,6 +447,7 @@ ${hasClone ? '- Copying the face from [CLONE_REF] (it is a faceless mannequin) �
 ${hasPose ? '- Pose matches [POSE_REF] (position only, not the person)' : ''}
 ${hasClone ? '- Pose, outfit, held objects, framing and scene match [CLONE_REF] exactly; only the face is from [FACE_ANCHOR]' : ''}
 ${hairColorSpecDesc ? `- Hair color is ${hairColorSpecDesc} (RECOLORED from the reference, NOT the reference's color)` : ''}
+${hasBody ? '' : bodyProportionsOverride}
 ${hairColorOverride}`
 
     return { systemPreamble, finalPrompt }

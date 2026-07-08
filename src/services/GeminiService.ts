@@ -4,7 +4,7 @@ import { GoogleGenAI, Type } from '@google/genai'
 import type { PhysicalMeasurements, AspectRatio } from '@/@types/supabase'
 import { filterKnownSafeCorrections } from '@/app/(protected-pages)/concepts/avatar-forge/avatar-studio/_constants/knownSafeWords'
 import { sanitizePromptForGeneration, aggressiveSanitize } from '@/utils/promptSanitizer'
-import { getBodyDescriptors, getSkinToneDescription, getHairColorDescription } from '@/utils/bodyDescriptors'
+import { getBodyDescriptors, getSkinToneDescription, getHairColorDescription, isFashionHairColor } from '@/utils/bodyDescriptors'
 import type { CinemaLens, CinemaFocalLength, CinemaAperture } from '@/app/(protected-pages)/concepts/avatar-forge/avatar-studio/types'
 import { CINEMA_LENSES, CINEMA_FOCAL_LENGTHS, CINEMA_APERTURES } from '@/app/(protected-pages)/concepts/avatar-forge/avatar-studio/_constants/cinemaPresets'
 import { generateImage as generateImageWithMiniMax } from '@/services/MiniMaxService'
@@ -1136,18 +1136,43 @@ export async function generateAvatar(params: {
     // face_description often show the ORIGINAL color — with no arbiter, the
     // model follows the images. This override tells it, as the last and
     // highest-priority instruction, to recolor the hair while keeping identity.
+    // Fashion colors (pink/purple/…) tint ONLY the head hair — dyed eyebrows
+    // look unnatural, so those stay a neutral tone.
+    const eyebrowRule = isFashionHairColor(measurements.hairColor)
+        ? '→ EYEBROWS: keep them a natural neutral tone (soft brown/dark to suit the face). Do NOT dye the eyebrows this color — colored eyebrows look unnatural.'
+        : '→ Eyebrows follow the hair color naturally.'
     const hairColorOverride = hairColorSpecDesc ? `
     ╔═══════════════════════════════════════════════════════════════╗
     ║  🎨 HAIR COLOR OVERRIDE — HIGHEST PRIORITY (READ LAST)         ║
     ╚═══════════════════════════════════════════════════════════════╝
     The reference images ([FACE_ANCHOR], [ANGLE_SHEET]) and any hair color
     written in the facial description may show a DIFFERENT hair color. That is
-    intentional — you MUST RECOLOR the hair.
-    → The character's hair (head hair AND eyebrows) MUST be: ${hairColorSpecDesc.toUpperCase()}
+    intentional — you MUST RECOLOR the head hair.
+    → The character's HEAD HAIR MUST be: ${hairColorSpecDesc.toUpperCase()}
+    ${eyebrowRule}
     → This OVERRIDES any hair color visible in the reference images or written
       in the description above. Do NOT keep the reference hair color.
     → Change ONLY the hair COLOR. Keep the exact face identity, bone structure,
       hairstyle, length and texture from the references.` : ''
+
+    // A UI-set body must beat the apparent build in the FACE/ANGLE references
+    // (which are identity-only). Only when there's no dedicated body image —
+    // if one is provided it intentionally wins. Injected last, like the hair
+    // override. bodyTypeLabel/bust/waist/hips are computed above.
+    const bodyProportionsOverride = `
+    ╔═══════════════════════════════════════════════════════════════╗
+    ║  📐 BODY PROPORTIONS OVERRIDE — HIGHEST PRIORITY (READ LAST)   ║
+    ╚═══════════════════════════════════════════════════════════════╝
+    The reference images ([FACE_ANCHOR], [ANGLE_SHEET]) are for FACE IDENTITY
+    ONLY. Do NOT copy the body build, weight or proportions of the person in them.
+    → The character's body MUST match these specifications, NOT the apparent
+      build in the photos:
+      • Body type: ${bodyTypeLabel}
+      • Bust: ${bustDesc}
+      • Waist: ${waistDesc}
+      • Hips/lower body: ${hipsDesc}
+    → If the person in the reference photos looks slimmer or curvier than
+      specified, RESHAPE the body to the specs above — keep only the face.`
 
     const bodySpecification = `
 ╔═══════════════════════════════════════════════════════════════════════════════╗
@@ -1157,7 +1182,7 @@ export async function generateAvatar(params: {
 HEIGHT: ${heightLabel} (${height}cm / ${Math.floor(height/30.48)}'${Math.round((height/2.54) % 12)}")
 BODY TYPE: ${bodyTypeLabel}
 ${skinToneSpecDesc ? `\n▓▓▓ SKIN TONE ▓▓▓\n${skinToneSpecDesc.toUpperCase()}\nThis is the EXACT skin complexion the character MUST have.` : ''}
-${hairColorSpecDesc ? `\n▓▓▓ HAIR COLOR ▓▓▓\n${hairColorSpecDesc.toUpperCase()}\nThe character's hair (head hair, eyebrows, body hair) MUST be this color.` : ''}
+${hairColorSpecDesc ? `\n▓▓▓ HAIR COLOR ▓▓▓\n${hairColorSpecDesc.toUpperCase()}\nThe character's HEAD HAIR MUST be this color. ${isFashionHairColor(measurements.hairColor) ? 'Keep eyebrows a natural neutral tone (not dyed this color).' : 'Eyebrows follow the hair color naturally.'}` : ''}
 
 ▓▓▓ BUST/CHEST ▓▓▓
 ${bustDesc}
@@ -1535,6 +1560,7 @@ ${hairColorSpecDesc ? `- EXACT HAIR COLOR: ${hairColorSpecDesc}` : ''}
     ${cameraShot !== 'AUTO' ? `- Framing is ${cameraShot.replace(/_/g, ' ')}` : ''}
     ${cameraAngle !== null ? `- Camera angle is ${cameraAngle.replace(/_/g, ' ')}` : ''}
     ${hairColorSpecDesc ? `- Hair color is ${hairColorSpecDesc} (RECOLORED from the reference, NOT the reference's color)` : ''}
+    ${!hasBodyRef ? bodyProportionsOverride : ''}
     ${hairColorOverride}
   `
 
