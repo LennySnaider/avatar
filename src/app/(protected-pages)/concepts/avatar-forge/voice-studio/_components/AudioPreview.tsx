@@ -1,7 +1,9 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
+import { useRouter } from 'next/navigation'
 import { useVoiceStudioStore } from '../_store/voiceStudioStore'
+import { useAvatarStudioStore } from '../../avatar-studio/_store/avatarStudioStore'
 import Button from '@/components/ui/Button'
 import Card from '@/components/ui/Card'
 import type { VoiceTtsSettings } from '@/@types/voice'
@@ -26,8 +28,22 @@ export default function AudioPreview() {
         scriptLanguage,
     } = useVoiceStudioStore()
     const audioRef = useRef<HTMLAudioElement>(null)
+    const router = useRouter()
 
     const selectedVoice = voices.find((v) => v.id === selectedVoiceId)
+
+    // Lleva el audio generado + guion directo al modo Speak del Avatar Studio
+    // (navegación client-side: los stores sobreviven, no se re-genera nada).
+    const handleSendToAvatarStudio = () => {
+        if (!previewAudioUrl) return
+        const avatarStudio = useAvatarStudioStore.getState()
+        avatarStudio.setSpeakAudioUrl(previewAudioUrl)
+        avatarStudio.setVideoDialogue(currentScript.trim())
+        avatarStudio.setGenerationMode('VIDEO')
+        avatarStudio.setVideoSubMode('SPEAK')
+        const avatarId = selectedVoice?.avatar_id
+        router.push(`/concepts/avatar-forge/avatar-studio${avatarId ? `?avatarId=${avatarId}` : ''}`)
+    }
 
     // Ajustes de entrega (speed/pitch/emotion) — precargados desde la voz.
     const [speed, setSpeed] = useState(1)
@@ -264,12 +280,20 @@ export default function AudioPreview() {
                 </Button>
 
                 {previewAudioUrl && (
-                    <audio
-                        ref={audioRef}
-                        controls
-                        src={previewAudioUrl}
-                        className="w-full"
-                    />
+                    <>
+                        <audio
+                            ref={audioRef}
+                            controls
+                            src={previewAudioUrl}
+                            className="w-full"
+                        />
+                        <Button variant="default" block onClick={handleSendToAvatarStudio}>
+                            🎬 Send to Avatar Studio
+                        </Button>
+                        <p className="text-[10px] text-gray-400 text-center -mt-1">
+                            Opens Speak mode{selectedVoice?.avatar_id ? ' with the linked avatar' : ''} using THIS audio — no TTS re-generation.
+                        </p>
+                    </>
                 )}
             </div>
         </Card>
