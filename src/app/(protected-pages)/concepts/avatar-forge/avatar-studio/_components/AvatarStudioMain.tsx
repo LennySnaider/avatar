@@ -862,10 +862,17 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                         const { error: ttsError } = await ttsRes.json()
                         throw new Error(ttsError || 'Voice generation (TTS) failed')
                     }
-                    const { audioUrl } = await ttsRes.json()
+                    const { audioUrl, durationMs } = await ttsRes.json()
 
-                    // 2. InfiniteTalk: imagen del avatar + audio → video con lipsync
-                    // (submit async + poll desde el navegador — los jobs tardan 10-20 min)
+                    // 2. Talking-head con el motor elegido (InfiniteTalk / OmniHuman /
+                    // Kling 3.0 con audio element) — submit async + poll desde el
+                    // navegador, los jobs tardan 10-20 min.
+                    // Kling necesita 2-4 imágenes del personaje para su element.
+                    const speakElementImages = [
+                        optimizedPayload.faceRef,
+                        ...optimizedPayload.generalRefs,
+                    ].filter((r): r is { base64: string; mimeType: string } => !!r)
+
                     try {
                         resultUrl = await pollKieTalkingVideoTask({
                             image: speakImage,
@@ -873,6 +880,8 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                             prompt: visualPrompt || undefined,
                             resolution: '720p',
                             model: useAvatarStudioStore.getState().speakModel,
+                            elementImages: speakElementImages,
+                            durationSec: durationMs ? durationMs / 1000 : undefined,
                         })
                     } catch (speakErr) {
                         // El audio ya quedó generado y persistido; que el error lo diga

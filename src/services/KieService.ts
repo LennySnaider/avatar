@@ -1172,11 +1172,18 @@ export interface GenerateTalkingVideoKieParams {
     prompt?: string
     resolution?: '480p' | '720p'
     /**
-     * Motor talking-head: InfiniteTalk (clips largos) u OmniHuman 1.5 de
-     * ByteDance (audio ≤60s, óptimo ≤15s, mejores gestos) — respaldo cuando
-     * InfiniteTalk está degradado.
+     * Motor talking-head: InfiniteTalk (clips largos), OmniHuman 1.5 de
+     * ByteDance (audio ≤60s, óptimo ≤15s, mejores gestos) o Kling 3.0 vía
+     * elements (mejor calidad de video; audio 5-30s, video 3-15s).
      */
-    model?: 'infinitalk' | 'omnihuman'
+    model?: 'infinitalk' | 'omnihuman' | 'kling'
+    /**
+     * Solo Kling: imágenes extra del personaje para el element (necesita 2-4
+     * URLs en total; si faltan se duplica la imagen principal).
+     */
+    elementImages?: Array<{ base64: string; mimeType: string }>
+    /** Solo Kling: duración del audio TTS en segundos, para dimensionar el video (3-15s). */
+    durationSec?: number
 }
 
 const DEFAULT_TALKING_PROMPT =
@@ -1194,6 +1201,48 @@ export async function submitTalkingVideoKieTask(
 ): Promise<{ success: true; taskId: string } | { success: false; error: string }> {
     try {
         const imageUrl = await uploadReferenceToSupabase(params.image.base64, params.image.mimeType)
+
+        // Kling 3.0 habla vía kling_elements: personaje (2-4 imágenes) + audio
+        // (5-30s) referenciado con @nombre en el prompt. Mejor calidad de video
+        // que los modelos audio-driven dedicados.
+        if (params.model === 'kling') {
+            const elementUrls = [imageUrl]
+            for (const extra of params.elementImages ?? []) {
+                if (elementUrls.length >= 4) break
+                elementUrls.push(await uploadReferenceToSupabase(extra.base64, extra.mimeType))
+            }
+            // El element exige mínimo 2 URLs — duplicar la principal si falta.
+            if (elementUrls.length < 2) elementUrls.push(imageUrl)
+
+            // Video 3-15s: audio + 1s de margen, acotado al rango válido.
+            const videoDuration = Math.min(15, Math.max(3, Math.ceil(params.durationSec ?? 10) + 1))
+
+            const input: Record<string, unknown> = {
+                prompt: `${(params.prompt || DEFAULT_TALKING_PROMPT).slice(0, 2000)} @avatar_speaker`,
+                image_urls: [imageUrl],
+                sound: true,
+                multi_shots: false,
+                duration: videoDuration,
+                mode: 'pro',
+                kling_elements: [
+                    {
+                        name: 'avatar_speaker',
+                        description: 'the avatar character speaking the provided voice audio with synced lips',
+                        element_input_urls: elementUrls,
+                        element_input_audio_urls: [params.audioUrl],
+                    },
+                ],
+            }
+
+            console.log('[KIE] Submitting talking-head task (kling-3.0/video + audio element)')
+            const taskId = await withTimeout(
+                submitTask({ model: 'kling-3.0/video', input }),
+                30_000,
+                'KIE talking-head submit',
+            )
+            console.log(`[KIE] Talking-head task submitted: ${taskId}`)
+            return { success: true, taskId }
+        }
 
         const isOmniHuman = params.model === 'omnihuman'
         const kieModel = isOmniHuman ? 'omnihuman-1-5' : 'infinitalk/from-audio'

@@ -104,15 +104,36 @@ const SpeakScriptDialog = ({ isOpen, onClose }: SpeakScriptDialogProps) => {
                         >
                             OmniHuman
                         </button>
+                        <button
+                            type="button"
+                            onClick={() => setSpeakModel('kling')}
+                            className={`px-2 py-1 text-xs font-medium rounded transition-colors ${
+                                speakModel === 'kling' ? 'bg-purple-500 text-white' : 'text-gray-500'
+                            }`}
+                        >
+                            Kling 3.0
+                        </button>
                     </div>
                     <span className="text-[10px] text-gray-400">
                         {speakModel === 'infinitalk'
                             ? 'InfiniteTalk: long clips, standard quality.'
-                            : 'OmniHuman 1.5: best gestures/quality, ideal for clips under 15s.'}
+                            : speakModel === 'omnihuman'
+                              ? 'OmniHuman 1.5: best gestures/quality, ideal for clips under 15s.'
+                              : 'Kling 3.0 (pro): best video quality; audio must be 5-30s, video capped at 15s.'}
                     </span>
                     {speakModel === 'omnihuman' && estimatedSeconds > 15 && (
                         <span className="text-[10px] text-amber-500">
                             Script runs ~{estimatedSeconds}s — OmniHuman quality degrades past 15s. Consider shortening it or using InfiniteTalk.
+                        </span>
+                    )}
+                    {speakModel === 'kling' && (estimatedSeconds < 5 || estimatedSeconds > 30) && (
+                        <span className="text-[10px] text-amber-500">
+                            Script runs ~{estimatedSeconds}s — Kling requires 5-30s of audio. Adjust the script length.
+                        </span>
+                    )}
+                    {speakModel === 'kling' && estimatedSeconds > 14 && estimatedSeconds <= 30 && (
+                        <span className="text-[10px] text-amber-500">
+                            Kling videos cap at 15s — a ~{estimatedSeconds}s script may get cut. Shorten it for a clean ending.
                         </span>
                     )}
                 </div>

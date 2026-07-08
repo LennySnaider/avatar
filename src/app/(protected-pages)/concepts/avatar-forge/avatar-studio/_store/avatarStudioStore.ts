@@ -48,8 +48,8 @@ export interface PromptAnalysisResult {
 
 // Video sub-mode
 export type VideoSubMode = 'ANIMATE' | 'AVATAR' | 'SPEAK'
-/** Motor del modo Speak: InfiniteTalk (clips largos) u OmniHuman (≤15s, mejores gestos). */
-export type SpeakModel = 'infinitalk' | 'omnihuman'
+/** Motor del modo Speak: InfiniteTalk (clips largos), OmniHuman (≤15s, mejores gestos) o Kling 3.0 (mejor calidad de video, audio 5-30s). */
+export type SpeakModel = 'infinitalk' | 'omnihuman' | 'kling'
 
 interface AvatarStudioState {
     // Current Avatar
