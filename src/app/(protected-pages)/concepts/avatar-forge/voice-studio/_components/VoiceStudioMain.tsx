@@ -8,8 +8,14 @@ import ScriptEditor from './ScriptEditor'
 import AudioPreview from './AudioPreview'
 import AudioMergePanel from './AudioMergePanel'
 import type { ClonedVoice } from '@/@types/voice'
+import type { Avatar } from '@/@types/supabase'
 
-export default function VoiceStudioMain() {
+interface VoiceStudioMainProps {
+    userId: string
+    avatars: Avatar[]
+}
+
+export default function VoiceStudioMain({ userId, avatars }: VoiceStudioMainProps) {
     const { setVoices } = useVoiceStudioStore()
 
     useEffect(() => {
@@ -30,8 +36,8 @@ export default function VoiceStudioMain() {
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                 {/* Left column: Voice management */}
                 <div className="flex flex-col gap-4">
-                    <VoiceClonePanel />
-                    <VoiceLibrary />
+                    <VoiceClonePanel avatars={avatars} />
+                    <VoiceLibrary avatars={avatars} />
                 </div>
 
                 {/* Center column: Script editor */}

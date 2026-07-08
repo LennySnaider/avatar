@@ -1,10 +1,13 @@
 import { auth } from '@/auth'
 import { redirect } from 'next/navigation'
 import VoiceStudioMain from './_components/VoiceStudioMain'
+import { apiGetAvatars } from '@/services/AvatarForgeService'
 
 export default async function VoiceStudioPage() {
     const session = await auth()
     if (!session?.user?.id) redirect('/sign-in')
 
-    return <VoiceStudioMain />
+    const avatars = await apiGetAvatars(session.user.id)
+
+    return <VoiceStudioMain userId={session.user.id} avatars={avatars} />
 }

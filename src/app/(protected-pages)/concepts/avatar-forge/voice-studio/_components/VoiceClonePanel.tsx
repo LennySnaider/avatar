@@ -5,12 +5,19 @@ import { useVoiceStudioStore } from '../_store/voiceStudioStore'
 import Button from '@/components/ui/Button'
 import Input from '@/components/ui/Input'
 import Card from '@/components/ui/Card'
+import type { Avatar } from '@/@types/supabase'
 
-export default function VoiceClonePanel() {
+interface VoiceClonePanelProps {
+    avatars: Avatar[]
+}
+
+export default function VoiceClonePanel({ avatars }: VoiceClonePanelProps) {
     const { setVoices, voices, setIsCloning, isCloning } = useVoiceStudioStore()
     const [name, setName] = useState('')
     const [language, setLanguage] = useState('es')
     const [audioFile, setAudioFile] = useState<File | null>(null)
+    const [avatarId, setAvatarId] = useState('')
+    const [setAsDefault, setSetAsDefault] = useState(true)
     const fileInputRef = useRef<HTMLInputElement>(null)
 
     const handleClone = async () => {
@@ -22,6 +29,10 @@ export default function VoiceClonePanel() {
             formData.append('audio', audioFile)
             formData.append('name', name)
             formData.append('language', language)
+            if (avatarId) {
+                formData.append('avatarId', avatarId)
+                formData.append('setAsDefault', String(setAsDefault))
+            }
 
             const res = await fetch('/api/voice/clone', {
                 method: 'POST',
@@ -69,6 +80,28 @@ export default function VoiceClonePanel() {
                     <option value="pt">Português</option>
                     <option value="fr">Français</option>
                 </select>
+
+                <select
+                    className="w-full rounded-md border px-3 py-2 text-sm"
+                    value={avatarId}
+                    onChange={(e) => setAvatarId(e.target.value)}
+                >
+                    <option value="">No avatar (voice only)</option>
+                    {avatars.map((a) => (
+                        <option key={a.id} value={a.id}>{a.name}</option>
+                    ))}
+                </select>
+
+                {avatarId && (
+                    <label className="flex items-center gap-2 text-sm">
+                        <input
+                            type="checkbox"
+                            checked={setAsDefault}
+                            onChange={(e) => setSetAsDefault(e.target.checked)}
+                        />
+                        Use as the avatar&apos;s main voice
+                    </label>
+                )}
 
                 <input
                     ref={fileInputRef}

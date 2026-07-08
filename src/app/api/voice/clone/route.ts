@@ -14,6 +14,7 @@ export async function POST(req: NextRequest) {
     const name = formData.get('name') as string
     const language = (formData.get('language') as string) || 'es'
     const avatarId = formData.get('avatarId') as string | null
+    const setAsDefault = formData.get('setAsDefault') === 'true'
 
     if (!audioFile || !name) {
         return NextResponse.json({ error: 'audio and name are required' }, { status: 400 })
@@ -64,7 +65,22 @@ export async function POST(req: NextRequest) {
 
         if (dbError) throw new Error(dbError.message)
 
-        return NextResponse.json({ success: true, voice })
+        // 5. Optionally set as the avatar's main voice
+        let defaultVoiceSet = false
+        if (avatarId && setAsDefault && voice) {
+            const { error: avatarError } = await supabase
+                .from('avatars')
+                .update({ default_voice_id: voice.id })
+                .eq('id', avatarId)
+                .eq('user_id', userId)
+            if (avatarError) {
+                console.error('[voice/clone] Failed to set default voice:', avatarError.message)
+            } else {
+                defaultVoiceSet = true
+            }
+        }
+
+        return NextResponse.json({ success: true, voice, defaultVoiceSet })
     } catch (error) {
         const message = error instanceof Error ? error.message : 'Voice cloning failed'
         return NextResponse.json({ error: message }, { status: 500 })
