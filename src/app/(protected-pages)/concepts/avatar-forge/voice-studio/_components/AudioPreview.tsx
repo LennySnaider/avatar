@@ -75,6 +75,106 @@ export default function AudioPreview() {
         el.playbackRate = Math.min(4, Math.max(0.25, speed / bakedSpeed))
     }, [speed, bakedSpeed, previewAudioUrl])
 
+    // ── EQ en vivo (graves/agudos) vía Web Audio ────────────────────────
+    // lowshelf 200Hz = Bass, highshelf 3kHz = Treble. Solo afecta la
+    // REPRODUCCIÓN; "Apply EQ to file" lo hornea al archivo para que
+    // lipsync/Speak usen lo mismo que se escucha.
+    const [bass, setBass] = useState(0)
+    const [treble, setTreble] = useState(0)
+    const [isApplyingEq, setIsApplyingEq] = useState(false)
+    const audioCtxRef = useRef<AudioContext | null>(null)
+    const bassNodeRef = useRef<BiquadFilterNode | null>(null)
+    const trebleNodeRef = useRef<BiquadFilterNode | null>(null)
+
+    // El grafo se monta una sola vez por elemento <audio> (la fuente queda
+    // ligada al elemento, sobrevive a cambios de src).
+    const ensureEqGraph = () => {
+        const el = audioRef.current
+        if (!el || audioCtxRef.current) return
+        const ctx = new AudioContext()
+        const source = ctx.createMediaElementSource(el)
+        const bassNode = ctx.createBiquadFilter()
+        bassNode.type = 'lowshelf'
+        bassNode.frequency.value = 200
+        const trebleNode = ctx.createBiquadFilter()
+        trebleNode.type = 'highshelf'
+        trebleNode.frequency.value = 3000
+        source.connect(bassNode).connect(trebleNode).connect(ctx.destination)
+        audioCtxRef.current = ctx
+        bassNodeRef.current = bassNode
+        trebleNodeRef.current = trebleNode
+    }
+
+    useEffect(() => {
+        if (bassNodeRef.current) bassNodeRef.current.gain.value = bass
+        if (trebleNodeRef.current) trebleNodeRef.current.gain.value = treble
+    }, [bass, treble])
+
+    /** Codifica un AudioBuffer a WAV PCM16 (el navegador no trae encoder mp3). */
+    const audioBufferToWav = (buf: AudioBuffer): Blob => {
+        const numCh = buf.numberOfChannels
+        const len = buf.length * numCh * 2
+        const out = new DataView(new ArrayBuffer(44 + len))
+        const writeStr = (o: number, s: string) => { for (let i = 0; i < s.length; i++) out.setUint8(o + i, s.charCodeAt(i)) }
+        writeStr(0, 'RIFF'); out.setUint32(4, 36 + len, true); writeStr(8, 'WAVE')
+        writeStr(12, 'fmt '); out.setUint32(16, 16, true); out.setUint16(20, 1, true)
+        out.setUint16(22, numCh, true); out.setUint32(24, buf.sampleRate, true)
+        out.setUint32(28, buf.sampleRate * numCh * 2, true); out.setUint16(32, numCh * 2, true)
+        out.setUint16(34, 16, true); writeStr(36, 'data'); out.setUint32(40, len, true)
+        let offset = 44
+        for (let i = 0; i < buf.length; i++) {
+            for (let ch = 0; ch < numCh; ch++) {
+                const s = Math.max(-1, Math.min(1, buf.getChannelData(ch)[i]))
+                out.setInt16(offset, s < 0 ? s * 0x8000 : s * 0x7fff, true)
+                offset += 2
+            }
+        }
+        return new Blob([out.buffer], { type: 'audio/wav' })
+    }
+
+    // Re-procesa el mp3 con los mismos filtros (OfflineAudioContext), sube el
+    // WAV resultante y reemplaza previewAudioUrl — el EQ queda horneado.
+    const handleApplyEq = async () => {
+        if (!previewAudioUrl || (bass === 0 && treble === 0)) return
+        setIsApplyingEq(true)
+        try {
+            const raw = await (await fetch(previewAudioUrl)).arrayBuffer()
+            const decodeCtx = new AudioContext()
+            const decoded = await decodeCtx.decodeAudioData(raw)
+            decodeCtx.close()
+
+            const offline = new OfflineAudioContext(decoded.numberOfChannels, decoded.length, decoded.sampleRate)
+            const src = offline.createBufferSource()
+            src.buffer = decoded
+            const b = offline.createBiquadFilter()
+            b.type = 'lowshelf'; b.frequency.value = 200; b.gain.value = bass
+            const t = offline.createBiquadFilter()
+            t.type = 'highshelf'; t.frequency.value = 3000; t.gain.value = treble
+            src.connect(b).connect(t).connect(offline.destination)
+            src.start()
+            const rendered = await offline.startRendering()
+
+            const wav = audioBufferToWav(rendered)
+            const form = new FormData()
+            form.append('audio', new File([wav], 'eq.wav', { type: 'audio/wav' }))
+            const res = await fetch('/api/voice/upload-audio', { method: 'POST', body: form })
+            if (!res.ok) {
+                const { error } = await res.json()
+                throw new Error(error || 'Upload failed')
+            }
+            const { audioUrl } = await res.json()
+            setPreviewAudioUrl(audioUrl)
+            // El archivo YA suena así — las perillas vuelven a plano.
+            setBass(0)
+            setTreble(0)
+        } catch (err) {
+            console.error('Apply EQ failed:', err)
+            setSettingsMsg('Could not apply EQ to the file.')
+        } finally {
+            setIsApplyingEq(false)
+        }
+    }
+
     const buildSettings = (): VoiceTtsSettings => {
         const s: VoiceTtsSettings = {}
         if (speed !== 1) s.speed = speed
@@ -284,9 +384,57 @@ export default function AudioPreview() {
                         <audio
                             ref={audioRef}
                             controls
+                            crossOrigin="anonymous"
                             src={previewAudioUrl}
                             className="w-full"
+                            onPlay={ensureEqGraph}
                         />
+                        <div className="flex flex-col gap-2 text-sm">
+                            <label className="flex items-center justify-between gap-2">
+                                <span className="text-gray-500 w-14">
+                                    Bass <span className="text-[9px] text-emerald-500 block leading-tight">live</span>
+                                </span>
+                                <input
+                                    type="range"
+                                    min={-12}
+                                    max={12}
+                                    step={1}
+                                    value={bass}
+                                    onChange={(e) => setBass(Number(e.target.value))}
+                                    className="flex-1 accent-primary"
+                                />
+                                <span className="w-12 text-right tabular-nums">{bass > 0 ? `+${bass}` : bass} dB</span>
+                            </label>
+                            <label className="flex items-center justify-between gap-2">
+                                <span className="text-gray-500 w-14">
+                                    Treble <span className="text-[9px] text-emerald-500 block leading-tight">live</span>
+                                </span>
+                                <input
+                                    type="range"
+                                    min={-12}
+                                    max={12}
+                                    step={1}
+                                    value={treble}
+                                    onChange={(e) => setTreble(Number(e.target.value))}
+                                    className="flex-1 accent-primary"
+                                />
+                                <span className="w-12 text-right tabular-nums">{treble > 0 ? `+${treble}` : treble} dB</span>
+                            </label>
+                            {(bass !== 0 || treble !== 0) && (
+                                <Button
+                                    size="xs"
+                                    variant="default"
+                                    loading={isApplyingEq}
+                                    onClick={handleApplyEq}
+                                >
+                                    Apply EQ to file
+                                </Button>
+                            )}
+                            <p className="text-[10px] text-gray-400 -mt-1">
+                                Bass/Treble preview live while playing. &quot;Apply EQ to file&quot; bakes
+                                them into the audio so Lipsync and Speak use exactly what you hear.
+                            </p>
+                        </div>
                         <Button variant="default" block onClick={handleSendToAvatarStudio}>
                             🎬 Send to Avatar Studio
                         </Button>
