@@ -25,7 +25,7 @@ export default function AudioPreview() {
         currentScript, selectedVoiceId, voices, setVoices,
         previewAudioUrl, setPreviewAudioUrl,
         isGeneratingAudio, setIsGeneratingAudio,
-        scriptLanguage,
+        scriptLanguage, settingsEditNonce,
     } = useVoiceStudioStore()
     const audioRef = useRef<HTMLAudioElement>(null)
     const router = useRouter()
@@ -56,6 +56,8 @@ export default function AudioPreview() {
     // vivo reproduce a (deseada / horneada) para simular el resultado final.
     const [bakedSpeed, setBakedSpeed] = useState(1)
 
+    // Carga los ajustes guardados de la voz en los sliders — al seleccionar
+    // otra voz o al pulsar "Edit" en Your Voices (settingsEditNonce).
     useEffect(() => {
         const s = selectedVoice?.tts_settings
         setSpeed(s?.speed ?? 1)
@@ -63,7 +65,7 @@ export default function AudioPreview() {
         setEmotion(s?.emotion ?? '')
         setAutoAccent(s?.useAutoAccent ?? false)
         setSettingsMsg(null)
-    }, [selectedVoiceId]) // eslint-disable-line react-hooks/exhaustive-deps
+    }, [selectedVoiceId, settingsEditNonce]) // eslint-disable-line react-hooks/exhaustive-deps
 
     // Preview de velocidad en tiempo real sobre el audio ya generado, sin
     // alterar el tono (preservesPitch). Pitch/emotion sí requieren regenerar:
@@ -256,8 +258,27 @@ export default function AudioPreview() {
                 const { error } = await res.json()
                 throw new Error(error || 'Save failed')
             }
+            // Regenerar el preview cacheado (▶ en Your Voices) para que refleje
+            // la nueva entrega — si falla no bloquea el guardado.
+            let refreshedPreviewUrl: string | null = null
+            try {
+                const prevRes = await fetch('/api/voice/preview', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ voiceId: selectedVoice.id, force: true }),
+                })
+                if (prevRes.ok) {
+                    const { previewUrl } = await prevRes.json()
+                    refreshedPreviewUrl = previewUrl
+                }
+            } catch (previewErr) {
+                console.error('Failed to refresh voice preview:', previewErr)
+            }
+
             // Reflejar en el store para que esta UI (y quien recargue voces) lo vea.
-            setVoices(voices.map((v) => (v.id === selectedVoice.id ? { ...v, tts_settings: settings } : v)))
+            setVoices(voices.map((v) => (v.id === selectedVoice.id
+                ? { ...v, tts_settings: settings, preview_audio_url: refreshedPreviewUrl ?? v.preview_audio_url }
+                : v)))
             setSettingsMsg('Saved as this voice’s default delivery.')
         } catch (err) {
             console.error('Failed to save voice settings:', err)

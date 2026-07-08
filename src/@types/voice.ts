@@ -89,6 +89,7 @@ export interface VoiceStudioState {
     isGeneratingAudio: boolean
 
     // Lipsync (antes "Merge")
+    settingsEditNonce: number
     selectedVideoUrl: string | null
     lipsyncedVideoUrl: string | null
     isLipsyncing: boolean
@@ -110,6 +111,7 @@ export interface VoiceStudioState {
     setIsGeneratingScript: (v: boolean) => void
     setPreviewAudioUrl: (url: string | null) => void
     setIsGeneratingAudio: (v: boolean) => void
+    bumpSettingsEdit: () => void
     setSelectedVideoUrl: (url: string | null) => void
     setLipsyncedVideoUrl: (url: string | null) => void
     setIsLipsyncing: (v: boolean) => void

@@ -19,6 +19,7 @@ export default function VoiceLibrary({ avatars }: VoiceLibraryProps) {
         setVoices,
         defaultVoiceOverrides,
         setDefaultVoiceOverride,
+        bumpSettingsEdit,
     } = useVoiceStudioStore()
 
     // Preview de la voz clonada: un solo <audio> compartido; la primera vez
@@ -142,6 +143,18 @@ export default function VoiceLibrary({ avatars }: VoiceLibraryProps) {
                                 </span>
                             </div>
                             <div className="flex items-center gap-1">
+                                <Button
+                                    size="xs"
+                                    variant="plain"
+                                    title="Load this voice's saved delivery into the sliders"
+                                    onClick={(e) => {
+                                        e.stopPropagation()
+                                        setSelectedVoiceId(voice.id)
+                                        bumpSettingsEdit()
+                                    }}
+                                >
+                                    Edit
+                                </Button>
                                 <Button
                                     size="xs"
                                     variant="plain"
