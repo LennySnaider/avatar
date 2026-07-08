@@ -19,6 +19,7 @@ export interface ClonedVoice {
     language: string
     status: 'cloning' | 'ready' | 'failed'
     tts_settings: VoiceTtsSettings | null
+    preview_audio_url: string | null
     created_at: string
     updated_at: string
 }

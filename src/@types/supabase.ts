@@ -153,6 +153,7 @@ export type Database = {
                     language: string
                     status: string
                     tts_settings: Json | null
+                    preview_audio_url: string | null
                     created_at: string
                     updated_at: string
                 }
@@ -167,6 +168,7 @@ export type Database = {
                     language?: string
                     status?: string
                     tts_settings?: Json | null
+                    preview_audio_url?: string | null
                     created_at?: string
                     updated_at?: string
                 }
@@ -181,6 +183,7 @@ export type Database = {
                     language?: string
                     status?: string
                     tts_settings?: Json | null
+                    preview_audio_url?: string | null
                     created_at?: string
                     updated_at?: string
                 }

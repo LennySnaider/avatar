@@ -1,8 +1,10 @@
 'use client'
 
+import { useRef, useState } from 'react'
 import { useVoiceStudioStore } from '../_store/voiceStudioStore'
 import Card from '@/components/ui/Card'
 import Button from '@/components/ui/Button'
+import Spinner from '@/components/ui/Spinner'
 import type { Avatar } from '@/@types/supabase'
 
 interface VoiceLibraryProps {
@@ -18,6 +20,55 @@ export default function VoiceLibrary({ avatars }: VoiceLibraryProps) {
         defaultVoiceOverrides,
         setDefaultVoiceOverride,
     } = useVoiceStudioStore()
+
+    // Preview de la voz clonada: un solo <audio> compartido; la primera vez
+    // el endpoint genera la frase TTS y la cachea en la voz.
+    const previewAudioRef = useRef<HTMLAudioElement | null>(null)
+    const [previewingId, setPreviewingId] = useState<string | null>(null)
+    const [loadingPreviewId, setLoadingPreviewId] = useState<string | null>(null)
+
+    const stopPreview = () => {
+        previewAudioRef.current?.pause()
+        previewAudioRef.current = null
+        setPreviewingId(null)
+    }
+
+    const handlePreview = async (voiceId: string) => {
+        if (previewingId === voiceId) {
+            stopPreview()
+            return
+        }
+        stopPreview()
+        setLoadingPreviewId(voiceId)
+        try {
+            const voice = voices.find((v) => v.id === voiceId)
+            let url = voice?.preview_audio_url
+            if (!url) {
+                const res = await fetch('/api/voice/preview', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ voiceId }),
+                })
+                if (!res.ok) {
+                    const { error } = await res.json()
+                    throw new Error(error || 'Preview failed')
+                }
+                const { previewUrl } = await res.json()
+                url = previewUrl
+                setVoices(voices.map((v) => (v.id === voiceId ? { ...v, preview_audio_url: previewUrl } : v)))
+            }
+            const audio = new Audio(url!)
+            previewAudioRef.current = audio
+            setPreviewingId(voiceId)
+            audio.onended = () => setPreviewingId(null)
+            await audio.play()
+        } catch (err) {
+            console.error('Voice preview failed:', err)
+            setPreviewingId(null)
+        } finally {
+            setLoadingPreviewId(null)
+        }
+    }
 
     const handleDelete = async (id: string) => {
         const res = await fetch('/api/voice/delete', {
@@ -91,6 +142,23 @@ export default function VoiceLibrary({ avatars }: VoiceLibraryProps) {
                                 </span>
                             </div>
                             <div className="flex items-center gap-1">
+                                <Button
+                                    size="xs"
+                                    variant="plain"
+                                    title="Preview cloned voice"
+                                    onClick={(e) => {
+                                        e.stopPropagation()
+                                        handlePreview(voice.id)
+                                    }}
+                                >
+                                    {loadingPreviewId === voice.id ? (
+                                        <Spinner size={14} />
+                                    ) : previewingId === voice.id ? (
+                                        '⏸'
+                                    ) : (
+                                        '▶'
+                                    )}
+                                </Button>
                                 {voice.avatar_id && !isMain && (
                                     <Button
                                         size="xs"
