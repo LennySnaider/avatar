@@ -1,0 +1,8 @@
+{
+    "crons": [
+        {
+            "path": "/api/cron/social-reconcile",
+            "schedule": "*/15 * * * *"
+        }
+    ]
+}
