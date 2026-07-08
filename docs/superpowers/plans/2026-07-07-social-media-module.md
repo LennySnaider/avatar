@@ -34,7 +34,7 @@
 **Interfaces:**
 - Produces (later tasks import): `getSocialProvider(): SocialProvider` from `@/lib/social/provider`; all DTO types from the copied `SocialProvider.ts` (`PublishPhotoInput`, `PublishVideoInput`, `ConnectUrlResult`, `ProviderProfile`, …); `SOCIAL_USERNAME = 'prime-avatar'` from `@/lib/social/provider`; `validatePostForPlatforms`, `PLATFORM_LIMITS` from `@/lib/social/platformValidators`; `appendHashtagsToCaption` from `@/lib/social/hashtagHelpers`.
 
-- [ ] **Step 1: Copy the four lib files verbatim**
+- [x] **Step 1: Copy the four lib files verbatim**
 
 ```bash
 mkdir -p src/lib/social/providers
@@ -45,11 +45,11 @@ cp /Users/lenny/Documents/agentsoft/src/lib/social/hashtagHelpers.ts src/lib/soc
 ```
 Then fix any imports inside them that point at agentsoft-only modules: if `platformValidators.ts` or the providers import from `@/types/social`, change to `@/@types/social`. If any file imports `creditsCalculator`, `captionInterpolate` or Meta helpers, remove that import and the code using it ONLY if it doesn't compile otherwise — prefer keeping files untouched.
 
-- [ ] **Step 2: Port the types**
+- [x] **Step 2: Port the types**
 
 Copy `/Users/lenny/Documents/agentsoft/src/types/social.ts` to `src/@types/social.ts`. Strip: any `organization_id`, `created_by`, `triggered_by_workflow_*`, `credits_consumed` fields and agency/instagram-engagement types (`InstagramAccount`, Meta types) if present. Keep platform enums, post/profile types, provider DTO re-exports.
 
-- [ ] **Step 3: Create the env factory** — `src/lib/social/provider.ts`:
+- [x] **Step 3: Create the env factory** — `src/lib/social/provider.ts`:
 
 ```ts
 import { UploadPostProvider } from '@/lib/social/providers/UploadPostProvider'
@@ -74,13 +74,13 @@ export function getSocialProvider(): SocialProvider {
 ```
 If `UploadPostProvider`'s constructor signature differs (check the copied file — it may take `(apiKey: string, baseUrl?: string)` or an options object), adapt this call to match it exactly.
 
-- [ ] **Step 4: Type-check + lint**
+- [x] **Step 4: Type-check + lint**
 
 Run: `npx tsc --noEmit 2>&1 | grep "error TS" | grep -v "\.next/"` → empty.
 Run: `npx eslint src/lib/social src/@types/social.ts` → clean.
 Expected friction: unresolved agentsoft-only imports — resolve per Step 1/2 notes (delete Meta/credits references; they are out of scope).
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/lib/social src/@types/social.ts
@@ -97,7 +97,7 @@ git commit -m "feat(social): port Upload-Post provider layer from AgentSoft (sin
 **Interfaces:**
 - Produces: tables `social_profiles`, `social_posts` exactly as in the SQL below; later tasks read/write them via `createServerSupabaseClient()` (service role — bypasses RLS).
 
-- [ ] **Step 1: Write the migration file** — `supabase/migrations/20260707_social_media.sql`:
+- [x] **Step 1: Write the migration file** — `supabase/migrations/20260707_social_media.sql`:
 
 ```sql
 -- Social Media module (single-user port of AgentSoft's Upload-Post module)
@@ -141,15 +141,15 @@ alter table social_profiles enable row level security;
 alter table social_posts enable row level security;
 ```
 
-- [ ] **Step 2: Apply the migration to the live project**
+- [x] **Step 2: Apply the migration to the live project**
 
 Use the Supabase MCP tool (load via ToolSearch `select:mcp__supabase__apply_migration`) with `name: "social_media_module"` and the SQL above. If the MCP server is unavailable, STOP and report BLOCKED (do not paste the SQL into psql guesses).
 
-- [ ] **Step 3: Verify tables exist**
+- [x] **Step 3: Verify tables exist**
 
 Load `mcp__supabase__list_tables` (ToolSearch) and confirm `social_profiles` and `social_posts` appear. Expected: both listed.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add supabase/migrations/20260707_social_media.sql
@@ -190,7 +190,7 @@ git commit -m "feat(social): social_profiles + social_posts tables (RLS locked, 
   export interface SocialPostRow { id: string; caption: string; hashtags: string[]; content_type: string; media_urls: string[]; platforms: unknown; status: string; scheduled_at: string | null; published_at: string | null; error_message: string | null; created_at: string; generation_id: string | null }
   ```
 
-- [ ] **Step 1: Create `src/services/SocialService.ts`**
+- [x] **Step 1: Create `src/services/SocialService.ts`**
 
 ```ts
 'use server'
@@ -471,9 +471,9 @@ export async function registerUploadPostWebhook(): Promise<SocialResult<{ config
 
 ⚠️ The exact provider method names/signatures (`createProfile`, `generateConnectUrl`, `getProfile`, `publishPhoto/Video/Text`, `cancelScheduled`, `configureWebhook`) and DTO field names (`accessUrl`, `requestId`, `jobId`, `connectedPlatforms`, `raw`) MUST be reconciled against the copied `SocialProvider.ts` interface from Task 1 — read it first and adapt this file to ITS names (the interface is the source of truth, not this plan). Same for `validatePostForPlatforms`'s input shape and `appendHashtagsToCaption`'s signature. Also check how `@/auth` is exported in this repo: `grep -rn "export const { auth" src/auth.ts src/configs/auth.config.ts` — use the real import path (the gallery page `src/app/(protected-pages)/concepts/avatar-forge/gallery/page.tsx` shows the working pattern).
 
-- [ ] **Step 2: Type-check + lint** (same commands as Task 1 Step 4). Expected: empty.
+- [x] **Step 2: Type-check + lint** (same commands as Task 1 Step 4). Expected: empty.
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add src/services/SocialService.ts
@@ -495,7 +495,7 @@ git commit -m "feat(social): SocialService server actions (profile, connect, pub
 - Consumes: `generateSocialConnectUrl`, `syncConnectedAccounts` (Task 3); `getSocialProvider`, `SOCIAL_USERNAME` (Task 1); `createServerSupabaseClient`.
 - Produces: webhook endpoint used by `registerUploadPostWebhook` (Task 3); no code interfaces.
 
-- [ ] **Step 1: Connect redirect route** — `src/app/api/social/connect/route.ts`:
+- [x] **Step 1: Connect redirect route** — `src/app/api/social/connect/route.ts`:
 
 ```ts
 import { NextResponse } from 'next/server'
@@ -512,7 +512,7 @@ export async function GET(request: Request) {
 }
 ```
 
-- [ ] **Step 2: Callback route** — `src/app/api/social/callback/route.ts`:
+- [x] **Step 2: Callback route** — `src/app/api/social/callback/route.ts`:
 
 ```ts
 import { NextResponse } from 'next/server'
@@ -524,9 +524,9 @@ export async function GET(request: Request) {
 }
 ```
 
-- [ ] **Step 3: Webhook route** — `src/app/api/webhooks/upload-post/route.ts`. Port the shape from `/Users/lenny/Documents/agentsoft/src/app/api/webhooks/upload-post/route.ts` (read it first), simplified: verify HMAC when `UPLOAD_POST_WEBHOOK_SECRET` + signature header are present (use the provider's `verifyWebhookSignature` if exported, else inline HMAC-SHA256 timing-safe compare); normalize the event name the same way agentsoft's `normalizeEventName` does (copy that function); on `publish_success` → update `social_posts` where `upload_post_request_id` matches: `status='published', published_at=now(), upload_post_response=payload`; on `publish_failed` → `status='failed', error_message`. Always return `NextResponse.json({ ok: true })` (200) whatever happens, logging unknown events with `console.log('[upload-post webhook]', event)`.
+- [x] **Step 3: Webhook route** — `src/app/api/webhooks/upload-post/route.ts`. Port the shape from `/Users/lenny/Documents/agentsoft/src/app/api/webhooks/upload-post/route.ts` (read it first), simplified: verify HMAC when `UPLOAD_POST_WEBHOOK_SECRET` + signature header are present (use the provider's `verifyWebhookSignature` if exported, else inline HMAC-SHA256 timing-safe compare); normalize the event name the same way agentsoft's `normalizeEventName` does (copy that function); on `publish_success` → update `social_posts` where `upload_post_request_id` matches: `status='published', published_at=now(), upload_post_response=payload`; on `publish_failed` → `status='failed', error_message`. Always return `NextResponse.json({ ok: true })` (200) whatever happens, logging unknown events with `console.log('[upload-post webhook]', event)`.
 
-- [ ] **Step 4: Reconcile cron** — `src/app/api/cron/social-reconcile/route.ts`:
+- [x] **Step 4: Reconcile cron** — `src/app/api/cron/social-reconcile/route.ts`:
 
 ```ts
 import { NextResponse } from 'next/server'
@@ -571,15 +571,15 @@ export async function GET(request: Request) {
 ```
 ⚠️ Reconcile `getRequestStatus`'s real return shape against the copied provider (it may return `{ status: string }` instead of `{ completed, failed }` — adapt the mapping: treat provider status strings like 'completed'/'success' as published, 'failed'/'error' as failed, anything else as still processing).
 
-- [ ] **Step 5: vercel.json cron.** Read `vercel.json`; add to (or create) the `crons` array:
+- [x] **Step 5: vercel.json cron.** Read `vercel.json`; add to (or create) the `crons` array:
 
 ```json
 { "path": "/api/cron/social-reconcile", "schedule": "*/15 * * * *" }
 ```
 
-- [ ] **Step 6: Type-check + lint** (standard commands). Expected: empty.
+- [x] **Step 6: Type-check + lint** (standard commands). Expected: empty.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add src/app/api/social src/app/api/webhooks/upload-post src/app/api/cron/social-reconcile vercel.json
@@ -600,7 +600,7 @@ git commit -m "feat(social): connect/callback/webhook routes + reconcile cron"
 - Consumes: `getSocialProfileAction`, `ensureSocialProfile`, `syncConnectedAccounts`, `registerUploadPostWebhook` (Task 3 exact signatures).
 - Produces: route `/concepts/avatar-forge/social/accounts` that Tasks 6-7 link to.
 
-- [ ] **Step 1: Server page** — `accounts/page.tsx`:
+- [x] **Step 1: Server page** — `accounts/page.tsx`:
 
 ```tsx
 import Container from '@/components/shared/Container'
@@ -625,14 +625,14 @@ export default async function Page() {
 ```
 (Check that `@/components/shared/Container` exists — grep its usage in other protected pages; if the app uses a different wrapper, mirror the gallery page's layout.)
 
-- [ ] **Step 2: Client component** — `AccountsClient.tsx`: ECME `Card`/`Button`/`Notification`+`toast`. State: `profile`, `isBusy`. Renders:
+- [x] **Step 2: Client component** — `AccountsClient.tsx`: ECME `Card`/`Button`/`Notification`+`toast`. State: `profile`, `isBusy`. Renders:
   - If no profile: explainer + Button "Set up social profile" → `ensureSocialProfile()` → setProfile.
   - If profile: Button "Connect accounts" → `window.open('/api/social/connect', '_blank', 'width=600,height=760')`; Button "Refresh" → `syncConnectedAccounts()` → setProfile; Button "Register webhook" (variant plain, small) → `registerUploadPostWebhook()` → toast result.
   - Connected platforms list: map `profile.connected_platforms` (array of strings or objects — normalize with `typeof p === 'string' ? p : (p as { platform?: string }).platform ?? JSON.stringify(p)`) to Tag chips; empty state text otherwise.
   - Show `loadError` / action errors in a red alert box (same pattern as VideoToPromptDialog's error box).
   Write the full component; keep it under ~150 lines.
 
-- [ ] **Step 3: Sidebar nav.** In `concepts.navigation.config.ts`, after the gallery item block (ends ~line 171) add:
+- [x] **Step 3: Sidebar nav.** In `concepts.navigation.config.ts`, after the gallery item block (ends ~line 171) add:
 
 ```ts
 {
@@ -648,9 +648,9 @@ export default async function Page() {
 ```
 Mirror the exact shape of the gallery item above it (copy its structure; only key/path/title/translateKey/icon change). In `navigation-icon.config.tsx` register `avatarSocial` with a share icon from the icon set already imported there (e.g. `PiShareNetworkDuotone` if the file uses Pi icons — match whatever family the file imports).
 
-- [ ] **Step 4: Type-check + lint; manual smoke** — `npm run dev` → open `/concepts/avatar-forge/social/accounts`, click "Set up social profile", expect the profile row created (and sub-user visible via `curl -s https://api.upload-post.com/api/uploadposts/users -H "Authorization: Apikey $UPLOAD_POST_API_KEY"` showing `prime-avatar`).
+- [x] **Step 4: Type-check + lint; manual smoke** — `npm run dev` → open `/concepts/avatar-forge/social/accounts`, click "Set up social profile", expect the profile row created (and sub-user visible via `curl -s https://api.upload-post.com/api/uploadposts/users -H "Authorization: Apikey $UPLOAD_POST_API_KEY"` showing `prime-avatar`).
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add "src/app/(protected-pages)/concepts/avatar-forge/social" src/configs/navigation.config/concepts.navigation.config.ts src/configs/navigation-icon.config.tsx
@@ -671,15 +671,15 @@ git commit -m "feat(social): accounts page (connect via Upload-Post) + sidebar e
 - Consumes: `createSocialPost`, `listSocialPosts`, `cancelScheduledPost`, `getSocialProfileAction` (Task 3).
 - Produces: route `/concepts/avatar-forge/social/composer?generationId=<uuid>` that Task 7's Publish buttons target.
 
-- [ ] **Step 1: Composer server page.** Fetch session (`auth()`), the profile (connected platforms), and — when `generationId` is present — the generation row (`id, media_type, storage_path, prompt`) with ownership check, building `publicUrl` as `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/generations/${storage_path}`. Render `<SocialComposer media={...} platforms={...} />`; when profile missing → CTA linking to accounts page.
+- [x] **Step 1: Composer server page.** Fetch session (`auth()`), the profile (connected platforms), and — when `generationId` is present — the generation row (`id, media_type, storage_path, prompt`) with ownership check, building `publicUrl` as `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/generations/${storage_path}`. Render `<SocialComposer media={...} platforms={...} />`; when profile missing → CTA linking to accounts page.
 
-- [ ] **Step 2: SocialComposer client.** Full component: media preview (img or `<video controls>`), caption `<textarea>` with char counter, hashtag input (Enter adds chip, x removes — reuse the pattern from `HashtagInput` in agentsoft but write it inline, ~30 lines), platform checkboxes from `platforms` prop (disabled + hint when none connected), schedule radio: "Publish now" / "Schedule" with `<input type="datetime-local">` (min = now; convert to ISO with timezone via `new Date(value).toISOString()`), submit Button → `createSocialPost({ generationId, caption, hashtags, platforms: selected, scheduledAt })` → success toast + router.push('/concepts/avatar-forge/social/posts'); error → red alert.
+- [x] **Step 2: SocialComposer client.** Full component: media preview (img or `<video controls>`), caption `<textarea>` with char counter, hashtag input (Enter adds chip, x removes — reuse the pattern from `HashtagInput` in agentsoft but write it inline, ~30 lines), platform checkboxes from `platforms` prop (disabled + hint when none connected), schedule radio: "Publish now" / "Schedule" with `<input type="datetime-local">` (min = now; convert to ISO with timezone via `new Date(value).toISOString()`), submit Button → `createSocialPost({ generationId, caption, hashtags, platforms: selected, scheduledAt })` → success toast + router.push('/concepts/avatar-forge/social/posts'); error → red alert.
 
-- [ ] **Step 3: Posts page + client.** Server page calls `listSocialPosts()`, renders `PostsClient` with rows. PostsClient: table/cards showing thumbnail (first media_urls entry, `<img>`/`<video>` by content_type), caption (truncated), platform chips, status Tag (color: scheduled=amber, processing=blue, published=emerald, failed=red, cancelled=gray), scheduled/published time, and a Cancel button (only when status==='scheduled') → `cancelScheduledPost(id)` → refresh via `router.refresh()`. Include an empty state.
+- [x] **Step 3: Posts page + client.** Server page calls `listSocialPosts()`, renders `PostsClient` with rows. PostsClient: table/cards showing thumbnail (first media_urls entry, `<img>`/`<video>` by content_type), caption (truncated), platform chips, status Tag (color: scheduled=amber, processing=blue, published=emerald, failed=red, cancelled=gray), scheduled/published time, and a Cancel button (only when status==='scheduled') → `cancelScheduledPost(id)` → refresh via `router.refresh()`. Include an empty state.
 
-- [ ] **Step 4: Type-check + lint.** Expected: empty.
+- [x] **Step 4: Type-check + lint.** Expected: empty.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add "src/app/(protected-pages)/concepts/avatar-forge/social/composer" "src/app/(protected-pages)/concepts/avatar-forge/social/posts"
@@ -697,7 +697,7 @@ git commit -m "feat(social): composer (publish/schedule) + posts status pages"
 **Interfaces:**
 - Consumes: composer route from Task 6 (`/concepts/avatar-forge/social/composer?generationId=`).
 
-- [ ] **Step 1: GenerationGallery.** In the preview actions row add, next to Download:
+- [x] **Step 1: GenerationGallery.** In the preview actions row add, next to Download:
 
 ```tsx
 <Button
@@ -710,18 +710,18 @@ git commit -m "feat(social): composer (publish/schedule) + posts status pages"
 ```
 Import `HiOutlineShare` from `react-icons/hi` and `useRouter` from `next/navigation` if not present; follow the exact Button props style of the neighboring Download button (read the file first).
 
-- [ ] **Step 2: ImagePreviewModal.** The studio modal shows both unsaved (in-memory) and saved media. Add optional prop `generationId?: string | null` threaded from where the modal is opened for saved gallery items IF the caller has it; simplest correct scope: only render the Publish button when `previewMedia` carries a DB id (inspect the `previewMedia` type — if it has no DB id field, SKIP this file entirely and note it in the report; the persisted gallery button from Step 1 is the primary surface).
+- [x] **Step 2: ImagePreviewModal.** The studio modal shows both unsaved (in-memory) and saved media. Add optional prop `generationId?: string | null` threaded from where the modal is opened for saved gallery items IF the caller has it; simplest correct scope: only render the Publish button when `previewMedia` carries a DB id (inspect the `previewMedia` type — if it has no DB id field, SKIP this file entirely and note it in the report; the persisted gallery button from Step 1 is the primary surface).
 
-- [ ] **Step 3: Type-check + lint.** Expected: empty.
+- [x] **Step 3: Type-check + lint.** Expected: empty.
 
-- [ ] **Step 4: Manual E2E (controller runs; document results)**
+- [x] **Step 4: Manual E2E (controller runs; document results)**
 1. `npm run dev` → accounts page → Set up profile → Connect accounts popup (connect e.g. TikTok/Instagram test account) → Refresh shows platform chip.
 2. Register webhook button → success toast (verify with `GET /api/uploadposts/users/notifications`? optional).
 3. Gallery → pick an image → Publish → composer prefilled → caption "Test from prime-avatar" → Publish now → posts page shows processing → after webhook/reconcile it flips to published (check the actual network post).
 4. Schedule variant: +10 min → shows scheduled → Cancel works on a second one.
 5. `npx tsc --noEmit` + `npm run build` pass.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add "src/app/(protected-pages)/concepts/avatar-forge/gallery/_components/GenerationGallery.tsx" "src/app/(protected-pages)/concepts/avatar-forge/avatar-studio/_components/ImagePreviewModal.tsx"

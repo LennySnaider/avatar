@@ -1,0 +1,450 @@
+<h2>Video Flow Builder — Node System & Execution</h2>
+<p class="subtitle">Status badges dentro del nodo, iconos SVG</p>
+
+<!-- SVG Icon Definitions -->
+<svg style="display:none">
+  <defs>
+    <!-- Status icons -->
+    <symbol id="ico-check" viewBox="0 0 16 16"><path d="M13.78 4.22a.75.75 0 010 1.06l-7.25 7.25a.75.75 0 01-1.06 0L2.22 9.28a.75.75 0 011.06-1.06L6 10.94l6.72-6.72a.75.75 0 011.06 0z" fill="currentColor"/></symbol>
+    <symbol id="ico-spinner" viewBox="0 0 16 16"><path d="M8 1.5a6.5 6.5 0 100 13 6.5 6.5 0 000-13zM0 8a8 8 0 1116 0A8 8 0 010 8z" fill="currentColor" opacity="0.2"/><path d="M8 0a8 8 0 018 8h-1.5A6.5 6.5 0 008 1.5V0z" fill="currentColor"/></symbol>
+    <symbol id="ico-pause" viewBox="0 0 16 16"><rect x="4" y="3" width="3" height="10" rx="0.75" fill="currentColor"/><rect x="9" y="3" width="3" height="10" rx="0.75" fill="currentColor"/></symbol>
+    <!-- Node icons -->
+    <symbol id="ico-user" viewBox="0 0 20 20"><path d="M10 10a4 4 0 100-8 4 4 0 000 8zm-7 8a7 7 0 0114 0H3z" fill="currentColor"/></symbol>
+    <symbol id="ico-sparkles" viewBox="0 0 20 20"><path d="M10 2l1.5 4.5L16 8l-4.5 1.5L10 14l-1.5-4.5L4 8l4.5-1.5L10 2zm5 10l.75 2.25L18 15l-2.25.75L15 18l-.75-2.25L12 15l2.25-.75L15 12z" fill="currentColor"/></symbol>
+    <symbol id="ico-image" viewBox="0 0 20 20"><path d="M4 3a2 2 0 00-2 2v10a2 2 0 002 2h12a2 2 0 002-2V5a2 2 0 00-2-2H4zm12 12H4l4-8 3 6 2-4 3 6z" fill="currentColor"/></symbol>
+    <symbol id="ico-save" viewBox="0 0 20 20"><path d="M3 3a2 2 0 012-2h8.586a1 1 0 01.707.293l3.414 3.414a1 1 0 01.293.707V17a2 2 0 01-2 2H5a2 2 0 01-2-2V3zm4 1v3h6V4H7zm0 8h6v5H7v-5z" fill="currentColor"/></symbol>
+    <symbol id="ico-upload" viewBox="0 0 20 20"><path d="M10 3l4 4h-3v6H9V7H6l4-4zM3 15h14v2H3v-2z" fill="currentColor"/></symbol>
+    <symbol id="ico-eye" viewBox="0 0 20 20"><path d="M10 4C5.588 4 1.881 7.072.292 9.634a1.5 1.5 0 000 1.732C1.881 13.928 5.588 17 10 17s8.119-3.072 9.708-5.634a1.5 1.5 0 000-1.732C18.119 7.072 14.412 4 10 4zm0 10a3.5 3.5 0 110-7 3.5 3.5 0 010 7z" fill="currentColor"/></symbol>
+    <symbol id="ico-film" viewBox="0 0 20 20"><path d="M4 3a1 1 0 00-1 1v12a1 1 0 001 1h12a1 1 0 001-1V4a1 1 0 00-1-1H4zm1 2h2v2H5V5zm8 0h2v2h-2V5zm-8 8h2v2H5v-2zm8 0h2v2h-2v-2zM7 5h6v10H7V5z" fill="currentColor"/></symbol>
+    <symbol id="ico-scissors" viewBox="0 0 20 20"><path d="M7.5 8a2.5 2.5 0 100-5 2.5 2.5 0 000 5zm0 9a2.5 2.5 0 100-5 2.5 2.5 0 000 5zM18 3l-8.5 6.5M18 17l-8.5-6.5" stroke="currentColor" stroke-width="1.5" fill="none"/></symbol>
+    <symbol id="ico-type" viewBox="0 0 20 20"><path d="M3 5a1 1 0 011-1h12a1 1 0 110 2h-5v10a1 1 0 11-2 0V6H4a1 1 0 01-1-1z" fill="currentColor"/></symbol>
+    <symbol id="ico-mic" viewBox="0 0 20 20"><path d="M10 1a3 3 0 00-3 3v5a3 3 0 006 0V4a3 3 0 00-3-3zM5 9a1 1 0 10-2 0 7 7 0 0014 0 1 1 0 10-2 0 5 5 0 01-10 0zm4 8.93V19a1 1 0 102 0v-1.07A7.003 7.003 0 0017 11a1 1 0 10-2 0 5 5 0 01-10 0 1 1 0 10-2 0 7.003 7.003 0 009 6.93z" fill="currentColor"/></symbol>
+    <symbol id="ico-script" viewBox="0 0 20 20"><path d="M4 2a2 2 0 00-2 2v12a2 2 0 002 2h12a2 2 0 002-2V4a2 2 0 00-2-2H4zm1 3h10a.5.5 0 010 1H5a.5.5 0 010-1zm0 3h10a.5.5 0 010 1H5a.5.5 0 010-1zm0 3h6a.5.5 0 010 1H5a.5.5 0 010-1z" fill="currentColor"/></symbol>
+    <symbol id="ico-branch" viewBox="0 0 20 20"><path d="M10 1v6M6 10H3a1 1 0 00-1 1v0a1 1 0 001 1h3M14 10h3a1 1 0 011 1v0a1 1 0 01-1 1h-3M10 13v6M10 7a3 3 0 100 6 3 3 0 000-6z" stroke="currentColor" stroke-width="1.5" fill="none"/></symbol>
+    <symbol id="ico-link" viewBox="0 0 20 20"><path d="M12.586 4.586a2 2 0 112.828 2.828l-3 3a2 2 0 01-2.828 0 .5.5 0 00-.708.708 3 3 0 004.244 0l3-3a3 3 0 00-4.244-4.244l-1.5 1.5a.5.5 0 10.708.708l1.5-1.5zM7.414 15.414a2 2 0 11-2.828-2.828l3-3a2 2 0 012.828 0 .5.5 0 00.708-.708 3 3 0 00-4.244 0l-3 3a3 3 0 004.244 4.244l1.5-1.5a.5.5 0 10-.708-.708l-1.5 1.5z" fill="currentColor"/></symbol>
+    <symbol id="ico-inbox" viewBox="0 0 20 20"><path d="M3 5a2 2 0 012-2h10a2 2 0 012 2v10a2 2 0 01-2 2H5a2 2 0 01-2-2V5zm0 8h4l1.5 2h3l1.5-2h4" stroke="currentColor" stroke-width="1.5" fill="none"/></symbol>
+    <symbol id="ico-outbox" viewBox="0 0 20 20"><path d="M10 3v8m0-8L7 6m3-3l3 3M3 13h4l1.5 2h3l1.5-2h4v2a2 2 0 01-2 2H5a2 2 0 01-2-2v-2z" stroke="currentColor" stroke-width="1.5" fill="none"/></symbol>
+  </defs>
+</svg>
+
+<style>
+  .node-card {
+    min-width: 180px;
+    background: #1e293b;
+    border-radius: 10px;
+    padding: 12px;
+    position: relative;
+  }
+  .node-card .cat-label {
+    position: absolute;
+    top: -10px;
+    left: 12px;
+    color: white;
+    font-size: 8px;
+    padding: 1px 8px;
+    border-radius: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+  .node-card .node-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-top: 4px;
+    margin-bottom: 8px;
+  }
+  .node-card .node-title {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .node-card .node-title .ico {
+    width: 16px;
+    height: 16px;
+  }
+  .node-card .node-title span {
+    color: #e2e8f0;
+    font-size: 12px;
+    font-weight: 700;
+  }
+  /* Status badges */
+  .status-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+  .status-badge .ico-status {
+    width: 10px;
+    height: 10px;
+  }
+  .status-completed {
+    background: #10b98120;
+    color: #10b981;
+    border: 1px solid #10b98140;
+  }
+  .status-running {
+    background: #f43f5e20;
+    color: #f43f5e;
+    border: 1px solid #f43f5e40;
+  }
+  .status-running .ico-status {
+    animation: spin 1s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg) } }
+  .status-pending {
+    background: #33415530;
+    color: #64748b;
+    border: 1px solid #33415560;
+  }
+  /* Running node glow */
+  .node-running {
+    box-shadow: 0 0 24px rgba(244,63,94,0.3);
+    animation: pulse 2s infinite;
+  }
+  @keyframes pulse {
+    0%,100% { box-shadow: 0 0 24px rgba(244,63,94,0.3) }
+    50% { box-shadow: 0 0 36px rgba(244,63,94,0.5) }
+  }
+  .node-completed {
+    box-shadow: 0 0 20px rgba(16,185,129,0.15);
+  }
+  .node-pending {
+    opacity: 0.6;
+  }
+</style>
+
+<!-- Example Pipeline -->
+<div class="mockup" style="margin-bottom:24px">
+  <div class="mockup-header">Example Pipeline: Avatar > Enhance > Generate > Save</div>
+  <div class="mockup-body" style="background:#0f172a;padding:24px;overflow-x:auto">
+    <div style="display:flex;align-items:flex-start;gap:12px;min-width:920px">
+
+      <!-- Node 1: SelectAvatar (COMPLETED) -->
+      <div style="min-width:180px">
+        <div class="node-card node-completed" style="border:2px solid #10b981">
+          <div class="cat-label" style="background:#10b981">Input</div>
+          <div class="node-header">
+            <div class="node-title">
+              <svg class="ico" style="color:#10b981"><use href="#ico-user"/></svg>
+              <span>Select Avatar</span>
+            </div>
+            <div class="status-badge status-completed">
+              <svg class="ico-status"><use href="#ico-check"/></svg>
+            </div>
+          </div>
+          <div style="background:#0f172a;border-radius:6px;padding:8px;font-size:10px">
+            <div style="color:#64748b;margin-bottom:2px">Selected:</div>
+            <div style="color:#10b981;font-weight:600">Maria_v2</div>
+          </div>
+          <div style="margin-top:8px;background:#10b98115;border:1px solid #10b98130;border-radius:4px;padding:6px;font-size:9px">
+            <div style="color:#64748b;margin-bottom:2px">OUTPUT</div>
+            <div style="color:#94a3b8;font-family:monospace;font-size:8px;line-height:1.5">
+              avatarId: "uuid..."<br>
+              references: [img1, img2]<br>
+              faceRef: {base64...}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Arrow -->
+      <div style="display:flex;align-items:center;padding-top:40px">
+        <svg width="40" height="20"><path d="M0,10 L30,10 M25,5 L30,10 L25,15" stroke="#475569" stroke-width="2" fill="none"/></svg>
+      </div>
+
+      <!-- Node 2: PromptEnhance (COMPLETED) -->
+      <div style="min-width:180px">
+        <div class="node-card node-completed" style="border:2px solid #8b5cf6">
+          <div class="cat-label" style="background:#8b5cf6">AI</div>
+          <div class="node-header">
+            <div class="node-title">
+              <svg class="ico" style="color:#8b5cf6"><use href="#ico-sparkles"/></svg>
+              <span>Enhance Prompt</span>
+            </div>
+            <div class="status-badge status-completed">
+              <svg class="ico-status"><use href="#ico-check"/></svg>
+            </div>
+          </div>
+          <div style="background:#0f172a;border-radius:6px;padding:8px;font-size:10px">
+            <div style="color:#64748b;margin-bottom:2px">Base prompt:</div>
+            <div style="color:#8b5cf6;font-weight:600;font-size:9px">"Beach photoshoot, sunset"</div>
+          </div>
+          <div style="margin-top:8px;background:#8b5cf615;border:1px solid #8b5cf630;border-radius:4px;padding:6px;font-size:9px">
+            <div style="color:#64748b;margin-bottom:2px">OUTPUT</div>
+            <div style="color:#94a3b8;font-family:monospace;font-size:8px;line-height:1.5">
+              enhancedPrompt: "Golden hour<br>
+              &nbsp;beach photoshoot, warm<br>
+              &nbsp;sunset light, soft sand..."
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Arrow -->
+      <div style="display:flex;align-items:center;padding-top:40px">
+        <svg width="40" height="20"><path d="M0,10 L30,10 M25,5 L30,10 L25,15" stroke="#475569" stroke-width="2" fill="none"/></svg>
+      </div>
+
+      <!-- Node 3: GenerateImage (RUNNING) -->
+      <div style="min-width:200px">
+        <div class="node-card node-running" style="border:2px solid #f43f5e">
+          <div class="cat-label" style="background:#f43f5e">Generation</div>
+          <div class="node-header">
+            <div class="node-title">
+              <svg class="ico" style="color:#f43f5e"><use href="#ico-image"/></svg>
+              <span>Generate Image</span>
+            </div>
+            <div class="status-badge status-running">
+              <svg class="ico-status"><use href="#ico-spinner"/></svg>
+            </div>
+          </div>
+          <div style="background:#0f172a;border-radius:6px;padding:8px;font-size:10px">
+            <div style="color:#64748b;margin-bottom:4px">Config:</div>
+            <div style="display:flex;flex-wrap:wrap;gap:3px">
+              <span style="padding:1px 6px;background:#7c3aed30;border:1px solid #7c3aed50;border-radius:6px;font-size:8px;color:#a78bfa">Gemini 3 Pro</span>
+              <span style="padding:1px 6px;background:#7c3aed30;border:1px solid #7c3aed50;border-radius:6px;font-size:8px;color:#a78bfa">1:1</span>
+              <span style="padding:1px 6px;background:#7c3aed30;border:1px solid #7c3aed50;border-radius:6px;font-size:8px;color:#a78bfa">85mm</span>
+              <span style="padding:1px 6px;background:#7c3aed30;border:1px solid #7c3aed50;border-radius:6px;font-size:8px;color:#a78bfa">f/1.4</span>
+            </div>
+          </div>
+          <div style="margin-top:8px;background:#f43f5e15;border:1px solid #f43f5e30;border-radius:4px;padding:6px;font-size:9px">
+            <div style="color:#64748b;margin-bottom:2px">GeminiService.generateAvatar()</div>
+            <div style="color:#94a3b8;font-family:monospace;font-size:8px;line-height:1.5">
+              OUTPUT:<br>
+              imageUrl, fullApiPrompt
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Arrow (dashed = pending) -->
+      <div style="display:flex;align-items:center;padding-top:40px">
+        <svg width="40" height="20"><path d="M0,10 L30,10 M25,5 L30,10 L25,15" stroke="#334155" stroke-width="2" fill="none" stroke-dasharray="4,3"/></svg>
+      </div>
+
+      <!-- Node 4: SaveToGallery (PENDING) -->
+      <div style="min-width:160px">
+        <div class="node-card node-pending" style="border:2px solid #334155">
+          <div class="cat-label" style="background:#14b8a6">Output</div>
+          <div class="node-header">
+            <div class="node-title">
+              <svg class="ico" style="color:#14b8a6"><use href="#ico-save"/></svg>
+              <span>Save to Gallery</span>
+            </div>
+            <div class="status-badge status-pending">
+              <svg class="ico-status"><use href="#ico-pause"/></svg>
+            </div>
+          </div>
+          <div style="background:#0f172a;border-radius:6px;padding:8px;font-size:10px">
+            <div style="color:#64748b;margin-bottom:2px">Target:</div>
+            <div style="color:#14b8a6;font-weight:600;font-size:9px">avatar_gallery</div>
+          </div>
+          <div style="margin-top:8px;background:#14b8a615;border:1px solid #14b8a630;border-radius:4px;padding:6px;font-size:9px">
+            <div style="color:#64748b">OUTPUT</div>
+            <div style="color:#475569;font-family:monospace;font-size:8px">
+              galleryItemId, savedUrl
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Node Categories -->
+<h3 style="margin-top:32px">Node Categories (15 nodos MVP)</h3>
+<p class="subtitle">Cada categoria tiene un color consistente a lo largo del UI</p>
+
+<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:12px;margin-top:16px">
+
+  <!-- Input -->
+  <div style="background:var(--card-bg,#1a1a2e);border:1px solid #10b98140;border-radius:8px;padding:14px">
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
+      <div style="width:28px;height:28px;border-radius:6px;background:#10b98120;display:flex;align-items:center;justify-content:center">
+        <svg style="width:16px;height:16px;color:#10b981"><use href="#ico-inbox"/></svg>
+      </div>
+      <div>
+        <div style="color:#10b981;font-size:12px;font-weight:700">Input</div>
+        <div style="color:#64748b;font-size:9px">#10b981 (green)</div>
+      </div>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:4px">
+      <div style="display:flex;align-items:center;gap:6px;padding:4px 8px;background:#10b98110;border-radius:4px">
+        <svg style="width:12px;height:12px;color:#10b981"><use href="#ico-user"/></svg>
+        <span style="color:#94a3b8;font-size:10px">SelectAvatar</span>
+      </div>
+      <div style="display:flex;align-items:center;gap:6px;padding:4px 8px;background:#10b98110;border-radius:4px">
+        <svg style="width:12px;height:12px;color:#10b981"><use href="#ico-upload"/></svg>
+        <span style="color:#94a3b8;font-size:10px">UploadImage</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- AI Processing -->
+  <div style="background:var(--card-bg,#1a1a2e);border:1px solid #8b5cf640;border-radius:8px;padding:14px">
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
+      <div style="width:28px;height:28px;border-radius:6px;background:#8b5cf620;display:flex;align-items:center;justify-content:center">
+        <svg style="width:16px;height:16px;color:#8b5cf6"><use href="#ico-sparkles"/></svg>
+      </div>
+      <div>
+        <div style="color:#8b5cf6;font-size:12px;font-weight:700">AI Processing</div>
+        <div style="color:#64748b;font-size:9px">#8b5cf6 (purple)</div>
+      </div>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:4px">
+      <div style="display:flex;align-items:center;gap:6px;padding:4px 8px;background:#8b5cf610;border-radius:4px">
+        <svg style="width:12px;height:12px;color:#8b5cf6"><use href="#ico-sparkles"/></svg>
+        <span style="color:#94a3b8;font-size:10px">PromptEnhance</span>
+      </div>
+      <div style="display:flex;align-items:center;gap:6px;padding:4px 8px;background:#8b5cf610;border-radius:4px">
+        <svg style="width:12px;height:12px;color:#8b5cf6"><use href="#ico-eye"/></svg>
+        <span style="color:#94a3b8;font-size:10px">DescribeImage</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Generation -->
+  <div style="background:var(--card-bg,#1a1a2e);border:1px solid #f43f5e40;border-radius:8px;padding:14px">
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
+      <div style="width:28px;height:28px;border-radius:6px;background:#f43f5e20;display:flex;align-items:center;justify-content:center">
+        <svg style="width:16px;height:16px;color:#f43f5e"><use href="#ico-image"/></svg>
+      </div>
+      <div>
+        <div style="color:#f43f5e;font-size:12px;font-weight:700">Generation</div>
+        <div style="color:#64748b;font-size:9px">#f43f5e (rose)</div>
+      </div>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:4px">
+      <div style="display:flex;align-items:center;gap:6px;padding:4px 8px;background:#f43f5e10;border-radius:4px">
+        <svg style="width:12px;height:12px;color:#f43f5e"><use href="#ico-image"/></svg>
+        <span style="color:#94a3b8;font-size:10px">GenerateImage <span style="color:#64748b;font-size:8px">GeminiService</span></span>
+      </div>
+      <div style="display:flex;align-items:center;gap:6px;padding:4px 8px;background:#f43f5e10;border-radius:4px">
+        <svg style="width:12px;height:12px;color:#f43f5e"><use href="#ico-film"/></svg>
+        <span style="color:#94a3b8;font-size:10px">GenerateVideo <span style="color:#64748b;font-size:8px">KlingService</span></span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Transform -->
+  <div style="background:var(--card-bg,#1a1a2e);border:1px solid #3b82f640;border-radius:8px;padding:14px">
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
+      <div style="width:28px;height:28px;border-radius:6px;background:#3b82f620;display:flex;align-items:center;justify-content:center">
+        <svg style="width:16px;height:16px;color:#3b82f6"><use href="#ico-scissors"/></svg>
+      </div>
+      <div>
+        <div style="color:#3b82f6;font-size:12px;font-weight:700">Transform</div>
+        <div style="color:#64748b;font-size:9px">#3b82f6 (blue)</div>
+      </div>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:4px">
+      <div style="display:flex;align-items:center;gap:6px;padding:4px 8px;background:#3b82f610;border-radius:4px">
+        <svg style="width:12px;height:12px;color:#3b82f6"><use href="#ico-film"/></svg>
+        <span style="color:#94a3b8;font-size:10px">Stitch <span style="color:#64748b;font-size:8px">VideoStitchService</span></span>
+      </div>
+      <div style="display:flex;align-items:center;gap:6px;padding:4px 8px;background:#3b82f610;border-radius:4px">
+        <svg style="width:12px;height:12px;color:#3b82f6"><use href="#ico-type"/></svg>
+        <span style="color:#94a3b8;font-size:10px">TextOverlay</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Voice -->
+  <div style="background:var(--card-bg,#1a1a2e);border:1px solid #ec489940;border-radius:8px;padding:14px">
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
+      <div style="width:28px;height:28px;border-radius:6px;background:#ec489920;display:flex;align-items:center;justify-content:center">
+        <svg style="width:16px;height:16px;color:#ec4899"><use href="#ico-mic"/></svg>
+      </div>
+      <div>
+        <div style="color:#ec4899;font-size:12px;font-weight:700">Voice</div>
+        <div style="color:#64748b;font-size:9px">#ec4899 (pink)</div>
+      </div>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:4px">
+      <div style="display:flex;align-items:center;gap:6px;padding:4px 8px;background:#ec489910;border-radius:4px">
+        <svg style="width:12px;height:12px;color:#ec4899"><use href="#ico-script"/></svg>
+        <span style="color:#94a3b8;font-size:10px">ScriptGenerator <span style="color:#64748b;font-size:8px">ScriptService</span></span>
+      </div>
+      <div style="display:flex;align-items:center;gap:6px;padding:4px 8px;background:#ec489910;border-radius:4px">
+        <svg style="width:12px;height:12px;color:#ec4899"><use href="#ico-mic"/></svg>
+        <span style="color:#94a3b8;font-size:10px">TextToSpeech <span style="color:#64748b;font-size:8px">MiniMaxService</span></span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Logic -->
+  <div style="background:var(--card-bg,#1a1a2e);border:1px solid #f59e0b40;border-radius:8px;padding:14px">
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
+      <div style="width:28px;height:28px;border-radius:6px;background:#f59e0b20;display:flex;align-items:center;justify-content:center">
+        <svg style="width:16px;height:16px;color:#f59e0b"><use href="#ico-branch"/></svg>
+      </div>
+      <div>
+        <div style="color:#f59e0b;font-size:12px;font-weight:700">Logic</div>
+        <div style="color:#64748b;font-size:9px">#f59e0b (amber)</div>
+      </div>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:4px">
+      <div style="display:flex;align-items:center;gap:6px;padding:4px 8px;background:#f59e0b10;border-radius:4px">
+        <svg style="width:12px;height:12px;color:#f59e0b"><use href="#ico-branch"/></svg>
+        <span style="color:#94a3b8;font-size:10px">Condition (true/false branches)</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Output -->
+  <div style="background:var(--card-bg,#1a1a2e);border:1px solid #14b8a640;border-radius:8px;padding:14px">
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
+      <div style="width:28px;height:28px;border-radius:6px;background:#14b8a620;display:flex;align-items:center;justify-content:center">
+        <svg style="width:16px;height:16px;color:#14b8a6"><use href="#ico-outbox"/></svg>
+      </div>
+      <div>
+        <div style="color:#14b8a6;font-size:12px;font-weight:700">Output</div>
+        <div style="color:#64748b;font-size:9px">#14b8a6 (teal)</div>
+      </div>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:4px">
+      <div style="display:flex;align-items:center;gap:6px;padding:4px 8px;background:#14b8a610;border-radius:4px">
+        <svg style="width:12px;height:12px;color:#14b8a6"><use href="#ico-save"/></svg>
+        <span style="color:#94a3b8;font-size:10px">SaveToGallery</span>
+      </div>
+      <div style="display:flex;align-items:center;gap:6px;padding:4px 8px;background:#14b8a610;border-radius:4px">
+        <svg style="width:12px;height:12px;color:#14b8a6"><use href="#ico-link"/></svg>
+        <span style="color:#94a3b8;font-size:10px">Webhook (POST to URL)</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Execution Engine -->
+<h3 style="margin-top:32px">Execution Flow</h3>
+<div class="mockup" style="margin-top:12px">
+  <div class="mockup-header">Client-Side Execution Engine</div>
+  <div class="mockup-body" style="padding:16px;font-family:monospace;font-size:11px;line-height:1.8">
+    <div style="color:#64748b">// 1. User clicks "Run"</div>
+    <div style="color:#e2e8f0">sorted = <span style="color:#8b5cf6">topologicalSort</span>(nodes, edges)</div>
+    <br>
+    <div style="color:#64748b">// 2. Execute each node sequentially</div>
+    <div style="color:#e2e8f0"><span style="color:#f59e0b">for</span> node <span style="color:#f59e0b">of</span> sorted:</div>
+    <div style="color:#e2e8f0;padding-left:16px">setNodeStatus(node, <span style="color:#10b981">'running'</span>) <span style="color:#64748b">// UI: glow + spinner icon</span></div>
+    <div style="color:#e2e8f0;padding-left:16px">inputs = <span style="color:#8b5cf6">getInputsFromPreviousNodes</span>()</div>
+    <div style="color:#e2e8f0;padding-left:16px">result = <span style="color:#f59e0b">await</span> <span style="color:#8b5cf6">handlers</span>[node.type](node, inputs)</div>
+    <div style="color:#e2e8f0;padding-left:16px">context[node.id] = result.output</div>
+    <div style="color:#e2e8f0;padding-left:16px">setNodeStatus(node, result.success ? <span style="color:#10b981">'completed'</span> : <span style="color:#f43f5e">'error'</span>)</div>
+    <br>
+    <div style="color:#64748b">// 3. Handlers map directly to existing services:</div>
+    <div style="padding-left:16px">
+      <div><span style="color:#f43f5e">'generate-image'</span> → <span style="color:#94a3b8">GeminiService.generateAvatar()</span></div>
+      <div><span style="color:#f43f5e">'generate-video'</span> → <span style="color:#94a3b8">KlingService.generateVideo()</span></div>
+      <div><span style="color:#8b5cf6">'prompt-enhance'</span> → <span style="color:#94a3b8">GeminiService.enhancePrompt()</span></div>
+      <div><span style="color:#8b5cf6">'describe-image'</span> → <span style="color:#94a3b8">GeminiService.describeImageForPrompt()</span></div>
+      <div><span style="color:#ec4899">'script-generator'</span> → <span style="color:#94a3b8">ScriptService.generateScript()</span></div>
+      <div><span style="color:#ec4899">'text-to-speech'</span> → <span style="color:#94a3b8">MiniMaxService.textToSpeech()</span></div>
+      <div><span style="color:#3b82f6">'stitch'</span> → <span style="color:#94a3b8">VideoStitchService.stitchVideos()</span></div>
+    </div>
+  </div>
+</div>

@@ -1,0 +1,328 @@
+<h2>Video Flow Builder — Layout</h2>
+<p class="subtitle">Estructura principal del editor. Basado en la arquitectura de AgentSoft adaptada para video.</p>
+
+<div class="cards">
+  <!-- Option A: Full AgentSoft Clone -->
+  <div class="card" data-choice="a" onclick="toggleSelect(this)">
+    <div class="card-image" style="padding:0;overflow:hidden">
+      <div style="background:#0f172a;padding:12px;font-family:monospace;font-size:11px;color:#94a3b8;line-height:1.8">
+        <!-- Layout A mockup -->
+        <div style="display:flex;height:340px;gap:1px">
+          <!-- Toolbar top -->
+          <div style="position:absolute;top:12px;left:12px;right:12px;height:36px;background:#1e293b;border-radius:6px;display:flex;align-items:center;padding:0 12px;gap:8px;z-index:10">
+            <span style="color:#a78bfa">&#9654;</span>
+            <span style="color:#e2e8f0;font-size:12px;font-weight:600">My Video Flow</span>
+            <span style="background:#334155;padding:2px 8px;border-radius:10px;font-size:9px;color:#94a3b8">Draft</span>
+            <span style="background:#334155;padding:2px 8px;border-radius:10px;font-size:9px;color:#94a3b8">5 nodes</span>
+            <div style="flex:1"></div>
+            <span style="background:#7c3aed;padding:4px 12px;border-radius:6px;font-size:10px;color:white">&#9654; Run</span>
+            <span style="background:#334155;padding:4px 12px;border-radius:6px;font-size:10px;color:#94a3b8">Save</span>
+          </div>
+
+          <!-- Sidebar -->
+          <div style="width:200px;background:#1e293b;border-radius:6px;margin-top:44px;padding:10px;overflow:hidden">
+            <div style="font-size:10px;color:#64748b;margin-bottom:6px;text-transform:uppercase;letter-spacing:1px">Node Categories</div>
+            <input style="width:100%;padding:4px 8px;background:#334155;border:1px solid #475569;border-radius:4px;color:#94a3b8;font-size:10px;margin-bottom:8px" placeholder="Search nodes..." />
+
+            <div style="margin-bottom:6px">
+              <div style="display:flex;align-items:center;gap:4px;padding:4px 6px;border-radius:4px;background:#10b98120;margin-bottom:2px">
+                <span style="color:#10b981">&#9679;</span>
+                <span style="color:#10b981;font-size:10px;font-weight:600">Input</span>
+              </div>
+              <div style="padding-left:16px;font-size:9px;color:#64748b;line-height:2">
+                SelectAvatar<br>UploadImage
+              </div>
+            </div>
+
+            <div style="margin-bottom:6px">
+              <div style="display:flex;align-items:center;gap:4px;padding:4px 6px;border-radius:4px;background:#8b5cf620;margin-bottom:2px">
+                <span style="color:#8b5cf6">&#9679;</span>
+                <span style="color:#8b5cf6;font-size:10px;font-weight:600">AI Processing</span>
+              </div>
+              <div style="padding-left:16px;font-size:9px;color:#64748b;line-height:2">
+                PromptEnhance<br>DescribeImage
+              </div>
+            </div>
+
+            <div style="margin-bottom:6px">
+              <div style="display:flex;align-items:center;gap:4px;padding:4px 6px;border-radius:4px;background:#f43f5e20;margin-bottom:2px">
+                <span style="color:#f43f5e">&#9679;</span>
+                <span style="color:#f43f5e;font-size:10px;font-weight:600">Generation</span>
+              </div>
+              <div style="padding-left:16px;font-size:9px;color:#64748b;line-height:2">
+                GenerateImage<br>GenerateVideo
+              </div>
+            </div>
+
+            <div style="margin-bottom:6px">
+              <div style="display:flex;align-items:center;gap:4px;padding:4px 6px;border-radius:4px;background:#3b82f620;margin-bottom:2px">
+                <span style="color:#3b82f6">&#9679;</span>
+                <span style="color:#3b82f6;font-size:10px;font-weight:600">Transform</span>
+              </div>
+            </div>
+
+            <div style="margin-bottom:6px">
+              <div style="display:flex;align-items:center;gap:4px;padding:4px 6px;border-radius:4px;background:#ec489920;margin-bottom:2px">
+                <span style="color:#ec4899">&#9679;</span>
+                <span style="color:#ec4899;font-size:10px;font-weight:600">Voice</span>
+              </div>
+            </div>
+
+            <div style="margin-bottom:6px">
+              <div style="display:flex;align-items:center;gap:4px;padding:4px 6px;border-radius:4px;background:#f59e0b20;margin-bottom:2px">
+                <span style="color:#f59e0b">&#9679;</span>
+                <span style="color:#f59e0b;font-size:10px;font-weight:600">Logic</span>
+              </div>
+            </div>
+
+            <div style="margin-bottom:6px">
+              <div style="display:flex;align-items:center;gap:4px;padding:4px 6px;border-radius:4px;background:#14b8a620;margin-bottom:2px">
+                <span style="color:#14b8a6">&#9679;</span>
+                <span style="color:#14b8a6;font-size:10px;font-weight:600">Output</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Canvas -->
+          <div style="flex:1;background:#0f172a;border-radius:6px;margin-top:44px;position:relative;overflow:hidden">
+            <!-- Grid pattern -->
+            <div style="position:absolute;inset:0;background-image:radial-gradient(circle,#1e293b 1px,transparent 1px);background-size:20px 20px;opacity:0.5"></div>
+
+            <!-- Flow nodes -->
+            <div style="position:absolute;left:40px;top:80px;background:#1e293b;border:1.5px solid #10b981;border-radius:8px;padding:8px 12px;min-width:120px">
+              <div style="display:flex;align-items:center;gap:4px;margin-bottom:2px">
+                <span style="color:#10b981;font-size:10px">&#128100;</span>
+                <span style="color:#e2e8f0;font-size:10px;font-weight:600">Select Avatar</span>
+              </div>
+              <div style="font-size:8px;color:#64748b">Maria_v2</div>
+              <!-- Output handle -->
+              <div style="position:absolute;right:-5px;top:50%;width:10px;height:10px;background:#10b981;border-radius:50%;border:2px solid #0f172a"></div>
+            </div>
+
+            <!-- Connection line -->
+            <svg style="position:absolute;left:172px;top:94px;width:48px;height:2px">
+              <line x1="0" y1="1" x2="48" y2="1" stroke="#475569" stroke-width="2"/>
+            </svg>
+
+            <div style="position:absolute;left:220px;top:70px;background:#1e293b;border:1.5px solid #8b5cf6;border-radius:8px;padding:8px 12px;min-width:130px">
+              <div style="display:flex;align-items:center;gap:4px;margin-bottom:2px">
+                <span style="color:#8b5cf6;font-size:10px">&#10024;</span>
+                <span style="color:#e2e8f0;font-size:10px;font-weight:600">Enhance Prompt</span>
+              </div>
+              <div style="font-size:8px;color:#64748b">"Beach photoshoot..."</div>
+              <div style="position:absolute;left:-5px;top:50%;width:10px;height:10px;background:#8b5cf6;border-radius:50%;border:2px solid #0f172a"></div>
+              <div style="position:absolute;right:-5px;top:50%;width:10px;height:10px;background:#8b5cf6;border-radius:50%;border:2px solid #0f172a"></div>
+            </div>
+
+            <svg style="position:absolute;left:362px;top:94px;width:48px;height:2px">
+              <line x1="0" y1="1" x2="48" y2="1" stroke="#475569" stroke-width="2"/>
+            </svg>
+
+            <div style="position:absolute;left:410px;top:70px;background:#1e293b;border:1.5px solid #f43f5e;border-radius:8px;padding:8px 12px;min-width:130px;box-shadow:0 0 12px rgba(244,63,94,0.2)">
+              <div style="display:flex;align-items:center;gap:4px;margin-bottom:2px">
+                <span style="color:#f43f5e;font-size:10px">&#127912;</span>
+                <span style="color:#e2e8f0;font-size:10px;font-weight:600">Generate Image</span>
+              </div>
+              <div style="font-size:8px;color:#f43f5e">&#9654; Running...</div>
+              <div style="position:absolute;left:-5px;top:50%;width:10px;height:10px;background:#f43f5e;border-radius:50%;border:2px solid #0f172a"></div>
+              <div style="position:absolute;right:-5px;top:50%;width:10px;height:10px;background:#f43f5e;border-radius:50%;border:2px solid #0f172a"></div>
+            </div>
+
+            <svg style="position:absolute;left:552px;top:94px;width:48px;height:40px">
+              <path d="M0,1 C24,1 24,40 48,40" stroke="#475569" stroke-width="2" fill="none"/>
+            </svg>
+
+            <div style="position:absolute;left:600px;top:110px;background:#1e293b;border:1.5px solid #14b8a6;border-radius:8px;padding:8px 12px;min-width:120px">
+              <div style="display:flex;align-items:center;gap:4px;margin-bottom:2px">
+                <span style="color:#14b8a6;font-size:10px">&#128190;</span>
+                <span style="color:#e2e8f0;font-size:10px;font-weight:600">Save to Gallery</span>
+              </div>
+              <div style="font-size:8px;color:#64748b">avatar_gallery</div>
+              <div style="position:absolute;left:-5px;top:50%;width:10px;height:10px;background:#14b8a6;border-radius:50%;border:2px solid #0f172a"></div>
+            </div>
+
+            <!-- Minimap -->
+            <div style="position:absolute;bottom:8px;right:8px;width:120px;height:70px;background:#1e293b;border:1px solid #334155;border-radius:4px;opacity:0.7"></div>
+
+            <!-- Zoom controls -->
+            <div style="position:absolute;bottom:8px;left:8px;display:flex;gap:2px">
+              <div style="width:24px;height:24px;background:#1e293b;border:1px solid #334155;border-radius:4px;display:flex;align-items:center;justify-content:center;color:#94a3b8;font-size:12px">+</div>
+              <div style="width:24px;height:24px;background:#1e293b;border:1px solid #334155;border-radius:4px;display:flex;align-items:center;justify-content:center;color:#94a3b8;font-size:12px">-</div>
+            </div>
+          </div>
+
+          <!-- Properties Panel -->
+          <div style="width:240px;background:#1e293b;border-radius:6px;margin-top:44px;padding:10px;overflow:hidden">
+            <div style="font-size:10px;color:#64748b;margin-bottom:4px;text-transform:uppercase;letter-spacing:1px">Properties</div>
+            <div style="font-size:12px;color:#e2e8f0;font-weight:600;margin-bottom:10px;display:flex;align-items:center;gap:4px">
+              <span style="color:#f43f5e">&#127912;</span> Generate Image
+            </div>
+
+            <div style="background:#334155;border-radius:6px;padding:8px;margin-bottom:8px">
+              <div style="font-size:9px;color:#64748b;margin-bottom:4px">PROVIDER</div>
+              <select style="width:100%;background:#1e293b;color:#e2e8f0;border:1px solid #475569;border-radius:4px;padding:4px;font-size:10px">
+                <option>Gemini 3 Pro Image</option>
+              </select>
+            </div>
+
+            <div style="background:#334155;border-radius:6px;padding:8px;margin-bottom:8px">
+              <div style="font-size:9px;color:#64748b;margin-bottom:4px">ASPECT RATIO</div>
+              <div style="display:flex;gap:4px;flex-wrap:wrap">
+                <span style="padding:2px 8px;background:#7c3aed;border-radius:10px;font-size:9px;color:white">1:1</span>
+                <span style="padding:2px 8px;background:#1e293b;border:1px solid #475569;border-radius:10px;font-size:9px;color:#94a3b8">16:9</span>
+                <span style="padding:2px 8px;background:#1e293b;border:1px solid #475569;border-radius:10px;font-size:9px;color:#94a3b8">9:16</span>
+                <span style="padding:2px 8px;background:#1e293b;border:1px solid #475569;border-radius:10px;font-size:9px;color:#94a3b8">4:3</span>
+              </div>
+            </div>
+
+            <div style="background:#334155;border-radius:6px;padding:8px;margin-bottom:8px">
+              <div style="font-size:9px;color:#64748b;margin-bottom:4px">CINEMA CONTROLS</div>
+              <div style="font-size:9px;color:#94a3b8;margin-bottom:2px">Lens: <span style="color:#a78bfa">Anamorphic</span></div>
+              <div style="font-size:9px;color:#94a3b8;margin-bottom:2px">Focal: <span style="color:#a78bfa">85mm</span></div>
+              <div style="font-size:9px;color:#94a3b8">Aperture: <span style="color:#a78bfa">f/1.4</span></div>
+            </div>
+
+            <div style="background:#334155;border-radius:6px;padding:8px">
+              <div style="font-size:9px;color:#64748b;margin-bottom:4px">IDENTITY WEIGHT</div>
+              <div style="height:4px;background:#1e293b;border-radius:2px;position:relative">
+                <div style="width:85%;height:100%;background:#7c3aed;border-radius:2px"></div>
+              </div>
+              <div style="font-size:9px;color:#94a3b8;text-align:right;margin-top:2px">85%</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>A — Full Layout (3 panels)</h3>
+      <p>Sidebar de nodos + Canvas central + Properties panel. Mismo patrón que AgentSoft. El canvas es donde se arrastran y conectan nodos. Properties muestra config del nodo seleccionado.</p>
+    </div>
+  </div>
+
+  <!-- Option B: Simplified -->
+  <div class="card" data-choice="b" onclick="toggleSelect(this)">
+    <div class="card-image" style="padding:0;overflow:hidden">
+      <div style="background:#0f172a;padding:12px;font-family:monospace;font-size:11px;color:#94a3b8;line-height:1.8">
+        <div style="display:flex;height:340px;gap:1px">
+          <!-- Toolbar -->
+          <div style="position:absolute;top:12px;left:12px;right:12px;height:36px;background:#1e293b;border-radius:6px;display:flex;align-items:center;padding:0 12px;gap:8px;z-index:10">
+            <span style="color:#a78bfa">&#9654;</span>
+            <span style="color:#e2e8f0;font-size:12px;font-weight:600">My Video Flow</span>
+            <div style="flex:1"></div>
+            <!-- Inline node buttons -->
+            <div style="display:flex;gap:2px">
+              <span style="background:#10b98130;padding:3px 8px;border-radius:4px;font-size:9px;color:#10b981;cursor:pointer">+ Input</span>
+              <span style="background:#8b5cf630;padding:3px 8px;border-radius:4px;font-size:9px;color:#8b5cf6;cursor:pointer">+ AI</span>
+              <span style="background:#f43f5e30;padding:3px 8px;border-radius:4px;font-size:9px;color:#f43f5e;cursor:pointer">+ Generate</span>
+              <span style="background:#3b82f630;padding:3px 8px;border-radius:4px;font-size:9px;color:#3b82f6;cursor:pointer">+ Transform</span>
+              <span style="background:#14b8a630;padding:3px 8px;border-radius:4px;font-size:9px;color:#14b8a6;cursor:pointer">+ Output</span>
+            </div>
+            <span style="background:#7c3aed;padding:4px 12px;border-radius:6px;font-size:10px;color:white">&#9654; Run</span>
+            <span style="background:#334155;padding:4px 12px;border-radius:6px;font-size:10px;color:#94a3b8">Save</span>
+          </div>
+
+          <!-- Canvas (full width) -->
+          <div style="flex:1;background:#0f172a;border-radius:6px;margin-top:44px;position:relative;overflow:hidden">
+            <div style="position:absolute;inset:0;background-image:radial-gradient(circle,#1e293b 1px,transparent 1px);background-size:20px 20px;opacity:0.5"></div>
+
+            <!-- Same flow nodes, centered -->
+            <div style="position:absolute;left:60px;top:100px;background:#1e293b;border:1.5px solid #10b981;border-radius:8px;padding:8px 12px;min-width:120px">
+              <div style="display:flex;align-items:center;gap:4px;margin-bottom:2px">
+                <span style="color:#10b981;font-size:10px">&#128100;</span>
+                <span style="color:#e2e8f0;font-size:10px;font-weight:600">Select Avatar</span>
+              </div>
+              <div style="font-size:8px;color:#64748b">Maria_v2</div>
+              <div style="position:absolute;right:-5px;top:50%;width:10px;height:10px;background:#10b981;border-radius:50%;border:2px solid #0f172a"></div>
+            </div>
+
+            <svg style="position:absolute;left:192px;top:114px;width:58px;height:2px">
+              <line x1="0" y1="1" x2="58" y2="1" stroke="#475569" stroke-width="2"/>
+            </svg>
+
+            <div style="position:absolute;left:250px;top:90px;background:#1e293b;border:1.5px solid #8b5cf6;border-radius:8px;padding:8px 12px;min-width:130px">
+              <div style="display:flex;align-items:center;gap:4px;margin-bottom:2px">
+                <span style="color:#8b5cf6;font-size:10px">&#10024;</span>
+                <span style="color:#e2e8f0;font-size:10px;font-weight:600">Enhance Prompt</span>
+              </div>
+              <div style="font-size:8px;color:#64748b">"Beach photoshoot..."</div>
+              <div style="position:absolute;left:-5px;top:50%;width:10px;height:10px;background:#8b5cf6;border-radius:50%;border:2px solid #0f172a"></div>
+              <div style="position:absolute;right:-5px;top:50%;width:10px;height:10px;background:#8b5cf6;border-radius:50%;border:2px solid #0f172a"></div>
+            </div>
+
+            <svg style="position:absolute;left:392px;top:114px;width:58px;height:2px">
+              <line x1="0" y1="1" x2="58" y2="1" stroke="#475569" stroke-width="2"/>
+            </svg>
+
+            <div style="position:absolute;left:450px;top:90px;background:#1e293b;border:1.5px solid #f43f5e;border-radius:8px;padding:8px 12px;min-width:130px;box-shadow:0 0 12px rgba(244,63,94,0.2)">
+              <div style="display:flex;align-items:center;gap:4px;margin-bottom:2px">
+                <span style="color:#f43f5e;font-size:10px">&#127912;</span>
+                <span style="color:#e2e8f0;font-size:10px;font-weight:600">Generate Image</span>
+              </div>
+              <div style="font-size:8px;color:#f43f5e">&#9654; Running...</div>
+              <div style="position:absolute;left:-5px;top:50%;width:10px;height:10px;background:#f43f5e;border-radius:50%;border:2px solid #0f172a"></div>
+              <div style="position:absolute;right:-5px;top:50%;width:10px;height:10px;background:#f43f5e;border-radius:50%;border:2px solid #0f172a"></div>
+            </div>
+
+            <svg style="position:absolute;left:592px;top:114px;width:58px;height:40px">
+              <path d="M0,1 C29,1 29,40 58,40" stroke="#475569" stroke-width="2" fill="none"/>
+            </svg>
+
+            <div style="position:absolute;left:650px;top:130px;background:#1e293b;border:1.5px solid #14b8a6;border-radius:8px;padding:8px 12px;min-width:120px">
+              <div style="display:flex;align-items:center;gap:4px;margin-bottom:2px">
+                <span style="color:#14b8a6;font-size:10px">&#128190;</span>
+                <span style="color:#e2e8f0;font-size:10px;font-weight:600">Save to Gallery</span>
+              </div>
+              <div style="font-size:8px;color:#64748b">avatar_gallery</div>
+              <div style="position:absolute;left:-5px;top:50%;width:10px;height:10px;background:#14b8a6;border-radius:50%;border:2px solid #0f172a"></div>
+            </div>
+
+            <!-- Click-to-configure overlay -->
+            <div style="position:absolute;right:12px;top:12px;background:#1e293b;border:1px solid #7c3aed;border-radius:8px;padding:10px;width:220px;box-shadow:0 4px 20px rgba(0,0,0,0.4)">
+              <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+                <div style="font-size:10px;color:#e2e8f0;font-weight:600;display:flex;align-items:center;gap:4px">
+                  <span style="color:#f43f5e">&#127912;</span> Generate Image
+                </div>
+                <span style="color:#64748b;font-size:12px;cursor:pointer">&#10005;</span>
+              </div>
+              <div style="font-size:9px;color:#64748b;margin-bottom:4px">PROVIDER</div>
+              <select style="width:100%;background:#334155;color:#e2e8f0;border:1px solid #475569;border-radius:4px;padding:3px;font-size:9px;margin-bottom:6px">
+                <option>Gemini 3 Pro Image</option>
+              </select>
+              <div style="font-size:9px;color:#64748b;margin-bottom:4px">ASPECT RATIO</div>
+              <div style="display:flex;gap:3px;margin-bottom:6px">
+                <span style="padding:2px 6px;background:#7c3aed;border-radius:8px;font-size:8px;color:white">1:1</span>
+                <span style="padding:2px 6px;background:#334155;border:1px solid #475569;border-radius:8px;font-size:8px;color:#94a3b8">16:9</span>
+                <span style="padding:2px 6px;background:#334155;border:1px solid #475569;border-radius:8px;font-size:8px;color:#94a3b8">9:16</span>
+              </div>
+            </div>
+
+            <div style="position:absolute;bottom:8px;right:8px;width:100px;height:60px;background:#1e293b;border:1px solid #334155;border-radius:4px;opacity:0.7"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>B — Canvas-first (floating panels)</h3>
+      <p>Sin sidebar fija — nodos se agregan desde toolbar. Properties aparece como popover flotante al hacer click en un nodo. Canvas ocupa todo el espacio. Más limpio, menos cramped.</p>
+    </div>
+  </div>
+</div>
+
+<div class="pros-cons" style="margin-top:20px">
+  <div class="pros">
+    <h4>A — Full Layout</h4>
+    <ul>
+      <li>Drag & drop desde sidebar (familiar para usuarios de N8N)</li>
+      <li>Properties siempre visible — edición rápida</li>
+      <li>Mismo patrón que AgentSoft (menos código nuevo)</li>
+    </ul>
+  </div>
+  <div class="cons">
+    <h4>B — Canvas-first</h4>
+    <ul>
+      <li>Más espacio para el canvas (mejor con flows grandes)</li>
+      <li>UI más limpia y moderna</li>
+      <li>Popover properties = menos distracción</li>
+    </ul>
+  </div>
+</div>

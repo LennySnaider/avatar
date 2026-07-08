@@ -1,0 +1,328 @@
+<h2>Video Flow Builder — Node System & Execution</h2>
+<p class="subtitle">Cómo fluye la data entre nodos y cómo se ejecuta el pipeline</p>
+
+<!-- Example Pipeline -->
+<div class="mockup" style="margin-bottom:24px">
+  <div class="mockup-header">Example Pipeline: Avatar → Enhance → Generate → Save</div>
+  <div class="mockup-body" style="background:#0f172a;padding:24px;overflow-x:auto">
+    <div style="display:flex;align-items:flex-start;gap:12px;min-width:900px">
+
+      <!-- Node 1: SelectAvatar -->
+      <div style="min-width:180px">
+        <div style="background:#1e293b;border:2px solid #10b981;border-radius:10px;padding:12px;position:relative;box-shadow:0 0 20px rgba(16,185,129,0.15)">
+          <div style="position:absolute;top:-10px;left:12px;background:#10b981;color:white;font-size:8px;padding:1px 8px;border-radius:10px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px">Input</div>
+          <div style="display:flex;align-items:center;gap:6px;margin-top:4px;margin-bottom:8px">
+            <span style="font-size:16px">👤</span>
+            <span style="color:#e2e8f0;font-size:12px;font-weight:700">Select Avatar</span>
+          </div>
+          <div style="background:#0f172a;border-radius:6px;padding:8px;font-size:10px">
+            <div style="color:#64748b;margin-bottom:2px">Selected:</div>
+            <div style="color:#10b981;font-weight:600">Maria_v2</div>
+          </div>
+          <div style="margin-top:8px;background:#10b98115;border:1px solid #10b98130;border-radius:4px;padding:6px;font-size:9px">
+            <div style="color:#64748b;margin-bottom:2px">OUTPUT →</div>
+            <div style="color:#94a3b8;font-family:monospace;font-size:8px;line-height:1.5">
+              avatarId: "uuid..."<br>
+              references: [img1, img2]<br>
+              faceRef: {base64...}<br>
+              measurements: {age, body...}
+            </div>
+          </div>
+        </div>
+        <div style="text-align:center;margin-top:4px">
+          <span style="color:#10b981;font-size:9px;background:#10b98120;padding:2px 8px;border-radius:8px">✓ Completed</span>
+        </div>
+      </div>
+
+      <!-- Arrow -->
+      <div style="display:flex;align-items:center;padding-top:40px">
+        <svg width="40" height="20"><path d="M0,10 L30,10 M25,5 L30,10 L25,15" stroke="#475569" stroke-width="2" fill="none"/></svg>
+      </div>
+
+      <!-- Node 2: PromptEnhance -->
+      <div style="min-width:180px">
+        <div style="background:#1e293b;border:2px solid #8b5cf6;border-radius:10px;padding:12px;position:relative;box-shadow:0 0 20px rgba(139,92,246,0.15)">
+          <div style="position:absolute;top:-10px;left:12px;background:#8b5cf6;color:white;font-size:8px;padding:1px 8px;border-radius:10px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px">AI</div>
+          <div style="display:flex;align-items:center;gap:6px;margin-top:4px;margin-bottom:8px">
+            <span style="font-size:16px">✨</span>
+            <span style="color:#e2e8f0;font-size:12px;font-weight:700">Enhance Prompt</span>
+          </div>
+          <div style="background:#0f172a;border-radius:6px;padding:8px;font-size:10px">
+            <div style="color:#64748b;margin-bottom:2px">Base prompt:</div>
+            <div style="color:#8b5cf6;font-weight:600;font-size:9px">"Beach photoshoot, sunset"</div>
+          </div>
+          <div style="margin-top:8px;background:#8b5cf615;border:1px solid #8b5cf630;border-radius:4px;padding:6px;font-size:9px">
+            <div style="color:#64748b;margin-bottom:2px">OUTPUT →</div>
+            <div style="color:#94a3b8;font-family:monospace;font-size:8px;line-height:1.5">
+              enhancedPrompt: "Golden hour<br>
+              &nbsp;beach photoshoot, warm<br>
+              &nbsp;sunset light, soft sand..."
+            </div>
+          </div>
+        </div>
+        <div style="text-align:center;margin-top:4px">
+          <span style="color:#8b5cf6;font-size:9px;background:#8b5cf620;padding:2px 8px;border-radius:8px">✓ Completed</span>
+        </div>
+      </div>
+
+      <!-- Arrow -->
+      <div style="display:flex;align-items:center;padding-top:40px">
+        <svg width="40" height="20"><path d="M0,10 L30,10 M25,5 L30,10 L25,15" stroke="#475569" stroke-width="2" fill="none"/></svg>
+      </div>
+
+      <!-- Node 3: GenerateImage (RUNNING) -->
+      <div style="min-width:200px">
+        <div style="background:#1e293b;border:2px solid #f43f5e;border-radius:10px;padding:12px;position:relative;box-shadow:0 0 24px rgba(244,63,94,0.3);animation:pulse 2s infinite" id="running-node">
+          <style>@keyframes pulse{0%,100%{box-shadow:0 0 24px rgba(244,63,94,0.3)}50%{box-shadow:0 0 36px rgba(244,63,94,0.5)}}</style>
+          <div style="position:absolute;top:-10px;left:12px;background:#f43f5e;color:white;font-size:8px;padding:1px 8px;border-radius:10px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px">Generation</div>
+          <div style="display:flex;align-items:center;gap:6px;margin-top:4px;margin-bottom:8px">
+            <span style="font-size:16px">🎨</span>
+            <span style="color:#e2e8f0;font-size:12px;font-weight:700">Generate Image</span>
+          </div>
+          <div style="background:#0f172a;border-radius:6px;padding:8px;font-size:10px">
+            <div style="color:#64748b;margin-bottom:4px">Config:</div>
+            <div style="display:flex;flex-wrap:wrap;gap:3px">
+              <span style="padding:1px 6px;background:#7c3aed30;border:1px solid #7c3aed50;border-radius:6px;font-size:8px;color:#a78bfa">Gemini 3 Pro</span>
+              <span style="padding:1px 6px;background:#7c3aed30;border:1px solid #7c3aed50;border-radius:6px;font-size:8px;color:#a78bfa">1:1</span>
+              <span style="padding:1px 6px;background:#7c3aed30;border:1px solid #7c3aed50;border-radius:6px;font-size:8px;color:#a78bfa">85mm</span>
+              <span style="padding:1px 6px;background:#7c3aed30;border:1px solid #7c3aed50;border-radius:6px;font-size:8px;color:#a78bfa">f/1.4</span>
+            </div>
+          </div>
+          <div style="margin-top:8px;background:#f43f5e15;border:1px solid #f43f5e30;border-radius:4px;padding:6px;font-size:9px">
+            <div style="color:#64748b;margin-bottom:2px">Calls → GeminiService.generateAvatar()</div>
+            <div style="color:#94a3b8;font-family:monospace;font-size:8px;line-height:1.5">
+              OUTPUT →<br>
+              imageUrl: "https://..."<br>
+              fullApiPrompt: "..."
+            </div>
+          </div>
+        </div>
+        <div style="text-align:center;margin-top:4px">
+          <span style="color:#f43f5e;font-size:9px;background:#f43f5e20;padding:2px 8px;border-radius:8px">⏳ Running...</span>
+        </div>
+      </div>
+
+      <!-- Arrow -->
+      <div style="display:flex;align-items:center;padding-top:40px">
+        <svg width="40" height="20"><path d="M0,10 L30,10 M25,5 L30,10 L25,15" stroke="#334155" stroke-width="2" fill="none" stroke-dasharray="4,3"/></svg>
+      </div>
+
+      <!-- Node 4: SaveToGallery (PENDING) -->
+      <div style="min-width:160px">
+        <div style="background:#1e293b;border:2px solid #334155;border-radius:10px;padding:12px;position:relative;opacity:0.6">
+          <div style="position:absolute;top:-10px;left:12px;background:#14b8a6;color:white;font-size:8px;padding:1px 8px;border-radius:10px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px">Output</div>
+          <div style="display:flex;align-items:center;gap:6px;margin-top:4px;margin-bottom:8px">
+            <span style="font-size:16px">💾</span>
+            <span style="color:#e2e8f0;font-size:12px;font-weight:700">Save to Gallery</span>
+          </div>
+          <div style="background:#0f172a;border-radius:6px;padding:8px;font-size:10px">
+            <div style="color:#64748b;margin-bottom:2px">Target:</div>
+            <div style="color:#14b8a6;font-weight:600;font-size:9px">avatar_gallery</div>
+          </div>
+          <div style="margin-top:8px;background:#14b8a615;border:1px solid #14b8a630;border-radius:4px;padding:6px;font-size:9px">
+            <div style="color:#64748b">OUTPUT →</div>
+            <div style="color:#475569;font-family:monospace;font-size:8px">
+              galleryItemId, savedUrl
+            </div>
+          </div>
+        </div>
+        <div style="text-align:center;margin-top:4px">
+          <span style="color:#64748b;font-size:9px;background:#33415530;padding:2px 8px;border-radius:8px">⏸ Pending</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Node Categories -->
+<h3 style="margin-top:32px">Node Categories (15 nodos MVP)</h3>
+<p class="subtitle">Cada categoría tiene un color consistente a lo largo del UI</p>
+
+<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:12px;margin-top:16px">
+
+  <!-- Input -->
+  <div style="background:var(--card-bg,#1a1a2e);border:1px solid #10b98140;border-radius:8px;padding:14px">
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
+      <div style="width:28px;height:28px;border-radius:6px;background:#10b98120;display:flex;align-items:center;justify-content:center">
+        <span style="color:#10b981;font-size:14px">📥</span>
+      </div>
+      <div>
+        <div style="color:#10b981;font-size:12px;font-weight:700">Input</div>
+        <div style="color:#64748b;font-size:9px">#10b981 (green)</div>
+      </div>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:4px">
+      <div style="display:flex;align-items:center;gap:6px;padding:4px 8px;background:#10b98110;border-radius:4px">
+        <span style="font-size:11px">👤</span>
+        <span style="color:#94a3b8;font-size:10px">SelectAvatar</span>
+      </div>
+      <div style="display:flex;align-items:center;gap:6px;padding:4px 8px;background:#10b98110;border-radius:4px">
+        <span style="font-size:11px">📤</span>
+        <span style="color:#94a3b8;font-size:10px">UploadImage</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- AI Processing -->
+  <div style="background:var(--card-bg,#1a1a2e);border:1px solid #8b5cf640;border-radius:8px;padding:14px">
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
+      <div style="width:28px;height:28px;border-radius:6px;background:#8b5cf620;display:flex;align-items:center;justify-content:center">
+        <span style="color:#8b5cf6;font-size:14px">🧠</span>
+      </div>
+      <div>
+        <div style="color:#8b5cf6;font-size:12px;font-weight:700">AI Processing</div>
+        <div style="color:#64748b;font-size:9px">#8b5cf6 (purple)</div>
+      </div>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:4px">
+      <div style="display:flex;align-items:center;gap:6px;padding:4px 8px;background:#8b5cf610;border-radius:4px">
+        <span style="font-size:11px">✨</span>
+        <span style="color:#94a3b8;font-size:10px">PromptEnhance</span>
+      </div>
+      <div style="display:flex;align-items:center;gap:6px;padding:4px 8px;background:#8b5cf610;border-radius:4px">
+        <span style="font-size:11px">👁</span>
+        <span style="color:#94a3b8;font-size:10px">DescribeImage</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Generation -->
+  <div style="background:var(--card-bg,#1a1a2e);border:1px solid #f43f5e40;border-radius:8px;padding:14px">
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
+      <div style="width:28px;height:28px;border-radius:6px;background:#f43f5e20;display:flex;align-items:center;justify-content:center">
+        <span style="color:#f43f5e;font-size:14px">🎨</span>
+      </div>
+      <div>
+        <div style="color:#f43f5e;font-size:12px;font-weight:700">Generation</div>
+        <div style="color:#64748b;font-size:9px">#f43f5e (rose)</div>
+      </div>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:4px">
+      <div style="display:flex;align-items:center;gap:6px;padding:4px 8px;background:#f43f5e10;border-radius:4px">
+        <span style="font-size:11px">🖼</span>
+        <span style="color:#94a3b8;font-size:10px">GenerateImage → <span style="color:#64748b;font-size:8px">GeminiService</span></span>
+      </div>
+      <div style="display:flex;align-items:center;gap:6px;padding:4px 8px;background:#f43f5e10;border-radius:4px">
+        <span style="font-size:11px">🎬</span>
+        <span style="color:#94a3b8;font-size:10px">GenerateVideo → <span style="color:#64748b;font-size:8px">KlingService</span></span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Transform -->
+  <div style="background:var(--card-bg,#1a1a2e);border:1px solid #3b82f640;border-radius:8px;padding:14px">
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
+      <div style="width:28px;height:28px;border-radius:6px;background:#3b82f620;display:flex;align-items:center;justify-content:center">
+        <span style="color:#3b82f6;font-size:14px">🔧</span>
+      </div>
+      <div>
+        <div style="color:#3b82f6;font-size:12px;font-weight:700">Transform</div>
+        <div style="color:#64748b;font-size:9px">#3b82f6 (blue)</div>
+      </div>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:4px">
+      <div style="display:flex;align-items:center;gap:6px;padding:4px 8px;background:#3b82f610;border-radius:4px">
+        <span style="font-size:11px">🎞</span>
+        <span style="color:#94a3b8;font-size:10px">Stitch → <span style="color:#64748b;font-size:8px">VideoStitchService</span></span>
+      </div>
+      <div style="display:flex;align-items:center;gap:6px;padding:4px 8px;background:#3b82f610;border-radius:4px">
+        <span style="font-size:11px">📝</span>
+        <span style="color:#94a3b8;font-size:10px">TextOverlay</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Voice -->
+  <div style="background:var(--card-bg,#1a1a2e);border:1px solid #ec489940;border-radius:8px;padding:14px">
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
+      <div style="width:28px;height:28px;border-radius:6px;background:#ec489920;display:flex;align-items:center;justify-content:center">
+        <span style="color:#ec4899;font-size:14px">🎙</span>
+      </div>
+      <div>
+        <div style="color:#ec4899;font-size:12px;font-weight:700">Voice</div>
+        <div style="color:#64748b;font-size:9px">#ec4899 (pink)</div>
+      </div>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:4px">
+      <div style="display:flex;align-items:center;gap:6px;padding:4px 8px;background:#ec489910;border-radius:4px">
+        <span style="font-size:11px">📜</span>
+        <span style="color:#94a3b8;font-size:10px">ScriptGenerator → <span style="color:#64748b;font-size:8px">ScriptService</span></span>
+      </div>
+      <div style="display:flex;align-items:center;gap:6px;padding:4px 8px;background:#ec489910;border-radius:4px">
+        <span style="font-size:11px">🗣</span>
+        <span style="color:#94a3b8;font-size:10px">TextToSpeech → <span style="color:#64748b;font-size:8px">MiniMaxService</span></span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Logic -->
+  <div style="background:var(--card-bg,#1a1a2e);border:1px solid #f59e0b40;border-radius:8px;padding:14px">
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
+      <div style="width:28px;height:28px;border-radius:6px;background:#f59e0b20;display:flex;align-items:center;justify-content:center">
+        <span style="color:#f59e0b;font-size:14px">🔀</span>
+      </div>
+      <div>
+        <div style="color:#f59e0b;font-size:12px;font-weight:700">Logic</div>
+        <div style="color:#64748b;font-size:9px">#f59e0b (amber)</div>
+      </div>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:4px">
+      <div style="display:flex;align-items:center;gap:6px;padding:4px 8px;background:#f59e0b10;border-radius:4px">
+        <span style="font-size:11px">⑂</span>
+        <span style="color:#94a3b8;font-size:10px">Condition (true/false branches)</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Output -->
+  <div style="background:var(--card-bg,#1a1a2e);border:1px solid #14b8a640;border-radius:8px;padding:14px">
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
+      <div style="width:28px;height:28px;border-radius:6px;background:#14b8a620;display:flex;align-items:center;justify-content:center">
+        <span style="color:#14b8a6;font-size:14px">📤</span>
+      </div>
+      <div>
+        <div style="color:#14b8a6;font-size:12px;font-weight:700">Output</div>
+        <div style="color:#64748b;font-size:9px">#14b8a6 (teal)</div>
+      </div>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:4px">
+      <div style="display:flex;align-items:center;gap:6px;padding:4px 8px;background:#14b8a610;border-radius:4px">
+        <span style="font-size:11px">💾</span>
+        <span style="color:#94a3b8;font-size:10px">SaveToGallery</span>
+      </div>
+      <div style="display:flex;align-items:center;gap:6px;padding:4px 8px;background:#14b8a610;border-radius:4px">
+        <span style="font-size:11px">🔗</span>
+        <span style="color:#94a3b8;font-size:10px">Webhook (POST to URL)</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Execution Engine -->
+<h3 style="margin-top:32px">Execution Flow</h3>
+<div class="mockup" style="margin-top:12px">
+  <div class="mockup-header">Client-Side Execution Engine</div>
+  <div class="mockup-body" style="padding:16px;font-family:monospace;font-size:11px;line-height:1.8">
+    <div style="color:#64748b">// 1. User clicks "Run"</div>
+    <div style="color:#e2e8f0">sorted = <span style="color:#8b5cf6">topologicalSort</span>(nodes, edges)</div>
+    <br>
+    <div style="color:#64748b">// 2. Execute each node sequentially</div>
+    <div style="color:#e2e8f0"><span style="color:#f59e0b">for</span> node <span style="color:#f59e0b">of</span> sorted:</div>
+    <div style="color:#e2e8f0;padding-left:16px">setNodeStatus(node, <span style="color:#10b981">'running'</span>) <span style="color:#64748b">// UI: glow effect</span></div>
+    <div style="color:#e2e8f0;padding-left:16px">inputs = <span style="color:#8b5cf6">getInputsFromPreviousNodes</span>()</div>
+    <div style="color:#e2e8f0;padding-left:16px">result = <span style="color:#f59e0b">await</span> <span style="color:#8b5cf6">handlers</span>[node.type](node, inputs)</div>
+    <div style="color:#e2e8f0;padding-left:16px">context[node.id] = result.output</div>
+    <div style="color:#e2e8f0;padding-left:16px">setNodeStatus(node, result.success ? <span style="color:#10b981">'completed'</span> : <span style="color:#f43f5e">'error'</span>)</div>
+    <br>
+    <div style="color:#64748b">// 3. Handlers map directly to existing services:</div>
+    <div style="padding-left:16px">
+      <div><span style="color:#f43f5e">'generate-image'</span> → <span style="color:#94a3b8">GeminiService.generateAvatar()</span></div>
+      <div><span style="color:#f43f5e">'generate-video'</span> → <span style="color:#94a3b8">KlingService.generateVideo()</span></div>
+      <div><span style="color:#8b5cf6">'prompt-enhance'</span> → <span style="color:#94a3b8">GeminiService.enhancePrompt()</span></div>
+      <div><span style="color:#8b5cf6">'describe-image'</span> → <span style="color:#94a3b8">GeminiService.describeImageForPrompt()</span></div>
+      <div><span style="color:#ec4899">'script-generator'</span> → <span style="color:#94a3b8">ScriptService.generateScript()</span></div>
+      <div><span style="color:#ec4899">'text-to-speech'</span> → <span style="color:#94a3b8">MiniMaxService.textToSpeech()</span></div>
+      <div><span style="color:#3b82f6">'stitch'</span> → <span style="color:#94a3b8">VideoStitchService.stitchVideos()</span></div>
+    </div>
+  </div>
+</div>
