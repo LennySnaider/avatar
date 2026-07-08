@@ -34,6 +34,9 @@ export default function AudioPreview() {
     const [emotion, setEmotion] = useState('')
     const [isSavingSettings, setIsSavingSettings] = useState(false)
     const [settingsMsg, setSettingsMsg] = useState<string | null>(null)
+    // Speed que quedó HORNEADA en el último audio generado — el preview en
+    // vivo reproduce a (deseada / horneada) para simular el resultado final.
+    const [bakedSpeed, setBakedSpeed] = useState(1)
 
     useEffect(() => {
         const s = selectedVoice?.tts_settings
@@ -42,6 +45,16 @@ export default function AudioPreview() {
         setEmotion(s?.emotion ?? '')
         setSettingsMsg(null)
     }, [selectedVoiceId]) // eslint-disable-line react-hooks/exhaustive-deps
+
+    // Preview de velocidad en tiempo real sobre el audio ya generado, sin
+    // alterar el tono (preservesPitch). Pitch/emotion sí requieren regenerar:
+    // el navegador no puede cambiar tono sin cambiar también la velocidad.
+    useEffect(() => {
+        const el = audioRef.current
+        if (!el) return
+        el.preservesPitch = true
+        el.playbackRate = Math.min(4, Math.max(0.25, speed / bakedSpeed))
+    }, [speed, bakedSpeed, previewAudioUrl])
 
     const buildSettings = (): VoiceTtsSettings => {
         const s: VoiceTtsSettings = {}
@@ -73,6 +86,7 @@ export default function AudioPreview() {
             }
             const { audioUrl } = await res.json()
             setPreviewAudioUrl(audioUrl)
+            setBakedSpeed(speed)
         } catch (err) {
             console.error('TTS generation failed:', err)
         } finally {
@@ -127,7 +141,9 @@ export default function AudioPreview() {
                 {selectedVoice && (
                     <div className="flex flex-col gap-2 text-sm">
                         <label className="flex items-center justify-between gap-2">
-                            <span className="text-gray-500 w-14">Speed</span>
+                            <span className="text-gray-500 w-14">
+                                Speed <span className="text-[9px] text-emerald-500 block leading-tight">live</span>
+                            </span>
                             <input
                                 type="range"
                                 min={0.5}
@@ -180,7 +196,9 @@ export default function AudioPreview() {
                             )}
                         </div>
                         <p className="text-[10px] text-gray-400">
-                            Saved settings are applied automatically in Avatar Studio&apos;s Speak mode.
+                            Speed previews live on the player below — no re-generation needed.
+                            Pitch and Emotion apply on the next Generate Audio. Saved settings
+                            are applied automatically in Avatar Studio&apos;s Speak mode.
                         </p>
                     </div>
                 )}
