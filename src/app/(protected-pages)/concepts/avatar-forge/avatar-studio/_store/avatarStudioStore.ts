@@ -48,6 +48,8 @@ export interface PromptAnalysisResult {
 
 // Video sub-mode
 export type VideoSubMode = 'ANIMATE' | 'AVATAR' | 'SPEAK'
+/** Motor del modo Speak: InfiniteTalk (clips largos) u OmniHuman (≤15s, mejores gestos). */
+export type SpeakModel = 'infinitalk' | 'omnihuman'
 
 interface AvatarStudioState {
     // Current Avatar
@@ -81,6 +83,7 @@ interface AvatarStudioState {
     generationMode: MediaType
     videoSubMode: VideoSubMode
     avatarDefaultVoice: ClonedVoice | null
+    speakModel: SpeakModel
     aspectRatio: AspectRatio
     videoResolution: VideoResolution
     cameraMotion: CameraMotion
@@ -220,6 +223,7 @@ interface AvatarStudioState {
     setGenerationMode: (mode: MediaType) => void
     setVideoSubMode: (mode: VideoSubMode) => void
     setAvatarDefaultVoice: (voice: ClonedVoice | null) => void
+    setSpeakModel: (model: SpeakModel) => void
     setAspectRatio: (ratio: AspectRatio) => void
     setVideoResolution: (resolution: VideoResolution) => void
     setCameraMotion: (motion: CameraMotion) => void
@@ -368,6 +372,7 @@ const initialState = {
     generationMode: 'IMAGE' as MediaType,
     videoSubMode: 'ANIMATE' as VideoSubMode,
     avatarDefaultVoice: null as ClonedVoice | null,
+    speakModel: 'infinitalk' as SpeakModel,
     aspectRatio: '1:1' as AspectRatio,
     videoResolution: '720p' as VideoResolution,
     cameraMotion: 'NONE' as CameraMotion,
@@ -626,6 +631,7 @@ export const useAvatarStudioStore = create<AvatarStudioState>()(
         })),
     setVideoSubMode: (mode) => set({ videoSubMode: mode }),
     setAvatarDefaultVoice: (voice) => set({ avatarDefaultVoice: voice }),
+    setSpeakModel: (model) => set({ speakModel: model }),
     setAspectRatio: (ratio) => set({ aspectRatio: ratio }),
     setVideoResolution: (resolution) => set({ videoResolution: resolution }),
     setCameraMotion: (motion) => set({ cameraMotion: motion }),

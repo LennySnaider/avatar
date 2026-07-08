@@ -872,6 +872,7 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                             audioUrl,
                             prompt: visualPrompt || undefined,
                             resolution: '720p',
+                            model: useAvatarStudioStore.getState().speakModel,
                         })
                     } catch (speakErr) {
                         // El audio ya quedó generado y persistido; que el error lo diga

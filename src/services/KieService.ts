@@ -1168,9 +1168,15 @@ export interface GenerateTalkingVideoKieParams {
     image: { base64: string; mimeType: string }
     /** URL pública del audio TTS (bucket generations). Máx 10MB. */
     audioUrl: string
-    /** Guía visual opcional (máx 5000 chars). */
+    /** Guía visual opcional (máx 5000 chars infinitalk / 1000 omnihuman). */
     prompt?: string
     resolution?: '480p' | '720p'
+    /**
+     * Motor talking-head: InfiniteTalk (clips largos) u OmniHuman 1.5 de
+     * ByteDance (audio ≤60s, óptimo ≤15s, mejores gestos) — respaldo cuando
+     * InfiniteTalk está degradado.
+     */
+    model?: 'infinitalk' | 'omnihuman'
 }
 
 const DEFAULT_TALKING_PROMPT =
@@ -1189,24 +1195,34 @@ export async function submitTalkingVideoKieTask(
     try {
         const imageUrl = await uploadReferenceToSupabase(params.image.base64, params.image.mimeType)
 
-        const input: Record<string, unknown> = {
-            image_url: imageUrl,
-            audio_url: params.audioUrl,
-            prompt: (params.prompt || DEFAULT_TALKING_PROMPT).slice(0, 5000),
-            resolution: params.resolution ?? '720p',
-        }
+        const isOmniHuman = params.model === 'omnihuman'
+        const kieModel = isOmniHuman ? 'omnihuman-1-5' : 'infinitalk/from-audio'
+        const input: Record<string, unknown> = isOmniHuman
+            ? {
+                  image_url: imageUrl,
+                  audio_url: params.audioUrl,
+                  prompt: (params.prompt || DEFAULT_TALKING_PROMPT).slice(0, 1000),
+                  // '720' | '1080' — 720 mantiene el costo a raya para clips cortos.
+                  output_resolution: '720',
+              }
+            : {
+                  image_url: imageUrl,
+                  audio_url: params.audioUrl,
+                  prompt: (params.prompt || DEFAULT_TALKING_PROMPT).slice(0, 5000),
+                  resolution: params.resolution ?? '720p',
+              }
 
-        console.log('[KIE] Submitting infinitalk task')
+        console.log(`[KIE] Submitting talking-head task (${kieModel})`)
         const taskId = await withTimeout(
-            submitTask({ model: 'infinitalk/from-audio', input }),
+            submitTask({ model: kieModel, input }),
             30_000,
-            'KIE infinitalk submit',
+            'KIE talking-head submit',
         )
-        console.log(`[KIE] Infinitalk task submitted: ${taskId}`)
+        console.log(`[KIE] Talking-head task submitted: ${taskId}`)
         return { success: true, taskId }
     } catch (e) {
         const message = e instanceof Error ? e.message : String(e)
-        console.error('[KIE] infinitalk submit failed:', message)
+        console.error('[KIE] talking-head submit failed:', message)
         return { success: false, error: message }
     }
 }

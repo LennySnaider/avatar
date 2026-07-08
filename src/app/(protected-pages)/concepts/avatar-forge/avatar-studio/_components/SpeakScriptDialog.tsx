@@ -21,6 +21,8 @@ const SpeakScriptDialog = ({ isOpen, onClose }: SpeakScriptDialogProps) => {
     const setVideoDialogue = useAvatarStudioStore((s) => s.setVideoDialogue)
     const setVideoSubMode = useAvatarStudioStore((s) => s.setVideoSubMode)
     const avatarDefaultVoice = useAvatarStudioStore((s) => s.avatarDefaultVoice)
+    const speakModel = useAvatarStudioStore((s) => s.speakModel)
+    const setSpeakModel = useAvatarStudioStore((s) => s.setSpeakModel)
 
     const [script, setScript] = useState('')
 
@@ -79,6 +81,40 @@ const SpeakScriptDialog = ({ isOpen, onClose }: SpeakScriptDialogProps) => {
                 <div className="flex items-center justify-between text-xs text-gray-400">
                     <span>{wordCount} words</span>
                     <span>~{estimatedSeconds}s estimated</span>
+                </div>
+
+                <div className="flex flex-col gap-1">
+                    <span className="text-xs font-medium text-gray-500">Engine</span>
+                    <div className="flex bg-gray-100 dark:bg-gray-700 rounded p-0.5 self-start">
+                        <button
+                            type="button"
+                            onClick={() => setSpeakModel('infinitalk')}
+                            className={`px-2 py-1 text-xs font-medium rounded transition-colors ${
+                                speakModel === 'infinitalk' ? 'bg-purple-500 text-white' : 'text-gray-500'
+                            }`}
+                        >
+                            InfiniteTalk
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => setSpeakModel('omnihuman')}
+                            className={`px-2 py-1 text-xs font-medium rounded transition-colors ${
+                                speakModel === 'omnihuman' ? 'bg-purple-500 text-white' : 'text-gray-500'
+                            }`}
+                        >
+                            OmniHuman
+                        </button>
+                    </div>
+                    <span className="text-[10px] text-gray-400">
+                        {speakModel === 'infinitalk'
+                            ? 'InfiniteTalk: long clips, standard quality.'
+                            : 'OmniHuman 1.5: best gestures/quality, ideal for clips under 15s.'}
+                    </span>
+                    {speakModel === 'omnihuman' && estimatedSeconds > 15 && (
+                        <span className="text-[10px] text-amber-500">
+                            Script runs ~{estimatedSeconds}s — OmniHuman quality degrades past 15s. Consider shortening it or using InfiniteTalk.
+                        </span>
+                    )}
                 </div>
 
                 <div className="flex justify-end gap-2">
