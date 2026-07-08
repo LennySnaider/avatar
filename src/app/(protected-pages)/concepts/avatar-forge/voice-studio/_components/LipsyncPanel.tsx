@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react'
 import { useVoiceStudioStore } from '../_store/voiceStudioStore'
 import { apiGetGenerations, getStorageUrl, apiSaveGeneration } from '@/services/AvatarForgeService'
-import { lipsyncVideoKieSafe } from '@/services/KieService'
+import { submitLipsyncVideoKieTask, checkKieVideoTask } from '@/services/KieService'
 import Button from '@/components/ui/Button'
 import Card from '@/components/ui/Card'
 
@@ -69,13 +69,32 @@ export default function LipsyncPanel({ userId }: LipsyncPanelProps) {
         setErrorMsg(null)
         setGalleryWarning(null)
         try {
-            const result = await lipsyncVideoKieSafe({
+            // Submit async + poll desde el navegador: los jobs de lipsync pueden
+            // tardar >10 min y un server action con poll síncrono los abandonaría.
+            const sub = await submitLipsyncVideoKieTask({
                 videoUrl: selectedVideoUrl,
                 audioUrl: previewAudioUrl,
             })
-            if (!result.success || !result.url) {
-                throw new Error(result.error || 'Lipsync failed')
+            if (!sub.success) {
+                throw new Error(sub.error)
             }
+            const deadlineMs = Date.now() + 30 * 60 * 1000
+            let resultUrl: string | null = null
+            while (Date.now() < deadlineMs) {
+                await new Promise((r) => setTimeout(r, 5000))
+                const st = await checkKieVideoTask(sub.taskId)
+                if (st.status === 'done') {
+                    resultUrl = st.url
+                    break
+                }
+                if (st.status === 'failed') {
+                    throw new Error(st.error)
+                }
+            }
+            if (!resultUrl) {
+                throw new Error(`Lipsync timed out (>30 min). Job ${sub.taskId} may still be running on kie.ai/logs.`)
+            }
+            const result = { url: resultUrl }
             setLipsyncedVideoUrl(result.url)
 
             // Registrar el resultado en la galería (el mp4 ya quedó en el

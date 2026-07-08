@@ -1177,34 +1177,38 @@ const DEFAULT_TALKING_PROMPT =
     'A person speaking naturally to the camera, natural facial expressions and head movement, lips moving in perfect sync with the audio'
 
 /**
- * InfiniteTalk (infinitalk/from-audio): imagen de retrato + audio → video
- * talking-head con lipsync real. La imagen se sube a Supabase primero porque
- * KIE solo acepta URLs HTTP.
+ * ASYNC submit para InfiniteTalk (infinitalk/from-audio): imagen de retrato +
+ * audio → video talking-head con lipsync real. Devuelve el taskId de inmediato
+ * para que el NAVEGADOR pollee `checkKieVideoTask` — InfiniteTalk suele tardar
+ * más de 10 min y el poll síncrono abandonaba jobs sanos a los 600s (créditos
+ * gastados + resultado huérfano). Mismo patrón que submitKieImageTask.
  */
-export async function generateTalkingVideoKie(
+export async function submitTalkingVideoKieTask(
     params: GenerateTalkingVideoKieParams,
-): Promise<string> {
-    const imageUrl = await uploadReferenceToSupabase(params.image.base64, params.image.mimeType)
+): Promise<{ success: true; taskId: string } | { success: false; error: string }> {
+    try {
+        const imageUrl = await uploadReferenceToSupabase(params.image.base64, params.image.mimeType)
 
-    const input: Record<string, unknown> = {
-        image_url: imageUrl,
-        audio_url: params.audioUrl,
-        prompt: (params.prompt || DEFAULT_TALKING_PROMPT).slice(0, 5000),
-        resolution: params.resolution ?? '720p',
+        const input: Record<string, unknown> = {
+            image_url: imageUrl,
+            audio_url: params.audioUrl,
+            prompt: (params.prompt || DEFAULT_TALKING_PROMPT).slice(0, 5000),
+            resolution: params.resolution ?? '720p',
+        }
+
+        console.log('[KIE] Submitting infinitalk task')
+        const taskId = await withTimeout(
+            submitTask({ model: 'infinitalk/from-audio', input }),
+            30_000,
+            'KIE infinitalk submit',
+        )
+        console.log(`[KIE] Infinitalk task submitted: ${taskId}`)
+        return { success: true, taskId }
+    } catch (e) {
+        const message = e instanceof Error ? e.message : String(e)
+        console.error('[KIE] infinitalk submit failed:', message)
+        return { success: false, error: message }
     }
-
-    console.log('[KIE] Submitting infinitalk task')
-    const taskId = await withTimeout(
-        submitTask({ model: 'infinitalk/from-audio', input }),
-        30_000,
-        'KIE infinitalk submit',
-    )
-    console.log(`[KIE] Infinitalk task submitted: ${taskId}`)
-
-    const urls = await pollTask(taskId, { budgetMs: 600_000, intervalMs: 5000 })
-    console.log(`[KIE] Infinitalk task complete: ${urls[0]}`)
-
-    return persistToSupabase(urls[0], 'mp4', 'kie-videos')
 }
 
 export interface LipsyncVideoKieParams {
@@ -1217,52 +1221,52 @@ export interface LipsyncVideoKieParams {
 }
 
 /**
- * Volcengine video-to-video lipsync: re-anima la boca de un video existente
- * para seguir el audio dado. Sustituye al viejo mux ffmpeg (que no movía
- * los labios y no funcionaba en Vercel).
+ * ASYNC submit para Volcengine video-to-video lipsync: re-anima la boca de un
+ * video existente para seguir el audio dado. Mismo flujo de polling en el
+ * navegador que InfiniteTalk (checkKieVideoTask).
  */
-export async function lipsyncVideoKie(params: LipsyncVideoKieParams): Promise<string> {
-    const input: Record<string, unknown> = {
-        mode: params.mode ?? 'lite',
-        video_url: params.videoUrl,
-        audio_url: params.audioUrl,
-        align_audio: true,
-    }
-
-    console.log('[KIE] Submitting volcengine lipsync task')
-    const taskId = await withTimeout(
-        submitTask({ model: 'volcengine/video-to-video-lip-sync', input }),
-        30_000,
-        'KIE lipsync submit',
-    )
-    console.log(`[KIE] Lipsync task submitted: ${taskId}`)
-
-    const urls = await pollTask(taskId, { budgetMs: 600_000, intervalMs: 5000 })
-    console.log(`[KIE] Lipsync task complete: ${urls[0]}`)
-
-    return persistToSupabase(urls[0], 'mp4', 'kie-videos')
-}
-
-// Error-as-data wrappers (mismo patrón que generateVideoKieSafe): los errores
-// de 'use server' se enmascaran como 500 genérico en prod.
-export async function generateTalkingVideoKieSafe(
-    params: GenerateTalkingVideoKieParams,
-): Promise<KieVideoSafeResult> {
-    try {
-        const url = await generateTalkingVideoKie(params)
-        return { success: true, url }
-    } catch (e) {
-        return { success: false, error: e instanceof Error ? e.message : String(e) }
-    }
-}
-
-export async function lipsyncVideoKieSafe(
+export async function submitLipsyncVideoKieTask(
     params: LipsyncVideoKieParams,
-): Promise<KieVideoSafeResult> {
+): Promise<{ success: true; taskId: string } | { success: false; error: string }> {
     try {
-        const url = await lipsyncVideoKie(params)
-        return { success: true, url }
+        const input: Record<string, unknown> = {
+            mode: params.mode ?? 'lite',
+            video_url: params.videoUrl,
+            audio_url: params.audioUrl,
+            align_audio: true,
+        }
+
+        console.log('[KIE] Submitting volcengine lipsync task')
+        const taskId = await withTimeout(
+            submitTask({ model: 'volcengine/video-to-video-lip-sync', input }),
+            30_000,
+            'KIE lipsync submit',
+        )
+        console.log(`[KIE] Lipsync task submitted: ${taskId}`)
+        return { success: true, taskId }
     } catch (e) {
-        return { success: false, error: e instanceof Error ? e.message : String(e) }
+        const message = e instanceof Error ? e.message : String(e)
+        console.error('[KIE] lipsync submit failed:', message)
+        return { success: false, error: message }
+    }
+}
+
+/**
+ * Poll de UN chequeo para tasks de video KIE (InfiniteTalk / lipsync). El
+ * navegador lo llama cada pocos segundos; en success persiste el mp4 a
+ * Supabase y devuelve la URL estable. Espejo de checkKieImageTask.
+ */
+export async function checkKieVideoTask(
+    taskId: string,
+): Promise<{ status: 'running' } | { status: 'done'; url: string } | { status: 'failed'; error: string }> {
+    try {
+        const r = await checkTaskOnce(taskId)
+        if (r.state === 'running') return { status: 'running' }
+        if (r.state === 'fail') return { status: 'failed', error: r.error }
+        const url = await persistToSupabase(r.urls[0], 'mp4', 'kie-videos')
+        return { status: 'done', url }
+    } catch (e) {
+        const message = e instanceof Error ? e.message : String(e)
+        return { status: 'failed', error: message }
     }
 }

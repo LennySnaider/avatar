@@ -40,7 +40,7 @@ import {
     generateVideoMiniMax,
 } from '@/services/MiniMaxService'
 import type { MiniMaxVideoModel } from '@/@types/minimax'
-import { generateImageKie, generateVideoKieSafe, generateMotionControlKieSafe, submitKieImageTask, checkKieImageTask, generateTalkingVideoKieSafe } from '@/services/KieService'
+import { generateImageKie, generateVideoKieSafe, generateMotionControlKieSafe, submitKieImageTask, checkKieImageTask, submitTalkingVideoKieTask, checkKieVideoTask } from '@/services/KieService'
 import { generateImageViaGateway } from '@/services/GatewayService'
 import { buildAvatarPrompt, buildLeanIdentityPrompt, stripHarnessForFaceSwap, type RefRole } from '@/utils/avatarPromptBuilder'
 import { HiOutlineCog, HiOutlineBookOpen, HiX } from 'react-icons/hi'
@@ -83,6 +83,32 @@ async function pollKieImageTask(
 
 /** KIE models that use the unified async createTask + client-poll flow. */
 const KIE_ASYNC_MODELS = ['nano-banana-pro', 'gpt-image-2-text-to-image']
+
+/**
+ * InfiniteTalk talking-heads regularly run past 10 minutes — same async
+ * client-poll pattern as pollKieImageTask so no server function is held open
+ * and slow-but-healthy jobs are never abandoned mid-flight.
+ */
+async function pollKieTalkingVideoTask(
+    params: Parameters<typeof submitTalkingVideoKieTask>[0],
+): Promise<string> {
+    const sub = await submitTalkingVideoKieTask(params)
+    if (!sub.success) {
+        throw new Error(sub.error)
+    }
+    const deadlineMs = Date.now() + 30 * 60 * 1000
+    while (Date.now() < deadlineMs) {
+        await new Promise((r) => setTimeout(r, 5000))
+        const st = await checkKieVideoTask(sub.taskId)
+        if (st.status === 'done') {
+            return st.url
+        }
+        if (st.status === 'failed') {
+            throw new Error(st.error)
+        }
+    }
+    throw new Error(`KIE tardó demasiado (>30 min). El job ${sub.taskId} puede seguir corriendo en kie.ai/logs.`)
+}
 
 /**
  * Client-side unwrap for generateVideoGeminiSafe. The server action returns the
@@ -839,20 +865,20 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                     const { audioUrl } = await ttsRes.json()
 
                     // 2. InfiniteTalk: imagen del avatar + audio → video con lipsync
-                    const speakResult = await generateTalkingVideoKieSafe({
-                        image: speakImage,
-                        audioUrl,
-                        prompt: visualPrompt || undefined,
-                        resolution: '720p',
-                    })
-                    if (!speakResult.success || !speakResult.url) {
+                    // (submit async + poll desde el navegador — los jobs tardan 10-20 min)
+                    try {
+                        resultUrl = await pollKieTalkingVideoTask({
+                            image: speakImage,
+                            audioUrl,
+                            prompt: visualPrompt || undefined,
+                            resolution: '720p',
+                        })
+                    } catch (speakErr) {
                         // El audio ya quedó generado y persistido; que el error lo diga
                         // para no perder ese contexto (sin fallbacks silenciosos).
-                        throw new Error(
-                            `Talking video failed: ${speakResult.error || 'unknown error'}. The audio was generated: ${audioUrl}`,
-                        )
+                        const msg = speakErr instanceof Error ? speakErr.message : String(speakErr)
+                        throw new Error(`Talking video failed: ${msg}. The audio was generated: ${audioUrl}`)
                     }
-                    resultUrl = speakResult.url
                 } else if (videoSubMode === 'ANIMATE') {
                     if (!videoInputImage || !videoInputImage.base64) {
                         throw new Error('Please upload an image to animate')
