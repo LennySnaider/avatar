@@ -12,6 +12,7 @@ import { apiGetAvatars, apiGetAvatarReferences } from '@/services/AvatarForgeSer
 import { supabase } from '@/lib/supabase'
 import { createThumbnail } from '@/utils/imageOptimization'
 import type { Avatar, AvatarReference } from '@/@types/supabase'
+import type { ClonedVoice } from '@/@types/voice'
 import type { ReferenceImage, PhysicalMeasurements } from '../types'
 import { useRouter } from 'next/navigation'
 
@@ -43,6 +44,7 @@ const AvatarSelector = ({ userId, isOpen, onClose }: AvatarSelectorProps) => {
         setIdentityWeight,
         setMeasurements,
         setFaceDescription,
+        setAvatarDefaultVoice,
         clearAvatarReferences,
     } = useAvatarStudioStore()
 
@@ -161,6 +163,10 @@ const AvatarSelector = ({ userId, isOpen, onClose }: AvatarSelectorProps) => {
     const handleSelectAvatar = async (avatar: AvatarWithRefs) => {
         setSelectedAvatarId(avatar.id)
 
+        // Clear the previous avatar's voice immediately so a later TTS call
+        // never picks up a stale voice while the new one is being resolved.
+        setAvatarDefaultVoice(null)
+
         try {
             // Clear only avatar references (keep session tools like assets, clone, pose, etc.)
             clearAvatarReferences()
@@ -204,6 +210,22 @@ const AvatarSelector = ({ userId, isOpen, onClose }: AvatarSelectorProps) => {
             setFaceDescription(avatar.face_description || '')
             if (avatar.measurements) {
                 setMeasurements(avatar.measurements as PhysicalMeasurements)
+            }
+
+            // Resolve the new avatar's default voice (if any) for TTS/lip-sync.
+            if (avatar.default_voice_id) {
+                try {
+                    const res = await fetch('/api/voice/list')
+                    if (res.ok) {
+                        const { voices } = (await res.json()) as { voices: ClonedVoice[] }
+                        const defaultVoice = voices.find((v) => v.id === avatar.default_voice_id)
+                        if (defaultVoice) {
+                            setAvatarDefaultVoice(defaultVoice)
+                        }
+                    }
+                } catch (voiceError) {
+                    console.error('Failed to load avatar default voice:', voiceError)
+                }
             }
 
             onClose()
