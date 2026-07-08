@@ -1,5 +1,5 @@
 import type { PhysicalMeasurements } from '@/@types/supabase'
-import { getBodyDescriptors, getSkinToneDescription, getHairColorDescription, isFashionHairColor } from '@/utils/bodyDescriptors'
+import { getBodyDescriptors, getSkinToneDescription, getHairColorDescription, getEyeColorDescription, isFashionHairColor } from '@/utils/bodyDescriptors'
 
 /**
  * Shared avatar prompt recipe — a faithful port of the harness in
@@ -153,10 +153,12 @@ function buildInlineBodyDescription(m: PhysicalMeasurements): string {
     const heightDesc = getHeightDesc(height)
     const skinToneDesc = getSkinToneDescription(m.skinTone)
     const hairColorDesc = getHairColorDescription(m.hairColor)
+    const eyeColorDesc = getEyeColorDescription(m.eyeColor)
 
     let fullDesc = `${m.age || 25} year old woman`
     if (skinToneDesc) fullDesc += ` with ${skinToneDesc}`
     if (hairColorDesc) fullDesc += skinToneDesc ? ` and ${hairColorDesc}` : ` with ${hairColorDesc}`
+    if (eyeColorDesc) fullDesc += `, ${eyeColorDesc}`
     fullDesc += `, ${heightDesc}, with ${bodyTypeDesc}. Physical build: ${upperDesc}, ${waistDesc}, ${hipDesc}. ${proportionDesc}`
     return fullDesc
 }
@@ -327,6 +329,16 @@ export function buildAvatarPrompt(opts: AvatarPromptOptions): { systemPreamble: 
     // which otherwise show the original color and win by default (identity
     // bleed). Highest-priority override, injected last; keeps face identity.
     const hairColorSpecDesc = getHairColorDescription(measurements.hairColor)
+    const eyeColorSpecDesc = getEyeColorDescription(measurements.eyeColor)
+    const eyeColorOverride = eyeColorSpecDesc ? `
+╔═══════════════════════════════════════════════════════════════╗
+║  👁 EYE COLOR OVERRIDE — HIGHEST PRIORITY (READ LAST)          ║
+╚═══════════════════════════════════════════════════════════════╝
+The reference images and any eye color written in the facial description may
+show a DIFFERENT eye color. That is intentional.
+→ The character's IRIS color MUST be: ${eyeColorSpecDesc.toUpperCase()}
+→ This OVERRIDES any eye color in the reference images or the description.
+→ Recolor ONLY the iris. Keep the exact eye shape and face identity.` : ''
     // Fashion colors tint only the head hair — dyed eyebrows look unnatural.
     const eyebrowRule = isFashionHairColor(measurements.hairColor)
         ? '→ EYEBROWS: keep them a natural neutral tone (soft brown/dark to suit the face). Do NOT dye the eyebrows this color — colored eyebrows look unnatural.'
@@ -369,7 +381,7 @@ HEIGHT: ${measurements.height || 165}cm (${heightLabel})
 
 BODY TYPE DETAILS:
 ${bodyAdjectives}
-${faceDescription.trim() ? `\nFACIAL FEATURES (HARD CONSTRAINT):\n- ${faceDescription.trim()}${hairColorSpecDesc ? '\n⚠️ Ignore any HAIR COLOR mentioned above — it is overridden by the HAIR COLOR OVERRIDE section.' : ''}` : ''}
+${faceDescription.trim() ? `\nFACIAL FEATURES (HARD CONSTRAINT):\n- ${faceDescription.trim()}${hairColorSpecDesc ? '\n⚠️ Ignore any HAIR COLOR mentioned above — it is overridden by the HAIR COLOR OVERRIDE section.' : ''}${eyeColorSpecDesc ? '\n⚠️ Ignore any EYE COLOR mentioned above — it is overridden by the EYE COLOR OVERRIDE section.' : ''}` : ''}
 
 ⚠️ CRITICAL: These body proportions are NON-NEGOTIABLE and must be CONSISTENT across all generations.`
 
@@ -448,7 +460,8 @@ ${hasPose ? '- Pose matches [POSE_REF] (position only, not the person)' : ''}
 ${hasClone ? '- Pose, outfit, held objects, framing and scene match [CLONE_REF] exactly; only the face is from [FACE_ANCHOR]' : ''}
 ${hairColorSpecDesc ? `- Hair color is ${hairColorSpecDesc} (RECOLORED from the reference, NOT the reference's color)` : ''}
 ${hasBody ? '' : bodyProportionsOverride}
-${hairColorOverride}`
+${hairColorOverride}
+${eyeColorOverride}`
 
     return { systemPreamble, finalPrompt }
 }

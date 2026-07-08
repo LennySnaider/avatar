@@ -140,6 +140,30 @@ export function getHairColorDescription(hairColor?: string): string {
     return descriptions[hairColor] || hairColor.replace(/-/g, ' ') + ' hair'
 }
 
+/**
+ * Translate an eye-color value into prompt-ready text. Handles natural colors,
+ * fashion/colored-contact values, and any free-text color via the `"<name> eyes"`
+ * fallback. Shared by both prompt builders so they stay in sync.
+ */
+export function getEyeColorDescription(eyeColor?: string): string {
+    if (!eyeColor) return ''
+    const descriptions: Record<string, string> = {
+        'dark-brown': 'dark brown eyes',
+        'brown': 'warm brown eyes',
+        'amber': 'amber golden-brown eyes',
+        'hazel': 'hazel eyes, green-brown blend',
+        'green': 'green eyes',
+        'blue': 'blue eyes',
+        'light-blue': 'light ice-blue eyes',
+        'gray': 'gray eyes',
+        // Fashion / colored contacts
+        'violet': 'violet colored contact-lens eyes',
+        'aqua': 'aqua turquoise colored eyes',
+        'red': 'red colored contact-lens eyes',
+    }
+    return descriptions[eyeColor] || eyeColor.replace(/-/g, ' ') + ' eyes'
+}
+
 const NATURAL_HAIR_COLORS = new Set([
     'black', 'dark-brown', 'brown', 'light-brown', 'dark-blonde', 'blonde',
     'platinum-blonde', 'red', 'auburn', 'ginger', 'gray', 'silver', 'white',

@@ -25,6 +25,7 @@ import { generateAvatar, analyzeFaceFromImages } from '@/services/GeminiService'
 import type { PhysicalMeasurements } from '@/@types/supabase'
 import { createThumbnail, resizeBase64Image } from '@/utils/imageOptimization'
 import HairColorPicker from '@/components/shared/HairColorPicker'
+import EyeColorPicker from '@/components/shared/EyeColorPicker'
 
 // Reference image interface
 export interface AvatarReferenceImage {
@@ -662,6 +663,12 @@ const AvatarEditDrawer = ({
                                     <HairColorPicker
                                         value={localMeasurements.hairColor}
                                         onChange={(c) => setLocalMeasurements({ ...localMeasurements, hairColor: c })}
+                                    />
+
+                                    {/* Eye Color */}
+                                    <EyeColorPicker
+                                        value={localMeasurements.eyeColor}
+                                        onChange={(c) => setLocalMeasurements({ ...localMeasurements, eyeColor: c })}
                                     />
 
                                     {/* Measurements */}

@@ -27,6 +27,7 @@ import type { ReferenceImage } from '../types'
 import type { PhysicalMeasurements } from '@/@types/supabase'
 import { createThumbnail } from '@/utils/imageOptimization'
 import HairColorPicker from '@/components/shared/HairColorPicker'
+import EyeColorPicker from '@/components/shared/EyeColorPicker'
 
 interface AvatarEditDrawerProps {
     isOpen: boolean
@@ -642,6 +643,12 @@ const AvatarEditDrawer = ({ isOpen, onClose, onSaveAvatar }: AvatarEditDrawerPro
                                     <HairColorPicker
                                         value={localMeasurements.hairColor}
                                         onChange={(c) => setLocalMeasurements({ ...localMeasurements, hairColor: c })}
+                                    />
+
+                                    {/* Eye Color */}
+                                    <EyeColorPicker
+                                        value={localMeasurements.eyeColor}
+                                        onChange={(c) => setLocalMeasurements({ ...localMeasurements, eyeColor: c })}
                                     />
 
                                     {/* Measurements */}

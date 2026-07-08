@@ -20,6 +20,7 @@ import {
 import { analyzeFaceFromImages, generateAvatar } from '@/services/GeminiService'
 import { resizeBase64Image } from '@/utils/imageOptimization'
 import HairColorPicker from '@/components/shared/HairColorPicker'
+import EyeColorPicker from '@/components/shared/EyeColorPicker'
 import {
     HiOutlineUpload,
     HiOutlineX,
@@ -739,6 +740,12 @@ const AvatarCreatorMain = ({ userId, existingAvatar }: AvatarCreatorMainProps) =
                                     <HairColorPicker
                                         value={measurements.hairColor}
                                         onChange={(c) => setMeasurements({ ...measurements, hairColor: c })}
+                                    />
+
+                                    {/* Eye Color */}
+                                    <EyeColorPicker
+                                        value={measurements.eyeColor}
+                                        onChange={(c) => setMeasurements({ ...measurements, eyeColor: c })}
                                     />
 
                                     {/* Measurements */}

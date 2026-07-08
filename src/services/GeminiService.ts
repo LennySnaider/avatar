@@ -4,7 +4,7 @@ import { GoogleGenAI, Type } from '@google/genai'
 import type { PhysicalMeasurements, AspectRatio } from '@/@types/supabase'
 import { filterKnownSafeCorrections } from '@/app/(protected-pages)/concepts/avatar-forge/avatar-studio/_constants/knownSafeWords'
 import { sanitizePromptForGeneration, aggressiveSanitize } from '@/utils/promptSanitizer'
-import { getBodyDescriptors, getSkinToneDescription, getHairColorDescription, isFashionHairColor } from '@/utils/bodyDescriptors'
+import { getBodyDescriptors, getSkinToneDescription, getHairColorDescription, getEyeColorDescription, isFashionHairColor } from '@/utils/bodyDescriptors'
 import type { CinemaLens, CinemaFocalLength, CinemaAperture } from '@/app/(protected-pages)/concepts/avatar-forge/avatar-studio/types'
 import { CINEMA_LENSES, CINEMA_FOCAL_LENGTHS, CINEMA_APERTURES } from '@/app/(protected-pages)/concepts/avatar-forge/avatar-studio/_constants/cinemaPresets'
 import { generateImage as generateImageWithMiniMax } from '@/services/MiniMaxService'
@@ -1080,6 +1080,12 @@ export async function generateAvatar(params: {
             fullDesc += skinToneDesc ? ` and ${hairColorDesc}` : ` with ${hairColorDesc}`
         }
 
+        // Add eye color
+        const eyeColorDesc = getEyeColorDescription(measurements.eyeColor)
+        if (eyeColorDesc) {
+            fullDesc += `, ${eyeColorDesc}`
+        }
+
         fullDesc += `, ${heightDesc}, with ${bodyTypeDesc}. Physical build: ${upperDesc}, ${waistDesc}, ${hipDesc}. ${proportionDesc}`
 
         return fullDesc
@@ -1131,6 +1137,19 @@ export async function generateAvatar(params: {
     // Get skin and hair descriptions for body spec
     const skinToneSpecDesc = getSkinToneDescription(measurements.skinTone)
     const hairColorSpecDesc = getHairColorDescription(measurements.hairColor)
+    const eyeColorSpecDesc = getEyeColorDescription(measurements.eyeColor)
+
+    // Same image-beats-text problem as hair: the face_description states an eye
+    // color that wins by default. Recolor the iris, keep everything else.
+    const eyeColorOverride = eyeColorSpecDesc ? `
+    ╔═══════════════════════════════════════════════════════════════╗
+    ║  👁 EYE COLOR OVERRIDE — HIGHEST PRIORITY (READ LAST)          ║
+    ╚═══════════════════════════════════════════════════════════════╝
+    The reference images and any eye color written in the facial description may
+    show a DIFFERENT eye color. That is intentional.
+    → The character's IRIS color MUST be: ${eyeColorSpecDesc.toUpperCase()}
+    → This OVERRIDES any eye color in the reference images or the description.
+    → Recolor ONLY the iris. Keep the exact eye shape and face identity.` : ''
 
     // When the user sets a hair color, the reference images and the stored
     // face_description often show the ORIGINAL color — with no arbiter, the
@@ -1245,7 +1264,7 @@ ${hairColorSpecDesc ? `- EXACT HAIR COLOR: ${hairColorSpecDesc}` : ''}
     if (activeFaceDescription.trim()) {
         physicalInstructions += `
     FACIAL FEATURES (HARD CONSTRAINT):
-    - ${activeFaceDescription}${hairColorSpecDesc ? '\n    ⚠️ Ignore any HAIR COLOR mentioned above — it is overridden. Use the color in the HAIR COLOR OVERRIDE section instead.' : ''}
+    - ${activeFaceDescription}${hairColorSpecDesc ? '\n    ⚠️ Ignore any HAIR COLOR mentioned above — use the HAIR COLOR OVERRIDE section instead.' : ''}${eyeColorSpecDesc ? '\n    ⚠️ Ignore any EYE COLOR mentioned above — use the EYE COLOR OVERRIDE section instead.' : ''}
     `
     }
 
@@ -1562,6 +1581,7 @@ ${hairColorSpecDesc ? `- EXACT HAIR COLOR: ${hairColorSpecDesc}` : ''}
     ${hairColorSpecDesc ? `- Hair color is ${hairColorSpecDesc} (RECOLORED from the reference, NOT the reference's color)` : ''}
     ${!hasBodyRef ? bodyProportionsOverride : ''}
     ${hairColorOverride}
+    ${eyeColorOverride}
   `
 
     // Sanitize prompt to replace words that trigger image generation safety filters

@@ -315,6 +315,22 @@ export type HairColor =
     // Free-text custom color (any name); `& {}` keeps literal autocomplete
     | (string & {})
 
+export type EyeColor =
+    | 'dark-brown'
+    | 'brown'
+    | 'amber'
+    | 'hazel'
+    | 'green'
+    | 'blue'
+    | 'light-blue'
+    | 'gray'
+    // Fashion / colored contacts
+    | 'violet'
+    | 'aqua'
+    | 'red'
+    // Free-text custom color; `& {}` keeps literal autocomplete
+    | (string & {})
+
 export interface PhysicalMeasurements {
     age: number
     height: number // in cm
@@ -324,6 +340,7 @@ export interface PhysicalMeasurements {
     hips: number
     skinTone?: SkinTone // 1=very fair/porcelain, 9=very dark/ebony
     hairColor?: HairColor
+    eyeColor?: EyeColor
 }
 
 export interface GenerationMetadata {
