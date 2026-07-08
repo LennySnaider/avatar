@@ -51,8 +51,8 @@ Siguiendo el patrón submit/poll existente (`/jobs/createTask`):
 ### 4. Mapeo de voz (Voice Studio)
 
 - `VoiceClonePanel.tsx`: selector de avatar + checkbox "Usar como voz principal". El route `/api/voice/clone` ya lee `avatarId`; se añade el update de `avatars.default_voice_id` cuando aplica.
-- `VoiceLibrary.tsx`: muestra el avatar vinculado + acción "hacer principal".
-- Indicador de voz asignada en Mis Avatares / editor.
+- `VoiceLibrary.tsx`: muestra el avatar vinculado + acción "hacer principal" (★ marca la voz principal).
+- La voz asignada se muestra en Avatar Studio como badge del modo Speak (no se toca el módulo Mis Avatares).
 
 ### 5. Avatar Studio — modo "Speak"
 
