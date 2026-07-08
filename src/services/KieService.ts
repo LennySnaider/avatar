@@ -1202,9 +1202,10 @@ export async function submitTalkingVideoKieTask(
     try {
         const imageUrl = await uploadReferenceToSupabase(params.image.base64, params.image.mimeType)
 
-        // Kling 3.0 habla vía kling_elements: personaje (2-4 imágenes) + audio
-        // (5-30s) referenciado con @nombre en el prompt. Mejor calidad de video
-        // que los modelos audio-driven dedicados.
+        // Kling 3.0: genera SOLO el video (mudo) — la voz la pone el paso 2
+        // (Volcengine lipsync). `sound: false` porque la tarifa con audio es
+        // más cara y su pista se descartaría igual; tampoco se envía audio en
+        // el element (verificado: Kling lo ignora — pista casi silente).
         if (params.model === 'kling') {
             const elementUrls = [imageUrl]
             for (const extra of params.elementImages ?? []) {
@@ -1220,16 +1221,15 @@ export async function submitTalkingVideoKieTask(
             const input: Record<string, unknown> = {
                 prompt: `${(params.prompt || DEFAULT_TALKING_PROMPT).slice(0, 2000)} @avatar_speaker`,
                 image_urls: [imageUrl],
-                sound: true,
+                sound: false,
                 multi_shots: false,
                 duration: videoDuration,
                 mode: 'pro',
                 kling_elements: [
                     {
                         name: 'avatar_speaker',
-                        description: 'the avatar character speaking the provided voice audio with synced lips',
+                        description: 'the avatar character speaking naturally to the camera, lips moving as if talking',
                         element_input_urls: elementUrls,
-                        element_input_audio_urls: [params.audioUrl],
                     },
                 ],
             }
