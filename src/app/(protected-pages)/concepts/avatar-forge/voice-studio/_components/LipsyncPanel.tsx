@@ -1,11 +1,12 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { useVoiceStudioStore } from '../_store/voiceStudioStore'
 import { apiGetGenerations, getStorageUrl, apiSaveGeneration } from '@/services/AvatarForgeService'
 import { submitLipsyncVideoKieTask, checkKieVideoTask } from '@/services/KieService'
 import Button from '@/components/ui/Button'
 import Card from '@/components/ui/Card'
+import { HiOutlineRefresh } from 'react-icons/hi'
 
 interface LipsyncPanelProps {
     userId: string
@@ -36,32 +37,35 @@ export default function LipsyncPanel({ userId }: LipsyncPanelProps) {
     const [errorMsg, setErrorMsg] = useState<string | null>(null)
     const [galleryWarning, setGalleryWarning] = useState<string | null>(null)
 
-    useEffect(() => {
-        async function loadVideos() {
-            try {
-                const generations = await apiGetGenerations(userId, {
-                    mediaType: 'VIDEO',
-                    limit: 24,
-                })
-                const resolved = await Promise.all(
-                    generations.map(async (g) => ({
-                        id: g.id,
-                        prompt: g.prompt,
-                        url: g.storage_path.startsWith('http')
-                            ? g.storage_path
-                            : await getStorageUrl('generations', g.storage_path),
-                    })),
-                )
-                setVideos(resolved)
-            } catch (err) {
-                console.error('Failed to load gallery videos:', err)
-                setErrorMsg('Could not load your gallery videos')
-            } finally {
-                setLoadingVideos(false)
-            }
+    const loadVideos = useCallback(async () => {
+        setLoadingVideos(true)
+        try {
+            const generations = await apiGetGenerations(userId, {
+                mediaType: 'VIDEO',
+                limit: 24,
+            })
+            const resolved = await Promise.all(
+                generations.map(async (g) => ({
+                    id: g.id,
+                    prompt: g.prompt,
+                    url: g.storage_path.startsWith('http')
+                        ? g.storage_path
+                        : await getStorageUrl('generations', g.storage_path),
+                })),
+            )
+            setVideos(resolved)
+            setErrorMsg(null)
+        } catch (err) {
+            console.error('Failed to load gallery videos:', err)
+            setErrorMsg('Could not load your gallery videos')
+        } finally {
+            setLoadingVideos(false)
         }
-        loadVideos()
     }, [userId])
+
+    useEffect(() => {
+        loadVideos()
+    }, [loadVideos])
 
     const handleLipsync = async () => {
         if (!selectedVideoUrl || !previewAudioUrl) return
@@ -129,7 +133,19 @@ export default function LipsyncPanel({ userId }: LipsyncPanelProps) {
     return (
         <Card>
             <div className="p-4 flex flex-col gap-3">
-                <h3 className="font-semibold text-lg">Lipsync Video</h3>
+                <div className="flex items-center justify-between">
+                    <h3 className="font-semibold text-lg">Lipsync Video</h3>
+                    <Button
+                        size="xs"
+                        variant="plain"
+                        loading={loadingVideos}
+                        icon={<HiOutlineRefresh />}
+                        onClick={loadVideos}
+                        title="Reload the latest videos from your gallery"
+                    >
+                        Sync gallery
+                    </Button>
+                </div>
                 <p className="text-sm text-gray-500">
                     Pick a video from your gallery — the lips will be re-animated to
                     match your generated audio.
@@ -147,7 +163,7 @@ export default function LipsyncPanel({ userId }: LipsyncPanelProps) {
                 )}
 
                 {videos.length > 0 && (
-                    <div className="grid grid-cols-3 gap-2 max-h-64 overflow-y-auto">
+                    <div className="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-8 gap-2 max-h-80 overflow-y-auto">
                         {videos.map((video) => (
                             <button
                                 key={video.id}
@@ -160,7 +176,7 @@ export default function LipsyncPanel({ userId }: LipsyncPanelProps) {
                                         : 'border-transparent hover:border-gray-300'
                                 }`}
                             >
-                                <video src={video.url} muted playsInline preload="metadata" className="w-full h-20 object-cover" />
+                                <video src={video.url} muted playsInline preload="metadata" className="w-full h-28 object-cover" />
                             </button>
                         ))}
                     </div>

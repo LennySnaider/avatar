@@ -45,12 +45,14 @@ export default function VoiceStudioMain({ userId, avatars }: VoiceStudioMainProp
                     <ScriptEditor />
                 </div>
 
-                {/* Right column: Preview & merge */}
+                {/* Right column: Preview */}
                 <div className="flex flex-col gap-4">
                     <AudioPreview />
-                    <LipsyncPanel userId={userId} />
                 </div>
             </div>
+
+            {/* Full-width row: lipsync picks from the whole gallery */}
+            <LipsyncPanel userId={userId} />
         </div>
     )
 }
