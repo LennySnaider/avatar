@@ -6,6 +6,12 @@ export interface VoiceTtsSettings {
     pitch?: number
     /** Tono emocional; omitido = auto. */
     emotion?: 'happy' | 'sad' | 'angry' | 'fearful' | 'disgusted' | 'surprised' | 'calm'
+    /**
+     * true → language_boost 'auto': el acento lo dicta la muestra de clonado
+     * (p.ej. mexicano) en vez del español genérico. MiniMax no acepta
+     * variantes regionales explícitas ('es-MX' → 2013 invalid params).
+     */
+    useAutoAccent?: boolean
 }
 
 export interface ClonedVoice {

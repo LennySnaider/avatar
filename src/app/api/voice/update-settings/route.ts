@@ -29,6 +29,9 @@ export async function POST(req: NextRequest) {
     if (EMOTIONS.includes(settings.emotion)) {
         clean.emotion = settings.emotion
     }
+    if (typeof settings.useAutoAccent === 'boolean') {
+        clean.useAutoAccent = settings.useAutoAccent
+    }
 
     const supabase = createServerSupabaseClient()
     const { data: updated, error } = await supabase

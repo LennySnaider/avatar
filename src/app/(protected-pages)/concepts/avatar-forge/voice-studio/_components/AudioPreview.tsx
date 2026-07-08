@@ -32,6 +32,7 @@ export default function AudioPreview() {
     const [speed, setSpeed] = useState(1)
     const [pitch, setPitch] = useState(0)
     const [emotion, setEmotion] = useState('')
+    const [autoAccent, setAutoAccent] = useState(false)
     const [isSavingSettings, setIsSavingSettings] = useState(false)
     const [settingsMsg, setSettingsMsg] = useState<string | null>(null)
     // Speed que quedó HORNEADA en el último audio generado — el preview en
@@ -43,6 +44,7 @@ export default function AudioPreview() {
         setSpeed(s?.speed ?? 1)
         setPitch(s?.pitch ?? 0)
         setEmotion(s?.emotion ?? '')
+        setAutoAccent(s?.useAutoAccent ?? false)
         setSettingsMsg(null)
     }, [selectedVoiceId]) // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -61,6 +63,7 @@ export default function AudioPreview() {
         if (speed !== 1) s.speed = speed
         if (pitch !== 0) s.pitch = pitch
         if (emotion) s.emotion = emotion as VoiceTtsSettings['emotion']
+        if (autoAccent) s.useAutoAccent = true
         return s
     }
 
@@ -75,7 +78,11 @@ export default function AudioPreview() {
                 body: JSON.stringify({
                     text: currentScript,
                     voiceId: selectedVoice.provider_voice_id,
-                    language: scriptLanguage === 'es' ? 'Spanish' : scriptLanguage === 'en' ? 'English' : scriptLanguage,
+                    // 'auto' deja que el acento de la muestra clonada mande
+                    // (MiniMax no acepta variantes regionales explícitas).
+                    language: autoAccent
+                        ? 'auto'
+                        : scriptLanguage === 'es' ? 'Spanish' : scriptLanguage === 'en' ? 'English' : scriptLanguage,
                     ...buildSettings(),
                 }),
             })
@@ -179,6 +186,19 @@ export default function AudioPreview() {
                                     <option key={e.value} value={e.value}>{e.label}</option>
                                 ))}
                             </select>
+                        </label>
+                        <label className="flex items-center gap-2 text-sm">
+                            <input
+                                type="checkbox"
+                                checked={autoAccent}
+                                onChange={(e) => setAutoAccent(e.target.checked)}
+                            />
+                            <span>
+                                Auto accent
+                                <span className="text-xs text-gray-400 block">
+                                    Let the cloned sample&apos;s accent lead (e.g. Mexican) instead of generic Spanish.
+                                </span>
+                            </span>
                         </label>
                         <div className="flex items-center gap-2">
                             <Button

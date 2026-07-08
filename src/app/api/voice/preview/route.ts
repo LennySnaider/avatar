@@ -53,7 +53,8 @@ export async function POST(req: NextRequest) {
         const { audioBuffer } = await textToSpeech({
             text: phrase.text,
             voiceId: voice.provider_voice_id,
-            language: phrase.language,
+            // 'auto' deja mandar el acento de la muestra clonada.
+            language: settings.useAutoAccent ? 'auto' : phrase.language,
             ...settings,
         })
 

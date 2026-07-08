@@ -849,16 +849,20 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                     const langMap: Record<string, string> = {
                         es: 'Spanish', en: 'English', pt: 'Portuguese', fr: 'French',
                     }
+                    // Entrega guardada de la voz (speed/pitch/emotion/acento,
+                    // ajustada en Voice Studio → Audio Preview).
+                    const voiceSettings = avatarDefaultVoice.tts_settings ?? {}
                     const ttsRes = await fetch('/api/voice/tts-file', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({
                             text: script,
                             voiceId: avatarDefaultVoice.provider_voice_id,
-                            language: langMap[avatarDefaultVoice.language] ?? avatarDefaultVoice.language,
-                            // Entrega guardada de la voz (speed/pitch/emotion,
-                            // ajustada en Voice Studio → Audio Preview).
-                            ...(avatarDefaultVoice.tts_settings ?? {}),
+                            // 'auto' deja mandar el acento de la muestra clonada.
+                            language: voiceSettings.useAutoAccent
+                                ? 'auto'
+                                : langMap[avatarDefaultVoice.language] ?? avatarDefaultVoice.language,
+                            ...voiceSettings,
                         }),
                     })
                     if (!ttsRes.ok) {
