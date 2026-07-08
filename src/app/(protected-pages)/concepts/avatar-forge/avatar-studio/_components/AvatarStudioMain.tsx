@@ -176,6 +176,7 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
         prompt,
         generationMode,
         videoSubMode,
+        speakModel,
         avatarDefaultVoice,
         aspectRatio,
         videoResolution,
@@ -1852,23 +1853,39 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                     </p>
                 </div>
                 <div className="flex items-center gap-3">
-                    {/* Provider Badge */}
-                    <button
-                        onClick={() => setShowProviderManager(true)}
-                        className="flex items-center gap-2 px-3 py-1.5 bg-gray-100 dark:bg-gray-800 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
-                    >
-                        <span
-                            className={`w-2 h-2 rounded-full ${
-                                activeProviderId ? 'bg-green-500' : 'bg-gray-400'
-                            }`}
-                        />
-                        <span className="text-xs font-medium">
-                            {activeProviderId
-                                ? providers.find((p) => p.id === activeProviderId)?.name
-                                : 'Default Provider'}
+                    {/* Provider Badge — en modo Speak el proveedor seleccionado NO
+                        genera: se muestra el motor real de talking-head (KIE). */}
+                    {generationMode === 'VIDEO' && videoSubMode === 'SPEAK' ? (
+                        <span className="flex items-center gap-2 px-3 py-1.5 bg-purple-500/10 rounded-lg">
+                            <span className="w-2 h-2 rounded-full bg-purple-500" />
+                            <span className="text-xs font-medium text-purple-500">
+                                Speak · {
+                                    speakModel === 'omnihuman'
+                                        ? 'OmniHuman 1.5'
+                                        : speakModel === 'kling'
+                                          ? 'Kling 3.0 + Lipsync'
+                                          : 'InfiniteTalk'
+                                } · KIE
+                            </span>
                         </span>
-                        <HiOutlineCog className="w-4 h-4" />
-                    </button>
+                    ) : (
+                        <button
+                            onClick={() => setShowProviderManager(true)}
+                            className="flex items-center gap-2 px-3 py-1.5 bg-gray-100 dark:bg-gray-800 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
+                        >
+                            <span
+                                className={`w-2 h-2 rounded-full ${
+                                    activeProviderId ? 'bg-green-500' : 'bg-gray-400'
+                                }`}
+                            />
+                            <span className="text-xs font-medium">
+                                {activeProviderId
+                                    ? providers.find((p) => p.id === activeProviderId)?.name
+                                    : 'Default Provider'}
+                            </span>
+                            <HiOutlineCog className="w-4 h-4" />
+                        </button>
+                    )}
 
                     {/* Prompt Library */}
                     <Button
