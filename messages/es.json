@@ -23,7 +23,9 @@
             "voiceStudio": "Estudio de Voz",
             "voiceStudioDesc": "Clonar voces y generar guiones",
             "videoFlows": "Video Flows",
-            "videoFlowsDesc": "Editor visual de pipelines"
+            "videoFlowsDesc": "Editor visual de pipelines",
+            "social": "Redes Sociales",
+            "socialDesc": "Conecta y publica en tus redes sociales"
         },
         "dashboard": {
             "dashboard": "Tablero",

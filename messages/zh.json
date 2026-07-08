@@ -23,7 +23,9 @@
             "voiceStudio": "语音工作室",
             "voiceStudioDesc": "克隆语音并生成脚本",
             "videoFlows": "视频流程",
-            "videoFlowsDesc": "可视化管道编辑器"
+            "videoFlowsDesc": "可视化管道编辑器",
+            "social": "社交媒体",
+            "socialDesc": "连接并发布到社交账号"
         },
         "dashboard": {
             "dashboard": "仪表板",

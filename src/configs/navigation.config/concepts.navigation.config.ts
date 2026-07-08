@@ -170,6 +170,22 @@ const conceptsNavigationConfig: NavigationTree[] = [
                 subMenu: [],
             },
             {
+                key: 'avatarForge.social',
+                path: `${CONCEPTS_PREFIX_PATH}/avatar-forge/social/accounts`,
+                title: 'Social Media',
+                translateKey: 'nav.avatarForge.social',
+                icon: 'avatarSocial',
+                type: NAV_ITEM_TYPE_ITEM,
+                authority: [ADMIN, USER],
+                meta: {
+                    description: {
+                        translateKey: 'nav.avatarForge.socialDesc',
+                        label: 'Connect and publish to social accounts',
+                    },
+                },
+                subMenu: [],
+            },
+            {
                 key: 'avatarForge.promptLibrary',
                 path: `${CONCEPTS_PREFIX_PATH}/avatar-forge/prompt-library`,
                 title: 'Prompt Library',

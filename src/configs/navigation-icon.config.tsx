@@ -219,6 +219,7 @@ const navigationIcon: NavigationIcons = {
     imageEdit: <PiNotePencilDuotone />,
     voiceStudio: <PiMicrophoneDuotone />,
     videoFlows: <PiFlowArrowDuotone />,
+    avatarSocial: <PiShareNetworkDuotone />,
 }
 
 export default navigationIcon

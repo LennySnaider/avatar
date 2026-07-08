@@ -23,7 +23,9 @@
             "voiceStudio": "Voice Studio",
             "voiceStudioDesc": "Clone voices and generate scripts",
             "videoFlows": "Video Flows",
-            "videoFlowsDesc": "Visual pipeline editor"
+            "videoFlowsDesc": "Visual pipeline editor",
+            "social": "Social Media",
+            "socialDesc": "Connect and publish to social accounts"
         },
         "dashboard": {
             "dashboard": "Dashboard",
