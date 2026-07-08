@@ -34,6 +34,7 @@ export default function LipsyncPanel({ userId }: LipsyncPanelProps) {
     const [videos, setVideos] = useState<GalleryVideo[]>([])
     const [loadingVideos, setLoadingVideos] = useState(true)
     const [errorMsg, setErrorMsg] = useState<string | null>(null)
+    const [galleryWarning, setGalleryWarning] = useState<string | null>(null)
 
     useEffect(() => {
         async function loadVideos() {
@@ -66,6 +67,7 @@ export default function LipsyncPanel({ userId }: LipsyncPanelProps) {
         if (!selectedVideoUrl || !previewAudioUrl) return
         setIsLipsyncing(true)
         setErrorMsg(null)
+        setGalleryWarning(null)
         try {
             const result = await lipsyncVideoKieSafe({
                 videoUrl: selectedVideoUrl,
@@ -78,15 +80,24 @@ export default function LipsyncPanel({ userId }: LipsyncPanelProps) {
 
             // Registrar el resultado en la galería (el mp4 ya quedó en el
             // bucket generations vía persistToSupabase — guardamos el path).
-            const storagePath = result.url.split('/object/public/generations/')[1] ?? result.url
-            await apiSaveGeneration({
-                user_id: userId,
-                avatar_id: null,
-                media_type: 'VIDEO',
-                storage_path: storagePath,
-                prompt: `Lipsync: ${currentTitle || 'voice over'}`,
-                metadata: { model: 'volcengine/video-to-video-lip-sync' },
-            })
+            // Un fallo aquí NO es un fallo del lipsync: el video ya se generó
+            // y se muestra abajo — solo avisamos que no quedó en la galería.
+            try {
+                const storagePath = result.url.split('/object/public/generations/')[1] ?? result.url
+                await apiSaveGeneration({
+                    user_id: userId,
+                    avatar_id: null,
+                    media_type: 'VIDEO',
+                    storage_path: storagePath,
+                    prompt: `Lipsync: ${currentTitle || 'voice over'}`,
+                    metadata: { model: 'volcengine/video-to-video-lip-sync' },
+                })
+            } catch (saveErr) {
+                console.error('Failed to save lipsynced video to gallery:', saveErr)
+                setGalleryWarning(
+                    'Video generated, but it could not be saved to your gallery. Use the download link below.',
+                )
+            }
         } catch (err) {
             const message = err instanceof Error ? err.message : 'Lipsync failed'
             console.error('Lipsync failed:', err)
@@ -147,6 +158,8 @@ export default function LipsyncPanel({ userId }: LipsyncPanelProps) {
                 </Button>
 
                 {errorMsg && <p className="text-sm text-red-500">{errorMsg}</p>}
+
+                {galleryWarning && <p className="text-sm text-amber-500">{galleryWarning}</p>}
 
                 {lipsyncedVideoUrl && (
                     <div className="flex flex-col gap-2">
