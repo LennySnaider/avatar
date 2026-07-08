@@ -5,7 +5,7 @@ export interface VoiceTtsSettings {
     /** -12 (grave) a 12 (agudo); default 0. */
     pitch?: number
     /** Tono emocional; omitido = auto. */
-    emotion?: 'happy' | 'sad' | 'angry' | 'fearful' | 'disgusted' | 'surprised' | 'calm'
+    emotion?: 'happy' | 'sad' | 'angry' | 'fearful' | 'disgusted' | 'surprised' | 'calm' | 'neutral'
     /**
      * true → language_boost 'auto': el acento lo dicta la muestra de clonado
      * (p.ej. mexicano) en vez del español genérico. MiniMax no acepta

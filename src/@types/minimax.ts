@@ -47,7 +47,7 @@ export type MiniMaxTTSModel =
 
 export type MiniMaxEmotion =
     | 'happy' | 'sad' | 'angry' | 'fearful'
-    | 'disgusted' | 'surprised' | 'calm'
+    | 'disgusted' | 'surprised' | 'calm' | 'neutral'
     | 'fluent' | 'whisper'
 
 export type MiniMaxAudioFormat = 'mp3' | 'pcm' | 'flac' | 'wav'

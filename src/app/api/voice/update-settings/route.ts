@@ -4,7 +4,7 @@ import { createServerSupabaseClient } from '@/lib/supabase'
 import type { VoiceTtsSettings } from '@/@types/voice'
 import type { Json } from '@/@types/supabase'
 
-const EMOTIONS = ['happy', 'sad', 'angry', 'fearful', 'disgusted', 'surprised', 'calm'] as const
+const EMOTIONS = ['happy', 'sad', 'angry', 'fearful', 'disgusted', 'surprised', 'calm', 'neutral'] as const
 
 /** Guarda los ajustes de TTS (speed/pitch/emotion) de una voz clonada. */
 export async function POST(req: NextRequest) {

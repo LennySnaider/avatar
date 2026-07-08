@@ -15,6 +15,7 @@ const EMOTIONS = [
     { value: 'fearful', label: 'Fearful' },
     { value: 'disgusted', label: 'Disgusted' },
     { value: 'surprised', label: 'Surprised' },
+    { value: 'neutral', label: 'Neutral' },
 ] as const
 
 export default function AudioPreview() {
@@ -187,19 +188,48 @@ export default function AudioPreview() {
                                 ))}
                             </select>
                         </label>
-                        <label className="flex items-center gap-2 text-sm">
-                            <input
-                                type="checkbox"
-                                checked={autoAccent}
-                                onChange={(e) => setAutoAccent(e.target.checked)}
-                            />
-                            <span>
-                                Auto accent
-                                <span className="text-xs text-gray-400 block">
-                                    Let the cloned sample&apos;s accent lead (e.g. Mexican) instead of generic Spanish.
-                                </span>
-                            </span>
+                        <label className="flex items-center justify-between gap-2">
+                            <span className="text-gray-500 w-14">Accent</span>
+                            <select
+                                className="flex-1 rounded-md border px-2 py-1 text-sm bg-white dark:bg-gray-800"
+                                value={autoAccent ? 'clone' : 'neutral'}
+                                onChange={(e) => setAutoAccent(e.target.value === 'clone')}
+                            >
+                                {/* MiniMax no soporta acentos regionales explícitos
+                                    (es-MX → 2013): las únicas palancas reales son el
+                                    acento de la muestra clonada o el neutro. */}
+                                <option value="clone">Clone&apos;s accent (e.g. Mexican) — from your sample</option>
+                                <option value="neutral">Neutral Spanish (generic)</option>
+                            </select>
                         </label>
+                        <div className="flex items-center gap-2 text-sm">
+                            <span className="text-gray-500 w-14">Presets</span>
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    // "Seductive" no existe en el enum de MiniMax
+                                    // (verificado: 2013 invalid params) — se aproxima
+                                    // con entrega: lenta, grave y calmada.
+                                    setSpeed(0.9)
+                                    setPitch(-2)
+                                    setEmotion('calm')
+                                }}
+                                className="px-2 py-1 text-xs rounded bg-purple-500/10 text-purple-500 hover:bg-purple-500/20 transition-colors"
+                            >
+                                Seductive ✨
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    setSpeed(1)
+                                    setPitch(0)
+                                    setEmotion('')
+                                }}
+                                className="px-2 py-1 text-xs rounded bg-gray-500/10 text-gray-500 hover:bg-gray-500/20 transition-colors"
+                            >
+                                Reset
+                            </button>
+                        </div>
                         <div className="flex items-center gap-2">
                             <Button
                                 size="xs"
