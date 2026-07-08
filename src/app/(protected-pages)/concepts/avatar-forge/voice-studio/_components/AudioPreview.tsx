@@ -288,21 +288,6 @@ export default function AudioPreview() {
                 {selectedVoice && (
                     <div className="flex flex-col gap-2 text-sm">
                         <label className="flex items-center justify-between gap-2">
-                            <span className="text-gray-500 w-14">
-                                Speed <span className="text-[9px] text-emerald-500 block leading-tight">live</span>
-                            </span>
-                            <input
-                                type="range"
-                                min={0.5}
-                                max={2}
-                                step={0.05}
-                                value={speed}
-                                onChange={(e) => setSpeed(Number(e.target.value))}
-                                className="flex-1 accent-primary"
-                            />
-                            <span className="w-10 text-right tabular-nums">{speed.toFixed(2)}x</span>
-                        </label>
-                        <label className="flex items-center justify-between gap-2">
                             <span className="text-gray-500 w-14">Pitch</span>
                             <input
                                 type="range"
@@ -413,6 +398,21 @@ export default function AudioPreview() {
                             onPlay={ensureEqGraph}
                         />
                         <div className="flex flex-col gap-2 text-sm">
+                            <label className="flex items-center justify-between gap-2">
+                                <span className="text-gray-500 w-14">
+                                    Speed <span className="text-[9px] text-emerald-500 block leading-tight">live</span>
+                                </span>
+                                <input
+                                    type="range"
+                                    min={0.5}
+                                    max={2}
+                                    step={0.05}
+                                    value={speed}
+                                    onChange={(e) => setSpeed(Number(e.target.value))}
+                                    className="flex-1 accent-primary"
+                                />
+                                <span className="w-12 text-right tabular-nums">{speed.toFixed(2)}x</span>
+                            </label>
                             <label className="flex items-center justify-between gap-2">
                                 <span className="text-gray-500 w-14">
                                     Bass <span className="text-[9px] text-emerald-500 block leading-tight">live</span>
