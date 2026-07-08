@@ -1,13 +1,25 @@
 'use client'
 
-import { useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useVoiceStudioStore } from '../_store/voiceStudioStore'
 import Button from '@/components/ui/Button'
 import Card from '@/components/ui/Card'
+import type { VoiceTtsSettings } from '@/@types/voice'
+
+const EMOTIONS = [
+    { value: '', label: 'Auto' },
+    { value: 'happy', label: 'Happy' },
+    { value: 'calm', label: 'Calm' },
+    { value: 'sad', label: 'Sad' },
+    { value: 'angry', label: 'Angry' },
+    { value: 'fearful', label: 'Fearful' },
+    { value: 'disgusted', label: 'Disgusted' },
+    { value: 'surprised', label: 'Surprised' },
+] as const
 
 export default function AudioPreview() {
     const {
-        currentScript, selectedVoiceId, voices,
+        currentScript, selectedVoiceId, voices, setVoices,
         previewAudioUrl, setPreviewAudioUrl,
         isGeneratingAudio, setIsGeneratingAudio,
         scriptLanguage,
@@ -15,6 +27,29 @@ export default function AudioPreview() {
     const audioRef = useRef<HTMLAudioElement>(null)
 
     const selectedVoice = voices.find((v) => v.id === selectedVoiceId)
+
+    // Ajustes de entrega (speed/pitch/emotion) — precargados desde la voz.
+    const [speed, setSpeed] = useState(1)
+    const [pitch, setPitch] = useState(0)
+    const [emotion, setEmotion] = useState('')
+    const [isSavingSettings, setIsSavingSettings] = useState(false)
+    const [settingsMsg, setSettingsMsg] = useState<string | null>(null)
+
+    useEffect(() => {
+        const s = selectedVoice?.tts_settings
+        setSpeed(s?.speed ?? 1)
+        setPitch(s?.pitch ?? 0)
+        setEmotion(s?.emotion ?? '')
+        setSettingsMsg(null)
+    }, [selectedVoiceId]) // eslint-disable-line react-hooks/exhaustive-deps
+
+    const buildSettings = (): VoiceTtsSettings => {
+        const s: VoiceTtsSettings = {}
+        if (speed !== 1) s.speed = speed
+        if (pitch !== 0) s.pitch = pitch
+        if (emotion) s.emotion = emotion as VoiceTtsSettings['emotion']
+        return s
+    }
 
     const handleGenerateAudio = async () => {
         if (!currentScript || !selectedVoice) return
@@ -28,6 +63,7 @@ export default function AudioPreview() {
                     text: currentScript,
                     voiceId: selectedVoice.provider_voice_id,
                     language: scriptLanguage === 'es' ? 'Spanish' : scriptLanguage === 'en' ? 'English' : scriptLanguage,
+                    ...buildSettings(),
                 }),
             })
 
@@ -41,6 +77,32 @@ export default function AudioPreview() {
             console.error('TTS generation failed:', err)
         } finally {
             setIsGeneratingAudio(false)
+        }
+    }
+
+    const handleSaveSettings = async () => {
+        if (!selectedVoice) return
+        setIsSavingSettings(true)
+        setSettingsMsg(null)
+        try {
+            const settings = buildSettings()
+            const res = await fetch('/api/voice/update-settings', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ voiceId: selectedVoice.id, settings }),
+            })
+            if (!res.ok) {
+                const { error } = await res.json()
+                throw new Error(error || 'Save failed')
+            }
+            // Reflejar en el store para que esta UI (y quien recargue voces) lo vea.
+            setVoices(voices.map((v) => (v.id === selectedVoice.id ? { ...v, tts_settings: settings } : v)))
+            setSettingsMsg('Saved as this voice’s default delivery.')
+        } catch (err) {
+            console.error('Failed to save voice settings:', err)
+            setSettingsMsg('Could not save settings.')
+        } finally {
+            setIsSavingSettings(false)
         }
     }
 
@@ -59,6 +121,67 @@ export default function AudioPreview() {
                 {selectedVoice && (
                     <div className="text-sm bg-gray-50 dark:bg-gray-800 rounded-md p-2">
                         Voice: <strong>{selectedVoice.name}</strong> ({selectedVoice.language.toUpperCase()})
+                    </div>
+                )}
+
+                {selectedVoice && (
+                    <div className="flex flex-col gap-2 text-sm">
+                        <label className="flex items-center justify-between gap-2">
+                            <span className="text-gray-500 w-14">Speed</span>
+                            <input
+                                type="range"
+                                min={0.5}
+                                max={2}
+                                step={0.05}
+                                value={speed}
+                                onChange={(e) => setSpeed(Number(e.target.value))}
+                                className="flex-1 accent-primary"
+                            />
+                            <span className="w-10 text-right tabular-nums">{speed.toFixed(2)}x</span>
+                        </label>
+                        <label className="flex items-center justify-between gap-2">
+                            <span className="text-gray-500 w-14">Pitch</span>
+                            <input
+                                type="range"
+                                min={-12}
+                                max={12}
+                                step={1}
+                                value={pitch}
+                                onChange={(e) => setPitch(Number(e.target.value))}
+                                className="flex-1 accent-primary"
+                            />
+                            <span className="w-10 text-right tabular-nums">{pitch > 0 ? `+${pitch}` : pitch}</span>
+                        </label>
+                        <label className="flex items-center justify-between gap-2">
+                            <span className="text-gray-500 w-14">Emotion</span>
+                            <select
+                                className="flex-1 rounded-md border px-2 py-1 text-sm bg-white dark:bg-gray-800"
+                                value={emotion}
+                                onChange={(e) => setEmotion(e.target.value)}
+                            >
+                                {EMOTIONS.map((e) => (
+                                    <option key={e.value} value={e.value}>{e.label}</option>
+                                ))}
+                            </select>
+                        </label>
+                        <div className="flex items-center gap-2">
+                            <Button
+                                size="xs"
+                                variant="plain"
+                                loading={isSavingSettings}
+                                onClick={handleSaveSettings}
+                            >
+                                Save as voice default
+                            </Button>
+                            {settingsMsg && (
+                                <span className={`text-xs ${settingsMsg.startsWith('Saved') ? 'text-emerald-500' : 'text-amber-500'}`}>
+                                    {settingsMsg}
+                                </span>
+                            )}
+                        </div>
+                        <p className="text-[10px] text-gray-400">
+                            Saved settings are applied automatically in Avatar Studio&apos;s Speak mode.
+                        </p>
                     </div>
                 )}
 

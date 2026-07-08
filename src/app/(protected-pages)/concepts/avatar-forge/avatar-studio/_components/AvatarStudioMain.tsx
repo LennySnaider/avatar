@@ -856,6 +856,9 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                             text: script,
                             voiceId: avatarDefaultVoice.provider_voice_id,
                             language: langMap[avatarDefaultVoice.language] ?? avatarDefaultVoice.language,
+                            // Entrega guardada de la voz (speed/pitch/emotion,
+                            // ajustada en Voice Studio → Audio Preview).
+                            ...(avatarDefaultVoice.tts_settings ?? {}),
                         }),
                     })
                     if (!ttsRes.ok) {

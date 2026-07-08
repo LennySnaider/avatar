@@ -1,3 +1,13 @@
+/** Ajustes de entrega del TTS MiniMax guardados por voz. */
+export interface VoiceTtsSettings {
+    /** 0.5 (lento) a 2 (rápido); default 1. */
+    speed?: number
+    /** -12 (grave) a 12 (agudo); default 0. */
+    pitch?: number
+    /** Tono emocional; omitido = auto. */
+    emotion?: 'happy' | 'sad' | 'angry' | 'fearful' | 'disgusted' | 'surprised' | 'calm'
+}
+
 export interface ClonedVoice {
     id: string
     user_id: string
@@ -8,12 +18,13 @@ export interface ClonedVoice {
     sample_audio_url: string
     language: string
     status: 'cloning' | 'ready' | 'failed'
+    tts_settings: VoiceTtsSettings | null
     created_at: string
     updated_at: string
 }
 
 export type ClonedVoiceInsert = Omit<ClonedVoice, 'id' | 'created_at' | 'updated_at'>
-export type ClonedVoiceUpdate = Partial<Pick<ClonedVoice, 'name' | 'avatar_id' | 'status'>>
+export type ClonedVoiceUpdate = Partial<Pick<ClonedVoice, 'name' | 'avatar_id' | 'status' | 'tts_settings'>>
 
 export type ScriptTone = 'professional' | 'casual' | 'funny' | 'persuasive'
 export type ScriptTemplate =

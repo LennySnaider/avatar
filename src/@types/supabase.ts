@@ -152,6 +152,7 @@ export type Database = {
                     sample_audio_url: string
                     language: string
                     status: string
+                    tts_settings: Json | null
                     created_at: string
                     updated_at: string
                 }
@@ -165,6 +166,7 @@ export type Database = {
                     sample_audio_url: string
                     language?: string
                     status?: string
+                    tts_settings?: Json | null
                     created_at?: string
                     updated_at?: string
                 }
@@ -178,6 +180,7 @@ export type Database = {
                     sample_audio_url?: string
                     language?: string
                     status?: string
+                    tts_settings?: Json | null
                     created_at?: string
                     updated_at?: string
                 }
