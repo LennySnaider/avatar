@@ -16,6 +16,7 @@ import type {
     CinemaAperture,
 } from '../types'
 import type { Avatar, AIProvider, Prompt, SkinTone } from '@/@types/supabase'
+import type { ClonedVoice } from '@/@types/voice'
 import { describeBody } from '@/utils/bodyDescriptors'
 import { stripNegatedTattoos } from '@/utils/promptSanitizer'
 import type {
@@ -46,7 +47,7 @@ export interface PromptAnalysisResult {
 }
 
 // Video sub-mode
-export type VideoSubMode = 'ANIMATE' | 'AVATAR'
+export type VideoSubMode = 'ANIMATE' | 'AVATAR' | 'SPEAK'
 
 interface AvatarStudioState {
     // Current Avatar
@@ -79,6 +80,7 @@ interface AvatarStudioState {
     detectedTerms: DetectedTerm[]  // Contaminating terms detected in prompt
     generationMode: MediaType
     videoSubMode: VideoSubMode
+    avatarDefaultVoice: ClonedVoice | null
     aspectRatio: AspectRatio
     videoResolution: VideoResolution
     cameraMotion: CameraMotion
@@ -217,6 +219,7 @@ interface AvatarStudioState {
     getFullPrompt: () => string
     setGenerationMode: (mode: MediaType) => void
     setVideoSubMode: (mode: VideoSubMode) => void
+    setAvatarDefaultVoice: (voice: ClonedVoice | null) => void
     setAspectRatio: (ratio: AspectRatio) => void
     setVideoResolution: (resolution: VideoResolution) => void
     setCameraMotion: (motion: CameraMotion) => void
@@ -364,6 +367,7 @@ const initialState = {
     detectedTerms: [] as DetectedTerm[],
     generationMode: 'IMAGE' as MediaType,
     videoSubMode: 'ANIMATE' as VideoSubMode,
+    avatarDefaultVoice: null as ClonedVoice | null,
     aspectRatio: '1:1' as AspectRatio,
     videoResolution: '720p' as VideoResolution,
     cameraMotion: 'NONE' as CameraMotion,
@@ -621,6 +625,7 @@ export const useAvatarStudioStore = create<AvatarStudioState>()(
             detectedTerms: mode === 'VIDEO' ? [] : state.detectedTerms,
         })),
     setVideoSubMode: (mode) => set({ videoSubMode: mode }),
+    setAvatarDefaultVoice: (voice) => set({ avatarDefaultVoice: voice }),
     setAspectRatio: (ratio) => set({ aspectRatio: ratio }),
     setVideoResolution: (resolution) => set({ videoResolution: resolution }),
     setCameraMotion: (motion) => set({ cameraMotion: motion }),

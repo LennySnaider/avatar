@@ -22,7 +22,7 @@ export default async function Page({ searchParams }: PageProps) {
             : undefined
 
     // Fetch data
-    const { avatar, references, providers, prompts } = await getAvatarStudioData(
+    const { avatar, references, providers, prompts, defaultVoice } = await getAvatarStudioData(
         avatarId,
         session?.user?.id
     )
@@ -40,6 +40,7 @@ export default async function Page({ searchParams }: PageProps) {
     return (
         <AvatarStudioProvider
             avatar={avatar}
+            defaultVoice={defaultVoice}
             references={transformedReferences}
             providers={providers}
             prompts={prompts}

@@ -1,11 +1,13 @@
 import { createServerSupabaseClient } from '@/lib/supabase'
 import type { AIProvider, Prompt, Avatar, AvatarReference } from '@/@types/supabase'
+import type { ClonedVoice } from '@/@types/voice'
 
 interface AvatarStudioData {
     avatar: Avatar | null
     references: AvatarReference[]
     providers: AIProvider[]
     prompts: Prompt[]
+    defaultVoice: ClonedVoice | null
 }
 
 const getAvatarStudioData = async (
@@ -44,6 +46,7 @@ const getAvatarStudioData = async (
     // Get avatar if editing
     let avatar: Avatar | null = null
     let references: AvatarReference[] = []
+    let defaultVoice: ClonedVoice | null = null
 
     if (avatarId) {
         const { data: avatarData, error: avatarError } = await supabase
@@ -70,6 +73,22 @@ const getAvatarStudioData = async (
             } else {
                 references = refsData || []
             }
+
+            // Get the avatar's default cloned voice, if any
+            if (avatar?.default_voice_id) {
+                const { data: voiceData, error: voiceError } = await supabase
+                    .from('cloned_voices')
+                    .select('*')
+                    .eq('id', avatar.default_voice_id)
+                    .eq('status', 'ready')
+                    .single()
+
+                if (voiceError) {
+                    console.error('Error fetching default voice:', voiceError)
+                } else {
+                    defaultVoice = voiceData as unknown as ClonedVoice
+                }
+            }
         }
     }
 
@@ -78,6 +97,7 @@ const getAvatarStudioData = async (
         references,
         providers: providers || [],
         prompts,
+        defaultVoice,
     }
 }
 

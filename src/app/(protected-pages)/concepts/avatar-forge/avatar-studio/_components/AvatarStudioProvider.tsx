@@ -5,11 +5,13 @@ import { useAvatarStudioStore } from '../_store/avatarStudioStore'
 import { supabase } from '@/lib/supabase'
 import { createThumbnail } from '@/utils/imageOptimization'
 import type { Avatar, AIProvider, Prompt, MediaType } from '@/@types/supabase'
+import type { ClonedVoice } from '@/@types/voice'
 import type { ReferenceImage } from '../types'
 
 interface AvatarStudioProviderProps {
     children: React.ReactNode
     avatar?: Avatar | null
+    defaultVoice?: ClonedVoice | null
     references?: ReferenceImage[]
     providers?: AIProvider[]
     prompts?: Prompt[]
@@ -96,6 +98,7 @@ const loadReferencesWithBase64 = async (refs: ReferenceImage[]): Promise<Referen
 const AvatarStudioProvider = ({
     children,
     avatar,
+    defaultVoice,
     references = [],
     providers = [],
     prompts = [],
@@ -113,6 +116,7 @@ const AvatarStudioProvider = ({
     const setIsLoadingReferences = useAvatarStudioStore((state) => state.setIsLoadingReferences)
     const setPrompt = useAvatarStudioStore((state) => state.setPrompt)
     const setGenerationMode = useAvatarStudioStore((state) => state.setGenerationMode)
+    const setAvatarDefaultVoice = useAvatarStudioStore((state) => state.setAvatarDefaultVoice)
 
     // Initialize providers and prompts only once
     useEffect(() => {
@@ -143,6 +147,7 @@ const AvatarStudioProvider = ({
         if (avatar && references.length > 0) {
             initializedRef.current = true
             avatarIdRef.current = avatar.id
+            setAvatarDefaultVoice(defaultVoice ?? null)
 
             // Set loading state
             setIsLoadingReferences(true)
