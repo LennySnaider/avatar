@@ -532,11 +532,21 @@ export async function registerUploadPostWebhook(): Promise<SocialResult<{ config
         await requireSession()
         const provider = getSocialProvider()
         const url = `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3030'}/api/webhooks/upload-post`
+        // Canonical Upload-Post event names — must match what
+        // `normalizeEventName()` in `src/app/api/webhooks/upload-post/route.ts`
+        // documents as the provider's real event names (that route's own
+        // docstring: `upload_completed`, `social_account.connected`,
+        // `social_account.disconnected`, `social_account.reauth_required`).
+        // The legacy `post.published`/`account.connected`/… names that were
+        // here before are only accepted defensively by the handler for
+        // backwards compatibility with agentsoft fixtures — they are not
+        // documented as subscribable event types on Upload-Post's side, so
+        // registering with them risked the provider never firing anything.
         const events = [
-            'post.published',
-            'post.failed',
-            'account.connected',
-            'account.disconnected',
+            'upload_completed',
+            'social_account.connected',
+            'social_account.disconnected',
+            'social_account.reauth_required',
             'ffmpeg.completed',
         ]
         const result = await provider.configureWebhook(SOCIAL_USERNAME, url, events)

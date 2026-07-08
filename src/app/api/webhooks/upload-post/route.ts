@@ -26,7 +26,11 @@
  * HMAC verification (SHA-256) is attempted when both a secret
  * (`UPLOAD_POST_WEBHOOK_SECRET`) and the `x-upload-post-signature` header
  * are present; a mismatch is logged and the event is dropped (no DB write)
- * but the endpoint still answers 200 — see the always-200 note below.
+ * but the endpoint still answers 200 — see the always-200 note below. If
+ * `UPLOAD_POST_WEBHOOK_SECRET` IS configured but the signature header is
+ * MISSING, the payload is unverifiable and is dropped the same way (no DB
+ * write, still 200) rather than accepted — only when no secret is
+ * configured at all do we fall back to accepting unsigned payloads.
  *
  * Error-as-data: this route ALWAYS returns `{ ok: true }` with a 200
  * status, regardless of what happens internally (bad signature, bad JSON,
@@ -225,6 +229,16 @@ export async function POST(req: NextRequest) {
             console.log('[upload-post webhook] invalid_signature — dropping event')
             return NextResponse.json({ ok: true })
         }
+    } else if (secret && !signature) {
+        // A secret IS configured, so we're able to verify — but this
+        // request didn't carry the signature header at all. Never mutate
+        // state on a payload we can't authenticate; still ack 200 to avoid
+        // a provider retry storm (same policy as the invalid-signature case
+        // above).
+        console.log(
+            '[upload-post webhook] secret configured but missing x-upload-post-signature header — dropping unverified event',
+        )
+        return NextResponse.json({ ok: true })
     } else if (!signature) {
         console.warn(
             '[upload-post webhook] No x-upload-post-signature header — accepting unverified. ' +

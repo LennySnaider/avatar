@@ -3,7 +3,6 @@ import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import Container from '@/components/shared/Container'
 import Card from '@/components/ui/Card'
-import Button from '@/components/ui/Button'
 import SocialComposer from './_components/SocialComposer'
 import { createServerSupabaseClient, getStoragePublicUrl } from '@/lib/supabase'
 import { getSocialProfileAction } from '@/services/SocialService'
@@ -71,8 +70,11 @@ export default async function Page({ searchParams }: PageProps) {
                     <p className="mb-4 text-sm text-gray-500">
                         You need a social profile before you can publish. Set one up on the accounts page.
                     </p>
-                    <Link href="/concepts/avatar-forge/social/accounts">
-                        <Button variant="solid">Go to Social Accounts</Button>
+                    <Link
+                        href="/concepts/avatar-forge/social/accounts"
+                        className="button inline-flex items-center justify-center h-12 px-5 py-2 rounded-xl bg-primary hover:bg-primary-mild text-neutral button-press-feedback"
+                    >
+                        Go to Social Accounts
                     </Link>
                 </Card>
             ) : (

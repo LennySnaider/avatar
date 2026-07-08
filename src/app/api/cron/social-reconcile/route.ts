@@ -9,6 +9,13 @@
  *     or arrived and failed to write) — polls `getRequestStatus` and
  *     flips them to `published`/`failed`.
  *
+ *  1b. Posts still in `scheduled` status whose `scheduled_at` is more than
+ *     15 minutes in the past and that already have an
+ *     `upload_post_request_id` (i.e. Upload-Post accepted the dispatch at
+ *     creation time) — same `getRequestStatus` poll/mapping as step 1, so a
+ *     missed publish/failure webhook doesn't leave a fired post stuck
+ *     showing `scheduled` forever.
+ *
  *  2. Posts in `scheduled` status with `upload_post_job_id IS NULL` —
  *     `PublishResponse` (the synchronous return value of
  *     `publishVideo`/`publishPhoto`/`publishText`) has no `jobId` field
@@ -28,7 +35,7 @@ import type { NextRequest } from 'next/server'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { createServerSupabaseClient } from '@/lib/supabase'
 import { getSocialProvider, SOCIAL_USERNAME } from '@/lib/social/provider'
-import type { ScheduledPost } from '@/lib/social/providers/SocialProvider'
+import type { ScheduledPost, SocialProvider } from '@/lib/social/providers/SocialProvider'
 import type { Platform } from '@/@types/social'
 import type { Database as BaseDatabase, Json } from '@/@types/supabase'
 
@@ -97,6 +104,49 @@ function mapProviderStatus(status: string): 'published' | 'failed' | 'processing
     if (s === 'completed' || s === 'success' || s === 'published') return 'published'
     if (s === 'failed' || s === 'error') return 'failed'
     return 'processing'
+}
+
+/**
+ * Poll the provider for a single post's request status and flip
+ * `social_posts.status` to `published`/`failed` if it resolved to a
+ * terminal state. Shared by both the stale-`processing` sweep and the
+ * overdue-`scheduled` sweep below — same mapping, same error handling,
+ * just different source queries for which rows are candidates.
+ *
+ * Returns `true` if the row's status was updated, `false` otherwise
+ * (still in-flight, missing request id, or the poll/update itself failed).
+ */
+async function pollAndFlipStatus(
+    supabase: SupabaseClient<SocialDatabase>,
+    provider: SocialProvider,
+    postId: string,
+    requestId: string | null,
+): Promise<boolean> {
+    if (!requestId) return false
+    try {
+        const result = await provider.getRequestStatus(requestId)
+        const mapped = mapProviderStatus(result.status)
+        if (mapped === 'processing') return false
+        const errMsg =
+            mapped === 'failed'
+                ? typeof result.data?.error === 'string'
+                    ? (result.data.error as string)
+                    : 'unknown_provider_error'
+                : null
+        await supabase
+            .from('social_posts')
+            .update({
+                status: mapped,
+                published_at: mapped === 'published' ? new Date().toISOString() : null,
+                error_message: errMsg,
+                updated_at: new Date().toISOString(),
+            })
+            .eq('id', postId)
+        return true
+    } catch (e) {
+        console.warn('[social-reconcile] status poll failed', postId, e)
+        return false
+    }
 }
 
 /** Narrow `social_posts.platforms` (jsonb) down to a `Set<Platform>` for comparison. */
@@ -178,30 +228,33 @@ export async function GET(request: NextRequest) {
 
     let statusUpdated = 0
     for (const post of stuck ?? []) {
-        const requestId = post.upload_post_request_id
-        if (!requestId) continue
-        try {
-            const result = await provider.getRequestStatus(requestId)
-            const mapped = mapProviderStatus(result.status)
-            if (mapped === 'processing') continue
-            const errMsg =
-                mapped === 'failed'
-                    ? typeof result.data?.error === 'string'
-                        ? (result.data.error as string)
-                        : 'unknown_provider_error'
-                    : null
-            await supabase
-                .from('social_posts')
-                .update({
-                    status: mapped,
-                    published_at: mapped === 'published' ? new Date().toISOString() : null,
-                    error_message: errMsg,
-                    updated_at: new Date().toISOString(),
-                })
-                .eq('id', post.id)
+        if (await pollAndFlipStatus(supabase, provider, post.id, post.upload_post_request_id)) {
             statusUpdated++
-        } catch (e) {
-            console.warn('[social-reconcile] status poll failed', post.id, e)
+        }
+    }
+
+    // -------------------------------------------------------------------------
+    // 1b. Reconcile posts still `scheduled` whose fire time has passed —
+    // if the webhook never arrived (or arrived and failed to write), these
+    // otherwise sit as `scheduled` forever even though Upload-Post already
+    // dispatched them. Same status mapping/polling as step 1, just a
+    // different source query (past-due `scheduled_at` instead of stale
+    // `processing`), and only for rows that already have a request id
+    // (i.e. Upload-Post accepted the dispatch — see `createSocialPost`).
+    // -------------------------------------------------------------------------
+    const scheduledCutoff = new Date(Date.now() - 15 * 60 * 1000).toISOString()
+    const { data: overdueScheduled } = await supabase
+        .from('social_posts')
+        .select('id, upload_post_request_id')
+        .eq('status', 'scheduled')
+        .lt('scheduled_at', scheduledCutoff)
+        .not('upload_post_request_id', 'is', null)
+        .limit(50)
+
+    let scheduledStatusUpdated = 0
+    for (const post of overdueScheduled ?? []) {
+        if (await pollAndFlipStatus(supabase, provider, post.id, post.upload_post_request_id)) {
+            scheduledStatusUpdated++
         }
     }
 
@@ -243,6 +296,8 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({
         checked: (stuck ?? []).length,
         updated: statusUpdated,
+        scheduledChecked: (overdueScheduled ?? []).length,
+        scheduledUpdated: scheduledStatusUpdated,
         jobIdChecked,
         jobIdBackfilled,
     })

@@ -1,6 +1,7 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
 import Card from '@/components/ui/Card'
 import Button from '@/components/ui/Button'
 import Tag from '@/components/ui/Tag'
@@ -27,6 +28,9 @@ const AccountsClient = ({ initialProfile, loadError }: AccountsClientProps) => {
     const [profile, setProfile] = useState<SocialProfileRow | null>(initialProfile)
     const [error, setError] = useState<string | null>(loadError)
     const [isBusy, setIsBusy] = useState(false)
+    const router = useRouter()
+    const searchParams = useSearchParams()
+    const handledConnectParams = useRef(false)
 
     const handleSetup = async () => {
         setIsBusy(true)
@@ -61,6 +65,35 @@ const AccountsClient = ({ initialProfile, loadError }: AccountsClientProps) => {
             setIsBusy(false)
         }
     }
+
+    // Reflect `?connected=1` / `?error=...` set by
+    // `/api/social/connect` and `/api/social/callback` — those routes
+    // redirect back here after the Upload-Post hosted connect flow but the
+    // page previously never read the query string, so a user landing back
+    // here with a fresh connection (or a failed connect attempt) saw no
+    // feedback at all. Runs once on mount, then strips the params so a
+    // refresh/back-nav doesn't re-trigger it.
+    useEffect(() => {
+        if (handledConnectParams.current) return
+        const connected = searchParams.get('connected')
+        const connectError = searchParams.get('error')
+        if (!connected && !connectError) return
+        handledConnectParams.current = true
+
+        if (connected === '1') {
+            handleRefresh()
+            toast.push(
+                <Notification type="success" title="Account connected">
+                    Refreshing your connected social accounts
+                </Notification>,
+            )
+        } else if (connectError) {
+            setError(connectError)
+        }
+
+        router.replace('/concepts/avatar-forge/social/accounts')
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [searchParams])
 
     const handleRegisterWebhook = async () => {
         setIsBusy(true)
