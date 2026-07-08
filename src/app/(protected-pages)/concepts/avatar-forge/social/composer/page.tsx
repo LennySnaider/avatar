@@ -32,7 +32,7 @@ export default async function Page({ searchParams }: PageProps) {
     const params = await searchParams
     const generationId = typeof params.generationId === 'string' ? params.generationId : undefined
 
-    const [profileResult, media] = await Promise.all([
+    const [profileResult, media, libraryImages] = await Promise.all([
         getSocialProfileAction(),
         (async (): Promise<GenerationMedia | null> => {
             if (!generationId) return null
@@ -50,6 +50,21 @@ export default async function Page({ searchParams }: PageProps) {
                 publicUrl: getStoragePublicUrl('generations', gen.storage_path),
                 prompt: gen.prompt,
             }
+        })(),
+        // Recent gallery images the user can add to a carousel
+        (async (): Promise<{ id: string; publicUrl: string }[]> => {
+            const supabase = createServerSupabaseClient()
+            const { data } = await supabase
+                .from('generations')
+                .select('id, storage_path')
+                .eq('user_id', userId)
+                .eq('media_type', 'IMAGE')
+                .order('created_at', { ascending: false })
+                .limit(24)
+            return (data ?? []).map((g) => ({
+                id: g.id,
+                publicUrl: getStoragePublicUrl('generations', g.storage_path),
+            }))
         })(),
     ])
 
@@ -78,7 +93,12 @@ export default async function Page({ searchParams }: PageProps) {
                     </Link>
                 </Card>
             ) : (
-                <SocialComposer media={media} generationId={generationId} platforms={connectedPlatforms} />
+                <SocialComposer
+                    media={media}
+                    generationId={generationId}
+                    platforms={connectedPlatforms}
+                    libraryImages={libraryImages}
+                />
             )}
         </Container>
     )

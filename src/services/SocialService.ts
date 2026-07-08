@@ -153,6 +153,8 @@ export interface SocialPostRow {
 
 export interface CreateSocialPostInput {
     generationId?: string
+    /** Carousel: additional gallery generations (images only). Order = post order. */
+    generationIds?: string[]
     caption: string
     hashtags: string[]
     platforms: string[]
@@ -342,21 +344,35 @@ export async function createSocialPost(input: CreateSocialPostInput): Promise<So
         if (invalid.length > 0) return { success: false, error: `Unknown platform(s): ${invalid.join(', ')}` }
         if (platforms.length === 0) return { success: false, error: 'Pick at least one platform' }
 
-        // Resolve media from the gallery generation (durable public URL)
+        // Resolve media from gallery generations (durable public URLs). A
+        // single id posts as-is; multiple ids form a photo carousel (input
+        // order preserved).
+        const requestedIds = [
+            ...(input.generationId ? [input.generationId] : []),
+            ...(input.generationIds ?? []),
+        ].filter((id, i, arr) => arr.indexOf(id) === i)
         let mediaUrls: string[] = []
         let contentType: 'photo' | 'video' | 'text' = 'text'
         let generationId: string | null = null
-        if (input.generationId) {
-            const { data: gen, error: genErr } = await supabase
+        if (requestedIds.length > 0) {
+            const { data: gens, error: genErr } = await supabase
                 .from('generations')
                 .select('id, media_type, storage_path, user_id')
-                .eq('id', input.generationId)
-                .single()
-            if (genErr || !gen) return { success: false, error: 'Generation not found' }
-            if (gen.user_id && gen.user_id !== userId) return { success: false, error: 'Not your media' }
-            mediaUrls = [getStoragePublicUrl('generations', gen.storage_path)]
-            contentType = gen.media_type === 'VIDEO' ? 'video' : 'photo'
-            generationId = gen.id
+                .in('id', requestedIds)
+            if (genErr || !gens || gens.length !== requestedIds.length) {
+                return { success: false, error: 'Generation not found' }
+            }
+            const byId = new Map(gens.map((g) => [g.id, g]))
+            const ordered = requestedIds.map((id) => byId.get(id)!)
+            for (const gen of ordered) {
+                if (gen.user_id && gen.user_id !== userId) return { success: false, error: 'Not your media' }
+            }
+            if (ordered.length > 1 && ordered.some((g) => g.media_type === 'VIDEO')) {
+                return { success: false, error: 'Carousels support images only — post videos individually' }
+            }
+            mediaUrls = ordered.map((g) => getStoragePublicUrl('generations', g.storage_path))
+            contentType = ordered[0].media_type === 'VIDEO' ? 'video' : 'photo'
+            generationId = ordered[0].id
         }
 
         const caption = appendHashtagsToCaption(input.caption, input.hashtags)

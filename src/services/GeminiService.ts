@@ -377,6 +377,92 @@ Also report the video's approximate duration in seconds.
     }
 }
 
+export interface SocialCaptionResult {
+    success: boolean
+    caption?: string
+    hashtags?: string[]
+    error?: string
+}
+
+/**
+ * Look at a generation (image or video) and write a social-media-ready
+ * caption + hashtag set for it. Used by the social composer's "Generate with
+ * AI" button — the generation PROMPT is never a caption (it's full of
+ * [BODY]/[FACE] harness text). Error-as-data.
+ */
+export async function generateSocialCaption(input: {
+    mediaUrl: string
+    mediaType: 'IMAGE' | 'VIDEO'
+    draft?: string
+}): Promise<SocialCaptionResult> {
+    try {
+        const res = await fetch(input.mediaUrl)
+        if (!res.ok) {
+            return { success: false, error: `Could not fetch media (HTTP ${res.status})` }
+        }
+        const buffer = Buffer.from(await res.arrayBuffer())
+        if (buffer.byteLength > MAX_ANALYZE_VIDEO_BYTES) {
+            return { success: false, error: 'Media too large to analyze (max 20MB)' }
+        }
+        const mimeType =
+            res.headers.get('content-type')?.split(';')[0] ||
+            (input.mediaType === 'VIDEO' ? 'video/mp4' : 'image/jpeg')
+
+        const apiKey = getApiKey()
+        const ai = new GoogleGenAI({ apiKey })
+
+        const instructions = `
+You are the social media manager for an AI influencer. Look at this ${input.mediaType === 'VIDEO' ? 'video' : 'photo'} and write the post for it.
+
+CAPTION:
+- First person, as if the influencer herself is posting.
+- 1-3 short sentences, engaging and scroll-stopping. Tasteful emojis (0-3).
+- NO hashtags inside the caption.
+${input.draft?.trim() ? `- The user drafted this — keep its language and intent, improve it: "${input.draft.trim()}"` : '- Write in English.'}
+
+HASHTAGS:
+- 8-12 relevant hashtags, lowercase, WITHOUT the # symbol.
+- Mix broad reach tags with content-specific ones.
+`
+
+        const response = await ai.models.generateContent({
+            model: 'gemini-2.5-flash',
+            contents: {
+                parts: [
+                    { inlineData: { mimeType, data: buffer.toString('base64') } },
+                    { text: instructions },
+                ],
+            },
+            config: {
+                responseMimeType: 'application/json',
+                responseSchema: {
+                    type: Type.OBJECT,
+                    properties: {
+                        caption: { type: Type.STRING },
+                        hashtags: { type: Type.ARRAY, items: { type: Type.STRING } },
+                    },
+                    required: ['caption', 'hashtags'],
+                },
+            },
+        })
+
+        const raw = response.text
+        if (!raw) return { success: false, error: 'Gemini returned an empty result' }
+        const parsed = JSON.parse(raw) as { caption: string; hashtags: string[] }
+        if (!parsed.caption?.trim()) {
+            return { success: false, error: 'Gemini returned an empty caption' }
+        }
+        return {
+            success: true,
+            caption: parsed.caption.trim(),
+            hashtags: (parsed.hashtags ?? []).map((h) => h.replace(/^#/, '').trim()).filter(Boolean),
+        }
+    } catch (e) {
+        console.error('[GeminiService] generateSocialCaption failed', e)
+        return { success: false, error: e instanceof Error ? e.message : String(e) }
+    }
+}
+
 // =============================================
 // IMAGE DESCRIPTION
 // =============================================

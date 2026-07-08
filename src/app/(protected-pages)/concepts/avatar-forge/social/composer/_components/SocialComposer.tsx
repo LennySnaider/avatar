@@ -11,8 +11,9 @@ import Radio from '@/components/ui/Radio'
 import DatePicker from '@/components/ui/DatePicker'
 import Notification from '@/components/ui/Notification'
 import toast from '@/components/ui/toast'
-import { HiOutlineX } from 'react-icons/hi'
+import { HiOutlineX, HiOutlineSparkles } from 'react-icons/hi'
 import { createSocialPost } from '@/services/SocialService'
+import { generateSocialCaption } from '@/services/GeminiService'
 import { normalizeHashtag } from '@/lib/social/hashtagHelpers'
 import type { MediaType } from '@/@types/supabase'
 
@@ -25,20 +26,28 @@ interface GenerationMedia {
     prompt: string
 }
 
+interface LibraryImage {
+    id: string
+    publicUrl: string
+}
+
 interface SocialComposerProps {
     media: GenerationMedia | null
     generationId?: string
     platforms: string[]
+    libraryImages?: LibraryImage[]
 }
 
 type ScheduleMode = 'now' | 'schedule'
 
 const POSTS_PATH = '/concepts/avatar-forge/social/posts'
 
-const SocialComposer = ({ media, generationId, platforms }: SocialComposerProps) => {
+const SocialComposer = ({ media, generationId, platforms, libraryImages = [] }: SocialComposerProps) => {
     const router = useRouter()
 
-    const [caption, setCaption] = useState(media?.prompt ?? '')
+    // The generation PROMPT is harness text ([BODY]/[FACE]…), never a caption —
+    // start empty and let "Generate with AI" write a real one.
+    const [caption, setCaption] = useState('')
     const [hashtagInput, setHashtagInput] = useState('')
     const [hashtags, setHashtags] = useState<string[]>([])
     const [selectedPlatforms, setSelectedPlatforms] = useState<string[]>(platforms)
@@ -46,8 +55,45 @@ const SocialComposer = ({ media, generationId, platforms }: SocialComposerProps)
     const [scheduleDate, setScheduleDate] = useState<Date | null>(null)
     const [error, setError] = useState<string | null>(null)
     const [isSubmitting, setIsSubmitting] = useState(false)
+    const [isGeneratingAi, setIsGeneratingAi] = useState(false)
+    // Extra gallery images appended after the primary one → photo carousel
+    const [carouselIds, setCarouselIds] = useState<string[]>([])
 
     const hasConnectedPlatforms = platforms.length > 0
+    // Carousels are photos-only; offer the library when the primary is an image
+    const canCarousel = media?.mediaType === 'IMAGE'
+    const availableLibrary = libraryImages.filter(
+        (img) => img.id !== media?.id && !carouselIds.includes(img.id),
+    )
+    const carouselImages = carouselIds
+        .map((id) => libraryImages.find((img) => img.id === id))
+        .filter((img): img is LibraryImage => !!img)
+
+    const handleGenerateWithAi = async () => {
+        if (!media) return
+        setIsGeneratingAi(true)
+        setError(null)
+        try {
+            const result = await generateSocialCaption({
+                mediaUrl: media.publicUrl,
+                mediaType: media.mediaType,
+                draft: caption.trim() || undefined,
+            })
+            if (!result.success || !result.caption) {
+                setError(result.error ?? 'AI caption generation failed')
+                return
+            }
+            setCaption(result.caption)
+            const normalized = (result.hashtags ?? [])
+                .map((h) => normalizeHashtag(h))
+                .filter((h): h is string => Boolean(h))
+            setHashtags((prev) => Array.from(new Set([...prev, ...normalized])))
+        } catch (err) {
+            setError(err instanceof Error ? err.message : String(err))
+        } finally {
+            setIsGeneratingAi(false)
+        }
+    }
 
     const addHashtag = () => {
         const normalized = normalizeHashtag(hashtagInput)
@@ -100,6 +146,7 @@ const SocialComposer = ({ media, generationId, platforms }: SocialComposerProps)
         try {
             const result = await createSocialPost({
                 generationId,
+                generationIds: canCarousel ? carouselIds : undefined,
                 caption,
                 hashtags,
                 platforms: selectedPlatforms,
@@ -133,28 +180,74 @@ const SocialComposer = ({ media, generationId, platforms }: SocialComposerProps)
             <Card>
                 <p className="text-sm font-semibold mb-2">Media</p>
                 {media ? (
-                    <div className="rounded-lg overflow-hidden bg-gray-100 dark:bg-gray-800 max-w-sm">
-                        {media.mediaType === 'VIDEO' ? (
-                            <video src={media.publicUrl} controls className="w-full h-auto" />
-                        ) : (
-                            <img src={media.publicUrl} alt="Generation preview" className="w-full h-auto" />
-                        )}
+                    <div className="flex flex-wrap gap-3">
+                        <div className="rounded-lg overflow-hidden bg-gray-100 dark:bg-gray-800 w-48">
+                            {media.mediaType === 'VIDEO' ? (
+                                <video src={media.publicUrl} controls className="w-full h-auto" />
+                            ) : (
+                                <img src={media.publicUrl} alt="Generation preview" className="w-full h-auto" />
+                            )}
+                        </div>
+                        {carouselImages.map((img, i) => (
+                            <div key={img.id} className="relative w-48 rounded-lg overflow-hidden bg-gray-100 dark:bg-gray-800">
+                                <img src={img.publicUrl} alt={`Carousel ${i + 2}`} className="w-full h-auto" />
+                                <button
+                                    type="button"
+                                    onClick={() => setCarouselIds((prev) => prev.filter((id) => id !== img.id))}
+                                    className="absolute top-1 right-1 p-1 rounded-full bg-black/60 text-white hover:bg-black/80"
+                                >
+                                    <HiOutlineX className="w-4 h-4" />
+                                </button>
+                            </div>
+                        ))}
                     </div>
                 ) : (
                     <p className="text-sm text-gray-500">
                         No media attached — this will be posted as a text-only update.
                     </p>
                 )}
+                {canCarousel && availableLibrary.length > 0 && (
+                    <div className="mt-4">
+                        <p className="text-xs text-gray-500 mb-2">
+                            Add more images from your gallery (carousel)
+                        </p>
+                        <div className="flex flex-wrap gap-2">
+                            {availableLibrary.map((img) => (
+                                <button
+                                    key={img.id}
+                                    type="button"
+                                    onClick={() => setCarouselIds((prev) => [...prev, img.id])}
+                                    className="w-16 h-16 rounded-lg overflow-hidden border-2 border-transparent hover:border-primary transition-colors"
+                                    title="Add to carousel"
+                                >
+                                    <img src={img.publicUrl} alt="Gallery" className="w-full h-full object-cover" />
+                                </button>
+                            ))}
+                        </div>
+                    </div>
+                )}
             </Card>
 
             <Card>
-                <p className="text-sm font-semibold mb-2">Caption</p>
+                <div className="flex items-center justify-between mb-2">
+                    <p className="text-sm font-semibold">Caption</p>
+                    <Button
+                        size="xs"
+                        variant="plain"
+                        loading={isGeneratingAi}
+                        disabled={!media || isGeneratingAi}
+                        icon={<HiOutlineSparkles />}
+                        onClick={handleGenerateWithAi}
+                    >
+                        {isGeneratingAi ? 'Generating…' : 'Generate with AI'}
+                    </Button>
+                </div>
                 <Input
                     textArea
                     rows={5}
                     value={caption}
                     onChange={(e) => setCaption(e.target.value)}
-                    placeholder="Write a caption for this post..."
+                    placeholder="Write a caption for this post — or let AI write it from the image..."
                 />
                 <p className="text-xs text-gray-400 mt-1">{caption.length} characters</p>
             </Card>
