@@ -354,21 +354,6 @@ export default function AudioPreview() {
                                 Reset
                             </button>
                         </div>
-                        <div className="flex items-center gap-2">
-                            <Button
-                                size="xs"
-                                variant="plain"
-                                loading={isSavingSettings}
-                                onClick={handleSaveSettings}
-                            >
-                                Save as voice default
-                            </Button>
-                            {settingsMsg && (
-                                <span className={`text-xs ${settingsMsg.startsWith('Saved') ? 'text-emerald-500' : 'text-amber-500'}`}>
-                                    {settingsMsg}
-                                </span>
-                            )}
-                        </div>
                         <p className="text-[10px] text-gray-400">
                             Speed previews live on the player below — no re-generation needed.
                             Pitch and Emotion apply on the next Generate Audio. Saved settings
@@ -443,16 +428,31 @@ export default function AudioPreview() {
                                 />
                                 <span className="w-12 text-right tabular-nums">{treble > 0 ? `+${treble}` : treble} dB</span>
                             </label>
-                            {(bass !== 0 || treble !== 0) && (
+                            <div className="flex items-center gap-2">
                                 <Button
-                                    size="xs"
+                                    size="sm"
                                     variant="default"
-                                    loading={isApplyingEq}
-                                    onClick={handleApplyEq}
+                                    loading={isSavingSettings}
+                                    onClick={handleSaveSettings}
                                 >
-                                    Apply EQ to file
+                                    Save Voice Default
                                 </Button>
-                            )}
+                                {(bass !== 0 || treble !== 0) && (
+                                    <Button
+                                        size="sm"
+                                        variant="default"
+                                        loading={isApplyingEq}
+                                        onClick={handleApplyEq}
+                                    >
+                                        Apply EQ to file
+                                    </Button>
+                                )}
+                                {settingsMsg && (
+                                    <span className={`text-xs ${settingsMsg.startsWith('Saved') ? 'text-emerald-500' : 'text-amber-500'}`}>
+                                        {settingsMsg}
+                                    </span>
+                                )}
+                            </div>
                             {eqError && <p className="text-[10px] text-amber-500">{eqError}</p>}
                             <p className="text-[10px] text-gray-400 -mt-1">
                                 Bass/Treble preview live while playing. &quot;Apply EQ to file&quot; bakes
