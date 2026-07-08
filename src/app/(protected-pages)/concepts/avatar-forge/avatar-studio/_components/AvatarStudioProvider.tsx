@@ -4,7 +4,7 @@ import { useEffect, useRef } from 'react'
 import { useAvatarStudioStore } from '../_store/avatarStudioStore'
 import { supabase } from '@/lib/supabase'
 import { createThumbnail } from '@/utils/imageOptimization'
-import type { Avatar, AIProvider, Prompt } from '@/@types/supabase'
+import type { Avatar, AIProvider, Prompt, MediaType } from '@/@types/supabase'
 import type { ReferenceImage } from '../types'
 
 interface AvatarStudioProviderProps {
@@ -13,6 +13,8 @@ interface AvatarStudioProviderProps {
     references?: ReferenceImage[]
     providers?: AIProvider[]
     prompts?: Prompt[]
+    initialPrompt?: string
+    initialMode?: MediaType
 }
 
 // Download file from Supabase Storage and convert to base64
@@ -97,6 +99,8 @@ const AvatarStudioProvider = ({
     references = [],
     providers = [],
     prompts = [],
+    initialPrompt,
+    initialMode,
 }: AvatarStudioProviderProps) => {
     // Use refs to track initialization and prevent re-loading
     const initializedRef = useRef(false)
@@ -107,6 +111,8 @@ const AvatarStudioProvider = ({
     const setPromptPresets = useAvatarStudioStore((state) => state.setPromptPresets)
     const loadAvatarData = useAvatarStudioStore((state) => state.loadAvatarData)
     const setIsLoadingReferences = useAvatarStudioStore((state) => state.setIsLoadingReferences)
+    const setPrompt = useAvatarStudioStore((state) => state.setPrompt)
+    const setGenerationMode = useAvatarStudioStore((state) => state.setGenerationMode)
 
     // Initialize providers and prompts only once
     useEffect(() => {
@@ -115,6 +121,13 @@ const AvatarStudioProvider = ({
         }
         if (prompts.length > 0) {
             setPromptPresets(prompts)
+        }
+        // Prefill prompt/mode when arriving from the Prompt Library (?prompt=...&mode=...)
+        if (initialMode) {
+            setGenerationMode(initialMode)
+        }
+        if (initialPrompt) {
+            setPrompt(initialPrompt)
         }
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []) // Only run once on mount

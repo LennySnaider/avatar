@@ -13,6 +13,14 @@ export default async function Page({ searchParams }: PageProps) {
     const params = await searchParams
     const avatarId = params.avatarId as string | undefined
 
+    // Prompt prefill coming from the Prompt Library page (?prompt=...&mode=...)
+    const initialPrompt = params.prompt as string | undefined
+    const initialModeParam = params.mode as string | undefined
+    const initialMode =
+        initialModeParam === 'IMAGE' || initialModeParam === 'VIDEO'
+            ? initialModeParam
+            : undefined
+
     // Fetch data
     const { avatar, references, providers, prompts } = await getAvatarStudioData(
         avatarId,
@@ -35,6 +43,8 @@ export default async function Page({ searchParams }: PageProps) {
             references={transformedReferences}
             providers={providers}
             prompts={prompts}
+            initialPrompt={initialPrompt}
+            initialMode={initialMode}
         >
             <Container className="h-[calc(100vh-theme(spacing.16))]">
                 <AvatarStudioMain userId={session?.user?.id} />
