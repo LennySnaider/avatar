@@ -40,7 +40,7 @@ import {
     generateVideoMiniMax,
 } from '@/services/MiniMaxService'
 import type { MiniMaxVideoModel } from '@/@types/minimax'
-import { generateImageKie, generateVideoKieSafe, generateMotionControlKieSafe, submitKieImageTask, checkKieImageTask, submitTalkingVideoKieTask, checkKieVideoTask } from '@/services/KieService'
+import { generateImageKie, generateVideoKieSafe, generateMotionControlKieSafe, submitKieImageTask, checkKieImageTask, submitTalkingVideoKieTask, submitLipsyncVideoKieTask, checkKieVideoTask } from '@/services/KieService'
 import { generateImageViaGateway } from '@/services/GatewayService'
 import { buildAvatarPrompt, buildLeanIdentityPrompt, stripHarnessForFaceSwap, type RefRole } from '@/utils/avatarPromptBuilder'
 import { HiOutlineCog, HiOutlineBookOpen, HiX } from 'react-icons/hi'
@@ -874,15 +874,46 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                     ].filter((r): r is { base64: string; mimeType: string } => !!r)
 
                     try {
+                        const speakModel = useAvatarStudioStore.getState().speakModel
                         resultUrl = await pollKieTalkingVideoTask({
                             image: speakImage,
                             audioUrl,
                             prompt: visualPrompt || undefined,
                             resolution: '720p',
-                            model: useAvatarStudioStore.getState().speakModel,
+                            model: speakModel,
                             elementImages: speakElementImages,
                             durationSec: durationMs ? durationMs / 1000 : undefined,
                         })
+
+                        // Kling genera gran video pero IGNORA el audio del element
+                        // (verificado: la pista sale casi en silencio). Paso 2:
+                        // re-sincronizar labios con el mismo TTS vía Volcengine.
+                        if (speakModel === 'kling') {
+                            const lipsyncSub = await submitLipsyncVideoKieTask({
+                                videoUrl: resultUrl,
+                                audioUrl,
+                            })
+                            if (!lipsyncSub.success) {
+                                throw new Error(`Lipsync step failed to start: ${lipsyncSub.error}. Silent Kling video was generated: ${resultUrl}`)
+                            }
+                            const lipsyncDeadline = Date.now() + 30 * 60 * 1000
+                            let lipsyncedUrl: string | null = null
+                            while (Date.now() < lipsyncDeadline) {
+                                await new Promise((r) => setTimeout(r, 5000))
+                                const st = await checkKieVideoTask(lipsyncSub.taskId)
+                                if (st.status === 'done') {
+                                    lipsyncedUrl = st.url
+                                    break
+                                }
+                                if (st.status === 'failed') {
+                                    throw new Error(`Lipsync step failed: ${st.error}. Silent Kling video was generated: ${resultUrl}`)
+                                }
+                            }
+                            if (!lipsyncedUrl) {
+                                throw new Error(`Lipsync step timed out (>30 min). Silent Kling video was generated: ${resultUrl}`)
+                            }
+                            resultUrl = lipsyncedUrl
+                        }
                     } catch (speakErr) {
                         // El audio ya quedó generado y persistido; que el error lo diga
                         // para no perder ese contexto (sin fallbacks silenciosos).

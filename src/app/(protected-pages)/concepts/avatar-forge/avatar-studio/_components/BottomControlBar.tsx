@@ -221,7 +221,6 @@ const BottomControlBar = ({
         subjectAction,
         setSubjectAction,
         videoDialogue,
-        setVideoDialogue,
         noMusic,
         setNoMusic,
         noBackgroundEffects,
@@ -1376,18 +1375,8 @@ const BottomControlBar = ({
                             }
                         >
                             <div className="p-3 min-w-[200px]">
-                                <div className="mb-3">
-                                    <label className="text-xs font-medium text-gray-500 mb-1 block">Dialogue</label>
-                                    <input
-                                        type="text"
-                                        value={videoDialogue}
-                                        onChange={(e) => setVideoDialogue(e.target.value)}
-                                        onClick={(e) => e.stopPropagation()}
-                                        onKeyDown={(e) => e.stopPropagation()}
-                                        placeholder="What should they say?"
-                                        className="w-full px-2 py-1 text-xs border rounded bg-white dark:bg-gray-800"
-                                    />
-                                </div>
+                                {/* El diálogo/guion se edita SOLO en el diálogo 🎤 (SpeakScriptDialog)
+                                    — tener un segundo input aquí para el mismo campo confundía. */}
                                 <div className="space-y-2">
                                     <Checkbox
                                         checked={noMusic}

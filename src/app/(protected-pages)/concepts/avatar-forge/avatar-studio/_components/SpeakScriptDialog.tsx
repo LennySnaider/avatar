@@ -119,7 +119,7 @@ const SpeakScriptDialog = ({ isOpen, onClose }: SpeakScriptDialogProps) => {
                             ? 'InfiniteTalk: long clips, standard quality.'
                             : speakModel === 'omnihuman'
                               ? 'OmniHuman 1.5: best gestures/quality, ideal for clips under 15s.'
-                              : 'Kling 3.0 (pro): best video quality; audio must be 5-30s, video capped at 15s.'}
+                              : 'Kling 3.0 (pro): best video quality, 2 steps (video + voice lipsync) — most expensive and slowest. Audio 5-30s, video capped at 15s.'}
                     </span>
                     {speakModel === 'omnihuman' && estimatedSeconds > 15 && (
                         <span className="text-[10px] text-amber-500">
