@@ -894,11 +894,17 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                     // 2. Talking-head con el motor elegido (InfiniteTalk / OmniHuman /
                     // Kling 3.0 con audio element) — submit async + poll desde el
                     // navegador, los jobs tardan 10-20 min.
-                    // Kling necesita 2-4 imágenes del personaje para su element.
-                    const speakElementImages = [
-                        optimizedPayload.faceRef,
-                        ...optimizedPayload.generalRefs,
-                    ].filter((r): r is { base64: string; mimeType: string } => !!r)
+                    // Kling necesita 2-4 imágenes del personaje para su element —
+                    // pero SOLO del personaje que habla: si hay imagen cargada en
+                    // el dropzone, ella es la única identidad (mezclar las refs
+                    // del avatar mete una segunda persona al video); sin imagen
+                    // cargada, el personaje es el avatar y sus refs aplican.
+                    const speakElementImages = videoInputImage?.base64
+                        ? []
+                        : [
+                              optimizedPayload.faceRef,
+                              ...optimizedPayload.generalRefs,
+                          ].filter((r): r is { base64: string; mimeType: string } => !!r)
 
                     try {
                         const speakModel = useAvatarStudioStore.getState().speakModel
