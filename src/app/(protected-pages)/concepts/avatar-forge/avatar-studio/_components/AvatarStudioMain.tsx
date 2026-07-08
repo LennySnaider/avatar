@@ -1860,7 +1860,9 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                 </div>
                 <div className="flex items-center gap-3">
                     {/* Provider Badge — en modo Speak el proveedor seleccionado NO
-                        genera: se muestra el motor real de talking-head (KIE). */}
+                        genera: se muestra el motor real de talking-head (KIE). El ×
+                        sale de Speak y restaura el selector de proveedor (antes el
+                        badge era estático y no había forma visible de salir). */}
                     {generationMode === 'VIDEO' && videoSubMode === 'SPEAK' ? (
                         <span className="flex items-center gap-2 px-3 py-1.5 bg-purple-500/10 rounded-lg">
                             <span className="w-2 h-2 rounded-full bg-purple-500" />
@@ -1873,6 +1875,14 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                                           : 'InfiniteTalk'
                                 } · KIE
                             </span>
+                            <button
+                                type="button"
+                                onClick={() => setVideoSubMode('ANIMATE')}
+                                title="Exit Speak mode — back to video providers"
+                                className="ml-1 p-0.5 rounded-full text-purple-400 hover:text-white hover:bg-purple-500 transition-colors"
+                            >
+                                <HiX className="w-3.5 h-3.5" />
+                            </button>
                         </span>
                     ) : (
                         <button
