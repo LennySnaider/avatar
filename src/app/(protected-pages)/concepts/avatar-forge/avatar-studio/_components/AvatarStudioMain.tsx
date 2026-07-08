@@ -800,9 +800,23 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                     }
                     const visualPrompt = useAvatarStudioStore.getState().prompt.trim()
 
-                    const speakImage = optimizedPayload.faceRef || optimizedPayload.generalRefs[0]
+                    // La imagen que habla: si hay una imagen cargada en el dropzone
+                    // (galería/upload) gana sobre las refs del avatar — permite el
+                    // flujo "imagen + guion → talking video". Sin imagen cargada,
+                    // se usa la face ref del avatar.
+                    let speakImage = optimizedPayload.faceRef || optimizedPayload.generalRefs[0]
+                    if (videoInputImage?.base64) {
+                        const optimizedSpeakInput = await optimizeImage(
+                            {
+                                base64: videoInputImage.base64,
+                                mimeType: videoInputImage.mimeType,
+                            },
+                            'API_FULL',
+                        )
+                        if (optimizedSpeakInput) speakImage = optimizedSpeakInput
+                    }
                     if (!speakImage) {
-                        throw new Error('Add avatar references (a face photo) before generating a talking video')
+                        throw new Error('Add avatar references (a face photo) or load an image before generating a talking video')
                     }
 
                     // 1. TTS con la voz principal del avatar → URL pública en Storage
