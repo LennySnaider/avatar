@@ -401,6 +401,29 @@ export async function apiUploadReference(
 }
 
 /**
+ * Signed upload URL so the browser can PUT gallery media straight to Supabase
+ * Storage. Sending the file through a server action 413s past ~4.5MB
+ * (Vercel's request cap) — videos always exceed it. Pair with
+ * `uploadToSignedUrl` client-side, then `apiSaveGeneration` for the row.
+ */
+export async function apiCreateGenerationUploadUrl(
+    userId: string,
+    mediaType: MediaType,
+): Promise<{ path: string; token: string }> {
+    const supabase = getSupabase()
+    const folder = mediaType === 'IMAGE' ? 'images' : 'videos'
+    const ext = mediaType === 'VIDEO' ? 'mp4' : 'jpg'
+    const path = `${userId}/${folder}/${Date.now()}.${ext}`
+    const { data, error } = await supabase.storage
+        .from('generations')
+        .createSignedUploadUrl(path)
+    if (error || !data) {
+        throw new Error(`Failed to create generation upload URL: ${error?.message ?? 'no data'}`)
+    }
+    return { path, token: data.token }
+}
+
+/**
  * Save a generation (upload file + create record)
  */
 export async function apiSaveGenerationWithFile(

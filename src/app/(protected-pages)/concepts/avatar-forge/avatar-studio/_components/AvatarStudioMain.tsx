@@ -17,8 +17,10 @@ import {
     apiCreateAvatar,
     apiUpdateAvatar,
     apiUploadReference,
-    apiSaveGenerationWithFile,
+    apiCreateGenerationUploadUrl,
+    apiSaveGeneration,
 } from '@/services/AvatarForgeService'
+import { supabase } from '@/lib/supabase'
 import {
     generateAvatar,
     generateVideoSafe as generateVideoGeminiSafe,
@@ -1685,16 +1687,25 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
             }
 
             try {
-                // Convert URL to blob and upload
+                // Download the media into the browser, then PUT it straight to
+                // Supabase via a signed URL — routing the file through a server
+                // action 413s past ~4.5MB (Vercel cap), which every video hits.
                 const response = await fetch(media.url)
                 const blob = await response.blob()
-                const file = new File([blob], `generation-${Date.now()}.${media.mediaType === 'VIDEO' ? 'mp4' : 'jpg'}`, {
-                    type: media.mediaType === 'VIDEO' ? 'video/mp4' : 'image/jpeg',
-                })
+                const contentType = media.mediaType === 'VIDEO' ? 'video/mp4' : 'image/jpeg'
 
-                await apiSaveGenerationWithFile(userId, avatarId, file, {
-                    prompt: media.prompt,
+                const { path, token } = await apiCreateGenerationUploadUrl(userId, media.mediaType)
+                const { error: uploadError } = await supabase.storage
+                    .from('generations')
+                    .uploadToSignedUrl(path, token, blob, { contentType })
+                if (uploadError) throw new Error(uploadError.message)
+
+                await apiSaveGeneration({
+                    user_id: userId,
+                    avatar_id: avatarId,
                     media_type: media.mediaType,
+                    storage_path: path,
+                    prompt: media.prompt,
                     aspect_ratio: media.aspectRatio,
                     metadata: media.metadata,
                 })
