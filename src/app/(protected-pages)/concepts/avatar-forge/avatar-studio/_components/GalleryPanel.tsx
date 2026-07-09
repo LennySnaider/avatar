@@ -10,18 +10,17 @@ import Spinner from '@/components/ui/Spinner'
 import ScrollBar from '@/components/ui/ScrollBar'
 import Notification from '@/components/ui/Notification'
 import toast from '@/components/ui/toast'
-import { HiOutlineTrash, HiOutlineDownload, HiOutlineFilm, HiOutlinePhotograph, HiOutlinePencilAlt, HiOutlineUpload, HiOutlineSearch, HiOutlineShare, HiOutlineSave } from 'react-icons/hi'
+import { HiOutlineTrash, HiOutlineDownload, HiOutlinePhotograph, HiOutlinePencilAlt, HiOutlineUpload, HiOutlineSearch, HiOutlineShare, HiOutlineSave } from 'react-icons/hi'
 import type { GeneratedMedia, AspectRatio, MediaType } from '../types'
 
 interface GalleryPanelProps {
-    onAnimateImage?: (media: GeneratedMedia) => void
     onCreateVariant?: (media: GeneratedMedia) => void
     onSaveToGallery?: (media: GeneratedMedia) => Promise<void>
     onPost?: (media: GeneratedMedia) => void
     onEditImage?: (media: GeneratedMedia) => void
 }
 
-const GalleryPanel = ({ onAnimateImage, onSaveToGallery, onPost, onEditImage }: GalleryPanelProps) => {
+const GalleryPanel = ({ onSaveToGallery, onPost, onEditImage }: GalleryPanelProps) => {
     const {
         gallery,
         isGenerating,
@@ -357,22 +356,8 @@ const GalleryPanel = ({ onAnimateImage, onSaveToGallery, onPost, onEditImage }: 
                                                             <span>Edit</span>
                                                         </Button>
                                                     )}
-                                                    {/* Video "Edit" moved into the preview modal's action bar
-                                                        (open the video → Edit) — the card overlay was crowded. */}
-                                                    {media.mediaType === 'IMAGE' && onAnimateImage && (
-                                                        <Button
-                                                            size="xs"
-                                                            variant="solid"
-                                                            color="purple"
-                                                            icon={<HiOutlineFilm />}
-                                                            onClick={(e) => {
-                                                                e.stopPropagation()
-                                                                onAnimateImage(media)
-                                                            }}
-                                                        >
-                                                            <span>Animate</span>
-                                                        </Button>
-                                                    )}
+                                                    {/* Video "Edit" and image "Animate" moved into the preview
+                                                        modal's action bar — the card overlay was crowded. */}
                                                     {onPost && (
                                                         <Button
                                                             size="xs"

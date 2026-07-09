@@ -1934,7 +1934,6 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
             {/* Gallery - Full Width */}
             <div className="flex-1 overflow-hidden">
                 <GalleryPanel
-                    onAnimateImage={handleAnimateImage}
                     onCreateVariant={handleCreateVariant}
                     onSaveToGallery={handleSaveToGallery}
                     onPost={(m: GeneratedMedia) => setPostMedia(m)}
