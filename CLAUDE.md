@@ -9,7 +9,7 @@ ECME is a Next.js 15 admin dashboard template built with TypeScript, React 19, a
 ## Commands
 
 ```bash
-# Development (runs on port 3001 with Turbopack)
+# Development (runs on port 3030 with Turbopack)
 npm run dev
 
 # Build

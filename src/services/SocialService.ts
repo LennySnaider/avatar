@@ -1,6 +1,5 @@
 'use server'
 
-import type { SupabaseClient } from '@supabase/supabase-js'
 import { auth } from '@/auth'
 import { createServerSupabaseClient, getStoragePublicUrl } from '@/lib/supabase'
 import { getSocialProvider, SOCIAL_USERNAME } from '@/lib/social/provider'
@@ -9,122 +8,7 @@ import { appendHashtagsToCaption } from '@/lib/social/hashtagHelpers'
 import { ALL_PLATFORMS } from '@/@types/social'
 import type { Platform, PlatformTarget } from '@/@types/social'
 import type { PublishResponse, ScheduledPost } from '@/lib/social/providers/SocialProvider'
-import type { Database as BaseDatabase, Json } from '@/@types/supabase'
-
-/**
- * `src/@types/supabase.ts` is a hand-maintained Database type that Task 2's
- * migration (social_profiles/social_posts) never got merged into. Rather than
- * edit that shared file (out of this task's file scope — see task-3 report),
- * extend it locally so queries against the two new tables stay fully typed.
- */
-type SocialProfilesTable = {
-    Row: {
-        id: string
-        upload_post_username: string
-        status: string
-        connected_platforms: Json
-        upload_post_metadata: Json | null
-        last_synced_at: string | null
-        created_at: string
-    }
-    Insert: {
-        id?: string
-        upload_post_username: string
-        status?: string
-        connected_platforms?: Json
-        upload_post_metadata?: Json | null
-        last_synced_at?: string | null
-        created_at?: string
-    }
-    Update: {
-        id?: string
-        upload_post_username?: string
-        status?: string
-        connected_platforms?: Json
-        upload_post_metadata?: Json | null
-        last_synced_at?: string | null
-        created_at?: string
-    }
-    Relationships: []
-}
-
-type SocialPostsTable = {
-    Row: {
-        id: string
-        social_profile_id: string | null
-        generation_id: string | null
-        user_id: string | null
-        caption: string
-        hashtags: string[]
-        content_type: string
-        media_urls: string[]
-        platforms: Json
-        status: string
-        scheduled_at: string | null
-        published_at: string | null
-        upload_post_request_id: string | null
-        upload_post_job_id: string | null
-        upload_post_response: Json | null
-        error_message: string | null
-        created_at: string
-        updated_at: string
-    }
-    Insert: {
-        id?: string
-        social_profile_id?: string | null
-        generation_id?: string | null
-        user_id?: string | null
-        caption?: string
-        hashtags?: string[]
-        content_type: string
-        media_urls?: string[]
-        platforms?: Json
-        status?: string
-        scheduled_at?: string | null
-        published_at?: string | null
-        upload_post_request_id?: string | null
-        upload_post_job_id?: string | null
-        upload_post_response?: Json | null
-        error_message?: string | null
-        created_at?: string
-        updated_at?: string
-    }
-    Update: {
-        id?: string
-        social_profile_id?: string | null
-        generation_id?: string | null
-        user_id?: string | null
-        caption?: string
-        hashtags?: string[]
-        content_type?: string
-        media_urls?: string[]
-        platforms?: Json
-        status?: string
-        scheduled_at?: string | null
-        published_at?: string | null
-        upload_post_request_id?: string | null
-        upload_post_job_id?: string | null
-        upload_post_response?: Json | null
-        error_message?: string | null
-        created_at?: string
-        updated_at?: string
-    }
-    Relationships: []
-}
-
-type SocialDatabase = BaseDatabase & {
-    public: BaseDatabase['public'] & {
-        Tables: BaseDatabase['public']['Tables'] & {
-            social_profiles: SocialProfilesTable
-            social_posts: SocialPostsTable
-        }
-    }
-}
-
-/** Service-role client typed to include the social_* tables (see note above). */
-function socialSupabase(): SupabaseClient<SocialDatabase> {
-    return createServerSupabaseClient() as unknown as SupabaseClient<SocialDatabase>
-}
+import type { Json } from '@/@types/supabase'
 
 export interface SocialResult<T> { success: boolean; data?: T; error?: string }
 
@@ -244,7 +128,7 @@ function findMatchingScheduledJob(
 export async function ensureSocialProfile(): Promise<SocialResult<SocialProfileRow>> {
     try {
         await requireSession()
-        const supabase = socialSupabase()
+        const supabase = createServerSupabaseClient()
         const { data: existing } = await supabase
             .from('social_profiles')
             .select('*')
@@ -275,7 +159,7 @@ export async function ensureSocialProfile(): Promise<SocialResult<SocialProfileR
 export async function getSocialProfileAction(): Promise<SocialResult<SocialProfileRow | null>> {
     try {
         await requireSession()
-        const supabase = socialSupabase()
+        const supabase = createServerSupabaseClient()
         const { data, error } = await supabase
             .from('social_profiles')
             .select('*')
@@ -310,7 +194,7 @@ export async function syncConnectedAccounts(): Promise<SocialResult<SocialProfil
         await requireSession()
         const provider = getSocialProvider()
         const profile = await provider.getProfile(SOCIAL_USERNAME)
-        const supabase = socialSupabase()
+        const supabase = createServerSupabaseClient()
         const { data, error } = await supabase
             .from('social_profiles')
             .update({
@@ -331,7 +215,7 @@ export async function syncConnectedAccounts(): Promise<SocialResult<SocialProfil
 export async function createSocialPost(input: CreateSocialPostInput): Promise<SocialResult<SocialPostRow>> {
     try {
         const userId = await requireSession()
-        const supabase = socialSupabase()
+        const supabase = createServerSupabaseClient()
 
         const { data: profile } = await supabase
             .from('social_profiles')
@@ -450,7 +334,7 @@ export async function createSocialPost(input: CreateSocialPostInput): Promise<So
 export async function listSocialPosts(): Promise<SocialResult<SocialPostRow[]>> {
     try {
         await requireSession()
-        const supabase = socialSupabase()
+        const supabase = createServerSupabaseClient()
         const { data, error } = await supabase
             .from('social_posts')
             .select('*')
@@ -466,7 +350,7 @@ export async function listSocialPosts(): Promise<SocialResult<SocialPostRow[]>> 
 export async function cancelScheduledPost(postId: string): Promise<SocialResult<SocialPostRow>> {
     try {
         await requireSession()
-        const supabase = socialSupabase()
+        const supabase = createServerSupabaseClient()
         const { data: post } = await supabase
             .from('social_posts').select('*').eq('id', postId).single()
         if (!post) return { success: false, error: 'Post not found' }

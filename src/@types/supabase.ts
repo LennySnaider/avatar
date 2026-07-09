@@ -273,6 +273,99 @@ export type Database = {
                 }
                 Relationships: []
             }
+            social_profiles: {
+                Row: {
+                    id: string
+                    upload_post_username: string
+                    status: string
+                    connected_platforms: Json
+                    upload_post_metadata: Json | null
+                    last_synced_at: string | null
+                    created_at: string
+                }
+                Insert: {
+                    id?: string
+                    upload_post_username: string
+                    status?: string
+                    connected_platforms?: Json
+                    upload_post_metadata?: Json | null
+                    last_synced_at?: string | null
+                    created_at?: string
+                }
+                Update: {
+                    id?: string
+                    upload_post_username?: string
+                    status?: string
+                    connected_platforms?: Json
+                    upload_post_metadata?: Json | null
+                    last_synced_at?: string | null
+                    created_at?: string
+                }
+                Relationships: []
+            }
+            social_posts: {
+                Row: {
+                    id: string
+                    social_profile_id: string | null
+                    generation_id: string | null
+                    user_id: string | null
+                    caption: string
+                    hashtags: string[]
+                    content_type: string
+                    media_urls: string[]
+                    platforms: Json
+                    status: string
+                    scheduled_at: string | null
+                    published_at: string | null
+                    upload_post_request_id: string | null
+                    upload_post_job_id: string | null
+                    upload_post_response: Json | null
+                    error_message: string | null
+                    created_at: string
+                    updated_at: string
+                }
+                Insert: {
+                    id?: string
+                    social_profile_id?: string | null
+                    generation_id?: string | null
+                    user_id?: string | null
+                    caption?: string
+                    hashtags?: string[]
+                    content_type: string
+                    media_urls?: string[]
+                    platforms?: Json
+                    status?: string
+                    scheduled_at?: string | null
+                    published_at?: string | null
+                    upload_post_request_id?: string | null
+                    upload_post_job_id?: string | null
+                    upload_post_response?: Json | null
+                    error_message?: string | null
+                    created_at?: string
+                    updated_at?: string
+                }
+                Update: {
+                    id?: string
+                    social_profile_id?: string | null
+                    generation_id?: string | null
+                    user_id?: string | null
+                    caption?: string
+                    hashtags?: string[]
+                    content_type?: string
+                    media_urls?: string[]
+                    platforms?: Json
+                    status?: string
+                    scheduled_at?: string | null
+                    published_at?: string | null
+                    upload_post_request_id?: string | null
+                    upload_post_job_id?: string | null
+                    upload_post_response?: Json | null
+                    error_message?: string | null
+                    created_at?: string
+                    updated_at?: string
+                }
+                Relationships: []
+            }
         }
         Views: {
             [_ in never]: never
