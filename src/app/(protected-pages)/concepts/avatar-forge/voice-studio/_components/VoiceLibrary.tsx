@@ -18,8 +18,36 @@ export default function VoiceLibrary({ avatars }: VoiceLibraryProps) {
         selectedVoiceId,
         setSelectedVoiceId,
         setVoices,
+        setPreviewAudioUrl,
         bumpSettingsEdit,
     } = useVoiceStudioStore()
+
+    // "Edit": selecciona la voz, carga sus ajustes guardados en los sliders y
+    // pone su audio de preview en el player — así Speed/Bass/Treble (live)
+    // se pueden mover de inmediato sin generar un audio nuevo.
+    const handleEdit = async (voiceId: string) => {
+        setSelectedVoiceId(voiceId)
+        bumpSettingsEdit()
+        const voice = voices.find((v) => v.id === voiceId)
+        let url = voice?.preview_audio_url ?? null
+        if (!url) {
+            try {
+                const res = await fetch('/api/voice/preview', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ voiceId }),
+                })
+                if (res.ok) {
+                    const { previewUrl } = await res.json()
+                    url = previewUrl
+                    setVoices(voices.map((v) => (v.id === voiceId ? { ...v, preview_audio_url: previewUrl } : v)))
+                }
+            } catch (err) {
+                console.error('Failed to load voice preview for editing:', err)
+            }
+        }
+        if (url) setPreviewAudioUrl(url)
+    }
 
     // Preview de la voz clonada: un solo <audio> compartido; la primera vez
     // el endpoint genera la frase TTS y la cachea en la voz.
@@ -157,11 +185,10 @@ export default function VoiceLibrary({ avatars }: VoiceLibraryProps) {
                                 <Button
                                     size="xs"
                                     variant="plain"
-                                    title="Load this voice's saved delivery into the sliders"
+                                    title="Load this voice's saved delivery into the sliders (and its preview audio into the player)"
                                     onClick={(e) => {
                                         e.stopPropagation()
-                                        setSelectedVoiceId(voice.id)
-                                        bumpSettingsEdit()
+                                        handleEdit(voice.id)
                                     }}
                                 >
                                     Edit
