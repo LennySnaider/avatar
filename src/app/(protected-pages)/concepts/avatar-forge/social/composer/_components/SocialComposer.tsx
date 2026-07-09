@@ -5,7 +5,6 @@ import { useRouter } from 'next/navigation'
 import Card from '@/components/ui/Card'
 import Button from '@/components/ui/Button'
 import Input from '@/components/ui/Input'
-import Tag from '@/components/ui/Tag'
 import Checkbox from '@/components/ui/Checkbox'
 import Radio from '@/components/ui/Radio'
 import DatePicker from '@/components/ui/DatePicker'
@@ -13,7 +12,7 @@ import Notification from '@/components/ui/Notification'
 import toast from '@/components/ui/toast'
 import { HiOutlineX, HiOutlineSparkles } from 'react-icons/hi'
 import { createSocialPost } from '@/services/SocialService'
-import { generateSocialCaption } from '@/services/GeminiService'
+import { generateSocialCaption, translateSocialCaption } from '@/services/GeminiService'
 import { normalizeHashtag } from '@/lib/social/hashtagHelpers'
 import type { MediaType } from '@/@types/supabase'
 
@@ -49,7 +48,10 @@ const SocialComposer = ({ media, generationId, platforms, libraryImages = [] }: 
     // start empty and let "Generate with AI" write a real one.
     const [caption, setCaption] = useState('')
     const [hashtagInput, setHashtagInput] = useState('')
-    const [hashtags, setHashtags] = useState<string[]>([])
+    // Hashtags are toggleable chips: only the active ones are published.
+    const [hashtags, setHashtags] = useState<{ tag: string; active: boolean }[]>([])
+    const [captionLang, setCaptionLang] = useState<'en' | 'es'>('en')
+    const [isTranslating, setIsTranslating] = useState(false)
     const [selectedPlatforms, setSelectedPlatforms] = useState<string[]>(platforms)
     const [scheduleMode, setScheduleMode] = useState<ScheduleMode>('now')
     const [scheduleDate, setScheduleDate] = useState<Date | null>(null)
@@ -78,21 +80,56 @@ const SocialComposer = ({ media, generationId, platforms, libraryImages = [] }: 
                 mediaUrl: media.publicUrl,
                 mediaType: media.mediaType,
                 draft: caption.trim() || undefined,
+                language: captionLang,
             })
             if (!result.success || !result.caption) {
                 setError(result.error ?? 'AI caption generation failed')
                 return
             }
             setCaption(result.caption)
-            const normalized = (result.hashtags ?? [])
-                .map((h) => normalizeHashtag(h))
-                .filter((h): h is string => Boolean(h))
-            setHashtags((prev) => Array.from(new Set([...prev, ...normalized])))
+            mergeHashtags(result.hashtags ?? [])
         } catch (err) {
             setError(err instanceof Error ? err.message : String(err))
         } finally {
             setIsGeneratingAi(false)
         }
+    }
+
+    const handleTranslate = async () => {
+        if (!caption.trim() && hashtags.length === 0) return
+        setIsTranslating(true)
+        setError(null)
+        try {
+            const result = await translateSocialCaption({
+                caption,
+                hashtags: hashtags.filter((h) => h.active).map((h) => h.tag),
+                targetLanguage: captionLang,
+            })
+            if (!result.success || !result.caption) {
+                setError(result.error ?? 'Translation failed')
+                return
+            }
+            setCaption(result.caption)
+            // Translation replaces the set (translated tags arrive active)
+            const translated = (result.hashtags ?? [])
+                .map((h) => normalizeHashtag(h))
+                .filter((h): h is string => Boolean(h))
+            setHashtags(Array.from(new Set(translated)).map((tag) => ({ tag, active: true })))
+        } catch (err) {
+            setError(err instanceof Error ? err.message : String(err))
+        } finally {
+            setIsTranslating(false)
+        }
+    }
+
+    const mergeHashtags = (incoming: string[]) => {
+        const normalized = incoming
+            .map((h) => normalizeHashtag(h))
+            .filter((h): h is string => Boolean(h))
+        setHashtags((prev) => {
+            const existing = new Set(prev.map((h) => h.tag))
+            return [...prev, ...normalized.filter((t) => !existing.has(t)).map((tag) => ({ tag, active: true }))]
+        })
     }
 
     const addHashtag = () => {
@@ -101,7 +138,7 @@ const SocialComposer = ({ media, generationId, platforms, libraryImages = [] }: 
             setHashtagInput('')
             return
         }
-        setHashtags((prev) => (prev.includes(normalized) ? prev : [...prev, normalized]))
+        mergeHashtags([normalized])
         setHashtagInput('')
     }
 
@@ -112,8 +149,12 @@ const SocialComposer = ({ media, generationId, platforms, libraryImages = [] }: 
         }
     }
 
+    const toggleHashtag = (tag: string) => {
+        setHashtags((prev) => prev.map((h) => (h.tag === tag ? { ...h, active: !h.active } : h)))
+    }
+
     const removeHashtag = (tag: string) => {
-        setHashtags((prev) => prev.filter((h) => h !== tag))
+        setHashtags((prev) => prev.filter((h) => h.tag !== tag))
     }
 
     const togglePlatform = (platform: string, checked: boolean) => {
@@ -148,7 +189,7 @@ const SocialComposer = ({ media, generationId, platforms, libraryImages = [] }: 
                 generationId,
                 generationIds: canCarousel ? carouselIds : undefined,
                 caption,
-                hashtags,
+                hashtags: hashtags.filter((h) => h.active).map((h) => h.tag),
                 platforms: selectedPlatforms,
                 scheduledAt,
             })
@@ -229,18 +270,48 @@ const SocialComposer = ({ media, generationId, platforms, libraryImages = [] }: 
             </Card>
 
             <Card>
-                <div className="flex items-center justify-between mb-2">
+                <div className="flex items-center justify-between mb-2 flex-wrap gap-2">
                     <p className="text-sm font-semibold">Caption</p>
-                    <Button
-                        size="xs"
-                        variant="plain"
-                        loading={isGeneratingAi}
-                        disabled={!media || isGeneratingAi}
-                        icon={<HiOutlineSparkles />}
-                        onClick={handleGenerateWithAi}
-                    >
-                        {isGeneratingAi ? 'Generating…' : 'Generate with AI'}
-                    </Button>
+                    <div className="flex items-center gap-2">
+                        <div className="flex bg-gray-100 dark:bg-gray-700 rounded p-0.5">
+                            {(['en', 'es'] as const).map((lang) => (
+                                <button
+                                    key={lang}
+                                    type="button"
+                                    onClick={() => setCaptionLang(lang)}
+                                    className={`px-2 py-0.5 text-[10px] font-medium rounded uppercase transition-colors ${
+                                        captionLang === lang
+                                            ? 'bg-primary text-white'
+                                            : 'text-gray-500'
+                                    }`}
+                                >
+                                    {lang}
+                                </button>
+                            ))}
+                        </div>
+                        {(caption.trim() || hashtags.length > 0) && (
+                            <Button
+                                size="xs"
+                                variant="plain"
+                                loading={isTranslating}
+                                disabled={isTranslating || isGeneratingAi}
+                                onClick={handleTranslate}
+                                title={`Translate caption + hashtags to ${captionLang.toUpperCase()}`}
+                            >
+                                {isTranslating ? 'Translating…' : `Translate → ${captionLang.toUpperCase()}`}
+                            </Button>
+                        )}
+                        <Button
+                            size="xs"
+                            variant="plain"
+                            loading={isGeneratingAi}
+                            disabled={!media || isGeneratingAi || isTranslating}
+                            icon={<HiOutlineSparkles />}
+                            onClick={handleGenerateWithAi}
+                        >
+                            {isGeneratingAi ? 'Generating…' : 'Generate with AI'}
+                        </Button>
+                    </div>
                 </div>
                 <Input
                     textArea
@@ -262,21 +333,38 @@ const SocialComposer = ({ media, generationId, platforms, libraryImages = [] }: 
                     placeholder="Type a hashtag and press Enter"
                 />
                 {hashtags.length > 0 && (
-                    <div className="flex flex-wrap gap-2 mt-2">
-                        {hashtags.map((tag) => (
-                            <Tag key={tag} className="flex items-center gap-1">
-                                #{tag}
-                                <button
-                                    type="button"
-                                    onClick={() => removeHashtag(tag)}
-                                    className="ml-1 cursor-pointer"
-                                    aria-label={`Remove #${tag}`}
+                    <>
+                        <div className="flex flex-wrap gap-2 mt-2">
+                            {hashtags.map(({ tag, active }) => (
+                                <span
+                                    key={tag}
+                                    onClick={() => toggleHashtag(tag)}
+                                    title={active ? 'Click to exclude from the post' : 'Click to include in the post'}
+                                    className={`inline-flex items-center gap-1 px-2 py-1 rounded-md text-xs font-semibold cursor-pointer select-none transition-colors border ${
+                                        active
+                                            ? 'bg-primary/15 text-primary border-primary/40'
+                                            : 'bg-gray-100 dark:bg-gray-700 text-gray-400 border-transparent opacity-60 line-through'
+                                    }`}
                                 >
-                                    <HiOutlineX />
-                                </button>
-                            </Tag>
-                        ))}
-                    </div>
+                                    #{tag}
+                                    <button
+                                        type="button"
+                                        onClick={(e) => {
+                                            e.stopPropagation()
+                                            removeHashtag(tag)
+                                        }}
+                                        className="ml-1 cursor-pointer"
+                                        aria-label={`Remove #${tag}`}
+                                    >
+                                        <HiOutlineX />
+                                    </button>
+                                </span>
+                            ))}
+                        </div>
+                        <p className="text-xs text-gray-400 mt-2">
+                            {hashtags.filter((h) => h.active).length} of {hashtags.length} selected — click a tag to toggle it
+                        </p>
+                    </>
                 )}
             </Card>
 

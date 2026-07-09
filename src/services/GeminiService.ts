@@ -394,6 +394,8 @@ export async function generateSocialCaption(input: {
     mediaUrl: string
     mediaType: 'IMAGE' | 'VIDEO'
     draft?: string
+    /** Output language for caption + hashtags; defaults to English (or the draft's language). */
+    language?: 'en' | 'es'
 }): Promise<SocialCaptionResult> {
     try {
         const res = await fetch(input.mediaUrl)
@@ -418,7 +420,8 @@ CAPTION:
 - First person, as if the influencer herself is posting.
 - 1-3 short sentences, engaging and scroll-stopping. Tasteful emojis (0-3).
 - NO hashtags inside the caption.
-${input.draft?.trim() ? `- The user drafted this — keep its language and intent, improve it: "${input.draft.trim()}"` : '- Write in English.'}
+${input.language ? `- Write the caption AND hashtags in ${input.language === 'es' ? 'SPANISH' : 'ENGLISH'}.` : ''}
+${input.draft?.trim() ? `- The user drafted this — keep its intent${input.language ? '' : ' and language'}, improve it: "${input.draft.trim()}"` : input.language ? '' : '- Write in English.'}
 
 HASHTAGS:
 - 8-12 relevant hashtags, lowercase, WITHOUT the # symbol.
@@ -459,6 +462,71 @@ HASHTAGS:
         }
     } catch (e) {
         console.error('[GeminiService] generateSocialCaption failed', e)
+        return { success: false, error: e instanceof Error ? e.message : String(e) }
+    }
+}
+
+/**
+ * Translate an existing social caption + hashtags to the target language.
+ * Text-only (no media fetch) — keeps the influencer tone and emojis, localizes
+ * hashtags where it makes sense (globally-recognized tags like place names
+ * stay). Error-as-data.
+ */
+export async function translateSocialCaption(input: {
+    caption: string
+    hashtags: string[]
+    targetLanguage: 'en' | 'es'
+}): Promise<SocialCaptionResult> {
+    try {
+        const apiKey = getApiKey()
+        const ai = new GoogleGenAI({ apiKey })
+        const langName = input.targetLanguage === 'es' ? 'SPANISH' : 'ENGLISH'
+
+        const instructions = `
+Translate this social media post to ${langName}. Keep the influencer tone,
+energy and emojis — a natural native rewrite, not a literal translation.
+
+CAPTION:
+"${input.caption}"
+
+HASHTAGS (no # symbol): ${input.hashtags.join(', ') || '(none)'}
+
+Rules:
+- Translate the caption naturally to ${langName}.
+- Localize hashtags to ${langName} where the concept translates (e.g. travel → viaje);
+  KEEP globally-recognized tags as-is (place names like nyc, brand names, universal tags).
+- Return hashtags lowercase, WITHOUT the # symbol, same count or fewer (dedupe).
+`
+
+        const response = await ai.models.generateContent({
+            model: 'gemini-2.5-flash',
+            contents: { parts: [{ text: instructions }] },
+            config: {
+                responseMimeType: 'application/json',
+                responseSchema: {
+                    type: Type.OBJECT,
+                    properties: {
+                        caption: { type: Type.STRING },
+                        hashtags: { type: Type.ARRAY, items: { type: Type.STRING } },
+                    },
+                    required: ['caption', 'hashtags'],
+                },
+            },
+        })
+
+        const raw = response.text
+        if (!raw) return { success: false, error: 'Gemini returned an empty translation' }
+        const parsed = JSON.parse(raw) as { caption: string; hashtags: string[] }
+        if (!parsed.caption?.trim()) {
+            return { success: false, error: 'Gemini returned an empty caption' }
+        }
+        return {
+            success: true,
+            caption: parsed.caption.trim(),
+            hashtags: (parsed.hashtags ?? []).map((h) => h.replace(/^#/, '').trim()).filter(Boolean),
+        }
+    } catch (e) {
+        console.error('[GeminiService] translateSocialCaption failed', e)
         return { success: false, error: e instanceof Error ? e.message : String(e) }
     }
 }
