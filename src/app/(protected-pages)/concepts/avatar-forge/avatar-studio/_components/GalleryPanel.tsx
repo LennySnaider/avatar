@@ -1,47 +1,50 @@
 'use client'
 
-import { useRef } from 'react'
+import { useRef, useState } from 'react'
 import { useAvatarStudioStore } from '../_store/avatarStudioStore'
 import { downloadMediaUrl } from '../../_utils/mediaDownload'
 import Button from '@/components/ui/Button'
 import Card from '@/components/ui/Card'
+import Input from '@/components/ui/Input'
 import Spinner from '@/components/ui/Spinner'
 import ScrollBar from '@/components/ui/ScrollBar'
 import Notification from '@/components/ui/Notification'
 import toast from '@/components/ui/toast'
-import { HiOutlineTrash, HiOutlineDownload, HiOutlineFilm, HiOutlinePhotograph, HiOutlinePencilAlt, HiOutlineUpload, HiOutlineScissors } from 'react-icons/hi'
-import { useRouter } from 'next/navigation'
-import type { GeneratedMedia, AspectRatio } from '../types'
+import { HiOutlineTrash, HiOutlineDownload, HiOutlineFilm, HiOutlinePhotograph, HiOutlinePencilAlt, HiOutlineUpload, HiOutlineSearch, HiOutlineShare, HiOutlineSave } from 'react-icons/hi'
+import type { GeneratedMedia, AspectRatio, MediaType } from '../types'
 
 interface GalleryPanelProps {
     onAnimateImage?: (media: GeneratedMedia) => void
     onCreateVariant?: (media: GeneratedMedia) => void
     onSaveToGallery?: (media: GeneratedMedia) => Promise<void>
+    onPost?: (media: GeneratedMedia) => void
+    onEditImage?: (media: GeneratedMedia) => void
 }
 
-const GalleryPanel = ({ onAnimateImage, onSaveToGallery }: GalleryPanelProps) => {
+const GalleryPanel = ({ onAnimateImage, onSaveToGallery, onPost, onEditImage }: GalleryPanelProps) => {
     const {
         gallery,
         isGenerating,
         setPreviewMedia,
         removeFromGallery,
         addToGallery,
-        openEditor,
     } = useAvatarStudioStore()
 
     const uploadInputRef = useRef<HTMLInputElement>(null)
-    const router = useRouter()
 
-    // Open the Video Editor with the selected video preloaded. The editor
-    // reads `videoEditorImport` from sessionStorage on mount and calls its
-    // own loadVideo() — same pattern as the Avatar Studio "studioImport".
-    const handleEditVideo = (media: GeneratedMedia) => {
-        sessionStorage.setItem(
-            'videoEditorImport',
-            JSON.stringify({ url: media.url, prompt: media.prompt }),
-        )
-        router.push('/concepts/avatar-forge/video-editor')
-    }
+    const [searchQuery, setSearchQuery] = useState('')
+    const [mediaTypeFilter, setMediaTypeFilter] = useState<MediaType | 'ALL'>('ALL')
+
+    // Client-side filter — ports the search + media-type approach from
+    // ../../gallery/_components/GenerationGallery.tsx.
+    const filteredGallery = gallery.filter((media) => {
+        const matchesSearch =
+            !searchQuery ||
+            media.prompt.toLowerCase().includes(searchQuery.toLowerCase())
+        const matchesType =
+            mediaTypeFilter === 'ALL' || media.mediaType === mediaTypeFilter
+        return matchesSearch && matchesType
+    })
 
     const detectAspectRatio = (width: number, height: number): AspectRatio => {
         const ratio = width / height
@@ -120,6 +123,38 @@ const GalleryPanel = ({ onAnimateImage, onSaveToGallery }: GalleryPanelProps) =>
         )
     }
 
+    // Delete with a confirmation toast so an accidental click on the hover
+    // overlay can't wipe a generation. Only "Delete" actually removes it.
+    const confirmDelete = (media: GeneratedMedia) => {
+        let key = ''
+        key = toast.push(
+            <Notification type="warning" title="Delete this generation?" duration={0}>
+                <p className="text-xs mb-2">It will be removed from your gallery.</p>
+                <div className="flex gap-2">
+                    <Button
+                        size="xs"
+                        variant="solid"
+                        color="red"
+                        onClick={() => {
+                            removeFromGallery(media.id)
+                            toast.remove(key)
+                        }}
+                    >
+                        Delete
+                    </Button>
+                    <Button
+                        size="xs"
+                        variant="plain"
+                        onClick={() => toast.remove(key)}
+                    >
+                        Cancel
+                    </Button>
+                </div>
+            </Notification>,
+            { placement: 'top-center' },
+        ) as string
+    }
+
     // Stitch/montage moved to the Video Editor as the "Combine" mode —
     // see src/app/.../video-editor/_components/VideoEditorMain.tsx.
     // The gallery no longer manages selection or processing state.
@@ -153,6 +188,29 @@ const GalleryPanel = ({ onAnimateImage, onSaveToGallery }: GalleryPanelProps) =>
                         </div>
                     </div>
 
+                    {/* Search + Media Type Filter */}
+                    {gallery.length > 0 && (
+                        <div className="flex items-center gap-2 mb-4">
+                            <Input
+                                size="sm"
+                                placeholder="Search by prompt..."
+                                prefix={<HiOutlineSearch className="text-lg" />}
+                                value={searchQuery}
+                                onChange={(e) => setSearchQuery(e.target.value)}
+                                className="flex-1"
+                            />
+                            <select
+                                value={mediaTypeFilter}
+                                onChange={(e) => setMediaTypeFilter(e.target.value as MediaType | 'ALL')}
+                                className="w-28 px-3 py-1.5 text-sm border rounded-lg bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-600"
+                            >
+                                <option value="ALL">All</option>
+                                <option value="IMAGE">Images</option>
+                                <option value="VIDEO">Videos</option>
+                            </select>
+                        </div>
+                    )}
+
                     {/* Empty State */}
                     {gallery.length === 0 && !isGenerating && (
                         <div className="flex flex-col items-center justify-center h-64 text-gray-400">
@@ -172,6 +230,14 @@ const GalleryPanel = ({ onAnimateImage, onSaveToGallery }: GalleryPanelProps) =>
                         </div>
                     )}
 
+                    {/* No Matches State */}
+                    {gallery.length > 0 && filteredGallery.length === 0 && !isGenerating && (
+                        <div className="flex flex-col items-center justify-center h-40 text-gray-400">
+                            <HiOutlinePhotograph className="w-8 h-8 mb-2" />
+                            <p className="text-sm">No media matches your filters</p>
+                        </div>
+                    )}
+
                     {/* Gallery Grid */}
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                         {/* Generating Placeholder */}
@@ -185,7 +251,7 @@ const GalleryPanel = ({ onAnimateImage, onSaveToGallery }: GalleryPanelProps) =>
                         )}
 
                         {/* Gallery Items */}
-                        {gallery.map((media) => {
+                        {filteredGallery.map((media) => {
                             return (
                                 <Card
                                     key={media.id}
@@ -200,7 +266,11 @@ const GalleryPanel = ({ onAnimateImage, onSaveToGallery }: GalleryPanelProps) =>
                                                 className="w-full h-auto"
                                                 muted
                                                 loop
-                                                onMouseOver={(e) => e.currentTarget.play()}
+                                                onMouseOver={(e) => {
+                                                    e.currentTarget
+                                                        .play()
+                                                        .catch(() => {})
+                                                }}
                                                 onMouseOut={(e) => e.currentTarget.pause()}
                                             />
                                         ) : (
@@ -225,6 +295,28 @@ const GalleryPanel = ({ onAnimateImage, onSaveToGallery }: GalleryPanelProps) =>
                                         </span>
                                     </div>
 
+                                    {/* Save State Indicator */}
+                                    {media.saveState && (
+                                        <div className="absolute bottom-2 right-2 z-10">
+                                            {media.saveState === 'saving' && (
+                                                <span className="px-2 py-1 text-[10px] font-medium rounded bg-black/70 text-white inline-flex items-center gap-1">
+                                                    <Spinner size={12} />
+                                                    Saving
+                                                </span>
+                                            )}
+                                            {media.saveState === 'saved' && (
+                                                <span className="px-2 py-1 text-[10px] font-medium rounded bg-emerald-500 text-white inline-block">
+                                                    Saved
+                                                </span>
+                                            )}
+                                            {media.saveState === 'error' && (
+                                                <span className="px-2 py-1 text-[10px] font-medium rounded bg-red-500 text-white inline-block">
+                                                    Save failed
+                                                </span>
+                                            )}
+                                        </div>
+                                    )}
+
                                     {/* Provider/Model Badge */}
                                     {media.providerName && (
                                         <div className="absolute top-2 left-2">
@@ -241,7 +333,7 @@ const GalleryPanel = ({ onAnimateImage, onSaveToGallery }: GalleryPanelProps) =>
                                                 <p className="text-xs text-white line-clamp-2">{media.prompt}</p>
 
                                                 {/* Actions */}
-                                                <div className="flex gap-2">
+                                                <div className="flex flex-wrap gap-2 items-center">
                                                     <Button
                                                         size="xs"
                                                         variant="solid"
@@ -251,7 +343,7 @@ const GalleryPanel = ({ onAnimateImage, onSaveToGallery }: GalleryPanelProps) =>
                                                             handleDownload(media)
                                                         }}
                                                     />
-                                                    {media.mediaType === 'IMAGE' && (
+                                                    {media.mediaType === 'IMAGE' && onEditImage && (
                                                         <Button
                                                             size="xs"
                                                             variant="solid"
@@ -259,26 +351,14 @@ const GalleryPanel = ({ onAnimateImage, onSaveToGallery }: GalleryPanelProps) =>
                                                             icon={<HiOutlinePencilAlt />}
                                                             onClick={(e) => {
                                                                 e.stopPropagation()
-                                                                openEditor(media)
+                                                                onEditImage(media)
                                                             }}
                                                         >
                                                             <span>Edit</span>
                                                         </Button>
                                                     )}
-                                                    {media.mediaType === 'VIDEO' && (
-                                                        <Button
-                                                            size="xs"
-                                                            variant="solid"
-                                                            color="blue"
-                                                            icon={<HiOutlineScissors />}
-                                                            onClick={(e) => {
-                                                                e.stopPropagation()
-                                                                handleEditVideo(media)
-                                                            }}
-                                                        >
-                                                            <span>Edit</span>
-                                                        </Button>
-                                                    )}
+                                                    {/* Video "Edit" moved into the preview modal's action bar
+                                                        (open the video → Edit) — the card overlay was crowded. */}
                                                     {media.mediaType === 'IMAGE' && onAnimateImage && (
                                                         <Button
                                                             size="xs"
@@ -293,28 +373,50 @@ const GalleryPanel = ({ onAnimateImage, onSaveToGallery }: GalleryPanelProps) =>
                                                             <span>Animate</span>
                                                         </Button>
                                                     )}
-                                                    {onSaveToGallery && (
+                                                    {onPost && (
                                                         <Button
                                                             size="xs"
-                                                            variant="plain"
+                                                            variant="solid"
+                                                            color="green"
+                                                            icon={<HiOutlineShare />}
+                                                            disabled={media.saveState !== 'saved'}
                                                             onClick={(e) => {
                                                                 e.stopPropagation()
-                                                                onSaveToGallery(media)
+                                                                onPost(media)
                                                             }}
                                                         >
-                                                            <span>Save</span>
+                                                            <span>Post</span>
                                                         </Button>
                                                     )}
-                                                    <Button
-                                                        size="xs"
-                                                        variant="plain"
-                                                        color="red"
-                                                        icon={<HiOutlineTrash />}
-                                                        onClick={(e) => {
-                                                            e.stopPropagation()
-                                                            removeFromGallery(media.id)
-                                                        }}
-                                                    />
+                                                    {/* Save + Delete grouped on the right, both solid so
+                                                        they stay visible over the image. */}
+                                                    <div className="ml-auto flex gap-1.5">
+                                                        {onSaveToGallery && (
+                                                            <Button
+                                                                size="xs"
+                                                                variant="solid"
+                                                                icon={<HiOutlineSave />}
+                                                                onClick={(e) => {
+                                                                    e.stopPropagation()
+                                                                    onSaveToGallery(media)
+                                                                }}
+                                                            >
+                                                                <span>Save</span>
+                                                            </Button>
+                                                        )}
+                                                        <Button
+                                                            size="xs"
+                                                            variant="solid"
+                                                            color="red"
+                                                            icon={<HiOutlineTrash />}
+                                                            onClick={(e) => {
+                                                                e.stopPropagation()
+                                                                confirmDelete(media)
+                                                            }}
+                                                        >
+                                                            <span>Delete</span>
+                                                        </Button>
+                                                    </div>
                                                 </div>
                                             </div>
                                         </div>

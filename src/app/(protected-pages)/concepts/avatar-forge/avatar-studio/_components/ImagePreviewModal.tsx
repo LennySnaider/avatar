@@ -33,6 +33,7 @@ import {
     HiOutlineFastForward,
     HiOutlineChevronDoubleLeft,
     HiOutlineChevronDoubleRight,
+    HiOutlineShare,
 } from 'react-icons/hi'
 import { HiOutlineArrowUturnLeft, HiOutlineArrowUturnRight } from 'react-icons/hi2'
 import Tooltip from '@/components/ui/Tooltip'
@@ -61,6 +62,9 @@ interface ImagePreviewModalProps {
         identityModel: 'seedance' | 'kling-omni' | 'veo-3-1',
     ) => void
     onReuse?: (media: GeneratedMedia) => void
+    onPost?: (media: GeneratedMedia) => void
+    /** Opens the Video Editor with this video (moved here from the gallery card overlay). */
+    onEditVideo?: (media: GeneratedMedia) => void
 }
 
 const ImagePreviewModal = ({
@@ -70,8 +74,10 @@ const ImagePreviewModal = ({
     onSave,
     onContinueVideo,
     onReuse,
+    onPost,
+    onEditVideo,
 }: ImagePreviewModalProps) => {
-    const { gallery, previewMedia, setPreviewMedia, removeFromGallery, addToGallery, videoDialogue, providers, activeProviderId } = useAvatarStudioStore()
+    const { gallery, previewMedia, previewStartInEdit, setPreviewMedia, removeFromGallery, addToGallery, videoDialogue, providers, activeProviderId } = useAvatarStudioStore()
 
     // Image-supporting providers available for editing override
     const imageProviders = providers.filter(p => p.supports_image)
@@ -90,11 +96,20 @@ const ImagePreviewModal = ({
     const [cropPosition, setCropPosition] = useState({ x: 0, y: 0 })
     const [cropScale, setCropScale] = useState(100) // Percentage 30-100
     const [isDraggingCrop, setIsDraggingCrop] = useState(false)
+    // Crop is OPT-IN: the crop overlay/slider only appear after the user clicks
+    // the Crop button. Entering edit-mode defaults to the AI-edit UI.
+    const [isCropping, setIsCropping] = useState(false)
     const [dragStart, setDragStart] = useState({ x: 0, y: 0 })
     const [zoomLevel, setZoomLevel] = useState(1)
-    const [panPosition, setPanPosition] = useState({ x: 0, y: 0 })
     const [isPanning, setIsPanning] = useState(false)
-    const [panStart, setPanStart] = useState({ x: 0, y: 0 })
+    // Drag-to-pan scrolls the overflow-auto media container; we stash the
+    // pointer + scroll origin here on mousedown.
+    const dragScrollRef = useRef<{
+        startX: number
+        startY: number
+        scrollLeft: number
+        scrollTop: number
+    } | null>(null)
     const [isPromptExpanded, setIsPromptExpanded] = useState(false)
     const [showApiPrompt, setShowApiPrompt] = useState(false)
     const [editAssets, setEditAssets] = useState<EditAsset[]>([])
@@ -148,8 +163,8 @@ const ImagePreviewModal = ({
         setEditPrompt('')
         setMaskCanvas(null)
         setIsDrawingMask(false)
+        setIsCropping(false)
         setZoomLevel(1)
-        setPanPosition({ x: 0, y: 0 })
         setEditAssets([])
     }, [setPreviewMedia])
 
@@ -194,16 +209,11 @@ const ImagePreviewModal = ({
     }, [])
 
     const handleZoomOut = useCallback(() => {
-        setZoomLevel(prev => {
-            const newZoom = Math.max(prev - 0.25, 1)
-            if (newZoom === 1) setPanPosition({ x: 0, y: 0 })
-            return newZoom
-        })
+        setZoomLevel(prev => Math.max(prev - 0.25, 1))
     }, [])
 
     const handleResetZoom = useCallback(() => {
         setZoomLevel(1)
-        setPanPosition({ x: 0, y: 0 })
     }, [])
 
     // Mouse wheel zoom — use native listener with { passive: false }
@@ -224,43 +234,38 @@ const ImagePreviewModal = ({
         return () => el.removeEventListener('wheel', onWheel)
     }, [isEditing, handleZoomIn, handleZoomOut, previewMedia])
 
-    // Clamp pan to the actual overflow of the rendered image vs the viewport,
-    // so any zoomed-in region (including the bottom of tall images) is reachable.
-    const clampPan = useCallback((pos: { x: number; y: number }) => {
-        const img = imageRef.current
-        const viewport = viewportRef.current
-        if (!img || !viewport) return pos
-        const maxX = Math.max(0, (img.offsetWidth - viewport.clientWidth) / 2)
-        const maxY = Math.max(0, (img.offsetHeight - viewport.clientHeight) / 2)
-        return {
-            x: Math.max(-maxX, Math.min(pos.x, maxX)),
-            y: Math.max(-maxY, Math.min(pos.y, maxY)),
-        }
-    }, [])
-
-    // Pan handlers for zoomed image
+    // Drag-to-pan: grabbing the zoomed image scrolls the overflow-auto media
+    // container. Driving the container's own scrollLeft/scrollTop means every
+    // region (incl. the bottom of tall images) is reachable, with no
+    // translate/clamp jank.
     const handlePanStart = useCallback((e: React.MouseEvent) => {
-        if (zoomLevel <= 1 || isEditing) return
+        const el = mediaContainerRef.current
+        if (!el || isEditing) return
+        const canScroll =
+            el.scrollHeight > el.clientHeight || el.scrollWidth > el.clientWidth
+        if (!canScroll) return
         e.preventDefault()
         setIsPanning(true)
-        setPanStart({ x: e.clientX - panPosition.x, y: e.clientY - panPosition.y })
-    }, [zoomLevel, isEditing, panPosition])
+        dragScrollRef.current = {
+            startX: e.clientX,
+            startY: e.clientY,
+            scrollLeft: el.scrollLeft,
+            scrollTop: el.scrollTop,
+        }
+    }, [isEditing])
 
     const handlePanMove = useCallback((e: MouseEvent) => {
-        if (!isPanning) return
-        setPanPosition(clampPan({ x: e.clientX - panStart.x, y: e.clientY - panStart.y }))
-    }, [isPanning, panStart, clampPan])
+        const el = mediaContainerRef.current
+        const drag = dragScrollRef.current
+        if (!el || !drag) return
+        el.scrollLeft = drag.scrollLeft - (e.clientX - drag.startX)
+        el.scrollTop = drag.scrollTop - (e.clientY - drag.startY)
+    }, [])
 
     const handlePanEnd = useCallback(() => {
         setIsPanning(false)
+        dragScrollRef.current = null
     }, [])
-
-    // Re-clamp pan when zoom changes (after the 0.2s max-height/max-width
-    // transition settles, so the measured image size is final).
-    useEffect(() => {
-        const t = setTimeout(() => setPanPosition(prev => clampPan(prev)), 220)
-        return () => clearTimeout(t)
-    }, [zoomLevel, clampPan])
 
     useEffect(() => {
         if (isPanning) {
@@ -292,27 +297,41 @@ const ImagePreviewModal = ({
         setIsEditing(true)
         setEditPrompt('')
         setMaskCanvas(null)
+        setIsDrawingMask(false)
+        setIsCropping(false)
     }
+
+    // Honor the store's one-shot `previewStartInEdit` flag: when the modal was
+    // opened directly in edit-mode (gallery "Edit"), auto-enter edit once, then
+    // clear the flag so cancelling the edit doesn't re-trigger it.
+    useEffect(() => {
+        if (previewMedia && previewStartInEdit && previewMedia.mediaType === 'IMAGE' && onEdit) {
+            setIsEditing(true)
+            setEditPrompt('')
+            setMaskCanvas(null)
+            setIsDrawingMask(false)
+            setIsCropping(false)
+            setPreviewMedia(previewMedia, false)
+        }
+    }, [previewMedia, previewStartInEdit, onEdit, setPreviewMedia])
 
     const handleSubmitEdit = async () => {
         if (!previewMedia) return
 
-        const hasEditInstruction = editPrompt.trim().length > 0
-        const hasCrop = cropScale < 100
-
-        if (!hasEditInstruction && !hasCrop) return // Need at least one
+        // Crop mode applies a local browser crop; otherwise it's an AI edit that
+        // requires an instruction. Crop is opt-in (Crop button), so it never runs
+        // by default.
+        if (!isCropping && editPrompt.trim().length === 0) return
 
         setIsSubmittingEdit(true)
 
         try {
-            if (hasEditInstruction) {
-                // AI Edit - send to backend with reference assets
+            if (isCropping) {
+                await performLocalCrop()
+            } else {
                 if (!onEdit) return
                 await onEdit(previewMedia, editPrompt, maskCanvas, editAspectRatio, editAssets, editProviderId ?? activeProviderId ?? undefined)
                 handleClose()
-            } else {
-                // Local Crop - process in browser
-                await performLocalCrop()
             }
         } finally {
             setIsSubmittingEdit(false)
@@ -378,6 +397,7 @@ const ImagePreviewModal = ({
         addToGallery(croppedMedia)
         setPreviewMedia(croppedMedia)
         setIsEditing(false)
+        setIsCropping(false)
         setEditPrompt('')
         setCropScale(100)
         setCropPosition({ x: 0, y: 0 })
@@ -385,6 +405,7 @@ const ImagePreviewModal = ({
 
     const handleToggleMask = () => {
         setIsDrawingMask(!isDrawingMask)
+        if (!isDrawingMask) setIsCropping(false)
         if (!isDrawingMask && canvasRef.current) {
             // Clear canvas when starting mask mode
             const ctx = canvasRef.current.getContext('2d')
@@ -596,7 +617,7 @@ const ImagePreviewModal = ({
 
     // Crop drag handlers
     const handleCropMouseDown = (e: React.MouseEvent) => {
-        if (!isEditing || isDrawingMask) return
+        if (!isEditing || isDrawingMask || !isCropping) return
         e.preventDefault()
         setIsDraggingCrop(true)
         setDragStart({ x: e.clientX - cropPosition.x, y: e.clientY - cropPosition.y })
@@ -633,7 +654,7 @@ const ImagePreviewModal = ({
         if (isPlaying) {
             videoRef.current.pause()
         } else {
-            videoRef.current.play()
+            videoRef.current.play().catch(() => {})
         }
         setIsPlaying(!isPlaying)
     }
@@ -851,7 +872,16 @@ const ImagePreviewModal = ({
                     {/* Media Display */}
                     <div
                         ref={mediaContainerRef}
-                        className="relative max-h-full max-w-full"
+                        className="relative max-h-full max-w-full overflow-auto"
+                        onMouseDown={handlePanStart}
+                        style={{
+                            cursor:
+                                zoomLevel > 1 && !isEditing
+                                    ? isPanning
+                                        ? 'grabbing'
+                                        : 'grab'
+                                    : 'default',
+                        }}
                     >
                         {previewMedia.mediaType === 'VIDEO' ? (
                             <div className="flex flex-col items-center gap-3">
@@ -935,15 +965,10 @@ const ImagePreviewModal = ({
                                 </div>
                             </div>
                         ) : (
-                            <div
-                                className="relative inline-block"
-                                style={{
-                                    transform: isEditing ? 'none' : `translate(${panPosition.x}px, ${panPosition.y}px)`,
-                                    transition: isPanning ? 'none' : 'transform 0.2s ease-out',
-                                    cursor: zoomLevel > 1 && !isEditing ? (isPanning ? 'grabbing' : 'grab') : 'default',
-                                }}
-                                onMouseDown={handlePanStart}
-                            >
+                            // Zoomed images are navigated by SCROLLING the
+                            // overflow-auto container above — every region
+                            // (incl. the bottom of tall images) is reachable.
+                            <div className="relative inline-block">
                                 <img
                                     ref={imageRef}
                                     src={previewMedia.url}
@@ -993,8 +1018,8 @@ const ImagePreviewModal = ({
                                         )}
                                     </>
                                 )}
-                                {/* Crop Overlay */}
-                                {isEditing && !isDrawingMask && (() => {
+                                {/* Crop Overlay — only when the user opted into Crop */}
+                                {isEditing && !isDrawingMask && isCropping && (() => {
                                     const crop = getCropDimensions()
                                     if (!crop || (crop.width === canvasSize.width && crop.height === canvasSize.height)) return null
                                     return (
@@ -1087,14 +1112,24 @@ const ImagePreviewModal = ({
                                 <span>{isDrawingMask ? 'Drawing...' : 'Draw Mask'}</span>
                             </Button>
                             <Button
+                                variant={isCropping ? 'solid' : 'plain'}
+                                color={isCropping ? 'purple' : 'gray'}
+                                onClick={() => {
+                                    setIsCropping((c) => !c)
+                                    setIsDrawingMask(false)
+                                }}
+                            >
+                                <span>Crop</span>
+                            </Button>
+                            <Button
                                 variant="solid"
                                 onClick={handleSubmitEdit}
                                 loading={isSubmittingEdit}
-                                disabled={!editPrompt.trim() && cropScale >= 100}
+                                disabled={!isCropping && !editPrompt.trim()}
                             >
-                                {editPrompt.trim() ? 'Apply Edit' : 'Apply Crop'}
+                                {isCropping ? 'Apply Crop' : 'Apply Edit'}
                             </Button>
-                            <Button variant="plain" onClick={() => setIsEditing(false)}>
+                            <Button variant="plain" onClick={() => { setIsEditing(false); setIsCropping(false) }}>
                                 Cancel
                             </Button>
                         </div>
@@ -1136,7 +1171,7 @@ const ImagePreviewModal = ({
                                     Draw on the image to highlight the area you want to edit
                                 </p>
                             </div>
-                        ) : (
+                        ) : isCropping ? (
                             <div className="mt-3">
                                 <div className="flex items-center gap-4">
                                     <span className="text-xs text-gray-500 dark:text-gray-400 w-20">Crop Size</span>
@@ -1151,7 +1186,7 @@ const ImagePreviewModal = ({
                                     <span className="text-xs text-gray-500 dark:text-gray-400 w-10">{cropScale}%</span>
                                 </div>
                             </div>
-                        )}
+                        ) : null}
 
                         {/* Reference Assets for Edit */}
                         <div className="mt-4 pt-3 border-t border-gray-200 dark:border-gray-700">
@@ -1272,7 +1307,7 @@ const ImagePreviewModal = ({
                         </div>
 
                         {/* Action Buttons */}
-                        <div className="flex items-center gap-2">
+                        <div className="flex flex-wrap items-center gap-2">
                             <Button variant="solid" onClick={handleDownload} icon={<HiOutlineDownload />}>
                                 <span>Download</span>
                             </Button>
@@ -1325,6 +1360,19 @@ const ImagePreviewModal = ({
                                 </>
                             )}
 
+                            {previewMedia.mediaType === 'VIDEO' && onEditVideo && (
+                                <Button
+                                    variant="plain"
+                                    onClick={() => {
+                                        onEditVideo(previewMedia)
+                                        handleClose()
+                                    }}
+                                    icon={<HiOutlinePencil />}
+                                >
+                                    <span>Edit</span>
+                                </Button>
+                            )}
+
                             {previewMedia.mediaType === 'VIDEO' && (
                                 <Button variant="plain" onClick={captureFrameAsImage} icon={<HiOutlineCamera />}>
                                     <span>Frame</span>
@@ -1349,9 +1397,24 @@ const ImagePreviewModal = ({
                                 </Button>
                             )}
 
-                            <div className="flex-1" />
+                            {onPost && (
+                                <Button
+                                    variant="plain"
+                                    color="blue"
+                                    onClick={() => onPost(previewMedia)}
+                                    disabled={previewMedia.saveState !== 'saved'}
+                                    icon={<HiOutlineShare />}
+                                    title={
+                                        previewMedia.saveState !== 'saved'
+                                            ? 'Saving… available once this media is saved'
+                                            : 'Post to social platforms or Fanvue'
+                                    }
+                                >
+                                    <span>Post</span>
+                                </Button>
+                            )}
 
-                            <Button variant="plain" color="red" onClick={handleDelete} icon={<HiOutlineTrash />}>
+                            <Button variant="plain" color="red" onClick={handleDelete} icon={<HiOutlineTrash />} className="ml-auto">
                                 <span>Delete</span>
                             </Button>
                         </div>

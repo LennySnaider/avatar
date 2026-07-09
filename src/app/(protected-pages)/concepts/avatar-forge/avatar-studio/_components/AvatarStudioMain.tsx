@@ -6,7 +6,9 @@ import AvatarEditDrawer from './AvatarEditDrawer'
 import BottomControlBar from './BottomControlBar'
 import GalleryPanel from './GalleryPanel'
 import ImagePreviewModal from './ImagePreviewModal'
-import ImageEditorPanel from './ImageEditorPanel'
+import PostModal from './PostModal'
+import ToolModal from './ToolModal'
+import VideoEditorMain from '../../video-editor/_components/VideoEditorMain'
 import AvatarSelector from './AvatarSelector'
 import PromptLibraryDrawer from './PromptLibraryDrawer'
 import ProviderManagerDrawer, { DEFAULT_PROVIDERS } from './ProviderManagerDrawer'
@@ -19,6 +21,8 @@ import {
     apiUploadReference,
     apiCreateGenerationUploadUrl,
     apiSaveGeneration,
+    apiGetGenerations,
+    getSignedUrl,
 } from '@/services/AvatarForgeService'
 import { supabase } from '@/lib/supabase'
 import {
@@ -157,6 +161,13 @@ async function genMotionControlKie(
 const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
     const [isAvatarSelectorOpen, setIsAvatarSelectorOpen] = useState(false)
     const [isAvatarEditOpen, setIsAvatarEditOpen] = useState(false)
+    // Item queued for the unified Post modal (social + Fanvue). Only saved
+    // items can be posted — the Post buttons stay disabled until saveState === 'saved'.
+    const [postMedia, setPostMedia] = useState<GeneratedMedia | null>(null)
+    // Video queued for the in-place Video Editor ToolModal (Gallery "Edit"
+    // on a VIDEO). Non-null == modal open; VideoEditorMain is keyed by
+    // media.id so switching videos forces a fresh mount.
+    const [videoEditorMedia, setVideoEditorMedia] = useState<GeneratedMedia | null>(null)
     const pendingAutoGenerateRef = useRef(false)
 
     const {
@@ -228,6 +239,9 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
         setIsGenerating,
         setIsSavingAvatar,
         addToGallery,
+        updateGalleryItem,
+        loadPersistedGallery,
+        setPreviewMedia,
         setIsEnhancingPrompt,
         setShowProviderManager,
         setIsPromptLibraryOpen,
@@ -274,70 +288,48 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
         }
     }, [generationMode, providers, activeProviderId, setProviders, setActiveProviderId])
 
-    // Check for imported image from Gallery on mount
+    // (The old sessionStorage['studioImport'] receiver was removed: the only
+    // writer was the standalone Gallery page, now consolidated into this
+    // Studio gallery. Cross-tool media handoff will move to in-place modals.)
+
+    // Seed the inline gallery with the user's persisted history on mount. The
+    // Studio gallery IS the history now — fetch the `generations` rows, resolve
+    // signed storage URLs (mirrors gallery/page.tsx), map to GeneratedMedia and
+    // merge them in via loadPersistedGallery (dedupes against session items).
     useEffect(() => {
-        const importData = sessionStorage.getItem('studioImport')
-        if (importData) {
+        if (!userId) return
+        let cancelled = false
+        ;(async () => {
             try {
-                const { url, prompt: importPrompt, mediaType, mode } = JSON.parse(importData)
-                sessionStorage.removeItem('studioImport')
-
-                if (url && mediaType === 'IMAGE') {
-                    // Always convert URL to base64 first (required for edit/animate operations)
-                    fetch(url)
-                        .then((res) => res.blob())
-                        .then((blob) => {
-                            const reader = new FileReader()
-                            reader.onloadend = () => {
-                                const base64DataUrl = reader.result as string
-
-                                // Create a GeneratedMedia object with base64 URL
-                                const importedMedia: GeneratedMedia = {
-                                    id: crypto.randomUUID(),
-                                    url: base64DataUrl, // Use base64 dataURL, not HTTP URL
-                                    prompt: importPrompt || '',
-                                    aspectRatio: '1:1',
-                                    timestamp: Date.now(),
-                                    mediaType: 'IMAGE',
-                                }
-
-                                // Add to gallery
-                                addToGallery(importedMedia)
-
-                                if (mode === 'animate') {
-                                    // Set up for video generation
-                                    const matches = base64DataUrl.match(/data:([^;]+);base64,(.+)/)
-                                    if (matches) {
-                                        const refImg: ReferenceImage = {
-                                            id: crypto.randomUUID(),
-                                            url: base64DataUrl,
-                                            mimeType: matches[1],
-                                            base64: matches[2],
-                                            type: 'general',
-                                        }
-                                        setVideoInputImage(refImg)
-                                        setGenerationMode('VIDEO')
-                                        setVideoSubMode('ANIMATE')
-                                        setPrompt(importPrompt || 'Cinematic movement, slow motion, high quality.')
-                                    }
-                                } else {
-                                    // Edit mode - open the preview modal
-                                    setTimeout(() => {
-                                        const store = useAvatarStudioStore.getState()
-                                        store.setPreviewMedia(importedMedia)
-                                    }, 100)
-                                }
-                            }
-                            reader.readAsDataURL(blob)
-                        })
-                        .catch(console.error)
-                }
-            } catch (err) {
-                console.error('Failed to import from gallery:', err)
+                const rows = await apiGetGenerations(userId)
+                const items = await Promise.all(
+                    rows.map(async (gen): Promise<GeneratedMedia> => {
+                        const url = await getSignedUrl('generations', gen.storage_path)
+                        return {
+                            id: crypto.randomUUID(),
+                            url,
+                            prompt: gen.prompt,
+                            aspectRatio: (gen.aspect_ratio as AspectRatio) || '1:1',
+                            timestamp: gen.created_at
+                                ? new Date(gen.created_at).getTime()
+                                : Date.now(),
+                            mediaType: gen.media_type,
+                            metadata: gen.metadata ?? undefined,
+                            generationId: gen.id,
+                            saveState: 'saved',
+                        }
+                    }),
+                )
+                if (!cancelled) loadPersistedGallery(items)
+            } catch (error) {
+                console.error('Failed to load persisted gallery:', error)
             }
+        })()
+        return () => {
+            cancelled = true
         }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [])
+    }, [userId])
 
     // Save Avatar Handler
     const handleSaveAvatar = useCallback(
@@ -473,6 +465,53 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
             )
         }
     }, [faceRef, generalReferences, setFaceDescription, optimizeImage])
+
+    // Auto-persist a freshly generated item to the `generations` table in the
+    // background (non-blocking). Same signed-URL upload flow as
+    // handleSaveToGallery but WITHOUT the avatarId guard — auto-save works
+    // before an avatar is saved (avatar_id is nullable). Drives the item's
+    // saveState (saving → saved/error) and stamps the DB row id onto it so the
+    // Post modal can resolve the media by generationId.
+    const persistGeneration = useCallback(
+        async (media: GeneratedMedia) => {
+            if (!userId) return
+            updateGalleryItem(media.id, { saveState: 'saving' })
+            try {
+                const response = await fetch(media.url)
+                const blob = await response.blob()
+                const contentType =
+                    media.mediaType === 'VIDEO' ? 'video/mp4' : 'image/jpeg'
+
+                const { path, token } = await apiCreateGenerationUploadUrl(
+                    userId,
+                    media.mediaType,
+                )
+                const { error: uploadError } = await supabase.storage
+                    .from('generations')
+                    .uploadToSignedUrl(path, token, blob, { contentType })
+                if (uploadError) throw new Error(uploadError.message)
+
+                const row = await apiSaveGeneration({
+                    user_id: userId,
+                    avatar_id: avatarId ?? null,
+                    media_type: media.mediaType,
+                    storage_path: path,
+                    prompt: media.prompt,
+                    aspect_ratio: media.aspectRatio,
+                    metadata: media.metadata,
+                })
+
+                updateGalleryItem(media.id, {
+                    saveState: 'saved',
+                    generationId: row.id,
+                })
+            } catch (error) {
+                console.error('Auto-save failed:', error)
+                updateGalleryItem(media.id, { saveState: 'error' })
+            }
+        },
+        [userId, avatarId, updateGalleryItem],
+    )
 
     // Generate Handler
     const handleGenerate = useCallback(async () => {
@@ -1257,6 +1296,9 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
 
             addToGallery(newMedia)
             setAppState(AppState.SUCCESS)
+            // Fire-and-forget: persist to the gallery in the background so the
+            // inline gallery IS the history and the item becomes postable.
+            void persistGeneration(newMedia)
         } catch (error: unknown) {
             console.error('Generation failed:', error)
             setAppState(AppState.ERROR)
@@ -1318,6 +1360,7 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
         getActiveProvider,
         getFullPrompt,
         addToGallery,
+        persistGeneration,
         setAppState,
         setErrorMsg,
         setIsGenerating,
@@ -1577,6 +1620,9 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                 }
 
                 addToGallery(newMedia)
+                // Auto-persist the edited result too, so it survives reload and
+                // its Post button (gated on saveState === 'saved') becomes usable.
+                void persistGeneration(newMedia)
                 setAppState(AppState.SUCCESS)
             } catch (error: unknown) {
                 console.error('Edit failed:', error)
@@ -1587,62 +1633,7 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                 setIsGenerating(false)
             }
         },
-        [providers, getActiveProvider, addToGallery, setAppState, setErrorMsg, setIsGenerating]
-    )
-
-    // Editor Edit Handler (with assets support)
-    const handleEditorEdit = useCallback(
-        async (
-            media: GeneratedMedia,
-            editPrompt: string,
-            maskBase64: string | null,
-            editAspectRatio: AspectRatio,
-            assets: ReferenceImage[]
-        ) => {
-            setIsGenerating(true)
-            setAppState(AppState.GENERATING)
-
-            try {
-                const resultUrl = await editImage(
-                    media.url,
-                    editPrompt,
-                    maskBase64,
-                    editAspectRatio,
-                    assets.length > 0 ? assets : undefined
-                )
-
-                const newMedia: GeneratedMedia = {
-                    id: crypto.randomUUID(),
-                    url: resultUrl,
-                    prompt: `Edit: ${editPrompt}`,
-                    aspectRatio: editAspectRatio,
-                    timestamp: Date.now(),
-                    mediaType: 'IMAGE',
-                    providerName: getActiveProvider()?.name,
-                }
-
-                addToGallery(newMedia)
-                setAppState(AppState.SUCCESS)
-                toast.push(
-                    <Notification type="success" title="Edit Complete">
-                        Image edited successfully
-                    </Notification>
-                )
-            } catch (error: unknown) {
-                console.error('Editor edit failed:', error)
-                setAppState(AppState.ERROR)
-                const errorMessage = error instanceof Error ? error.message : 'Edit failed'
-                setErrorMsg(errorMessage)
-                toast.push(
-                    <Notification type="danger" title="Edit Failed">
-                        {errorMessage}
-                    </Notification>
-                )
-            } finally {
-                setIsGenerating(false)
-            }
-        },
-        [addToGallery, setAppState, setErrorMsg, setIsGenerating]
+        [providers, getActiveProvider, addToGallery, persistGeneration, setAppState, setErrorMsg, setIsGenerating]
     )
 
     // Create Variant Handler
@@ -1946,6 +1937,8 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                     onAnimateImage={handleAnimateImage}
                     onCreateVariant={handleCreateVariant}
                     onSaveToGallery={handleSaveToGallery}
+                    onPost={(m: GeneratedMedia) => setPostMedia(m)}
+                    onEditImage={(m: GeneratedMedia) => setPreviewMedia(m, true)}
                 />
             </div>
 
@@ -1967,7 +1960,7 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                 onSafetyCheck={handleSafetyCheck}
             />
 
-            {/* Preview Modal */}
+            {/* Preview Modal — the single image editor (onEdit has the Provider selector) */}
             <ImagePreviewModal
                 onEdit={handleEditImage}
                 onAnimate={handleAnimateImage}
@@ -1975,10 +1968,26 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                 onSave={handleSaveToGallery}
                 onContinueVideo={handleContinueVideo}
                 onReuse={handleReuse}
+                onPost={(m: GeneratedMedia) => setPostMedia(m)}
+                onEditVideo={(m: GeneratedMedia) => setVideoEditorMedia(m)}
             />
 
-            {/* Image Editor Panel */}
-            <ImageEditorPanel onEdit={handleEditorEdit} />
+            {/* Unified Post modal (social + Fanvue) */}
+            <PostModal media={postMedia} onClose={() => setPostMedia(null)} />
+
+            {/* Video Editor — opens in-place instead of navigating to /video-editor */}
+            <ToolModal
+                isOpen={!!videoEditorMedia}
+                onClose={() => setVideoEditorMedia(null)}
+            >
+                {videoEditorMedia && (
+                    <VideoEditorMain
+                        key={videoEditorMedia.id}
+                        userId={userId}
+                        initialVideoUrl={videoEditorMedia.url}
+                    />
+                )}
+            </ToolModal>
 
             {/* Avatar Selector Modal */}
             {userId && (
