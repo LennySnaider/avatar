@@ -1,8 +1,9 @@
 import { create } from 'zustand'
-import type { VoiceStudioState, ClonedVoice, AudioScript, ScriptTone, ScriptTemplate } from '@/@types/voice'
+import type { VoiceStudioState, ClonedVoice, AudioScript, ScriptTone, ScriptTemplate, VoiceAvatarSummary } from '@/@types/voice'
 
 const initialState = {
     voices: [] as ClonedVoice[],
+    voiceAvatars: [] as VoiceAvatarSummary[],
     selectedVoiceId: null as string | null,
     isCloning: false,
     scripts: [] as AudioScript[],
@@ -25,6 +26,7 @@ const initialState = {
 export const useVoiceStudioStore = create<VoiceStudioState>((set) => ({
     ...initialState,
     setVoices: (voices) => set({ voices }),
+    setVoiceAvatars: (avatars) => set({ voiceAvatars: avatars }),
     setSelectedVoiceId: (id) => set({ selectedVoiceId: id }),
     setIsCloning: (v) => set({ isCloning: v }),
     setScripts: (scripts) => set({ scripts }),
@@ -47,3 +49,16 @@ export const useVoiceStudioStore = create<VoiceStudioState>((set) => ({
         })),
     reset: () => set(initialState),
 }))
+
+/**
+ * Única fuente de verdad para voces + mapeo avatar↔voz-default. Llamar tras
+ * clonar, borrar o cambiar la voz principal — evita estrellas stale.
+ */
+export async function refreshVoices() {
+    const res = await fetch('/api/voice/list')
+    if (!res.ok) return
+    const { voices, avatars } = await res.json()
+    const store = useVoiceStudioStore.getState()
+    store.setVoices(voices ?? [])
+    if (avatars) store.setVoiceAvatars(avatars)
+}

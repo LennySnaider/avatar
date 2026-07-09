@@ -14,6 +14,13 @@ export interface VoiceTtsSettings {
     useAutoAccent?: boolean
 }
 
+/** Resumen vivo de avatar para la UI de voces (★ = default_voice_id). */
+export interface VoiceAvatarSummary {
+    id: string
+    name: string
+    default_voice_id: string | null
+}
+
 export interface ClonedVoice {
     id: string
     user_id: string
@@ -71,6 +78,7 @@ export interface ScriptGenerateParams {
 export interface VoiceStudioState {
     // Voices
     voices: ClonedVoice[]
+    voiceAvatars: VoiceAvatarSummary[]
     selectedVoiceId: string | null
     isCloning: boolean
 
@@ -99,6 +107,7 @@ export interface VoiceStudioState {
 
     // Actions
     setVoices: (voices: ClonedVoice[]) => void
+    setVoiceAvatars: (avatars: VoiceAvatarSummary[]) => void
     setSelectedVoiceId: (id: string | null) => void
     setIsCloning: (v: boolean) => void
     setScripts: (scripts: AudioScript[]) => void

@@ -21,5 +21,16 @@ export async function GET() {
         return NextResponse.json({ error: error.message }, { status: 500 })
     }
 
-    return NextResponse.json({ voices })
+    // Mapeo vivo avatar↔voz-default: la UI de Your Voices marca la ★ con esto
+    // (la lista SSR de avatares queda stale tras re-clonar/re-asignar).
+    const { data: avatars, error: avatarsError } = await supabase
+        .from('avatars')
+        .select('id, name, default_voice_id')
+        .eq('user_id', session.user.id)
+
+    if (avatarsError) {
+        return NextResponse.json({ error: avatarsError.message }, { status: 500 })
+    }
+
+    return NextResponse.json({ voices, avatars })
 }

@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useRef } from 'react'
-import { useVoiceStudioStore } from '../_store/voiceStudioStore'
+import { useVoiceStudioStore, refreshVoices } from '../_store/voiceStudioStore'
 import Button from '@/components/ui/Button'
 import Input from '@/components/ui/Input'
 import Card from '@/components/ui/Card'
@@ -12,7 +12,7 @@ interface VoiceClonePanelProps {
 }
 
 export default function VoiceClonePanel({ avatars }: VoiceClonePanelProps) {
-    const { setVoices, voices, setIsCloning, isCloning, setDefaultVoiceOverride } = useVoiceStudioStore()
+    const { setIsCloning, isCloning } = useVoiceStudioStore()
     const [name, setName] = useState('')
     const [language, setLanguage] = useState('es')
     const [audioFile, setAudioFile] = useState<File | null>(null)
@@ -46,11 +46,10 @@ export default function VoiceClonePanel({ avatars }: VoiceClonePanelProps) {
                 throw new Error(error)
             }
 
-            const { voice, defaultVoiceSet } = await res.json()
-            setVoices([voice, ...voices])
-            if (defaultVoiceSet === true) {
-                setDefaultVoiceOverride(avatarId, voice.id)
-            } else if (avatarId && setAsDefault) {
+            const { defaultVoiceSet } = await res.json()
+            // Fuente de verdad viva: recarga voces + mapeo avatar↔default.
+            await refreshVoices()
+            if (avatarId && setAsDefault && defaultVoiceSet !== true) {
                 setWarning("Voice cloned, but it could not be set as the avatar's main voice.")
             }
             setName('')

@@ -1,13 +1,12 @@
 'use client'
 
 import { useEffect } from 'react'
-import { useVoiceStudioStore } from '../_store/voiceStudioStore'
+import { refreshVoices } from '../_store/voiceStudioStore'
 import VoiceLibrary from './VoiceLibrary'
 import VoiceClonePanel from './VoiceClonePanel'
 import ScriptEditor from './ScriptEditor'
 import AudioPreview from './AudioPreview'
 import LipsyncPanel from './LipsyncPanel'
-import type { ClonedVoice } from '@/@types/voice'
 import type { Avatar } from '@/@types/supabase'
 
 interface VoiceStudioMainProps {
@@ -16,18 +15,10 @@ interface VoiceStudioMainProps {
 }
 
 export default function VoiceStudioMain({ userId, avatars }: VoiceStudioMainProps) {
-    const { setVoices } = useVoiceStudioStore()
-
     useEffect(() => {
-        async function loadVoices() {
-            const res = await fetch('/api/voice/list')
-            if (res.ok) {
-                const { voices } = await res.json() as { voices: ClonedVoice[] }
-                setVoices(voices)
-            }
-        }
-        loadVoices()
-    }, [setVoices])
+        // Fuente de verdad viva: voces + mapeo avatar↔voz-default.
+        refreshVoices()
+    }, [])
 
     return (
         <div className="flex flex-col gap-6 p-4">

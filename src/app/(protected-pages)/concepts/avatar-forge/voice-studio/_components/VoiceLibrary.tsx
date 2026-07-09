@@ -1,7 +1,7 @@
 'use client'
 
 import { useRef, useState } from 'react'
-import { useVoiceStudioStore } from '../_store/voiceStudioStore'
+import { useVoiceStudioStore, refreshVoices } from '../_store/voiceStudioStore'
 import Card from '@/components/ui/Card'
 import Button from '@/components/ui/Button'
 import Spinner from '@/components/ui/Spinner'
@@ -14,11 +14,10 @@ interface VoiceLibraryProps {
 export default function VoiceLibrary({ avatars }: VoiceLibraryProps) {
     const {
         voices,
+        voiceAvatars,
         selectedVoiceId,
         setSelectedVoiceId,
         setVoices,
-        defaultVoiceOverrides,
-        setDefaultVoiceOverride,
         bumpSettingsEdit,
     } = useVoiceStudioStore()
 
@@ -83,25 +82,37 @@ export default function VoiceLibrary({ avatars }: VoiceLibraryProps) {
         }
     }
 
-    const handleSetDefault = async (voiceId: string, avatarId: string) => {
+    const handleSetDefault = async (voiceId: string) => {
         const res = await fetch('/api/voice/set-default', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ voiceId }),
         })
         if (res.ok) {
-            setDefaultVoiceOverride(avatarId, voiceId)
+            // La ★ sale del mapeo vivo — re-consultar es la única verdad.
+            await refreshVoices()
         } else {
             const { error } = await res.json()
             console.error('[voice-library] Failed to set default voice:', error)
         }
     }
 
+    // ★ desde el mapeo VIVO (refreshVoices); el prop SSR `avatars` solo es
+    // fallback de nombre para el primer render.
     const isMainVoice = (voice: { id: string; avatar_id: string | null }) => {
         if (!voice.avatar_id) return false
-        const overridden = defaultVoiceOverrides[voice.avatar_id]
-        if (overridden) return overridden === voice.id
+        const live = voiceAvatars.find((a) => a.id === voice.avatar_id)
+        if (live) return live.default_voice_id === voice.id
         return avatars.find((a) => a.id === voice.avatar_id)?.default_voice_id === voice.id
+    }
+
+    const avatarNameFor = (avatarId: string | null) => {
+        if (!avatarId) return null
+        return (
+            voiceAvatars.find((a) => a.id === avatarId)?.name ??
+            avatars.find((a) => a.id === avatarId)?.name ??
+            null
+        )
     }
 
     if (voices.length === 0) {
@@ -119,7 +130,7 @@ export default function VoiceLibrary({ avatars }: VoiceLibraryProps) {
             <div className="p-4 flex flex-col gap-2">
                 <h3 className="font-semibold text-lg">Your Voices</h3>
                 {voices.map((voice) => {
-                    const linkedAvatar = avatars.find((a) => a.id === voice.avatar_id)
+                    const linkedAvatarName = avatarNameFor(voice.avatar_id)
                     const isMain = isMainVoice(voice)
                     return (
                         <div
@@ -138,7 +149,7 @@ export default function VoiceLibrary({ avatars }: VoiceLibraryProps) {
                                 </span>
                                 <span className="text-xs text-gray-500">
                                     {voice.language.toUpperCase()}
-                                    {linkedAvatar && ` · ${linkedAvatar.name}`}
+                                    {linkedAvatarName && ` · ${linkedAvatarName}`}
                                     {' · '}{new Date(voice.created_at).toLocaleDateString()}
                                 </span>
                             </div>
@@ -178,7 +189,7 @@ export default function VoiceLibrary({ avatars }: VoiceLibraryProps) {
                                         variant="plain"
                                         onClick={(e) => {
                                             e.stopPropagation()
-                                            handleSetDefault(voice.id, voice.avatar_id!)
+                                            handleSetDefault(voice.id)
                                         }}
                                     >
                                         Make main
