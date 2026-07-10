@@ -33,6 +33,12 @@ const GalleryPanel = ({ onSaveToGallery, onPost, onEditImage }: GalleryPanelProp
 
     const [searchQuery, setSearchQuery] = useState('')
     const [mediaTypeFilter, setMediaTypeFilter] = useState<MediaType | 'ALL'>('ALL')
+    const [avatarFilter, setAvatarFilter] = useState<string>('ALL')
+
+    // Distinct avatar names present in the gallery (for the Avatar filter)
+    const avatarNames = Array.from(
+        new Set(gallery.map((m) => m.avatarInfo?.name).filter((n): n is string => Boolean(n))),
+    )
 
     // Client-side filter — ports the search + media-type approach from
     // ../../gallery/_components/GenerationGallery.tsx.
@@ -42,7 +48,9 @@ const GalleryPanel = ({ onSaveToGallery, onPost, onEditImage }: GalleryPanelProp
             media.prompt.toLowerCase().includes(searchQuery.toLowerCase())
         const matchesType =
             mediaTypeFilter === 'ALL' || media.mediaType === mediaTypeFilter
-        return matchesSearch && matchesType
+        const matchesAvatar =
+            avatarFilter === 'ALL' || media.avatarInfo?.name === avatarFilter
+        return matchesSearch && matchesType && matchesAvatar
     })
 
     const detectAspectRatio = (width: number, height: number): AspectRatio => {
@@ -160,55 +168,71 @@ const GalleryPanel = ({ onSaveToGallery, onPost, onEditImage }: GalleryPanelProp
 
     return (
         <div className="h-full flex flex-col">
-            <ScrollBar className="flex-1 h-full" autoHide={false}>
-                <div className="p-4">
-                    {/* Hidden Upload Input */}
-                    <input
-                        ref={uploadInputRef}
-                        type="file"
-                        accept="video/*,image/*"
-                        multiple
-                        className="hidden"
-                        onChange={handleUpload}
-                    />
+            {/* Hidden Upload Input */}
+            <input
+                ref={uploadInputRef}
+                type="file"
+                accept="video/*,image/*"
+                multiple
+                className="hidden"
+                onChange={handleUpload}
+            />
 
-                    {/* Gallery Header */}
-                    <div className="flex items-center justify-between mb-4">
-                        <h3 className="font-semibold text-lg">Gallery</h3>
-                        <div className="flex items-center gap-2">
-                            <Button
-                                size="xs"
-                                variant="plain"
-                                onClick={() => uploadInputRef.current?.click()}
-                                icon={<HiOutlineUpload />}
-                            >
-                                <span>Upload</span>
-                            </Button>
-                        </div>
-                    </div>
+            {/* Fixed header: title + Upload + search/filters (outside the
+                scroll area so Upload never disappears while browsing) */}
+            <div className="px-4 pt-4 shrink-0">
+                <div className="flex items-center justify-between mb-3">
+                    <h3 className="font-semibold text-lg">Gallery</h3>
+                    <Button
+                        size="xs"
+                        variant="plain"
+                        onClick={() => uploadInputRef.current?.click()}
+                        icon={<HiOutlineUpload />}
+                    >
+                        <span>Upload</span>
+                    </Button>
+                </div>
 
-                    {/* Search + Media Type Filter */}
-                    {gallery.length > 0 && (
-                        <div className="flex items-center gap-2 mb-4">
-                            <Input
-                                size="sm"
-                                placeholder="Search by prompt..."
-                                prefix={<HiOutlineSearch className="text-lg" />}
-                                value={searchQuery}
-                                onChange={(e) => setSearchQuery(e.target.value)}
-                                className="flex-1"
-                            />
+                {gallery.length > 0 && (
+                    <div className="flex items-center gap-2 mb-3">
+                        <Input
+                            size="sm"
+                            placeholder="Search by prompt..."
+                            prefix={<HiOutlineSearch className="text-lg" />}
+                            value={searchQuery}
+                            onChange={(e) => setSearchQuery(e.target.value)}
+                            className="flex-1"
+                        />
+                        {avatarNames.length > 0 && (
                             <select
-                                value={mediaTypeFilter}
-                                onChange={(e) => setMediaTypeFilter(e.target.value as MediaType | 'ALL')}
-                                className="w-28 px-3 py-1.5 text-sm border rounded-lg bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-600"
+                                value={avatarFilter}
+                                onChange={(e) => setAvatarFilter(e.target.value)}
+                                className="w-32 px-3 py-1.5 text-sm border rounded-lg bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-600"
+                                title="Filter by avatar"
                             >
-                                <option value="ALL">All</option>
-                                <option value="IMAGE">Images</option>
-                                <option value="VIDEO">Videos</option>
+                                <option value="ALL">All avatars</option>
+                                {avatarNames.map((name) => (
+                                    <option key={name} value={name}>
+                                        {name}
+                                    </option>
+                                ))}
                             </select>
-                        </div>
-                    )}
+                        )}
+                        <select
+                            value={mediaTypeFilter}
+                            onChange={(e) => setMediaTypeFilter(e.target.value as MediaType | 'ALL')}
+                            className="w-28 px-3 py-1.5 text-sm border rounded-lg bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-600"
+                        >
+                            <option value="ALL">All</option>
+                            <option value="IMAGE">Images</option>
+                            <option value="VIDEO">Videos</option>
+                        </select>
+                    </div>
+                )}
+            </div>
+
+            <ScrollBar className="flex-1 h-full" autoHide={false}>
+                <div className="p-4 pt-1">
 
                     {/* Empty State */}
                     {gallery.length === 0 && !isGenerating && (
