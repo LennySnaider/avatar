@@ -312,8 +312,9 @@ const GalleryPanel = ({ onSaveToGallery, onPost, onEditImage, onUploaded }: Gall
                                         )}
                                     </div>
 
-                                    {/* Media Type Badge */}
-                                    <div className="absolute top-2 right-2">
+                                    {/* Media Type + Save State badges (top-right column —
+                                        the bottom corners belong to the action buttons) */}
+                                    <div className="absolute top-2 right-2 z-10 flex flex-col items-end gap-1">
                                         <span
                                             className={`px-2 py-1 text-xs font-bold rounded ${
                                                 media.mediaType === 'VIDEO'
@@ -323,29 +324,23 @@ const GalleryPanel = ({ onSaveToGallery, onPost, onEditImage, onUploaded }: Gall
                                         >
                                             {media.mediaType}
                                         </span>
+                                        {media.saveState === 'saving' && (
+                                            <span className="px-2 py-1 text-[10px] font-medium rounded bg-black/70 text-white inline-flex items-center gap-1">
+                                                <Spinner size={12} />
+                                                Saving
+                                            </span>
+                                        )}
+                                        {media.saveState === 'saved' && (
+                                            <span className="px-2 py-1 text-[10px] font-medium rounded bg-emerald-500 text-white inline-block">
+                                                Saved
+                                            </span>
+                                        )}
+                                        {media.saveState === 'error' && (
+                                            <span className="px-2 py-1 text-[10px] font-medium rounded bg-red-500 text-white inline-block">
+                                                Save failed
+                                            </span>
+                                        )}
                                     </div>
-
-                                    {/* Save State Indicator */}
-                                    {media.saveState && (
-                                        <div className="absolute bottom-2 right-2 z-10">
-                                            {media.saveState === 'saving' && (
-                                                <span className="px-2 py-1 text-[10px] font-medium rounded bg-black/70 text-white inline-flex items-center gap-1">
-                                                    <Spinner size={12} />
-                                                    Saving
-                                                </span>
-                                            )}
-                                            {media.saveState === 'saved' && (
-                                                <span className="px-2 py-1 text-[10px] font-medium rounded bg-emerald-500 text-white inline-block">
-                                                    Saved
-                                                </span>
-                                            )}
-                                            {media.saveState === 'error' && (
-                                                <span className="px-2 py-1 text-[10px] font-medium rounded bg-red-500 text-white inline-block">
-                                                    Save failed
-                                                </span>
-                                            )}
-                                        </div>
-                                    )}
 
                                     {/* Provider/Model Badge */}
                                     {media.providerName && (
