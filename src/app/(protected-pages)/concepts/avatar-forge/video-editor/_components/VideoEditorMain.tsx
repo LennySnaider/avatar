@@ -356,7 +356,9 @@ const VideoEditorMain = ({ userId, initialVideoUrl }: VideoEditorMainProps) => {
             if (filmstripsRef.current[url] !== undefined) return
             if (filmstripInFlightRef.current.has(url)) return
             filmstripInFlightRef.current.add(url)
-            const frameCount = Math.min(12, Math.max(3, Math.round(clip.duration / 2)))
+            // ~1 frame per second, min 8: with fewer, a short clip on a wide
+            // track rendered 3 giant object-cover tiles instead of a filmstrip.
+            const frameCount = Math.min(24, Math.max(8, Math.ceil(clip.duration)))
             extractFilmstrip(url, frameCount)
                 .then((frames) => {
                     if (cancelled) return

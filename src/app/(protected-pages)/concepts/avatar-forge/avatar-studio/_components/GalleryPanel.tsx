@@ -12,20 +12,19 @@ import Notification from '@/components/ui/Notification'
 import toast from '@/components/ui/toast'
 import ConfirmDialog from '@/components/shared/ConfirmDialog'
 import { apiDeleteGeneration } from '@/services/AvatarForgeService'
-import { HiOutlineTrash, HiOutlineDownload, HiOutlinePhotograph, HiOutlinePencilAlt, HiOutlineUpload, HiOutlineSearch, HiOutlineShare, HiOutlineSave } from 'react-icons/hi'
+import { HiOutlineTrash, HiOutlineDownload, HiOutlinePhotograph, HiOutlineUpload, HiOutlineSearch, HiOutlineShare, HiOutlineSave } from 'react-icons/hi'
 import type { GeneratedMedia, AspectRatio, MediaType } from '../types'
 
 interface GalleryPanelProps {
     onCreateVariant?: (media: GeneratedMedia) => void
     onSaveToGallery?: (media: GeneratedMedia) => Promise<void>
     onPost?: (media: GeneratedMedia) => void
-    onEditImage?: (media: GeneratedMedia) => void
     /** Called for each uploaded file after it lands in the gallery — the studio
      * wires this to persistGeneration so uploads get a DB row (enables Post). */
     onUploaded?: (media: GeneratedMedia) => void
 }
 
-const GalleryPanel = ({ onSaveToGallery, onPost, onEditImage, onUploaded }: GalleryPanelProps) => {
+const GalleryPanel = ({ onSaveToGallery, onPost, onUploaded }: GalleryPanelProps) => {
     const {
         gallery,
         isGenerating,
@@ -366,22 +365,8 @@ const GalleryPanel = ({ onSaveToGallery, onPost, onEditImage, onUploaded }: Gall
                                                             handleDownload(media)
                                                         }}
                                                     />
-                                                    {media.mediaType === 'IMAGE' && onEditImage && (
-                                                        <Button
-                                                            size="xs"
-                                                            variant="solid"
-                                                            color="blue"
-                                                            icon={<HiOutlinePencilAlt />}
-                                                            onClick={(e) => {
-                                                                e.stopPropagation()
-                                                                onEditImage(media)
-                                                            }}
-                                                        >
-                                                            <span>Edit</span>
-                                                        </Button>
-                                                    )}
-                                                    {/* Video "Edit" and image "Animate" moved into the preview
-                                                        modal's action bar — the card overlay was crowded. */}
+                                                    {/* Edit/Animate live inside the preview modal — clicking
+                                                        the card opens it, so a card-level Edit was redundant. */}
                                                     {onPost && (
                                                         <Button
                                                             size="xs"

@@ -269,7 +269,6 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
         addToGallery,
         updateGalleryItem,
         loadPersistedGallery,
-        setPreviewMedia,
         setIsEnhancingPrompt,
         setIsPromptLibraryOpen,
         setIsDescribingImage,
@@ -1945,7 +1944,6 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                     onCreateVariant={handleCreateVariant}
                     onSaveToGallery={handleSaveToGallery}
                     onPost={(m: GeneratedMedia) => setPostMedia(m)}
-                    onEditImage={(m: GeneratedMedia) => setPreviewMedia(m, true)}
                     onUploaded={persistGeneration}
                 />
             </div>

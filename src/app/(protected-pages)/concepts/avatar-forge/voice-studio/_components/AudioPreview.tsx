@@ -347,7 +347,10 @@ export default function AudioPreview({ onSentToAvatarStudio }: AudioPreviewProps
                         <label className="flex items-center justify-between gap-2">
                             <span className="text-gray-500 w-14">Accent</span>
                             <select
-                                className="flex-1 rounded-md border px-2 py-1 text-sm bg-white dark:bg-gray-800"
+                                // min-w-0: a <select>'s intrinsic width (its longest
+                                // option) beats flex-1 shrinking and overflowed the
+                                // Audio Preview card / ToolModal without it.
+                                className="flex-1 min-w-0 rounded-md border px-2 py-1 text-sm bg-white dark:bg-gray-800"
                                 value={autoAccent ? 'clone' : 'neutral'}
                                 onChange={(e) => setAutoAccent(e.target.value === 'clone')}
                             >
