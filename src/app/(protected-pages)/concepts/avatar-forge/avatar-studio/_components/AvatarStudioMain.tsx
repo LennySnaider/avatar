@@ -24,7 +24,7 @@ import {
     apiGetGenerations,
     getSignedUrl,
 } from '@/services/AvatarForgeService'
-import { supabase } from '@/lib/supabase'
+import { supabase, getStoragePublicUrl } from '@/lib/supabase'
 import {
     generateAvatar,
     generateVideoSafe as generateVideoGeminiSafe,
@@ -317,6 +317,7 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                             metadata: gen.metadata ?? undefined,
                             generationId: gen.id,
                             saveState: 'saved',
+                            publicUrl: getStoragePublicUrl('generations', gen.storage_path),
                         }
                     }),
                 )
@@ -504,6 +505,7 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                 updateGalleryItem(media.id, {
                     saveState: 'saved',
                     generationId: row.id,
+                    publicUrl: getStoragePublicUrl('generations', path),
                 })
             } catch (error) {
                 console.error('Auto-save failed:', error)

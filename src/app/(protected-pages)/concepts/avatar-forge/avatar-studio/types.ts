@@ -70,6 +70,13 @@ export interface GeneratedMedia {
     fullApiPrompt?: string // Full prompt sent to the API (for debugging)
     /** Display name of the provider+model used (e.g. "Flux.1 Kontext Pro"). */
     providerName?: string
+    /** Supabase `generations` row id once the media has been persisted. */
+    generationId?: string
+    /** Auto-save lifecycle for this item's persistence to the `generations` table. */
+    saveState?: 'saving' | 'saved' | 'error'
+    /** Durable public Storage URL once persisted — the `url` field may be a
+     * browser-only blob:/data: URI (uploads), which the server can't fetch. */
+    publicUrl?: string
 }
 
 // App states

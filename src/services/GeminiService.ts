@@ -398,6 +398,15 @@ export async function generateSocialCaption(input: {
     language?: 'en' | 'es'
 }): Promise<SocialCaptionResult> {
     try {
+        // blob:/data: URIs only exist in the browser — undici fails on them
+        // with a cryptic "invalid method". Fail with a message that points at
+        // the real problem (caller must send the durable public URL).
+        if (!/^https?:\/\//i.test(input.mediaUrl)) {
+            return {
+                success: false,
+                error: 'Media is not uploaded yet — wait for it to finish saving to the gallery, then retry',
+            }
+        }
         const res = await fetch(input.mediaUrl)
         if (!res.ok) {
             return { success: false, error: `Could not fetch media (HTTP ${res.status})` }
