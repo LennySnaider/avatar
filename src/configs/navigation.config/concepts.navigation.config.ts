@@ -2,6 +2,7 @@ import { CONCEPTS_PREFIX_PATH } from '@/constants/route.constant'
 import {
     NAV_ITEM_TYPE_TITLE,
     NAV_ITEM_TYPE_ITEM,
+    NAV_ITEM_TYPE_COLLAPSE,
 } from '@/constants/navigation.constant'
 import { ADMIN, USER } from '@/constants/roles.constant'
 import type { NavigationTree } from '@/@types/navigation'
@@ -23,22 +24,6 @@ const conceptsNavigationConfig: NavigationTree[] = [
         },
         subMenu: [
             {
-                key: 'avatarForge.avatarCreator',
-                path: `${CONCEPTS_PREFIX_PATH}/avatar-forge/avatar-creator`,
-                title: 'Avatar Creator',
-                translateKey: 'nav.avatarForge.avatarCreator',
-                icon: 'avatarCreator',
-                type: NAV_ITEM_TYPE_ITEM,
-                authority: [ADMIN, USER],
-                meta: {
-                    description: {
-                        translateKey: 'nav.avatarForge.avatarCreatorDesc',
-                        label: 'Create and configure avatars',
-                    },
-                },
-                subMenu: [],
-            },
-            {
                 key: 'avatarForge.avatarStudio',
                 path: `${CONCEPTS_PREFIX_PATH}/avatar-forge/avatar-studio`,
                 title: 'Avatar Studio',
@@ -54,89 +39,10 @@ const conceptsNavigationConfig: NavigationTree[] = [
                 },
                 subMenu: [],
             },
-            {
-                key: 'avatarForge.reelRemix',
-                path: `${CONCEPTS_PREFIX_PATH}/avatar-forge/reel-remix`,
-                title: 'Reel Remix',
-                translateKey: 'nav.avatarForge.reelRemix',
-                icon: 'reelRemix',
-                type: NAV_ITEM_TYPE_ITEM,
-                authority: [ADMIN, USER],
-                meta: {
-                    description: {
-                        translateKey: 'nav.avatarForge.reelRemixDesc',
-                        label: 'Turn Instagram Reels into avatar prompts',
-                    },
-                },
-                subMenu: [],
-            },
-            {
-                key: 'avatarForge.imageEditor',
-                path: `${CONCEPTS_PREFIX_PATH}/avatar-forge/image-editor`,
-                title: 'Image Editor',
-                translateKey: 'nav.avatarForge.imageEditor',
-                icon: 'imageEdit',
-                type: NAV_ITEM_TYPE_ITEM,
-                authority: [ADMIN, USER],
-                meta: {
-                    description: {
-                        translateKey: 'nav.avatarForge.imageEditorDesc',
-                        label: 'Edit images with AI',
-                    },
-                },
-                subMenu: [],
-            },
-            {
-                key: 'avatarForge.videoEditor',
-                path: `${CONCEPTS_PREFIX_PATH}/avatar-forge/video-editor`,
-                title: 'Video Editor',
-                translateKey: 'nav.avatarForge.videoEditor',
-                // Reuse imageEdit icon for now — the icon registry has scissor/film
-                // alternatives but adding a new one requires touching the icon map
-                // separately. imageEdit visually fits the editor family.
-                icon: 'imageEdit',
-                type: NAV_ITEM_TYPE_ITEM,
-                authority: [ADMIN, USER],
-                meta: {
-                    description: {
-                        translateKey: 'nav.avatarForge.videoEditorDesc',
-                        label: 'Remove watermarks, trim and crop videos',
-                    },
-                },
-                subMenu: [],
-            },
-            {
-                key: 'avatarForge.voiceStudio',
-                path: `${CONCEPTS_PREFIX_PATH}/avatar-forge/voice-studio`,
-                title: 'Voice Studio',
-                translateKey: 'nav.avatarForge.voiceStudio',
-                icon: 'voiceStudio',
-                type: NAV_ITEM_TYPE_ITEM,
-                authority: [ADMIN, USER],
-                meta: {
-                    description: {
-                        translateKey: 'nav.avatarForge.voiceStudioDesc',
-                        label: 'Generate AI voiceovers',
-                    },
-                },
-                subMenu: [],
-            },
-            {
-                key: 'avatarForge.videoFlows',
-                path: `${CONCEPTS_PREFIX_PATH}/avatar-forge/video-flows`,
-                title: 'Video Flows',
-                translateKey: 'nav.avatarForge.videoFlows',
-                icon: 'videoFlows',
-                type: NAV_ITEM_TYPE_ITEM,
-                authority: [ADMIN, USER],
-                meta: {
-                    description: {
-                        translateKey: 'nav.avatarForge.videoFlowsDesc',
-                        label: 'Visual pipeline editor',
-                    },
-                },
-                subMenu: [],
-            },
+            // Reel Remix, Video Editor and Voice Studio moved INTO Avatar
+            // Studio (Tools dropdown → ToolModal); their standalone routes
+            // still work by URL but no longer clutter the sidebar. See
+            // docs/superpowers/specs/2026-07-09-studio-consolidation-design.md
             {
                 key: 'avatarForge.avatarList',
                 path: `${CONCEPTS_PREFIX_PATH}/avatar-forge/avatar-list`,
@@ -149,22 +55,6 @@ const conceptsNavigationConfig: NavigationTree[] = [
                     description: {
                         translateKey: 'nav.avatarForge.avatarListDesc',
                         label: 'View saved avatars',
-                    },
-                },
-                subMenu: [],
-            },
-            {
-                key: 'avatarForge.gallery',
-                path: `${CONCEPTS_PREFIX_PATH}/avatar-forge/gallery`,
-                title: 'Gallery',
-                translateKey: 'nav.avatarForge.gallery',
-                icon: 'avatarGallery',
-                type: NAV_ITEM_TYPE_ITEM,
-                authority: [ADMIN, USER],
-                meta: {
-                    description: {
-                        translateKey: 'nav.avatarForge.galleryDesc',
-                        label: 'Generated images & videos',
                     },
                 },
                 subMenu: [],
@@ -186,20 +76,45 @@ const conceptsNavigationConfig: NavigationTree[] = [
                 subMenu: [],
             },
             {
-                key: 'avatarForge.promptLibrary',
-                path: `${CONCEPTS_PREFIX_PATH}/avatar-forge/prompt-library`,
-                title: 'Prompt Library',
-                translateKey: 'nav.avatarForge.promptLibrary',
-                icon: 'promptLibrary',
-                type: NAV_ITEM_TYPE_ITEM,
+                key: 'avatarForge.fanvue',
+                path: '',
+                title: 'Fanvue',
+                translateKey: 'nav.avatarForge.fanvue',
+                icon: 'avatarSocial',
+                type: NAV_ITEM_TYPE_COLLAPSE,
                 authority: [ADMIN, USER],
-                meta: {
-                    description: {
-                        translateKey: 'nav.avatarForge.promptLibraryDesc',
-                        label: 'Saved prompts collection',
+                subMenu: [
+                    {
+                        key: 'avatarForge.fanvueAccounts',
+                        path: `${CONCEPTS_PREFIX_PATH}/avatar-forge/fanvue/accounts`,
+                        title: 'Fanvue Account',
+                        translateKey: 'nav.avatarForge.fanvueAccounts',
+                        icon: '',
+                        type: NAV_ITEM_TYPE_ITEM,
+                        authority: [ADMIN, USER],
+                        subMenu: [],
                     },
-                },
-                subMenu: [],
+                    {
+                        key: 'avatarForge.fanvueComposer',
+                        path: `${CONCEPTS_PREFIX_PATH}/avatar-forge/fanvue/composer`,
+                        title: 'Fanvue Composer',
+                        translateKey: 'nav.avatarForge.fanvueComposer',
+                        icon: '',
+                        type: NAV_ITEM_TYPE_ITEM,
+                        authority: [ADMIN, USER],
+                        subMenu: [],
+                    },
+                    {
+                        key: 'avatarForge.fanvuePosts',
+                        path: `${CONCEPTS_PREFIX_PATH}/avatar-forge/fanvue/posts`,
+                        title: 'Fanvue Posts',
+                        translateKey: 'nav.avatarForge.fanvuePosts',
+                        icon: '',
+                        type: NAV_ITEM_TYPE_ITEM,
+                        authority: [ADMIN, USER],
+                        subMenu: [],
+                    },
+                ],
             },
             {
                 key: 'avatarForge.providers',

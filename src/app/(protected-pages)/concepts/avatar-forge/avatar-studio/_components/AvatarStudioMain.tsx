@@ -9,10 +9,19 @@ import ImagePreviewModal from './ImagePreviewModal'
 import PostModal from './PostModal'
 import ToolModal from './ToolModal'
 import VideoEditorMain from '../../video-editor/_components/VideoEditorMain'
+import dynamic from 'next/dynamic'
+
+// Studio-consolidation tools, lazily loaded so they don't weigh the studio
+// bundle until opened (see docs/superpowers/specs/2026-07-09-studio-consolidation-design.md)
+const VoiceStudioTool = dynamic(() => import('../../voice-studio/_components/VoiceStudioMain'), { ssr: false })
+const ReelRemixTool = dynamic(() => import('../../reel-remix/_components/ReelRemixMain'), { ssr: false })
+const ReelDownloaderTool = dynamic(() => import('../../reel-downloader/_components/ReelDownloaderMain'), { ssr: false })
 import AvatarSelector from './AvatarSelector'
 import PromptLibraryDrawer from './PromptLibraryDrawer'
 import ProviderManagerDrawer, { DEFAULT_PROVIDERS } from './ProviderManagerDrawer'
 import Button from '@/components/ui/Button'
+import Dropdown from '@/components/ui/Dropdown'
+import Spinner from '@/components/ui/Spinner'
 import Notification from '@/components/ui/Notification'
 import toast from '@/components/ui/toast'
 import {
@@ -22,6 +31,7 @@ import {
     apiCreateGenerationUploadUrl,
     apiSaveGeneration,
     apiGetGenerations,
+    apiGetAvatars,
     getSignedUrl,
 } from '@/services/AvatarForgeService'
 import { supabase, getStoragePublicUrl } from '@/lib/supabase'
@@ -52,7 +62,7 @@ import { buildAvatarPrompt, buildLeanIdentityPrompt, stripHarnessForFaceSwap, ty
 import { HiOutlineCog, HiOutlineBookOpen, HiX } from 'react-icons/hi'
 import { AppState } from '../types'
 import type { GeneratedMedia, ReferenceImage } from '../types'
-import type { AspectRatio } from '@/@types/supabase'
+import type { AspectRatio, Avatar } from '@/@types/supabase'
 import { useImageOptimization } from '../_hooks/useImageOptimization'
 
 interface AvatarStudioMainProps {
@@ -168,6 +178,22 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
     // on a VIDEO). Non-null == modal open; VideoEditorMain is keyed by
     // media.id so switching videos forces a fresh mount.
     const [videoEditorMedia, setVideoEditorMedia] = useState<GeneratedMedia | null>(null)
+
+    // Studio-consolidation tools hosted in ToolModals (Voice / Remix / Downloader).
+    // Voice Studio needs the avatar list — fetched lazily on first open.
+    const [activeTool, setActiveTool] = useState<'voice' | 'remix' | 'downloader' | null>(null)
+    const [toolAvatars, setToolAvatars] = useState<Avatar[] | null>(null)
+    const openVoiceTool = useCallback(async () => {
+        setActiveTool('voice')
+        if (!toolAvatars && userId) {
+            try {
+                setToolAvatars(await apiGetAvatars(userId))
+            } catch (e) {
+                console.error('Failed to load avatars for Voice Studio:', e)
+                setToolAvatars([])
+            }
+        }
+    }, [toolAvatars, userId])
     const pendingAutoGenerateRef = useRef(false)
 
     const {
@@ -1916,6 +1942,26 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                     >
                         Prompts
                     </Button>
+
+                    {/* Tools — consolidated workspaces hosted in ToolModals */}
+                    <Dropdown
+                        placement="bottom-end"
+                        renderTitle={
+                            <Button size="sm" variant="plain" icon={<HiOutlineCog />}>
+                                Tools
+                            </Button>
+                        }
+                    >
+                        <Dropdown.Item eventKey="voice" onClick={openVoiceTool}>
+                            🎙 Voice Studio
+                        </Dropdown.Item>
+                        <Dropdown.Item eventKey="remix" onClick={() => setActiveTool('remix')}>
+                            🎞 Reel Remix
+                        </Dropdown.Item>
+                        <Dropdown.Item eventKey="downloader" onClick={() => setActiveTool('downloader')}>
+                            ⬇️ Reel Downloader
+                        </Dropdown.Item>
+                    </Dropdown>
                 </div>
             </div>
 
@@ -1989,6 +2035,25 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                         initialVideoUrl={videoEditorMedia.url}
                     />
                 )}
+            </ToolModal>
+
+            {/* Consolidated tools — Voice Studio / Reel Remix / Reel Downloader */}
+            <ToolModal isOpen={activeTool === 'voice'} onClose={() => setActiveTool(null)}>
+                {activeTool === 'voice' && userId && (
+                    toolAvatars ? (
+                        <VoiceStudioTool userId={userId} avatars={toolAvatars} />
+                    ) : (
+                        <div className="flex items-center justify-center h-64">
+                            <Spinner size={40} />
+                        </div>
+                    )
+                )}
+            </ToolModal>
+            <ToolModal isOpen={activeTool === 'remix'} onClose={() => setActiveTool(null)}>
+                {activeTool === 'remix' && <ReelRemixTool />}
+            </ToolModal>
+            <ToolModal isOpen={activeTool === 'downloader'} onClose={() => setActiveTool(null)}>
+                {activeTool === 'downloader' && <ReelDownloaderTool />}
             </ToolModal>
 
             {/* Avatar Selector Modal */}
