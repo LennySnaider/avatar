@@ -6,15 +6,19 @@ import VoiceLibrary from './VoiceLibrary'
 import VoiceClonePanel from './VoiceClonePanel'
 import ScriptEditor from './ScriptEditor'
 import AudioPreview from './AudioPreview'
-import LipsyncPanel from './LipsyncPanel'
 import type { Avatar } from '@/@types/supabase'
 
 interface VoiceStudioMainProps {
     userId: string
     avatars: Avatar[]
+    /** Hosted-in-ToolModal mode: called instead of navigating when the user
+     * sends audio to Avatar Studio's Speak mode. */
+    onSentToAvatarStudio?: (avatarId: string | null) => void
 }
 
-export default function VoiceStudioMain({ userId, avatars }: VoiceStudioMainProps) {
+// userId stays in the props contract (both callers pass it) though the
+// component no longer uses it directly since LipsyncPanel moved out.
+export default function VoiceStudioMain({ avatars, onSentToAvatarStudio }: VoiceStudioMainProps) {
     useEffect(() => {
         // Fuente de verdad viva: voces + mapeo avatar↔voz-default.
         refreshVoices()
@@ -38,12 +42,12 @@ export default function VoiceStudioMain({ userId, avatars }: VoiceStudioMainProp
 
                 {/* Right column: Preview */}
                 <div className="flex flex-col gap-4">
-                    <AudioPreview />
+                    <AudioPreview onSentToAvatarStudio={onSentToAvatarStudio} />
                 </div>
             </div>
-
-            {/* Full-width row: lipsync picks from the whole gallery */}
-            <LipsyncPanel userId={userId} />
+            {/* Lipsync moved to the gallery video preview ("Lipsync" action →
+                LipsyncDialog in Avatar Studio) — Voice Studio now lives inside
+                the studio, right next to the gallery, so the picker was redundant. */}
         </div>
     )
 }

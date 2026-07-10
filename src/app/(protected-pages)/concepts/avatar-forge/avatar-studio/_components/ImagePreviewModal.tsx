@@ -34,6 +34,7 @@ import {
     HiOutlineChevronDoubleLeft,
     HiOutlineChevronDoubleRight,
     HiOutlineShare,
+    HiOutlineVolumeUp,
 } from 'react-icons/hi'
 import { HiOutlineArrowUturnLeft, HiOutlineArrowUturnRight } from 'react-icons/hi2'
 import Tooltip from '@/components/ui/Tooltip'
@@ -65,6 +66,8 @@ interface ImagePreviewModalProps {
     onPost?: (media: GeneratedMedia) => void
     /** Opens the Video Editor with this video (moved here from the gallery card overlay). */
     onEditVideo?: (media: GeneratedMedia) => void
+    /** Opens the Lipsync dialog for this video (audio comes from Voice Studio). */
+    onLipsync?: (media: GeneratedMedia) => void
 }
 
 const ImagePreviewModal = ({
@@ -76,6 +79,7 @@ const ImagePreviewModal = ({
     onReuse,
     onPost,
     onEditVideo,
+    onLipsync,
 }: ImagePreviewModalProps) => {
     const { gallery, previewMedia, previewStartInEdit, setPreviewMedia, removeFromGallery, addToGallery, videoDialogue, providers, activeProviderId } = useAvatarStudioStore()
 
@@ -1382,6 +1386,19 @@ const ImagePreviewModal = ({
                             {previewMedia.mediaType === 'VIDEO' && onContinueVideo && (
                                 <Button variant="plain" color="purple" onClick={captureFrame} icon={<HiOutlineFilm />}>
                                     <span>Continue</span>
+                                </Button>
+                            )}
+
+                            {previewMedia.mediaType === 'VIDEO' && onLipsync && (
+                                <Button
+                                    variant="plain"
+                                    onClick={() => {
+                                        onLipsync(previewMedia)
+                                        handleClose()
+                                    }}
+                                    icon={<HiOutlineVolumeUp />}
+                                >
+                                    <span>Lipsync</span>
                                 </Button>
                             )}
 

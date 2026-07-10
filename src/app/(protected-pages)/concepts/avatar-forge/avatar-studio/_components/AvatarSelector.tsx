@@ -246,7 +246,7 @@ const AvatarSelector = ({ userId, isOpen, onClose }: AvatarSelectorProps) => {
 
     const handleGoToCreator = () => {
         onClose()
-        router.push('/concepts/avatar-forge/avatar-creator')
+        router.push('/concepts/avatar-forge/avatar-studio')
     }
 
     return (

@@ -20,7 +20,14 @@ const EMOTIONS = [
     { value: 'neutral', label: 'Neutral' },
 ] as const
 
-export default function AudioPreview() {
+interface AudioPreviewProps {
+    /** Provided when hosted inside Avatar Studio's ToolModal: hands control
+     * back to the studio (closes the modal) instead of navigating, which
+     * would remount the studio and wipe its in-memory gallery. */
+    onSentToAvatarStudio?: (avatarId: string | null) => void
+}
+
+export default function AudioPreview({ onSentToAvatarStudio }: AudioPreviewProps = {}) {
     const {
         currentScript, selectedVoiceId, voices, setVoices,
         previewAudioUrl, setPreviewAudioUrl,
@@ -42,6 +49,10 @@ export default function AudioPreview() {
         avatarStudio.setGenerationMode('VIDEO')
         avatarStudio.setVideoSubMode('SPEAK')
         const avatarId = selectedVoice?.avatar_id
+        if (onSentToAvatarStudio) {
+            onSentToAvatarStudio(avatarId ?? null)
+            return
+        }
         router.push(`/concepts/avatar-forge/avatar-studio${avatarId ? `?avatarId=${avatarId}` : ''}`)
     }
 

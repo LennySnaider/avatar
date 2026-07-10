@@ -122,7 +122,7 @@ const ExtractFrameDialog = ({
         const v = videoRef.current
         if (!v) return
         if (v.paused) {
-            v.play()
+            v.play().catch(() => {})
             setIsPlaying(true)
         } else {
             v.pause()

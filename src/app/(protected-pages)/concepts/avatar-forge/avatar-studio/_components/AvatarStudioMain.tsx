@@ -7,6 +7,7 @@ import BottomControlBar from './BottomControlBar'
 import GalleryPanel from './GalleryPanel'
 import ImagePreviewModal from './ImagePreviewModal'
 import PostModal from './PostModal'
+import LipsyncDialog from './LipsyncDialog'
 import ToolModal from './ToolModal'
 import VideoEditorMain from '../../video-editor/_components/VideoEditorMain'
 import dynamic from 'next/dynamic'
@@ -182,6 +183,8 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
     // Studio-consolidation tools hosted in ToolModals (Voice / Remix / Downloader).
     // Voice Studio needs the avatar list — fetched lazily on first open.
     const [activeTool, setActiveTool] = useState<'voice' | 'remix' | 'downloader' | null>(null)
+    // Video queued for the Lipsync dialog (gallery video + Voice Studio audio)
+    const [lipsyncMedia, setLipsyncMedia] = useState<GeneratedMedia | null>(null)
     const [toolAvatars, setToolAvatars] = useState<Avatar[] | null>(null)
     const openVoiceTool = useCallback(async () => {
         setActiveTool('voice')
@@ -2018,10 +2021,19 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                 onReuse={handleReuse}
                 onPost={(m: GeneratedMedia) => setPostMedia(m)}
                 onEditVideo={(m: GeneratedMedia) => setVideoEditorMedia(m)}
+                onLipsync={(m: GeneratedMedia) => setLipsyncMedia(m)}
             />
 
             {/* Unified Post modal (social + Fanvue) */}
             <PostModal media={postMedia} onClose={() => setPostMedia(null)} />
+
+            {/* Lipsync — gallery video + Voice Studio audio */}
+            <LipsyncDialog
+                media={lipsyncMedia}
+                userId={userId}
+                onClose={() => setLipsyncMedia(null)}
+                onOpenVoiceStudio={openVoiceTool}
+            />
 
             {/* Video Editor — opens in-place instead of navigating to /video-editor */}
             <ToolModal
@@ -2041,7 +2053,16 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
             <ToolModal isOpen={activeTool === 'voice'} onClose={() => setActiveTool(null)}>
                 {activeTool === 'voice' && userId && (
                     toolAvatars ? (
-                        <VoiceStudioTool userId={userId} avatars={toolAvatars} />
+                        <VoiceStudioTool
+                            userId={userId}
+                            avatars={toolAvatars}
+                            onSentToAvatarStudio={() => {
+                                // Speak mode is already set in the store — just
+                                // hand the studio back (navigating would wipe
+                                // the in-memory gallery).
+                                setActiveTool(null)
+                            }}
+                        />
                     ) : (
                         <div className="flex items-center justify-center h-64">
                             <Spinner size={40} />
