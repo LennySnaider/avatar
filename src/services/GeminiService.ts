@@ -475,6 +475,60 @@ HASHTAGS:
     }
 }
 
+export interface VideoPromptFromImageResult {
+    success: boolean
+    prompt?: string
+    error?: string
+}
+
+/**
+ * Look at a still image (the video Input / first frame) and write a cinematic
+ * image-to-video prompt for it: natural motion for the subject and scene,
+ * camera work, pacing — NOT a description of the person (the image itself is
+ * the identity source in i2v). Error-as-data.
+ */
+export async function generateVideoPromptFromImage(input: {
+    base64: string
+    mimeType: string
+}): Promise<VideoPromptFromImageResult> {
+    try {
+        const apiKey = getApiKey()
+        const ai = new GoogleGenAI({ apiKey })
+
+        const instructions = `
+You are a film director planning how to bring this still image to life as a short video (5-10s).
+
+Look at the image and write ONE image-to-video prompt (English, 60-120 words) describing:
+1. MOTION: what the subject would naturally do next — subtle, believable movement (breathing, hair in the breeze, a turn, a smile forming, walking) that fits the pose and scene.
+2. CAMERA: one clear camera treatment (slow push-in, gentle handheld sway, orbit, static with parallax) that flatters this composition.
+3. SCENE LIFE: ambient motion around the subject (light shifts, background people/traffic, fabric, water, particles) consistent with what's visible.
+4. MOOD & PACING: the vibe (calm/energetic/sensual/cinematic) and tempo.
+
+RULES:
+- Do NOT describe the person's appearance, clothing or identity — the image already defines them. Refer to "the subject".
+- No scene changes, no cuts, no teleporting — motion must be continuable from this exact frame.
+- Output ONLY the prompt text, no preamble.
+`
+
+        const response = await ai.models.generateContent({
+            model: 'gemini-2.5-flash',
+            contents: {
+                parts: [
+                    { inlineData: { mimeType: input.mimeType, data: cleanBase64Data(input.base64) } },
+                    { text: instructions },
+                ],
+            },
+        })
+
+        const text = response.text?.trim()
+        if (!text) return { success: false, error: 'Gemini returned an empty prompt' }
+        return { success: true, prompt: text }
+    } catch (e) {
+        console.error('[GeminiService] generateVideoPromptFromImage failed', e)
+        return { success: false, error: e instanceof Error ? e.message : String(e) }
+    }
+}
+
 /**
  * Translate an existing social caption + hashtags to the target language.
  * Text-only (no media fetch) — keeps the influencer tone and emojis, localizes

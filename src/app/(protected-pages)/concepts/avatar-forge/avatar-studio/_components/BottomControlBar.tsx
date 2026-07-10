@@ -2,7 +2,7 @@
 
 import { useRef, useState, useCallback, useEffect } from 'react'
 import { useAvatarStudioStore } from '../_store/avatarStudioStore'
-import { analyzePoseFromImage, analyzeImageForClone, analyzeImageForPlace } from '@/services/GeminiService'
+import { analyzePoseFromImage, analyzeImageForClone, analyzeImageForPlace, generateVideoPromptFromImage } from '@/services/GeminiService'
 import { resizeBase64Image } from '@/utils/imageOptimization'
 import Button from '@/components/ui/Button'
 import Notification from '@/components/ui/Notification'
@@ -27,6 +27,7 @@ import {
     HiOutlineTrash,
     HiOutlineCheck,
     HiOutlineMicrophone,
+    HiOutlineLightBulb,
 } from 'react-icons/hi'
 import { PiLightningFill } from 'react-icons/pi'
 import { MODEL_ACTION_PRESETS } from '../_constants/modelActionPresets'
@@ -187,6 +188,38 @@ const BottomControlBar = ({
     const [isAnalyzingPlace, setIsAnalyzingPlace] = useState(false)
     const [describeInputImage, setDescribeInputImage] = useState<string | null>(null) // URL for visual preview
     const [isVideoToPromptOpen, setIsVideoToPromptOpen] = useState(false)
+    const [isGeneratingVideoPrompt, setIsGeneratingVideoPrompt] = useState(false)
+
+    // AI looks at the video Input image and writes an i2v motion/camera prompt.
+    const handleGenerateVideoPrompt = async () => {
+        if (!videoInputImage?.base64 || isGeneratingVideoPrompt) return
+        setIsGeneratingVideoPrompt(true)
+        try {
+            // Resize before sending — full-res base64 blows Vercel's ~4.5MB cap (413).
+            const apiBase64 = await resizeBase64Image(videoInputImage.base64, 'API')
+            const result = await generateVideoPromptFromImage({
+                base64: apiBase64,
+                mimeType: 'image/jpeg',
+            })
+            if (!result.success || !result.prompt) {
+                toast.push(
+                    <Notification type="danger" title="Prompt generation failed">
+                        {result.error ?? 'Could not analyze the Input image'}
+                    </Notification>,
+                )
+                return
+            }
+            setPrompt(result.prompt)
+        } catch (err) {
+            toast.push(
+                <Notification type="danger" title="Prompt generation failed">
+                    {err instanceof Error ? err.message : String(err)}
+                </Notification>,
+            )
+        } finally {
+            setIsGeneratingVideoPrompt(false)
+        }
+    }
     const [isSpeakDialogOpen, setIsSpeakDialogOpen] = useState(false)
 
     // Prevent hydration mismatch with FloatingUI-generated IDs
@@ -698,6 +731,21 @@ const BottomControlBar = ({
                                         <HiOutlineFilm className="w-4 h-4" />
                                     </button>
                                 </Tooltip>
+                                {generationMode === 'VIDEO' && (
+                                    <Tooltip title={videoInputImage ? 'Generate video prompt from the Input image' : 'Load an Input image first'}>
+                                        <button
+                                            onClick={handleGenerateVideoPrompt}
+                                            disabled={!videoInputImage || isGeneratingVideoPrompt}
+                                            className="p-1.5 text-gray-400 hover:text-purple-500 transition-colors disabled:opacity-50 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800"
+                                        >
+                                            {isGeneratingVideoPrompt ? (
+                                                <Spinner size={16} />
+                                            ) : (
+                                                <HiOutlineLightBulb className="w-4 h-4" />
+                                            )}
+                                        </button>
+                                    </Tooltip>
+                                )}
                                 <Tooltip title="Clear prompt">
                                     <button
                                         onClick={() => {
