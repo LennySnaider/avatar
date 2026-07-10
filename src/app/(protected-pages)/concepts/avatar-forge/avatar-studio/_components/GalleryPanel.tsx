@@ -10,6 +10,8 @@ import Spinner from '@/components/ui/Spinner'
 import ScrollBar from '@/components/ui/ScrollBar'
 import Notification from '@/components/ui/Notification'
 import toast from '@/components/ui/toast'
+import ConfirmDialog from '@/components/shared/ConfirmDialog'
+import { apiDeleteGeneration } from '@/services/AvatarForgeService'
 import { HiOutlineTrash, HiOutlineDownload, HiOutlinePhotograph, HiOutlinePencilAlt, HiOutlineUpload, HiOutlineSearch, HiOutlineShare, HiOutlineSave } from 'react-icons/hi'
 import type { GeneratedMedia, AspectRatio, MediaType } from '../types'
 
@@ -137,36 +139,32 @@ const GalleryPanel = ({ onSaveToGallery, onPost, onEditImage, onUploaded }: Gall
         )
     }
 
-    // Delete with a confirmation toast so an accidental click on the hover
-    // overlay can't wipe a generation. Only "Delete" actually removes it.
-    const confirmDelete = (media: GeneratedMedia) => {
-        let key = ''
-        key = toast.push(
-            <Notification type="warning" title="Delete this generation?" duration={0}>
-                <p className="text-xs mb-2">It will be removed from your gallery.</p>
-                <div className="flex gap-2">
-                    <Button
-                        size="xs"
-                        variant="solid"
-                        color="red"
-                        onClick={() => {
-                            removeFromGallery(media.id)
-                            toast.remove(key)
-                        }}
-                    >
-                        Delete
-                    </Button>
-                    <Button
-                        size="xs"
-                        variant="plain"
-                        onClick={() => toast.remove(key)}
-                    >
-                        Cancel
-                    </Button>
-                </div>
-            </Notification>,
-            { placement: 'top-center' },
-        ) as string
+    // Delete with a real ConfirmDialog (the old toast-based confirm sometimes
+    // failed to dismiss). Deleting removes BOTH the in-memory item and the
+    // persisted `generations` row — the gallery hydrates from the DB, so a
+    // memory-only delete resurrected the item on reload.
+    const [deleteTarget, setDeleteTarget] = useState<GeneratedMedia | null>(null)
+    const [isDeleting, setIsDeleting] = useState(false)
+
+    const handleDeleteConfirmed = async () => {
+        if (!deleteTarget) return
+        setIsDeleting(true)
+        try {
+            if (deleteTarget.generationId) {
+                await apiDeleteGeneration(deleteTarget.generationId)
+            }
+            removeFromGallery(deleteTarget.id)
+            setDeleteTarget(null)
+        } catch (err) {
+            console.error('Failed to delete generation:', err)
+            toast.push(
+                <Notification type="danger" title="Delete failed">
+                    The item could not be deleted from the database. Try again.
+                </Notification>,
+            )
+        } finally {
+            setIsDeleting(false)
+        }
     }
 
     // Stitch/montage moved to the Video Editor as the "Combine" mode —
@@ -429,7 +427,7 @@ const GalleryPanel = ({ onSaveToGallery, onPost, onEditImage, onUploaded }: Gall
                                                             icon={<HiOutlineTrash />}
                                                             onClick={(e) => {
                                                                 e.stopPropagation()
-                                                                confirmDelete(media)
+                                                                setDeleteTarget(media)
                                                             }}
                                                         >
                                                             <span>Delete</span>
@@ -444,6 +442,22 @@ const GalleryPanel = ({ onSaveToGallery, onPost, onEditImage, onUploaded }: Gall
                     </div>
                 </div>
             </ScrollBar>
+
+            <ConfirmDialog
+                isOpen={!!deleteTarget}
+                type="danger"
+                title="Delete this generation?"
+                onClose={() => setDeleteTarget(null)}
+                onRequestClose={() => setDeleteTarget(null)}
+                onCancel={() => setDeleteTarget(null)}
+                onConfirm={handleDeleteConfirmed}
+                confirmButtonProps={{ loading: isDeleting }}
+            >
+                <p>
+                    It will be removed from your gallery
+                    {deleteTarget?.generationId ? ' and deleted from the database' : ''}.
+                </p>
+            </ConfirmDialog>
         </div>
     )
 }
