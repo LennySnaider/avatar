@@ -18,9 +18,12 @@ interface GalleryPanelProps {
     onSaveToGallery?: (media: GeneratedMedia) => Promise<void>
     onPost?: (media: GeneratedMedia) => void
     onEditImage?: (media: GeneratedMedia) => void
+    /** Called for each uploaded file after it lands in the gallery — the studio
+     * wires this to persistGeneration so uploads get a DB row (enables Post). */
+    onUploaded?: (media: GeneratedMedia) => void
 }
 
-const GalleryPanel = ({ onSaveToGallery, onPost, onEditImage }: GalleryPanelProps) => {
+const GalleryPanel = ({ onSaveToGallery, onPost, onEditImage, onUploaded }: GalleryPanelProps) => {
     const {
         gallery,
         isGenerating,
@@ -86,27 +89,31 @@ const GalleryPanel = ({ onSaveToGallery, onPost, onEditImage }: GalleryPanelProp
                 const video = document.createElement('video')
                 video.preload = 'metadata'
                 video.onloadedmetadata = () => {
-                    addToGallery({
+                    const item: GeneratedMedia = {
                         id,
                         url,
                         prompt: `Uploaded: ${file.name}`,
                         aspectRatio: detectAspectRatio(video.videoWidth, video.videoHeight),
                         timestamp: Date.now(),
                         mediaType: 'VIDEO',
-                    })
+                    }
+                    addToGallery(item)
+                    onUploaded?.(item)
                 }
                 video.src = url
             } else {
                 const img = new Image()
                 img.onload = () => {
-                    addToGallery({
+                    const item: GeneratedMedia = {
                         id,
                         url,
                         prompt: `Uploaded: ${file.name}`,
                         aspectRatio: detectAspectRatio(img.naturalWidth, img.naturalHeight),
                         timestamp: Date.now(),
                         mediaType: 'IMAGE',
-                    })
+                    }
+                    addToGallery(item)
+                    onUploaded?.(item)
                 }
                 img.src = url
             }
@@ -389,6 +396,13 @@ const GalleryPanel = ({ onSaveToGallery, onPost, onEditImage }: GalleryPanelProp
                                                             color="green"
                                                             icon={<HiOutlineShare />}
                                                             disabled={media.saveState !== 'saved'}
+                                                            title={
+                                                                media.saveState === 'saving'
+                                                                    ? 'Saving to gallery…'
+                                                                    : media.saveState !== 'saved'
+                                                                      ? 'Save to gallery first'
+                                                                      : undefined
+                                                            }
                                                             onClick={(e) => {
                                                                 e.stopPropagation()
                                                                 onPost(media)

@@ -1938,6 +1938,7 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                     onSaveToGallery={handleSaveToGallery}
                     onPost={(m: GeneratedMedia) => setPostMedia(m)}
                     onEditImage={(m: GeneratedMedia) => setPreviewMedia(m, true)}
+                    onUploaded={persistGeneration}
                 />
             </div>
 
