@@ -218,7 +218,6 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
         prompt,
         generationMode,
         videoSubMode,
-        speakModel,
         avatarDefaultVoice,
         aspectRatio,
         videoResolution,
@@ -272,7 +271,6 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
         loadPersistedGallery,
         setPreviewMedia,
         setIsEnhancingPrompt,
-        setShowProviderManager,
         setIsPromptLibraryOpen,
         setIsDescribingImage,
         setIsAnalyzing,
@@ -1892,49 +1890,8 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                     </p>
                 </div>
                 <div className="flex items-center gap-3">
-                    {/* Provider Badge — en modo Speak el proveedor seleccionado NO
-                        genera: se muestra el motor real de talking-head (KIE). El ×
-                        sale de Speak y restaura el selector de proveedor (antes el
-                        badge era estático y no había forma visible de salir). */}
-                    {generationMode === 'VIDEO' && videoSubMode === 'SPEAK' ? (
-                        <span className="flex items-center gap-2 px-3 py-1.5 bg-purple-500/10 rounded-lg">
-                            <span className="w-2 h-2 rounded-full bg-purple-500" />
-                            <span className="text-xs font-medium text-purple-500">
-                                Speak · {
-                                    speakModel === 'omnihuman'
-                                        ? 'OmniHuman 1.5'
-                                        : speakModel === 'kling'
-                                          ? 'Kling 3.0 + Lipsync'
-                                          : 'InfiniteTalk'
-                                } · KIE
-                            </span>
-                            <button
-                                type="button"
-                                onClick={() => setVideoSubMode('ANIMATE')}
-                                title="Exit Speak mode — back to video providers"
-                                className="ml-1 p-0.5 rounded-full text-purple-400 hover:text-white hover:bg-purple-500 transition-colors"
-                            >
-                                <HiX className="w-3.5 h-3.5" />
-                            </button>
-                        </span>
-                    ) : (
-                        <button
-                            onClick={() => setShowProviderManager(true)}
-                            className="flex items-center gap-2 px-3 py-1.5 bg-gray-100 dark:bg-gray-800 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
-                        >
-                            <span
-                                className={`w-2 h-2 rounded-full ${
-                                    activeProviderId ? 'bg-green-500' : 'bg-gray-400'
-                                }`}
-                            />
-                            <span className="text-xs font-medium">
-                                {activeProviderId
-                                    ? providers.find((p) => p.id === activeProviderId)?.name
-                                    : 'Default Provider'}
-                            </span>
-                            <HiOutlineCog className="w-4 h-4" />
-                        </button>
-                    )}
+                    {/* Provider selector moved to the BottomControlBar, next to
+                        the generation dropzones (Img→Prompt / Input). */}
 
                     {/* Prompt Library */}
                     <Button
