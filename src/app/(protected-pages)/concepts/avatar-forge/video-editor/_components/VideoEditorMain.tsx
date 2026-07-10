@@ -4,7 +4,7 @@ import { useState, useRef, useEffect, useCallback } from 'react'
 import Card from '@/components/ui/Card'
 import Button from '@/components/ui/Button'
 import Progress from '@/components/ui/Progress'
-import ScrollBar from '@/components/ui/ScrollBar'
+import Slider from '@/components/ui/Slider'
 import Notification from '@/components/ui/Notification'
 import toast from '@/components/ui/toast'
 import {
@@ -13,11 +13,7 @@ import {
     HiOutlineDownload,
     HiOutlineRefresh,
     HiOutlineScissors,
-    HiOutlineChevronLeft,
-    HiOutlineChevronRight,
-    HiOutlineTrash,
     HiOutlineSave,
-    HiOutlineClock,
     HiOutlineSelector,
     HiOutlinePlay,
     HiOutlinePause,
@@ -37,24 +33,24 @@ import {
 } from '@/services/VideoEditService'
 import { stitchVideos } from '@/services/VideoStitchService'
 
-type EditOperation = 'delogo' | 'trim' | 'crop' | 'stitch'
-
-type EditedVideo = {
-    id: string
-    url: string
-    label: string
-    operation: EditOperation
-    params: Record<string, unknown>
-    timestamp: number
-}
-
-type EditMode = 'watermark' | 'trim' | 'crop' | 'combine'
-
-type CombineVideoItem = {
+// ─── Single-track timeline model ──────────────────────────────────────
+// One clip = one segment on the track. `duration` is the SOURCE video's
+// full length; `inPoint`/`outPoint` mark the trimmed window inside it
+// (trimmed length = outPoint - inPoint). All times are in seconds.
+interface TimelineClip {
     id: string
     url: string
     name: string
+    duration: number
+    inPoint: number
+    outPoint: number
 }
+
+type ToolMode = 'none' | 'crop' | 'watermark'
+
+type Rect = { x: number; y: number; w: number; h: number }
+
+const MIN_CLIP_LEN = 0.2
 
 const CROP_ASPECTS: Array<{ value: 'free' | '1:1' | '16:9' | '9:16' | '4:3' | '3:4'; label: string }> = [
     { value: 'free', label: 'Libre' },
@@ -65,149 +61,475 @@ const CROP_ASPECTS: Array<{ value: 'free' | '1:1' | '16:9' | '9:16' | '4:3' | '3
     { value: '3:4', label: '3:4' },
 ]
 
+// ─── Duration probe with a DOM-metadata fallback ──────────────────────
+// probeVideo() (FFmpeg) is the primary source per spec, but a hidden
+// <video> element is a cheap safety net if the FFmpeg probe ever returns
+// 0 (e.g. an exotic container FFmpeg's log parser doesn't recognise).
+async function probeDurationWithFallback(url: string): Promise<number> {
+    try {
+        const probe = await probeVideo(url)
+        if (probe.durationSec > 0) return probe.durationSec
+    } catch (err) {
+        console.warn('[VideoEditor] FFmpeg duration probe failed, falling back to DOM:', err)
+    }
+    return new Promise<number>((resolve) => {
+        const v = document.createElement('video')
+        v.preload = 'metadata'
+        v.onloadedmetadata = () => resolve(v.duration || 1)
+        v.onerror = () => resolve(1)
+        v.src = url
+    })
+}
+
+// ─── CapCut-style filmstrip thumbnails ─────────────────────────────────
+// Samples `frameCount` frames evenly across the clip's duration and
+// returns them as small JPEG data URLs (module-scope, mirrors
+// probeDurationWithFallback above). Never rejects — resolves `[]` if
+// metadata never loads (incl. an ~8s timeout), a seek stalls, or the
+// canvas gets cross-origin-tainted (SecurityError on toDataURL, e.g. a
+// cross-origin video served without CORS headers). Callers fall back to
+// the single <video> thumbnail whenever the result is empty.
+async function extractFilmstrip(url: string, frameCount: number): Promise<string[]> {
+    const video = document.createElement('video')
+    video.crossOrigin = 'anonymous'
+    video.muted = true
+    video.preload = 'auto'
+
+    const cleanup = () => {
+        video.removeAttribute('src')
+        video.src = ''
+    }
+
+    const waitForMetadata = () => new Promise<boolean>((resolve) => {
+        let settled = false
+        const finish = (ok: boolean) => {
+            if (settled) return
+            settled = true
+            clearTimeout(timer)
+            video.removeEventListener('loadedmetadata', onLoaded)
+            video.removeEventListener('error', onError)
+            resolve(ok)
+        }
+        const onLoaded = () => finish(true)
+        const onError = () => finish(false)
+        const timer = setTimeout(() => finish(false), 8000)
+        video.addEventListener('loadedmetadata', onLoaded)
+        video.addEventListener('error', onError)
+        video.src = url
+    })
+
+    // Bounded wait for 'seeked' — if a particular seek never resolves
+    // (stalled network, exotic container) we bail out of the whole
+    // filmstrip rather than hang the in-flight generation forever.
+    const waitForSeeked = () => new Promise<boolean>((resolve) => {
+        let settled = false
+        const finish = (ok: boolean) => {
+            if (settled) return
+            settled = true
+            clearTimeout(timer)
+            video.removeEventListener('seeked', onSeeked)
+            resolve(ok)
+        }
+        const onSeeked = () => finish(true)
+        const timer = setTimeout(() => finish(false), 5000)
+        video.addEventListener('seeked', onSeeked)
+    })
+
+    const gotMetadata = await waitForMetadata()
+    if (!gotMetadata || !Number.isFinite(video.duration) || video.duration <= 0) {
+        cleanup()
+        return []
+    }
+
+    const vw = video.videoWidth || 0
+    const vh = video.videoHeight || 0
+    if (vw <= 0 || vh <= 0) {
+        cleanup()
+        return []
+    }
+
+    // Extract at ~2x the ~96px timeline block height so frames stay crisp on
+    // retina displays (the block is h-24). JPEG quality below is bumped too.
+    const height = 176
+    const width = Math.max(32, Math.round(height * (vw / vh)))
+    const canvas = document.createElement('canvas')
+    canvas.width = width
+    canvas.height = height
+    const ctx = canvas.getContext('2d')
+    if (!ctx) {
+        cleanup()
+        return []
+    }
+
+    const duration = video.duration
+    const frames: string[] = []
+    for (let i = 0; i < frameCount; i++) {
+        const t = ((i + 0.5) / frameCount) * duration
+        video.currentTime = t
+        const seeked = await waitForSeeked()
+        if (!seeked) break
+        try {
+            ctx.drawImage(video, 0, 0, width, height)
+            frames.push(canvas.toDataURL('image/jpeg', 0.75))
+        } catch (err) {
+            // Cross-origin video without CORS headers taints the canvas —
+            // abort entirely and fall back to the single <video> thumbnail.
+            console.warn('[VideoEditor] Filmstrip canvas tainted, falling back:', err)
+            cleanup()
+            return []
+        }
+    }
+    cleanup()
+    return frames
+}
+
 interface VideoEditorMainProps {
     userId?: string
+    /**
+     * Optional pre-loaded video URL — used when the editor is hosted in-place
+     * inside Avatar Studio's ToolModal (Gallery "Edit" on a video). Takes
+     * priority over the sessionStorage['videoEditorImport'] fallback, which
+     * stays intact for the standalone /video-editor route.
+     */
+    initialVideoUrl?: string
 }
 
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
-const VideoEditorMain = ({ userId }: VideoEditorMainProps) => {
+const VideoEditorMain = ({ userId, initialVideoUrl }: VideoEditorMainProps) => {
     const addToGallery = useAvatarStudioStore((s) => s.addToGallery)
 
-    // Source video state
-    const [sourceUrl, setSourceUrl] = useState<string | null>(null)
-    const [videoSize, setVideoSize] = useState({ width: 0, height: 0 })
-    const [videoDuration, setVideoDuration] = useState(0)
-
-    // History of edits (each one is a new blob URL)
-    const [history, setHistory] = useState<EditedVideo[]>([])
-    const [currentIndex, setCurrentIndex] = useState(-1) // -1 = original
-
-    // Edit mode + rectangle drag state
-    const [editMode, setEditMode] = useState<EditMode>('watermark')
-    const [rect, setRect] = useState<VideoRegion | null>(null)
-    const [isDraggingRect, setIsDraggingRect] = useState(false)
-    const [dragStart, setDragStart] = useState({ x: 0, y: 0 })
-
-
-    // Trim state — start/end in seconds within the current video
-    const [trimStart, setTrimStart] = useState(0)
-    const [trimEnd, setTrimEnd] = useState(0)
-
-    // Crop aspect ratio (drives the rectangle drag in crop mode)
-    const [cropAspect, setCropAspect] = useState<typeof CROP_ASPECTS[number]['value']>('free')
-
-    // Combine mode — ordered list of videos to stitch. Lives outside of
-    // `sourceUrl` / `history` because the combine flow takes multiple
-    // inputs and produces a single output that joins the regular history.
-    const [combineVideos, setCombineVideos] = useState<CombineVideoItem[]>([])
+    // ─── Timeline state ───────────────────────────────────────────────
+    const [clips, setClips] = useState<TimelineClip[]>([])
+    const [selectedClipId, setSelectedClipId] = useState<string | null>(null)
     const [dragOverIdx, setDragOverIdx] = useState<number | null>(null)
-    const dragSourceIdxRef = useRef<number | null>(null)
 
-    // Processing state
+    // ─── Filmstrip thumbnails (CapCut-style), keyed by clip.url so a
+    // crop/watermark edit (which mints a new url) regenerates naturally ──
+    const [filmstrips, setFilmstrips] = useState<Record<string, string[]>>({})
+
+    // ─── Preview / playback state ─────────────────────────────────────
+    const [playhead, setPlayhead] = useState(0) // video.currentTime of the selected clip
+    const [isPlaying, setIsPlaying] = useState(false)
+    const [isMuted, setIsMuted] = useState(false)
+    const [videoSize, setVideoSize] = useState({ width: 0, height: 0 }) // selected clip's SOURCE px
+    const [canvasSize, setCanvasSize] = useState({ width: 0, height: 0 }) // selected clip's DISPLAYED px
+
+    // ─── Tool state (crop / watermark), applied to the selected clip ──
+    const [toolMode, setToolMode] = useState<ToolMode>('none')
+    const [cropAspect, setCropAspect] = useState<typeof CROP_ASPECTS[number]['value']>('free')
+    const [cropPosition, setCropPosition] = useState({ x: 0, y: 0 })
+    const [cropScale, setCropScale] = useState(100) // 30-100%
+    const [isDraggingCrop, setIsDraggingCrop] = useState(false)
+    const [cropDragStart, setCropDragStart] = useState({ x: 0, y: 0 })
+    const [wmRect, setWmRect] = useState<Rect | null>(null)
+    const [isDraggingWm, setIsDraggingWm] = useState(false)
+    const [wmDragStart, setWmDragStart] = useState({ x: 0, y: 0 })
+
+    // ─── Processing state ──────────────────────────────────────────────
     const [isProcessing, setIsProcessing] = useState(false)
     const [progress, setProgress] = useState(0)
     const [progressLabel, setProgressLabel] = useState('')
 
-    // Custom video player state. We replaced the native `controls` attribute
-    // with our own UI because the native player's shadow DOM intercepted
-    // mouse events over the bottom half of the video, blocking the
-    // watermark/crop drag rectangle. Custom controls live OUTSIDE the
-    // drag container so the entire video surface is free to receive
-    // mousedown/move events for the rect overlay.
-    const [isPlaying, setIsPlaying] = useState(false)
-    const [currentTime, setCurrentTime] = useState(0)
-    const [isMuted, setIsMuted] = useState(false)
-
-    // DOM refs
+    // ─── DOM refs ───────────────────────────────────────────────────────
     const videoRef = useRef<HTMLVideoElement>(null)
-    const canvasContainerRef = useRef<HTMLDivElement>(null)
     const fileInputRef = useRef<HTMLInputElement>(null)
+    const blockRefs = useRef<Record<string, HTMLDivElement | null>>({})
+    // The timeline track container — read fresh on each trim-drag mousemove
+    // so the pixel→seconds mapping never drifts as block widths reflow.
+    const trackRef = useRef<HTMLDivElement>(null)
 
-    // Current visible URL is either the original or a history entry
-    const currentUrl = currentIndex === -1
-        ? sourceUrl
-        : history[currentIndex]?.url ?? sourceUrl
+    // Blob URLs THIS component minted (added clips + crop/watermark edit
+    // outputs) — tracked so unmount can revoke exactly those without ever
+    // touching the initial clip's URL (owned by initialVideoUrl / the
+    // gallery, never added here).
+    const mintedBlobUrlsRef = useRef<Set<string>>(new Set())
 
-    // ─── Load source from sessionStorage on mount ────────────────────
-    // GalleryPanel "Edit" button (Phase 2) writes to videoEditorImport;
-    // we read it on mount and pre-load the video so the user lands ready
-    // to edit without a manual upload step.
+    // Mirrors of state read from event-listener closures that must never go
+    // stale (listeners are (re)bound only when `selectedClipId` changes, not
+    // on every clips/trim update).
+    const clipsRef = useRef<TimelineClip[]>(clips)
+    const selectedClipIdRef = useRef<string | null>(selectedClipId)
+    useEffect(() => { clipsRef.current = clips }, [clips])
+    useEffect(() => { selectedClipIdRef.current = selectedClipId }, [selectedClipId])
+
+    // Mirror of `filmstrips` for the generation effect below, so it can key
+    // off `clips` alone without re-running its whole body on every state
+    // update it itself produces. URLs currently being extracted (to avoid
+    // duplicate concurrent extractions of the same clip).
+    const filmstripsRef = useRef<Record<string, string[]>>(filmstrips)
+    useEffect(() => { filmstripsRef.current = filmstrips }, [filmstrips])
+    const filmstripInFlightRef = useRef<Set<string>>(new Set())
+
+    // Seek to apply once the next `loadedmetadata` fires (clip switch or
+    // click-to-seek on a not-yet-selected clip); pendingPlayRef keeps
+    // playback going across an auto-advance to the next clip.
+    const pendingSeekRef = useRef<number | null>(null)
+    const pendingPlayRef = useRef(false)
+    // Guards against handleClipBoundary firing twice for the same clip
+    // (once from `timeupdate` clamp, once from the native `ended` event).
+    const boundaryFiredRef = useRef<string | null>(null)
+    // Reorder drag-and-drop (HTML5 DnD) source index, tracked in a ref so
+    // the drop handler doesn't race React's state batching.
+    const dragSourceIdxRef = useRef<number | null>(null)
+    // Trim-handle drag session.
+    const trimDragRef = useRef<{
+        clipId: string
+        edge: 'in' | 'out'
+        startX: number
+        startIn: number
+        startOut: number
+    } | null>(null)
+
+    const selectedClip = clips.find((c) => c.id === selectedClipId) ?? null
+    const totalTrimmed = clips.reduce((sum, c) => sum + Math.max(0.01, c.outPoint - c.inPoint), 0)
+
+    // ─── Load the initial video on mount ──────────────────────────────
+    // Prefer the `initialVideoUrl` prop — set when Avatar Studio hosts this
+    // editor in-place inside ToolModal (Gallery "Edit" on a video). Falls
+    // back to sessionStorage['videoEditorImport'], which the standalone
+    // /video-editor route (and its GalleryPanel navigation) still relies on.
     useEffect(() => {
+        const loadFirstClip = async (url: string) => {
+            setIsProcessing(true)
+            setProgress(0)
+            setProgressLabel('Loading video…')
+            try {
+                const duration = await probeDurationWithFallback(url)
+                const clip: TimelineClip = {
+                    id: `clip-${Date.now()}`,
+                    url,
+                    name: 'Clip 1',
+                    duration,
+                    inPoint: 0,
+                    outPoint: duration,
+                }
+                setClips([clip])
+                setSelectedClipId(clip.id)
+            } catch (err) {
+                console.error('[VideoEditor] Failed to load initial video:', err)
+                toast.push(
+                    <Notification type="danger" title="Load failed">
+                        Could not load the video.
+                    </Notification>,
+                )
+            } finally {
+                setIsProcessing(false)
+                setProgress(0)
+                setProgressLabel('')
+            }
+        }
+
+        if (initialVideoUrl) {
+            loadFirstClip(initialVideoUrl)
+            return
+        }
         const importData = sessionStorage.getItem('videoEditorImport')
         if (!importData) return
         try {
             const { url } = JSON.parse(importData) as { url?: string }
             sessionStorage.removeItem('videoEditorImport')
-            if (url) loadVideo(url)
+            if (url) loadFirstClip(url)
         } catch (err) {
             console.warn('[VideoEditor] Bad videoEditorImport payload:', err)
             sessionStorage.removeItem('videoEditorImport')
         }
-        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [initialVideoUrl])
+
+    // Always keep a clip selected once at least one exists (initial load,
+    // add-clip, or after removing the previously-selected one).
+    useEffect(() => {
+        if (!selectedClipId && clips.length > 0) {
+            setSelectedClipId(clips[0].id)
+        }
+    }, [selectedClipId, clips])
+
+    // ─── Generate filmstrip thumbnails for any clip that doesn't have one
+    // yet ────────────────────────────────────────────────────────────────
+    // Keyed by clip.url (not clip.id) so crop/watermark edits — which mint
+    // a new url on the same clip id — regenerate. Non-blocking: fire and
+    // forget per clip, guarded against duplicate concurrent extraction of
+    // the same url via filmstripInFlightRef.
+    useEffect(() => {
+        let cancelled = false
+        clips.forEach((clip) => {
+            const url = clip.url
+            if (filmstripsRef.current[url] !== undefined) return
+            if (filmstripInFlightRef.current.has(url)) return
+            filmstripInFlightRef.current.add(url)
+            const frameCount = Math.min(12, Math.max(3, Math.round(clip.duration / 2)))
+            extractFilmstrip(url, frameCount)
+                .then((frames) => {
+                    if (cancelled) return
+                    setFilmstrips((prev) => ({ ...prev, [url]: frames }))
+                })
+                .catch(() => {
+                    if (cancelled) return
+                    setFilmstrips((prev) => ({ ...prev, [url]: [] }))
+                })
+                .finally(() => {
+                    filmstripInFlightRef.current.delete(url)
+                })
+        })
+        return () => { cancelled = true }
+    }, [clips])
+
+    // ─── Revoke every blob URL this component minted, on unmount ─────
+    // Covers the case where the editor unmounts (e.g. Avatar Studio's
+    // ToolModal closes) while clips are still on the timeline. Only touches
+    // URLs THIS component created (added clips + crop/watermark outputs) —
+    // the initial clip's URL is never added to the set, so it's never
+    // revoked here (it's owned by initialVideoUrl / the gallery).
+    useEffect(() => {
+        const mintedUrls = mintedBlobUrlsRef.current
+        return () => {
+            mintedUrls.forEach((url) => {
+                try { URL.revokeObjectURL(url) } catch { /* ignore */ }
+            })
+            mintedUrls.clear()
+        }
     }, [])
 
-    // ─── Probe video to get dimensions + duration ────────────────────
-    // The visible <video> element gives us width/height/duration via DOM
-    // events (loadedmetadata), which is faster than a full FFmpeg probe
-    // and works for any browser-playable format. We only fall back to
-    // FFmpeg probing if the DOM read fails (e.g. CORS on remote URL).
-    const loadVideo = useCallback((url: string) => {
-        setSourceUrl(url)
-        setHistory([])
-        setCurrentIndex(-1)
-        setRect(null)
+    // ─── Reset per-clip tool/seek state whenever selection changes ────
+    useEffect(() => {
+        boundaryFiredRef.current = null
+        setToolMode('none')
+        setWmRect(null)
+        setCropPosition({ x: 0, y: 0 })
+        setCropScale(100)
+    }, [selectedClipId])
+
+    // ─── Displayed-size tracking (for the crop box + rect→source scale) ─
+    const updateCanvasSize = useCallback(() => {
+        if (videoRef.current) {
+            const rect = videoRef.current.getBoundingClientRect()
+            setCanvasSize({ width: rect.width, height: rect.height })
+        }
     }, [])
 
     useEffect(() => {
-        if (!currentUrl) return
-        const video = videoRef.current
-        if (!video) return
+        window.addEventListener('resize', updateCanvasSize)
+        return () => window.removeEventListener('resize', updateCanvasSize)
+    }, [updateCanvasSize])
 
-        const onMeta = () => {
-            setVideoSize({
-                width: video.videoWidth || 1,
-                height: video.videoHeight || 1,
-            })
-            const dur = video.duration || 0
-            setVideoDuration(dur)
-            // Snap trim range to the full video duration whenever a new
-            // clip loads so the user starts with "trim nothing" by default.
-            setTrimStart(0)
-            setTrimEnd(dur)
+    useEffect(() => {
+        if (toolMode === 'crop') updateCanvasSize()
+    }, [toolMode, updateCanvasSize])
+
+    // ─── Auto-advance across clips + preview event wiring ─────────────
+    // Bound once per clip SELECTION (not per trim edit) — handlers read
+    // fresh values via clipsRef/selectedClipIdRef so they never go stale.
+    const handleClipBoundary = useCallback(() => {
+        if (boundaryFiredRef.current === selectedClipIdRef.current) return
+        boundaryFiredRef.current = selectedClipIdRef.current
+        const list = clipsRef.current
+        const idx = list.findIndex((c) => c.id === selectedClipIdRef.current)
+        if (idx === -1) return
+        const clip = list[idx]
+        const next = list[idx + 1]
+        const v = videoRef.current
+        if (next) {
+            pendingSeekRef.current = next.inPoint
+            pendingPlayRef.current = true
+            setSelectedClipId(next.id)
+        } else if (v) {
+            v.pause()
+            v.currentTime = clip.outPoint
         }
-        const onTimeUpdate = () => setCurrentTime(video.currentTime)
+    }, [])
+
+    useEffect(() => {
+        const v = videoRef.current
+        if (!v || !selectedClip) return
+
+        const onLoadedMeta = () => {
+            const w = v.videoWidth || 0
+            const h = v.videoHeight || 0
+            if (w > 0 && h > 0) {
+                setVideoSize({ width: w, height: h })
+            } else {
+                const clip = clipsRef.current.find((c) => c.id === selectedClipIdRef.current)
+                if (clip) {
+                    probeVideo(clip.url)
+                        .then((p) => {
+                            if (p.width > 0 && p.height > 0) setVideoSize({ width: p.width, height: p.height })
+                        })
+                        .catch(() => { /* ignore — crop/watermark will just stay disabled */ })
+                }
+            }
+            updateCanvasSize()
+            const clip = clipsRef.current.find((c) => c.id === selectedClipIdRef.current)
+            const seekTo = pendingSeekRef.current ?? clip?.inPoint ?? 0
+            v.currentTime = seekTo
+            pendingSeekRef.current = null
+            if (pendingPlayRef.current) {
+                pendingPlayRef.current = false
+                v.play().catch(() => { /* ignore autoplay rejection */ })
+            }
+        }
+        const onTimeUpdate = () => {
+            setPlayhead(v.currentTime)
+            const clip = clipsRef.current.find((c) => c.id === selectedClipIdRef.current)
+            if (clip && v.currentTime >= clip.outPoint - 0.03) {
+                handleClipBoundary()
+            }
+        }
         const onPlay = () => setIsPlaying(true)
         const onPause = () => setIsPlaying(false)
-        const onEnded = () => setIsPlaying(false)
-
-        video.addEventListener('loadedmetadata', onMeta)
-        video.addEventListener('timeupdate', onTimeUpdate)
-        video.addEventListener('play', onPlay)
-        video.addEventListener('pause', onPause)
-        video.addEventListener('ended', onEnded)
-        return () => {
-            video.removeEventListener('loadedmetadata', onMeta)
-            video.removeEventListener('timeupdate', onTimeUpdate)
-            video.removeEventListener('play', onPlay)
-            video.removeEventListener('pause', onPause)
-            video.removeEventListener('ended', onEnded)
+        const onEnded = () => {
+            setIsPlaying(false)
+            handleClipBoundary()
         }
-    }, [currentUrl])
 
-    // ─── Custom video control handlers ──────────────────────────────
+        v.addEventListener('loadedmetadata', onLoadedMeta)
+        v.addEventListener('timeupdate', onTimeUpdate)
+        v.addEventListener('play', onPlay)
+        v.addEventListener('pause', onPause)
+        v.addEventListener('ended', onEnded)
+        return () => {
+            v.removeEventListener('loadedmetadata', onLoadedMeta)
+            v.removeEventListener('timeupdate', onTimeUpdate)
+            v.removeEventListener('play', onPlay)
+            v.removeEventListener('pause', onPause)
+            v.removeEventListener('ended', onEnded)
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [selectedClipId])
+
+    // Clamp playback immediately whenever the SELECTED clip's trim bounds
+    // change (dragging a handle while paused/playing on that clip).
+    useEffect(() => {
+        const v = videoRef.current
+        if (!v || !selectedClip) return
+        if (v.currentTime < selectedClip.inPoint) v.currentTime = selectedClip.inPoint
+        else if (v.currentTime > selectedClip.outPoint) v.currentTime = selectedClip.outPoint
+        // Intentionally keyed on the numeric trim bounds, not the `selectedClip`
+        // object identity (which changes on every clips-array update, e.g. every
+        // pixel of a trim drag) — that would clamp on unrelated re-renders too.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [selectedClip?.inPoint, selectedClip?.outPoint])
+
+    // ─── Custom player controls ────────────────────────────────────────
     const togglePlay = () => {
         const v = videoRef.current
-        if (!v) return
-        if (v.paused) v.play().catch(() => { /* ignore autoplay rejection */ })
-        else v.pause()
+        const clip = selectedClip
+        if (!v || !clip) return
+        if (v.paused) {
+            if (v.currentTime >= clip.outPoint - 0.02 || v.currentTime < clip.inPoint) {
+                v.currentTime = clip.inPoint
+            }
+            v.play().catch(() => { /* ignore autoplay rejection */ })
+        } else {
+            v.pause()
+        }
     }
 
     const handleSeek = (e: React.MouseEvent<HTMLDivElement>) => {
         const v = videoRef.current
-        if (!v || !videoDuration) return
+        const clip = selectedClip
+        if (!v || !clip) return
         const bar = e.currentTarget.getBoundingClientRect()
         const ratio = Math.max(0, Math.min(1, (e.clientX - bar.left) / bar.width))
-        v.currentTime = ratio * videoDuration
+        v.currentTime = clip.inPoint + ratio * (clip.outPoint - clip.inPoint)
     }
 
     const toggleMute = () => {
@@ -224,112 +546,258 @@ const VideoEditorMain = ({ userId }: VideoEditorMainProps) => {
         return `${mm}:${ss.toString().padStart(2, '0')}`
     }
 
-    // Reset rect when changing modes so the user doesn't carry over a
-    // watermark selection into crop mode (different semantics).
-    useEffect(() => {
-        setRect(null)
-    }, [editMode])
-
-    // ─── File upload handler ────────────────────────────────────────
-    // In single-video modes (watermark/trim/crop) we replace the source.
-    // In combine mode we APPEND the dropped/picked files to the queue so
-    // the user can build up the list across multiple picker invocations.
-    const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-        const files = e.target.files
-        if (!files || files.length === 0) return
-        const videoFiles = Array.from(files).filter((f) => f.type.startsWith('video/'))
-        if (videoFiles.length === 0) {
-            toast.push(
-                <Notification type="warning" title="Invalid Files">
-                    Only video files are supported.
-                </Notification>,
-            )
-            e.target.value = ''
-            return
-        }
-        if (editMode === 'combine') {
-            const items: CombineVideoItem[] = videoFiles.map((f) => ({
-                id: `combine-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-                url: URL.createObjectURL(f),
-                name: f.name,
-            }))
-            setCombineVideos((prev) => [...prev, ...items])
+    // ─── Timeline: select + scrub (mousedown + drag moves the playhead) ─
+    // The clip body used to be `draggable`, so trying to drag the playhead
+    // started an HTML5 clip-reorder drag (giant ghost strip) instead of
+    // scrubbing. Reorder now lives ONLY on the ≡ handle; the body scrubs.
+    const seekClipAt = useCallback((clip: TimelineClip, clientX: number, rect: DOMRect) => {
+        const ratio = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width))
+        const time = clip.inPoint + ratio * (clip.outPoint - clip.inPoint)
+        if (selectedClipId === clip.id) {
+            const v = videoRef.current
+            if (v) v.currentTime = Math.max(clip.inPoint, Math.min(clip.outPoint, time))
         } else {
-            // Single-video modes: only first file matters, replaces source.
-            const url = URL.createObjectURL(videoFiles[0])
-            loadVideo(url)
+            pendingSeekRef.current = time
+            setSelectedClipId(clip.id)
         }
-        e.target.value = ''
-    }
+    }, [selectedClipId])
 
-    // ─── Drag-and-drop file handlers for the Combine dropzone ───────
-    const handleDropzoneDragOver = (e: React.DragEvent<HTMLDivElement>) => {
+    const handleBlockScrubStart = useCallback((clip: TimelineClip) => (e: React.MouseEvent<HTMLDivElement>) => {
+        if (e.button !== 0) return
         e.preventDefault()
-        e.dataTransfer.dropEffect = 'copy'
-    }
+        const rect = e.currentTarget.getBoundingClientRect()
+        seekClipAt(clip, e.clientX, rect)
+        const onMove = (ev: MouseEvent) => seekClipAt(clip, ev.clientX, rect)
+        const onUp = () => {
+            window.removeEventListener('mousemove', onMove)
+            window.removeEventListener('mouseup', onUp)
+        }
+        window.addEventListener('mousemove', onMove)
+        window.addEventListener('mouseup', onUp)
+    }, [seekClipAt])
 
-    const handleDropzoneDrop = (e: React.DragEvent<HTMLDivElement>) => {
-        e.preventDefault()
-        const files = Array.from(e.dataTransfer.files || []).filter((f) =>
-            f.type.startsWith('video/'),
+    // ─── Timeline: trim handles ─────────────────────────────────────────
+    const handleTrimDragMove = useCallback((e: MouseEvent) => {
+        const drag = trimDragRef.current
+        const trackEl = trackRef.current
+        if (!drag || !trackEl) return
+        // Derive px→sec from the TRACK's total width and total timeline
+        // duration, read fresh on every move — block widths reflow as
+        // trimming changes totalTrimmed, so a ratio snapshotted once at
+        // drag start (from the dragged block's rendered width) drifts from
+        // the cursor mid-drag. Recomputing here keeps it 1:1.
+        const trackWidth = trackEl.clientWidth
+        if (trackWidth <= 0) return
+        const totalTrimmedDuration = clipsRef.current.reduce(
+            (sum, c) => sum + Math.max(0.01, c.outPoint - c.inPoint), 0,
         )
-        if (files.length === 0) return
-        const items: CombineVideoItem[] = files.map((f) => ({
-            id: `combine-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-            url: URL.createObjectURL(f),
-            name: f.name,
+        const secPerPx = totalTrimmedDuration / trackWidth
+        const deltaSec = (e.clientX - drag.startX) * secPerPx
+        setClips((prev) => prev.map((c) => {
+            if (c.id !== drag.clipId) return c
+            if (drag.edge === 'in') {
+                const newIn = Math.min(Math.max(0, drag.startIn + deltaSec), drag.startOut - MIN_CLIP_LEN)
+                return { ...c, inPoint: Math.max(0, newIn) }
+            }
+            const newOut = Math.max(Math.min(c.duration, drag.startOut + deltaSec), drag.startIn + MIN_CLIP_LEN)
+            return { ...c, outPoint: Math.min(c.duration, newOut) }
         }))
-        setCombineVideos((prev) => [...prev, ...items])
+    }, [])
+
+    const handleTrimDragEnd = useCallback(() => {
+        trimDragRef.current = null
+        window.removeEventListener('mousemove', handleTrimDragMove)
+        window.removeEventListener('mouseup', handleTrimDragEnd)
+    }, [handleTrimDragMove])
+
+    const startTrimDrag = (e: React.MouseEvent, clip: TimelineClip, edge: 'in' | 'out') => {
+        if (isProcessing) return
+        e.preventDefault()
+        e.stopPropagation()
+        trimDragRef.current = {
+            clipId: clip.id,
+            edge,
+            startX: e.clientX,
+            startIn: clip.inPoint,
+            startOut: clip.outPoint,
+        }
+        window.addEventListener('mousemove', handleTrimDragMove)
+        window.addEventListener('mouseup', handleTrimDragEnd)
     }
 
-    // ─── Reorder + remove items in the Combine list ─────────────────
-    // HTML5 drag-and-drop: we track the source index via a ref (not state)
-    // so the drop handler doesn't race against React batching. dragOverIdx
-    // is purely visual (shows where the dragged item will land).
-    const handleItemDragStart = (idx: number) => () => {
-        dragSourceIdxRef.current = idx
-    }
-    const handleItemDragOver = (idx: number) => (e: React.DragEvent<HTMLDivElement>) => {
+    // ─── Timeline: reorder (drag clip body) ────────────────────────────
+    const handleClipDragStart = (idx: number) => () => { dragSourceIdxRef.current = idx }
+    const handleClipDragOver = (idx: number) => (e: React.DragEvent<HTMLDivElement>) => {
         e.preventDefault()
         setDragOverIdx(idx)
     }
-    const handleItemDrop = (idx: number) => (e: React.DragEvent<HTMLDivElement>) => {
+    const handleClipDrop = (idx: number) => (e: React.DragEvent<HTMLDivElement>) => {
         e.preventDefault()
+        e.stopPropagation()
         const from = dragSourceIdxRef.current
         dragSourceIdxRef.current = null
         setDragOverIdx(null)
         if (from === null || from === idx) return
-        setCombineVideos((prev) => {
+        setClips((prev) => {
             const next = [...prev]
             const [moved] = next.splice(from, 1)
             next.splice(idx, 0, moved)
             return next
         })
     }
-    const handleItemDragEnd = () => {
+    const handleClipDragEnd = () => {
         dragSourceIdxRef.current = null
         setDragOverIdx(null)
     }
 
-    const handleRemoveCombineItem = (id: string) => {
-        setCombineVideos((prev) => {
-            const removed = prev.find((p) => p.id === id)
-            if (removed) {
-                try { URL.revokeObjectURL(removed.url) } catch { /* ignore */ }
+    // ─── Add clip (file picker + external drag-drop onto the timeline) ─
+    const handleAddFiles = useCallback(async (files: File[]) => {
+        const videoFiles = files.filter((f) => f.type.startsWith('video/'))
+        if (videoFiles.length === 0) {
+            toast.push(
+                <Notification type="warning" title="Invalid Files">
+                    Only video files are supported.
+                </Notification>,
+            )
+            return
+        }
+        setIsProcessing(true)
+        setProgress(0)
+        setProgressLabel(videoFiles.length > 1 ? `Adding ${videoFiles.length} clips…` : 'Adding clip…')
+        try {
+            const newClips: TimelineClip[] = []
+            for (let i = 0; i < videoFiles.length; i++) {
+                const file = videoFiles[i]
+                const url = URL.createObjectURL(file)
+                mintedBlobUrlsRef.current.add(url)
+                const duration = await probeDurationWithFallback(url)
+                newClips.push({
+                    id: `clip-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+                    url,
+                    name: file.name,
+                    duration,
+                    inPoint: 0,
+                    outPoint: duration,
+                })
+                setProgress(Math.round(((i + 1) / videoFiles.length) * 100))
             }
-            return prev.filter((p) => p.id !== id)
-        })
+            setClips((prev) => [...prev, ...newClips])
+            setSelectedClipId((prev) => prev ?? newClips[0]?.id ?? null)
+        } catch (err) {
+            console.error('[VideoEditor] Add clip failed:', err)
+            toast.push(
+                <Notification type="danger" title="Add clip failed">
+                    Could not read the video file(s).
+                </Notification>,
+            )
+        } finally {
+            setIsProcessing(false)
+            setProgress(0)
+            setProgressLabel('')
+        }
+    }, [])
+
+    const handleFileInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const files = e.target.files
+        if (!files || files.length === 0) return
+        handleAddFiles(Array.from(files))
+        e.target.value = ''
     }
 
-    // ─── Rectangle drag (watermark / crop selector) ──────────────────
-    // Coordinates are measured against the actual <video> element's
-    // bounding rect, not the wrapper container. The wrapper is
-    // inline-block which can pick up baseline padding or minor offsets,
-    // making the rect overlay drift away from where the user dragged.
-    // Measuring against the video itself sidesteps that — its
-    // boundingClientRect always reflects exactly what's rendered, and
-    // the overlay div sits in the same coordinate space because it's
-    // a sibling positioned absolutely against the same wrapper.
+    const handleTrackDragOver = (e: React.DragEvent<HTMLDivElement>) => {
+        e.preventDefault()
+        e.dataTransfer.dropEffect = 'copy'
+    }
+    const handleTrackDrop = (e: React.DragEvent<HTMLDivElement>) => {
+        e.preventDefault()
+        // Internal clip-reorder drags carry no Files — only external OS
+        // drag-drops (adding a new clip) land here.
+        const files = Array.from(e.dataTransfer.files || [])
+        if (files.length === 0) return
+        handleAddFiles(files)
+    }
+
+    const handleRemoveClip = useCallback((clipId: string) => {
+        setClips((prev) => {
+            const removed = prev.find((c) => c.id === clipId)
+            if (removed) {
+                try { URL.revokeObjectURL(removed.url) } catch { /* ignore */ }
+                mintedBlobUrlsRef.current.delete(removed.url)
+            }
+            return prev.filter((c) => c.id !== clipId)
+        })
+        setSelectedClipId((prev) => (prev === clipId ? null : prev))
+    }, [])
+
+    // ─── Crop tool (ported from ImagePreviewModal's image crop UX) ─────
+    const getCropDimensions = useCallback(() => {
+        if (!canvasSize.width || !canvasSize.height) return null
+        const aspectMap: Record<typeof CROP_ASPECTS[number]['value'], number | null> = {
+            free: null,
+            '1:1': 1,
+            '16:9': 16 / 9,
+            '9:16': 9 / 16,
+            '4:3': 4 / 3,
+            '3:4': 3 / 4,
+        }
+        const imageRatio = canvasSize.width / canvasSize.height
+        const targetRatio = aspectMap[cropAspect] ?? imageRatio
+
+        let maxCropWidth: number
+        let maxCropHeight: number
+        if (targetRatio > imageRatio) {
+            maxCropWidth = canvasSize.width
+            maxCropHeight = canvasSize.width / targetRatio
+        } else {
+            maxCropHeight = canvasSize.height
+            maxCropWidth = canvasSize.height * targetRatio
+        }
+
+        const scale = cropScale / 100
+        const cropWidth = maxCropWidth * scale
+        const cropHeight = maxCropHeight * scale
+        const maxX = canvasSize.width - cropWidth
+        const maxY = canvasSize.height - cropHeight
+        const x = Math.max(0, Math.min(cropPosition.x, maxX))
+        const y = Math.max(0, Math.min(cropPosition.y, maxY))
+
+        return { width: cropWidth, height: cropHeight, x, y, maxX, maxY }
+    }, [canvasSize, cropAspect, cropScale, cropPosition])
+
+    useEffect(() => {
+        setCropPosition({ x: 0, y: 0 })
+        setCropScale(100)
+    }, [cropAspect])
+
+    const handleCropMouseDown = (e: React.MouseEvent) => {
+        if (toolMode !== 'crop') return
+        e.preventDefault()
+        e.stopPropagation()
+        setIsDraggingCrop(true)
+        setCropDragStart({ x: e.clientX - cropPosition.x, y: e.clientY - cropPosition.y })
+    }
+    const handleCropMouseMove = useCallback((e: MouseEvent) => {
+        if (!isDraggingCrop) return
+        const crop = getCropDimensions()
+        if (!crop) return
+        const newX = Math.max(0, Math.min(e.clientX - cropDragStart.x, crop.maxX))
+        const newY = Math.max(0, Math.min(e.clientY - cropDragStart.y, crop.maxY))
+        setCropPosition({ x: newX, y: newY })
+    }, [isDraggingCrop, cropDragStart, getCropDimensions])
+    const handleCropMouseUp = useCallback(() => setIsDraggingCrop(false), [])
+
+    useEffect(() => {
+        if (isDraggingCrop) {
+            window.addEventListener('mousemove', handleCropMouseMove)
+            window.addEventListener('mouseup', handleCropMouseUp)
+            return () => {
+                window.removeEventListener('mousemove', handleCropMouseMove)
+                window.removeEventListener('mouseup', handleCropMouseUp)
+            }
+        }
+    }, [isDraggingCrop, handleCropMouseMove, handleCropMouseUp])
+
+    // ─── Watermark tool (freehand rect — unchanged from the old editor) ─
     const getVideoCoords = (e: React.MouseEvent): { x: number; y: number } => {
         const video = videoRef.current
         if (!video) return { x: 0, y: 0 }
@@ -339,54 +807,31 @@ const VideoEditorMain = ({ userId }: VideoEditorMainProps) => {
             y: Math.max(0, Math.min(r.height, e.clientY - r.top)),
         }
     }
-
-    const handleRectMouseDown = (e: React.MouseEvent) => {
+    const handleWmMouseDown = (e: React.MouseEvent) => {
         if (isProcessing) return
         const { x, y } = getVideoCoords(e)
-        setIsDraggingRect(true)
-        setDragStart({ x, y })
-        setRect({ x, y, w: 0, h: 0 })
+        setIsDraggingWm(true)
+        setWmDragStart({ x, y })
+        setWmRect({ x, y, w: 0, h: 0 })
     }
-
-    const handleRectMouseMove = (e: React.MouseEvent) => {
-        if (!isDraggingRect) return
+    const handleWmMouseMove = (e: React.MouseEvent) => {
+        if (!isDraggingWm) return
         const { x, y } = getVideoCoords(e)
-        const minX = Math.min(dragStart.x, x)
-        const minY = Math.min(dragStart.y, y)
-        const maxX = Math.max(dragStart.x, x)
-        const maxY = Math.max(dragStart.y, y)
-        let w = maxX - minX
-        let h = maxY - minY
-
-        // In crop mode with a fixed aspect ratio, snap height to match width.
-        // Watermark mode is always free-form (you don't want the rect snapping
-        // to a ratio just to cover a logo).
-        if (editMode === 'crop' && cropAspect !== 'free') {
-            const [arW, arH] = cropAspect.split(':').map(Number)
-            const ratio = arW / arH
-            // Use whichever drag dimension is larger to drive the other.
-            if (w / h > ratio) w = h * ratio
-            else h = w / ratio
-        }
-
-        setRect({ x: minX, y: minY, w, h })
+        const minX = Math.min(wmDragStart.x, x)
+        const minY = Math.min(wmDragStart.y, y)
+        const w = Math.max(wmDragStart.x, x) - minX
+        const h = Math.max(wmDragStart.y, y) - minY
+        setWmRect({ x: minX, y: minY, w, h })
     }
-
-    const handleRectMouseUp = () => {
-        setIsDraggingRect(false)
-        // Reject ghost-rects from a stray click without drag.
-        if (rect && (rect.w < 4 || rect.h < 4)) setRect(null)
+    const handleWmMouseUp = () => {
+        setIsDraggingWm(false)
+        setWmRect((r) => (r && (r.w < 4 || r.h < 4) ? null : r))
     }
 
     // Translate a display-pixel rect (drawn on top of the <video>) to the
-    // corresponding source-video-pixel rect. We measure the <video> element
-    // directly — its boundingClientRect is the exact rendered display size,
-    // so scaling to source pixels is a clean linear factor with no
-    // letterbox math required. Previous version measured the container
-    // wrapper which was sometimes a few pixels taller than the video due
-    // to inline-block baseline behaviour, producing a rect that didn't
-    // align with the visible affected area.
-    const rectToSourcePixels = useCallback((r: VideoRegion): VideoRegion | null => {
+    // corresponding source-video-pixel rect. Shared by both crop and
+    // watermark — both draw against the same <video> element.
+    const rectToSourcePixels = useCallback((r: Rect): VideoRegion | null => {
         const video = videoRef.current
         if (!video) return null
         const vr = video.getBoundingClientRect()
@@ -396,7 +841,6 @@ const VideoEditorMain = ({ userId }: VideoEditorMainProps) => {
 
         const scaleX = vw / vr.width
         const scaleY = vh / vr.height
-
         const region: VideoRegion = {
             x: Math.max(0, r.x * scaleX),
             y: Math.max(0, r.y * scaleY),
@@ -407,52 +851,85 @@ const VideoEditorMain = ({ userId }: VideoEditorMainProps) => {
         return region
     }, [videoSize])
 
-    // ─── Generic edit runner (shared progress + history + error UX) ──
-    const runEdit = useCallback(async (
+    // ─── Generic per-clip edit runner (crop/watermark share this) ─────
+    const applyClipEdit = useCallback(async (
+        clip: TimelineClip,
         label: string,
-        operation: EditOperation,
-        params: Record<string, unknown>,
         executor: (onProgress: (p: number) => void) => Promise<string>,
-    ) => {
+        opts: { resetTrim: boolean },
+    ): Promise<boolean> => {
         setIsProcessing(true)
         setProgress(0)
         setProgressLabel(label)
         try {
             const outputUrl = await executor(setProgress)
-            const edit: EditedVideo = {
-                id: `edit-${Date.now()}`,
-                url: outputUrl,
-                label,
-                operation,
-                params,
-                timestamp: Date.now(),
+            mintedBlobUrlsRef.current.add(outputUrl)
+            let duration = clip.duration
+            let inPoint = clip.inPoint
+            let outPoint = clip.outPoint
+            if (opts.resetTrim) {
+                const newDuration = await probeDurationWithFallback(outputUrl)
+                duration = newDuration
+                inPoint = 0
+                outPoint = newDuration
             }
-            setHistory((prev) => [...prev, edit])
-            setCurrentIndex(history.length)
-            setRect(null)
+            setClips((prev) => prev.map((c) => (
+                c.id === clip.id ? { ...c, url: outputUrl, duration, inPoint, outPoint } : c
+            )))
+            try { URL.revokeObjectURL(clip.url) } catch { /* not a blob URL, ignore */ }
+            mintedBlobUrlsRef.current.delete(clip.url)
             toast.push(
                 <Notification type="success" title="Done">
-                    {label}. Result added to history.
+                    {label}.
                 </Notification>,
             )
+            return true
         } catch (err) {
             const message = err instanceof Error ? err.message : 'Unknown error'
-            console.error(`[VideoEditor] ${operation} failed:`, err)
+            console.error('[VideoEditor] Clip edit failed:', err)
             toast.push(
                 <Notification type="danger" title="Edit failed">
                     {message}
                 </Notification>,
             )
+            return false
         } finally {
             setIsProcessing(false)
             setProgress(0)
+            setProgressLabel('')
         }
-    }, [history.length])
+    }, [])
 
-    // ─── Apply watermark removal ─────────────────────────────────────
-    const handleRemoveWatermark = useCallback(async () => {
-        if (!currentUrl || !rect) return
-        const region = rectToSourcePixels(rect)
+    const handleApplyCrop = useCallback(async () => {
+        if (!selectedClip) return
+        const crop = getCropDimensions()
+        if (!crop) return
+        const region = rectToSourcePixels({ x: crop.x, y: crop.y, w: crop.width, h: crop.height })
+        if (!region) {
+            toast.push(
+                <Notification type="warning" title="Region too small">
+                    Adjust the crop box before applying.
+                </Notification>,
+            )
+            return
+        }
+        const success = await applyClipEdit(
+            selectedClip,
+            `Cropped ${Math.round(region.w)}×${Math.round(region.h)}`,
+            (onP) => cropVideo(selectedClip.url, region, onP),
+            { resetTrim: true },
+        )
+        // Only close the tool on success — applyClipEdit swallows errors
+        // (toast only), so on failure we keep the tool open and the crop
+        // box intact so the user can retry without redrawing.
+        if (success) {
+            setToolMode('none')
+        }
+    }, [selectedClip, getCropDimensions, rectToSourcePixels, applyClipEdit])
+
+    const handleApplyWatermark = useCallback(async () => {
+        if (!selectedClip || !wmRect) return
+        const region = rectToSourcePixels(wmRect)
         if (!region) {
             toast.push(
                 <Notification type="warning" title="Region too small">
@@ -461,160 +938,182 @@ const VideoEditorMain = ({ userId }: VideoEditorMainProps) => {
             )
             return
         }
-        await runEdit('Watermark removed', 'delogo', region, (onP) =>
-            removeWatermark(currentUrl, region, onP),
+        const success = await applyClipEdit(
+            selectedClip,
+            'Watermark removed',
+            (onP) => removeWatermark(selectedClip.url, region, onP),
+            { resetTrim: false },
         )
-    }, [currentUrl, rect, rectToSourcePixels, runEdit])
-
-    // ─── Apply trim ──────────────────────────────────────────────────
-    const handleApplyTrim = useCallback(async () => {
-        if (!currentUrl) return
-        const start = Math.max(0, trimStart)
-        const end = Math.min(videoDuration, trimEnd)
-        if (end - start < 0.1) {
-            toast.push(
-                <Notification type="warning" title="Range too small">
-                    Trim range must be at least 0.1 seconds.
-                </Notification>,
-            )
-            return
+        // Only clear the tool/rect on success — on failure keep them so the
+        // user can retry without redrawing the rectangle.
+        if (success) {
+            setToolMode('none')
+            setWmRect(null)
         }
-        const label = `Trimmed ${start.toFixed(1)}s → ${end.toFixed(1)}s`
-        await runEdit(label, 'trim', { startSec: start, endSec: end }, (onP) =>
-            trimVideo(currentUrl, start, end, onP),
-        )
-    }, [currentUrl, trimStart, trimEnd, videoDuration, runEdit])
+    }, [selectedClip, wmRect, rectToSourcePixels, applyClipEdit])
 
-    // ─── Apply crop ──────────────────────────────────────────────────
-    const handleApplyCrop = useCallback(async () => {
-        if (!currentUrl || !rect) return
-        const region = rectToSourcePixels(rect)
-        if (!region) {
-            toast.push(
-                <Notification type="warning" title="Region too small">
-                    Draw a larger rectangle to crop.
-                </Notification>,
-            )
-            return
-        }
-        const label = `Cropped ${Math.round(region.w)}×${Math.round(region.h)}`
-        await runEdit(label, 'crop', region, (onP) =>
-            cropVideo(currentUrl, region, onP),
-        )
-    }, [currentUrl, rect, rectToSourcePixels, runEdit])
+    // ─── Reset (v1 scope: undo trims only — crop/watermark are destructive
+    // per-clip edits with no history stack in this single-track model) ──
+    const handleResetTrims = useCallback(() => {
+        setClips((prev) => prev.map((c) => ({ ...c, inPoint: 0, outPoint: c.duration })))
+    }, [])
 
-    // ─── Combine multiple videos into one (stitch) ──────────────────
-    // Multi-input flow: pulls URLs from the combineVideos queue in order,
-    // delegates to VideoStitchService (which shares the same FFmpeg WASM
-    // runtime as the watermark/trim/crop paths), and feeds the result
-    // through the same runEdit pipeline so the output lands in the
-    // History panel and is selectable as the current preview.
-    const handleCombine = useCallback(async () => {
-        if (combineVideos.length < 2) return
-        const urls = combineVideos.map((v) => v.url)
-        const count = urls.length
-        await runEdit(`Combined ${count} videos`, 'stitch', { count }, (onP) =>
-            stitchVideos(urls, onP),
-        )
-        // Drop the queue after a successful combine so the next session
-        // starts fresh. The blob URLs the queue held are still owned by
-        // the items, but each handleRemoveCombineItem also revoked them
-        // individually so there's no leak.
-        setCombineVideos([])
-    }, [combineVideos, runEdit])
+    // ─── Export: trim each clip as needed, stitch if >1, then download or
+    // save to gallery via the existing addToGallery contract ───────────
+    const buildFinalVideo = useCallback(async (): Promise<string | null> => {
+        if (clips.length === 0) return null
+        const EPS = 0.01
+        const needsTrim = clips.map((c) => c.inPoint > EPS || c.outPoint < c.duration - EPS)
+        const trimCount = needsTrim.filter(Boolean).length
+        const steps = Math.max(1, trimCount + (clips.length > 1 ? 1 : 0))
+        const stepProgress = (i: number) => (p: number) => setProgress(Math.round(((i + p / 100) / steps) * 100))
 
-    // ─── Probe with FFmpeg if DOM metadata not yet loaded ────────────
-    // The native <video> tag usually populates videoWidth/videoHeight as
-    // soon as loadedmetadata fires, so we rarely need this fallback.
-    // Kept here for robustness on cross-origin remote URLs where the
-    // browser may refuse to expose dimensions.
-    useEffect(() => {
-        if (!sourceUrl) return
-        if (videoSize.width > 0 && videoSize.height > 0) return
-
-        let cancelled = false
-        ;(async () => {
-            try {
-                const probe = await probeVideo(sourceUrl)
-                if (cancelled) return
-                if (probe.width > 0 && probe.height > 0) {
-                    setVideoSize({ width: probe.width, height: probe.height })
-                }
-                if (probe.durationSec > 0) setVideoDuration(probe.durationSec)
-            } catch (err) {
-                console.warn('[VideoEditor] FFmpeg probe fallback failed:', err)
-            }
-        })()
-        return () => { cancelled = true }
-    }, [sourceUrl, videoSize.width, videoSize.height])
-
-    // ─── Save current video to gallery ───────────────────────────────
-    const handleSaveToGallery = () => {
-        if (!currentUrl) return
-        const current = currentIndex === -1 ? null : history[currentIndex]
-        const label = current?.label ?? 'Original'
-        addToGallery({
-            id: `editor-${Date.now()}`,
-            url: currentUrl,
-            prompt: `Video Editor: ${label}`,
-            aspectRatio: videoSize.width >= videoSize.height ? '16:9' : '9:16',
-            timestamp: Date.now(),
-            mediaType: 'VIDEO',
-        })
-        toast.push(
-            <Notification type="success" title="Saved">
-                Video added to Avatar Studio gallery.
-            </Notification>,
-        )
-    }
-
-    // ─── Download current video ──────────────────────────────────────
-    const handleDownload = async () => {
-        if (!currentUrl) return
+        let stepIdx = 0
+        const partUrls: string[] = []
+        // Blob URLs minted by trimVideo() for THIS export — distinct from
+        // any clips[].url (the timeline still owns those, untouched here).
+        // Revoked below once stitchVideos has read them (or on error), so
+        // they never leak. Never includes a passed-through clip.url.
+        const createdPartUrls: string[] = []
         try {
-            const resp = await fetch(currentUrl)
-            const blob = await resp.blob()
-            const url = URL.createObjectURL(blob)
-            const a = document.createElement('a')
-            a.href = url
-            a.download = `video-editor-${Date.now()}.mp4`
-            document.body.appendChild(a)
-            a.click()
-            document.body.removeChild(a)
-            URL.revokeObjectURL(url)
+            for (let i = 0; i < clips.length; i++) {
+                const clip = clips[i]
+                if (needsTrim[i]) {
+                    setProgressLabel(`Trimming clip ${i + 1}/${clips.length}…`)
+                    const url = await trimVideo(clip.url, clip.inPoint, clip.outPoint, stepProgress(stepIdx))
+                    partUrls.push(url)
+                    createdPartUrls.push(url)
+                    stepIdx++
+                } else {
+                    partUrls.push(clip.url)
+                }
+            }
+            if (partUrls.length > 1) {
+                setProgressLabel('Combining clips…')
+                const finalUrl = await stitchVideos(partUrls, stepProgress(stepIdx))
+                // stitchVideos has read every part by value — the trimmed
+                // intermediates are no longer needed. Clips still on the
+                // timeline reuse their own clip.url, which was never added
+                // to createdPartUrls, so they're untouched.
+                for (const partUrl of createdPartUrls) {
+                    try { URL.revokeObjectURL(partUrl) } catch { /* ignore */ }
+                }
+                return finalUrl
+            }
+            // Single part: it IS the final URL passed through to the
+            // caller (handleDownload / handleSaveToGallery) — do not
+            // revoke it here.
+            return partUrls[0]
         } catch (err) {
-            console.error('[VideoEditor] Download failed:', err)
-            window.open(currentUrl, '_blank')
+            // Trim/stitch failed partway — revoke whatever intermediates
+            // were already minted so they don't leak.
+            for (const partUrl of createdPartUrls) {
+                try { URL.revokeObjectURL(partUrl) } catch { /* ignore */ }
+            }
+            throw err
         }
-    }
+    }, [clips])
 
-    // ─── Reset to original ───────────────────────────────────────────
-    const handleResetToOriginal = () => {
-        setCurrentIndex(-1)
-        setRect(null)
-    }
+    const handleDownload = useCallback(async () => {
+        if (clips.length === 0) return
+        setIsProcessing(true)
+        setProgress(0)
+        setProgressLabel('Preparing export…')
+        try {
+            const finalUrl = await buildFinalVideo()
+            if (!finalUrl) return
+            setProgress(100)
+            try {
+                const resp = await fetch(finalUrl)
+                const blob = await resp.blob()
+                const objUrl = URL.createObjectURL(blob)
+                const a = document.createElement('a')
+                a.href = objUrl
+                a.download = `video-editor-${Date.now()}.mp4`
+                document.body.appendChild(a)
+                a.click()
+                document.body.removeChild(a)
+                URL.revokeObjectURL(objUrl)
+                // finalUrl was only needed to build the download blob above —
+                // it's used transiently here, so revoke it now. Guard against
+                // the no-trim/no-stitch single-clip passthrough case, where
+                // finalUrl IS still one of the timeline's own clip URLs.
+                if (!clipsRef.current.some((c) => c.url === finalUrl)) {
+                    try { URL.revokeObjectURL(finalUrl) } catch { /* ignore */ }
+                }
+            } catch (err) {
+                console.error('[VideoEditor] Download failed:', err)
+                window.open(finalUrl, '_blank')
+            }
+        } catch (err) {
+            const message = err instanceof Error ? err.message : 'Unknown error'
+            console.error('[VideoEditor] Export (download) failed:', err)
+            toast.push(
+                <Notification type="danger" title="Export failed">
+                    {message}
+                </Notification>,
+            )
+        } finally {
+            setIsProcessing(false)
+            setProgress(0)
+            setProgressLabel('')
+        }
+    }, [clips.length, buildFinalVideo])
 
-    const handleDeleteHistoryItem = (idx: number) => {
-        const entry = history[idx]
-        if (!entry) return
-        try { URL.revokeObjectURL(entry.url) } catch { /* ignore */ }
-        setHistory((prev) => prev.filter((_, i) => i !== idx))
-        if (currentIndex === idx) setCurrentIndex(-1)
-        else if (currentIndex > idx) setCurrentIndex((c) => c - 1)
-    }
+    const handleSaveToGallery = useCallback(async () => {
+        if (clips.length === 0) return
+        setIsProcessing(true)
+        setProgress(0)
+        setProgressLabel('Preparing export…')
+        try {
+            const finalUrl = await buildFinalVideo()
+            if (!finalUrl) return
+            setProgress(100)
+            let aspectRatio: '16:9' | '9:16' = '16:9'
+            try {
+                const probe = await probeVideo(finalUrl)
+                if (probe.width > 0 && probe.height > 0) {
+                    aspectRatio = probe.width >= probe.height ? '16:9' : '9:16'
+                }
+            } catch { /* keep default aspect ratio */ }
+            const label = clips.length > 1 ? `${clips.length} clips combined` : clips[0].name
+            addToGallery({
+                id: `editor-${Date.now()}`,
+                url: finalUrl,
+                prompt: `Video Editor: ${label}`,
+                aspectRatio,
+                timestamp: Date.now(),
+                mediaType: 'VIDEO',
+            })
+            toast.push(
+                <Notification type="success" title="Saved">
+                    Video added to Avatar Studio gallery.
+                </Notification>,
+            )
+        } catch (err) {
+            const message = err instanceof Error ? err.message : 'Unknown error'
+            console.error('[VideoEditor] Export (save) failed:', err)
+            toast.push(
+                <Notification type="danger" title="Export failed">
+                    {message}
+                </Notification>,
+            )
+        } finally {
+            setIsProcessing(false)
+            setProgress(0)
+            setProgressLabel('')
+        }
+    }, [clips, buildFinalVideo, addToGallery])
 
     // ─── Empty state ─────────────────────────────────────────────────
-    // Shown until the user either uploads a single video for editing OR
-    // starts queuing videos for combine. After that the main editor UI
-    // takes over with its mode selector and the chosen mode visible.
-    if (!sourceUrl && combineVideos.length === 0) {
+    if (clips.length === 0) {
         return (
             <div className="h-full flex flex-col">
                 <div className="border-b border-gray-200 dark:border-gray-700 p-4 flex items-center justify-between">
                     <div>
                         <h2 className="text-lg font-semibold">Video Editor</h2>
                         <p className="text-xs text-gray-500 dark:text-gray-400">
-                            Watermark removal · trim · crop · combine
+                            Single-track timeline · trim · crop · watermark · combine
                         </p>
                     </div>
                 </div>
@@ -623,54 +1122,44 @@ const VideoEditorMain = ({ userId }: VideoEditorMainProps) => {
                         <div className="w-16 h-16 mx-auto rounded-full border-2 border-gray-300 dark:border-gray-600 flex items-center justify-center mb-4">
                             <HiOutlineFilm className="w-8 h-8 text-gray-400" />
                         </div>
-                        <h3 className="text-base font-semibold mb-2">¿Qué querés hacer?</h3>
+                        <h3 className="text-base font-semibold mb-2">Empezá tu timeline</h3>
                         <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
-                            Editá un video (watermark / trim / crop) o combiná varios
-                            en uno solo. Todo corre en tu navegador con FFmpeg.
+                            Subí o arrastrá uno o más videos. Vas a poder recortar,
+                            reordenar, cortar watermarks y combinarlos, todo en un
+                            único track. Corre en tu navegador con FFmpeg.
                         </p>
                         <input
                             ref={fileInputRef}
                             type="file"
                             accept="video/*"
-                            multiple={editMode === 'combine'}
+                            multiple
                             className="hidden"
-                            onChange={handleFileUpload}
+                            onChange={handleFileInputChange}
                         />
-                        <div className="flex gap-2 justify-center">
-                            <Button
-                                variant="solid"
-                                icon={<HiOutlineUpload />}
-                                onClick={() => {
-                                    // Switching to a single-video mode ensures the
-                                    // file input opens without multiple-select.
-                                    if (editMode === 'combine') setEditMode('watermark')
-                                    setTimeout(() => fileInputRef.current?.click(), 0)
-                                }}
-                            >
-                                Editar un video
-                            </Button>
-                            <Button
-                                variant="default"
-                                icon={<HiOutlineFilm />}
-                                onClick={() => {
-                                    setEditMode('combine')
-                                    // Defer so the `multiple` attribute on the
-                                    // input updates before the picker opens.
-                                    setTimeout(() => fileInputRef.current?.click(), 0)
-                                }}
-                            >
-                                Combinar varios
-                            </Button>
-                        </div>
+                        <Button
+                            variant="solid"
+                            icon={<HiOutlineUpload />}
+                            onClick={() => fileInputRef.current?.click()}
+                            disabled={isProcessing}
+                        >
+                            Add clip
+                        </Button>
                     </Card>
                 </div>
+                {isProcessing && (
+                    <div className="p-4">
+                        <Card className="px-4 py-3 text-center">
+                            <div className="text-xs font-mono text-primary mb-2">{progressLabel}</div>
+                            <Progress percent={progress} size="sm" />
+                        </Card>
+                    </div>
+                )}
             </div>
         )
     }
 
-    // ─── Editor state ────────────────────────────────────────────────
-    const showRect = rect && rect.w > 4 && rect.h > 4
-    const canApply = !!showRect && !isProcessing
+    const trimmedLenOf = (c: TimelineClip) => Math.max(0.01, c.outPoint - c.inPoint)
+    const selectedTrimmedLen = selectedClip ? trimmedLenOf(selectedClip) : 0
 
     return (
         <div className="h-full flex flex-col">
@@ -679,7 +1168,7 @@ const VideoEditorMain = ({ userId }: VideoEditorMainProps) => {
                 <div className="min-w-0">
                     <h2 className="text-lg font-semibold truncate">Video Editor</h2>
                     <p className="text-xs text-gray-500 dark:text-gray-400">
-                        {videoSize.width}×{videoSize.height} · {videoDuration.toFixed(1)}s
+                        {clips.length} clip{clips.length === 1 ? '' : 's'} · {totalTrimmed.toFixed(1)}s total
                     </p>
                 </div>
                 <div className="flex items-center gap-2">
@@ -687,8 +1176,8 @@ const VideoEditorMain = ({ userId }: VideoEditorMainProps) => {
                         size="xs"
                         variant="plain"
                         icon={<HiOutlineRefresh />}
-                        onClick={handleResetToOriginal}
-                        disabled={currentIndex === -1}
+                        onClick={handleResetTrims}
+                        disabled={isProcessing}
                     >
                         Reset
                     </Button>
@@ -697,6 +1186,7 @@ const VideoEditorMain = ({ userId }: VideoEditorMainProps) => {
                         variant="plain"
                         icon={<HiOutlineDownload />}
                         onClick={handleDownload}
+                        disabled={isProcessing}
                     >
                         Download
                     </Button>
@@ -705,383 +1195,148 @@ const VideoEditorMain = ({ userId }: VideoEditorMainProps) => {
                         variant="solid"
                         icon={<HiOutlineSave />}
                         onClick={handleSaveToGallery}
+                        disabled={isProcessing}
                     >
                         Save to Gallery
                     </Button>
                 </div>
             </div>
 
-            {/* Main area: video preview + history sidebar */}
-            <div className="flex-1 flex min-h-0">
-                {/* Center: video + canvas overlay (single-video modes)
-                    OR the combine queue (combine mode). */}
-                <div className="flex-1 flex flex-col min-w-0">
-                    {editMode === 'combine' ? (
-                        <div className="flex-1 flex flex-col bg-gray-100 dark:bg-gray-900 p-6 overflow-hidden">
-                            {combineVideos.length === 0 ? (
-                                // Empty Combine queue: full-area dropzone.
+            <div className="flex-1 flex flex-col min-h-0">
+                {/* Preview */}
+                <div className="flex-3 min-h-0 flex flex-col items-center justify-center bg-gray-100 dark:bg-gray-900 p-4 gap-3 overflow-y-auto">
+                    <div
+                        className="relative max-w-full inline-block"
+                        onMouseDown={toolMode === 'watermark' ? handleWmMouseDown : undefined}
+                        onMouseMove={toolMode === 'watermark' ? handleWmMouseMove : undefined}
+                        onMouseUp={toolMode === 'watermark' ? handleWmMouseUp : undefined}
+                        onMouseLeave={toolMode === 'watermark' ? handleWmMouseUp : undefined}
+                        style={{
+                            cursor: isProcessing ? 'wait' : toolMode === 'watermark' ? 'crosshair' : 'default',
+                        }}
+                    >
+                        <video
+                            ref={videoRef}
+                            src={selectedClip?.url}
+                            playsInline
+                            className="max-w-full max-h-[42vh] block bg-black"
+                            style={{ pointerEvents: 'none' }}
+                        />
+
+                        {/* Watermark freehand rect */}
+                        {toolMode === 'watermark' && wmRect && wmRect.w > 4 && wmRect.h > 4 && (
+                            <div
+                                className="absolute border-2 border-purple-500 bg-purple-500/20 pointer-events-none"
+                                style={{ left: wmRect.x, top: wmRect.y, width: wmRect.w, height: wmRect.h }}
+                            />
+                        )}
+
+                        {/* Crop box */}
+                        {toolMode === 'crop' && (() => {
+                            const crop = getCropDimensions()
+                            if (!crop) return null
+                            return (
                                 <div
-                                    onDragOver={handleDropzoneDragOver}
-                                    onDrop={handleDropzoneDrop}
-                                    className="flex-1 flex flex-col items-center justify-center border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-lg p-8 text-center"
+                                    className="absolute bg-transparent border-2 border-dashed border-purple-400 cursor-move"
+                                    style={{
+                                        left: crop.x,
+                                        top: crop.y,
+                                        width: crop.width,
+                                        height: crop.height,
+                                        boxShadow: '0 0 0 9999px rgba(0, 0, 0, 0.7)',
+                                    }}
+                                    onMouseDown={handleCropMouseDown}
                                 >
-                                    <HiOutlineFilm className="w-12 h-12 text-gray-400 mb-4" />
-                                    <h3 className="text-base font-semibold mb-2">
-                                        Arrastrá 2+ videos para combinar
-                                    </h3>
-                                    <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
-                                        Se concatenan en el orden en que los pongas.
-                                        Podés reordenar después.
-                                    </p>
-                                    <input
-                                        ref={fileInputRef}
-                                        type="file"
-                                        accept="video/*"
-                                        multiple
-                                        className="hidden"
-                                        onChange={handleFileUpload}
-                                    />
-                                    <Button
-                                        variant="solid"
-                                        icon={<HiOutlineUpload />}
-                                        onClick={() => fileInputRef.current?.click()}
-                                    >
-                                        Subir videos
-                                    </Button>
+                                    <div className="absolute -top-1 -left-1 w-3 h-3 bg-purple-400 rounded-full" />
+                                    <div className="absolute -top-1 -right-1 w-3 h-3 bg-purple-400 rounded-full" />
+                                    <div className="absolute -bottom-1 -left-1 w-3 h-3 bg-purple-400 rounded-full" />
+                                    <div className="absolute -bottom-1 -right-1 w-3 h-3 bg-purple-400 rounded-full" />
                                 </div>
-                            ) : (
-                                // Queue with items: ordered list + add-more + progress.
-                                <div className="flex-1 flex flex-col gap-3 overflow-hidden">
-                                    <div className="flex items-center justify-between">
-                                        <h3 className="text-sm font-semibold">
-                                            {combineVideos.length} video{combineVideos.length === 1 ? '' : 's'} en cola
-                                        </h3>
-                                        <input
-                                            ref={fileInputRef}
-                                            type="file"
-                                            accept="video/*"
-                                            multiple
-                                            className="hidden"
-                                            onChange={handleFileUpload}
-                                        />
-                                        <Button
-                                            size="xs"
-                                            variant="plain"
-                                            icon={<HiOutlinePlus />}
-                                            onClick={() => fileInputRef.current?.click()}
-                                        >
-                                            Agregar
-                                        </Button>
-                                    </div>
-                                    <ScrollBar className="flex-1" autoHide={false}>
-                                        <div className="space-y-2 pr-2">
-                                            {combineVideos.map((item, idx) => (
-                                                <div
-                                                    key={item.id}
-                                                    draggable
-                                                    onDragStart={handleItemDragStart(idx)}
-                                                    onDragOver={handleItemDragOver(idx)}
-                                                    onDrop={handleItemDrop(idx)}
-                                                    onDragEnd={handleItemDragEnd}
-                                                    className={`flex items-center gap-3 p-2 bg-white dark:bg-gray-800 border rounded-lg transition-colors ${
-                                                        dragOverIdx === idx
-                                                            ? 'border-purple-500 bg-purple-50 dark:bg-purple-500/10'
-                                                            : 'border-gray-200 dark:border-gray-700'
-                                                    }`}
-                                                >
-                                                    <HiOutlineMenuAlt4 className="w-5 h-5 text-gray-400 cursor-move flex-shrink-0" />
-                                                    <span className="text-xs font-mono font-semibold w-6 text-center text-gray-500">
-                                                        {idx + 1}
-                                                    </span>
-                                                    <video
-                                                        src={item.url}
-                                                        muted
-                                                        preload="metadata"
-                                                        className="w-28 h-16 object-cover bg-black rounded flex-shrink-0"
-                                                    />
-                                                    <span className="flex-1 text-xs truncate text-gray-700 dark:text-gray-300">
-                                                        {item.name}
-                                                    </span>
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => handleRemoveCombineItem(item.id)}
-                                                        className="text-gray-400 hover:text-red-500 transition-colors flex-shrink-0 p-1"
-                                                        aria-label="Remove"
-                                                    >
-                                                        <HiOutlineX className="w-4 h-4" />
-                                                    </button>
-                                                </div>
-                                            ))}
-                                        </div>
-                                    </ScrollBar>
-                                    {isProcessing && (
-                                        <Card className="px-4 py-3 text-center">
-                                            <div className="text-xs font-mono text-primary mb-2">
-                                                {progressLabel}
-                                            </div>
-                                            <Progress percent={progress} size="sm" />
-                                        </Card>
-                                    )}
-                                </div>
-                            )}
-                        </div>
-                    ) : (
-                    <div className="flex-1 flex flex-col items-center justify-center bg-gray-100 dark:bg-gray-900 p-6 relative gap-3">
-                        {/* Drag container — full mouse capture for rect drawing.
-                            Native <video> controls are intentionally omitted; they
-                            steal pointer events from the lower half of the video
-                            and break the drag-to-select watermark interaction.
-                            Use the custom player below the drag area instead. */}
-                        <div
-                            ref={canvasContainerRef}
-                            className="relative max-w-full inline-block"
-                            onMouseDown={editMode === 'trim' ? undefined : handleRectMouseDown}
-                            onMouseMove={editMode === 'trim' ? undefined : handleRectMouseMove}
-                            onMouseUp={editMode === 'trim' ? undefined : handleRectMouseUp}
-                            onMouseLeave={editMode === 'trim' ? undefined : handleRectMouseUp}
-                            style={{
-                                cursor: isProcessing
-                                    ? 'wait'
-                                    : editMode === 'trim'
-                                        ? 'default'
-                                        : 'crosshair',
-                            }}
+                            )
+                        })()}
+
+                        {/* Processing overlay */}
+                        {isProcessing && (
+                            <div className="absolute inset-0 bg-black/60 flex items-center justify-center backdrop-blur-sm">
+                                <Card className="px-6 py-4 min-w-70 text-center">
+                                    <HiOutlineScissors className="w-8 h-8 text-primary mx-auto mb-2" />
+                                    <div className="text-sm font-mono text-primary mb-2">{progressLabel}</div>
+                                    <Progress percent={progress} size="sm" />
+                                </Card>
+                            </div>
+                        )}
+                    </div>
+
+                    {/* Custom player controls — playback is clamped to the
+                        selected clip's [inPoint, outPoint]. */}
+                    <div className="w-full max-w-2xl flex items-center gap-3 bg-white/5 dark:bg-gray-800/40 backdrop-blur rounded-lg px-3 py-2">
+                        <button
+                            type="button"
+                            onClick={togglePlay}
+                            disabled={isProcessing || !selectedClip}
+                            className="text-gray-700 dark:text-gray-200 hover:text-purple-500 disabled:opacity-30 transition-colors"
+                            aria-label={isPlaying ? 'Pause' : 'Play'}
                         >
-                            <video
-                                ref={videoRef}
-                                src={currentUrl ?? undefined}
-                                playsInline
-                                className="max-w-full max-h-[60vh] block bg-black"
+                            {isPlaying ? <HiOutlinePause className="w-6 h-6" /> : <HiOutlinePlay className="w-6 h-6" />}
+                        </button>
+                        <div
+                            className="flex-1 h-2 bg-gray-200 dark:bg-gray-700 rounded cursor-pointer relative group"
+                            onClick={handleSeek}
+                        >
+                            <div
+                                className="absolute h-full bg-purple-500 rounded transition-[width] duration-100"
                                 style={{
-                                    pointerEvents: 'none',
+                                    width: `${selectedTrimmedLen > 0
+                                        ? Math.max(0, Math.min(1, (playhead - (selectedClip?.inPoint ?? 0)) / selectedTrimmedLen)) * 100
+                                        : 0}%`,
                                 }}
                             />
-                            {/* Rectangle overlay for watermark/crop region */}
-                            {showRect && (
-                                <div
-                                    className="absolute border-2 border-purple-500 bg-purple-500/20 pointer-events-none"
-                                    style={{
-                                        left: rect!.x,
-                                        top: rect!.y,
-                                        width: rect!.w,
-                                        height: rect!.h,
-                                    }}
-                                />
-                            )}
-                            {/* Processing overlay */}
-                            {isProcessing && (
-                                <div className="absolute inset-0 bg-black/60 flex items-center justify-center backdrop-blur-sm">
-                                    <Card className="px-6 py-4 min-w-[280px] text-center">
-                                        <HiOutlineScissors className="w-8 h-8 text-primary mx-auto mb-2" />
-                                        <div className="text-sm font-mono text-primary mb-2">
-                                            {progressLabel}
-                                        </div>
-                                        <Progress percent={progress} size="sm" />
-                                    </Card>
-                                </div>
-                            )}
                         </div>
-
-                        {/* Custom player controls — sit BELOW the drag area, so
-                            they don't intercept mouse events meant for the rect
-                            overlay. Click anywhere on the video itself also
-                            toggles play (cheap fallback for users used to it). */}
-                        <div className="w-full max-w-2xl flex items-center gap-3 bg-white/5 dark:bg-gray-800/40 backdrop-blur rounded-lg px-3 py-2">
-                            <button
-                                type="button"
-                                onClick={togglePlay}
-                                disabled={isProcessing || !currentUrl}
-                                className="text-gray-700 dark:text-gray-200 hover:text-purple-500 disabled:opacity-30 transition-colors"
-                                aria-label={isPlaying ? 'Pause' : 'Play'}
-                            >
-                                {isPlaying ? (
-                                    <HiOutlinePause className="w-6 h-6" />
-                                ) : (
-                                    <HiOutlinePlay className="w-6 h-6" />
-                                )}
-                            </button>
-                            <div
-                                className="flex-1 h-2 bg-gray-200 dark:bg-gray-700 rounded cursor-pointer relative group"
-                                onClick={handleSeek}
-                            >
-                                <div
-                                    className="absolute h-full bg-purple-500 rounded transition-[width] duration-100"
-                                    style={{
-                                        width: `${videoDuration ? (currentTime / videoDuration) * 100 : 0}%`,
-                                    }}
-                                />
-                            </div>
-                            <span className="text-xs font-mono text-gray-500 dark:text-gray-400 min-w-[80px] text-right">
-                                {fmtTime(currentTime)} / {fmtTime(videoDuration)}
-                            </span>
-                            <button
-                                type="button"
-                                onClick={toggleMute}
-                                className="text-gray-500 dark:text-gray-400 hover:text-purple-500 transition-colors"
-                                aria-label={isMuted ? 'Unmute' : 'Mute'}
-                            >
-                                {isMuted ? (
-                                    <HiOutlineVolumeOff className="w-5 h-5" />
-                                ) : (
-                                    <HiOutlineVolumeUp className="w-5 h-5" />
-                                )}
-                            </button>
-                        </div>
+                        <span className="text-xs font-mono text-gray-500 dark:text-gray-400 min-w-20 text-right">
+                            {fmtTime(Math.max(0, playhead - (selectedClip?.inPoint ?? 0)))} / {fmtTime(selectedTrimmedLen)}
+                        </span>
+                        <button
+                            type="button"
+                            onClick={toggleMute}
+                            className="text-gray-500 dark:text-gray-400 hover:text-purple-500 transition-colors"
+                            aria-label={isMuted ? 'Unmute' : 'Mute'}
+                        >
+                            {isMuted ? <HiOutlineVolumeOff className="w-5 h-5" /> : <HiOutlineVolumeUp className="w-5 h-5" />}
+                        </button>
                     </div>
-                    )}
 
-                    {/* Tools bar */}
-                    <div className="border-t border-gray-200 dark:border-gray-700 p-4">
-                        <div className="flex items-center gap-2 mb-3">
+                    {/* Tools: Crop / Watermark, applied to the selected clip */}
+                    <div className="w-full max-w-2xl">
+                        <div className="flex items-center gap-2 mb-2">
                             <Button
                                 size="xs"
-                                variant={editMode === 'watermark' ? 'solid' : 'plain'}
-                                icon={<HiOutlineScissors />}
-                                onClick={() => setEditMode('watermark')}
-                                disabled={isProcessing}
-                            >
-                                Watermark
-                            </Button>
-                            <Button
-                                size="xs"
-                                variant={editMode === 'trim' ? 'solid' : 'plain'}
-                                icon={<HiOutlineClock />}
-                                onClick={() => setEditMode('trim')}
-                                disabled={isProcessing}
-                            >
-                                Trim
-                            </Button>
-                            <Button
-                                size="xs"
-                                variant={editMode === 'crop' ? 'solid' : 'plain'}
+                                variant={toolMode === 'crop' ? 'solid' : 'plain'}
                                 icon={<HiOutlineSelector />}
-                                onClick={() => setEditMode('crop')}
-                                disabled={isProcessing}
+                                onClick={() => setToolMode((m) => (m === 'crop' ? 'none' : 'crop'))}
+                                disabled={isProcessing || !selectedClip}
                             >
                                 Crop
                             </Button>
                             <Button
                                 size="xs"
-                                variant={editMode === 'combine' ? 'solid' : 'plain'}
-                                icon={<HiOutlineFilm />}
-                                onClick={() => setEditMode('combine')}
-                                disabled={isProcessing}
+                                variant={toolMode === 'watermark' ? 'solid' : 'plain'}
+                                icon={<HiOutlineScissors />}
+                                onClick={() => setToolMode((m) => (m === 'watermark' ? 'none' : 'watermark'))}
+                                disabled={isProcessing || !selectedClip}
                             >
-                                Combine
+                                Watermark
                             </Button>
                         </div>
 
-                        {editMode === 'watermark' && (
-                            <div className="flex items-center justify-between gap-4">
-                                <div className="text-xs text-gray-500 dark:text-gray-400 flex-1">
-                                    {showRect ? (
-                                        <>
-                                            Región seleccionada: {Math.round(rect!.w)}×{Math.round(rect!.h)}px.
-                                            Hacé click en &quot;Remove Watermark&quot;.
-                                        </>
-                                    ) : (
-                                        <>Dibujá un rectángulo encima del watermark con el mouse.</>
-                                    )}
-                                </div>
-                                <Button
-                                    size="sm"
-                                    variant="solid"
-                                    onClick={handleRemoveWatermark}
-                                    disabled={!canApply}
-                                    icon={<HiOutlineScissors />}
-                                >
-                                    Remove Watermark
-                                </Button>
-                            </div>
-                        )}
-
-                        {editMode === 'trim' && (
-                            <div className="space-y-3">
-                                {/* Two-handle scrubber over the full duration */}
-                                <div className="relative h-2 bg-gray-200 dark:bg-gray-700 rounded">
-                                    {/* Selected range bar */}
-                                    <div
-                                        className="absolute h-full bg-purple-500/40 rounded"
-                                        style={{
-                                            left: `${(trimStart / Math.max(0.1, videoDuration)) * 100}%`,
-                                            width: `${((trimEnd - trimStart) / Math.max(0.1, videoDuration)) * 100}%`,
-                                        }}
-                                    />
-                                </div>
-                                <div className="flex items-center gap-3">
-                                    <label className="text-xs text-gray-500 dark:text-gray-400 flex items-center gap-2">
-                                        Start
-                                        <input
-                                            type="number"
-                                            min={0}
-                                            max={trimEnd}
-                                            step={0.1}
-                                            value={trimStart.toFixed(2)}
-                                            onChange={(e) =>
-                                                setTrimStart(
-                                                    Math.min(
-                                                        trimEnd,
-                                                        Math.max(0, parseFloat(e.target.value) || 0),
-                                                    ),
-                                                )
-                                            }
-                                            className="w-20 px-2 py-1 border border-gray-300 dark:border-gray-700 rounded text-xs bg-white dark:bg-gray-800"
-                                        />
-                                        s
-                                    </label>
-                                    <label className="text-xs text-gray-500 dark:text-gray-400 flex items-center gap-2">
-                                        End
-                                        <input
-                                            type="number"
-                                            min={trimStart}
-                                            max={videoDuration}
-                                            step={0.1}
-                                            value={trimEnd.toFixed(2)}
-                                            onChange={(e) =>
-                                                setTrimEnd(
-                                                    Math.max(
-                                                        trimStart,
-                                                        Math.min(
-                                                            videoDuration,
-                                                            parseFloat(e.target.value) || videoDuration,
-                                                        ),
-                                                    ),
-                                                )
-                                            }
-                                            className="w-20 px-2 py-1 border border-gray-300 dark:border-gray-700 rounded text-xs bg-white dark:bg-gray-800"
-                                        />
-                                        s
-                                    </label>
-                                    <span className="text-xs text-gray-400 dark:text-gray-500 flex-1">
-                                        Duración resultante: {(trimEnd - trimStart).toFixed(2)}s
-                                    </span>
-                                    <Button
-                                        size="sm"
-                                        variant="solid"
-                                        onClick={handleApplyTrim}
-                                        disabled={isProcessing || trimEnd - trimStart < 0.1}
-                                        icon={<HiOutlineClock />}
-                                    >
-                                        Apply Trim
-                                    </Button>
-                                </div>
-                            </div>
-                        )}
-
-                        {editMode === 'crop' && (
+                        {toolMode === 'crop' && (
                             <div className="space-y-3">
                                 <div className="flex items-center gap-2 flex-wrap">
-                                    <span className="text-xs text-gray-500 dark:text-gray-400 mr-1">
-                                        Aspect:
-                                    </span>
+                                    <span className="text-xs text-gray-500 dark:text-gray-400 mr-1">Aspect:</span>
                                     {CROP_ASPECTS.map((opt) => (
                                         <button
                                             key={opt.value}
                                             type="button"
-                                            onClick={() => {
-                                                setCropAspect(opt.value)
-                                                setRect(null)
-                                            }}
+                                            onClick={() => setCropAspect(opt.value)}
                                             disabled={isProcessing}
                                             className={`px-2.5 py-1 text-xs rounded-lg border transition-colors ${
                                                 cropAspect === opt.value
@@ -1093,149 +1348,169 @@ const VideoEditorMain = ({ userId }: VideoEditorMainProps) => {
                                         </button>
                                     ))}
                                 </div>
-                                <div className="flex items-center justify-between gap-4">
-                                    <div className="text-xs text-gray-500 dark:text-gray-400 flex-1">
-                                        {showRect ? (
-                                            <>Recorte: {Math.round(rect!.w)}×{Math.round(rect!.h)}px.</>
-                                        ) : (
-                                            <>Dibujá el rectángulo de recorte sobre el video.</>
-                                        )}
+                                <div className="flex items-center gap-4">
+                                    <span className="text-xs text-gray-500 dark:text-gray-400 w-20 shrink-0">Crop Size</span>
+                                    <div className="flex-1">
+                                        <Slider value={cropScale} onChange={(v) => setCropScale(v as number)} min={30} max={100} />
                                     </div>
-                                    <Button
-                                        size="sm"
-                                        variant="solid"
-                                        onClick={handleApplyCrop}
-                                        disabled={!canApply}
-                                        icon={<HiOutlineSelector />}
-                                    >
+                                    <span className="text-xs text-gray-500 dark:text-gray-400 w-10 text-right">{cropScale}%</span>
+                                    <Button size="sm" variant="solid" onClick={handleApplyCrop} disabled={isProcessing}>
                                         Apply Crop
+                                    </Button>
+                                    <Button size="sm" variant="plain" onClick={() => setToolMode('none')}>
+                                        Cancel
                                     </Button>
                                 </div>
                             </div>
                         )}
 
-                        {editMode === 'combine' && (
+                        {toolMode === 'watermark' && (
                             <div className="flex items-center justify-between gap-4">
                                 <div className="text-xs text-gray-500 dark:text-gray-400 flex-1">
-                                    {combineVideos.length === 0 ? (
-                                        <>Subí o arrastrá 2+ videos al área central.</>
-                                    ) : combineVideos.length === 1 ? (
-                                        <>Necesitás al menos 2 videos para combinar.</>
+                                    {wmRect && wmRect.w > 4 && wmRect.h > 4 ? (
+                                        <>Región: {Math.round(wmRect.w)}×{Math.round(wmRect.h)}px.</>
                                     ) : (
-                                        <>
-                                            {combineVideos.length} videos en cola.
-                                            Se concatenan en el orden de la lista.
-                                        </>
+                                        <>Dibujá un rectángulo encima del watermark.</>
                                     )}
                                 </div>
                                 <Button
                                     size="sm"
                                     variant="solid"
-                                    onClick={handleCombine}
-                                    disabled={combineVideos.length < 2 || isProcessing}
-                                    icon={<HiOutlineFilm />}
+                                    onClick={handleApplyWatermark}
+                                    disabled={isProcessing || !wmRect || wmRect.w <= 4 || wmRect.h <= 4}
+                                    icon={<HiOutlineScissors />}
                                 >
-                                    Combine {combineVideos.length >= 2 ? `${combineVideos.length} videos` : 'videos'}
+                                    Remove Watermark
+                                </Button>
+                                <Button size="sm" variant="plain" onClick={() => { setToolMode('none'); setWmRect(null) }}>
+                                    Cancel
                                 </Button>
                             </div>
                         )}
                     </div>
                 </div>
 
-                {/* Right: history sidebar */}
-                <div className="w-64 border-l border-gray-200 dark:border-gray-700 flex flex-col">
-                    <div className="border-b border-gray-200 dark:border-gray-700 p-3 flex items-center justify-between">
-                        <div className="text-xs font-semibold text-gray-700 dark:text-gray-200">
-                            History
-                        </div>
-                        <div className="flex items-center gap-1">
-                            <button
-                                type="button"
-                                onClick={() => setCurrentIndex((c) => Math.max(-1, c - 1))}
-                                disabled={currentIndex === -1}
-                                className="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-30 disabled:cursor-not-allowed"
-                            >
-                                <HiOutlineChevronLeft className="w-4 h-4" />
-                            </button>
-                            <button
-                                type="button"
-                                onClick={() => setCurrentIndex((c) => Math.min(history.length - 1, c + 1))}
-                                disabled={currentIndex >= history.length - 1}
-                                className="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-30 disabled:cursor-not-allowed"
-                            >
-                                <HiOutlineChevronRight className="w-4 h-4" />
-                            </button>
-                        </div>
-                    </div>
-                    <ScrollBar className="flex-1" autoHide={false}>
-                        <div className="p-2 space-y-2">
-                            <button
-                                type="button"
-                                onClick={() => setCurrentIndex(-1)}
-                                className={`w-full text-left p-2 rounded-lg border transition-colors ${
-                                    currentIndex === -1
-                                        ? 'border-purple-500 bg-purple-50 dark:bg-purple-500/20'
-                                        : 'border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800'
-                                }`}
-                            >
-                                <div className="text-xs font-medium">Original</div>
-                                <div className="text-[10px] text-gray-400">source video</div>
-                            </button>
-                            {history.map((edit, idx) => (
-                                <div
-                                    key={edit.id}
-                                    className={`w-full p-2 rounded-lg border transition-colors flex items-start gap-2 ${
-                                        currentIndex === idx
-                                            ? 'border-purple-500 bg-purple-50 dark:bg-purple-500/20'
-                                            : 'border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800'
-                                    }`}
-                                >
-                                    <button
-                                        type="button"
-                                        onClick={() => setCurrentIndex(idx)}
-                                        className="flex-1 text-left min-w-0"
-                                    >
-                                        <div className="text-xs font-medium truncate">
-                                            {edit.label}
-                                        </div>
-                                        <div className="text-[10px] text-gray-400">
-                                            {new Date(edit.timestamp).toLocaleTimeString()}
-                                        </div>
-                                    </button>
-                                    <button
-                                        type="button"
-                                        onClick={() => handleDeleteHistoryItem(idx)}
-                                        className="p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-400 hover:text-red-500"
-                                        title="Remove from history"
-                                    >
-                                        <HiOutlineTrash className="w-3.5 h-3.5" />
-                                    </button>
-                                </div>
-                            ))}
-                            {history.length === 0 && (
-                                <div className="text-xs text-gray-400 dark:text-gray-500 text-center py-4">
-                                    Aún no hay edits.
-                                </div>
-                            )}
-                        </div>
-                    </ScrollBar>
-                    <div className="border-t border-gray-200 dark:border-gray-700 p-2">
-                        <Button
-                            block
-                            size="xs"
-                            variant="plain"
-                            icon={<HiOutlineUpload />}
-                            onClick={() => fileInputRef.current?.click()}
-                        >
-                            Cargar otro video
-                        </Button>
+                {/* Timeline — single track, the centerpiece */}
+                <div className="shrink-0 border-t border-gray-200 dark:border-gray-700 p-4">
+                    <div className="flex items-center justify-between mb-2">
+                        <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-200">Timeline</h3>
                         <input
                             ref={fileInputRef}
                             type="file"
                             accept="video/*"
+                            multiple
                             className="hidden"
-                            onChange={handleFileUpload}
+                            onChange={handleFileInputChange}
                         />
+                        <Button
+                            size="xs"
+                            variant="plain"
+                            icon={<HiOutlinePlus />}
+                            onClick={() => fileInputRef.current?.click()}
+                            disabled={isProcessing}
+                        >
+                            Add clip
+                        </Button>
+                    </div>
+                    <div
+                        ref={trackRef}
+                        onDragOver={handleTrackDragOver}
+                        onDrop={handleTrackDrop}
+                        className="flex items-stretch gap-1 h-24 bg-gray-100 dark:bg-gray-900 rounded-lg p-1 overflow-x-auto"
+                    >
+                        {clips.map((clip, idx) => {
+                            const trimmedLen = trimmedLenOf(clip)
+                            const pct = totalTrimmed > 0 ? (trimmedLen / totalTrimmed) * 100 : 100 / clips.length
+                            const selected = clip.id === selectedClipId
+                            const playheadPct = selected
+                                ? Math.max(0, Math.min(100, ((playhead - clip.inPoint) / trimmedLen) * 100))
+                                : 0
+                            return (
+                                <div
+                                    key={clip.id}
+                                    ref={(el) => { blockRefs.current[clip.id] = el }}
+                                    className={`relative shrink-0 rounded-md overflow-hidden border-2 transition-colors ${
+                                        selected ? 'border-purple-500' : 'border-transparent'
+                                    } ${dragOverIdx === idx ? 'ring-2 ring-purple-300' : ''}`}
+                                    style={{ width: `${pct}%`, minWidth: 56 }}
+                                    onDragOver={handleClipDragOver(idx)}
+                                    onDrop={handleClipDrop(idx)}
+                                >
+                                    <div
+                                        className="absolute inset-0 bg-black cursor-ew-resize"
+                                        onMouseDown={handleBlockScrubStart(clip)}
+                                    >
+                                        {filmstrips[clip.url]?.length ? (
+                                            <div className="absolute inset-0 flex pointer-events-none">
+                                                {filmstrips[clip.url].map((frame, i) => (
+                                                    <img
+                                                        key={i}
+                                                        src={frame}
+                                                        alt=""
+                                                        className="h-full flex-1 min-w-0 object-cover"
+                                                        draggable={false}
+                                                    />
+                                                ))}
+                                            </div>
+                                        ) : (
+                                            <video
+                                                src={clip.url}
+                                                muted
+                                                preload="metadata"
+                                                className="w-full h-full object-cover opacity-70"
+                                            />
+                                        )}
+                                        <div className="absolute inset-x-0 bottom-0 bg-black/60 px-1 py-0.5 pointer-events-none">
+                                            <div className="text-[10px] text-white truncate leading-tight">{clip.name}</div>
+                                            <div className="text-[9px] text-gray-300 leading-tight">{trimmedLen.toFixed(1)}s</div>
+                                        </div>
+                                    </div>
+
+                                    {/* Reorder handle — the ONLY drag source for clip reordering */}
+                                    <span
+                                        draggable
+                                        onDragStart={handleClipDragStart(idx)}
+                                        onDragEnd={handleClipDragEnd}
+                                        onMouseDown={(e) => e.stopPropagation()}
+                                        className="absolute top-0.5 left-0.5 z-20 p-1 rounded bg-black/50 cursor-grab active:cursor-grabbing"
+                                        title="Drag to reorder clips"
+                                    >
+                                        <HiOutlineMenuAlt4 className="w-3 h-3 text-white/80" />
+                                    </span>
+
+                                    {/* Trim handles */}
+                                    <div
+                                        className="absolute left-0 top-0 bottom-0 w-2 cursor-ew-resize hover:bg-purple-500/50 z-10"
+                                        onMouseDown={(e) => { e.stopPropagation(); startTrimDrag(e, clip, 'in') }}
+                                    />
+                                    <div
+                                        className="absolute right-0 top-0 bottom-0 w-2 cursor-ew-resize hover:bg-purple-500/50 z-10"
+                                        onMouseDown={(e) => { e.stopPropagation(); startTrimDrag(e, clip, 'out') }}
+                                    />
+
+                                    {/* Remove clip */}
+                                    <button
+                                        type="button"
+                                        onClick={(e) => { e.stopPropagation(); handleRemoveClip(clip.id) }}
+                                        className="absolute top-0.5 right-0.5 z-20 p-0.5 rounded bg-black/50 text-white/80 hover:text-red-400"
+                                        aria-label="Remove clip"
+                                    >
+                                        <HiOutlineX className="w-3 h-3" />
+                                    </button>
+
+                                    {/* Playhead — wider grab affordance + knob so it reads as draggable */}
+                                    {selected && (
+                                        <div
+                                            className="absolute top-0 bottom-0 z-20 pointer-events-none"
+                                            style={{ left: `${playheadPct}%` }}
+                                        >
+                                            <div className="absolute top-0 bottom-0 -translate-x-1/2 w-0.5 bg-red-500" />
+                                            <div className="absolute -top-1 -translate-x-1/2 w-2.5 h-2.5 rounded-full bg-red-500 border border-white" />
+                                        </div>
+                                    )}
+                                </div>
+                            )
+                        })}
                     </div>
                 </div>
             </div>
