@@ -79,7 +79,10 @@ export interface FanvuePostRow {
 export interface CreateFanvuePostInput {
     /** Managed-creator UUID (agency mode). Omit to publish to your own account. */
     creatorUserUuid?: string
+    /** Cover media. Additional media go in `generationIds` for a gallery post. */
     generationId: string
+    /** Extra media (besides `generationId`) for a multi-media gallery post. */
+    generationIds?: string[]
     caption?: string
     audience: FanvuePostAudience
     price?: number
@@ -313,34 +316,50 @@ export async function createFanvuePost(
             }
         }
 
-        // Resolve the generation + verify ownership.
-        const { data: gen, error: genErr } = await supabase
+        // Resolve generation(s) + verify ownership. A single id posts as-is;
+        // multiple ids form a multi-media gallery (input order preserved, the
+        // cover first).
+        const requestedIds = [
+            input.generationId,
+            ...(input.generationIds ?? []),
+        ].filter((id, i, arr) => Boolean(id) && arr.indexOf(id) === i)
+        const { data: gens, error: genErr } = await supabase
             .from('generations')
             .select('id, media_type, storage_path, user_id, avatar_id')
-            .eq('id', input.generationId)
-            .maybeSingle()
+            .in('id', requestedIds)
         if (genErr) throw new Error(genErr.message)
-        if (!gen) return { success: false, error: 'Generation not found' }
-        if (gen.user_id && gen.user_id !== userId) {
-            return { success: false, error: 'Not your media' }
+        if (!gens || gens.length !== requestedIds.length) {
+            return { success: false, error: 'Generation not found' }
         }
+        const genById = new Map(gens.map((g) => [g.id, g]))
+        const orderedGens = requestedIds.map((id) => genById.get(id)!)
+        for (const g of orderedGens) {
+            if (g.user_id && g.user_id !== userId) {
+                return { success: false, error: 'Not your media' }
+            }
+        }
+        const coverGen = orderedGens[0]
 
-        // Upload media → create post.
+        // Upload each media → create one post carrying all of them.
         const client = makeClient(userId)
-        const mediaUuid = await uploadGenerationMedia({
-            client,
-            creatorUuid: input.creatorUserUuid ?? null,
-            storagePath: gen.storage_path,
-            mediaType: mapMediaType(gen.media_type),
-            supabase: supabase as unknown as Parameters<
-                typeof uploadGenerationMedia
-            >[0]['supabase'],
-        })
+        const mediaUuids: string[] = []
+        for (const g of orderedGens) {
+            const uuid = await uploadGenerationMedia({
+                client,
+                creatorUuid: input.creatorUserUuid ?? null,
+                storagePath: g.storage_path,
+                mediaType: mapMediaType(g.media_type),
+                supabase: supabase as unknown as Parameters<
+                    typeof uploadGenerationMedia
+                >[0]['supabase'],
+            })
+            mediaUuids.push(uuid)
+        }
 
         const postBody: CreatePostInput = {
             audience: input.audience,
             text: input.caption?.trim() ? input.caption : undefined,
-            mediaUuids: [mediaUuid],
+            mediaUuids,
             ...(input.price !== undefined && input.price !== null
                 ? { price: input.price }
                 : {}),
@@ -357,11 +376,11 @@ export async function createFanvuePost(
             .insert({
                 user_id: userId,
                 creator_user_uuid: input.creatorUserUuid ?? null,
-                generation_id: gen.id,
+                generation_id: coverGen.id,
                 caption: input.caption ?? null,
                 audience: input.audience,
                 price: input.price ?? null,
-                media_uuids: [mediaUuid],
+                media_uuids: mediaUuids,
                 fanvue_post_uuid: post.uuid,
                 status,
                 scheduled_at: post.publishAt,
@@ -376,9 +395,9 @@ export async function createFanvuePost(
 
         // Agent RAG hook: Fanvue captions become avatar knowledge —
         // fire-and-forget, must never affect the publish result.
-        if (input.caption?.trim() && gen.avatar_id) {
+        if (input.caption?.trim() && coverGen.avatar_id) {
             const caption = input.caption
-            const avatarId = gen.avatar_id
+            const avatarId = coverGen.avatar_id
             const postId = (row as FanvuePostRow).id
             void (async () => {
                 try {

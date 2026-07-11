@@ -11,7 +11,7 @@ import Radio from '@/components/ui/Radio'
 import DatePicker from '@/components/ui/DatePicker'
 import Notification from '@/components/ui/Notification'
 import toast from '@/components/ui/toast'
-import { HiOutlineX, HiOutlineSparkles, HiOutlineMusicNote } from 'react-icons/hi'
+import { HiOutlineX, HiOutlineSparkles, HiOutlineMusicNote, HiOutlinePlus } from 'react-icons/hi'
 import { createSocialPost, getSocialProfileAction } from '@/services/SocialService'
 import { createFanvuePost, getFanvueConnection } from '@/services/FanvueService'
 import {
@@ -66,6 +66,11 @@ interface PublishOutcome {
  */
 const PostModal = ({ media, fallbackAvatarId, userId, onClose }: PostModalProps) => {
     const updateGalleryItem = useAvatarStudioStore((s) => s.updateGalleryItem)
+    const gallery = useAvatarStudioStore((s) => s.gallery)
+    // Extra media (besides the opened one) for a multi-image carousel post, plus
+    // the picker that adds them.
+    const [extraMedia, setExtraMedia] = useState<GeneratedMedia[]>([])
+    const [isPickerOpen, setIsPickerOpen] = useState(false)
     // Caption starts empty — the generation PROMPT is harness text, never a
     // caption; "Generate with AI" writes a real one from the media.
     const [caption, setCaption] = useState('')
@@ -80,6 +85,10 @@ const PostModal = ({ media, fallbackAvatarId, userId, onClose }: PostModalProps)
     const [selectedPlatforms, setSelectedPlatforms] = useState<string[]>([])
     const [hasSocialAccount, setHasSocialAccount] = useState(false)
     const [fanvueConnected, setFanvueConnected] = useState(false)
+    // The Fanvue creator THIS avatar maps to (agency mode). Null when the avatar
+    // isn't linked to a creator — Fanvue is then off for it (unless self mode).
+    const [fanvueCreatorUuid, setFanvueCreatorUuid] = useState<string | null>(null)
+    const [isAgencyConnection, setIsAgencyConnection] = useState(false)
     const [fanvueSelected, setFanvueSelected] = useState(false)
     const [audience, setAudience] = useState<FanvuePostAudience>('subscribers')
     const [enablePrice, setEnablePrice] = useState(false)
@@ -114,11 +123,15 @@ const PostModal = ({ media, fallbackAvatarId, userId, onClose }: PostModalProps)
     useEffect(() => {
         if (!media) return
         setCaption('')
+        setExtraMedia([])
+        setIsPickerOpen(false)
         setHashtagInput('')
         setHashtags([])
         setCaptionLang('en')
         setSelectedPlatforms([])
         setFanvueSelected(false)
+        setFanvueCreatorUuid(null)
+        setIsAgencyConnection(false)
         setAudience('subscribers')
         setEnablePrice(false)
         setPriceCents('')
@@ -134,20 +147,15 @@ const PostModal = ({ media, fallbackAvatarId, userId, onClose }: PostModalProps)
         let cancelled = false
         setIsLoadingDestinations(true)
         setOwnerName(null)
-        if (effectiveAvatarId && !media.avatarInfo?.name) {
-            apiGetAvatarById(effectiveAvatarId)
-                .then((avatar) => {
-                    if (!cancelled) setOwnerName(avatar?.name ?? null)
-                })
-                .catch(() => {
-                    /* name is display-only — never block the modal on it */
-                })
-        }
         const socialPromise = effectiveAvatarId
             ? getSocialProfileAction(effectiveAvatarId)
             : Promise.resolve({ success: true as const, data: null })
-        Promise.all([socialPromise, getFanvueConnection()])
-            .then(([profileResult, fanvueResult]) => {
+        // The avatar row carries its Fanvue creator mapping + gives us the name.
+        const avatarPromise = effectiveAvatarId
+            ? apiGetAvatarById(effectiveAvatarId).catch(() => null)
+            : Promise.resolve(null)
+        Promise.all([socialPromise, getFanvueConnection(), avatarPromise])
+            .then(([profileResult, fanvueResult, avatar]) => {
                 if (cancelled) return
                 const profile = profileResult.success ? profileResult.data : null
                 const accountActive = !!profile && profile.status === 'active'
@@ -159,9 +167,17 @@ const PostModal = ({ media, fallbackAvatarId, userId, onClose }: PostModalProps)
                     : []
                 setPlatforms(connectedPlatforms)
                 setSelectedPlatforms(connectedPlatforms)
-                setFanvueConnected(
-                    !!(fanvueResult.success && fanvueResult.data?.connected),
-                )
+
+                // Owner name (only when the media didn't already carry it).
+                if (avatar && !media.avatarInfo?.name) setOwnerName(avatar.name ?? null)
+
+                // Fanvue availability is PER-AVATAR: agency connections post through
+                // the avatar's mapped creator, so an unmapped avatar (like a fresh
+                // Ana) has no Fanvue destination and must not show the checkbox.
+                const fanvueConn = fanvueResult.success ? fanvueResult.data : null
+                setFanvueConnected(!!fanvueConn?.connected)
+                setIsAgencyConnection(!!fanvueConn?.scopes?.includes('read:agency'))
+                setFanvueCreatorUuid(avatar?.fanvue_creator_uuid ?? null)
             })
             .finally(() => {
                 if (!cancelled) setIsLoadingDestinations(false)
@@ -280,8 +296,36 @@ const PostModal = ({ media, fallbackAvatarId, userId, onClose }: PostModalProps)
         )
     }
 
-    const hasDestinations = platforms.length > 0 || fanvueConnected
+    // Fanvue is a valid destination for THIS avatar only when connected AND
+    // either the avatar maps to a managed creator (agency) or the connection is
+    // a personal/self account (no agency scope → posts to the own account).
+    const fanvueAvailable = fanvueConnected && (!!fanvueCreatorUuid || !isAgencyConnection)
+    const hasDestinations = platforms.length > 0 || fanvueAvailable
     const isVideo = mediaType === 'VIDEO'
+
+    // Multi-media (carousel). Images only — the social backend rejects videos in
+    // a carousel — so extras are limited to other SAVED images of this avatar.
+    const MAX_MEDIA = 10
+    const postMediaItems = media ? [media, ...extraMedia] : []
+    const canAddMedia = !!media && !isVideo && postMediaItems.length < MAX_MEDIA
+    const pickerCandidates = gallery.filter(
+        (g) =>
+            g.mediaType === 'IMAGE' &&
+            g.saveState === 'saved' &&
+            !!g.generationId &&
+            g.id !== media?.id &&
+            !extraMedia.some((e) => e.id === g.id) &&
+            // Same avatar (or avatar-less) — social won't post another avatar's media.
+            (!effectiveAvatarId || !g.avatarId || g.avatarId === effectiveAvatarId),
+    )
+    const addExtra = (item: GeneratedMedia) => {
+        setExtraMedia((prev) =>
+            prev.some((e) => e.id === item.id) || prev.length >= MAX_MEDIA - 1
+                ? prev
+                : [...prev, item],
+        )
+    }
+    const removeExtra = (id: string) => setExtraMedia((prev) => prev.filter((e) => e.id !== id))
 
     const loadTrendingSounds = async () => {
         if (trendingSounds !== null) return
@@ -415,6 +459,11 @@ const PostModal = ({ media, fallbackAvatarId, userId, onClose }: PostModalProps)
                 return
             }
 
+            // Additional carousel media (images only, already saved).
+            const extraGenerationIds = extraMedia
+                .map((m) => m.generationId)
+                .filter((id): id is string => Boolean(id))
+
             const tasks: Promise<PublishOutcome>[] = []
 
             if (selectedPlatforms.length > 0 && effectiveAvatarId) {
@@ -422,6 +471,7 @@ const PostModal = ({ media, fallbackAvatarId, userId, onClose }: PostModalProps)
                     createSocialPost({
                         avatarId: effectiveAvatarId,
                         generationId,
+                        generationIds: extraGenerationIds,
                         caption,
                         hashtags: activeHashtags,
                         platforms: selectedPlatforms,
@@ -440,10 +490,14 @@ const PostModal = ({ media, fallbackAvatarId, userId, onClose }: PostModalProps)
                 tasks.push(
                     createFanvuePost({
                         generationId,
+                        generationIds: extraGenerationIds,
                         caption,
                         audience,
                         price,
                         publishAt: scheduledAt,
+                        // Route to the avatar's mapped creator (agency); undefined
+                        // → self account for personal connections.
+                        creatorUserUuid: fanvueCreatorUuid ?? undefined,
                     }).then((r) => ({
                         label: 'Fanvue',
                         ok: r.success,
@@ -532,17 +586,62 @@ const PostModal = ({ media, fallbackAvatarId, userId, onClose }: PostModalProps)
                 )}
 
                 <Card>
-                    <p className="text-sm font-semibold mb-2">Media</p>
-                    <div className="rounded-lg overflow-hidden bg-gray-100 dark:bg-gray-800 w-40">
-                        {mediaType === 'VIDEO' ? (
-                            <video src={mediaUrl} controls className="w-full h-auto" />
-                        ) : (
-                            <img src={mediaUrl} alt="Generation preview" className="w-full h-auto" />
+                    <div className="flex items-center justify-between mb-2">
+                        <p className="text-sm font-semibold">
+                            Media{postMediaItems.length > 1 ? ` (${postMediaItems.length})` : ''}
+                        </p>
+                        {isVideo && (
+                            <span className="text-xs text-gray-400">Videos post individually</span>
+                        )}
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                        {postMediaItems.map((item, idx) => (
+                            <div
+                                key={item.id}
+                                className="relative w-24 h-24 rounded-lg overflow-hidden bg-gray-100 dark:bg-gray-800"
+                            >
+                                {item.mediaType === 'VIDEO' ? (
+                                    <video src={item.url} className="w-full h-full object-cover" />
+                                ) : (
+                                    <img src={item.url} alt="" className="w-full h-full object-cover" />
+                                )}
+                                {idx === 0 && postMediaItems.length > 1 && (
+                                    <span className="absolute top-1 left-1 px-1.5 py-0.5 text-[9px] font-bold rounded bg-black/70 text-white">
+                                        Cover
+                                    </span>
+                                )}
+                                {idx > 0 && (
+                                    <button
+                                        type="button"
+                                        onClick={() => removeExtra(item.id)}
+                                        className="absolute top-1 right-1 w-5 h-5 rounded-full bg-black/70 text-white flex items-center justify-center hover:bg-red-500 transition-colors"
+                                        aria-label="Remove from post"
+                                    >
+                                        <HiOutlineX className="w-3 h-3" />
+                                    </button>
+                                )}
+                            </div>
+                        ))}
+                        {canAddMedia && (
+                            <button
+                                type="button"
+                                onClick={() => setIsPickerOpen(true)}
+                                title="Add more images (carousel)"
+                                className="w-24 h-24 rounded-lg border-2 border-dashed border-gray-300 dark:border-gray-600 flex flex-col items-center justify-center text-gray-400 hover:border-primary hover:text-primary transition-colors"
+                            >
+                                <HiOutlinePlus className="w-6 h-6" />
+                                <span className="text-[10px] mt-1">Add</span>
+                            </button>
                         )}
                     </div>
                     {media.saveState !== 'saved' && (
                         <p className="text-xs text-amber-600 dark:text-amber-400 mt-2">
                             Media is still saving — publishing may fail until it finishes.
+                        </p>
+                    )}
+                    {postMediaItems.length > 1 && (
+                        <p className="text-xs text-gray-400 mt-2">
+                            Posts as a carousel — the cover shows first. Up to {MAX_MEDIA} images.
                         </p>
                     )}
                 </Card>
@@ -709,7 +808,7 @@ const PostModal = ({ media, fallbackAvatarId, userId, onClose }: PostModalProps)
                                     .
                                 </p>
                             )}
-                            {fanvueConnected && (
+                            {fanvueAvailable ? (
                                 <div className="pt-1 border-t border-gray-100 dark:border-gray-700">
                                     <Checkbox
                                         checked={fanvueSelected}
@@ -718,8 +817,20 @@ const PostModal = ({ media, fallbackAvatarId, userId, onClose }: PostModalProps)
                                         Fanvue
                                     </Checkbox>
                                 </div>
-                            )}
-                            {!fanvueConnected && platforms.length === 0 && (
+                            ) : fanvueConnected && isAgencyConnection && effectiveAvatarId ? (
+                                <p className="pt-1 border-t border-gray-100 dark:border-gray-700 text-xs text-gray-400">
+                                    {avatarName ?? 'This avatar'} isn&apos;t linked to a Fanvue
+                                    creator —{' '}
+                                    <Link
+                                        href={`/concepts/avatar-forge/agent/${effectiveAvatarId}`}
+                                        className="underline font-semibold"
+                                    >
+                                        map one
+                                    </Link>{' '}
+                                    to post here.
+                                </p>
+                            ) : null}
+                            {!fanvueAvailable && !fanvueConnected && platforms.length === 0 && (
                                 <p className="text-xs text-gray-400">
                                     No destinations available for this media yet.
                                 </p>
@@ -910,6 +1021,49 @@ const PostModal = ({ media, fallbackAvatarId, userId, onClose }: PostModalProps)
                     {scheduleMode === 'schedule' ? 'Schedule post' : 'Publish now'}
                 </Button>
             </div>
+
+            {/* Media picker — pick more saved images for the carousel. */}
+            <Dialog
+                isOpen={isPickerOpen}
+                onClose={() => setIsPickerOpen(false)}
+                width={640}
+                className="bg-white! dark:bg-gray-900!"
+            >
+                <h5 className="mb-1">Add media</h5>
+                <p className="text-sm text-gray-500 mb-4">
+                    Pick saved images from{' '}
+                    <span className="font-semibold">{avatarName ?? 'this avatar'}</span> to add to
+                    the carousel.
+                </p>
+                {pickerCandidates.length === 0 ? (
+                    <p className="text-sm text-gray-500">
+                        No other saved images available for this avatar. Save more images to the
+                        gallery first.
+                    </p>
+                ) : (
+                    <div className="grid grid-cols-3 sm:grid-cols-4 gap-2 max-h-[60vh] overflow-y-auto pr-1">
+                        {pickerCandidates.map((g) => (
+                            <button
+                                key={g.id}
+                                type="button"
+                                onClick={() => addExtra(g)}
+                                className="relative aspect-square rounded-lg overflow-hidden border-2 border-transparent hover:border-primary transition-colors"
+                                title="Add to carousel"
+                            >
+                                <img src={g.url} alt="" className="w-full h-full object-cover" />
+                                <span className="absolute inset-0 bg-black/0 hover:bg-black/20 flex items-center justify-center opacity-0 hover:opacity-100 transition-opacity">
+                                    <HiOutlinePlus className="w-6 h-6 text-white" />
+                                </span>
+                            </button>
+                        ))}
+                    </div>
+                )}
+                <div className="flex justify-end mt-4">
+                    <Button variant="solid" onClick={() => setIsPickerOpen(false)}>
+                        Done
+                    </Button>
+                </div>
+            </Dialog>
         </Dialog>
     )
 }
