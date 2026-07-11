@@ -7,6 +7,7 @@ import Button from '@/components/ui/Button'
 import Input from '@/components/ui/Input'
 import Checkbox from '@/components/ui/Checkbox'
 import Radio from '@/components/ui/Radio'
+import Select from '@/components/ui/Select'
 import DatePicker from '@/components/ui/DatePicker'
 import Notification from '@/components/ui/Notification'
 import toast from '@/components/ui/toast'
@@ -23,26 +24,55 @@ interface GenerationMedia {
     mediaType: MediaType
     publicUrl: string
     prompt: string
+    avatarId: string | null
 }
 
 interface LibraryImage {
     id: string
     publicUrl: string
+    avatarId: string | null
+}
+
+interface AvatarAccount {
+    avatarId: string
+    avatarName: string
+    platforms: string[]
 }
 
 interface SocialComposerProps {
     media: GenerationMedia | null
     generationId?: string
-    platforms: string[]
+    /** Avatars with an ACTIVE Upload-Post account (each has its own). */
+    accounts: AvatarAccount[]
     libraryImages?: LibraryImage[]
+}
+
+interface AvatarOption {
+    value: string
+    label: string
 }
 
 type ScheduleMode = 'now' | 'schedule'
 
 const POSTS_PATH = '/concepts/avatar-forge/social/posts'
 
-const SocialComposer = ({ media, generationId, platforms, libraryImages = [] }: SocialComposerProps) => {
+const SocialComposer = ({ media, generationId, accounts, libraryImages = [] }: SocialComposerProps) => {
     const router = useRouter()
+
+    // Which avatar's Upload-Post account publishes this post. Media generated
+    // under an avatar is LOCKED to it (the server rejects cross-avatar posts);
+    // avatar-less media lets the user pick, defaulting to the first account.
+    const mediaAvatarId = media?.avatarId ?? null
+    const avatarLocked = Boolean(mediaAvatarId)
+    const [selectedAvatarId, setSelectedAvatarId] = useState<string | null>(
+        mediaAvatarId ?? accounts[0]?.avatarId ?? null,
+    )
+    const currentAccount = accounts.find((a) => a.avatarId === selectedAvatarId) ?? null
+    const platforms = currentAccount?.platforms ?? []
+    const avatarOptions: AvatarOption[] = accounts.map((a) => ({
+        value: a.avatarId,
+        label: a.avatarName,
+    }))
 
     // The generation PROMPT is harness text ([BODY]/[FACE]…), never a caption —
     // start empty and let "Generate with AI" write a real one.
@@ -61,11 +91,25 @@ const SocialComposer = ({ media, generationId, platforms, libraryImages = [] }: 
     // Extra gallery images appended after the primary one → photo carousel
     const [carouselIds, setCarouselIds] = useState<string[]>([])
 
+    const handleAvatarChange = (avatarId: string | null) => {
+        setSelectedAvatarId(avatarId)
+        const next = accounts.find((a) => a.avatarId === avatarId)
+        // Each account has its own platform set; carousel items must belong
+        // to the newly selected avatar, so start both over.
+        setSelectedPlatforms(next?.platforms ?? [])
+        setCarouselIds([])
+    }
+
     const hasConnectedPlatforms = platforms.length > 0
     // Carousels are photos-only; offer the library when the primary is an image
     const canCarousel = media?.mediaType === 'IMAGE'
     const availableLibrary = libraryImages.filter(
-        (img) => img.id !== media?.id && !carouselIds.includes(img.id),
+        (img) =>
+            img.id !== media?.id &&
+            !carouselIds.includes(img.id) &&
+            // Cross-avatar carousels are rejected server-side — offer only
+            // this avatar's images (avatar-less ones are fine).
+            (!img.avatarId || img.avatarId === selectedAvatarId),
     )
     const carouselImages = carouselIds
         .map((id) => libraryImages.find((img) => img.id === id))
@@ -166,6 +210,10 @@ const SocialComposer = ({ media, generationId, platforms, libraryImages = [] }: 
     const handleSubmit = async () => {
         setError(null)
 
+        if (!selectedAvatarId || !currentAccount) {
+            setError('Pick an avatar with a connected Upload-Post account')
+            return
+        }
         if (selectedPlatforms.length === 0) {
             setError('Pick at least one platform')
             return
@@ -186,6 +234,7 @@ const SocialComposer = ({ media, generationId, platforms, libraryImages = [] }: 
         setIsSubmitting(true)
         try {
             const result = await createSocialPost({
+                avatarId: selectedAvatarId,
                 generationId,
                 generationIds: canCarousel ? carouselIds : undefined,
                 caption,
@@ -369,6 +418,25 @@ const SocialComposer = ({ media, generationId, platforms, libraryImages = [] }: 
             </Card>
 
             <Card>
+                <p className="text-sm font-semibold mb-2">Posting as</p>
+                <div className="max-w-xs mb-4">
+                    <Select<AvatarOption>
+                        instanceId="social-avatar"
+                        options={avatarOptions}
+                        value={avatarOptions.find((o) => o.value === selectedAvatarId) ?? null}
+                        isDisabled={avatarLocked}
+                        isSearchable={avatarOptions.length > 6}
+                        onChange={(option) => handleAvatarChange(option?.value ?? null)}
+                    />
+                    {avatarLocked && (
+                        <p className="text-xs text-gray-400 mt-1">
+                            {currentAccount
+                                ? `This media belongs to ${currentAccount.avatarName} — it posts through that avatar's account.`
+                                : 'This media belongs to an avatar without an active Upload-Post account — connect one on the accounts page.'}
+                        </p>
+                    )}
+                </div>
+
                 <p className="text-sm font-semibold mb-2">Platforms</p>
                 {hasConnectedPlatforms ? (
                     <div className="flex flex-wrap gap-4">
@@ -384,7 +452,8 @@ const SocialComposer = ({ media, generationId, platforms, libraryImages = [] }: 
                     </div>
                 ) : (
                     <p className="text-sm text-amber-600 dark:text-amber-400">
-                        No platforms connected yet — connect an account first.
+                        No platforms connected for this avatar yet — link its socials on
+                        the accounts page first.
                     </p>
                 )}
             </Card>

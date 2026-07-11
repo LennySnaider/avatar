@@ -206,6 +206,8 @@ export class UploadPostProvider implements SocialProvider {
         : null
 
     switch (status) {
+      case 401:
+        return 'Invalid Upload-Post API key — check the key for this account.'
       case 403:
         return 'Profile limit reached — upgrade your Upload-Post plan to add more profiles.'
       case 404:

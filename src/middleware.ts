@@ -27,6 +27,20 @@ export default auth((req) => {
     /** Skip auth middleware for api routes */
     if (isApiAuthRoute) return
 
+    /**
+     * Server-to-server endpoints that carry their own auth and can never
+     * have a NextAuth session cookie: provider webhooks (Upload-Post posts
+     * events here) and Vercel cron (gated by CRON_SECRET Bearer inside the
+     * handler). A session redirect here silently breaks both — the provider
+     * gets a 302 instead of the handler.
+     */
+    if (
+        nextUrl.pathname.startsWith('/api/webhooks/') ||
+        nextUrl.pathname.startsWith('/api/cron/')
+    ) {
+        return
+    }
+
     if (isAuthRoute) {
         if (isSignedIn) {
             /** Redirect to authenticated entry path if signed in & path is auth route */

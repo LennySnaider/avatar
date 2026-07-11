@@ -114,6 +114,11 @@ const PostsClient = ({ initialPosts, loadError }: PostsClientProps) => {
                                         <Tag className={STATUS_STYLES[post.status] ?? ''}>
                                             {post.status}
                                         </Tag>
+                                        {post.avatar_name && (
+                                            <Tag className="bg-primary/10 text-primary dark:bg-primary/20 border-0">
+                                                {post.avatar_name}
+                                            </Tag>
+                                        )}
                                         {platformList(post.platforms).map((p, idx) => (
                                             <Tag key={idx}>{platformLabel(p)}</Tag>
                                         ))}

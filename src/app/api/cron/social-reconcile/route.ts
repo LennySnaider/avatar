@@ -26,6 +26,12 @@
  *     `findScheduledMatch` below for the exact correlation rule and its
  *     limits).
  *
+ * Multi-account: each avatar has its own Upload-Post account, so every post
+ * is reconciled with the provider of ITS `social_profiles` row (api_key
+ * NULL + status 'active' = legacy row on env UPLOAD_POST_API_KEY). Posts
+ * whose profile has no usable key (e.g. disconnected) are skipped with a
+ * warning until the account is reconnected.
+ *
  * Gated by `CRON_SECRET` (Bearer token) when that env var is set.
  * Uses the service-role Supabase client (bypasses RLS).
  */
@@ -34,57 +40,14 @@ import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { createServerSupabaseClient } from '@/lib/supabase'
-import { getSocialProvider, SOCIAL_USERNAME } from '@/lib/social/provider'
+import { getSocialProvider } from '@/lib/social/provider'
 import type { ScheduledPost, SocialProvider } from '@/lib/social/providers/SocialProvider'
 import type { Platform } from '@/@types/social'
-import type { Database as BaseDatabase, Json } from '@/@types/supabase'
+import type { Database, Json } from '@/@types/supabase'
 
 export const dynamic = 'force-dynamic'
 
-// ---------------------------------------------------------------------------
-// Local typed Supabase client — see the same note in
-// `src/app/api/webhooks/upload-post/route.ts` / `src/services/SocialService.ts`:
-// `social_posts` isn't in the shared `Database` type yet, so this mirrors
-// Task 3's local-extension workaround for the one table this route needs.
-// ---------------------------------------------------------------------------
-
-type SocialPostsTable = {
-    Row: {
-        id: string
-        social_profile_id: string | null
-        generation_id: string | null
-        user_id: string | null
-        caption: string
-        hashtags: string[]
-        content_type: string
-        media_urls: string[]
-        platforms: Json
-        status: string
-        scheduled_at: string | null
-        published_at: string | null
-        upload_post_request_id: string | null
-        upload_post_job_id: string | null
-        upload_post_response: Json | null
-        error_message: string | null
-        created_at: string
-        updated_at: string
-    }
-    Insert: Partial<SocialPostsTable['Row']>
-    Update: Partial<SocialPostsTable['Row']>
-    Relationships: []
-}
-
-type SocialDatabase = BaseDatabase & {
-    public: BaseDatabase['public'] & {
-        Tables: BaseDatabase['public']['Tables'] & {
-            social_posts: SocialPostsTable
-        }
-    }
-}
-
-function socialSupabase(): SupabaseClient<SocialDatabase> {
-    return createServerSupabaseClient() as unknown as SupabaseClient<SocialDatabase>
-}
+type ServerSupabase = SupabaseClient<Database>
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -117,7 +80,7 @@ function mapProviderStatus(status: string): 'published' | 'failed' | 'processing
  * (still in-flight, missing request id, or the poll/update itself failed).
  */
 async function pollAndFlipStatus(
-    supabase: SupabaseClient<SocialDatabase>,
+    supabase: ServerSupabase,
     provider: SocialProvider,
     postId: string,
     requestId: string | null,
@@ -177,7 +140,9 @@ function platformSetsEqual(a: Set<Platform>, b: Set<Platform>): boolean {
  * an identical (non-empty) platform set. If more than one candidate
  * satisfies that, we refuse to guess — this only backfills confident,
  * unambiguous matches, and already-claimed jobs (within this run) are
- * excluded so two rows can't be matched to the same job.
+ * excluded so two rows can't be matched to the same job. Jobs and rows are
+ * always compared within a single profile/account (the caller groups by
+ * `social_profile_id`), so cross-account collisions can't happen.
  */
 function findScheduledMatch(
     row: { scheduled_at: string | null; platforms: Json },
@@ -200,6 +165,34 @@ function findScheduledMatch(
     return candidates.length === 1 ? candidates[0] : null
 }
 
+interface ProfileEntry {
+    username: string
+    provider: SocialProvider | null
+}
+
+/**
+ * Load every social profile and pre-resolve its provider. A profile with no
+ * usable key (disconnected and keyless) gets `provider: null` — its posts
+ * are skipped this sweep.
+ */
+async function loadProfileEntries(supabase: ServerSupabase): Promise<Map<string, ProfileEntry>> {
+    const { data: profiles } = await supabase
+        .from('social_profiles')
+        .select('id, upload_post_username, api_key, status')
+    const map = new Map<string, ProfileEntry>()
+    for (const profile of profiles ?? []) {
+        let provider: SocialProvider | null = null
+        try {
+            if (profile.api_key) provider = getSocialProvider(profile.api_key)
+            else if (profile.status === 'active') provider = getSocialProvider(null) // legacy env-key row
+        } catch (e) {
+            console.warn('[social-reconcile] no provider for profile', profile.id, e)
+        }
+        map.set(profile.id, { username: profile.upload_post_username, provider })
+    }
+    return map
+}
+
 // ---------------------------------------------------------------------------
 // Handler
 // ---------------------------------------------------------------------------
@@ -211,8 +204,16 @@ export async function GET(request: NextRequest) {
         return NextResponse.json({ error: 'unauthorized' }, { status: 401 })
     }
 
-    const supabase = socialSupabase()
-    const provider = getSocialProvider()
+    const supabase = createServerSupabaseClient()
+    const profileEntries = await loadProfileEntries(supabase)
+    const providerForPost = (post: { id: string; social_profile_id: string | null }): SocialProvider | null => {
+        const entry = post.social_profile_id ? profileEntries.get(post.social_profile_id) : undefined
+        if (!entry?.provider) {
+            console.warn('[social-reconcile] skipping post without usable profile/key', post.id)
+            return null
+        }
+        return entry.provider
+    }
 
     // -------------------------------------------------------------------------
     // 1. Reconcile posts stuck in `processing`
@@ -220,7 +221,7 @@ export async function GET(request: NextRequest) {
     const cutoff = new Date(Date.now() - 15 * 60 * 1000).toISOString()
     const { data: stuck } = await supabase
         .from('social_posts')
-        .select('id, upload_post_request_id')
+        .select('id, upload_post_request_id, social_profile_id')
         .eq('status', 'processing')
         .lt('created_at', cutoff)
         .not('upload_post_request_id', 'is', null)
@@ -228,6 +229,8 @@ export async function GET(request: NextRequest) {
 
     let statusUpdated = 0
     for (const post of stuck ?? []) {
+        const provider = providerForPost(post)
+        if (!provider) continue
         if (await pollAndFlipStatus(supabase, provider, post.id, post.upload_post_request_id)) {
             statusUpdated++
         }
@@ -245,7 +248,7 @@ export async function GET(request: NextRequest) {
     const scheduledCutoff = new Date(Date.now() - 15 * 60 * 1000).toISOString()
     const { data: overdueScheduled } = await supabase
         .from('social_posts')
-        .select('id, upload_post_request_id')
+        .select('id, upload_post_request_id, social_profile_id')
         .eq('status', 'scheduled')
         .lt('scheduled_at', scheduledCutoff)
         .not('upload_post_request_id', 'is', null)
@@ -253,17 +256,21 @@ export async function GET(request: NextRequest) {
 
     let scheduledStatusUpdated = 0
     for (const post of overdueScheduled ?? []) {
+        const provider = providerForPost(post)
+        if (!provider) continue
         if (await pollAndFlipStatus(supabase, provider, post.id, post.upload_post_request_id)) {
             scheduledStatusUpdated++
         }
     }
 
     // -------------------------------------------------------------------------
-    // 2. Backfill `upload_post_job_id` for scheduled posts missing it
+    // 2. Backfill `upload_post_job_id` for scheduled posts missing it —
+    // grouped by profile: each account gets ONE `listScheduled` call and the
+    // time/platform correlation runs strictly within that account's jobs.
     // -------------------------------------------------------------------------
     const { data: missingJobId } = await supabase
         .from('social_posts')
-        .select('id, scheduled_at, platforms')
+        .select('id, scheduled_at, platforms, social_profile_id')
         .eq('status', 'scheduled')
         .is('upload_post_job_id', null)
         .limit(50)
@@ -272,24 +279,38 @@ export async function GET(request: NextRequest) {
     let jobIdBackfilled = 0
     if (missingJobId && missingJobId.length > 0) {
         jobIdChecked = missingJobId.length
-        try {
-            const jobs = await provider.listScheduled(SOCIAL_USERNAME)
-            const usedJobIds = new Set<string>()
-            for (const row of missingJobId) {
-                const match = findScheduledMatch(row, jobs, usedJobIds)
-                if (!match) continue
-                usedJobIds.add(match.jobId)
-                await supabase
-                    .from('social_posts')
-                    .update({
-                        upload_post_job_id: match.jobId,
-                        updated_at: new Date().toISOString(),
-                    })
-                    .eq('id', row.id)
-                jobIdBackfilled++
+        const byProfile = new Map<string, typeof missingJobId>()
+        for (const row of missingJobId) {
+            if (!row.social_profile_id) continue
+            const group = byProfile.get(row.social_profile_id) ?? []
+            group.push(row)
+            byProfile.set(row.social_profile_id, group)
+        }
+        for (const [profileId, rows] of byProfile) {
+            const entry = profileEntries.get(profileId)
+            if (!entry?.provider) {
+                console.warn('[social-reconcile] skipping job-id backfill for profile without key', profileId)
+                continue
             }
-        } catch (e) {
-            console.warn('[social-reconcile] listScheduled failed', e)
+            try {
+                const jobs = await entry.provider.listScheduled(entry.username)
+                const usedJobIds = new Set<string>()
+                for (const row of rows) {
+                    const match = findScheduledMatch(row, jobs, usedJobIds)
+                    if (!match) continue
+                    usedJobIds.add(match.jobId)
+                    await supabase
+                        .from('social_posts')
+                        .update({
+                            upload_post_job_id: match.jobId,
+                            updated_at: new Date().toISOString(),
+                        })
+                        .eq('id', row.id)
+                    jobIdBackfilled++
+                }
+            } catch (e) {
+                console.warn('[social-reconcile] listScheduled failed for profile', profileId, e)
+            }
         }
     }
 

@@ -4,9 +4,11 @@
  * Receives event notifications from the Upload-Post provider.
  *
  * Ported from agentsoft's `src/app/api/webhooks/upload-post/route.ts`
- * (multi-tenant version), simplified for prime-avatar's single-user setup:
- *   - No organization resolution — there is exactly one social profile,
- *     keyed by `SOCIAL_USERNAME` (see `@/lib/social/provider`).
+ * (multi-tenant version), simplified for prime-avatar:
+ *   - No organization resolution. Each avatar has its own Upload-Post
+ *     account (see `social_profiles.avatar_id`/`api_key`), and every one of
+ *     those accounts registers THIS same endpoint — correlation is purely by
+ *     `upload_post_request_id`, so the handler needs no per-account state.
  *   - No `social_events_log` table exists in this project's schema (it was
  *     never part of Task 2's migration), so unknown/informational events
  *     (account connected/disconnected, reauth-required, ffmpeg completed)
@@ -46,60 +48,11 @@
 
 import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
-import type { SupabaseClient } from '@supabase/supabase-js'
 import { createServerSupabaseClient } from '@/lib/supabase'
 import { UploadPostProvider } from '@/lib/social/providers/UploadPostProvider'
-import type { Database as BaseDatabase, Json } from '@/@types/supabase'
+import type { Json } from '@/@types/supabase'
 
 export const dynamic = 'force-dynamic'
-
-// ---------------------------------------------------------------------------
-// Local typed Supabase client
-//
-// `src/@types/supabase.ts` (the shared, hand-maintained Database type) does
-// not know about `social_posts` — Task 2's migration created the table but
-// never updated that shared file, and Task 3's `SocialService.ts` worked
-// around it with a local type extension rather than editing the shared
-// file. This mirrors that same pattern for the one table this route needs.
-// ---------------------------------------------------------------------------
-
-type SocialPostsTable = {
-    Row: {
-        id: string
-        social_profile_id: string | null
-        generation_id: string | null
-        user_id: string | null
-        caption: string
-        hashtags: string[]
-        content_type: string
-        media_urls: string[]
-        platforms: Json
-        status: string
-        scheduled_at: string | null
-        published_at: string | null
-        upload_post_request_id: string | null
-        upload_post_job_id: string | null
-        upload_post_response: Json | null
-        error_message: string | null
-        created_at: string
-        updated_at: string
-    }
-    Insert: Partial<SocialPostsTable['Row']>
-    Update: Partial<SocialPostsTable['Row']>
-    Relationships: []
-}
-
-type SocialDatabase = BaseDatabase & {
-    public: BaseDatabase['public'] & {
-        Tables: BaseDatabase['public']['Tables'] & {
-            social_posts: SocialPostsTable
-        }
-    }
-}
-
-function socialSupabase(): SupabaseClient<SocialDatabase> {
-    return createServerSupabaseClient() as unknown as SupabaseClient<SocialDatabase>
-}
 
 // ---------------------------------------------------------------------------
 // Types
@@ -260,7 +213,7 @@ export async function POST(req: NextRequest) {
     // 3. Dispatch by canonical event type
     // -------------------------------------------------------------------------
     const canonical = normalizeEventName(payload.event, payload.data)
-    const supabase = socialSupabase()
+    const supabase = createServerSupabaseClient()
 
     try {
         switch (canonical) {

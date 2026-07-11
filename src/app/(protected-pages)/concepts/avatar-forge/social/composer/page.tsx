@@ -5,7 +5,7 @@ import Container from '@/components/shared/Container'
 import Card from '@/components/ui/Card'
 import SocialComposer from './_components/SocialComposer'
 import { createServerSupabaseClient, getStoragePublicUrl } from '@/lib/supabase'
-import { getSocialProfileAction } from '@/services/SocialService'
+import { listAvatarSocialAccounts } from '@/services/SocialService'
 import type { PageProps } from '@/@types/common'
 import type { MediaType } from '@/@types/supabase'
 
@@ -20,6 +20,7 @@ interface GenerationMedia {
     mediaType: MediaType
     publicUrl: string
     prompt: string
+    avatarId: string | null
 }
 
 export default async function Page({ searchParams }: PageProps) {
@@ -32,14 +33,14 @@ export default async function Page({ searchParams }: PageProps) {
     const params = await searchParams
     const generationId = typeof params.generationId === 'string' ? params.generationId : undefined
 
-    const [profileResult, media, libraryImages] = await Promise.all([
-        getSocialProfileAction(),
+    const [accountsResult, media, libraryImages] = await Promise.all([
+        listAvatarSocialAccounts(),
         (async (): Promise<GenerationMedia | null> => {
             if (!generationId) return null
             const supabase = createServerSupabaseClient()
             const { data: gen } = await supabase
                 .from('generations')
-                .select('id, media_type, storage_path, prompt')
+                .select('id, media_type, storage_path, prompt, avatar_id')
                 .eq('id', generationId)
                 .eq('user_id', userId)
                 .maybeSingle()
@@ -49,14 +50,17 @@ export default async function Page({ searchParams }: PageProps) {
                 mediaType: gen.media_type,
                 publicUrl: getStoragePublicUrl('generations', gen.storage_path),
                 prompt: gen.prompt,
+                avatarId: gen.avatar_id,
             }
         })(),
-        // Recent gallery images the user can add to a carousel
-        (async (): Promise<{ id: string; publicUrl: string }[]> => {
+        // Recent gallery images the user can add to a carousel (filtered to
+        // the selected avatar client-side — cross-avatar carousels are
+        // rejected by the server).
+        (async (): Promise<{ id: string; publicUrl: string; avatarId: string | null }[]> => {
             const supabase = createServerSupabaseClient()
             const { data } = await supabase
                 .from('generations')
-                .select('id, storage_path')
+                .select('id, storage_path, avatar_id')
                 .eq('user_id', userId)
                 .eq('media_type', 'IMAGE')
                 .order('created_at', { ascending: false })
@@ -64,26 +68,35 @@ export default async function Page({ searchParams }: PageProps) {
             return (data ?? []).map((g) => ({
                 id: g.id,
                 publicUrl: getStoragePublicUrl('generations', g.storage_path),
+                avatarId: g.avatar_id,
             }))
         })(),
     ])
 
-    const profile = profileResult.success ? profileResult.data : null
-    const connectedPlatforms = (profile?.connected_platforms ?? [])
-        .map(normalizePlatformKey)
-        .filter((p): p is string => Boolean(p))
+    // Only avatars with an ACTIVE Upload-Post account can publish.
+    const accounts = (accountsResult.success ? (accountsResult.data ?? []) : [])
+        .filter((a) => a.profile?.status === 'active')
+        .map((a) => ({
+            avatarId: a.avatarId,
+            avatarName: a.avatarName,
+            platforms: (a.profile?.connectedPlatforms ?? [])
+                .map(normalizePlatformKey)
+                .filter((p): p is string => Boolean(p)),
+        }))
 
     return (
         <Container className="py-6">
             <h3 className="mb-1">New post</h3>
             <p className="text-sm text-gray-500 mb-6">
-                Publish or schedule this generation to your connected social accounts (via Upload-Post)
+                Publish or schedule this generation through an avatar&apos;s connected
+                social accounts (via Upload-Post)
             </p>
 
-            {!profile ? (
+            {accounts.length === 0 ? (
                 <Card>
                     <p className="mb-4 text-sm text-gray-500">
-                        You need a social profile before you can publish. Set one up on the accounts page.
+                        No avatar has an Upload-Post account yet. Connect one on the
+                        accounts page before publishing.
                     </p>
                     <Link
                         href="/concepts/avatar-forge/social/accounts"
@@ -96,7 +109,7 @@ export default async function Page({ searchParams }: PageProps) {
                 <SocialComposer
                     media={media}
                     generationId={generationId}
-                    platforms={connectedPlatforms}
+                    accounts={accounts}
                     libraryImages={libraryImages}
                 />
             )}
