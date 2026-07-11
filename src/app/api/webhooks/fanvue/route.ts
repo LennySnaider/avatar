@@ -1,15 +1,25 @@
 /**
  * POST /api/webhooks/fanvue
  *
- * Real-time Fanvue events (message.received / message.sent / message.read).
- * Unlike Upload-Post, Fanvue DOES sign webhooks, so a bad/absent signature is
- * rejected with 401.
+ * Real-time Fanvue message events. Supports BOTH the legacy and the new
+ * `creator.*` event families (Fanvue is migrating; legacy events are
+ * deprecated end of Aug 2026), so subscribing to either keeps the inbox live.
  *
- * Signature (docs api.fanvue.com/docs/webhooks/signature-verification.md):
+ * Signature (docs api.fanvue.com/docs/webhooks/signature-verification):
  *   header `X-Fanvue-Signature: t=<unix>,v0=<hex hmac-sha256>`
  *   signed string = `${t}.${rawBody}`  (RAW bytes — never re-serialize)
  *   secret = FANVUE_WEBHOOK_SECRET (Developer Area → Events → Signing Secret)
  *   tolerance 300s, timing-safe compare.
+ *   This SAME scheme is used across ALL event families (legacy + creator.* +
+ *   checkout) — verified against the docs. The "Standard-Webhooks envelope"
+ *   Fanvue mentions is only the BODY shape (id/type/timestamp/data), not the
+ *   signature headers.
+ *
+ * Payload shapes differ between families. The new `creator.message.received`
+ * event is METADATA-ONLY (nested under `data`, `data.object === 'message'`, no
+ * message text/media) — we resolve the chat from `data.creator.uuid` /
+ * `data.fan.uuid` and then fetch the text via the API (`ingestFanChat`). The
+ * poll cron is the fallback for anything the webhook misses.
  *
  * There is no API to create webhook subscriptions — they're configured in
  * Fanvue's dashboard pointing at this URL.
@@ -19,6 +29,7 @@ import type { NextRequest } from 'next/server'
 import crypto from 'node:crypto'
 import { loadConnection } from '@/lib/fanvue/tokenStore'
 import {
+    ingestFanChat,
     ingestMessage,
     resolveTargetAvatar,
     touchFanMemory,
@@ -33,6 +44,7 @@ export const maxDuration = 60
 
 const TOLERANCE_SECONDS = 300
 
+/** `X-Fanvue-Signature: t=<unix>,v0=<hex>` over `${t}.${rawBody}`. */
 function verifySignature(rawBody: string, header: string | null, secret: string): boolean {
     if (!header) return false
     const parts = Object.fromEntries(
@@ -58,8 +70,8 @@ function verifySignature(rawBody: string, header: string | null, secret: string)
 }
 
 interface FanvueWebhookBody {
+    // Legacy (text carried in the payload)
     event?: string
-    type?: string
     message?: {
         uuid?: string
         text?: string | null
@@ -70,12 +82,27 @@ interface FanvueWebhookBody {
     sender?: { uuid?: string; handle?: string; displayName?: string; avatarUrl?: string }
     recipientUuid?: string
     timestamp?: string
+    // Both families
+    type?: string
+    id?: string
+    // New `creator.*` (Standard-Webhooks envelope, message events METADATA-ONLY)
+    data?: {
+        object?: string // 'message' | 'fan_message_read' | ...
+        uuid?: string
+        sender?: string // 'fan' | 'creator'
+        created_at?: string
+        deleted_at?: string | null
+        creator?: { uuid?: string }
+        fan?: { uuid?: string; email?: string }
+    }
 }
 
 /** Resolve which app user owns the connection whose account received this event. */
-async function findConnectionOwner(recipientUuid: string | null): Promise<{ userId: string; accountUuid: string | null } | null> {
+async function findConnectionOwner(
+    recipientUuid: string | null,
+): Promise<{ userId: string; accountUuid: string | null } | null> {
     const supabase = agentSupabase()
-    // Try the avatar mapping first (agency): recipient → avatar → owner.
+    // Agency mapping: recipient (the creator) → avatar → owner.
     if (recipientUuid) {
         const { data: avatar } = await supabase
             .from('avatars')
@@ -108,65 +135,108 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ ok: true }) // ack malformed to stop retries
     }
 
-    const eventName = (payload.event ?? payload.type ?? '').toLowerCase()
+    const eventName = (payload.type ?? payload.event ?? '').toLowerCase()
+    // New family nests the resource under `data` (data.object === 'message').
+    const isNewFormat = Boolean(payload.data && typeof payload.data === 'object')
 
     try {
         if (eventName.includes('message.received') || eventName === 'message_received') {
-            const owner = await findConnectionOwner(payload.recipientUuid ?? null)
-            if (!owner) {
-                console.warn('[fanvue webhook] no connection owner for recipient', payload.recipientUuid)
-                return NextResponse.json({ ok: true })
-            }
-            const target = await resolveTargetAvatar(
-                owner.userId,
-                payload.recipientUuid ?? null,
-                owner.accountUuid,
-            )
-            if (!target) return NextResponse.json({ ok: true })
-
-            const fanUuid = payload.sender?.uuid
-            if (!fanUuid) return NextResponse.json({ ok: true })
-
-            const sentAt = payload.message?.sentAt ?? payload.timestamp ?? null
-            const chat = await upsertChat({
-                target,
-                fanUuid,
-                fanDisplayName: payload.sender?.displayName ?? payload.sender?.handle ?? null,
-                fanHandle: payload.sender?.handle ?? null,
-                fanAvatarUrl: payload.sender?.avatarUrl ?? null,
-                lastMessageAt: sentAt,
-                lastFanMessageAt: sentAt,
-            })
-            const { inserted } = await ingestMessage({
-                organizationId: target.organizationId,
-                chatId: chat.id,
-                direction: 'in',
-                externalMessageId: payload.message?.uuid ?? payload.messageUuid ?? null,
-                text: payload.message?.text ?? null,
-                mediaUuids: payload.message?.mediaUuids,
-                externalCreatedAt: sentAt,
-            })
-            await touchFanMemory(target, fanUuid, payload.sender?.displayName)
-
-            // Draft if the chat is on and the persona is enabled. New inbound only.
-            if (inserted && chat.mode !== 'off' && target.personaEnabled) {
-                try {
-                    const draft = await generateDraftReply(chat.id)
-                    // In auto mode, gate + queue the send (risk classifier decides).
-                    if (draft && chat.mode === 'auto') {
-                        await maybeAutopilotSend(chat.id, draft.messageId)
-                    }
-                } catch (e) {
-                    console.warn('[fanvue webhook] draft/autopilot failed', e)
-                }
+            if (isNewFormat) {
+                await handleNewInbound(payload)
+            } else {
+                await handleLegacyInbound(payload)
             }
         }
-        // message.sent / message.read: our own echoes dedupe by external id;
-        // nothing else to do for the draft flow. (Future: mark read state.)
+        // message.sent / message.read (either family): our own echoes dedupe by
+        // external id; nothing to do for the draft flow. (Future: read state.)
     } catch (err) {
         console.error('[fanvue webhook] handler error', err)
         // Still 200 to avoid a retry storm — the poll cron will reconcile.
     }
 
     return NextResponse.json({ ok: true })
+}
+
+/**
+ * New `creator.message.received`: metadata-only. Resolve the chat from
+ * `data.creator.uuid` (recipient) + `data.fan.uuid` (sender), then fetch the
+ * actual message text via the API before drafting.
+ */
+async function handleNewInbound(payload: FanvueWebhookBody) {
+    const creatorUuid = payload.data?.creator?.uuid ?? null
+    const fanUuid = payload.data?.fan?.uuid ?? null
+    // sender 'creator' would be an outbound echo — only the fan's messages draft.
+    if (payload.data?.sender && payload.data.sender !== 'fan') return
+    if (!creatorUuid || !fanUuid) return
+
+    const owner = await findConnectionOwner(creatorUuid)
+    if (!owner) {
+        console.warn('[fanvue webhook] no connection owner for creator', creatorUuid)
+        return
+    }
+    const target = await resolveTargetAvatar(owner.userId, creatorUuid, owner.accountUuid)
+    if (!target) return
+
+    const result = await ingestFanChat({
+        userId: owner.userId,
+        target,
+        fanUuid,
+        connectionAccountUuid: owner.accountUuid,
+    })
+    if (!result) return
+    await touchFanMemory(target, fanUuid)
+
+    if (result.latestFromFan && result.mode !== 'off' && target.personaEnabled) {
+        const draft = await generateDraftReply(result.chatId)
+        if (draft && result.mode === 'auto') {
+            await maybeAutopilotSend(result.chatId, draft.messageId)
+        }
+    }
+}
+
+/** Legacy `message.received`: text is carried in the payload. */
+async function handleLegacyInbound(payload: FanvueWebhookBody) {
+    const owner = await findConnectionOwner(payload.recipientUuid ?? null)
+    if (!owner) {
+        console.warn('[fanvue webhook] no connection owner for recipient', payload.recipientUuid)
+        return
+    }
+    const target = await resolveTargetAvatar(
+        owner.userId,
+        payload.recipientUuid ?? null,
+        owner.accountUuid,
+    )
+    if (!target) return
+
+    const fanUuid = payload.sender?.uuid
+    if (!fanUuid) return
+
+    const sentAt = payload.message?.sentAt ?? payload.timestamp ?? null
+    const chat = await upsertChat({
+        target,
+        fanUuid,
+        fanDisplayName: payload.sender?.displayName ?? payload.sender?.handle ?? null,
+        fanHandle: payload.sender?.handle ?? null,
+        fanAvatarUrl: payload.sender?.avatarUrl ?? null,
+        lastMessageAt: sentAt,
+        lastFanMessageAt: sentAt,
+    })
+    const { inserted } = await ingestMessage({
+        organizationId: target.organizationId,
+        chatId: chat.id,
+        direction: 'in',
+        externalMessageId: payload.message?.uuid ?? payload.messageUuid ?? null,
+        text: payload.message?.text ?? null,
+        mediaUuids: payload.message?.mediaUuids,
+        externalCreatedAt: sentAt,
+    })
+    await touchFanMemory(target, fanUuid, payload.sender?.displayName)
+
+    // Draft if the chat is on and the persona is enabled. New inbound only.
+    if (inserted && chat.mode !== 'off' && target.personaEnabled) {
+        const draft = await generateDraftReply(chat.id)
+        if (draft && chat.mode === 'auto') {
+            await maybeAutopilotSend(chat.id, draft.messageId)
+        }
+    }
 }

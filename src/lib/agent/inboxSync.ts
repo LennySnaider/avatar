@@ -211,3 +211,59 @@ export function makeFanvueClient(userId: string): FanvueClient {
 export function messageDirection(msg: FanvueMessage, creatorSideUuids: Set<string>): AgentMsgDirection {
     return creatorSideUuids.has(msg.sender.uuid) ? 'out' : 'in'
 }
+
+/**
+ * Fetch + ingest ONE fan's chat (session-less, for the webhook). The new
+ * Fanvue `creator.message.received` event is metadata-only (no text), so we
+ * pull the recent messages here. Returns the chat id and whether the latest
+ * message is from the fan (i.e. worth drafting a reply to).
+ */
+export async function ingestFanChat(input: {
+    userId: string
+    target: ResolvedTarget
+    fanUuid: string
+    connectionAccountUuid: string | null
+}): Promise<{ chatId: string; latestFromFan: boolean; mode: string } | null> {
+    const client = makeFanvueClient(input.userId)
+    const creatorSideUuids = new Set<string>(
+        [input.target.creatorUuid, input.connectionAccountUuid].filter((v): v is string => Boolean(v)),
+    )
+    let messagesRes
+    try {
+        messagesRes = await client.listChatMessages(input.target.creatorUuid, input.fanUuid, {
+            page: 1,
+            size: 15,
+            markAsRead: false,
+        })
+    } catch (e) {
+        console.warn('[ingestFanChat] listChatMessages failed', e)
+        return null
+    }
+
+    // Fan display: the fan is whoever isn't on the creator side.
+    const fanMsg = messagesRes.data.find((m) => !creatorSideUuids.has(m.sender.uuid))
+    const chat = await upsertChat({
+        target: input.target,
+        fanUuid: input.fanUuid,
+        fanHandle: fanMsg?.sender.handle ?? null,
+        fanDisplayName: fanMsg?.sender.handle ?? null,
+        lastMessageAt: messagesRes.data[messagesRes.data.length - 1]?.sentAt ?? null,
+    })
+    for (const m of messagesRes.data) {
+        await ingestMessage({
+            organizationId: input.target.organizationId,
+            chatId: chat.id,
+            direction: messageDirection(m, creatorSideUuids),
+            externalMessageId: m.uuid,
+            text: m.text,
+            mediaUuids: m.mediaUuids,
+            externalCreatedAt: m.sentAt,
+        })
+    }
+    const latest = messagesRes.data[messagesRes.data.length - 1]
+    return {
+        chatId: chat.id,
+        latestFromFan: Boolean(latest && messageDirection(latest, creatorSideUuids) === 'in'),
+        mode: chat.mode,
+    }
+}
