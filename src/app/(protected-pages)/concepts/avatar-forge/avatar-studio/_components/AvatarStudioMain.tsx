@@ -61,6 +61,7 @@ import { generateImageKie, generateVideoKieSafe, generateMotionControlKieSafe, s
 import { generateImageViaGateway } from '@/services/GatewayService'
 import { buildAvatarPrompt, buildLeanIdentityPrompt, stripHarnessForFaceSwap, type RefRole } from '@/utils/avatarPromptBuilder'
 import { HiOutlineCog, HiOutlineBookOpen, HiX } from 'react-icons/hi'
+import { getPostedGenerationMap } from '@/services/SocialService'
 import { AppState } from '../types'
 import type { GeneratedMedia, ReferenceImage } from '../types'
 import type { AspectRatio, Avatar } from '@/@types/supabase'
@@ -327,7 +328,11 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
         let cancelled = false
         ;(async () => {
             try {
-                const rows = await apiGetGenerations(userId)
+                const [rows, postedRes] = await Promise.all([
+                    apiGetGenerations(userId),
+                    getPostedGenerationMap(),
+                ])
+                const postedMap = postedRes.success ? (postedRes.data ?? {}) : {}
                 const items = await Promise.all(
                     rows.map(async (gen): Promise<GeneratedMedia> => {
                         const url = await getSignedUrl('generations', gen.storage_path)
@@ -342,6 +347,8 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                             mediaType: gen.media_type,
                             metadata: gen.metadata ?? undefined,
                             generationId: gen.id,
+                            avatarId: gen.avatar_id,
+                            postedPlatforms: postedMap[gen.id],
                             saveState: 'saved',
                             publicUrl: getStoragePublicUrl('generations', gen.storage_path),
                         }
@@ -520,7 +527,9 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
 
                 const row = await apiSaveGeneration({
                     user_id: userId,
-                    avatar_id: avatarId ?? null,
+                    // Inherit the media's own avatar when present (edited/cropped
+                    // copies stay with their source's owner).
+                    avatar_id: media.avatarId ?? avatarId ?? null,
                     media_type: media.mediaType,
                     storage_path: path,
                     prompt: media.prompt,
@@ -531,6 +540,7 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                 updateGalleryItem(media.id, {
                     saveState: 'saved',
                     generationId: row.id,
+                    avatarId: media.avatarId ?? avatarId ?? null,
                     publicUrl: getStoragePublicUrl('generations', path),
                 })
             } catch (error) {
@@ -1314,6 +1324,7 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                 aspectRatio,
                 timestamp: Date.now(),
                 mediaType: generationMode,
+                avatarId: avatarId ?? null,
                 avatarInfo: {
                     name: avatarName || 'Unnamed',
                     thumbnailUrl: faceRef?.url || generalReferences[0]?.url,
@@ -1347,6 +1358,9 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
     }, [
         isGenerating,
         isLoadingReferences,
+        avatarId,
+        avatarName,
+        prompt,
         generationMode,
         videoSubMode,
         avatarDefaultVoice,
@@ -1553,10 +1567,31 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
             try {
                 let resultUrl: string
 
+                // Normalize the source to base64 FIRST — `media.url` can be a
+                // data: URL (session items), blob: (uploads) or an https
+                // signed URL (persisted gallery items). Providers need bytes:
+                // passing a signed URL straight to Gemini 400s with "Base64
+                // decoding failed". fetch() handles all three URL kinds.
+                const res = await fetch(media.url)
+                if (!res.ok) {
+                    throw new Error(`Failed to fetch source image (${res.status})`)
+                }
+                const blob = await res.blob()
+                const sourceBase64 = await new Promise<string>((resolve, reject) => {
+                    const reader = new FileReader()
+                    reader.onloadend = () => {
+                        const result = reader.result as string
+                        resolve(result.split(',')[1])
+                    }
+                    reader.onerror = () => reject(reader.error)
+                    reader.readAsDataURL(blob)
+                })
+                const sourceMime = blob.type || 'image/png'
+
                 if (!resolvedProvider || resolvedProvider.type === 'GOOGLE') {
                     // Gemini retains its native edit endpoint with mask + multiple references
                     resultUrl = await editImage(
-                        media.url,
+                        `data:${sourceMime};base64,${sourceBase64}`,
                         editPrompt,
                         maskBase64,
                         targetAspectRatio,
@@ -1564,24 +1599,7 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                     )
                 } else {
                     // Non-Gemini providers don't have a true "edit" — we re-render
-                    // image-to-image using the source as reference. Fetch the source
-                    // and convert to base64 client-side first.
-                    const res = await fetch(media.url)
-                    if (!res.ok) {
-                        throw new Error(`Failed to fetch source image (${res.status})`)
-                    }
-                    const blob = await res.blob()
-                    const sourceBase64 = await new Promise<string>((resolve, reject) => {
-                        const reader = new FileReader()
-                        reader.onloadend = () => {
-                            const result = reader.result as string
-                            resolve(result.split(',')[1])
-                        }
-                        reader.onerror = () => reject(reader.error)
-                        reader.readAsDataURL(blob)
-                    })
-                    const sourceMime = blob.type || 'image/png'
-
+                    // image-to-image using the source as reference.
                     if (resolvedProvider.type === 'KLING') {
                         const r = await generateImageKling({
                             prompt: editPrompt,
@@ -1644,6 +1662,9 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                     aspectRatio: targetAspectRatio,
                     timestamp: Date.now(),
                     mediaType: 'IMAGE',
+                    // Edited copies belong to the SOURCE's avatar (fallback: studio's).
+                    avatarId: media.avatarId ?? avatarId ?? null,
+                    avatarInfo: media.avatarInfo,
                     providerName: resolvedProvider?.name ?? 'Gemini 3 Pro Image',
                 }
 
@@ -1661,7 +1682,7 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                 setIsGenerating(false)
             }
         },
-        [providers, getActiveProvider, addToGallery, persistGeneration, setAppState, setErrorMsg, setIsGenerating]
+        [providers, avatarId, getActiveProvider, addToGallery, persistGeneration, setAppState, setErrorMsg, setIsGenerating]
     )
 
     // Create Variant Handler
@@ -1696,10 +1717,14 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
     // Save to Gallery Handler
     const handleSaveToGallery = useCallback(
         async (media: GeneratedMedia) => {
-            if (!userId || !avatarId) {
+            // avatar_id is nullable by design (auto-save works pre-avatar);
+            // requiring an avatar here used to DEADLOCK with the Assign-avatar
+            // button (which needs saveState 'saved'). Save first, assign after.
+            if (!userId) return
+            if (media.saveState === 'saved' && media.generationId) {
                 toast.push(
-                    <Notification type="warning" title="Save Avatar First">
-                        Please save your avatar before saving generations
+                    <Notification type="info" title="Already saved">
+                        This media is already in your gallery
                     </Notification>
                 )
                 return
@@ -1719,14 +1744,24 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                     .uploadToSignedUrl(path, token, blob, { contentType })
                 if (uploadError) throw new Error(uploadError.message)
 
-                await apiSaveGeneration({
+                const row = await apiSaveGeneration({
                     user_id: userId,
-                    avatar_id: avatarId,
+                    // Inherit the media's own avatar (crops/edits of another
+                    // avatar's photo stay theirs); fall back to the studio's.
+                    avatar_id: media.avatarId ?? avatarId ?? null,
                     media_type: media.mediaType,
                     storage_path: path,
                     prompt: media.prompt,
                     aspect_ratio: media.aspectRatio,
                     metadata: media.metadata,
+                })
+
+                // Reflect the save on the item so Post/Assign unlock immediately.
+                updateGalleryItem(media.id, {
+                    saveState: 'saved',
+                    generationId: row.id,
+                    avatarId: media.avatarId ?? avatarId ?? null,
+                    publicUrl: getStoragePublicUrl('generations', path),
                 })
 
                 toast.push(
@@ -1743,7 +1778,7 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                 )
             }
         },
-        [userId, avatarId]
+        [userId, avatarId, updateGalleryItem]
     )
 
     // Continue Video Handler
@@ -1813,7 +1848,6 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
             handleGenerateRef.current()
         }, 100)
         return () => clearTimeout(timer)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [videoInputImage])
 
     // Re-use Handler - copies prompt and sets image as clone reference
@@ -1920,6 +1954,18 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                         <Dropdown.Item eventKey="downloader" onClick={() => setActiveTool('downloader')}>
                             ⬇️ Reel Downloader
                         </Dropdown.Item>
+                        {avatarId && (
+                            <Dropdown.Item
+                                eventKey="agent"
+                                onClick={() =>
+                                    window.location.assign(
+                                        `/concepts/avatar-forge/agent/${avatarId}`,
+                                    )
+                                }
+                            >
+                                🤖 AI Agent
+                            </Dropdown.Item>
+                        )}
                     </Dropdown>
                 </div>
             </div>
@@ -1941,6 +1987,7 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
             {/* Gallery - Full Width */}
             <div className="flex-1 overflow-hidden">
                 <GalleryPanel
+                    userId={userId}
                     onCreateVariant={handleCreateVariant}
                     onSaveToGallery={handleSaveToGallery}
                     onPost={(m: GeneratedMedia) => setPostMedia(m)}
@@ -1968,6 +2015,8 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
 
             {/* Preview Modal — the single image editor (onEdit has the Provider selector) */}
             <ImagePreviewModal
+                userId={userId}
+                onCropped={(m: GeneratedMedia) => void persistGeneration(m)}
                 onEdit={handleEditImage}
                 onAnimate={handleAnimateImage}
                 onVariant={handleCreateVariant}
@@ -1980,7 +2029,12 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
             />
 
             {/* Unified Post modal (social + Fanvue) */}
-            <PostModal media={postMedia} onClose={() => setPostMedia(null)} />
+            <PostModal
+                media={postMedia}
+                fallbackAvatarId={avatarId ?? null}
+                userId={userId}
+                onClose={() => setPostMedia(null)}
+            />
 
             {/* Lipsync — gallery video + Voice Studio audio */}
             <LipsyncDialog

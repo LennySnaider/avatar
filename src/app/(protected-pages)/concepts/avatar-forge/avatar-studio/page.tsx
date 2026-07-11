@@ -2,6 +2,7 @@ import { auth } from '@/auth'
 import Container from '@/components/shared/Container'
 import AvatarStudioProvider from './_components/AvatarStudioProvider'
 import AvatarStudioMain from './_components/AvatarStudioMain'
+import StudioTabs from './_components/StudioTabs'
 import getAvatarStudioData from '@/server/actions/getAvatarStudioData'
 import type { PageProps } from '@/@types/common'
 
@@ -47,9 +48,11 @@ export default async function Page({ searchParams }: PageProps) {
             initialPrompt={initialPrompt}
             initialMode={initialMode}
         >
-            <Container className="h-[calc(100vh-theme(spacing.16))]">
-                <AvatarStudioMain userId={session?.user?.id} />
-            </Container>
+            <StudioTabs>
+                <Container className="h-full">
+                    <AvatarStudioMain userId={session?.user?.id} />
+                </Container>
+            </StudioTabs>
         </AvatarStudioProvider>
     )
 }

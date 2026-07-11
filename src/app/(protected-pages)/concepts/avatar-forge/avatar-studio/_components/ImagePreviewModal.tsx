@@ -35,7 +35,9 @@ import {
     HiOutlineChevronDoubleRight,
     HiOutlineShare,
     HiOutlineVolumeUp,
+    HiOutlineUserCircle,
 } from 'react-icons/hi'
+import AssignAvatarDialog from './AssignAvatarDialog'
 import { HiOutlineArrowUturnLeft, HiOutlineArrowUturnRight } from 'react-icons/hi2'
 import Tooltip from '@/components/ui/Tooltip'
 import type { GeneratedMedia } from '../types'
@@ -68,6 +70,10 @@ interface ImagePreviewModalProps {
     onEditVideo?: (media: GeneratedMedia) => void
     /** Opens the Lipsync dialog for this video (audio comes from Voice Studio). */
     onLipsync?: (media: GeneratedMedia) => void
+    /** Called with the cropped media so the studio auto-persists it. */
+    onCropped?: (media: GeneratedMedia) => void
+    /** Needed by the "Assign avatar" action (lists the user's avatars). */
+    userId?: string
 }
 
 const ImagePreviewModal = ({
@@ -80,6 +86,8 @@ const ImagePreviewModal = ({
     onPost,
     onEditVideo,
     onLipsync,
+    onCropped,
+    userId,
 }: ImagePreviewModalProps) => {
     const { gallery, previewMedia, previewStartInEdit, setPreviewMedia, removeFromGallery, addToGallery, videoDialogue, providers, activeProviderId } = useAvatarStudioStore()
 
@@ -87,6 +95,7 @@ const ImagePreviewModal = ({
     const imageProviders = providers.filter(p => p.supports_image)
 
     const [isEditing, setIsEditing] = useState(false)
+    const [assignMedia, setAssignMedia] = useState<GeneratedMedia | null>(null)
     const [editPrompt, setEditPrompt] = useState('')
     const [isDrawingMask, setIsDrawingMask] = useState(false)
     const [maskCanvas, setMaskCanvas] = useState<string | null>(null)
@@ -334,7 +343,9 @@ const ImagePreviewModal = ({
                 await performLocalCrop()
             } else {
                 if (!onEdit) return
-                await onEdit(previewMedia, editPrompt, maskCanvas, editAspectRatio, editAssets, editProviderId ?? activeProviderId ?? undefined)
+                // Preserve the source aspect ratio on an AI edit — the user
+                // didn't ask to reshape it. Reshaping is only intentional via Crop.
+                await onEdit(previewMedia, editPrompt, maskCanvas, previewMedia.aspectRatio || '1:1', editAssets, editProviderId ?? activeProviderId ?? undefined)
                 handleClose()
             }
         } finally {
@@ -388,7 +399,7 @@ const ImagePreviewModal = ({
         // Convert to data URL
         const croppedUrl = canvas.toDataURL('image/jpeg', 0.95)
 
-        // Add cropped image to gallery
+        // Add cropped image to gallery (inherits the source's owning avatar)
         const croppedMedia: GeneratedMedia = {
             id: `crop-${Date.now()}`,
             url: croppedUrl,
@@ -396,9 +407,14 @@ const ImagePreviewModal = ({
             aspectRatio: editAspectRatio,
             timestamp: Date.now(),
             mediaType: 'IMAGE',
+            avatarId: previewMedia.avatarId ?? null,
+            avatarInfo: previewMedia.avatarInfo,
         }
 
         addToGallery(croppedMedia)
+        // Auto-persist so Post/Assign unlock without a manual Save (crop used
+        // to strand items in an unsaved state).
+        onCropped?.(croppedMedia)
         setPreviewMedia(croppedMedia)
         setIsEditing(false)
         setIsCropping(false)
@@ -1076,22 +1092,28 @@ const ImagePreviewModal = ({
                                     placeholder="Describe the edit (e.g., 'change hair to blonde')"
                                 />
                             </div>
-                            <div>
-                                <label className="text-xs text-gray-500 dark:text-gray-400 mb-1 block">
-                                    Aspect Ratio
-                                </label>
-                                <select
-                                    value={editAspectRatio}
-                                    onChange={(e) => setEditAspectRatio(e.target.value as AspectRatio)}
-                                    className="h-10 px-3 text-sm border rounded-lg bg-white border-gray-300 text-gray-900 dark:bg-gray-800 dark:border-gray-700 dark:text-gray-100"
-                                >
-                                    <option value="1:1">1:1</option>
-                                    <option value="16:9">16:9</option>
-                                    <option value="9:16">9:16</option>
-                                    <option value="4:3">4:3</option>
-                                    <option value="3:4">3:4</option>
-                                </select>
-                            </div>
+                            {/* Aspect Ratio only governs the CROP overlay — an AI
+                                edit preserves the source ratio, so this selector
+                                is hidden unless Crop is active (else it silently
+                                re-shaped edits, e.g. a 9:16 → 1:1). */}
+                            {isCropping && (
+                                <div>
+                                    <label className="text-xs text-gray-500 dark:text-gray-400 mb-1 block">
+                                        Crop ratio
+                                    </label>
+                                    <select
+                                        value={editAspectRatio}
+                                        onChange={(e) => setEditAspectRatio(e.target.value as AspectRatio)}
+                                        className="h-10 px-3 text-sm border rounded-lg bg-white border-gray-300 text-gray-900 dark:bg-gray-800 dark:border-gray-700 dark:text-gray-100"
+                                    >
+                                        <option value="1:1">1:1</option>
+                                        <option value="16:9">16:9</option>
+                                        <option value="9:16">9:16</option>
+                                        <option value="4:3">4:3</option>
+                                        <option value="3:4">3:4</option>
+                                    </select>
+                                </div>
+                            )}
                             <div>
                                 <label className="text-xs text-gray-500 dark:text-gray-400 mb-1 block">
                                     Provider
@@ -1119,7 +1141,12 @@ const ImagePreviewModal = ({
                                 variant={isCropping ? 'solid' : 'plain'}
                                 color={isCropping ? 'purple' : 'gray'}
                                 onClick={() => {
-                                    setIsCropping((c) => !c)
+                                    setIsCropping((c) => {
+                                        // Entering crop: default the crop ratio to
+                                        // the image's own ratio so it doesn't reshape.
+                                        if (!c) setEditAspectRatio(previewMedia.aspectRatio || '1:1')
+                                        return !c
+                                    })
                                     setIsDrawingMask(false)
                                 }}
                             >
@@ -1414,6 +1441,20 @@ const ImagePreviewModal = ({
                                 </Button>
                             )}
 
+                            <Button
+                                variant="plain"
+                                onClick={() => setAssignMedia(previewMedia)}
+                                disabled={previewMedia.saveState !== 'saved'}
+                                icon={<HiOutlineUserCircle />}
+                                title={
+                                    previewMedia.saveState !== 'saved'
+                                        ? 'Saving… available once this media is saved'
+                                        : 'Assign to avatar (decides whose accounts can publish it)'
+                                }
+                            >
+                                <span>Avatar</span>
+                            </Button>
+
                             {onPost && (
                                 <Button
                                     variant="plain"
@@ -1439,6 +1480,13 @@ const ImagePreviewModal = ({
                 )}
             </div>
         </Dialog>
+
+            {/* Assign to avatar (owner decides whose accounts can publish) */}
+            <AssignAvatarDialog
+                media={assignMedia}
+                userId={userId}
+                onClose={() => setAssignMedia(null)}
+            />
 
             {/* API Prompt Dialog */}
             <Dialog

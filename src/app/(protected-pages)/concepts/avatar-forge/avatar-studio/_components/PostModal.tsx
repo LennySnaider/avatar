@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import Link from 'next/link'
 import Dialog from '@/components/ui/Dialog'
 import Card from '@/components/ui/Card'
 import Button from '@/components/ui/Button'
@@ -10,18 +11,35 @@ import Radio from '@/components/ui/Radio'
 import DatePicker from '@/components/ui/DatePicker'
 import Notification from '@/components/ui/Notification'
 import toast from '@/components/ui/toast'
-import { HiOutlineX, HiOutlineSparkles } from 'react-icons/hi'
+import { HiOutlineX, HiOutlineSparkles, HiOutlineMusicNote } from 'react-icons/hi'
 import { createSocialPost, getSocialProfileAction } from '@/services/SocialService'
 import { createFanvuePost, getFanvueConnection } from '@/services/FanvueService'
+import {
+    apiGetAvatarById,
+    apiCreateGenerationUploadUrl,
+    apiSaveGeneration,
+} from '@/services/AvatarForgeService'
 import { generateSocialCaption, translateSocialCaption } from '@/services/GeminiService'
+import { muxAudioIntoVideo } from '@/services/AudioMuxService'
+import { listTrendingSounds } from '@/services/TrendService'
+import type { TrendingSoundDTO } from '@/lib/trends/constants'
 import { normalizeHashtag } from '@/lib/social/hashtagHelpers'
+import { supabase } from '@/lib/supabase'
+import { useAvatarStudioStore } from '../_store/avatarStudioStore'
 import type { FanvuePostAudience } from '@/lib/fanvue/types'
 import type { GeneratedMedia } from '../types'
+
+type AudioMode = 'none' | 'trending' | 'upload'
 
 const { DateTimepicker } = DatePicker
 
 interface PostModalProps {
     media: GeneratedMedia | null
+    /** Studio's currently loaded avatar — fallback owner for media that
+     * predates avatar linking (`media.avatarId` null/undefined). */
+    fallbackAvatarId: string | null
+    /** Needed to upload the audio-muxed video via a signed URL. */
+    userId?: string
     onClose: () => void
 }
 
@@ -41,10 +59,13 @@ interface PublishOutcome {
 
 /**
  * Unified Post modal — publishes a persisted `GeneratedMedia` (by its
- * `generationId`) to connected Upload-Post platforms and/or Fanvue in one
- * shot. Adapted from `SocialComposer`; renders nothing when `media` is null.
+ * `generationId`) to the owning avatar's connected Upload-Post platforms
+ * and/or Fanvue in one shot. Each avatar has its own Upload-Post account,
+ * so the platform list is the resolved avatar's, not global. Adapted from
+ * `SocialComposer`; renders nothing when `media` is null.
  */
-const PostModal = ({ media, onClose }: PostModalProps) => {
+const PostModal = ({ media, fallbackAvatarId, userId, onClose }: PostModalProps) => {
+    const updateGalleryItem = useAvatarStudioStore((s) => s.updateGalleryItem)
     // Caption starts empty — the generation PROMPT is harness text, never a
     // caption; "Generate with AI" writes a real one from the media.
     const [caption, setCaption] = useState('')
@@ -57,6 +78,7 @@ const PostModal = ({ media, onClose }: PostModalProps) => {
     // Destinations
     const [platforms, setPlatforms] = useState<string[]>([])
     const [selectedPlatforms, setSelectedPlatforms] = useState<string[]>([])
+    const [hasSocialAccount, setHasSocialAccount] = useState(false)
     const [fanvueConnected, setFanvueConnected] = useState(false)
     const [fanvueSelected, setFanvueSelected] = useState(false)
     const [audience, setAudience] = useState<FanvuePostAudience>('subscribers')
@@ -66,9 +88,27 @@ const PostModal = ({ media, onClose }: PostModalProps) => {
     const [scheduleMode, setScheduleMode] = useState<ScheduleMode>('now')
     const [scheduleDate, setScheduleDate] = useState<Date | null>(null)
 
+    // Audio (video only) — baked into the video before publishing, since
+    // official trending sounds can't be attached via API.
+    const [audioMode, setAudioMode] = useState<AudioMode>('none')
+    const [trendingSounds, setTrendingSounds] = useState<TrendingSoundDTO[] | null>(null)
+    const [selectedSound, setSelectedSound] = useState<TrendingSoundDTO | null>(null)
+    const [uploadedAudio, setUploadedAudio] = useState<File | null>(null)
+    const [keepOriginalSound, setKeepOriginalSound] = useState(false)
+    const [muxProgress, setMuxProgress] = useState<number | null>(null)
+
     const [isLoadingDestinations, setIsLoadingDestinations] = useState(false)
     const [error, setError] = useState<string | null>(null)
     const [isSubmitting, setIsSubmitting] = useState(false)
+
+    // Which avatar's Upload-Post account this post goes out through: the
+    // media's own avatar (generations.avatar_id) wins; the studio's current
+    // avatar covers avatar-less auto-saves. Null → social publishing is off.
+    const effectiveAvatarId = media?.avatarId ?? fallbackAvatarId ?? null
+    // Persisted gallery items carry no avatarInfo — resolve the owner's name
+    // so the hints can say WHICH avatar the media belongs to.
+    const [ownerName, setOwnerName] = useState<string | null>(null)
+    const avatarName = media?.avatarInfo?.name ?? ownerName
 
     // Reset composer state + load destinations whenever a new media opens.
     useEffect(() => {
@@ -84,17 +124,39 @@ const PostModal = ({ media, onClose }: PostModalProps) => {
         setPriceCents('')
         setScheduleMode('now')
         setScheduleDate(null)
+        setAudioMode('none')
+        setSelectedSound(null)
+        setUploadedAudio(null)
+        setKeepOriginalSound(false)
+        setMuxProgress(null)
         setError(null)
 
         let cancelled = false
         setIsLoadingDestinations(true)
-        Promise.all([getSocialProfileAction(), getFanvueConnection()])
+        setOwnerName(null)
+        if (effectiveAvatarId && !media.avatarInfo?.name) {
+            apiGetAvatarById(effectiveAvatarId)
+                .then((avatar) => {
+                    if (!cancelled) setOwnerName(avatar?.name ?? null)
+                })
+                .catch(() => {
+                    /* name is display-only — never block the modal on it */
+                })
+        }
+        const socialPromise = effectiveAvatarId
+            ? getSocialProfileAction(effectiveAvatarId)
+            : Promise.resolve({ success: true as const, data: null })
+        Promise.all([socialPromise, getFanvueConnection()])
             .then(([profileResult, fanvueResult]) => {
                 if (cancelled) return
                 const profile = profileResult.success ? profileResult.data : null
-                const connectedPlatforms = (profile?.connected_platforms ?? [])
-                    .map(normalizePlatformKey)
-                    .filter((p): p is string => Boolean(p))
+                const accountActive = !!profile && profile.status === 'active'
+                setHasSocialAccount(accountActive)
+                const connectedPlatforms = accountActive
+                    ? (profile.connectedPlatforms ?? [])
+                          .map(normalizePlatformKey)
+                          .filter((p): p is string => Boolean(p))
+                    : []
                 setPlatforms(connectedPlatforms)
                 setSelectedPlatforms(connectedPlatforms)
                 setFanvueConnected(
@@ -107,7 +169,7 @@ const PostModal = ({ media, onClose }: PostModalProps) => {
         return () => {
             cancelled = true
         }
-    }, [media])
+    }, [media, effectiveAvatarId])
 
     // Display can use the local blob:/data: url, but anything the SERVER must
     // fetch (AI caption) needs the durable public Storage URL — undici can't
@@ -219,6 +281,72 @@ const PostModal = ({ media, onClose }: PostModalProps) => {
     }
 
     const hasDestinations = platforms.length > 0 || fanvueConnected
+    const isVideo = mediaType === 'VIDEO'
+
+    const loadTrendingSounds = async () => {
+        if (trendingSounds !== null) return
+        const result = await listTrendingSounds({ countryCode: 'GLOBAL', period: 7 })
+        setTrendingSounds(result.success ? (result.data?.sounds ?? []) : [])
+    }
+
+    /**
+     * When an audio track is chosen for a video, bake it in (ffmpeg WASM),
+     * upload the muxed result via a signed URL (never through a server action —
+     * anti-413), persist it as a new generation and return its id. Otherwise
+     * returns the original generationId. Runs ONCE per publish and the result
+     * is reused across every destination.
+     */
+    const resolvePostGenerationId = async (originalGenerationId: string): Promise<string> => {
+        if (audioMode === 'none' || !isVideo) return originalGenerationId
+        if (!userId) throw new Error('Cannot process audio — missing user context')
+
+        const audioUrl =
+            audioMode === 'trending'
+                ? selectedSound
+                    ? `/api/trends/sound-audio?id=${encodeURIComponent(selectedSound.id)}`
+                    : null
+                : uploadedAudio
+                  ? URL.createObjectURL(uploadedAudio)
+                  : null
+        if (!audioUrl) throw new Error('Pick a sound or upload an audio file first')
+
+        const sourceVideoUrl = serverMediaUrl || mediaUrl
+        setMuxProgress(0)
+        try {
+            const muxedBlobUrl = await muxAudioIntoVideo(sourceVideoUrl, audioUrl, {
+                keepOriginalVolume: keepOriginalSound ? 0.15 : 0,
+                onProgress: setMuxProgress,
+            })
+            // Upload the muxed mp4 straight to Storage (browser → signed URL).
+            const blob = await (await fetch(muxedBlobUrl)).blob()
+            const { path, token } = await apiCreateGenerationUploadUrl(userId, 'VIDEO')
+            const { error: upErr } = await supabase.storage
+                .from('generations')
+                .uploadToSignedUrl(path, token, blob, { contentType: 'video/mp4' })
+            if (upErr) throw new Error(upErr.message)
+
+            const row = await apiSaveGeneration({
+                user_id: userId,
+                avatar_id: effectiveAvatarId,
+                media_type: 'VIDEO',
+                storage_path: path,
+                prompt: media?.prompt ?? '',
+                aspect_ratio: media?.aspectRatio,
+                metadata: {
+                    muxedFrom: originalGenerationId,
+                    audioSource: audioMode,
+                    audioName:
+                        audioMode === 'trending'
+                            ? (selectedSound?.name ?? null)
+                            : (uploadedAudio?.name ?? null),
+                } as never,
+            })
+            URL.revokeObjectURL(muxedBlobUrl)
+            return row.id
+        } finally {
+            setMuxProgress(null)
+        }
+    }
 
     const handleSubmit = async () => {
         setError(null)
@@ -228,6 +356,12 @@ const PostModal = ({ media, onClose }: PostModalProps) => {
         }
         if (selectedPlatforms.length === 0 && !fanvueSelected) {
             setError('Pick at least one destination')
+            return
+        }
+        if (selectedPlatforms.length > 0 && !effectiveAvatarId) {
+            setError(
+                "This media isn't linked to an avatar — deselect the social platforms or open it from that avatar's studio",
+            )
             return
         }
 
@@ -252,16 +386,41 @@ const PostModal = ({ media, onClose }: PostModalProps) => {
             price = parsed
         }
 
+        // Audio selection guard (video only)
+        if (isVideo && audioMode === 'trending' && !selectedSound) {
+            setError('Pick a trending sound, or switch audio to "No audio"')
+            return
+        }
+        if (isVideo && audioMode === 'upload' && !uploadedAudio) {
+            setError('Upload an audio file, or switch audio to "No audio"')
+            return
+        }
+
         const activeHashtags = hashtags.filter((h) => h.active).map((h) => h.tag)
-        const generationId = media.generationId
 
         setIsSubmitting(true)
         try {
+            // Bake in audio once (if any), then publish the resulting video to
+            // every destination.
+            let generationId: string
+            try {
+                generationId = await resolvePostGenerationId(media.generationId)
+            } catch (audioErr) {
+                setError(
+                    audioErr instanceof Error
+                        ? `Audio processing failed: ${audioErr.message}`
+                        : 'Audio processing failed',
+                )
+                setIsSubmitting(false)
+                return
+            }
+
             const tasks: Promise<PublishOutcome>[] = []
 
-            if (selectedPlatforms.length > 0) {
+            if (selectedPlatforms.length > 0 && effectiveAvatarId) {
                 tasks.push(
                     createSocialPost({
+                        avatarId: effectiveAvatarId,
                         generationId,
                         caption,
                         hashtags: activeHashtags,
@@ -296,6 +455,22 @@ const PostModal = ({ media, onClose }: PostModalProps) => {
             const outcomes = await Promise.all(tasks)
             const succeeded = outcomes.filter((o) => o.ok)
             const failed = outcomes.filter((o) => !o.ok)
+
+            // Reflect the "Posted" badge on the gallery card right away.
+            const newlyPosted: string[] = []
+            if (outcomes.some((o) => o.ok && o.label !== 'Fanvue')) {
+                newlyPosted.push(...selectedPlatforms)
+            }
+            if (outcomes.some((o) => o.ok && o.label === 'Fanvue')) {
+                newlyPosted.push('fanvue')
+            }
+            if (newlyPosted.length > 0) {
+                updateGalleryItem(media.id, {
+                    postedPlatforms: Array.from(
+                        new Set([...(media.postedPlatforms ?? []), ...newlyPosted]),
+                    ),
+                })
+            }
 
             toast.push(
                 <Notification
@@ -479,12 +654,36 @@ const PostModal = ({ media, onClose }: PostModalProps) => {
                 </Card>
 
                 <Card>
-                    <p className="text-sm font-semibold mb-2">Destinations</p>
+                    <div className="flex items-center justify-between mb-2 gap-2">
+                        <p className="text-sm font-semibold">Destinations</p>
+                        {effectiveAvatarId && avatarName && (
+                            <p className="text-xs text-gray-400">
+                                Posting as <span className="font-semibold">{avatarName}</span>
+                            </p>
+                        )}
+                    </div>
                     {isLoadingDestinations ? (
                         <p className="text-sm text-gray-500">Loading connected accounts…</p>
-                    ) : hasDestinations ? (
+                    ) : (
                         <div className="flex flex-col gap-3">
-                            {platforms.length > 0 && (
+                            {!effectiveAvatarId ? (
+                                <p className="text-sm text-amber-600 dark:text-amber-400">
+                                    This media isn&apos;t linked to an avatar — social
+                                    publishing is unavailable for it.
+                                </p>
+                            ) : !hasSocialAccount ? (
+                                <p className="text-sm text-amber-600 dark:text-amber-400">
+                                    {avatarName ?? 'This avatar'} has no Upload-Post account
+                                    yet —{' '}
+                                    <Link
+                                        href="/concepts/avatar-forge/social/accounts"
+                                        className="underline font-semibold"
+                                    >
+                                        connect one
+                                    </Link>
+                                    .
+                                </p>
+                            ) : platforms.length > 0 ? (
                                 <div className="flex flex-wrap gap-4">
                                     {platforms.map((platform) => (
                                         <Checkbox
@@ -498,6 +697,17 @@ const PostModal = ({ media, onClose }: PostModalProps) => {
                                         </Checkbox>
                                     ))}
                                 </div>
+                            ) : (
+                                <p className="text-sm text-amber-600 dark:text-amber-400">
+                                    No socials linked to this avatar&apos;s account yet —{' '}
+                                    <Link
+                                        href="/concepts/avatar-forge/social/accounts"
+                                        className="underline font-semibold"
+                                    >
+                                        link accounts
+                                    </Link>
+                                    .
+                                </p>
                             )}
                             {fanvueConnected && (
                                 <div className="pt-1 border-t border-gray-100 dark:border-gray-700">
@@ -509,11 +719,12 @@ const PostModal = ({ media, onClose }: PostModalProps) => {
                                     </Checkbox>
                                 </div>
                             )}
+                            {!fanvueConnected && platforms.length === 0 && (
+                                <p className="text-xs text-gray-400">
+                                    No destinations available for this media yet.
+                                </p>
+                            )}
                         </div>
-                    ) : (
-                        <p className="text-sm text-amber-600 dark:text-amber-400">
-                            No accounts connected yet — connect a social or Fanvue account first.
-                        </p>
                     )}
                 </Card>
 
@@ -558,6 +769,107 @@ const PostModal = ({ media, onClose }: PostModalProps) => {
                     </Card>
                 )}
 
+                {isVideo && (
+                    <Card>
+                        <div className="flex items-center gap-2 mb-2">
+                            <HiOutlineMusicNote className="text-primary" />
+                            <p className="text-sm font-semibold">Audio</p>
+                        </div>
+                        <Radio.Group
+                            value={audioMode}
+                            onChange={(value) => {
+                                const mode = value as AudioMode
+                                setAudioMode(mode)
+                                if (mode === 'trending') void loadTrendingSounds()
+                            }}
+                        >
+                            <Radio value="none">No audio</Radio>
+                            <Radio value="trending">Trending sound</Radio>
+                            <Radio value="upload">Upload audio</Radio>
+                        </Radio.Group>
+
+                        {audioMode === 'trending' && (
+                            <div className="mt-3">
+                                {trendingSounds === null ? (
+                                    <p className="text-sm text-gray-500">Loading chart…</p>
+                                ) : trendingSounds.length === 0 ? (
+                                    <p className="text-sm text-amber-600 dark:text-amber-400">
+                                        No sounds cached yet — open{' '}
+                                        <Link
+                                            href="/concepts/avatar-forge/trending-sounds"
+                                            className="underline font-semibold"
+                                        >
+                                            Trending Sounds
+                                        </Link>{' '}
+                                        and hit Refresh first.
+                                    </p>
+                                ) : (
+                                    <div className="max-h-48 overflow-y-auto flex flex-col gap-1 pr-1">
+                                        {trendingSounds.map((sound) => (
+                                            <button
+                                                key={sound.id}
+                                                type="button"
+                                                onClick={() => setSelectedSound(sound)}
+                                                className={`flex items-center gap-2 p-2 rounded-lg text-left transition-colors border ${
+                                                    selectedSound?.id === sound.id
+                                                        ? 'bg-primary/15 border-primary/40'
+                                                        : 'border-transparent hover:bg-gray-100 dark:hover:bg-gray-700'
+                                                }`}
+                                            >
+                                                <span className="text-xs font-bold text-gray-400 w-5 shrink-0">
+                                                    {sound.rank}
+                                                </span>
+                                                <span className="min-w-0 flex-1">
+                                                    <span className="block text-sm font-medium truncate">
+                                                        {sound.name}
+                                                    </span>
+                                                    <span className="block text-xs text-gray-400 truncate">
+                                                        {sound.author ?? 'Unknown'}
+                                                    </span>
+                                                </span>
+                                            </button>
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
+                        )}
+
+                        {audioMode === 'upload' && (
+                            <div className="mt-3">
+                                <input
+                                    type="file"
+                                    accept="audio/*"
+                                    onChange={(e) => setUploadedAudio(e.target.files?.[0] ?? null)}
+                                    className="text-sm"
+                                />
+                                {uploadedAudio && (
+                                    <p className="text-xs text-gray-400 mt-1">
+                                        {uploadedAudio.name}
+                                    </p>
+                                )}
+                            </div>
+                        )}
+
+                        {audioMode !== 'none' && (
+                            <>
+                                <div className="mt-3">
+                                    <Checkbox
+                                        checked={keepOriginalSound}
+                                        onChange={(checked) => setKeepOriginalSound(checked)}
+                                    >
+                                        <span className="text-sm">Keep original video sound (mixed low)</span>
+                                    </Checkbox>
+                                </div>
+                                <p className="text-xs text-amber-600 dark:text-amber-400 mt-2">
+                                    The track is baked into the video (the only way to auto-post with
+                                    sound). Platforms may mute copyrighted music — use your own audio
+                                    for guaranteed reach.
+                                </p>
+                            </>
+                        )}
+                    </Card>
+                )}
+
                 <Card>
                     <p className="text-sm font-semibold mb-2">When</p>
                     <Radio.Group
@@ -580,7 +892,12 @@ const PostModal = ({ media, onClose }: PostModalProps) => {
                 </Card>
             </div>
 
-            <div className="flex items-center justify-end gap-2 mt-4">
+            <div className="flex items-center justify-end gap-3 mt-4">
+                {muxProgress !== null && (
+                    <span className="text-xs text-gray-500 mr-auto">
+                        Baking audio into video… {muxProgress}%
+                    </span>
+                )}
                 <Button variant="plain" onClick={onClose} disabled={isSubmitting}>
                     Cancel
                 </Button>

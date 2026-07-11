@@ -141,6 +141,7 @@ interface AvatarStudioState {
     // Gallery
     gallery: GeneratedMedia[]
     previewMedia: GeneratedMedia | null
+    previewStartInEdit: boolean
 
     // Safety Analysis
     isAnalyzing: boolean
@@ -173,12 +174,6 @@ interface AvatarStudioState {
 
     // Provider Manager
     showProviderManager: boolean
-
-    // Image Editor
-    isEditorOpen: boolean
-    editorImage: GeneratedMedia | null
-    editorZoom: number
-    editorAssets: ReferenceImage[]
 
     // Loading states
     isGenerating: boolean
@@ -281,8 +276,10 @@ interface AvatarStudioState {
     // Actions - Gallery
     addToGallery: (media: GeneratedMedia) => void
     removeFromGallery: (id: string) => void
-    setPreviewMedia: (media: GeneratedMedia | null) => void
+    setPreviewMedia: (media: GeneratedMedia | null, startInEdit?: boolean) => void
     clearGallery: () => void
+    loadPersistedGallery: (items: GeneratedMedia[]) => void
+    updateGalleryItem: (id: string, patch: Partial<GeneratedMedia>) => void
 
     // Actions - Safety
     setIsAnalyzing: (analyzing: boolean) => void
@@ -311,15 +308,6 @@ interface AvatarStudioState {
     setIsGenerating: (generating: boolean) => void
     setIsSavingAvatar: (saving: boolean) => void
     setIsLoadingReferences: (loading: boolean) => void
-
-    // Actions - Image Editor
-    openEditor: (media: GeneratedMedia) => void
-    closeEditor: () => void
-    setEditorZoom: (zoom: number) => void
-    addEditorAsset: (asset: ReferenceImage) => void
-    removeEditorAsset: (id: string) => void
-    clearEditorAssets: () => void
-    setEditorImage: (media: GeneratedMedia | null) => void
 
     // Computed helpers
     hasAvatarRefs: () => boolean
@@ -423,6 +411,7 @@ const initialState = {
 
     gallery: [],
     previewMedia: null,
+    previewStartInEdit: false,
 
     isAnalyzing: false,
     safetyAnalysis: null,
@@ -446,11 +435,6 @@ const initialState = {
     pinnedActionIds: [],
 
     showProviderManager: false,
-
-    isEditorOpen: false,
-    editorImage: null,
-    editorZoom: 100,
-    editorAssets: [],
 
     isGenerating: false,
     isSavingAvatar: false,
@@ -726,8 +710,36 @@ export const useAvatarStudioStore = create<AvatarStudioState>()(
             gallery: state.gallery.filter((m) => m.id !== id),
             previewMedia: state.previewMedia?.id === id ? null : state.previewMedia,
         })),
-    setPreviewMedia: (media) => set({ previewMedia: media }),
+    setPreviewMedia: (media, startInEdit = false) =>
+        set({ previewMedia: media, previewStartInEdit: media ? startInEdit : false }),
     clearGallery: () => set({ gallery: [], previewMedia: null }),
+    // Seed the gallery with persisted history from the `generations` table.
+    // Dedupe by generationId (persisted rows win), keep any session items not
+    // yet persisted, newest first (by timestamp).
+    loadPersistedGallery: (items) =>
+        set((state) => {
+            const persistedIds = new Set(
+                items.map((i) => i.generationId).filter(Boolean) as string[],
+            )
+            const sessionOnly = state.gallery.filter(
+                (m) => !m.generationId || !persistedIds.has(m.generationId),
+            )
+            const merged = [...sessionOnly, ...items].sort(
+                (a, b) => b.timestamp - a.timestamp,
+            )
+            return { gallery: merged }
+        }),
+    // Patch a gallery item (and the preview, if it's the same item) by client id.
+    updateGalleryItem: (id, patch) =>
+        set((state) => ({
+            gallery: state.gallery.map((m) =>
+                m.id === id ? { ...m, ...patch } : m,
+            ),
+            previewMedia:
+                state.previewMedia?.id === id
+                    ? { ...state.previewMedia, ...patch }
+                    : state.previewMedia,
+        })),
 
     // Actions - Safety
     setIsAnalyzing: (analyzing) => set({ isAnalyzing: analyzing }),
@@ -761,21 +773,6 @@ export const useAvatarStudioStore = create<AvatarStudioState>()(
     setIsGenerating: (generating) => set({ isGenerating: generating }),
     setIsSavingAvatar: (saving) => set({ isSavingAvatar: saving }),
     setIsLoadingReferences: (loading) => set({ isLoadingReferences: loading }),
-
-    // Actions - Image Editor
-    openEditor: (media) => set({ isEditorOpen: true, editorImage: media, editorZoom: 100 }),
-    closeEditor: () => set({ isEditorOpen: false, editorImage: null, editorZoom: 100, editorAssets: [] }),
-    setEditorZoom: (zoom) => set({ editorZoom: zoom }),
-    addEditorAsset: (asset) =>
-        set((state) => ({
-            editorAssets: [...state.editorAssets, asset],
-        })),
-    removeEditorAsset: (id) =>
-        set((state) => ({
-            editorAssets: state.editorAssets.filter((a) => a.id !== id),
-        })),
-    clearEditorAssets: () => set({ editorAssets: [] }),
-    setEditorImage: (media) => set({ editorImage: media }),
 
     // Computed helpers
     hasAvatarRefs: () => {

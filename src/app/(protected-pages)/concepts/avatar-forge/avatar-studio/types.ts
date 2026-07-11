@@ -72,6 +72,13 @@ export interface GeneratedMedia {
     providerName?: string
     /** Supabase `generations` row id once the media has been persisted. */
     generationId?: string
+    /** Owning avatar (`generations.avatar_id`) — decides which avatar's
+     * Upload-Post account a post goes out through. Null for avatar-less
+     * auto-saves. */
+    avatarId?: string | null
+    /** Where this media has been published (e.g. ['instagram','x','fanvue']).
+     * Derived from social_posts/fanvue_posts; drives the "Posted" badge. */
+    postedPlatforms?: string[]
     /** Auto-save lifecycle for this item's persistence to the `generations` table. */
     saveState?: 'saving' | 'saved' | 'error'
     /** Durable public Storage URL once persisted — the `url` field may be a

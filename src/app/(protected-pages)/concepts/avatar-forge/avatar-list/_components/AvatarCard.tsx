@@ -24,6 +24,7 @@ import {
     HiOutlineTrash,
     HiOutlineDotsVertical,
     HiOutlinePhotograph,
+    HiOutlineChatAlt2,
 } from 'react-icons/hi'
 
 interface AvatarCardProps {
@@ -352,6 +353,19 @@ const AvatarCard = ({ avatar }: AvatarCardProps) => {
                             <span className="flex items-center gap-2">
                                 <HiOutlinePhotograph />
                                 Generate
+                            </span>
+                        </Dropdown.Item>
+                        <Dropdown.Item
+                            eventKey="agent"
+                            onClick={() =>
+                                router.push(
+                                    `/concepts/avatar-forge/agent/${avatar.id}`,
+                                )
+                            }
+                        >
+                            <span className="flex items-center gap-2">
+                                <HiOutlineChatAlt2 />
+                                AI Agent
                             </span>
                         </Dropdown.Item>
                         <Dropdown.Item

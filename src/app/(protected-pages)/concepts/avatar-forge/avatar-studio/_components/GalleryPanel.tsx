@@ -1,6 +1,6 @@
 'use client'
 
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useAvatarStudioStore } from '../_store/avatarStudioStore'
 import { downloadMediaUrl } from '../../_utils/mediaDownload'
 import Button from '@/components/ui/Button'
@@ -11,8 +11,9 @@ import ScrollBar from '@/components/ui/ScrollBar'
 import Notification from '@/components/ui/Notification'
 import toast from '@/components/ui/toast'
 import ConfirmDialog from '@/components/shared/ConfirmDialog'
-import { apiDeleteGeneration } from '@/services/AvatarForgeService'
-import { HiOutlineTrash, HiOutlineDownload, HiOutlinePhotograph, HiOutlineUpload, HiOutlineSearch, HiOutlineShare, HiOutlineSave } from 'react-icons/hi'
+import AssignAvatarDialog from './AssignAvatarDialog'
+import { apiDeleteGeneration, apiGetAvatars } from '@/services/AvatarForgeService'
+import { HiOutlineTrash, HiOutlineDownload, HiOutlinePhotograph, HiOutlineUpload, HiOutlineSearch, HiOutlineShare, HiOutlineSave, HiOutlineUserCircle } from 'react-icons/hi'
 import type { GeneratedMedia, AspectRatio, MediaType } from '../types'
 
 interface GalleryPanelProps {
@@ -22,9 +23,16 @@ interface GalleryPanelProps {
     /** Called for each uploaded file after it lands in the gallery — the studio
      * wires this to persistGeneration so uploads get a DB row (enables Post). */
     onUploaded?: (media: GeneratedMedia) => void
+    /** Needed to list avatars for the "Assign avatar" action. */
+    userId?: string
 }
 
-const GalleryPanel = ({ onSaveToGallery, onPost, onUploaded }: GalleryPanelProps) => {
+interface AvatarOption {
+    value: string
+    label: string
+}
+
+const GalleryPanel = ({ onSaveToGallery, onPost, onUploaded, userId }: GalleryPanelProps) => {
     const {
         gallery,
         isGenerating,
@@ -39,10 +47,37 @@ const GalleryPanel = ({ onSaveToGallery, onPost, onUploaded }: GalleryPanelProps
     const [mediaTypeFilter, setMediaTypeFilter] = useState<MediaType | 'ALL'>('ALL')
     const [avatarFilter, setAvatarFilter] = useState<string>('ALL')
 
-    // Distinct avatar names present in the gallery (for the Avatar filter)
-    const avatarNames = Array.from(
-        new Set(gallery.map((m) => m.avatarInfo?.name).filter((n): n is string => Boolean(n))),
+    // "Assign avatar" — decides which avatar's accounts can publish this media.
+    const [assignTarget, setAssignTarget] = useState<GeneratedMedia | null>(null)
+    const [avatarOptions, setAvatarOptions] = useState<AvatarOption[] | null>(null)
+
+    // Avatar list feeds the gallery filter and the per-card owner badges.
+    useEffect(() => {
+        if (!userId) return
+        let cancelled = false
+        apiGetAvatars(userId)
+            .then((avatars) => {
+                if (!cancelled) {
+                    setAvatarOptions(avatars.map((a) => ({ value: a.id, label: a.name })))
+                }
+            })
+            .catch(() => {
+                if (!cancelled) setAvatarOptions([])
+            })
+        return () => {
+            cancelled = true
+        }
+    }, [userId])
+
+    const avatarNameById = new Map((avatarOptions ?? []).map((o) => [o.value, o.label]))
+
+    // Avatars actually present in the gallery (by id — avatarInfo.name only
+    // exists on session items; persisted rows carry avatarId).
+    const presentAvatarIds = new Set(
+        gallery.map((m) => m.avatarId).filter((id): id is string => Boolean(id)),
     )
+    const filterableAvatars = (avatarOptions ?? []).filter((o) => presentAvatarIds.has(o.value))
+    const hasOrphanMedia = gallery.some((m) => !m.avatarId)
 
     // Client-side filter — ports the search + media-type approach from
     // ../../gallery/_components/GenerationGallery.tsx.
@@ -53,7 +88,11 @@ const GalleryPanel = ({ onSaveToGallery, onPost, onUploaded }: GalleryPanelProps
         const matchesType =
             mediaTypeFilter === 'ALL' || media.mediaType === mediaTypeFilter
         const matchesAvatar =
-            avatarFilter === 'ALL' || media.avatarInfo?.name === avatarFilter
+            avatarFilter === 'ALL'
+                ? true
+                : avatarFilter === 'NONE'
+                  ? !media.avatarId
+                  : media.avatarId === avatarFilter
         return matchesSearch && matchesType && matchesAvatar
     })
 
@@ -207,19 +246,20 @@ const GalleryPanel = ({ onSaveToGallery, onPost, onUploaded }: GalleryPanelProps
                             onChange={(e) => setSearchQuery(e.target.value)}
                             className="flex-1"
                         />
-                        {avatarNames.length > 0 && (
+                        {(filterableAvatars.length > 0 || hasOrphanMedia) && (
                             <select
                                 value={avatarFilter}
                                 onChange={(e) => setAvatarFilter(e.target.value)}
-                                className="w-32 px-3 py-1.5 text-sm border rounded-lg bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-600"
+                                className="w-36 px-3 py-1.5 text-sm border rounded-lg bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-600"
                                 title="Filter by avatar"
                             >
                                 <option value="ALL">All avatars</option>
-                                {avatarNames.map((name) => (
-                                    <option key={name} value={name}>
-                                        {name}
+                                {filterableAvatars.map((avatar) => (
+                                    <option key={avatar.value} value={avatar.value}>
+                                        {avatar.label}
                                     </option>
                                 ))}
+                                {hasOrphanMedia && <option value="NONE">No avatar</option>}
                             </select>
                         )}
                         <select
@@ -337,16 +377,36 @@ const GalleryPanel = ({ onSaveToGallery, onPost, onUploaded }: GalleryPanelProps
                                                 Save failed
                                             </span>
                                         )}
+                                        {media.postedPlatforms && media.postedPlatforms.length > 0 && (
+                                            <span
+                                                title={`Posted to: ${media.postedPlatforms.join(', ')}`}
+                                                className="px-2 py-1 text-[10px] font-medium rounded bg-sky-500 text-white inline-block"
+                                            >
+                                                Posted
+                                            </span>
+                                        )}
                                     </div>
 
-                                    {/* Provider/Model Badge */}
-                                    {media.providerName && (
-                                        <div className="absolute top-2 left-2">
+                                    {/* Provider/Model + owning-avatar badges */}
+                                    <div className="absolute top-2 left-2 flex flex-col items-start gap-1">
+                                        {media.providerName && (
                                             <span className="px-2 py-1 text-[10px] font-medium rounded bg-black/70 text-white max-w-32 truncate inline-block">
                                                 {media.providerName}
                                             </span>
-                                        </div>
-                                    )}
+                                        )}
+                                        {(() => {
+                                            const ownerName =
+                                                media.avatarInfo?.name ??
+                                                (media.avatarId
+                                                    ? avatarNameById.get(media.avatarId)
+                                                    : undefined)
+                                            return ownerName ? (
+                                                <span className="px-2 py-1 text-[10px] font-medium rounded bg-primary/80 text-white max-w-32 truncate inline-block">
+                                                    {ownerName}
+                                                </span>
+                                            ) : null
+                                        })()}
+                                    </div>
 
                                     {/* Overlay Actions */}
                                     <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-end">
@@ -367,6 +427,21 @@ const GalleryPanel = ({ onSaveToGallery, onPost, onUploaded }: GalleryPanelProps
                                                     />
                                                     {/* Edit/Animate live inside the preview modal — clicking
                                                         the card opens it, so a card-level Edit was redundant. */}
+                                                    <Button
+                                                        size="xs"
+                                                        variant="solid"
+                                                        icon={<HiOutlineUserCircle />}
+                                                        disabled={media.saveState !== 'saved'}
+                                                        title={
+                                                            media.saveState !== 'saved'
+                                                                ? 'Save to gallery first'
+                                                                : 'Assign to avatar (decides whose accounts can publish it)'
+                                                        }
+                                                        onClick={(e) => {
+                                                            e.stopPropagation()
+                                                            setAssignTarget(media)
+                                                        }}
+                                                    />
                                                     {onPost && (
                                                         <Button
                                                             size="xs"
@@ -443,6 +518,12 @@ const GalleryPanel = ({ onSaveToGallery, onPost, onUploaded }: GalleryPanelProps
                     {deleteTarget?.generationId ? ' and deleted from the database' : ''}.
                 </p>
             </ConfirmDialog>
+
+            <AssignAvatarDialog
+                media={assignTarget}
+                userId={userId}
+                onClose={() => setAssignTarget(null)}
+            />
         </div>
     )
 }

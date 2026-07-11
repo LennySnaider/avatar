@@ -579,7 +579,9 @@ async function generateImageGpt4o(params: GenerateImageKieParams): Promise<{ url
     console.log(`[KIE/GPT4o] Task submitted: ${taskId}`)
 
     // GPT 4o /gpt4o-image/record-info: successFlag 0=running, 1=success, 2/3=fail.
-    const budgetMs = 300_000
+    // 600s to match every other KIE poll budget in this file (Flux/pollTask) —
+    // the OpenAI proxy queue routinely exceeds 300s under load.
+    const budgetMs = 600_000
     const intervalMs = 3000
     const startedAt = Date.now()
     let resultUrl: string | undefined

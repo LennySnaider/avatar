@@ -1,5 +1,6 @@
 'use server'
 
+import { auth } from '@/auth'
 import { createServerSupabaseClient } from '@/lib/supabase'
 import type {
     Avatar,
@@ -23,6 +24,42 @@ const getSupabase = () => createServerSupabaseClient()
 // =============================================
 // AVATARS CRUD
 // =============================================
+
+/**
+ * Reassign a generation to another avatar (or none). This decides which
+ * avatar's social accounts can publish the media, so ownership of BOTH the
+ * generation and the target avatar is enforced here.
+ */
+export async function apiSetGenerationAvatar(generationId: string, avatarId: string | null) {
+    const session = await auth()
+    const userId = session?.user?.id
+    if (!userId) throw new Error('Not authenticated')
+
+    const supabase = getSupabase()
+    const { data: gen, error: genErr } = await supabase
+        .from('generations')
+        .select('id, user_id')
+        .eq('id', generationId)
+        .single()
+    if (genErr) throw genErr
+    if (gen.user_id && gen.user_id !== userId) throw new Error('Not your media')
+
+    if (avatarId) {
+        const { data: avatar, error: avErr } = await supabase
+            .from('avatars')
+            .select('id, user_id')
+            .eq('id', avatarId)
+            .single()
+        if (avErr) throw avErr
+        if (avatar.user_id && avatar.user_id !== userId) throw new Error('Not your avatar')
+    }
+
+    const { error } = await supabase
+        .from('generations')
+        .update({ avatar_id: avatarId })
+        .eq('id', generationId)
+    if (error) throw error
+}
 
 export async function apiGetAvatars(userId: string) {
     const supabase = getSupabase()
