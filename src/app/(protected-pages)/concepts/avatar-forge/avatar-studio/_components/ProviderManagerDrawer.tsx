@@ -26,6 +26,19 @@ export const DEFAULT_PROVIDERS: AIProvider[] = [
         created_at: null,
     },
     {
+        id: 'gemini-flash-lite-image',
+        name: 'Gemini 3.1 Flash Lite Image',
+        type: 'GOOGLE' as ProviderType,
+        model: 'gemini-3.1-flash-lite-image',
+        endpoint: null,
+        is_active: true,
+        supports_image: true,
+        supports_video: false,
+        requires_api_key: true,
+        api_key_env_var: 'GEMINI_API_KEY',
+        created_at: null,
+    },
+    {
         id: 'kie-nano-banana-pro',
         name: 'Nano Banana Pro · KIE',
         type: 'KIE' as ProviderType,
@@ -384,6 +397,8 @@ const ProviderManagerDrawer = () => {
         switch (provider.id) {
             case 'gemini-nano-banana':
                 return 'Studio-quality images, text rendering, multi-image blending'
+            case 'gemini-flash-lite-image':
+                return 'Rápido y barato (~3s), 9:16 nativo — ideal para volumen'
             case 'gemini-veo-3-1':
                 return 'Veo 3.1 - audio nativo, hasta 3 ref images + first frame, 9:16 vertical'
             case 'kling-v1-6':

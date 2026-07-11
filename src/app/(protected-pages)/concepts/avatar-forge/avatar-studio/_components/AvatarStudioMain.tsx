@@ -60,7 +60,7 @@ import type { MiniMaxVideoModel } from '@/@types/minimax'
 import { generateImageKie, generateVideoKieSafe, generateMotionControlKieSafe, submitKieImageTask, checkKieImageTask, submitTalkingVideoKieTask, submitLipsyncVideoKieTask, checkKieVideoTask } from '@/services/KieService'
 import { generateImageViaGateway } from '@/services/GatewayService'
 import { buildAvatarPrompt, buildLeanIdentityPrompt, stripHarnessForFaceSwap, type RefRole } from '@/utils/avatarPromptBuilder'
-import { HiOutlineCog, HiOutlineBookOpen, HiX } from 'react-icons/hi'
+import { HiOutlineCog, HiOutlineBookOpen, HiX, HiChevronDown, HiChevronUp } from 'react-icons/hi'
 import { getPostedGenerationMap } from '@/services/SocialService'
 import { AppState } from '../types'
 import type { GeneratedMedia, ReferenceImage } from '../types'
@@ -176,6 +176,8 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
     // Item queued for the unified Post modal (social + Fanvue). Only saved
     // items can be posted — the Post buttons stay disabled until saveState === 'saved'.
     const [postMedia, setPostMedia] = useState<GeneratedMedia | null>(null)
+    // Collapse the creation panel to give the gallery the full height.
+    const [isCreationCollapsed, setIsCreationCollapsed] = useState(false)
     // Video queued for the in-place Video Editor ToolModal (Gallery "Edit"
     // on a VIDEO). Non-null == modal open; VideoEditorMain is keyed by
     // media.id so switching videos forces a fresh mount.
@@ -1995,23 +1997,44 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                 />
             </div>
 
-            {/* Bottom Control Bar - Sticky */}
-            <BottomControlBar
-                onGenerate={handleGenerate}
-                onChangeAvatar={() => setIsAvatarSelectorOpen(true)}
-                onDeselectAvatar={() => {
-                    setAvatarId(null)
-                    setAvatarName('')
-                    setCurrentAvatar(null)
-                    clearAvatarReferences()
-                    unlockAvatar()
-                    setAvatarDefaultVoice(null)
-                }}
-                onEditAvatar={() => setIsAvatarEditOpen(true)}
-                onEnhancePrompt={handleEnhancePrompt}
-                onDescribeImage={handleDescribeImage}
-                onSafetyCheck={handleSafetyCheck}
-            />
+            {/* Bottom Control Bar - Sticky, collapsible.
+                A center handle toggles it; when collapsed the panel is CSS-hidden
+                (not unmounted) so the typed prompt and picked refs survive, and
+                the gallery above expands into the freed space. */}
+            <div className="shrink-0 relative">
+                <button
+                    type="button"
+                    onClick={() => setIsCreationCollapsed((c) => !c)}
+                    title={isCreationCollapsed ? 'Show creation panel' : 'Hide creation panel'}
+                    className="absolute left-1/2 -translate-x-1/2 -top-3 z-20 flex items-center gap-1 px-3 h-6 rounded-full bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-200 text-xs font-medium shadow hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors"
+                >
+                    {isCreationCollapsed ? (
+                        <>
+                            <HiChevronUp /> Create
+                        </>
+                    ) : (
+                        <HiChevronDown />
+                    )}
+                </button>
+                <div className={isCreationCollapsed ? 'hidden' : ''}>
+                    <BottomControlBar
+                        onGenerate={handleGenerate}
+                        onChangeAvatar={() => setIsAvatarSelectorOpen(true)}
+                        onDeselectAvatar={() => {
+                            setAvatarId(null)
+                            setAvatarName('')
+                            setCurrentAvatar(null)
+                            clearAvatarReferences()
+                            unlockAvatar()
+                            setAvatarDefaultVoice(null)
+                        }}
+                        onEditAvatar={() => setIsAvatarEditOpen(true)}
+                        onEnhancePrompt={handleEnhancePrompt}
+                        onDescribeImage={handleDescribeImage}
+                        onSafetyCheck={handleSafetyCheck}
+                    />
+                </div>
+            </div>
 
             {/* Preview Modal — the single image editor (onEdit has the Provider selector) */}
             <ImagePreviewModal
