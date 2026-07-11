@@ -2016,7 +2016,10 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                         <HiChevronDown />
                     )}
                 </button>
-                <div className={isCreationCollapsed ? 'hidden' : ''}>
+                {/* Cap the creation panel + let it scroll internally so it can
+                    never steal the gallery's height (VIDEO mode makes it tall,
+                    which used to collapse the gallery and clip its Upload row). */}
+                <div className={isCreationCollapsed ? 'hidden' : 'max-h-[50vh] overflow-y-auto'}>
                     <BottomControlBar
                         onGenerate={handleGenerate}
                         onChangeAvatar={() => setIsAvatarSelectorOpen(true)}
