@@ -12,6 +12,9 @@
     "prettier:fix": "npm run prettier -- --write"
   },
   "dependencies": {
+    "@ai-sdk/google": "^3.0.91",
+    "@ai-sdk/openai-compatible": "^2.0.59",
+    "@ai-sdk/react": "^3.0.226",
     "@ffmpeg/ffmpeg": "^0.12.15",
     "@ffmpeg/util": "^0.12.2",
     "@floating-ui/react": "^0.27.16",
@@ -33,6 +36,7 @@
     "@visx/pattern": "^3.13.0-alpha.0",
     "@xyflow/react": "^12.10.2",
     "ai": "^6.0.193",
+    "apexcharts": "^5.3.6",
     "axios": "^1.7.7",
     "classnames": "^2.5.1",
     "d3-dsv": "^3.0.1",

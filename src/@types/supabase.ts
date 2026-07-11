@@ -18,6 +18,8 @@ export type Database = {
                     face_description: string | null
                     measurements: PhysicalMeasurements | null
                     default_voice_id: string | null
+                    /** Fanvue creator this avatar maps to (agency mode); NULL = the connection's own account. */
+                    fanvue_creator_uuid: string | null
                     created_at: string | null
                     updated_at: string | null
                 }
@@ -29,6 +31,7 @@ export type Database = {
                     face_description?: string | null
                     measurements?: PhysicalMeasurements | null
                     default_voice_id?: string | null
+                    fanvue_creator_uuid?: string | null
                     created_at?: string | null
                     updated_at?: string | null
                 }
@@ -40,6 +43,7 @@ export type Database = {
                     face_description?: string | null
                     measurements?: PhysicalMeasurements | null
                     default_voice_id?: string | null
+                    fanvue_creator_uuid?: string | null
                     created_at?: string | null
                     updated_at?: string | null
                 }
@@ -276,28 +280,35 @@ export type Database = {
             social_profiles: {
                 Row: {
                     id: string
+                    avatar_id: string | null
                     upload_post_username: string
                     status: string
                     connected_platforms: Json
                     upload_post_metadata: Json | null
+                    /** Per-avatar Upload-Post API key. NULL + status 'active' = legacy row using env UPLOAD_POST_API_KEY. Server-only. */
+                    api_key: string | null
                     last_synced_at: string | null
                     created_at: string
                 }
                 Insert: {
                     id?: string
+                    avatar_id?: string | null
                     upload_post_username: string
                     status?: string
                     connected_platforms?: Json
                     upload_post_metadata?: Json | null
+                    api_key?: string | null
                     last_synced_at?: string | null
                     created_at?: string
                 }
                 Update: {
                     id?: string
+                    avatar_id?: string | null
                     upload_post_username?: string
                     status?: string
                     connected_platforms?: Json
                     upload_post_metadata?: Json | null
+                    api_key?: string | null
                     last_synced_at?: string | null
                     created_at?: string
                 }

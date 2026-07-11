@@ -10,6 +10,12 @@
             "reelRemixDesc": "Convierte Reels de Instagram en prompts para tu avatar",
             "avatarList": "Mis Avatares",
             "avatarListDesc": "Ver avatares guardados",
+            "agent": "Agente IA",
+            "agentDesc": "Persona, conocimiento y chat por avatar",
+            "trendingSounds": "Sonidos en Tendencia",
+            "trendingSoundsDesc": "Chart de sonidos virales de TikTok",
+            "inbox": "Bandeja del Agente",
+            "inboxDesc": "Revisa y aprueba las respuestas del agente",
             "gallery": "Galería",
             "galleryDesc": "Imágenes y videos generados",
             "promptLibrary": "Biblioteca de Prompts",
@@ -25,7 +31,11 @@
             "videoFlows": "Video Flows",
             "videoFlowsDesc": "Editor visual de pipelines",
             "social": "Redes Sociales",
-            "socialDesc": "Conecta y publica en tus redes sociales"
+            "socialDesc": "Conecta y publica en tus redes sociales",
+            "fanvue": "Fanvue",
+            "fanvueAccounts": "Cuenta Fanvue",
+            "fanvueComposer": "Publicar en Fanvue",
+            "fanvuePosts": "Publicaciones Fanvue"
         },
         "dashboard": {
             "dashboard": "Tablero",

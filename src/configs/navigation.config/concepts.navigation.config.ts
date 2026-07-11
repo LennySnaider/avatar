@@ -60,6 +60,54 @@ const conceptsNavigationConfig: NavigationTree[] = [
                 subMenu: [],
             },
             {
+                key: 'avatarForge.agent',
+                path: `${CONCEPTS_PREFIX_PATH}/avatar-forge/agent`,
+                title: 'AI Agent',
+                translateKey: 'nav.avatarForge.agent',
+                icon: 'aiProviders',
+                type: NAV_ITEM_TYPE_ITEM,
+                authority: [ADMIN, USER],
+                meta: {
+                    description: {
+                        translateKey: 'nav.avatarForge.agentDesc',
+                        label: 'Persona, knowledge and chat per avatar',
+                    },
+                },
+                subMenu: [],
+            },
+            {
+                key: 'avatarForge.inbox',
+                path: `${CONCEPTS_PREFIX_PATH}/avatar-forge/inbox`,
+                title: 'Agent Inbox',
+                translateKey: 'nav.avatarForge.inbox',
+                icon: 'aiProviders',
+                type: NAV_ITEM_TYPE_ITEM,
+                authority: [ADMIN, USER],
+                meta: {
+                    description: {
+                        translateKey: 'nav.avatarForge.inboxDesc',
+                        label: 'Review and approve agent replies',
+                    },
+                },
+                subMenu: [],
+            },
+            {
+                key: 'avatarForge.trendingSounds',
+                path: `${CONCEPTS_PREFIX_PATH}/avatar-forge/trending-sounds`,
+                title: 'Trending Sounds',
+                translateKey: 'nav.avatarForge.trendingSounds',
+                icon: 'avatarSocial',
+                type: NAV_ITEM_TYPE_ITEM,
+                authority: [ADMIN, USER],
+                meta: {
+                    description: {
+                        translateKey: 'nav.avatarForge.trendingSoundsDesc',
+                        label: 'Viral TikTok sounds chart',
+                    },
+                },
+                subMenu: [],
+            },
+            {
                 key: 'avatarForge.social',
                 path: `${CONCEPTS_PREFIX_PATH}/avatar-forge/social/accounts`,
                 title: 'Social Media',

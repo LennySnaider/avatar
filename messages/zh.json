@@ -10,6 +10,12 @@
             "reelRemixDesc": "将 Instagram Reels 转换为头像提示词",
             "avatarList": "我的头像",
             "avatarListDesc": "查看已保存的头像",
+            "agent": "AI 智能体",
+            "agentDesc": "每个头像的人设、知识库与聊天",
+            "trendingSounds": "热门音效",
+            "trendingSoundsDesc": "TikTok 热门音效榜单",
+            "inbox": "智能体收件箱",
+            "inboxDesc": "审核并批准智能体回复",
             "gallery": "画廊",
             "galleryDesc": "生成的图像和视频",
             "promptLibrary": "提示词库",
@@ -25,7 +31,11 @@
             "videoFlows": "视频流程",
             "videoFlowsDesc": "可视化管道编辑器",
             "social": "社交媒体",
-            "socialDesc": "连接并发布到社交账号"
+            "socialDesc": "连接并发布到社交账号",
+            "fanvue": "Fanvue",
+            "fanvueAccounts": "Fanvue 账号",
+            "fanvueComposer": "Fanvue 发布",
+            "fanvuePosts": "Fanvue 帖子"
         },
         "dashboard": {
             "dashboard": "仪表板",

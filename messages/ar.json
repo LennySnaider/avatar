@@ -10,6 +10,12 @@
             "reelRemixDesc": "حوّل ريلز إنستغرام إلى أوامر للصورة الرمزية",
             "avatarList": "صوري الرمزية",
             "avatarListDesc": "عرض الصور الرمزية المحفوظة",
+            "agent": "وكيل الذكاء الاصطناعي",
+            "agentDesc": "الشخصية والمعرفة والدردشة لكل أفاتار",
+            "trendingSounds": "الأصوات الرائجة",
+            "trendingSoundsDesc": "قائمة أصوات تيك توك الرائجة",
+            "inbox": "صندوق وارد الوكيل",
+            "inboxDesc": "مراجعة واعتماد ردود الوكيل",
             "gallery": "المعرض",
             "galleryDesc": "الصور والفيديوهات المُنشأة",
             "promptLibrary": "مكتبة الأوامر",
@@ -25,7 +31,11 @@
             "videoFlows": "تدفقات الفيديو",
             "videoFlowsDesc": "محرر خطوط الأنابيب المرئية",
             "social": "وسائل التواصل الاجتماعي",
-            "socialDesc": "ربط ونشر المحتوى على حساباتك الاجتماعية"
+            "socialDesc": "ربط ونشر المحتوى على حساباتك الاجتماعية",
+            "fanvue": "Fanvue",
+            "fanvueAccounts": "حساب Fanvue",
+            "fanvueComposer": "النشر على Fanvue",
+            "fanvuePosts": "منشورات Fanvue"
         },
         "dashboard": {
             "dashboard": "لوحة القيادة",
