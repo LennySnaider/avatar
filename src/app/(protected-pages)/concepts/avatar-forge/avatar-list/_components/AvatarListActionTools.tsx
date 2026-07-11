@@ -18,7 +18,7 @@ const AvatarListActionTools = () => {
         useAvatarListStore()
 
     const handleCreateNew = () => {
-        router.push('/concepts/avatar-forge/avatar-creator')
+        router.push('/concepts/avatar-forge/avatar-studio')
     }
 
     const handleDeleteSelected = async () => {

@@ -1,16 +1,9 @@
-import { auth } from '@/auth'
-import Container from '@/components/shared/Container'
-import VideoFlowCanvas from './_components/VideoFlowCanvas'
+import { redirect } from 'next/navigation'
 
-// Fluid Compute: extend timeout to 800s (~13min) to cover Kling/MiniMax video polling
-export const maxDuration = 800
-
-export default async function VideoFlowsPage() {
-    await auth()
-
-    return (
-        <Container className="h-[calc(100vh-theme(spacing.16))] p-0">
-            <VideoFlowCanvas />
-        </Container>
-    )
+// The standalone Video Flows page is consolidated into the Flow Editor tab of
+// Avatar Studio (StudioTabs imports VideoFlowCanvas from ./_components). This
+// route now redirects to the Studio hub; the _components/_store/_nodes/_engine
+// folders remain in place because StudioTabs still imports from them.
+export default function VideoFlowsPage() {
+    redirect('/concepts/avatar-forge/avatar-studio')
 }

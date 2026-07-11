@@ -315,35 +315,11 @@ const conceptsRoute: Routes = {
             pageBackgroundType: 'plain',
         },
     },
-    '/concepts/avatar-forge/prompt-library': {
-        key: 'concepts.avatarForge.promptLibrary',
-        authority: [ADMIN, USER],
-        meta: {
-            pageContainerType: 'contained',
-        },
-    },
     '/concepts/avatar-forge/providers': {
         key: 'concepts.avatarForge.providers',
         authority: [ADMIN, USER],
         meta: {
             pageContainerType: 'contained',
-        },
-    },
-    '/concepts/avatar-forge/gallery': {
-        key: 'concepts.avatarForge.gallery',
-        authority: [ADMIN, USER],
-        meta: {
-            pageContainerType: 'contained',
-            pageBackgroundType: 'plain',
-        },
-    },
-    '/concepts/avatar-forge/image-editor': {
-        key: 'concepts.avatarForge.imageEditor',
-        authority: [ADMIN, USER],
-        meta: {
-            pageContainerType: 'gutterless',
-            pageBackgroundType: 'plain',
-            footer: false,
         },
     },
     '/concepts/avatar-forge/voice-studio': {
