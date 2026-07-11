@@ -85,15 +85,21 @@ const TrendingSoundsClient = ({
     const loadBoard = async (nextCountry: string, nextPeriod: number) => {
         setIsLoading(true)
         setError(null)
-        const result = await listTrendingSounds({ countryCode: nextCountry, period: nextPeriod })
-        if (result.success) {
-            setSounds(result.data?.sounds ?? [])
-            setFetchedAt(result.data?.fetchedAt ?? null)
-        } else {
-            setError(result.error ?? 'Failed to load sounds')
+        try {
+            const result = await listTrendingSounds({ countryCode: nextCountry, period: nextPeriod })
+            if (result.success) {
+                setSounds(result.data?.sounds ?? [])
+                setFetchedAt(result.data?.fetchedAt ?? null)
+            } else {
+                setError(result.error ?? 'Failed to load sounds')
+                setSounds([])
+            }
+        } catch (e) {
+            setError(e instanceof Error ? e.message : 'Failed to load sounds')
             setSounds([])
+        } finally {
+            setIsLoading(false)
         }
-        setIsLoading(false)
     }
 
     // Reload when the board selector changes (skip the initial SSR-provided board).
@@ -108,18 +114,23 @@ const TrendingSoundsClient = ({
     const handleRefresh = async () => {
         setIsRefreshing(true)
         setError(null)
-        const result = await refreshTrendingBoard({ countryCode: country, period })
-        if (result.success) {
-            toast.push(
-                <Notification type="success" title="Chart refreshed">
-                    Pulled {result.data?.count ?? 0} sounds from TikTok
-                </Notification>,
-            )
-            await loadBoard(country, period)
-        } else {
-            setError(result.error ?? 'Refresh failed')
+        try {
+            const result = await refreshTrendingBoard({ countryCode: country, period })
+            if (result.success) {
+                toast.push(
+                    <Notification type="success" title="Chart refreshed">
+                        Pulled {result.data?.count ?? 0} sounds from TikTok
+                    </Notification>,
+                )
+                await loadBoard(country, period)
+            } else {
+                setError(result.error ?? 'Refresh failed')
+            }
+        } catch (e) {
+            setError(e instanceof Error ? e.message : 'Refresh failed')
+        } finally {
+            setIsRefreshing(false)
         }
-        setIsRefreshing(false)
     }
 
     const togglePlay = (sound: TrendingSoundDTO) => {

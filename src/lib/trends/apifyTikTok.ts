@@ -48,16 +48,36 @@ export async function fetchTrendingSounds(input: TrendingSoundInput): Promise<No
     const token = process.env.APIFY_TOKEN
     if (!token) throw new Error('APIFY_TOKEN is not configured')
 
-    const res = await fetch(`${RUN_SYNC_URL}?token=${encodeURIComponent(token)}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-            trendType: 'sound',
-            countryCode: input.countryCode ?? '',
-            period: input.period,
-            maxResults: input.maxResults,
-        }),
-    })
+    // The actor runs synchronously and TikTok scraping is slow. Bound it so a
+    // stall fails cleanly instead of hanging the caller for Apify's 5-minute
+    // default: `timeout` caps the actor run, the AbortController caps our fetch.
+    const RUN_TIMEOUT_SECONDS = 110
+    const controller = new AbortController()
+    const abortTimer = setTimeout(() => controller.abort(), (RUN_TIMEOUT_SECONDS + 10) * 1000)
+    let res: Response
+    try {
+        res = await fetch(
+            `${RUN_SYNC_URL}?token=${encodeURIComponent(token)}&timeout=${RUN_TIMEOUT_SECONDS}`,
+            {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    trendType: 'sound',
+                    countryCode: input.countryCode ?? '',
+                    period: input.period,
+                    maxResults: input.maxResults,
+                }),
+                signal: controller.signal,
+            },
+        )
+    } catch (e) {
+        if (e instanceof Error && e.name === 'AbortError') {
+            throw new Error('TikTok scrape timed out — try again in a moment')
+        }
+        throw e
+    } finally {
+        clearTimeout(abortTimer)
+    }
     if (!res.ok) {
         const body = await res.text()
         throw new Error(`Apify actor failed (${res.status}): ${body.slice(0, 300)}`)
