@@ -3,6 +3,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
 import Card from '@/components/ui/Card'
 import Button from '@/components/ui/Button'
+import Dialog from '@/components/ui/Dialog'
 import Progress from '@/components/ui/Progress'
 import Slider from '@/components/ui/Slider'
 import Notification from '@/components/ui/Notification'
@@ -24,6 +25,7 @@ import {
     HiOutlinePlus,
 } from 'react-icons/hi'
 import { useAvatarStudioStore } from '../../avatar-studio/_store/avatarStudioStore'
+import type { GeneratedMedia } from '../../avatar-studio/types'
 import {
     probeVideo,
     removeWatermark,
@@ -90,14 +92,38 @@ async function probeDurationWithFallback(url: string): Promise<number> {
 // cross-origin video served without CORS headers). Callers fall back to
 // the single <video> thumbnail whenever the result is empty.
 async function extractFilmstrip(url: string, frameCount: number): Promise<string[]> {
+    // Fetch CORS-enabled remote videos into a same-origin blob first, then
+    // extract from THAT. This dodges two failure modes that silently leave the
+    // strip empty: (a) crossOrigin cache-poisoning — the preview <video> loads
+    // the same URL WITHOUT CORS, so a later crossOrigin request reuses that
+    // non-CORS cache entry and errors even though the object allows CORS; and
+    // (b) canvas taint on toDataURL. blob:/data: URLs are already same-origin,
+    // so they're used as-is. If the fetch is CORS-blocked (external host) we
+    // fall back to a direct crossOrigin load; if that fails too the caller
+    // gets [] and renders the single-frame thumbnail.
+    let objectUrl: string | null = null
+    let srcUrl = url
+    if (/^https?:/i.test(url)) {
+        try {
+            const res = await fetch(url)
+            if (res.ok) {
+                objectUrl = URL.createObjectURL(await res.blob())
+                srcUrl = objectUrl
+            }
+        } catch {
+            /* CORS-blocked or offline — fall back to a direct crossOrigin load */
+        }
+    }
+
     const video = document.createElement('video')
-    video.crossOrigin = 'anonymous'
+    if (!objectUrl) video.crossOrigin = 'anonymous'
     video.muted = true
     video.preload = 'auto'
 
     const cleanup = () => {
         video.removeAttribute('src')
         video.src = ''
+        if (objectUrl) URL.revokeObjectURL(objectUrl)
     }
 
     const waitForMetadata = () => new Promise<boolean>((resolve) => {
@@ -115,7 +141,7 @@ async function extractFilmstrip(url: string, frameCount: number): Promise<string
         const timer = setTimeout(() => finish(false), 8000)
         video.addEventListener('loadedmetadata', onLoaded)
         video.addEventListener('error', onError)
-        video.src = url
+        video.src = srcUrl
     })
 
     // Bounded wait for 'seeked' — if a particular seek never resolves
@@ -197,6 +223,8 @@ interface VideoEditorMainProps {
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 const VideoEditorMain = ({ userId, initialVideoUrl }: VideoEditorMainProps) => {
     const addToGallery = useAvatarStudioStore((s) => s.addToGallery)
+    const gallery = useAvatarStudioStore((s) => s.gallery)
+    const [isGalleryPickerOpen, setIsGalleryPickerOpen] = useState(false)
 
     // ─── Timeline state ───────────────────────────────────────────────
     const [clips, setClips] = useState<TimelineClip[]>([])
@@ -706,6 +734,43 @@ const VideoEditorMain = ({ userId, initialVideoUrl }: VideoEditorMainProps) => {
         e.target.value = ''
     }
 
+    // Add a clip straight from the Avatar Studio gallery (no disk round-trip).
+    // The gallery URL isn't minted here, so it's never revoked on unmount.
+    const handleAddFromGallery = useCallback(async (item: GeneratedMedia) => {
+        if (item.mediaType !== 'VIDEO' || !item.url) return
+        setIsGalleryPickerOpen(false)
+        setIsProcessing(true)
+        setProgress(0)
+        setProgressLabel('Adding clip…')
+        try {
+            const duration = await probeDurationWithFallback(item.url)
+            const clip: TimelineClip = {
+                id: `clip-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+                url: item.url,
+                name:
+                    item.prompt && !/^Uploaded:/i.test(item.prompt)
+                        ? item.prompt.slice(0, 40)
+                        : 'Gallery clip',
+                duration,
+                inPoint: 0,
+                outPoint: duration,
+            }
+            setClips((prev) => [...prev, clip])
+            setSelectedClipId((prev) => prev ?? clip.id)
+        } catch (err) {
+            console.error('[VideoEditor] Add from gallery failed:', err)
+            toast.push(
+                <Notification type="danger" title="Add clip failed">
+                    Could not read that gallery video.
+                </Notification>,
+            )
+        } finally {
+            setIsProcessing(false)
+            setProgress(0)
+            setProgressLabel('')
+        }
+    }, [])
+
     const handleTrackDragOver = (e: React.DragEvent<HTMLDivElement>) => {
         e.preventDefault()
         e.dataTransfer.dropEffect = 'copy'
@@ -1107,6 +1172,66 @@ const VideoEditorMain = ({ userId, initialVideoUrl }: VideoEditorMainProps) => {
         }
     }, [clips, buildFinalVideo, addToGallery])
 
+    // Saved videos from the studio gallery, offered by the "From gallery" picker.
+    const galleryVideoCandidates = gallery.filter((g) => g.mediaType === 'VIDEO' && !!g.url)
+    const galleryPicker = (
+        <Dialog
+            isOpen={isGalleryPickerOpen}
+            onClose={() => setIsGalleryPickerOpen(false)}
+            width={640}
+            className="bg-white! dark:bg-gray-900!"
+        >
+            <h5 className="mb-1">Add clip</h5>
+            <p className="text-sm text-gray-500 mb-4">
+                Pick a saved video from your gallery, or upload one from your device.
+            </p>
+            {galleryVideoCandidates.length === 0 ? (
+                <p className="text-sm text-gray-500">
+                    No saved videos in the gallery yet — generate or save one first.
+                </p>
+            ) : (
+                <div className="grid grid-cols-3 sm:grid-cols-4 gap-2 max-h-[60vh] overflow-y-auto pr-1">
+                    {galleryVideoCandidates.map((g) => (
+                        <button
+                            key={g.id}
+                            type="button"
+                            onClick={() => handleAddFromGallery(g)}
+                            disabled={isProcessing}
+                            title="Add to timeline"
+                            className="relative aspect-[9/16] rounded-lg overflow-hidden border-2 border-transparent hover:border-primary transition-colors bg-black disabled:opacity-50"
+                        >
+                            <video
+                                src={g.url}
+                                muted
+                                preload="metadata"
+                                className="w-full h-full object-cover"
+                            />
+                            <span className="absolute inset-0 flex items-center justify-center bg-black/0 hover:bg-black/30 opacity-0 hover:opacity-100 transition-opacity">
+                                <HiOutlinePlus className="w-6 h-6 text-white" />
+                            </span>
+                        </button>
+                    ))}
+                </div>
+            )}
+            <div className="flex justify-between items-center mt-4">
+                <Button
+                    variant="default"
+                    icon={<HiOutlineUpload />}
+                    disabled={isProcessing}
+                    onClick={() => {
+                        setIsGalleryPickerOpen(false)
+                        fileInputRef.current?.click()
+                    }}
+                >
+                    Upload from device
+                </Button>
+                <Button variant="plain" onClick={() => setIsGalleryPickerOpen(false)}>
+                    Close
+                </Button>
+            </div>
+        </Dialog>
+    )
+
     // ─── Empty state ─────────────────────────────────────────────────
     if (clips.length === 0) {
         return (
@@ -1138,14 +1263,24 @@ const VideoEditorMain = ({ userId, initialVideoUrl }: VideoEditorMainProps) => {
                             className="hidden"
                             onChange={handleFileInputChange}
                         />
-                        <Button
-                            variant="solid"
-                            icon={<HiOutlineUpload />}
-                            onClick={() => fileInputRef.current?.click()}
-                            disabled={isProcessing}
-                        >
-                            Add clip
-                        </Button>
+                        <div className="flex items-center justify-center gap-2">
+                            <Button
+                                variant="solid"
+                                icon={<HiOutlineUpload />}
+                                onClick={() => fileInputRef.current?.click()}
+                                disabled={isProcessing}
+                            >
+                                Upload
+                            </Button>
+                            <Button
+                                variant="default"
+                                icon={<HiOutlineFilm />}
+                                onClick={() => setIsGalleryPickerOpen(true)}
+                                disabled={isProcessing}
+                            >
+                                From gallery
+                            </Button>
+                        </div>
                     </Card>
                 </div>
                 {isProcessing && (
@@ -1156,6 +1291,7 @@ const VideoEditorMain = ({ userId, initialVideoUrl }: VideoEditorMainProps) => {
                         </Card>
                     </div>
                 )}
+                {galleryPicker}
             </div>
         )
     }
@@ -1513,9 +1649,23 @@ const VideoEditorMain = ({ userId, initialVideoUrl }: VideoEditorMainProps) => {
                                 </div>
                             )
                         })}
+
+                        {/* Append-clip tile — the big "+" at the end of the track */}
+                        <button
+                            type="button"
+                            onClick={() => setIsGalleryPickerOpen(true)}
+                            disabled={isProcessing}
+                            title="Add clip"
+                            className="shrink-0 h-full w-16 rounded-md border-2 border-dashed border-gray-300 dark:border-gray-600 flex flex-col items-center justify-center gap-0.5 text-gray-400 hover:border-primary hover:text-primary hover:bg-primary/5 transition-colors disabled:opacity-50"
+                        >
+                            <HiOutlinePlus className="w-7 h-7" />
+                            <span className="text-[9px] font-medium">Add</span>
+                        </button>
                     </div>
                 </div>
             </div>
+
+            {galleryPicker}
         </div>
     )
 }
