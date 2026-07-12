@@ -92,38 +92,22 @@ async function probeDurationWithFallback(url: string): Promise<number> {
 // cross-origin video served without CORS headers). Callers fall back to
 // the single <video> thumbnail whenever the result is empty.
 async function extractFilmstrip(url: string, frameCount: number): Promise<string[]> {
-    // Fetch CORS-enabled remote videos into a same-origin blob first, then
-    // extract from THAT. This dodges two failure modes that silently leave the
-    // strip empty: (a) crossOrigin cache-poisoning — the preview <video> loads
-    // the same URL WITHOUT CORS, so a later crossOrigin request reuses that
-    // non-CORS cache entry and errors even though the object allows CORS; and
-    // (b) canvas taint on toDataURL. blob:/data: URLs are already same-origin,
-    // so they're used as-is. If the fetch is CORS-blocked (external host) we
-    // fall back to a direct crossOrigin load; if that fails too the caller
-    // gets [] and renders the single-frame thumbnail.
-    let objectUrl: string | null = null
-    let srcUrl = url
-    if (/^https?:/i.test(url)) {
-        try {
-            const res = await fetch(url)
-            if (res.ok) {
-                objectUrl = URL.createObjectURL(await res.blob())
-                srcUrl = objectUrl
-            }
-        } catch {
-            /* CORS-blocked or offline — fall back to a direct crossOrigin load */
-        }
-    }
-
+    // Same proven approach as ExtractFrameDialog: a crossOrigin video + canvas
+    // drawImage. The KEY is that the on-screen preview <video> ALSO sets
+    // crossOrigin="anonymous", so both requests share ONE CORS-mode cache entry.
+    // Otherwise the preview poisons the HTTP cache with a non-CORS response and
+    // this extractor errors even when the object allows CORS (Supabase sends
+    // Access-Control-Allow-Origin: *). Resolves [] if metadata never loads, a
+    // seek stalls, or the canvas is tainted; the caller then falls back to the
+    // single stretched <video> thumbnail.
     const video = document.createElement('video')
-    if (!objectUrl) video.crossOrigin = 'anonymous'
+    video.crossOrigin = 'anonymous'
     video.muted = true
     video.preload = 'auto'
 
     const cleanup = () => {
         video.removeAttribute('src')
         video.src = ''
-        if (objectUrl) URL.revokeObjectURL(objectUrl)
     }
 
     const waitForMetadata = () => new Promise<boolean>((resolve) => {
@@ -141,7 +125,7 @@ async function extractFilmstrip(url: string, frameCount: number): Promise<string
         const timer = setTimeout(() => finish(false), 8000)
         video.addEventListener('loadedmetadata', onLoaded)
         video.addEventListener('error', onError)
-        video.src = srcUrl
+        video.src = url
     })
 
     // Bounded wait for 'seeked' — if a particular seek never resolves
@@ -1356,6 +1340,9 @@ const VideoEditorMain = ({ userId, initialVideoUrl }: VideoEditorMainProps) => {
                         <video
                             ref={videoRef}
                             src={selectedClip?.url}
+                            // Match the filmstrip extractor's CORS mode so both share
+                            // one cache entry (else the strip can't read the frames).
+                            crossOrigin="anonymous"
                             playsInline
                             className="max-w-full max-h-[42vh] block bg-black"
                             style={{ pointerEvents: 'none' }}
@@ -1593,6 +1580,7 @@ const VideoEditorMain = ({ userId, initialVideoUrl }: VideoEditorMainProps) => {
                                         ) : (
                                             <video
                                                 src={clip.url}
+                                                crossOrigin="anonymous"
                                                 muted
                                                 preload="metadata"
                                                 className="w-full h-full object-cover opacity-70"
