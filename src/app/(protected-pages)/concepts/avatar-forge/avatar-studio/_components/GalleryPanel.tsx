@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, type RefObject } from 'react'
 import { useAvatarStudioStore } from '../_store/avatarStudioStore'
 import { downloadMediaUrl } from '../../_utils/mediaDownload'
 import Button from '@/components/ui/Button'
@@ -25,6 +25,9 @@ interface GalleryPanelProps {
     onUploaded?: (media: GeneratedMedia) => void
     /** Needed to list avatars for the "Assign avatar" action. */
     userId?: string
+    /** Optional external ref so a parent (the studio header) can open the file
+     * picker — the "Upload" button now lives up there. */
+    uploadInputRef?: RefObject<HTMLInputElement | null>
 }
 
 interface AvatarOption {
@@ -32,7 +35,13 @@ interface AvatarOption {
     label: string
 }
 
-const GalleryPanel = ({ onSaveToGallery, onPost, onUploaded, userId }: GalleryPanelProps) => {
+const GalleryPanel = ({
+    onSaveToGallery,
+    onPost,
+    onUploaded,
+    userId,
+    uploadInputRef: externalUploadRef,
+}: GalleryPanelProps) => {
     const {
         gallery,
         isGenerating,
@@ -41,7 +50,10 @@ const GalleryPanel = ({ onSaveToGallery, onPost, onUploaded, userId }: GalleryPa
         addToGallery,
     } = useAvatarStudioStore()
 
-    const uploadInputRef = useRef<HTMLInputElement>(null)
+    // Prefer the parent-provided ref (header "Upload" button) so both trigger
+    // the same hidden input; fall back to a local one when rendered standalone.
+    const localUploadRef = useRef<HTMLInputElement>(null)
+    const uploadInputRef = externalUploadRef ?? localUploadRef
 
     const [searchQuery, setSearchQuery] = useState('')
     const [mediaTypeFilter, setMediaTypeFilter] = useState<MediaType | 'ALL'>('ALL')
@@ -221,20 +233,11 @@ const GalleryPanel = ({ onSaveToGallery, onPost, onUploaded, userId }: GalleryPa
                 onChange={handleUpload}
             />
 
-            {/* Fixed header: title + Upload + search/filters (outside the
-                scroll area so Upload never disappears while browsing) */}
+            {/* Fixed header: title + search/filters (outside the scroll area).
+                The "Upload" button now lives in the studio header, wired to the
+                same hidden input via uploadInputRef. */}
             <div className="px-4 pt-4 shrink-0">
-                <div className="flex items-center justify-between mb-3">
-                    <h3 className="font-semibold text-lg">Gallery</h3>
-                    <Button
-                        size="xs"
-                        variant="plain"
-                        onClick={() => uploadInputRef.current?.click()}
-                        icon={<HiOutlineUpload />}
-                    >
-                        <span>Upload</span>
-                    </Button>
-                </div>
+                <h3 className="font-semibold text-lg mb-3">Gallery</h3>
 
                 {gallery.length > 0 && (
                     <div className="flex items-center gap-2 mb-3">

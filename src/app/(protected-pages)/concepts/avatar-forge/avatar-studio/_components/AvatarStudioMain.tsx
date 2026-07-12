@@ -60,7 +60,7 @@ import type { MiniMaxVideoModel } from '@/@types/minimax'
 import { generateImageKie, generateVideoKieSafe, generateMotionControlKieSafe, submitKieImageTask, checkKieImageTask, submitTalkingVideoKieTask, submitLipsyncVideoKieTask, checkKieVideoTask } from '@/services/KieService'
 import { generateImageViaGateway } from '@/services/GatewayService'
 import { buildAvatarPrompt, buildLeanIdentityPrompt, stripHarnessForFaceSwap, type RefRole } from '@/utils/avatarPromptBuilder'
-import { HiOutlineCog, HiOutlineBookOpen, HiX, HiChevronDown, HiChevronUp } from 'react-icons/hi'
+import { HiOutlineCog, HiOutlineBookOpen, HiX, HiChevronDown, HiChevronUp, HiOutlineUpload } from 'react-icons/hi'
 import { getPostedGenerationMap } from '@/services/SocialService'
 import { AppState } from '../types'
 import type { GeneratedMedia, ReferenceImage } from '../types'
@@ -201,6 +201,8 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
         }
     }, [toolAvatars, userId])
     const pendingAutoGenerateRef = useRef(false)
+    // Drives the gallery's hidden upload input from the header "Upload" button.
+    const galleryUploadInputRef = useRef<HTMLInputElement>(null)
 
     const {
         // State
@@ -1938,6 +1940,17 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                         Prompts
                     </Button>
 
+                    {/* Upload media straight into the gallery — clicks the
+                        GalleryPanel's hidden file input via a shared ref. */}
+                    <Button
+                        size="sm"
+                        variant="plain"
+                        icon={<HiOutlineUpload />}
+                        onClick={() => galleryUploadInputRef.current?.click()}
+                    >
+                        Upload
+                    </Button>
+
                     {/* Tools — consolidated workspaces hosted in ToolModals */}
                     <Dropdown
                         placement="bottom-end"
@@ -1990,6 +2003,7 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
             <div className="flex-1 overflow-hidden">
                 <GalleryPanel
                     userId={userId}
+                    uploadInputRef={galleryUploadInputRef}
                     onCreateVariant={handleCreateVariant}
                     onSaveToGallery={handleSaveToGallery}
                     onPost={(m: GeneratedMedia) => setPostMedia(m)}
