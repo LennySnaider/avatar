@@ -73,32 +73,6 @@ export const DEFAULT_PROVIDERS: AIProvider[] = [
         created_at: null,
     },
     {
-        id: 'kling-v3-image',
-        name: 'Kling v3 (Image)',
-        type: 'KLING' as ProviderType,
-        model: 'kling-v3',
-        endpoint: 'https://api-singapore.klingai.com',
-        is_active: true,
-        supports_image: true,
-        supports_video: false,
-        requires_api_key: true,
-        api_key_env_var: 'KLING_ACCESS_KEY',
-        created_at: null,
-    },
-    {
-        id: 'kling-v3-omni-image',
-        name: 'Kling v3 Omni (Image)',
-        type: 'KLING' as ProviderType,
-        model: 'kling-v3-omni',
-        endpoint: 'https://api-singapore.klingai.com',
-        is_active: true,
-        supports_image: true,
-        supports_video: false,
-        requires_api_key: true,
-        api_key_env_var: 'KLING_ACCESS_KEY',
-        created_at: null,
-    },
-    {
         id: 'kie-flux-kontext',
         name: 'Flux.1 Kontext Pro (KIE)',
         type: 'KIE' as ProviderType,
@@ -240,32 +214,6 @@ export const DEFAULT_PROVIDERS: AIProvider[] = [
         supports_video: false,
         requires_api_key: true,
         api_key_env_var: 'KIE_API_KEY',
-        created_at: null,
-    },
-    {
-        id: 'gateway-gpt-image-2',
-        name: 'GPT Image 2 · Gateway',
-        type: 'GATEWAY' as ProviderType,
-        model: 'openai/gpt-image-2',
-        endpoint: 'https://ai-gateway.vercel.sh',
-        is_active: true,
-        supports_image: true,
-        supports_video: false,
-        requires_api_key: true,
-        api_key_env_var: 'AI_GATEWAY_API_KEY',
-        created_at: null,
-    },
-    {
-        id: 'gateway-seedream-4',
-        name: 'Seedream 4.0 · Gateway',
-        type: 'GATEWAY' as ProviderType,
-        model: 'bytedance/seedream-4.0',
-        endpoint: 'https://ai-gateway.vercel.sh',
-        is_active: true,
-        supports_image: true,
-        supports_video: false,
-        requires_api_key: true,
-        api_key_env_var: 'AI_GATEWAY_API_KEY',
         created_at: null,
     },
     // Video Providers
@@ -431,8 +379,6 @@ const PROVIDER_TRAITS: Record<string, { face?: boolean; permissive?: boolean }> 
     'gemini-flash-lite-image': { face: true },
     'kie-nano-banana-pro': { face: true },
     'minimax-image-01': { face: true, permissive: true },
-    'kling-v3-image': { face: true },
-    'kling-v3-omni-image': { face: true },
     'kie-gpt-4o-image': { face: true },
     'kie-gpt-image-2': { face: true },
     'kie-flux-kontext': { face: true },
@@ -579,10 +525,6 @@ const ProviderManagerDrawer = () => {
                 return 'Video Hailuo 2.3, subject reference (avatar lock), 1080P'
             case 'minimax-hailuo-2-3-fast':
                 return 'Hailuo 2.3 Fast - m\u00e1s r\u00e1pido y econ\u00f3mico'
-            case 'kling-v3-image':
-                return 'Kling v3 image - latest base model, mejor calidad y prompt fidelity'
-            case 'kling-v3-omni-image':
-                return 'Kling v3 Omni - resolución 2K/4K, multi-imagen blending, series mode'
             case 'kie-flux-kontext':
                 return 'Flux.1 Kontext Pro - context-aware editing, 8 unidades por imagen'
             case 'kie-flux-kontext-max':
@@ -607,10 +549,6 @@ const ProviderManagerDrawer = () => {
                 return 'Nano Banana 2 (Google) — calidad top hasta 4K. OJO: Google = filtro estricto (no ayuda con bloqueos). Solo texto→imagen'
             case 'kie-kling-3-0':
                 return 'Kling 3.0 vía KIE — video i2v/t2v + motion-control v2v, audio nativo opcional, ~20% más barato que el directo'
-            case 'gateway-gpt-image-2':
-                return 'OpenAI GPT Image 2 vía Vercel AI Gateway - modelo nuevo (requiere créditos pagos)'
-            case 'gateway-seedream-4':
-                return 'ByteDance Seedream 4.0 vía Vercel AI Gateway - funciona en free tier, billing sin markup'
             case 'kie-nano-banana-pro':
                 return 'Gemini 3 Pro Image vía KIE - mismo modelo que el directo, ~30% más barato, 9:16 nativo, 2K'
             default:
