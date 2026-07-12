@@ -991,8 +991,17 @@ const ImagePreviewModal = ({
                             <div className="relative inline-block">
                                 <img
                                     ref={imageRef}
-                                    src={previewMedia.url}
+                                    src={previewMedia.publicUrl ?? previewMedia.url}
                                     alt={previewMedia.prompt}
+                                    onError={(e) => {
+                                        // Durable Supabase copy is preferred; if it
+                                        // fails, fall back to the provider url so the
+                                        // preview never goes silently blank.
+                                        const img = e.currentTarget
+                                        if (previewMedia.url && img.src !== previewMedia.url) {
+                                            img.src = previewMedia.url
+                                        }
+                                    }}
                                     className="rounded-lg block select-none"
                                     style={{
                                         maxHeight: `${60 * zoomLevel}vh`,

@@ -332,7 +332,7 @@ const GalleryPanel = ({
                                     <div className="bg-gray-100 dark:bg-gray-800">
                                         {media.mediaType === 'VIDEO' ? (
                                             <video
-                                                src={media.url}
+                                                src={media.publicUrl ?? media.url}
                                                 className="w-full h-auto"
                                                 muted
                                                 loop
@@ -344,10 +344,21 @@ const GalleryPanel = ({
                                                 onMouseOut={(e) => e.currentTarget.pause()}
                                             />
                                         ) : (
+                                            // Prefer the durable Supabase copy; the
+                                            // provider `url` (KIE re-host, MiniMax data
+                                            // URI, or a temp URL) can expire/fail to load
+                                            // and would show nothing with no error. If the
+                                            // primary src fails, fall back to the other.
                                             <img
-                                                src={media.url}
+                                                src={media.publicUrl ?? media.url}
                                                 alt={media.prompt}
                                                 className="w-full h-auto"
+                                                onError={(e) => {
+                                                    const img = e.currentTarget
+                                                    if (media.url && img.src !== media.url) {
+                                                        img.src = media.url
+                                                    }
+                                                }}
                                             />
                                         )}
                                     </div>

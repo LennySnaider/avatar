@@ -654,9 +654,15 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
 
                     // MiniMax only gets text + one reference, so fold faceDescription
                     // into the prompt to compensate for the missing Gemini-only fields.
-                    const miniMaxPrompt = faceDescription?.trim()
-                        ? `[FACE: ${faceDescription.trim()}] ${fullPrompt}`
-                        : fullPrompt
+                    // MiniMax's subject_reference locks the FACE but mis-scales the head
+                    // against the text-generated body (the "big head / long torso" look).
+                    // The API exposes no subject weight, so an explicit proportion anchor
+                    // in the text is the only lever to keep the head-to-body ratio natural.
+                    const PROPORTION_ANCHOR =
+                        'full-body shot with natural realistic human proportions, head correctly sized relative to the body (roughly one-seventh of total height), anatomically accurate, no distortion'
+                    const miniMaxPrompt = `${
+                        faceDescription?.trim() ? `[FACE: ${faceDescription.trim()}] ` : ''
+                    }${fullPrompt}\n\n${PROPORTION_ANCHOR}`
 
                     const result = await generateImageMiniMax({
                         prompt: miniMaxPrompt,
