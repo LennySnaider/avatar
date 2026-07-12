@@ -143,9 +143,18 @@ const TrendingSoundsClient = ({
         if (audioRef.current) {
             audioRef.current.pause()
         }
-        const audio = new Audio(sound.playUrl)
+        // Stream through our same-origin proxy — TikTok's CDN URL is signed,
+        // expiring and CORS-blocked, so a direct <audio> src just fails silently.
+        const audio = new Audio(`/api/trends/sound-audio?id=${encodeURIComponent(sound.id)}`)
         audio.onended = () => setPlayingId(null)
-        audio.onerror = () => setPlayingId(null)
+        audio.onerror = () => {
+            setPlayingId(null)
+            toast.push(
+                <Notification type="warning" title="Couldn't play">
+                    This sound&apos;s audio isn&apos;t available anymore — open it on TikTok.
+                </Notification>,
+            )
+        }
         audioRef.current = audio
         void audio.play().catch(() => setPlayingId(null))
         setPlayingId(sound.id)
@@ -183,7 +192,9 @@ const TrendingSoundsClient = ({
                     Refresh
                 </Button>
                 <span className="text-xs text-gray-400 ml-auto">
-                    Updated {relativeTime(fetchedAt)}
+                    {isRefreshing
+                        ? 'Scraping TikTok… this can take 1–2 min'
+                        : `Updated ${relativeTime(fetchedAt)}`}
                 </span>
             </div>
 
@@ -257,9 +268,11 @@ const TrendingSoundsClient = ({
                                     </p>
                                 </div>
 
-                                <Tag className="shrink-0 hidden sm:inline-flex">
-                                    {formatCount(sound.videoCount)} videos
-                                </Tag>
+                                {sound.videoCount && sound.videoCount > 0 ? (
+                                    <Tag className="shrink-0 hidden sm:inline-flex">
+                                        {formatCount(sound.videoCount)} videos
+                                    </Tag>
+                                ) : null}
 
                                 {sound.linkUrl && (
                                     <a href={sound.linkUrl} target="_blank" rel="noopener noreferrer">
