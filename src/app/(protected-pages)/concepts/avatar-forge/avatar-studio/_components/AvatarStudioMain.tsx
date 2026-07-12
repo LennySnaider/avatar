@@ -2020,7 +2020,7 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                     type="button"
                     onClick={() => setIsCreationCollapsed((c) => !c)}
                     title={isCreationCollapsed ? 'Show creation panel' : 'Hide creation panel'}
-                    className="absolute left-1/2 -translate-x-1/2 -top-3.5 z-20 flex items-center gap-1 px-4 h-7 rounded-full bg-primary text-white text-xs font-semibold shadow-lg ring-2 ring-white/70 dark:ring-gray-900/70 hover:bg-primary/90 transition-colors"
+                    className="absolute left-1/2 -translate-x-1/2 -top-3.5 z-20 flex items-center gap-1 px-4 h-7 rounded-full bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-200 text-xs font-medium shadow-md ring-1 ring-gray-300 dark:ring-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700 hover:text-primary transition-colors"
                 >
                     {isCreationCollapsed ? (
                         <>
