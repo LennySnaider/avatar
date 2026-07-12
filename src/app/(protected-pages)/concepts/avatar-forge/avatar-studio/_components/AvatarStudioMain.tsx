@@ -1644,8 +1644,28 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                         if (!r.success) throw new Error(r.error)
                         resultUrl = r.url
                     } else if (resolvedProvider.type === 'KIE') {
-                        const editModel = resolvedProvider.model || 'flux-kontext/text-to-image'
+                        let editModel = resolvedProvider.model || 'flux-kontext/text-to-image'
                         const editRef = { base64: sourceBase64, mimeType: sourceMime }
+                        // Text-to-image-ONLY KIE models (Z-Image, Seedream, Ideogram,
+                        // Nano Banana 2) can't consume the source image: their generic
+                        // createTask flow drops the reference, so "editing" with them
+                        // ignores the input and hallucinates a brand-new subject (a
+                        // random man replaced Ana). Re-route to FLUX.2 image-to-image —
+                        // permissive AND it actually transforms THIS photo (identity
+                        // rides on the image itself, not on the text instruction).
+                        const isT2IOnlyEdit =
+                            editModel === 'z-image' ||
+                            editModel === 'nano-banana-2' ||
+                            editModel.startsWith('seedream/') ||
+                            editModel.startsWith('ideogram/')
+                        if (isT2IOnlyEdit) {
+                            toast.push(
+                                <Notification type="info" title="Editado con FLUX.2">
+                                    {`${resolvedProvider?.name ?? 'Ese modelo'} solo genera desde texto (no edita imágenes). Usé FLUX.2 image-to-image para editar esta foto.`}
+                                </Notification>,
+                            )
+                            editModel = 'flux-2/pro-text-to-image'
+                        }
                         if (KIE_ASYNC_MODELS.includes(editModel)) {
                             // Same async submit+poll as handleGenerate — otherwise the
                             // edit path falls back to the retired 600s sync poll that
