@@ -347,19 +347,32 @@ export async function generateImageKie(
         // upload fails so a generation never hard-errors on this.
         if (referenceImage && (model.startsWith('flux-2/') || model.startsWith('qwen/'))) {
             try {
-                const refUrl = await uploadReferenceToSupabase(
-                    referenceImage.base64,
-                    referenceImage.mimeType,
-                )
-                resolvedModel = model.replace('text-to-image', 'image-to-image')
                 if (model.startsWith('flux-2/')) {
-                    input.input_urls = [refUrl]
+                    // FLUX.2 takes up to 8 refs → send the face (identity anchor) +
+                    // a Body Ref (imitate the body) so BOTH are locked from images,
+                    // not just the face. Measurements text stays the default when
+                    // there's no Body Ref.
+                    const identityRefs = [
+                        referenceImage,
+                        ...(referenceImages ?? []).filter((r) => r.role === 'body'),
+                    ].slice(0, 8)
+                    const urls: string[] = []
+                    for (const r of identityRefs) {
+                        urls.push(await uploadReferenceToSupabase(r.base64, r.mimeType))
+                    }
+                    resolvedModel = model.replace('text-to-image', 'image-to-image')
+                    input.input_urls = urls
+                    console.log(`[KIE] FLUX.2 i2i with ${urls.length} identity ref(s)`)
                 } else {
-                    // qwen/image-to-image: image_url + strength; size comes from the ref.
+                    // qwen/image-to-image: single image_url (face); size from the ref.
+                    const refUrl = await uploadReferenceToSupabase(
+                        referenceImage.base64,
+                        referenceImage.mimeType,
+                    )
+                    resolvedModel = model.replace('text-to-image', 'image-to-image')
                     input.image_url = refUrl
                     delete input.image_size
                 }
-                console.log(`[KIE] i2i identity ref → ${resolvedModel}`)
             } catch (e) {
                 console.warn('[KIE] ref upload failed, staying text-only:', e)
             }
