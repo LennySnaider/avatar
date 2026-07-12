@@ -11,25 +11,15 @@ import Radio from '@/components/ui/Radio'
 import DatePicker from '@/components/ui/DatePicker'
 import Notification from '@/components/ui/Notification'
 import toast from '@/components/ui/toast'
-import { HiOutlineX, HiOutlineSparkles, HiOutlineMusicNote, HiOutlinePlus } from 'react-icons/hi'
+import { HiOutlineX, HiOutlineSparkles, HiOutlinePlus } from 'react-icons/hi'
 import { createSocialPost, getSocialProfileAction } from '@/services/SocialService'
 import { createFanvuePost, getFanvueConnection } from '@/services/FanvueService'
-import {
-    apiGetAvatarById,
-    apiCreateGenerationUploadUrl,
-    apiSaveGeneration,
-} from '@/services/AvatarForgeService'
+import { apiGetAvatarById } from '@/services/AvatarForgeService'
 import { generateSocialCaption, translateSocialCaption } from '@/services/GeminiService'
-import { muxAudioIntoVideo } from '@/services/AudioMuxService'
-import { listTrendingSounds } from '@/services/TrendService'
-import type { TrendingSoundDTO } from '@/lib/trends/constants'
 import { normalizeHashtag } from '@/lib/social/hashtagHelpers'
-import { supabase } from '@/lib/supabase'
 import { useAvatarStudioStore } from '../_store/avatarStudioStore'
 import type { FanvuePostAudience } from '@/lib/fanvue/types'
 import type { GeneratedMedia } from '../types'
-
-type AudioMode = 'none' | 'trending' | 'upload'
 
 const { DateTimepicker } = DatePicker
 
@@ -38,8 +28,6 @@ interface PostModalProps {
     /** Studio's currently loaded avatar — fallback owner for media that
      * predates avatar linking (`media.avatarId` null/undefined). */
     fallbackAvatarId: string | null
-    /** Needed to upload the audio-muxed video via a signed URL. */
-    userId?: string
     onClose: () => void
 }
 
@@ -64,7 +52,7 @@ interface PublishOutcome {
  * so the platform list is the resolved avatar's, not global. Adapted from
  * `SocialComposer`; renders nothing when `media` is null.
  */
-const PostModal = ({ media, fallbackAvatarId, userId, onClose }: PostModalProps) => {
+const PostModal = ({ media, fallbackAvatarId, onClose }: PostModalProps) => {
     const updateGalleryItem = useAvatarStudioStore((s) => s.updateGalleryItem)
     const gallery = useAvatarStudioStore((s) => s.gallery)
     // Extra media (besides the opened one) for a multi-image carousel post, plus
@@ -97,15 +85,6 @@ const PostModal = ({ media, fallbackAvatarId, userId, onClose }: PostModalProps)
     const [scheduleMode, setScheduleMode] = useState<ScheduleMode>('now')
     const [scheduleDate, setScheduleDate] = useState<Date | null>(null)
 
-    // Audio (video only) — baked into the video before publishing, since
-    // official trending sounds can't be attached via API.
-    const [audioMode, setAudioMode] = useState<AudioMode>('none')
-    const [trendingSounds, setTrendingSounds] = useState<TrendingSoundDTO[] | null>(null)
-    const [selectedSound, setSelectedSound] = useState<TrendingSoundDTO | null>(null)
-    const [uploadedAudio, setUploadedAudio] = useState<File | null>(null)
-    const [keepOriginalSound, setKeepOriginalSound] = useState(false)
-    const [muxProgress, setMuxProgress] = useState<number | null>(null)
-
     const [isLoadingDestinations, setIsLoadingDestinations] = useState(false)
     const [error, setError] = useState<string | null>(null)
     const [isSubmitting, setIsSubmitting] = useState(false)
@@ -137,11 +116,6 @@ const PostModal = ({ media, fallbackAvatarId, userId, onClose }: PostModalProps)
         setPriceCents('')
         setScheduleMode('now')
         setScheduleDate(null)
-        setAudioMode('none')
-        setSelectedSound(null)
-        setUploadedAudio(null)
-        setKeepOriginalSound(false)
-        setMuxProgress(null)
         setError(null)
 
         let cancelled = false
@@ -327,71 +301,6 @@ const PostModal = ({ media, fallbackAvatarId, userId, onClose }: PostModalProps)
     }
     const removeExtra = (id: string) => setExtraMedia((prev) => prev.filter((e) => e.id !== id))
 
-    const loadTrendingSounds = async () => {
-        if (trendingSounds !== null) return
-        const result = await listTrendingSounds({ countryCode: 'GLOBAL', period: 7 })
-        setTrendingSounds(result.success ? (result.data?.sounds ?? []) : [])
-    }
-
-    /**
-     * When an audio track is chosen for a video, bake it in (ffmpeg WASM),
-     * upload the muxed result via a signed URL (never through a server action —
-     * anti-413), persist it as a new generation and return its id. Otherwise
-     * returns the original generationId. Runs ONCE per publish and the result
-     * is reused across every destination.
-     */
-    const resolvePostGenerationId = async (originalGenerationId: string): Promise<string> => {
-        if (audioMode === 'none' || !isVideo) return originalGenerationId
-        if (!userId) throw new Error('Cannot process audio — missing user context')
-
-        const audioUrl =
-            audioMode === 'trending'
-                ? selectedSound
-                    ? `/api/trends/sound-audio?id=${encodeURIComponent(selectedSound.id)}`
-                    : null
-                : uploadedAudio
-                  ? URL.createObjectURL(uploadedAudio)
-                  : null
-        if (!audioUrl) throw new Error('Pick a sound or upload an audio file first')
-
-        const sourceVideoUrl = serverMediaUrl || mediaUrl
-        setMuxProgress(0)
-        try {
-            const muxedBlobUrl = await muxAudioIntoVideo(sourceVideoUrl, audioUrl, {
-                keepOriginalVolume: keepOriginalSound ? 0.15 : 0,
-                onProgress: setMuxProgress,
-            })
-            // Upload the muxed mp4 straight to Storage (browser → signed URL).
-            const blob = await (await fetch(muxedBlobUrl)).blob()
-            const { path, token } = await apiCreateGenerationUploadUrl(userId, 'VIDEO')
-            const { error: upErr } = await supabase.storage
-                .from('generations')
-                .uploadToSignedUrl(path, token, blob, { contentType: 'video/mp4' })
-            if (upErr) throw new Error(upErr.message)
-
-            const row = await apiSaveGeneration({
-                user_id: userId,
-                avatar_id: effectiveAvatarId,
-                media_type: 'VIDEO',
-                storage_path: path,
-                prompt: media?.prompt ?? '',
-                aspect_ratio: media?.aspectRatio,
-                metadata: {
-                    muxedFrom: originalGenerationId,
-                    audioSource: audioMode,
-                    audioName:
-                        audioMode === 'trending'
-                            ? (selectedSound?.name ?? null)
-                            : (uploadedAudio?.name ?? null),
-                } as never,
-            })
-            URL.revokeObjectURL(muxedBlobUrl)
-            return row.id
-        } finally {
-            setMuxProgress(null)
-        }
-    }
-
     const handleSubmit = async () => {
         setError(null)
         if (!media?.generationId) {
@@ -430,34 +339,13 @@ const PostModal = ({ media, fallbackAvatarId, userId, onClose }: PostModalProps)
             price = parsed
         }
 
-        // Audio selection guard (video only)
-        if (isVideo && audioMode === 'trending' && !selectedSound) {
-            setError('Pick a trending sound, or switch audio to "No audio"')
-            return
-        }
-        if (isVideo && audioMode === 'upload' && !uploadedAudio) {
-            setError('Upload an audio file, or switch audio to "No audio"')
-            return
-        }
-
         const activeHashtags = hashtags.filter((h) => h.active).map((h) => h.tag)
 
         setIsSubmitting(true)
         try {
-            // Bake in audio once (if any), then publish the resulting video to
-            // every destination.
-            let generationId: string
-            try {
-                generationId = await resolvePostGenerationId(media.generationId)
-            } catch (audioErr) {
-                setError(
-                    audioErr instanceof Error
-                        ? `Audio processing failed: ${audioErr.message}`
-                        : 'Audio processing failed',
-                )
-                setIsSubmitting(false)
-                return
-            }
+            // Audio is baked into the video in the Video Editor now — here we
+            // publish the saved generation as-is.
+            const generationId = media.generationId
 
             // Additional carousel media (images only, already saved).
             const extraGenerationIds = extraMedia
@@ -880,107 +768,6 @@ const PostModal = ({ media, fallbackAvatarId, userId, onClose }: PostModalProps)
                     </Card>
                 )}
 
-                {isVideo && (
-                    <Card>
-                        <div className="flex items-center gap-2 mb-2">
-                            <HiOutlineMusicNote className="text-primary" />
-                            <p className="text-sm font-semibold">Audio</p>
-                        </div>
-                        <Radio.Group
-                            value={audioMode}
-                            onChange={(value) => {
-                                const mode = value as AudioMode
-                                setAudioMode(mode)
-                                if (mode === 'trending') void loadTrendingSounds()
-                            }}
-                        >
-                            <Radio value="none">No audio</Radio>
-                            <Radio value="trending">Trending sound</Radio>
-                            <Radio value="upload">Upload audio</Radio>
-                        </Radio.Group>
-
-                        {audioMode === 'trending' && (
-                            <div className="mt-3">
-                                {trendingSounds === null ? (
-                                    <p className="text-sm text-gray-500">Loading chart…</p>
-                                ) : trendingSounds.length === 0 ? (
-                                    <p className="text-sm text-amber-600 dark:text-amber-400">
-                                        No sounds cached yet — open{' '}
-                                        <Link
-                                            href="/concepts/avatar-forge/trending-sounds"
-                                            className="underline font-semibold"
-                                        >
-                                            Trending Sounds
-                                        </Link>{' '}
-                                        and hit Refresh first.
-                                    </p>
-                                ) : (
-                                    <div className="max-h-48 overflow-y-auto flex flex-col gap-1 pr-1">
-                                        {trendingSounds.map((sound) => (
-                                            <button
-                                                key={sound.id}
-                                                type="button"
-                                                onClick={() => setSelectedSound(sound)}
-                                                className={`flex items-center gap-2 p-2 rounded-lg text-left transition-colors border ${
-                                                    selectedSound?.id === sound.id
-                                                        ? 'bg-primary/15 border-primary/40'
-                                                        : 'border-transparent hover:bg-gray-100 dark:hover:bg-gray-700'
-                                                }`}
-                                            >
-                                                <span className="text-xs font-bold text-gray-400 w-5 shrink-0">
-                                                    {sound.rank}
-                                                </span>
-                                                <span className="min-w-0 flex-1">
-                                                    <span className="block text-sm font-medium truncate">
-                                                        {sound.name}
-                                                    </span>
-                                                    <span className="block text-xs text-gray-400 truncate">
-                                                        {sound.author ?? 'Unknown'}
-                                                    </span>
-                                                </span>
-                                            </button>
-                                        ))}
-                                    </div>
-                                )}
-                            </div>
-                        )}
-
-                        {audioMode === 'upload' && (
-                            <div className="mt-3">
-                                <input
-                                    type="file"
-                                    accept="audio/*"
-                                    onChange={(e) => setUploadedAudio(e.target.files?.[0] ?? null)}
-                                    className="text-sm"
-                                />
-                                {uploadedAudio && (
-                                    <p className="text-xs text-gray-400 mt-1">
-                                        {uploadedAudio.name}
-                                    </p>
-                                )}
-                            </div>
-                        )}
-
-                        {audioMode !== 'none' && (
-                            <>
-                                <div className="mt-3">
-                                    <Checkbox
-                                        checked={keepOriginalSound}
-                                        onChange={(checked) => setKeepOriginalSound(checked)}
-                                    >
-                                        <span className="text-sm">Keep original video sound (mixed low)</span>
-                                    </Checkbox>
-                                </div>
-                                <p className="text-xs text-amber-600 dark:text-amber-400 mt-2">
-                                    The track is baked into the video (the only way to auto-post with
-                                    sound). Platforms may mute copyrighted music — use your own audio
-                                    for guaranteed reach.
-                                </p>
-                            </>
-                        )}
-                    </Card>
-                )}
-
                 <Card>
                     <p className="text-sm font-semibold mb-2">When</p>
                     <Radio.Group
@@ -1004,11 +791,6 @@ const PostModal = ({ media, fallbackAvatarId, userId, onClose }: PostModalProps)
             </div>
 
             <div className="flex items-center justify-end gap-3 mt-4">
-                {muxProgress !== null && (
-                    <span className="text-xs text-gray-500 mr-auto">
-                        Baking audio into video… {muxProgress}%
-                    </span>
-                )}
                 <Button variant="plain" onClick={onClose} disabled={isSubmitting}>
                     Cancel
                 </Button>

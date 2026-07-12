@@ -23,9 +23,13 @@ import {
     HiOutlineMenuAlt4,
     HiOutlineX,
     HiOutlinePlus,
+    HiOutlineMusicNote,
 } from 'react-icons/hi'
 import { useAvatarStudioStore } from '../../avatar-studio/_store/avatarStudioStore'
 import type { GeneratedMedia } from '../../avatar-studio/types'
+import { muxAudioIntoVideo } from '@/services/AudioMuxService'
+import { listTrendingSounds } from '@/services/TrendService'
+import type { TrendingSoundDTO } from '@/lib/trends/constants'
 import {
     probeVideo,
     removeWatermark,
@@ -154,6 +158,14 @@ async function extractFilmstrip(url: string, frameCount: number): Promise<string
 
     const gotMetadata = await waitForMetadata()
     if (!gotMetadata || !Number.isFinite(video.duration) || video.duration <= 0) {
+        console.warn('[VideoEditor][filmstrip] NO metadata → empty strip', {
+            url: url.slice(0, 100),
+            scheme: url.slice(0, Math.max(0, url.indexOf(':'))),
+            gotMetadata,
+            duration: video.duration,
+            errorCode: video.error?.code,
+            errorMsg: video.error?.message,
+        })
         cleanup()
         return []
     }
@@ -216,6 +228,16 @@ const VideoEditorMain = ({ userId, initialVideoUrl }: VideoEditorMainProps) => {
     const addToGallery = useAvatarStudioStore((s) => s.addToGallery)
     const gallery = useAvatarStudioStore((s) => s.gallery)
     const [isGalleryPickerOpen, setIsGalleryPickerOpen] = useState(false)
+
+    // ─── Audio: bake a track into the exported video (moved here from the Post
+    // modal). Applied at export in buildFinalVideo via ffmpeg mux. ──────────
+    const [audioPanelOpen, setAudioPanelOpen] = useState(false)
+    const [audioMode, setAudioMode] = useState<'none' | 'trending' | 'upload'>('none')
+    const [trendingSounds, setTrendingSounds] = useState<TrendingSoundDTO[] | null>(null)
+    const [selectedSound, setSelectedSound] = useState<TrendingSoundDTO | null>(null)
+    const [uploadedAudio, setUploadedAudio] = useState<File | null>(null)
+    const [keepOriginalSound, setKeepOriginalSound] = useState(false)
+    const audioFileInputRef = useRef<HTMLInputElement>(null)
 
     // ─── Timeline state ───────────────────────────────────────────────
     const [clips, setClips] = useState<TimelineClip[]>([])
@@ -1024,6 +1046,47 @@ const VideoEditorMain = ({ userId, initialVideoUrl }: VideoEditorMainProps) => {
 
     // ─── Export: trim each clip as needed, stitch if >1, then download or
     // save to gallery via the existing addToGallery contract ───────────
+    const loadTrendingSounds = useCallback(async () => {
+        if (trendingSounds !== null) return
+        const result = await listTrendingSounds({ countryCode: 'GLOBAL', period: 7 })
+        setTrendingSounds(result.success ? (result.data?.sounds ?? []) : [])
+    }, [trendingSounds])
+
+    // Bake the chosen audio into a built video (ffmpeg). Returns a NEW blob url;
+    // revokes the pre-mux url only if it was a minted intermediate (never a
+    // timeline clip.url passthrough).
+    const applyAudioToVideo = useCallback(
+        async (videoUrl: string, videoIsMinted: boolean): Promise<string> => {
+            if (audioMode === 'none') return videoUrl
+            const audioUrl =
+                audioMode === 'trending'
+                    ? selectedSound
+                        ? `/api/trends/sound-audio?id=${encodeURIComponent(selectedSound.id)}`
+                        : null
+                    : uploadedAudio
+                      ? URL.createObjectURL(uploadedAudio)
+                      : null
+            if (!audioUrl) return videoUrl
+            setProgressLabel('Adding audio…')
+            setProgress(0)
+            try {
+                const muxed = await muxAudioIntoVideo(videoUrl, audioUrl, {
+                    keepOriginalVolume: keepOriginalSound ? 0.15 : 0,
+                    onProgress: setProgress,
+                })
+                if (videoIsMinted) {
+                    try { URL.revokeObjectURL(videoUrl) } catch { /* ignore */ }
+                }
+                return muxed
+            } finally {
+                if (audioMode === 'upload' && audioUrl.startsWith('blob:')) {
+                    try { URL.revokeObjectURL(audioUrl) } catch { /* ignore */ }
+                }
+            }
+        },
+        [audioMode, selectedSound, uploadedAudio, keepOriginalSound],
+    )
+
     const buildFinalVideo = useCallback(async (): Promise<string | null> => {
         if (clips.length === 0) return null
         const EPS = 0.01
@@ -1062,12 +1125,13 @@ const VideoEditorMain = ({ userId, initialVideoUrl }: VideoEditorMainProps) => {
                 for (const partUrl of createdPartUrls) {
                     try { URL.revokeObjectURL(partUrl) } catch { /* ignore */ }
                 }
-                return finalUrl
+                // stitchVideos minted finalUrl → safe to revoke after muxing.
+                return await applyAudioToVideo(finalUrl, true)
             }
-            // Single part: it IS the final URL passed through to the
-            // caller (handleDownload / handleSaveToGallery) — do not
-            // revoke it here.
-            return partUrls[0]
+            // Single part: partUrls[0] is a trimmed blob (minted) if that clip
+            // was trimmed, else the timeline's own clip.url (passthrough) which
+            // applyAudioToVideo must NOT revoke.
+            return await applyAudioToVideo(partUrls[0], needsTrim[0])
         } catch (err) {
             // Trim/stitch failed partway — revoke whatever intermediates
             // were already minted so they don't leak.
@@ -1076,7 +1140,7 @@ const VideoEditorMain = ({ userId, initialVideoUrl }: VideoEditorMainProps) => {
             }
             throw err
         }
-    }, [clips])
+    }, [clips, applyAudioToVideo])
 
     const handleDownload = useCallback(async () => {
         if (clips.length === 0) return
@@ -1464,7 +1528,125 @@ const VideoEditorMain = ({ userId, initialVideoUrl }: VideoEditorMainProps) => {
                             >
                                 Watermark
                             </Button>
+                            <Button
+                                size="xs"
+                                variant={audioPanelOpen || audioMode !== 'none' ? 'solid' : 'plain'}
+                                icon={<HiOutlineMusicNote />}
+                                onClick={() => {
+                                    setAudioPanelOpen((o) => !o)
+                                    void loadTrendingSounds()
+                                }}
+                                disabled={isProcessing}
+                            >
+                                Audio{audioMode !== 'none' ? ' •' : ''}
+                            </Button>
                         </div>
+
+                        {audioPanelOpen && (
+                            <div className="space-y-2 mb-3 p-2 rounded-lg bg-gray-50 dark:bg-gray-800/50">
+                                <div className="flex items-center gap-2 flex-wrap">
+                                    {(['none', 'trending', 'upload'] as const).map((mode) => (
+                                        <button
+                                            key={mode}
+                                            type="button"
+                                            onClick={() => {
+                                                setAudioMode(mode)
+                                                if (mode === 'trending') void loadTrendingSounds()
+                                            }}
+                                            disabled={isProcessing}
+                                            className={`px-2.5 py-1 text-xs rounded-lg border transition-colors ${
+                                                audioMode === mode
+                                                    ? 'border-purple-500 bg-purple-50 dark:bg-purple-500/20 text-purple-700 dark:text-purple-200 font-medium'
+                                                    : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'
+                                            }`}
+                                        >
+                                            {mode === 'none'
+                                                ? 'No audio'
+                                                : mode === 'trending'
+                                                  ? 'Trending sound'
+                                                  : 'Upload audio'}
+                                        </button>
+                                    ))}
+                                </div>
+
+                                {audioMode === 'trending' && (
+                                    <div className="max-h-40 overflow-y-auto flex flex-col gap-1 pr-1">
+                                        {trendingSounds === null ? (
+                                            <p className="text-xs text-gray-500">Loading chart…</p>
+                                        ) : trendingSounds.length === 0 ? (
+                                            <p className="text-xs text-amber-600 dark:text-amber-400">
+                                                No sounds cached — open Trending Sounds and hit Refresh
+                                                first.
+                                            </p>
+                                        ) : (
+                                            trendingSounds.map((sound) => (
+                                                <button
+                                                    key={sound.id}
+                                                    type="button"
+                                                    onClick={() => setSelectedSound(sound)}
+                                                    className={`flex items-center gap-2 p-1.5 rounded-lg text-left transition-colors border ${
+                                                        selectedSound?.id === sound.id
+                                                            ? 'bg-primary/15 border-primary/40'
+                                                            : 'border-transparent hover:bg-gray-100 dark:hover:bg-gray-700'
+                                                    }`}
+                                                >
+                                                    <span className="text-[10px] font-bold text-gray-400 w-4 shrink-0">
+                                                        {sound.rank}
+                                                    </span>
+                                                    <span className="min-w-0 flex-1">
+                                                        <span className="block text-xs font-medium truncate">
+                                                            {sound.name}
+                                                        </span>
+                                                        <span className="block text-[10px] text-gray-400 truncate">
+                                                            {sound.author ?? 'Unknown'}
+                                                        </span>
+                                                    </span>
+                                                </button>
+                                            ))
+                                        )}
+                                    </div>
+                                )}
+
+                                {audioMode === 'upload' && (
+                                    <div>
+                                        <input
+                                            ref={audioFileInputRef}
+                                            type="file"
+                                            accept="audio/*"
+                                            className="hidden"
+                                            onChange={(e) => setUploadedAudio(e.target.files?.[0] ?? null)}
+                                        />
+                                        <Button
+                                            size="xs"
+                                            variant="default"
+                                            icon={<HiOutlineUpload />}
+                                            onClick={() => audioFileInputRef.current?.click()}
+                                        >
+                                            {uploadedAudio
+                                                ? uploadedAudio.name.slice(0, 30)
+                                                : 'Choose audio file'}
+                                        </Button>
+                                    </div>
+                                )}
+
+                                {audioMode !== 'none' && (
+                                    <>
+                                        <label className="flex items-center gap-2 text-xs cursor-pointer select-none">
+                                            <input
+                                                type="checkbox"
+                                                checked={keepOriginalSound}
+                                                onChange={(e) => setKeepOriginalSound(e.target.checked)}
+                                            />
+                                            <span>Keep original video sound (mixed low)</span>
+                                        </label>
+                                        <p className="text-[10px] text-amber-600 dark:text-amber-400">
+                                            Baked into the export on Save/Download. Platforms may mute
+                                            copyrighted music.
+                                        </p>
+                                    </>
+                                )}
+                            </div>
+                        )}
 
                         {toolMode === 'crop' && (
                             <div className="space-y-3">

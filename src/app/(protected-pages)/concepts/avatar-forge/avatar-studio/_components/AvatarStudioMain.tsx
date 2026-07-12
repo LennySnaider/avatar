@@ -2072,7 +2072,6 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
             <PostModal
                 media={postMedia}
                 fallbackAvatarId={avatarId ?? null}
-                userId={userId}
                 onClose={() => setPostMedia(null)}
             />
 
