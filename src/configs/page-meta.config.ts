@@ -1,9 +1,9 @@
 import { Metadata } from 'next'
 
 const pageMeta: Metadata = {
-    title: 'Ecme - The Ultimate Next & TypeScript Web Template',
+    title: 'AvatarLab — Create, Animate & Monetize AI Influencers',
     description:
-        'Admin Template and Starter Kit with React, Tailwind Components and Next.js',
+        'AI influencer studio: generate consistent avatars, clone voices, animate video, and publish to social & Fanvue.',
     icons: {
         icon: '/favicon.ico',
     },
