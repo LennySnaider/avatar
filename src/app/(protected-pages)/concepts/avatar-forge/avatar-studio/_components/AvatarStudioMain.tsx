@@ -350,6 +350,8 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                                 : Date.now(),
                             mediaType: gen.media_type,
                             metadata: gen.metadata ?? undefined,
+                            providerName: (gen.metadata as { providerName?: string } | null)
+                                ?.providerName,
                             generationId: gen.id,
                             avatarId: gen.avatar_id,
                             postedPlatforms: postedMap[gen.id],
@@ -538,7 +540,12 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                     storage_path: path,
                     prompt: media.prompt,
                     aspect_ratio: media.aspectRatio,
-                    metadata: media.metadata,
+                    // Persist providerName inside metadata so the model tag
+                    // survives a reload (it's otherwise a session-only field).
+                    metadata: {
+                        ...((media.metadata as Record<string, unknown>) ?? {}),
+                        ...(media.providerName ? { providerName: media.providerName } : {}),
+                    } as typeof media.metadata,
                 })
 
                 updateGalleryItem(media.id, {
@@ -1757,7 +1764,12 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                     storage_path: path,
                     prompt: media.prompt,
                     aspect_ratio: media.aspectRatio,
-                    metadata: media.metadata,
+                    // Persist providerName inside metadata so the model tag
+                    // survives a reload (it's otherwise a session-only field).
+                    metadata: {
+                        ...((media.metadata as Record<string, unknown>) ?? {}),
+                        ...(media.providerName ? { providerName: media.providerName } : {}),
+                    } as typeof media.metadata,
                 })
 
                 // Reflect the save on the item so Post/Assign unlock immediately.

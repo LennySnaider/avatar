@@ -281,13 +281,10 @@ export async function generateImageKie(
         // Nano Banana 2 20000). Our full avatar prompt (body + face + scene +
         // clone) can blow past it → KIE 500 "text length cannot exceed the
         // maximum". Cap at a word boundary, a bit under the limit for margin.
-        const promptCap = model.startsWith('seedream/')
-            ? 2900
-            : model === 'nano-banana-2'
-              ? 19000
-              : model === 'z-image'
-                ? 1900
-                : 4900
+        // Kept well under each model's documented max — KIE's enforced limit is
+        // stricter than the docs (4900 still 500'd on FLUX.2), and for i2i the
+        // identity rides on the images so the text can be short anyway.
+        const promptCap = model === 'nano-banana-2' ? 19000 : model === 'z-image' ? 1500 : 1800
         let capped = promptText
         if (capped.length > promptCap) {
             capped = capped.slice(0, promptCap)
