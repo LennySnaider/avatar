@@ -269,10 +269,22 @@ export async function generateImageKie(
         if (model === 'gpt-image-2-text-to-image') {
             return generateImageGptImage2({ prompt: promptText, model, aspectRatio, referenceImage, referenceImages })
         }
-        // Fallback to generic createTask flow (Grok and others)
+        // Fallback to generic createTask flow (Grok, Seedream, FLUX.2, Z-Image…)
         const input: Record<string, unknown> = { prompt: promptText, aspect_ratio: aspectRatio }
         let resolvedModel = model
-        if (referenceImage) {
+        // Permissive models: nsfw_checker=false disables KIE's content filter
+        // (that's the whole point — Gemini/OpenAI block fashion/suggestive). They
+        // also need their own required params. NOTE: these are wired for
+        // TEXT→IMAGE only for now — their image-to-image endpoints take an
+        // http-URL array (input_urls / image_urls), not our base64 ref, so we
+        // skip the reference here (avatar-locked i2i for them is a follow-up).
+        const isPermissiveT2I =
+            model.startsWith('seedream/') || model.startsWith('flux-2/') || model === 'z-image'
+        if (isPermissiveT2I) {
+            input.nsfw_checker = false
+            if (model.startsWith('seedream/')) input.quality = 'basic'
+            if (model.startsWith('flux-2/')) input.resolution = '2K'
+        } else if (referenceImage) {
             resolvedModel = model.replace('/text-to-image', '/image-to-image')
             input.image_url = `data:${referenceImage.mimeType};base64,${referenceImage.base64}`
         }

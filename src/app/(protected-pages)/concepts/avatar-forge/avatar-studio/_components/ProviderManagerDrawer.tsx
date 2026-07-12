@@ -148,6 +148,46 @@ export const DEFAULT_PROVIDERS: AIProvider[] = [
         api_key_env_var: 'KIE_API_KEY',
         created_at: null,
     },
+    // ─── Permissive image models (nsfw_checker off) — text→image ───────────
+    {
+        id: 'kie-seedream-4-5',
+        name: 'Seedream 4.5 · KIE',
+        type: 'KIE' as ProviderType,
+        model: 'seedream/4.5-text-to-image',
+        endpoint: 'https://api.kie.ai/api/v1',
+        is_active: true,
+        supports_image: true,
+        supports_video: false,
+        requires_api_key: true,
+        api_key_env_var: 'KIE_API_KEY',
+        created_at: null,
+    },
+    {
+        id: 'kie-flux-2-pro',
+        name: 'FLUX.2 Pro · KIE',
+        type: 'KIE' as ProviderType,
+        model: 'flux-2/pro-text-to-image',
+        endpoint: 'https://api.kie.ai/api/v1',
+        is_active: true,
+        supports_image: true,
+        supports_video: false,
+        requires_api_key: true,
+        api_key_env_var: 'KIE_API_KEY',
+        created_at: null,
+    },
+    {
+        id: 'kie-z-image',
+        name: 'Z-Image · KIE',
+        type: 'KIE' as ProviderType,
+        model: 'z-image',
+        endpoint: 'https://api.kie.ai/api/v1',
+        is_active: true,
+        supports_image: true,
+        supports_video: false,
+        requires_api_key: true,
+        api_key_env_var: 'KIE_API_KEY',
+        created_at: null,
+    },
     {
         id: 'gateway-gpt-image-2',
         name: 'GPT Image 2 · Gateway',
@@ -468,6 +508,12 @@ const ProviderManagerDrawer = () => {
                 return 'OpenAI GPT 4o - photorealistic, mejor con texto en imagen'
             case 'kie-gpt-image-2':
                 return 'OpenAI GPT Image 2 vía KIE - usa refs (image-to-image, hasta 16), 9:16 nativo, 2K'
+            case 'kie-seedream-4-5':
+                return 'Seedream 4.5 (ByteDance) — PERMISIVO (filtro NSFW off), calidad 2K, ideal fashion/sensual. Solo texto→imagen'
+            case 'kie-flux-2-pro':
+                return 'FLUX.2 Pro (Black Forest Labs) — PERMISIVO (filtro off), 2K. Solo texto→imagen'
+            case 'kie-z-image':
+                return 'Z-Image — barato (~$0.004/img) y PERMISIVO (filtro off). Solo texto→imagen'
             case 'kie-kling-3-0':
                 return 'Kling 3.0 vía KIE — video i2v/t2v + motion-control v2v, audio nativo opcional, ~20% más barato que el directo'
             case 'gateway-gpt-image-2':
