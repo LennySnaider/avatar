@@ -59,7 +59,7 @@ import {
 import type { MiniMaxVideoModel } from '@/@types/minimax'
 import { generateImageKie, generateVideoKieSafe, generateMotionControlKieSafe, submitKieImageTask, checkKieImageTask, submitTalkingVideoKieTask, submitLipsyncVideoKieTask, checkKieVideoTask } from '@/services/KieService'
 import { generateImageViaGateway } from '@/services/GatewayService'
-import { buildAvatarPrompt, buildLeanIdentityPrompt, stripHarnessForFaceSwap, type RefRole } from '@/utils/avatarPromptBuilder'
+import { buildAvatarPrompt, buildDiffusionBodyPreamble, buildLeanIdentityPrompt, stripHarnessForFaceSwap, type RefRole } from '@/utils/avatarPromptBuilder'
 import { HiOutlineCog, HiOutlineBookOpen, HiX, HiChevronDown, HiChevronUp, HiOutlineUpload } from 'react-icons/hi'
 import { getPostedGenerationMap } from '@/services/SocialService'
 import { AppState } from '../types'
@@ -652,17 +652,14 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                         ? `data:${subjectRef.mimeType};base64,${subjectRef.base64}`
                         : undefined
 
-                    // MiniMax only gets text + one reference, so fold faceDescription
-                    // into the prompt to compensate for the missing Gemini-only fields.
-                    // MiniMax's subject_reference locks the FACE but mis-scales the head
-                    // against the text-generated body (the "big head / long torso" look).
-                    // The API exposes no subject weight, so an explicit proportion anchor
-                    // in the text is the only lever to keep the head-to-body ratio natural.
-                    const PROPORTION_ANCHOR =
-                        'full-body shot with natural realistic human proportions, head correctly sized relative to the body (roughly one-seventh of total height), anatomically accurate, no distortion'
-                    const miniMaxPrompt = `${
-                        faceDescription?.trim() ? `[FACE: ${faceDescription.trim()}] ` : ''
-                    }${fullPrompt}\n\n${PROPORTION_ANCHOR}`
+                    // Port of the Gemini "body brain": prepend the rich inline body
+                    // description (natural language — MiniMax is a diffusion model, so
+                    // it wants description, not Gemini's instruction harness) so the
+                    // head/body proportions match the direct Gemini path. Supersedes the
+                    // old one-line proportion anchor. faceDescription already rides in
+                    // fullPrompt's [FACE:] tag AND in the subject_reference, so it isn't
+                    // re-added here.
+                    const miniMaxPrompt = `${buildDiffusionBodyPreamble(measurements)} ${fullPrompt}`
 
                     const result = await generateImageMiniMax({
                         prompt: miniMaxPrompt,
@@ -733,7 +730,13 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                     //   prompts + the reference images (as in ChatGPT itself).
                     const kieModel = activeProvider.model || ''
                     let refRoles = kieReferenceImages.map((r) => r.role as RefRole)
-                    let kiePrompt = fullPrompt
+                    // Default for the permissive/generic diffusion models (Seedream,
+                    // FLUX.2, Z-Image, Qwen, Ideogram, Nano Banana 2, Grok): port the
+                    // Gemini body brain as a leading natural-language sentence. The
+                    // instruction-following models below (Nano Banana Pro / GPT Image 2
+                    // / Flux Kontext) replace kiePrompt with their own harness, so this
+                    // only reaches the diffusion models that actually benefit from it.
+                    let kiePrompt = `${buildDiffusionBodyPreamble(measurements)} ${fullPrompt}`
                     let kieRefsToSend = kieReferenceImages
                     // The single ref passed to the sync adapters (flux-kontext /
                     // gpt-4o / generic). Defaults to the face; flux-kontext edit
@@ -2034,20 +2037,30 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                 (not unmounted) so the typed prompt and picked refs survive, and
                 the gallery above expands into the freed space. */}
             <div className="shrink-0 relative">
-                <button
-                    type="button"
-                    onClick={() => setIsCreationCollapsed((c) => !c)}
-                    title={isCreationCollapsed ? 'Show creation panel' : 'Hide creation panel'}
-                    className="absolute left-1/2 -translate-x-1/2 -top-3.5 z-20 flex items-center gap-1 px-4 h-7 rounded-full bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-200 text-xs font-medium shadow-md ring-1 ring-gray-300 dark:ring-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700 hover:text-primary transition-colors"
-                >
-                    {isCreationCollapsed ? (
-                        <>
+                {isCreationCollapsed ? (
+                    // Collapsed: a normal centered pill in its OWN short bar so it's
+                    // always fully visible. The floating -top handle got clipped at
+                    // the viewport's bottom edge once the panel below was hidden.
+                    <div className="flex justify-center py-2 border-t border-gray-200 dark:border-gray-700">
+                        <button
+                            type="button"
+                            onClick={() => setIsCreationCollapsed((c) => !c)}
+                            title="Show creation panel"
+                            className="flex items-center gap-1 px-4 h-8 rounded-full bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-200 text-xs font-medium shadow-md ring-1 ring-gray-300 dark:ring-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700 hover:text-primary transition-colors"
+                        >
                             <HiChevronUp /> Create
-                        </>
-                    ) : (
+                        </button>
+                    </div>
+                ) : (
+                    <button
+                        type="button"
+                        onClick={() => setIsCreationCollapsed((c) => !c)}
+                        title="Hide creation panel"
+                        className="absolute left-1/2 -translate-x-1/2 -top-3.5 z-20 flex items-center gap-1 px-4 h-7 rounded-full bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-200 text-xs font-medium shadow-md ring-1 ring-gray-300 dark:ring-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700 hover:text-primary transition-colors"
+                    >
                         <HiChevronDown />
-                    )}
-                </button>
+                    </button>
+                )}
                 {/* Cap the creation panel + let it scroll internally so it can
                     never steal the gallery's height (VIDEO mode makes it tall,
                     which used to collapse the gallery and clip its Upload row). */}

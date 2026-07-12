@@ -163,6 +163,22 @@ function buildInlineBodyDescription(m: PhysicalMeasurements): string {
     return fullDesc
 }
 
+/**
+ * Diffusion-friendly identity anchor. Seedream / FLUX.2 / Z-Image / Qwen /
+ * Ideogram / Grok / MiniMax are DIFFUSION models: they follow natural-language
+ * description, NOT Gemini's instruction harness (the SYSTEM COMMANDS / ASCII
+ * boxes / "FAILURE CONDITIONS" in buildAvatarPrompt), which those models can't
+ * parse and may even try to render as text. This ports the ONE piece that
+ * transfers — the rich inline body sentence Gemini feeds itself (buildAvatarPrompt's
+ * `enhancedPrompt = "A ${inlineBody}. ${prompt}"`) — as a leading sentence so body
+ * proportions land the SAME way they do on the direct Gemini path. Face identity
+ * already rides in fullPrompt's `[FACE:]` tag (and MiniMax's subject_reference /
+ * the i2i face image), so it is not re-added here.
+ */
+export function buildDiffusionBodyPreamble(measurements: PhysicalMeasurements): string {
+    return `A ${buildInlineBodyDescription(measurements)}.`
+}
+
 // Emphatic body specification block (used when there's NO body reference image).
 function buildBodySpecification(m: PhysicalMeasurements): string {
     const height = m.height || 165
