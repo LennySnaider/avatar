@@ -12,8 +12,8 @@ import Notification from '@/components/ui/Notification'
 import toast from '@/components/ui/toast'
 import ConfirmDialog from '@/components/shared/ConfirmDialog'
 import AssignAvatarDialog from './AssignAvatarDialog'
-import { apiDeleteGeneration, apiGetAvatars } from '@/services/AvatarForgeService'
-import { HiOutlineTrash, HiOutlineDownload, HiOutlinePhotograph, HiOutlineUpload, HiOutlineSearch, HiOutlineShare, HiOutlineSave, HiOutlineUserCircle } from 'react-icons/hi'
+import { apiDeleteGeneration, apiGetAvatars, apiUpdateGenerationMetadata } from '@/services/AvatarForgeService'
+import { HiOutlineTrash, HiOutlineDownload, HiOutlinePhotograph, HiOutlineUpload, HiOutlineSearch, HiOutlineShare, HiOutlineSave, HiOutlineUserCircle, HiStar, HiOutlineStar, HiArchive, HiOutlineArchive } from 'react-icons/hi'
 import type { GeneratedMedia, AspectRatio, MediaType } from '../types'
 
 interface GalleryPanelProps {
@@ -48,6 +48,7 @@ const GalleryPanel = ({
         setPreviewMedia,
         removeFromGallery,
         addToGallery,
+        updateGalleryItem,
     } = useAvatarStudioStore()
 
     // Prefer the parent-provided ref (header "Upload" button) so both trigger
@@ -58,6 +59,31 @@ const GalleryPanel = ({
     const [searchQuery, setSearchQuery] = useState('')
     const [mediaTypeFilter, setMediaTypeFilter] = useState<MediaType | 'ALL'>('ALL')
     const [avatarFilter, setAvatarFilter] = useState<string>('ALL')
+    // Todas (non-archived) | Favoritas (starred) | Archivadas (the bucket).
+    const [galleryView, setGalleryView] = useState<'all' | 'favorites' | 'archived'>('all')
+
+    // Toggle a favorite/archived flag: update the in-memory item AND merge-write
+    // it into generations.metadata so it survives a reload (only once the item
+    // has a DB row — session-only items flip locally and persist on auto-save).
+    const setFlags = (
+        media: GeneratedMedia,
+        patch: { favorite?: boolean; archived?: boolean },
+    ) => {
+        const nextMeta = { ...(media.metadata ?? {}), ...patch }
+        updateGalleryItem(media.id, {
+            ...patch,
+            metadata: nextMeta as typeof media.metadata,
+        })
+        if (media.generationId) {
+            void apiUpdateGenerationMetadata(media.generationId, nextMeta).catch((e) =>
+                console.error('Failed to persist gallery flags:', e),
+            )
+        }
+    }
+    const toggleFavorite = (media: GeneratedMedia) =>
+        setFlags(media, { favorite: !media.favorite })
+    const toggleArchive = (media: GeneratedMedia) =>
+        setFlags(media, { archived: !media.archived })
 
     // "Assign avatar" — decides which avatar's accounts can publish this media.
     const [assignTarget, setAssignTarget] = useState<GeneratedMedia | null>(null)
@@ -105,8 +131,18 @@ const GalleryPanel = ({
                 : avatarFilter === 'NONE'
                   ? !media.avatarId
                   : media.avatarId === avatarFilter
-        return matchesSearch && matchesType && matchesAvatar
+        // Archived items are hidden everywhere EXCEPT the Archivadas view.
+        const matchesView =
+            galleryView === 'archived'
+                ? !!media.archived
+                : galleryView === 'favorites'
+                  ? !!media.favorite && !media.archived
+                  : !media.archived
+        return matchesSearch && matchesType && matchesAvatar && matchesView
     })
+
+    const favCount = gallery.filter((m) => m.favorite && !m.archived).length
+    const archivedCount = gallery.filter((m) => m.archived).length
 
     const detectAspectRatio = (width: number, height: number): AspectRatio => {
         const ratio = width / height
@@ -276,6 +312,45 @@ const GalleryPanel = ({
                         </select>
                     </div>
                 )}
+                {gallery.length > 0 && (
+                    <div className="flex items-center gap-1.5 mb-3">
+                        {[
+                            {
+                                key: 'all' as const,
+                                label: 'Todas',
+                                count: gallery.filter((m) => !m.archived).length,
+                                icon: <HiOutlinePhotograph className="w-3.5 h-3.5" />,
+                            },
+                            {
+                                key: 'favorites' as const,
+                                label: 'Favoritas',
+                                count: favCount,
+                                icon: <HiStar className="w-3.5 h-3.5" />,
+                            },
+                            {
+                                key: 'archived' as const,
+                                label: 'Archivadas',
+                                count: archivedCount,
+                                icon: <HiOutlineArchive className="w-3.5 h-3.5" />,
+                            },
+                        ].map((v) => (
+                            <button
+                                key={v.key}
+                                type="button"
+                                onClick={() => setGalleryView(v.key)}
+                                className={`flex items-center gap-1 px-2.5 py-1 text-xs rounded-lg border transition-colors ${
+                                    galleryView === v.key
+                                        ? 'border-blue-500 bg-blue-50 dark:bg-blue-500/20 text-blue-700 dark:text-blue-200 font-medium'
+                                        : 'border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'
+                                }`}
+                            >
+                                {v.icon}
+                                {v.label}
+                                <span className="opacity-60">{v.count}</span>
+                            </button>
+                        ))}
+                    </div>
+                )}
             </div>
 
             <ScrollBar className="flex-1 h-full" autoHide={false}>
@@ -366,6 +441,25 @@ const GalleryPanel = ({
                                     {/* Media Type + Save State badges (top-right column —
                                         the bottom corners belong to the action buttons) */}
                                     <div className="absolute top-2 right-2 z-10 flex flex-col items-end gap-1">
+                                        <button
+                                            type="button"
+                                            onClick={(e) => {
+                                                e.stopPropagation()
+                                                toggleFavorite(media)
+                                            }}
+                                            title={
+                                                media.favorite
+                                                    ? 'Quitar de favoritas'
+                                                    : 'Marcar como favorita'
+                                            }
+                                            className="p-1 rounded-full bg-black/40 hover:bg-black/60 transition-colors"
+                                        >
+                                            {media.favorite ? (
+                                                <HiStar className="w-4 h-4 text-amber-400" />
+                                            ) : (
+                                                <HiOutlineStar className="w-4 h-4 text-white" />
+                                            )}
+                                        </button>
                                         <span
                                             className={`px-2 py-1 text-xs font-bold rounded ${
                                                 media.mediaType === 'VIDEO'
@@ -481,6 +575,26 @@ const GalleryPanel = ({
                                                     {/* Save + Delete grouped on the right, both solid so
                                                         they stay visible over the image. */}
                                                     <div className="ml-auto flex gap-1.5">
+                                                        <Button
+                                                            size="xs"
+                                                            variant="solid"
+                                                            icon={
+                                                                media.archived ? (
+                                                                    <HiArchive />
+                                                                ) : (
+                                                                    <HiOutlineArchive />
+                                                                )
+                                                            }
+                                                            title={
+                                                                media.archived
+                                                                    ? 'Sacar del bucket'
+                                                                    : 'Archivar (mover al bucket)'
+                                                            }
+                                                            onClick={(e) => {
+                                                                e.stopPropagation()
+                                                                toggleArchive(media)
+                                                            }}
+                                                        />
                                                         {onSaveToGallery && (
                                                             <Button
                                                                 size="xs"

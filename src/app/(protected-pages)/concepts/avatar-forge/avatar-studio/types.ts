@@ -84,6 +84,11 @@ export interface GeneratedMedia {
     /** Durable public Storage URL once persisted — the `url` field may be a
      * browser-only blob:/data: URI (uploads), which the server can't fetch. */
     publicUrl?: string
+    /** User flags, persisted in `generations.metadata`. `favorite` = starred;
+     * `archived` = moved to the bucket (hidden from the default view — e.g.
+     * already-posted or unwanted media). */
+    favorite?: boolean
+    archived?: boolean
 }
 
 // App states

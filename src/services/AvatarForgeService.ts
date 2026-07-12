@@ -220,6 +220,24 @@ export async function apiSaveGeneration(generation: GenerationInsert) {
     return data as unknown as Generation
 }
 
+/**
+ * Merge-write the `metadata` jsonb of a generation row. The client already
+ * holds the current metadata, so it passes the full merged object (favorite /
+ * archived flags, providerName, …) — one round trip, no read-modify-write.
+ */
+export async function apiUpdateGenerationMetadata(
+    generationId: string,
+    metadata: Record<string, unknown>,
+) {
+    const supabase = getSupabase()
+    const { error } = await supabase
+        .from('generations')
+        .update({ metadata } as never)
+        .eq('id', generationId)
+    if (error) throw error
+    return true
+}
+
 export async function apiDeleteGeneration(generationId: string) {
     const supabase = getSupabase()
     const { error } = await supabase

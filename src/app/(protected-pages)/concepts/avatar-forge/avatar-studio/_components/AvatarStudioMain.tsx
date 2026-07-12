@@ -352,6 +352,12 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                             metadata: gen.metadata ?? undefined,
                             providerName: (gen.metadata as { providerName?: string } | null)
                                 ?.providerName,
+                            favorite:
+                                (gen.metadata as { favorite?: boolean } | null)?.favorite ??
+                                false,
+                            archived:
+                                (gen.metadata as { archived?: boolean } | null)?.archived ??
+                                false,
                             generationId: gen.id,
                             avatarId: gen.avatar_id,
                             postedPlatforms: postedMap[gen.id],
