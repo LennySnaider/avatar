@@ -1,12 +1,18 @@
 'use client'
 
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { useAvatarStudioStore } from '../_store/avatarStudioStore'
 import Drawer from '@/components/ui/Drawer'
 import Button from '@/components/ui/Button'
 import Card from '@/components/ui/Card'
 import Switcher from '@/components/ui/Switcher'
-import { HiOutlineCheck, HiOutlinePhotograph, HiOutlineVideoCamera } from 'react-icons/hi'
+import {
+    HiOutlineCheck,
+    HiOutlinePhotograph,
+    HiOutlineVideoCamera,
+    HiStar,
+    HiOutlineStar,
+} from 'react-icons/hi'
 import type { AIProvider, ProviderType } from '@/@types/supabase'
 
 // Predefined providers - exported for use in initialization
@@ -301,6 +307,26 @@ export const DEFAULT_PROVIDERS: AIProvider[] = [
     },
 ]
 
+// Default provider PER MODE, persisted in localStorage so it survives across
+// sessions — the store's activeProviderId only lives in sessionStorage, so it
+// resets when the tab closes. On a fresh session the studio starts on this one.
+const defaultProviderKey = (mode: string) => `avatar-studio:default-provider:${mode}`
+function readDefaultProviderId(mode: string): string | null {
+    if (typeof window === 'undefined') return null
+    try {
+        return window.localStorage.getItem(defaultProviderKey(mode))
+    } catch {
+        return null
+    }
+}
+function writeDefaultProviderId(mode: string, id: string) {
+    try {
+        window.localStorage.setItem(defaultProviderKey(mode), id)
+    } catch {
+        /* ignore (private mode / disabled storage) */
+    }
+}
+
 const ProviderManagerDrawer = () => {
     const {
         showProviderManager,
@@ -313,6 +339,12 @@ const ProviderManagerDrawer = () => {
         geminiAutoFallback,
         setGeminiAutoFallback,
     } = useAvatarStudioStore()
+
+    // Which provider is the persisted default for the current mode (drives the ★).
+    const [defaultProviderId, setDefaultProviderId] = useState<string | null>(null)
+    useEffect(() => {
+        setDefaultProviderId(readDefaultProviderId(generationMode))
+    }, [generationMode, showProviderManager])
 
     // Initialize providers on mount - always sync with DEFAULT_PROVIDERS
     useEffect(() => {
@@ -331,11 +363,15 @@ const ProviderManagerDrawer = () => {
             setProviders(DEFAULT_PROVIDERS)
         }
 
-        // Set default provider based on mode if not set
+        // Set the active provider if not set — prefer the user's persisted
+        // default for this mode, else the first that supports it.
         if (!activeProviderId) {
-            const defaultProvider = DEFAULT_PROVIDERS.find(p =>
+            const isForMode = (p: AIProvider) =>
                 generationMode === 'IMAGE' ? p.supports_image : p.supports_video
-            )
+            const stored = readDefaultProviderId(generationMode)
+            const defaultProvider =
+                (stored ? DEFAULT_PROVIDERS.find((p) => p.id === stored && isForMode(p)) : null) ||
+                DEFAULT_PROVIDERS.find(isForMode)
             if (defaultProvider) {
                 setActiveProviderId(defaultProvider.id)
             }
@@ -350,6 +386,13 @@ const ProviderManagerDrawer = () => {
     const handleSelectProvider = (providerId: string) => {
         setActiveProviderId(providerId)
         setShowProviderManager(false)
+    }
+
+    const handleSetDefault = (e: React.MouseEvent, providerId: string) => {
+        e.stopPropagation() // don't trigger the card's select
+        writeDefaultProviderId(generationMode, providerId)
+        setDefaultProviderId(providerId)
+        setActiveProviderId(providerId) // start using it right away, too
     }
 
     const getProviderIcon = (type: ProviderType) => {
@@ -506,6 +549,7 @@ const ProviderManagerDrawer = () => {
                     ) : (
                         availableProviders.map((provider) => {
                             const isSelected = activeProviderId === provider.id
+                            const isDefault = defaultProviderId === provider.id
                             return (
                                 <Card
                                     key={provider.id}
@@ -526,6 +570,11 @@ const ProviderManagerDrawer = () => {
                                                 {isSelected && (
                                                     <HiOutlineCheck className="w-4 h-4 text-blue-500" />
                                                 )}
+                                                {isDefault && (
+                                                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300 font-medium">
+                                                        Default
+                                                    </span>
+                                                )}
                                             </div>
                                             <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
                                                 {getProviderDescription(provider)}
@@ -541,6 +590,23 @@ const ProviderManagerDrawer = () => {
                                                 )}
                                             </div>
                                         </div>
+                                        <button
+                                            type="button"
+                                            onClick={(e) => handleSetDefault(e, provider.id)}
+                                            title={
+                                                isDefault
+                                                    ? 'Default for this mode'
+                                                    : 'Set as default for this mode'
+                                            }
+                                            aria-label="Set as default"
+                                            className="shrink-0 self-start p-1.5 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
+                                        >
+                                            {isDefault ? (
+                                                <HiStar className="w-5 h-5 text-amber-400" />
+                                            ) : (
+                                                <HiOutlineStar className="w-5 h-5 text-gray-400" />
+                                            )}
+                                        </button>
                                     </div>
                                 </Card>
                             )
