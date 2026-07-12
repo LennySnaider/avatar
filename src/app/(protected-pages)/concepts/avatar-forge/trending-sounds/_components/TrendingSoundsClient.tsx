@@ -215,8 +215,9 @@ const TrendingSoundsClient = ({
                         pull the latest viral sounds from TikTok.
                     </p>
                     <p className="text-xs text-gray-400">
-                        Requires <code>APIFY_TOKEN</code> in the environment — the daily cron keeps
-                        the Global chart warm automatically once it&apos;s set.
+                        Requires <code>APIFY_TOKEN</code> in the environment. Each Refresh runs a
+                        paid TikTok scrape, so it&apos;s manual — hit Refresh only when you want a
+                        fresh chart.
                     </p>
                 </Card>
             ) : (
