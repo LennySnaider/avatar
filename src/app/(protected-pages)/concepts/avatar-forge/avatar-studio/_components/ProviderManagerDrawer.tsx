@@ -2,9 +2,10 @@
 
 import { useEffect, useState } from 'react'
 import { useAvatarStudioStore } from '../_store/avatarStudioStore'
-import Drawer from '@/components/ui/Drawer'
+import Dialog from '@/components/ui/Dialog'
 import Button from '@/components/ui/Button'
 import Card from '@/components/ui/Card'
+import Input from '@/components/ui/Input'
 import Switcher from '@/components/ui/Switcher'
 import {
     HiOutlineCheck,
@@ -14,6 +15,7 @@ import {
     HiOutlineStar,
     HiOutlineUserCircle,
     HiOutlineLockOpen,
+    HiOutlineSearch,
 } from 'react-icons/hi'
 import type { AIProvider, ProviderType } from '@/@types/supabase'
 
@@ -405,6 +407,8 @@ const ProviderManagerDrawer = () => {
 
     // Which provider is the persisted default for the current mode (drives the ★).
     const [defaultProviderId, setDefaultProviderId] = useState<string | null>(null)
+    const [search, setSearch] = useState('')
+    const [filter, setFilter] = useState<'all' | 'face' | 'permissive'>('all')
     useEffect(() => {
         setDefaultProviderId(readDefaultProviderId(generationMode))
     }, [generationMode, showProviderManager])
@@ -451,6 +455,17 @@ const ProviderManagerDrawer = () => {
         .filter((p) => (generationMode === 'IMAGE' ? p.supports_image : p.supports_video))
         .slice()
         .sort((a, b) => traitScore(b.id) - traitScore(a.id))
+
+    const filteredProviders = availableProviders.filter((p) => {
+        const t = PROVIDER_TRAITS[p.id]
+        if (filter === 'face' && !t?.face) return false
+        if (filter === 'permissive' && !t?.permissive) return false
+        if (search.trim()) {
+            const q = search.toLowerCase()
+            if (!p.name.toLowerCase().includes(q) && !p.model.toLowerCase().includes(q)) return false
+        }
+        return true
+    })
 
     const handleSelectProvider = (providerId: string) => {
         setActiveProviderId(providerId)
@@ -557,169 +572,155 @@ const ProviderManagerDrawer = () => {
     }
 
     return (
-        <Drawer
+        <Dialog
             isOpen={showProviderManager}
             onClose={() => setShowProviderManager(false)}
-            width={400}
-            title={
-                <div className="flex items-center gap-2">
-                    {generationMode === 'IMAGE' ? (
-                        <HiOutlinePhotograph className="w-5 h-5 text-purple-400" />
-                    ) : (
-                        <HiOutlineVideoCamera className="w-5 h-5 text-blue-400" />
-                    )}
-                    <span>
-                        {generationMode === 'IMAGE' ? 'Image' : 'Video'} Provider
-                    </span>
-                </div>
-            }
-            footer={
-                <div className="flex justify-end gap-2">
-                    <Button
-                        variant="plain"
-                        onClick={() => setShowProviderManager(false)}
-                    >
-                        Cerrar
-                    </Button>
-                </div>
-            }
+            width={920}
+            className="bg-white! dark:bg-gray-900!"
         >
-            <div className="space-y-4 p-4">
-                {/* Mode indicator */}
-                <div className="p-3 bg-gray-100 dark:bg-gray-800 rounded-lg">
-                    <p className="text-xs text-gray-500 dark:text-gray-400">
-                        Mostrando proveedores para modo{' '}
-                        <span className="font-semibold text-gray-700 dark:text-gray-300">
-                            {generationMode === 'IMAGE' ? 'Imagen' : 'Video'}
-                        </span>
-                    </p>
-                </div>
-
-                {/* Gemini auto-fallback toggle (IMAGE mode only) */}
-                {generationMode === 'IMAGE' && (
-                    <div className="p-3 bg-gray-50 dark:bg-gray-800/60 border border-gray-200 dark:border-gray-700 rounded-lg">
-                        <div className="flex items-start justify-between gap-3">
-                            <div className="flex-1">
-                                <p className="text-sm font-medium text-gray-800 dark:text-gray-200">
-                                    Auto-fallback a MiniMax
-                                </p>
-                                <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
-                                    Si Gemini bloquea por safety, reintenta automáticamente con MiniMax image-01.
-                                </p>
-                            </div>
-                            <Switcher
-                                checked={geminiAutoFallback}
-                                onChange={(checked) => setGeminiAutoFallback(checked)}
-                            />
-                        </div>
-                    </div>
+            <div className="flex items-center gap-2 mb-3">
+                {generationMode === 'IMAGE' ? (
+                    <HiOutlinePhotograph className="w-5 h-5 text-purple-400" />
+                ) : (
+                    <HiOutlineVideoCamera className="w-5 h-5 text-blue-400" />
                 )}
+                <h5 className="mb-0">{generationMode === 'IMAGE' ? 'Image' : 'Video'} Provider</h5>
+            </div>
 
-                {/* Provider List */}
-                <div className="space-y-3">
-                    {availableProviders.length === 0 ? (
-                        <p className="text-center text-gray-500 py-8">
-                            No hay proveedores disponibles para este modo
-                        </p>
-                    ) : (
-                        availableProviders.map((provider) => {
-                            const isSelected = activeProviderId === provider.id
-                            const isDefault = defaultProviderId === provider.id
-                            return (
-                                <Card
-                                    key={provider.id}
-                                    className={`p-4 cursor-pointer transition-all ${
-                                        isSelected
-                                            ? 'ring-2 ring-blue-500 bg-blue-50 dark:bg-blue-900/20'
-                                            : 'hover:bg-gray-50 dark:hover:bg-gray-800'
-                                    }`}
-                                    onClick={() => handleSelectProvider(provider.id)}
-                                >
-                                    <div className="flex items-start gap-3">
-                                        {getProviderIcon(provider.type)}
-                                        <div className="flex-1 min-w-0">
-                                            <div className="flex items-center gap-2">
-                                                <h3 className="font-medium text-gray-900 dark:text-white">
-                                                    {provider.name}
-                                                </h3>
-                                                {isSelected && (
-                                                    <HiOutlineCheck className="w-4 h-4 text-blue-500" />
-                                                )}
-                                                {isDefault && (
-                                                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300 font-medium">
-                                                        Default
-                                                    </span>
-                                                )}
-                                            </div>
-                                            <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                                                {getProviderDescription(provider)}
-                                            </p>
-                                            {(() => {
-                                                const tr = PROVIDER_TRAITS[provider.id]
-                                                if (!tr?.face && !tr?.permissive) return null
-                                                return (
-                                                    <div className="flex items-center gap-1.5 mt-1.5 flex-wrap">
-                                                        {tr.face && (
-                                                            <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300 inline-flex items-center gap-0.5">
-                                                                <HiOutlineUserCircle className="w-3 h-3" />
-                                                                Cara consistente
-                                                            </span>
-                                                        )}
-                                                        {tr.permissive && (
-                                                            <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300 inline-flex items-center gap-0.5">
-                                                                <HiOutlineLockOpen className="w-3 h-3" />
-                                                                Permisivo
-                                                            </span>
-                                                        )}
-                                                    </div>
-                                                )
-                                            })()}
-                                            <div className="flex items-center gap-2 mt-2">
-                                                <span className="text-xs px-2 py-0.5 bg-gray-200 dark:bg-gray-700 rounded">
-                                                    {provider.model}
-                                                </span>
-                                                {provider.type === 'KLING' && (provider.model === 'kling-v2-6' || provider.model === 'kling-v3') && (
-                                                    <span className="text-xs px-2 py-0.5 bg-purple-100 dark:bg-purple-900/50 text-purple-600 dark:text-purple-400 rounded">
-                                                        Voice
-                                                    </span>
-                                                )}
-                                            </div>
-                                        </div>
-                                        <button
-                                            type="button"
-                                            onClick={(e) => handleSetDefault(e, provider.id)}
-                                            title={
-                                                isDefault
-                                                    ? 'Default for this mode'
-                                                    : 'Set as default for this mode'
-                                            }
-                                            aria-label="Set as default"
-                                            className="shrink-0 self-start p-1.5 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
-                                        >
-                                            {isDefault ? (
-                                                <HiStar className="w-5 h-5 text-amber-400" />
-                                            ) : (
-                                                <HiOutlineStar className="w-5 h-5 text-gray-400" />
-                                            )}
-                                        </button>
-                                    </div>
-                                </Card>
-                            )
-                        })
-                    )}
+            {/* Gemini auto-fallback (IMAGE mode only) */}
+            {generationMode === 'IMAGE' && (
+                <div className="flex items-center justify-between gap-3 p-2.5 mb-3 bg-gray-50 dark:bg-gray-800/60 border border-gray-200 dark:border-gray-700 rounded-lg">
+                    <p className="text-xs text-gray-600 dark:text-gray-300">
+                        <span className="font-medium">Auto-fallback a MiniMax</span> — si Gemini
+                        bloquea por safety, reintenta automáticamente.
+                    </p>
+                    <Switcher
+                        checked={geminiAutoFallback}
+                        onChange={(checked) => setGeminiAutoFallback(checked)}
+                    />
                 </div>
+            )}
 
-                {/* Info about Kling features */}
-                {generationMode === 'VIDEO' && (
-                    <div className="p-3 bg-orange-50 dark:bg-orange-900/20 border border-orange-200 dark:border-orange-800 rounded-lg">
-                        <p className="text-xs text-orange-700 dark:text-orange-300">
-                            <strong>Kling:</strong> V3 es la versión más reciente con mejor calidad.
-                            V2.6 sigue disponible para casos legacy. V1.6 para motion brush y camera control avanzado.
-                        </p>
+            {/* Search + filter chips */}
+            <div className="flex flex-wrap items-center gap-2 mb-3">
+                <Input
+                    size="sm"
+                    prefix={<HiOutlineSearch className="text-lg" />}
+                    placeholder="Buscar modelo..."
+                    value={search}
+                    onChange={(e) => setSearch(e.target.value)}
+                    className="flex-1 min-w-[10rem]"
+                />
+                {generationMode === 'IMAGE' && (
+                    <div className="flex items-center gap-1">
+                        {(
+                            [
+                                ['all', 'Todos'],
+                                ['face', '👤 Cara'],
+                                ['permissive', '🔓 Permisivo'],
+                            ] as const
+                        ).map(([key, label]) => (
+                            <button
+                                key={key}
+                                type="button"
+                                onClick={() => setFilter(key)}
+                                className={`px-2.5 py-1 text-xs rounded-lg border transition-colors ${
+                                    filter === key
+                                        ? 'border-purple-500 bg-purple-50 dark:bg-purple-500/20 text-purple-700 dark:text-purple-200 font-medium'
+                                        : 'border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'
+                                }`}
+                            >
+                                {label}
+                            </button>
+                        ))}
                     </div>
                 )}
             </div>
-        </Drawer>
+
+            {/* Grid of providers */}
+            {filteredProviders.length === 0 ? (
+                <p className="text-center text-gray-500 py-10">
+                    No hay proveedores para este filtro.
+                </p>
+            ) : (
+                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3 max-h-[58vh] overflow-y-auto pr-1">
+                    {filteredProviders.map((provider) => {
+                        const isSelected = activeProviderId === provider.id
+                        const isDefault = defaultProviderId === provider.id
+                        const tr = PROVIDER_TRAITS[provider.id]
+                        return (
+                            <Card
+                                key={provider.id}
+                                className={`relative p-3! cursor-pointer transition-all ${
+                                    isSelected
+                                        ? 'ring-2 ring-blue-500 bg-blue-50 dark:bg-blue-900/20'
+                                        : 'hover:bg-gray-50 dark:hover:bg-gray-800'
+                                }`}
+                                onClick={() => handleSelectProvider(provider.id)}
+                            >
+                                <button
+                                    type="button"
+                                    onClick={(e) => handleSetDefault(e, provider.id)}
+                                    title={isDefault ? 'Default' : 'Set as default'}
+                                    aria-label="Set as default"
+                                    className="absolute top-1.5 right-1.5 p-1 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
+                                >
+                                    {isDefault ? (
+                                        <HiStar className="w-4 h-4 text-amber-400" />
+                                    ) : (
+                                        <HiOutlineStar className="w-4 h-4 text-gray-400" />
+                                    )}
+                                </button>
+                                <div className="flex items-center gap-2 mb-1.5">
+                                    {getProviderIcon(provider.type)}
+                                    {isSelected && (
+                                        <HiOutlineCheck className="w-4 h-4 text-blue-500" />
+                                    )}
+                                </div>
+                                <h3 className="font-medium text-sm text-gray-900 dark:text-white leading-tight pr-5">
+                                    {provider.name}
+                                </h3>
+                                <p className="text-[11px] text-gray-500 dark:text-gray-400 mt-1 line-clamp-3">
+                                    {getProviderDescription(provider)}
+                                </p>
+                                {(tr?.face || tr?.permissive || isDefault) && (
+                                    <div className="flex items-center gap-1 mt-1.5 flex-wrap">
+                                        {tr?.face && (
+                                            <span className="text-[9px] font-semibold px-1.5 py-0.5 rounded bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300 inline-flex items-center gap-0.5">
+                                                <HiOutlineUserCircle className="w-2.5 h-2.5" />
+                                                Cara
+                                            </span>
+                                        )}
+                                        {tr?.permissive && (
+                                            <span className="text-[9px] font-semibold px-1.5 py-0.5 rounded bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300 inline-flex items-center gap-0.5">
+                                                <HiOutlineLockOpen className="w-2.5 h-2.5" />
+                                                Permisivo
+                                            </span>
+                                        )}
+                                        {isDefault && (
+                                            <span className="text-[9px] font-medium px-1.5 py-0.5 rounded bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300">
+                                                Default
+                                            </span>
+                                        )}
+                                    </div>
+                                )}
+                                <div className="mt-1.5">
+                                    <span className="inline-block text-[10px] px-1.5 py-0.5 bg-gray-200 dark:bg-gray-700 rounded truncate max-w-full">
+                                        {provider.model}
+                                    </span>
+                                </div>
+                            </Card>
+                        )
+                    })}
+                </div>
+            )}
+
+            <div className="flex justify-end mt-4">
+                <Button variant="plain" onClick={() => setShowProviderManager(false)}>
+                    Cerrar
+                </Button>
+            </div>
+        </Dialog>
     )
 }
 
