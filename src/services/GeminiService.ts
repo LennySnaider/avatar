@@ -851,15 +851,24 @@ Example: "standing pose, weight on left leg, right hand on hip, left arm relaxed
 
         const text = response.text?.trim()
         if (!text) {
-            throw new Error('No pose description generated from the analysis')
+            // Gemini blocks analysis of many pose refs (suggestive framing) and
+            // returns an empty body. Don't hard-fail the whole generation — fall
+            // back to a generic pose instruction (same non-blocking approach as
+            // the Clone/Body Ref analysis). The pose image, when supported, still
+            // rides along as an image reference.
+            console.warn('[Gemini] pose analysis blocked/empty — using fallback')
+            return POSE_FALLBACK
         }
 
         return text
     } catch (e) {
-        console.error('Pose Analysis Failed', e)
-        throw e instanceof Error ? e : new Error('Pose analysis failed')
+        console.error('Pose Analysis Failed (non-fatal, using fallback)', e)
+        return POSE_FALLBACK
     }
 }
+
+const POSE_FALLBACK =
+    'replicate the exact body pose, posture, limb and hand positions and overall body angle shown in the pose reference image'
 
 // =============================================
 // CLONE IMAGE ANALYSIS
