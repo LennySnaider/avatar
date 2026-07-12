@@ -384,6 +384,32 @@ function writeDefaultProviderId(mode: string, id: string) {
     }
 }
 
+// Approx USD cost PER IMAGE, shown on each card so the pick weighs price too.
+// KIE models: measured live from `creditsConsumed × $0.005/credit` (KIE's rate,
+// e.g. Veo3 Fast $0.40 = 80 cr). z-image 0.8cr=$0.004 · grok 4cr=$0.02 · seedream
+// 5-lite 5.5cr=$0.028 · seedream 4.5 6.5cr=$0.033 · flux-2 7cr=$0.035 · nano-2
+// 12cr=$0.06. Non-KIE + kontext/gpt from docs/cost-routing.md. qwen/ideogram/
+// gemini/minimax are estimates (KIE errored on the probe / no live meter) → keep
+// the ~ prefix honest. Re-measure from kie.ai/logs if a price drifts.
+const PROVIDER_COST: Record<string, string> = {
+    'gemini-nano-banana': '~$0.13',
+    'gemini-flash-lite-image': '~$0.02',
+    'kie-nano-banana-pro': '~$0.09',
+    'minimax-image-01': '~$0.01',
+    'kie-flux-kontext': '~$0.04',
+    'kie-flux-kontext-max': '~$0.08',
+    'kie-gpt-4o-image': '~$0.03',
+    'kie-gpt-image-2': '~$0.03',
+    'kie-seedream-4-5': '~$0.033',
+    'kie-flux-2-pro': '~$0.035',
+    'kie-z-image': '~$0.004',
+    'kie-seedream-5-lite': '~$0.028',
+    'kie-qwen-image': '~$0.02',
+    'kie-ideogram-v3': '~$0.05',
+    'kie-nano-banana-2': '~$0.06',
+    'kie-grok-imagine': '~$0.02',
+}
+
 // Verified against the generation dispatch (AvatarStudioMain.handleGenerate):
 //  face = sends the avatar's FACE image → identity consistency.
 //  permissive = disables the content filter (nsfw off / less restrictive).
@@ -720,10 +746,18 @@ const ProviderManagerDrawer = () => {
                                         )}
                                     </div>
                                 )}
-                                <div className="mt-1.5">
-                                    <span className="inline-block text-[10px] px-1.5 py-0.5 bg-gray-200 dark:bg-gray-700 rounded truncate max-w-full">
+                                <div className="mt-1.5 flex items-center gap-1">
+                                    <span className="inline-block text-[10px] px-1.5 py-0.5 bg-gray-200 dark:bg-gray-700 rounded truncate min-w-0 flex-1">
                                         {provider.model}
                                     </span>
+                                    {PROVIDER_COST[provider.id] && (
+                                        <span
+                                            title="Costo aprox. por imagen"
+                                            className="shrink-0 text-[10px] font-semibold px-1.5 py-0.5 rounded bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-300"
+                                        >
+                                            {PROVIDER_COST[provider.id]}
+                                        </span>
+                                    )}
                                 </div>
                             </Card>
                         )
