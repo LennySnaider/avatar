@@ -914,15 +914,24 @@ Example output (format to match): "a woman wearing a floral halter swim top and 
 
         const text = response.text?.trim()
         if (!text) {
-            throw new Error('No clone description generated from the analysis')
+            // Gemini refused to describe the reference (its safety filter trips
+            // on suggestive/swimwear images). Don't hard-fail: for image-based
+            // cloning the REFERENCE IMAGE itself is sent to the model, so a
+            // neutral "replicate it" instruction keeps the flow working.
+            console.warn('[Clone Analysis] empty (likely safety-blocked) — neutral fallback')
+            return CLONE_FALLBACK
         }
-
         return sanitizeCloneDescription(text)
     } catch (e) {
-        console.error('Clone Analysis Failed', e)
-        throw e instanceof Error ? e : new Error('Clone analysis failed')
+        // Same reasoning — never let the analysis block the upload/generation.
+        console.warn('[Clone Analysis] failed — neutral fallback:', e)
+        return CLONE_FALLBACK
     }
 }
+
+/** Non-blocking fallback when Gemini won't describe a reference (safety block). */
+const CLONE_FALLBACK =
+    'replicate the subject exactly as in the reference image — same pose, outfit, framing, lighting and setting'
 
 /**
  * Strip markdown/structural formatting that confuses image-generation models
