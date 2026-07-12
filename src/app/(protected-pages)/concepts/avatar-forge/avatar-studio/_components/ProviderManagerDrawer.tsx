@@ -189,6 +189,58 @@ export const DEFAULT_PROVIDERS: AIProvider[] = [
         created_at: null,
     },
     {
+        id: 'kie-seedream-5-lite',
+        name: 'Seedream 5.0 Lite · KIE',
+        type: 'KIE' as ProviderType,
+        model: 'seedream/5-lite-text-to-image',
+        endpoint: 'https://api.kie.ai/api/v1',
+        is_active: true,
+        supports_image: true,
+        supports_video: false,
+        requires_api_key: true,
+        api_key_env_var: 'KIE_API_KEY',
+        created_at: null,
+    },
+    {
+        id: 'kie-qwen-image',
+        name: 'Qwen Image 2.0 · KIE',
+        type: 'KIE' as ProviderType,
+        model: 'qwen/text-to-image',
+        endpoint: 'https://api.kie.ai/api/v1',
+        is_active: true,
+        supports_image: true,
+        supports_video: false,
+        requires_api_key: true,
+        api_key_env_var: 'KIE_API_KEY',
+        created_at: null,
+    },
+    {
+        id: 'kie-ideogram-v3',
+        name: 'Ideogram V3 · KIE',
+        type: 'KIE' as ProviderType,
+        model: 'ideogram/v3-text-to-image',
+        endpoint: 'https://api.kie.ai/api/v1',
+        is_active: true,
+        supports_image: true,
+        supports_video: false,
+        requires_api_key: true,
+        api_key_env_var: 'KIE_API_KEY',
+        created_at: null,
+    },
+    {
+        id: 'kie-nano-banana-2',
+        name: 'Nano Banana 2 · KIE',
+        type: 'KIE' as ProviderType,
+        model: 'nano-banana-2',
+        endpoint: 'https://api.kie.ai/api/v1',
+        is_active: true,
+        supports_image: true,
+        supports_video: false,
+        requires_api_key: true,
+        api_key_env_var: 'KIE_API_KEY',
+        created_at: null,
+    },
+    {
         id: 'gateway-gpt-image-2',
         name: 'GPT Image 2 · Gateway',
         type: 'GATEWAY' as ProviderType,
@@ -514,6 +566,14 @@ const ProviderManagerDrawer = () => {
                 return 'FLUX.2 Pro (Black Forest Labs) — PERMISIVO (filtro off), 2K. Solo texto→imagen'
             case 'kie-z-image':
                 return 'Z-Image — barato (~$0.004/img) y PERMISIVO (filtro off). Solo texto→imagen'
+            case 'kie-seedream-5-lite':
+                return 'Seedream 5.0 Lite (ByteDance) — PERMISIVO (filtro off), 2K, generación nueva. Solo texto→imagen'
+            case 'kie-qwen-image':
+                return 'Qwen Image 2.0 (Alibaba) — PERMISIVO (safety + nsfw off). Solo texto→imagen'
+            case 'kie-ideogram-v3':
+                return 'Ideogram V3 — el mejor para TEXTO dentro de la imagen (carteles/logos). Filtro estándar. Solo texto→imagen'
+            case 'kie-nano-banana-2':
+                return 'Nano Banana 2 (Google) — calidad top hasta 4K. OJO: Google = filtro estricto (no ayuda con bloqueos). Solo texto→imagen'
             case 'kie-kling-3-0':
                 return 'Kling 3.0 vía KIE — video i2v/t2v + motion-control v2v, audio nativo opcional, ~20% más barato que el directo'
             case 'gateway-gpt-image-2':

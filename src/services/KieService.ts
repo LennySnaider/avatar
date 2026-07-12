@@ -269,24 +269,58 @@ export async function generateImageKie(
         if (model === 'gpt-image-2-text-to-image') {
             return generateImageGptImage2({ prompt: promptText, model, aspectRatio, referenceImage, referenceImages })
         }
-        // Fallback to generic createTask flow (Grok, Seedream, FLUX.2, Z-Image…)
-        const input: Record<string, unknown> = { prompt: promptText, aspect_ratio: aspectRatio }
+        // Fallback to generic createTask flow. Each model family takes its own
+        // size param + permissive flags (nsfw_checker=false disables KIE's
+        // content filter — the whole point, Gemini/OpenAI block fashion/sensual).
+        // These are wired for TEXT→IMAGE only: their image-to-image endpoints
+        // take an http-URL ARRAY (input_urls/image_urls), not our base64 ref, so
+        // we skip the reference (avatar-locked i2i for them is a follow-up). The
+        // last `else` keeps the legacy shape for Grok/others (incl. base64 i2i).
         let resolvedModel = model
-        // Permissive models: nsfw_checker=false disables KIE's content filter
-        // (that's the whole point — Gemini/OpenAI block fashion/suggestive). They
-        // also need their own required params. NOTE: these are wired for
-        // TEXT→IMAGE only for now — their image-to-image endpoints take an
-        // http-URL array (input_urls / image_urls), not our base64 ref, so we
-        // skip the reference here (avatar-locked i2i for them is a follow-up).
-        const isPermissiveT2I =
-            model.startsWith('seedream/') || model.startsWith('flux-2/') || model === 'z-image'
-        if (isPermissiveT2I) {
+        const input: Record<string, unknown> = { prompt: promptText }
+        // Studio aspect ratio → the `image_size` enum some models want instead.
+        const asImageSize = () => {
+            switch (aspectRatio) {
+                case '16:9':
+                    return 'landscape_16_9'
+                case '9:16':
+                    return 'portrait_16_9'
+                case '4:3':
+                    return 'landscape_4_3'
+                case '3:4':
+                    return 'portrait_4_3'
+                default:
+                    return 'square_hd'
+            }
+        }
+        if (model.startsWith('seedream/')) {
+            input.aspect_ratio = aspectRatio
+            input.quality = 'basic'
             input.nsfw_checker = false
-            if (model.startsWith('seedream/')) input.quality = 'basic'
-            if (model.startsWith('flux-2/')) input.resolution = '2K'
-        } else if (referenceImage) {
-            resolvedModel = model.replace('/text-to-image', '/image-to-image')
-            input.image_url = `data:${referenceImage.mimeType};base64,${referenceImage.base64}`
+        } else if (model.startsWith('flux-2/')) {
+            input.aspect_ratio = aspectRatio
+            input.resolution = '2K'
+            input.nsfw_checker = false
+        } else if (model === 'z-image') {
+            input.aspect_ratio = aspectRatio
+            input.nsfw_checker = false
+        } else if (model.startsWith('qwen/')) {
+            input.image_size = asImageSize()
+            input.enable_safety_checker = false
+            input.nsfw_checker = false
+        } else if (model.startsWith('ideogram/')) {
+            input.image_size = asImageSize()
+            input.rendering_speed = 'QUALITY'
+        } else if (model === 'nano-banana-2') {
+            input.aspect_ratio = aspectRatio
+            input.resolution = '2K'
+        } else {
+            // Legacy generic (Grok and others): aspect_ratio + optional base64 i2i.
+            input.aspect_ratio = aspectRatio
+            if (referenceImage) {
+                resolvedModel = model.replace('/text-to-image', '/image-to-image')
+                input.image_url = `data:${referenceImage.mimeType};base64,${referenceImage.base64}`
+            }
         }
         console.log(`[KIE] Submitting generic image task: model=${resolvedModel}`)
         const taskId = await withTimeout(submitTask({ model: resolvedModel, input }), 30_000, 'KIE image submit')
