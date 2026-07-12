@@ -218,6 +218,19 @@ export const DEFAULT_PROVIDERS: AIProvider[] = [
         api_key_env_var: 'KIE_API_KEY',
         created_at: null,
     },
+    {
+        id: 'kie-grok-imagine',
+        name: 'Grok Imagine · KIE',
+        type: 'KIE' as ProviderType,
+        model: 'grok-imagine/image-to-image',
+        endpoint: 'https://api.kie.ai/api/v1',
+        is_active: true,
+        supports_image: true,
+        supports_video: false,
+        requires_api_key: true,
+        api_key_env_var: 'KIE_API_KEY',
+        created_at: null,
+    },
     // Video Providers
     {
         id: 'gemini-veo-3-1',
@@ -390,6 +403,7 @@ const PROVIDER_TRAITS: Record<string, { face?: boolean; permissive?: boolean }> 
     'kie-flux-2-pro': { permissive: true },
     'kie-z-image': { permissive: true },
     'kie-qwen-image': { permissive: true },
+    'kie-grok-imagine': { face: true },
 }
 
 const ProviderManagerDrawer = () => {
@@ -562,6 +576,8 @@ const ProviderManagerDrawer = () => {
                 return 'Ideogram V3 — el mejor para TEXTO dentro de la imagen (carteles/logos). Filtro estándar. Solo texto→imagen'
             case 'kie-nano-banana-2':
                 return 'Nano Banana 2 (Google) — calidad top hasta 4K. OJO: Google = filtro estricto (no ayuda con bloqueos). Solo texto→imagen'
+            case 'kie-grok-imagine':
+                return 'Grok Imagine (xAI) · image-to-image — usa la cara del avatar como referencia. OJO: tiene su PROPIO filtro que bloquea bikini/sensual aun con nsfw off (probado 2x) — NO es el permisivo. Para sensual usa Seedream / FLUX.2 / Z-Image. Sirve para SFW manteniendo identidad'
             case 'kie-kling-3-0':
                 return 'Kling 3.0 vía KIE — video i2v/t2v + motion-control v2v, audio nativo opcional, ~20% más barato que el directo'
             case 'kie-nano-banana-pro':

@@ -329,8 +329,14 @@ export async function generateImageKie(
         } else if (model === 'nano-banana-2') {
             input.aspect_ratio = aspectRatio
             input.resolution = '2K'
+        } else if (model === 'grok-imagine/image-to-image') {
+            // Grok Imagine (xAI) — i2i ONLY + permissive (nsfw_checker off; xAI
+            // barely censors, the reason we're adding it). No aspect_ratio /
+            // image_size in its schema. Identity rides on the face ref, uploaded
+            // → http URL into image_urls[] in the i2i lock block below.
+            input.nsfw_checker = false
         } else {
-            // Legacy generic (Grok and others): aspect_ratio + optional base64 i2i.
+            // Legacy generic: aspect_ratio + optional base64 i2i.
             input.aspect_ratio = aspectRatio
             if (referenceImage) {
                 resolvedModel = model.replace('/text-to-image', '/image-to-image')
@@ -342,9 +348,23 @@ export async function generateImageKie(
         // URL (FLUX.2: input_urls[]; Qwen: image_url), NOT base64. Upload the face
         // → public URL → switch to the i2i model. Falls back to text-only if the
         // upload fails so a generation never hard-errors on this.
-        if (referenceImage && (model.startsWith('flux-2/') || model.startsWith('qwen/'))) {
+        if (
+            referenceImage &&
+            (model.startsWith('flux-2/') ||
+                model.startsWith('qwen/') ||
+                model === 'grok-imagine/image-to-image')
+        ) {
             try {
-                if (model.startsWith('flux-2/')) {
+                if (model === 'grok-imagine/image-to-image') {
+                    // Grok i2i takes up to 1 URL → send the face (identity
+                    // anchor). Already the i2i model id, no text-to-image swap.
+                    const refUrl = await uploadReferenceToSupabase(
+                        referenceImage.base64,
+                        referenceImage.mimeType,
+                    )
+                    input.image_urls = [refUrl]
+                    console.log('[KIE] Grok i2i with 1 identity ref')
+                } else if (model.startsWith('flux-2/')) {
                     // FLUX.2 takes up to 8 refs → send the face (identity anchor) +
                     // a Body Ref (imitate the body) so BOTH are locked from images,
                     // not just the face. Measurements text stays the default when
