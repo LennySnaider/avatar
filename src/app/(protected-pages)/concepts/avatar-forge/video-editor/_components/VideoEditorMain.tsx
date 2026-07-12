@@ -104,10 +104,17 @@ async function extractFilmstrip(url: string, frameCount: number): Promise<string
     video.crossOrigin = 'anonymous'
     video.muted = true
     video.preload = 'auto'
+    video.playsInline = true
+    // Attach hidden to the DOM: some browsers won't decode frames for
+    // drawImage on a fully-detached <video> (this is why ExtractFrameDialog,
+    // which uses an on-screen video, works). Off-screen so it's invisible.
+    video.style.cssText = 'position:fixed;left:-9999px;top:0;width:2px;height:2px;opacity:0;pointer-events:none'
+    document.body.appendChild(video)
 
     const cleanup = () => {
         video.removeAttribute('src')
         video.src = ''
+        video.remove()
     }
 
     const waitForMetadata = () => new Promise<boolean>((resolve) => {
@@ -271,6 +278,9 @@ const VideoEditorMain = ({ userId, initialVideoUrl }: VideoEditorMainProps) => {
     const filmstripsRef = useRef<Record<string, string[]>>(filmstrips)
     useEffect(() => { filmstripsRef.current = filmstrips }, [filmstrips])
     const filmstripInFlightRef = useRef<Set<string>>(new Set())
+    // Bounded retries: an empty strip (transient decode/CORS hiccup) re-attempts
+    // on later effect runs instead of being cached as permanently empty.
+    const filmstripAttemptsRef = useRef<Record<string, number>>({})
 
     // Seek to apply once the next `loadedmetadata` fires (clip switch or
     // click-to-seek on a not-yet-selected clip); pendingPlayRef keeps
@@ -365,8 +375,11 @@ const VideoEditorMain = ({ userId, initialVideoUrl }: VideoEditorMainProps) => {
         let cancelled = false
         clips.forEach((clip) => {
             const url = clip.url
-            if (filmstripsRef.current[url] !== undefined) return
+            const existingStrip = filmstripsRef.current[url]
+            if (existingStrip && existingStrip.length > 0) return // already have a good strip
             if (filmstripInFlightRef.current.has(url)) return
+            if ((filmstripAttemptsRef.current[url] ?? 0) >= 4) return // gave up → fallback thumb
+            filmstripAttemptsRef.current[url] = (filmstripAttemptsRef.current[url] ?? 0) + 1
             filmstripInFlightRef.current.add(url)
             // ~1 frame per second, min 8: with fewer, a short clip on a wide
             // track rendered 3 giant object-cover tiles instead of a filmstrip.
@@ -1541,11 +1554,10 @@ const VideoEditorMain = ({ userId, initialVideoUrl }: VideoEditorMainProps) => {
                         ref={trackRef}
                         onDragOver={handleTrackDragOver}
                         onDrop={handleTrackDrop}
-                        className="flex items-stretch gap-1 h-24 bg-gray-100 dark:bg-gray-900 rounded-lg p-1 overflow-x-auto"
+                        className="flex items-stretch gap-1 h-20 bg-gray-100 dark:bg-gray-900 rounded-lg p-1"
                     >
                         {clips.map((clip, idx) => {
                             const trimmedLen = trimmedLenOf(clip)
-                            const pct = totalTrimmed > 0 ? (trimmedLen / totalTrimmed) * 100 : 100 / clips.length
                             const selected = clip.id === selectedClipId
                             const playheadPct = selected
                                 ? Math.max(0, Math.min(100, ((playhead - clip.inPoint) / trimmedLen) * 100))
@@ -1554,10 +1566,10 @@ const VideoEditorMain = ({ userId, initialVideoUrl }: VideoEditorMainProps) => {
                                 <div
                                     key={clip.id}
                                     ref={(el) => { blockRefs.current[clip.id] = el }}
-                                    className={`relative shrink-0 rounded-md overflow-hidden border-2 transition-colors ${
+                                    className={`relative rounded-md overflow-hidden border-2 transition-colors ${
                                         selected ? 'border-purple-500' : 'border-transparent'
                                     } ${dragOverIdx === idx ? 'ring-2 ring-purple-300' : ''}`}
-                                    style={{ width: `${pct}%`, minWidth: 56 }}
+                                    style={{ flexGrow: trimmedLen, flexBasis: 0, minWidth: 24 }}
                                     onDragOver={handleClipDragOver(idx)}
                                     onDrop={handleClipDrop(idx)}
                                 >
@@ -1644,7 +1656,7 @@ const VideoEditorMain = ({ userId, initialVideoUrl }: VideoEditorMainProps) => {
                             onClick={() => setIsGalleryPickerOpen(true)}
                             disabled={isProcessing}
                             title="Add clip"
-                            className="shrink-0 h-full w-16 rounded-md border-2 border-dashed border-gray-300 dark:border-gray-600 flex flex-col items-center justify-center gap-0.5 text-gray-400 hover:border-primary hover:text-primary hover:bg-primary/5 transition-colors disabled:opacity-50"
+                            className="shrink-0 h-full w-12 rounded-md border-2 border-dashed border-gray-300 dark:border-gray-600 flex flex-col items-center justify-center gap-0.5 text-gray-400 hover:border-primary hover:text-primary hover:bg-primary/5 transition-colors disabled:opacity-50"
                         >
                             <HiOutlinePlus className="w-7 h-7" />
                             <span className="text-[9px] font-medium">Add</span>
