@@ -93,6 +93,31 @@ const ImagePreviewModal = ({
 
     // Image-supporting providers available for editing override
     const imageProviders = providers.filter(p => p.supports_image)
+    // Only models that actually CONSUME the source image edit well. Text-to-image
+    // models (Z-Image, Seedream, Ideogram, Nano Banana 2) and MiniMax (keeps only
+    // the face and re-renders everything else) ignore the photo and hallucinate a
+    // new subject — so they're hidden from the edit provider list.
+    const canEditImage = (p: (typeof imageProviders)[number]): boolean => {
+        if (p.type === 'GOOGLE') return true // Gemini native editImage
+        if (p.type !== 'KIE') return false
+        const m = p.model || ''
+        return (
+            m.startsWith('flux-kontext') ||
+            m === 'gpt-image-2-text-to-image' ||
+            m === 'nano-banana-pro' ||
+            m.startsWith('flux-2/') ||
+            m.startsWith('qwen/') ||
+            m.startsWith('grok-imagine/')
+        )
+    }
+    const editProviders = imageProviders.filter(canEditImage)
+    // If the studio's active provider can't edit, default the edit dropdown to a
+    // real editor (Gemini first) instead of a broken choice.
+    const defaultEditProviderId =
+        editProviders.find((p) => p.id === activeProviderId)?.id ??
+        editProviders.find((p) => p.type === 'GOOGLE')?.id ??
+        editProviders[0]?.id ??
+        null
 
     const [isEditing, setIsEditing] = useState(false)
     const [assignMedia, setAssignMedia] = useState<GeneratedMedia | null>(null)
@@ -345,7 +370,7 @@ const ImagePreviewModal = ({
                 if (!onEdit) return
                 // Preserve the source aspect ratio on an AI edit — the user
                 // didn't ask to reshape it. Reshaping is only intentional via Crop.
-                await onEdit(previewMedia, editPrompt, maskCanvas, previewMedia.aspectRatio || '1:1', editAssets, editProviderId ?? activeProviderId ?? undefined)
+                await onEdit(previewMedia, editPrompt, maskCanvas, previewMedia.aspectRatio || '1:1', editAssets, editProviderId ?? defaultEditProviderId ?? undefined)
                 handleClose()
             }
         } finally {
@@ -1128,12 +1153,12 @@ const ImagePreviewModal = ({
                                     Provider
                                 </label>
                                 <select
-                                    value={editProviderId ?? activeProviderId ?? ''}
+                                    value={editProviderId ?? defaultEditProviderId ?? ''}
                                     onChange={(e) => setEditProviderId(e.target.value || null)}
                                     className="h-10 px-3 text-sm border rounded-lg bg-white border-gray-300 text-gray-900 dark:bg-gray-800 dark:border-gray-700 dark:text-gray-100 max-w-45"
-                                    title="Override provider for this edit (useful when default blocks the prompt)"
+                                    title="Solo modelos que editan la foto real (los de solo-texto no aparecen)"
                                 >
-                                    {imageProviders.map(p => (
+                                    {editProviders.map(p => (
                                         <option key={p.id} value={p.id}>{p.name}</option>
                                     ))}
                                 </select>
