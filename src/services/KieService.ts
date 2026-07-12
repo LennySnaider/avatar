@@ -340,6 +340,31 @@ export async function generateImageKie(
                 input.image_url = `data:${referenceImage.mimeType};base64,${referenceImage.base64}`
             }
         }
+        // i2i IDENTITY LOCK (experiment): FLUX.2 / Qwen can keep the avatar's
+        // face from a reference — but their image-to-image endpoints need an HTTP
+        // URL (FLUX.2: input_urls[]; Qwen: image_url), NOT base64. Upload the face
+        // → public URL → switch to the i2i model. Falls back to text-only if the
+        // upload fails so a generation never hard-errors on this.
+        if (referenceImage && (model.startsWith('flux-2/') || model.startsWith('qwen/'))) {
+            try {
+                const refUrl = await uploadReferenceToSupabase(
+                    referenceImage.base64,
+                    referenceImage.mimeType,
+                )
+                resolvedModel = model.replace('text-to-image', 'image-to-image')
+                if (model.startsWith('flux-2/')) {
+                    input.input_urls = [refUrl]
+                } else {
+                    // qwen/image-to-image: image_url + strength; size comes from the ref.
+                    input.image_url = refUrl
+                    delete input.image_size
+                }
+                console.log(`[KIE] i2i identity ref → ${resolvedModel}`)
+            } catch (e) {
+                console.warn('[KIE] ref upload failed, staying text-only:', e)
+            }
+        }
+
         console.log(`[KIE] Submitting generic image task: model=${resolvedModel}`)
         const taskId = await withTimeout(submitTask({ model: resolvedModel, input }), 30_000, 'KIE image submit')
         const urls = await pollTask(taskId, { budgetMs: 600_000, intervalMs: 3000 })
