@@ -277,7 +277,25 @@ export async function generateImageKie(
         // we skip the reference (avatar-locked i2i for them is a follow-up). The
         // last `else` keeps the legacy shape for Grok/others (incl. base64 i2i).
         let resolvedModel = model
-        const input: Record<string, unknown> = { prompt: promptText }
+        // These models CAP prompt length (Seedream 3000, FLUX/Qwen/Ideogram 5000,
+        // Nano Banana 2 20000). Our full avatar prompt (body + face + scene +
+        // clone) can blow past it → KIE 500 "text length cannot exceed the
+        // maximum". Cap at a word boundary, a bit under the limit for margin.
+        const promptCap = model.startsWith('seedream/')
+            ? 2900
+            : model === 'nano-banana-2'
+              ? 19000
+              : model === 'z-image'
+                ? 1900
+                : 4900
+        let capped = promptText
+        if (capped.length > promptCap) {
+            capped = capped.slice(0, promptCap)
+            const lastSpace = capped.lastIndexOf(' ')
+            if (lastSpace > promptCap * 0.85) capped = capped.slice(0, lastSpace)
+            console.warn(`[KIE] Prompt capped ${promptText.length}→${capped.length} for ${model}`)
+        }
+        const input: Record<string, unknown> = { prompt: capped }
         // Studio aspect ratio → the `image_size` enum some models want instead.
         const asImageSize = () => {
             switch (aspectRatio) {
