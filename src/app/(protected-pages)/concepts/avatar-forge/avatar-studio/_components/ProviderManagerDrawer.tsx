@@ -12,6 +12,8 @@ import {
     HiOutlineVideoCamera,
     HiStar,
     HiOutlineStar,
+    HiOutlineUserCircle,
+    HiOutlineLockOpen,
 } from 'react-icons/hi'
 import type { AIProvider, ProviderType } from '@/@types/supabase'
 
@@ -419,6 +421,29 @@ function writeDefaultProviderId(mode: string, id: string) {
     }
 }
 
+// Verified against the generation dispatch (AvatarStudioMain.handleGenerate):
+//  face = sends the avatar's FACE image → identity consistency.
+//  permissive = disables the content filter (nsfw off / less restrictive).
+// The sweet spot is BOTH (MiniMax). Drives the badges on each card so the pick
+// is obvious instead of trial-and-error.
+const PROVIDER_TRAITS: Record<string, { face?: boolean; permissive?: boolean }> = {
+    'gemini-nano-banana': { face: true },
+    'gemini-flash-lite-image': { face: true },
+    'kie-nano-banana-pro': { face: true },
+    'minimax-image-01': { face: true, permissive: true },
+    'kling-v3-image': { face: true },
+    'kling-v3-omni-image': { face: true },
+    'kie-gpt-4o-image': { face: true },
+    'kie-gpt-image-2': { face: true },
+    'kie-flux-kontext': { face: true },
+    'kie-flux-kontext-max': { face: true },
+    'kie-seedream-4-5': { permissive: true },
+    'kie-seedream-5-lite': { permissive: true },
+    'kie-flux-2-pro': { permissive: true },
+    'kie-z-image': { permissive: true },
+    'kie-qwen-image': { permissive: true },
+}
+
 const ProviderManagerDrawer = () => {
     const {
         showProviderManager,
@@ -470,10 +495,16 @@ const ProviderManagerDrawer = () => {
         }
     }, [providers, setProviders, generationMode, activeProviderId, setActiveProviderId])
 
-    // Filter providers based on current mode
-    const availableProviders = providers.filter(p =>
-        generationMode === 'IMAGE' ? p.supports_image : p.supports_video
-    )
+    // Filter by mode, then surface the useful ones first (Cara+Permisivo → Cara →
+    // Permisivo → resto) so the best picks aren't buried in a 19-item scroll.
+    const traitScore = (id: string) => {
+        const t = PROVIDER_TRAITS[id]
+        return (t?.face ? 2 : 0) + (t?.permissive ? 1 : 0)
+    }
+    const availableProviders = providers
+        .filter((p) => (generationMode === 'IMAGE' ? p.supports_image : p.supports_video))
+        .slice()
+        .sort((a, b) => traitScore(b.id) - traitScore(a.id))
 
     const handleSelectProvider = (providerId: string) => {
         setActiveProviderId(providerId)
@@ -685,6 +716,26 @@ const ProviderManagerDrawer = () => {
                                             <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
                                                 {getProviderDescription(provider)}
                                             </p>
+                                            {(() => {
+                                                const tr = PROVIDER_TRAITS[provider.id]
+                                                if (!tr?.face && !tr?.permissive) return null
+                                                return (
+                                                    <div className="flex items-center gap-1.5 mt-1.5 flex-wrap">
+                                                        {tr.face && (
+                                                            <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300 inline-flex items-center gap-0.5">
+                                                                <HiOutlineUserCircle className="w-3 h-3" />
+                                                                Cara consistente
+                                                            </span>
+                                                        )}
+                                                        {tr.permissive && (
+                                                            <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300 inline-flex items-center gap-0.5">
+                                                                <HiOutlineLockOpen className="w-3 h-3" />
+                                                                Permisivo
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                )
+                                            })()}
                                             <div className="flex items-center gap-2 mt-2">
                                                 <span className="text-xs px-2 py-0.5 bg-gray-200 dark:bg-gray-700 rounded">
                                                     {provider.model}
