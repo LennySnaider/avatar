@@ -142,6 +142,10 @@ interface AvatarStudioState {
     gallery: GeneratedMedia[]
     previewMedia: GeneratedMedia | null
     previewStartInEdit: boolean
+    gallerySearchQuery: string
+    galleryMediaTypeFilter: MediaType | 'ALL'
+    galleryAvatarFilter: string
+    galleryView: 'all' | 'favorites' | 'archived'
 
     // Safety Analysis
     isAnalyzing: boolean
@@ -280,6 +284,13 @@ interface AvatarStudioState {
     clearGallery: () => void
     loadPersistedGallery: (items: GeneratedMedia[]) => void
     updateGalleryItem: (id: string, patch: Partial<GeneratedMedia>) => void
+    // Gallery search/filter UI state lives in the store (not component state) so
+    // it survives remounts — the Next dev error overlay / Fast Refresh was
+    // resetting the typed search when a generation error blew up the tree.
+    setGallerySearchQuery: (q: string) => void
+    setGalleryMediaTypeFilter: (f: MediaType | 'ALL') => void
+    setGalleryAvatarFilter: (f: string) => void
+    setGalleryView: (v: 'all' | 'favorites' | 'archived') => void
 
     // Actions - Safety
     setIsAnalyzing: (analyzing: boolean) => void
@@ -412,6 +423,10 @@ const initialState = {
     gallery: [],
     previewMedia: null,
     previewStartInEdit: false,
+    gallerySearchQuery: '',
+    galleryMediaTypeFilter: 'ALL' as const,
+    galleryAvatarFilter: 'ALL',
+    galleryView: 'all' as const,
 
     isAnalyzing: false,
     safetyAnalysis: null,
@@ -713,6 +728,10 @@ export const useAvatarStudioStore = create<AvatarStudioState>()(
     setPreviewMedia: (media, startInEdit = false) =>
         set({ previewMedia: media, previewStartInEdit: media ? startInEdit : false }),
     clearGallery: () => set({ gallery: [], previewMedia: null }),
+    setGallerySearchQuery: (q) => set({ gallerySearchQuery: q }),
+    setGalleryMediaTypeFilter: (f) => set({ galleryMediaTypeFilter: f }),
+    setGalleryAvatarFilter: (f) => set({ galleryAvatarFilter: f }),
+    setGalleryView: (v) => set({ galleryView: v }),
     // Seed the gallery with persisted history from the `generations` table.
     // Dedupe by generationId (persisted rows win), keep any session items not
     // yet persisted, newest first (by timestamp).

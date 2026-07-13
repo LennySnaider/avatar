@@ -44,7 +44,6 @@ import {
     apiSaveGeneration,
     apiGetGenerations,
     apiGetAvatars,
-    getSignedUrl,
 } from '@/services/AvatarForgeService'
 import { supabase, getStoragePublicUrl } from '@/lib/supabase'
 import {
@@ -395,13 +394,16 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                 const postedMap = postedRes.success
                     ? (postedRes.data ?? {})
                     : {}
-                const items = await Promise.all(
-                    rows.map(async (gen): Promise<GeneratedMedia> => {
-                        const url = await getSignedUrl(
-                            'generations',
-                            gen.storage_path,
-                        )
-                        return {
+                // Public URLs are a pure string build — the `generations` bucket
+                // is public, so the old per-row createSignedUrl (one HTTP round
+                // trip × 160+ items, and nothing rendered until ALL resolved)
+                // was pure latency. The gallery now seeds instantly.
+                const items = rows.map((gen): GeneratedMedia => {
+                    const url = getStoragePublicUrl(
+                        'generations',
+                        gen.storage_path,
+                    )
+                    return {
                             id: crypto.randomUUID(),
                             url,
                             prompt: gen.prompt,
@@ -425,13 +427,9 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                             avatarId: gen.avatar_id,
                             postedPlatforms: postedMap[gen.id],
                             saveState: 'saved',
-                            publicUrl: getStoragePublicUrl(
-                                'generations',
-                                gen.storage_path,
-                            ),
+                            publicUrl: url,
                         }
-                    }),
-                )
+                    })
                 if (!cancelled) loadPersistedGallery(items)
             } catch (error) {
                 console.error('Failed to load persisted gallery:', error)

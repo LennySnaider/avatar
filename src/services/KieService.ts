@@ -396,8 +396,21 @@ export async function generateImageKie(
         }
 
         console.log(`[KIE] Submitting generic image task: model=${resolvedModel}`)
-        const taskId = await withTimeout(submitTask({ model: resolvedModel, input }), 30_000, 'KIE image submit')
-        const urls = await pollTask(taskId, { budgetMs: 600_000, intervalMs: 3000 })
+        // "500 internal error, please try again later" is a transient KIE-side
+        // failure (their own message says to retry) — resubmit ONCE before
+        // surfacing it, so a hiccup doesn't fail the user's generation/edit.
+        let urls: string[]
+        try {
+            const taskId = await withTimeout(submitTask({ model: resolvedModel, input }), 30_000, 'KIE image submit')
+            urls = await pollTask(taskId, { budgetMs: 600_000, intervalMs: 3000 })
+        } catch (err) {
+            const msg = err instanceof Error ? err.message : String(err)
+            if (!/internal error/i.test(msg)) throw err
+            console.warn('[KIE] Transient internal error — resubmitting once')
+            await new Promise((r) => setTimeout(r, 2000))
+            const retryId = await withTimeout(submitTask({ model: resolvedModel, input }), 30_000, 'KIE image submit (retry)')
+            urls = await pollTask(retryId, { budgetMs: 600_000, intervalMs: 3000 })
+        }
         const persistedUrl = await persistToSupabase(urls[0], 'png', 'kie-images')
         return { url: persistedUrl, fullApiPrompt: promptText }
     }

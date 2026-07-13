@@ -66,22 +66,22 @@ const GalleryPanel = ({
         removeFromGallery,
         addToGallery,
         updateGalleryItem,
+        // Search/filter/view state lives in the store so it survives remounts
+        // (the dev error overlay / Fast Refresh used to wipe the typed search).
+        gallerySearchQuery: searchQuery,
+        setGallerySearchQuery: setSearchQuery,
+        galleryMediaTypeFilter: mediaTypeFilter,
+        setGalleryMediaTypeFilter: setMediaTypeFilter,
+        galleryAvatarFilter: avatarFilter,
+        setGalleryAvatarFilter: setAvatarFilter,
+        galleryView,
+        setGalleryView,
     } = useAvatarStudioStore()
 
     // Prefer the parent-provided ref (header "Upload" button) so both trigger
     // the same hidden input; fall back to a local one when rendered standalone.
     const localUploadRef = useRef<HTMLInputElement>(null)
     const uploadInputRef = externalUploadRef ?? localUploadRef
-
-    const [searchQuery, setSearchQuery] = useState('')
-    const [mediaTypeFilter, setMediaTypeFilter] = useState<MediaType | 'ALL'>(
-        'ALL',
-    )
-    const [avatarFilter, setAvatarFilter] = useState<string>('ALL')
-    // Todas (non-archived) | Favoritas (starred) | Archivadas (the bucket).
-    const [galleryView, setGalleryView] = useState<
-        'all' | 'favorites' | 'archived'
-    >('all')
 
     // Toggle a favorite/archived flag: update the in-memory item AND merge-write
     // it into generations.metadata so it survives a reload (only once the item
@@ -476,6 +476,10 @@ const GalleryPanel = ({
                                                     media.publicUrl ?? media.url
                                                 }
                                                 className="w-full h-auto"
+                                                // Only fetch headers/first frame up
+                                                // front — 100+ videos eagerly
+                                                // buffering killed the gallery load.
+                                                preload="metadata"
                                                 muted
                                                 loop
                                                 onMouseOver={(e) => {
@@ -499,6 +503,11 @@ const GalleryPanel = ({
                                                 }
                                                 alt={media.prompt}
                                                 className="w-full h-auto"
+                                                // Lazy: only visible cards load —
+                                                // 160+ full-res images at once
+                                                // saturated the connection.
+                                                loading="lazy"
+                                                decoding="async"
                                                 onError={(e) => {
                                                     const img = e.currentTarget
                                                     if (
