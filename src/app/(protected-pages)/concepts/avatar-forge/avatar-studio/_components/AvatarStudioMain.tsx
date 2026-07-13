@@ -1638,7 +1638,10 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
             // inline gallery IS the history and the item becomes postable.
             void persistGeneration(newMedia)
         } catch (error: unknown) {
-            console.error('Generation failed:', error)
+            // warn, NOT error: this failure is fully handled below (banner +
+            // toast). console.error pops the Next dev overlay, which pushed the
+            // user to hard-reload the page — wiping gallery search/session state.
+            console.warn('Generation failed:', error)
             setAppState(AppState.ERROR)
             const errorMessage =
                 error instanceof Error ? error.message : 'Generation failed'
@@ -2023,7 +2026,8 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                 void persistGeneration(newMedia)
                 setAppState(AppState.SUCCESS)
             } catch (error: unknown) {
-                console.error('Edit failed:', error)
+                // warn, NOT error — handled below; see handleGenerate's catch.
+                console.warn('Edit failed:', error)
                 setAppState(AppState.ERROR)
                 const errorMessage =
                     error instanceof Error ? error.message : 'Edit failed'

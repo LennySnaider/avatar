@@ -396,18 +396,34 @@ export async function generateImageKie(
         }
 
         console.log(`[KIE] Submitting generic image task: model=${resolvedModel}`)
-        // "500 internal error, please try again later" is a transient KIE-side
-        // failure (their own message says to retry) — resubmit ONCE before
-        // surfacing it, so a hiccup doesn't fail the user's generation/edit.
+        // Self-healing retries (ONE resubmit) for two recoverable failures:
+        // - "internal error, please try again later" — transient on KIE's side
+        //   (their own message says to retry).
+        // - "text length cannot exceed the maximum limit" — KIE enforces
+        //   per-model limits STRICTER than documented (and they vary by model /
+        //   i2i variant), so a prompt inside our generic cap can still bounce.
+        //   Shrink hard to ~900 chars and resubmit: the identity-critical part
+        //   (body preamble + [FACE:]) leads the prompt, so it's what survives.
         let urls: string[]
         try {
             const taskId = await withTimeout(submitTask({ model: resolvedModel, input }), 30_000, 'KIE image submit')
             urls = await pollTask(taskId, { budgetMs: 600_000, intervalMs: 3000 })
         } catch (err) {
             const msg = err instanceof Error ? err.message : String(err)
-            if (!/internal error/i.test(msg)) throw err
-            console.warn('[KIE] Transient internal error — resubmitting once')
-            await new Promise((r) => setTimeout(r, 2000))
+            const isTransient = /internal error/i.test(msg)
+            const isTooLong = /text length|maximum limit/i.test(msg)
+            if (!isTransient && !isTooLong) throw err
+            if (isTooLong) {
+                const hard = String(input.prompt ?? '').slice(0, 900)
+                const cut = hard.lastIndexOf(' ')
+                input.prompt = cut > 700 ? hard.slice(0, cut) : hard
+                console.warn(
+                    `[KIE] ${resolvedModel} rejected the prompt length — retrying at ${String(input.prompt).length} chars`,
+                )
+            } else {
+                console.warn('[KIE] Transient internal error — resubmitting once')
+                await new Promise((r) => setTimeout(r, 2000))
+            }
             const retryId = await withTimeout(submitTask({ model: resolvedModel, input }), 30_000, 'KIE image submit (retry)')
             urls = await pollTask(retryId, { budgetMs: 600_000, intervalMs: 3000 })
         }
