@@ -180,6 +180,19 @@ export const DEFAULT_PROVIDERS: AIProvider[] = [
         created_at: null,
     },
     {
+        id: 'kie-seedream-5-pro',
+        name: 'Seedream 5.0 Pro · KIE',
+        type: 'KIE' as ProviderType,
+        model: 'seedream/5-pro-image-to-image',
+        endpoint: 'https://api.kie.ai/api/v1',
+        is_active: true,
+        supports_image: true,
+        supports_video: false,
+        requires_api_key: true,
+        api_key_env_var: 'KIE_API_KEY',
+        created_at: null,
+    },
+    {
         id: 'kie-qwen-image',
         name: 'Qwen Image 2.0 · KIE',
         type: 'KIE' as ProviderType,
@@ -404,6 +417,7 @@ const PROVIDER_COST: Record<string, string> = {
     'kie-flux-2-pro': '~$0.035',
     'kie-z-image': '~$0.004',
     'kie-seedream-5-lite': '~$0.028',
+    'kie-seedream-5-pro': '~$0.035',
     'kie-qwen-image': '~$0.02',
     'kie-ideogram-v3': '~$0.05',
     'kie-nano-banana-2': '~$0.06',
@@ -424,8 +438,9 @@ const PROVIDER_TRAITS: Record<string, { face?: boolean; permissive?: boolean }> 
     'kie-gpt-image-2': { face: true },
     'kie-flux-kontext': { face: true },
     'kie-flux-kontext-max': { face: true },
-    'kie-seedream-4-5': { permissive: true },
-    'kie-seedream-5-lite': { permissive: true },
+    'kie-seedream-4-5': { face: true, permissive: true },
+    'kie-seedream-5-lite': { face: true, permissive: true },
+    'kie-seedream-5-pro': { face: true, permissive: true },
     'kie-flux-2-pro': { permissive: true },
     'kie-z-image': { permissive: true },
     'kie-qwen-image': { permissive: true },
@@ -589,13 +604,15 @@ const ProviderManagerDrawer = () => {
             case 'kie-gpt-image-2':
                 return 'OpenAI GPT Image 2 vía KIE - usa refs (image-to-image, hasta 16), 9:16 nativo, 2K'
             case 'kie-seedream-4-5':
-                return 'Seedream 4.5 (ByteDance) — PERMISIVO (filtro NSFW off), calidad 2K, ideal fashion/sensual. Solo texto→imagen'
+                return 'Seedream 4.5 (ByteDance) — PERMISIVO (filtro NSFW off) + usa la CARA del avatar (i2i 4.5-edit, verificado). Calidad 2K, ideal fashion/sensual'
             case 'kie-flux-2-pro':
                 return 'FLUX.2 Pro (Black Forest Labs) — PERMISIVO (filtro off), 2K. Solo texto→imagen'
             case 'kie-z-image':
-                return 'Z-Image — barato (~$0.004/img) y PERMISIVO (filtro off). Solo texto→imagen'
+                return 'Z-Image — el más barato (~$0.004/img) y PERMISIVO (filtro off). ⚠️ NO usa la cara del avatar: no tiene image-to-image en KIE (verificado) — la identidad va solo por texto. Para cara usa Seedream / FLUX.2'
             case 'kie-seedream-5-lite':
-                return 'Seedream 5.0 Lite (ByteDance) — PERMISIVO (filtro off), 2K, generación nueva. Solo texto→imagen'
+                return 'Seedream 5.0 Lite (ByteDance) — PERMISIVO (filtro off) + usa la CARA del avatar (i2i verificado: misma cara, mismo precio). 2K'
+            case 'kie-seedream-5-pro':
+                return 'Seedream 5.0 Pro (ByteDance) — PERMISIVO + CARA del avatar (image-to-image nativo, verificado). Más calidad que Lite. Requiere avatar con cara'
             case 'kie-qwen-image':
                 return 'Qwen Image 2.0 (Alibaba) — PERMISIVO (safety + nsfw off). Solo texto→imagen'
             case 'kie-ideogram-v3':
@@ -603,7 +620,7 @@ const ProviderManagerDrawer = () => {
             case 'kie-nano-banana-2':
                 return 'Nano Banana 2 (Google) — calidad top hasta 4K. OJO: Google = filtro estricto (no ayuda con bloqueos). Solo texto→imagen'
             case 'kie-grok-imagine':
-                return 'Grok Imagine (xAI) · image-to-image — usa la cara del avatar como referencia. OJO: tiene su PROPIO filtro que bloquea bikini/sensual aun con nsfw off (probado 2x) — NO es el permisivo. Para sensual usa Seedream / FLUX.2 / Z-Image. Sirve para SFW manteniendo identidad'
+                return 'Grok Imagine (xAI) · image-to-image — usa la cara del avatar (la ref se recorta al aspect ratio pedido: su salida copia el ratio del input). OJO: su PROPIO filtro bloquea bikini/sensual aun con nsfw off — para sensual usa Seedream / FLUX.2. Para SFW con identidad'
             case 'kie-kling-3-0':
                 return 'Kling 3.0 vía KIE — video i2v/t2v + motion-control v2v, audio nativo opcional, ~20% más barato que el directo'
             case 'kie-nano-banana-pro':

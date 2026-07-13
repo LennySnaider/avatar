@@ -202,6 +202,56 @@ async function uploadReferenceToSupabase(
 }
 
 /**
+ * Cover-crop a base64 image to a target aspect ratio (server-side via sharp).
+ * Grok's image-to-image has NO size params and MIRRORS the input's aspect
+ * ratio (verified live: square ref + aspect_ratio:"9:16" in input → 1024x1024
+ * square out), so the only way to get the requested ratio is to send a ref
+ * that's already in it. Crops with a top bias when trimming height — faces
+ * live in the upper third of a reference.
+ */
+async function cropBase64ToAspect(
+    base64: string,
+    mimeType: string,
+    aspectRatio: string,
+): Promise<{ base64: string; mimeType: string }> {
+    const original = { base64, mimeType }
+    const [aw, ah] = aspectRatio.split(':').map(Number)
+    if (!aw || !ah) return original
+    try {
+        const sharp = (await import('sharp')).default
+        const cleanBase64 = base64.includes(',') ? base64.split(',')[1] : base64
+        const buf = Buffer.from(cleanBase64, 'base64')
+        const meta = await sharp(buf).metadata()
+        const w = meta.width ?? 0
+        const h = meta.height ?? 0
+        if (!w || !h) return original
+        const target = aw / ah
+        if (Math.abs(w / h - target) < 0.02) return original // already there
+        let cw = w
+        let ch = h
+        let left = 0
+        let top = 0
+        if (w / h > target) {
+            // Wider than target → trim the sides, keep the full height.
+            cw = Math.round(h * target)
+            left = Math.round((w - cw) / 2)
+        } else {
+            // Taller than target → trim height with a top bias (keep the face).
+            ch = Math.round(w / target)
+            top = Math.round((h - ch) / 4)
+        }
+        const out = await sharp(buf)
+            .extract({ left, top, width: cw, height: ch })
+            .jpeg({ quality: 92 })
+            .toBuffer()
+        return { base64: out.toString('base64'), mimeType: 'image/jpeg' }
+    } catch (e) {
+        console.warn('[KIE] aspect crop failed — sending the original ref:', e)
+        return original
+    }
+}
+
+/**
  * Download a result URL and re-upload to Supabase Storage so we have a stable
  * URL that doesn't depend on KIE's CDN expiration / CORS rules.
  */
@@ -352,18 +402,41 @@ export async function generateImageKie(
             referenceImage &&
             (model.startsWith('flux-2/') ||
                 model.startsWith('qwen/') ||
+                model.startsWith('seedream/') ||
                 model === 'grok-imagine/image-to-image')
         ) {
             try {
                 if (model === 'grok-imagine/image-to-image') {
                     // Grok i2i takes up to 1 URL → send the face (identity
-                    // anchor). Already the i2i model id, no text-to-image swap.
+                    // anchor). It MIRRORS the ref's aspect ratio (no size params,
+                    // verified live), so crop the ref to the requested ratio
+                    // first or the output stays stuck at the ref's shape.
+                    const cropped = await cropBase64ToAspect(
+                        referenceImage.base64,
+                        referenceImage.mimeType,
+                        aspectRatio,
+                    )
+                    const refUrl = await uploadReferenceToSupabase(
+                        cropped.base64,
+                        cropped.mimeType,
+                    )
+                    input.image_urls = [refUrl]
+                    console.log('[KIE] Grok i2i with 1 identity ref (AR-cropped)')
+                } else if (model.startsWith('seedream/')) {
+                    // Seedream has real i2i variants that keep identity AND honor
+                    // aspect_ratio/quality at the same credits as t2i (verified
+                    // live: 4.5-edit + 5-lite-image-to-image, 9:16 out, same
+                    // woman). Face ref → image_urls + swap to the i2i model id.
                     const refUrl = await uploadReferenceToSupabase(
                         referenceImage.base64,
                         referenceImage.mimeType,
                     )
+                    resolvedModel =
+                        model === 'seedream/4.5-text-to-image'
+                            ? 'seedream/4.5-edit'
+                            : model.replace('text-to-image', 'image-to-image')
                     input.image_urls = [refUrl]
-                    console.log('[KIE] Grok i2i with 1 identity ref')
+                    console.log(`[KIE] Seedream i2i (${resolvedModel}) with identity ref`)
                 } else if (model.startsWith('flux-2/')) {
                     // FLUX.2 takes up to 8 refs → send the face (identity anchor) +
                     // a Body Ref (imitate the body) so BOTH are locked from images,

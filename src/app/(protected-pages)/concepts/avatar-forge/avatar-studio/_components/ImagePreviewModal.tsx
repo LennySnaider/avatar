@@ -107,6 +107,7 @@ const ImagePreviewModal = ({
             m === 'nano-banana-pro' ||
             m.startsWith('flux-2/') ||
             m.startsWith('qwen/') ||
+            m.startsWith('seedream/') || // real i2i variants (4.5-edit / 5-lite i2i)
             m.startsWith('grok-imagine/')
         )
     }
