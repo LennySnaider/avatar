@@ -153,19 +153,9 @@ export const DEFAULT_PROVIDERS: AIProvider[] = [
         api_key_env_var: 'KIE_API_KEY',
         created_at: null,
     },
-    {
-        id: 'kie-z-image',
-        name: 'Z-Image · KIE',
-        type: 'KIE' as ProviderType,
-        model: 'z-image',
-        endpoint: 'https://api.kie.ai/api/v1',
-        is_active: true,
-        supports_image: true,
-        supports_video: false,
-        requires_api_key: true,
-        api_key_env_var: 'KIE_API_KEY',
-        created_at: null,
-    },
+    // Z-Image removed (2026-07-13): no image-to-image variant exists on KIE
+    // (verified — 4 candidate ids all 422), so it can never lock the avatar's
+    // face. KieService still supports the model if it's ever re-added.
     {
         id: 'kie-seedream-5-lite',
         name: 'Seedream 5.0 Lite · KIE',
@@ -415,7 +405,6 @@ const PROVIDER_COST: Record<string, string> = {
     'kie-gpt-image-2': '~$0.03',
     'kie-seedream-4-5': '~$0.033',
     'kie-flux-2-pro': '~$0.035',
-    'kie-z-image': '~$0.004',
     'kie-seedream-5-lite': '~$0.028',
     'kie-seedream-5-pro': '~$0.035',
     'kie-qwen-image': '~$0.02',
@@ -442,7 +431,6 @@ const PROVIDER_TRAITS: Record<string, { face?: boolean; permissive?: boolean }> 
     'kie-seedream-5-lite': { face: true, permissive: true },
     'kie-seedream-5-pro': { face: true, permissive: true },
     'kie-flux-2-pro': { permissive: true },
-    'kie-z-image': { permissive: true },
     'kie-qwen-image': { permissive: true },
     'kie-grok-imagine': { face: true },
 }
@@ -607,8 +595,6 @@ const ProviderManagerDrawer = () => {
                 return 'Seedream 4.5 (ByteDance) — PERMISIVO (filtro NSFW off) + usa la CARA del avatar (i2i 4.5-edit, verificado). Calidad 2K, ideal fashion/sensual'
             case 'kie-flux-2-pro':
                 return 'FLUX.2 Pro (Black Forest Labs) — PERMISIVO (filtro off), 2K. Solo texto→imagen'
-            case 'kie-z-image':
-                return 'Z-Image — el más barato (~$0.004/img) y PERMISIVO (filtro off). ⚠️ NO usa la cara del avatar: no tiene image-to-image en KIE (verificado) — la identidad va solo por texto. Para cara usa Seedream / FLUX.2'
             case 'kie-seedream-5-lite':
                 return 'Seedream 5.0 Lite (ByteDance) — PERMISIVO (filtro off) + usa la CARA del avatar (i2i verificado: misma cara, mismo precio). 2K'
             case 'kie-seedream-5-pro':
