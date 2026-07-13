@@ -12,8 +12,25 @@ import Notification from '@/components/ui/Notification'
 import toast from '@/components/ui/toast'
 import ConfirmDialog from '@/components/shared/ConfirmDialog'
 import AssignAvatarDialog from './AssignAvatarDialog'
-import { apiDeleteGeneration, apiGetAvatars, apiUpdateGenerationMetadata } from '@/services/AvatarForgeService'
-import { HiOutlineTrash, HiOutlineDownload, HiOutlinePhotograph, HiOutlineUpload, HiOutlineSearch, HiOutlineShare, HiOutlineSave, HiOutlineUserCircle, HiStar, HiOutlineStar, HiArchive, HiOutlineArchive } from 'react-icons/hi'
+import {
+    apiDeleteGeneration,
+    apiGetAvatars,
+    apiUpdateGenerationMetadata,
+} from '@/services/AvatarForgeService'
+import {
+    HiOutlineTrash,
+    HiOutlineDownload,
+    HiOutlinePhotograph,
+    HiOutlineUpload,
+    HiOutlineSearch,
+    HiOutlineShare,
+    HiOutlineSave,
+    HiOutlineUserCircle,
+    HiStar,
+    HiOutlineStar,
+    HiArchive,
+    HiOutlineArchive,
+} from 'react-icons/hi'
 import type { GeneratedMedia, AspectRatio, MediaType } from '../types'
 
 interface GalleryPanelProps {
@@ -57,10 +74,14 @@ const GalleryPanel = ({
     const uploadInputRef = externalUploadRef ?? localUploadRef
 
     const [searchQuery, setSearchQuery] = useState('')
-    const [mediaTypeFilter, setMediaTypeFilter] = useState<MediaType | 'ALL'>('ALL')
+    const [mediaTypeFilter, setMediaTypeFilter] = useState<MediaType | 'ALL'>(
+        'ALL',
+    )
     const [avatarFilter, setAvatarFilter] = useState<string>('ALL')
     // Todas (non-archived) | Favoritas (starred) | Archivadas (the bucket).
-    const [galleryView, setGalleryView] = useState<'all' | 'favorites' | 'archived'>('all')
+    const [galleryView, setGalleryView] = useState<
+        'all' | 'favorites' | 'archived'
+    >('all')
 
     // Toggle a favorite/archived flag: update the in-memory item AND merge-write
     // it into generations.metadata so it survives a reload (only once the item
@@ -75,9 +96,10 @@ const GalleryPanel = ({
             metadata: nextMeta as typeof media.metadata,
         })
         if (media.generationId) {
-            void apiUpdateGenerationMetadata(media.generationId, nextMeta).catch((e) =>
-                console.error('Failed to persist gallery flags:', e),
-            )
+            void apiUpdateGenerationMetadata(
+                media.generationId,
+                nextMeta,
+            ).catch((e) => console.error('Failed to persist gallery flags:', e))
         }
     }
     const toggleFavorite = (media: GeneratedMedia) =>
@@ -86,8 +108,12 @@ const GalleryPanel = ({
         setFlags(media, { archived: !media.archived })
 
     // "Assign avatar" — decides which avatar's accounts can publish this media.
-    const [assignTarget, setAssignTarget] = useState<GeneratedMedia | null>(null)
-    const [avatarOptions, setAvatarOptions] = useState<AvatarOption[] | null>(null)
+    const [assignTarget, setAssignTarget] = useState<GeneratedMedia | null>(
+        null,
+    )
+    const [avatarOptions, setAvatarOptions] = useState<AvatarOption[] | null>(
+        null,
+    )
 
     // Avatar list feeds the gallery filter and the per-card owner badges.
     useEffect(() => {
@@ -96,7 +122,9 @@ const GalleryPanel = ({
         apiGetAvatars(userId)
             .then((avatars) => {
                 if (!cancelled) {
-                    setAvatarOptions(avatars.map((a) => ({ value: a.id, label: a.name })))
+                    setAvatarOptions(
+                        avatars.map((a) => ({ value: a.id, label: a.name })),
+                    )
                 }
             })
             .catch(() => {
@@ -107,14 +135,20 @@ const GalleryPanel = ({
         }
     }, [userId])
 
-    const avatarNameById = new Map((avatarOptions ?? []).map((o) => [o.value, o.label]))
+    const avatarNameById = new Map(
+        (avatarOptions ?? []).map((o) => [o.value, o.label]),
+    )
 
     // Avatars actually present in the gallery (by id — avatarInfo.name only
     // exists on session items; persisted rows carry avatarId).
     const presentAvatarIds = new Set(
-        gallery.map((m) => m.avatarId).filter((id): id is string => Boolean(id)),
+        gallery
+            .map((m) => m.avatarId)
+            .filter((id): id is string => Boolean(id)),
     )
-    const filterableAvatars = (avatarOptions ?? []).filter((o) => presentAvatarIds.has(o.value))
+    const filterableAvatars = (avatarOptions ?? []).filter((o) =>
+        presentAvatarIds.has(o.value),
+    )
     const hasOrphanMedia = gallery.some((m) => !m.avatarId)
 
     // Client-side filter — ports the search + media-type approach from
@@ -165,7 +199,7 @@ const GalleryPanel = ({
                 toast.push(
                     <Notification type="warning" title="Invalid File">
                         Only video and image files are supported
-                    </Notification>
+                    </Notification>,
                 )
                 return
             }
@@ -181,7 +215,10 @@ const GalleryPanel = ({
                         id,
                         url,
                         prompt: `Uploaded: ${file.name}`,
-                        aspectRatio: detectAspectRatio(video.videoWidth, video.videoHeight),
+                        aspectRatio: detectAspectRatio(
+                            video.videoWidth,
+                            video.videoHeight,
+                        ),
                         timestamp: Date.now(),
                         mediaType: 'VIDEO',
                     }
@@ -196,7 +233,10 @@ const GalleryPanel = ({
                         id,
                         url,
                         prompt: `Uploaded: ${file.name}`,
-                        aspectRatio: detectAspectRatio(img.naturalWidth, img.naturalHeight),
+                        aspectRatio: detectAspectRatio(
+                            img.naturalWidth,
+                            img.naturalHeight,
+                        ),
                         timestamp: Date.now(),
                         mediaType: 'IMAGE',
                     }
@@ -210,7 +250,7 @@ const GalleryPanel = ({
         toast.push(
             <Notification type="success" title="Upload Complete">
                 {files.length} file(s) added to gallery
-            </Notification>
+            </Notification>,
         )
 
         // Reset input
@@ -229,7 +269,9 @@ const GalleryPanel = ({
     // failed to dismiss). Deleting removes BOTH the in-memory item and the
     // persisted `generations` row — the gallery hydrates from the DB, so a
     // memory-only delete resurrected the item on reload.
-    const [deleteTarget, setDeleteTarget] = useState<GeneratedMedia | null>(null)
+    const [deleteTarget, setDeleteTarget] = useState<GeneratedMedia | null>(
+        null,
+    )
     const [isDeleting, setIsDeleting] = useState(false)
 
     const handleDeleteConfirmed = async () => {
@@ -272,98 +314,115 @@ const GalleryPanel = ({
             {/* Fixed header: title + search/filters (outside the scroll area).
                 The "Upload" button now lives in the studio header, wired to the
                 same hidden input via uploadInputRef. */}
-            <div className="px-4 pt-4 shrink-0">
-                <h3 className="font-semibold text-lg mb-3">Gallery</h3>
-
+            <div className="px-4 pt-3 pb-1 shrink-0">
                 {gallery.length > 0 && (
-                    <div className="flex items-center gap-2 mb-3">
+                    <div className="flex items-center gap-2 flex-wrap">
                         <Input
                             size="sm"
                             placeholder="Search by prompt..."
                             prefix={<HiOutlineSearch className="text-lg" />}
                             value={searchQuery}
                             onChange={(e) => setSearchQuery(e.target.value)}
-                            className="flex-1"
+                            className="flex-1 min-w-40"
                         />
                         {(filterableAvatars.length > 0 || hasOrphanMedia) && (
                             <select
                                 value={avatarFilter}
-                                onChange={(e) => setAvatarFilter(e.target.value)}
+                                onChange={(e) =>
+                                    setAvatarFilter(e.target.value)
+                                }
                                 className="w-36 px-3 py-1.5 text-sm border rounded-lg bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-600"
                                 title="Filter by avatar"
                             >
                                 <option value="ALL">All avatars</option>
                                 {filterableAvatars.map((avatar) => (
-                                    <option key={avatar.value} value={avatar.value}>
+                                    <option
+                                        key={avatar.value}
+                                        value={avatar.value}
+                                    >
                                         {avatar.label}
                                     </option>
                                 ))}
-                                {hasOrphanMedia && <option value="NONE">No avatar</option>}
+                                {hasOrphanMedia && (
+                                    <option value="NONE">No avatar</option>
+                                )}
                             </select>
                         )}
                         <select
                             value={mediaTypeFilter}
-                            onChange={(e) => setMediaTypeFilter(e.target.value as MediaType | 'ALL')}
+                            onChange={(e) =>
+                                setMediaTypeFilter(
+                                    e.target.value as MediaType | 'ALL',
+                                )
+                            }
                             className="w-28 px-3 py-1.5 text-sm border rounded-lg bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-600"
                         >
                             <option value="ALL">All</option>
                             <option value="IMAGE">Images</option>
                             <option value="VIDEO">Videos</option>
                         </select>
-                    </div>
-                )}
-                {gallery.length > 0 && (
-                    <div className="flex items-center gap-1.5 mb-3">
-                        {[
-                            {
-                                key: 'all' as const,
-                                label: 'Todas',
-                                count: gallery.filter((m) => !m.archived).length,
-                                icon: <HiOutlinePhotograph className="w-3.5 h-3.5" />,
-                            },
-                            {
-                                key: 'favorites' as const,
-                                label: 'Favoritas',
-                                count: favCount,
-                                icon: <HiStar className="w-3.5 h-3.5" />,
-                            },
-                            {
-                                key: 'archived' as const,
-                                label: 'Archivadas',
-                                count: archivedCount,
-                                icon: <HiOutlineArchive className="w-3.5 h-3.5" />,
-                            },
-                        ].map((v) => (
-                            <button
-                                key={v.key}
-                                type="button"
-                                onClick={() => setGalleryView(v.key)}
-                                className={`flex items-center gap-1 px-2.5 py-1 text-xs rounded-lg border transition-colors ${
-                                    galleryView === v.key
-                                        ? 'border-blue-500 bg-blue-50 dark:bg-blue-500/20 text-blue-700 dark:text-blue-200 font-medium'
-                                        : 'border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'
-                                }`}
-                            >
-                                {v.icon}
-                                {v.label}
-                                <span className="opacity-60">{v.count}</span>
-                            </button>
-                        ))}
+                        <div className="flex items-center gap-1.5">
+                            {[
+                                {
+                                    key: 'all' as const,
+                                    label: 'Todas',
+                                    count: gallery.filter((m) => !m.archived)
+                                        .length,
+                                    icon: (
+                                        <HiOutlinePhotograph className="w-3.5 h-3.5" />
+                                    ),
+                                },
+                                {
+                                    key: 'favorites' as const,
+                                    label: 'Favoritas',
+                                    count: favCount,
+                                    icon: <HiStar className="w-3.5 h-3.5" />,
+                                },
+                                {
+                                    key: 'archived' as const,
+                                    label: 'Archivadas',
+                                    count: archivedCount,
+                                    icon: (
+                                        <HiOutlineArchive className="w-3.5 h-3.5" />
+                                    ),
+                                },
+                            ].map((v) => (
+                                <button
+                                    key={v.key}
+                                    type="button"
+                                    onClick={() => setGalleryView(v.key)}
+                                    className={`flex items-center gap-1 px-2.5 py-1 text-xs rounded-lg border transition-colors ${
+                                        galleryView === v.key
+                                            ? 'border-blue-500 bg-blue-50 dark:bg-blue-500/20 text-blue-700 dark:text-blue-200 font-medium'
+                                            : 'border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'
+                                    }`}
+                                >
+                                    {v.icon}
+                                    {v.label}
+                                    <span className="opacity-60">
+                                        {v.count}
+                                    </span>
+                                </button>
+                            ))}
+                        </div>
                     </div>
                 )}
             </div>
 
             <ScrollBar className="flex-1 h-full" autoHide={false}>
                 <div className="p-4 pt-1">
-
                     {/* Empty State */}
                     {gallery.length === 0 && !isGenerating && (
                         <div className="flex flex-col items-center justify-center h-64 text-gray-400">
                             <div className="w-16 h-16 rounded-full border-2 border-gray-300 flex items-center justify-center mb-4">
                                 <HiOutlinePhotograph className="w-8 h-8" />
                             </div>
-                            <p className="text-lg font-medium">Ready to Generate</p>
-                            <p className="text-sm mb-4">Describe a scene and click Generate</p>
+                            <p className="text-lg font-medium">
+                                Ready to Generate
+                            </p>
+                            <p className="text-sm mb-4">
+                                Describe a scene and click Generate
+                            </p>
                             <Button
                                 size="sm"
                                 variant="solid"
@@ -376,12 +435,16 @@ const GalleryPanel = ({
                     )}
 
                     {/* No Matches State */}
-                    {gallery.length > 0 && filteredGallery.length === 0 && !isGenerating && (
-                        <div className="flex flex-col items-center justify-center h-40 text-gray-400">
-                            <HiOutlinePhotograph className="w-8 h-8 mb-2" />
-                            <p className="text-sm">No media matches your filters</p>
-                        </div>
-                    )}
+                    {gallery.length > 0 &&
+                        filteredGallery.length === 0 &&
+                        !isGenerating && (
+                            <div className="flex flex-col items-center justify-center h-40 text-gray-400">
+                                <HiOutlinePhotograph className="w-8 h-8 mb-2" />
+                                <p className="text-sm">
+                                    No media matches your filters
+                                </p>
+                            </div>
+                        )}
 
                     {/* Gallery Grid */}
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -390,7 +453,9 @@ const GalleryPanel = ({
                             <Card className="h-64 flex items-center justify-center bg-gray-100 dark:bg-gray-800 animate-pulse">
                                 <div className="flex flex-col items-center">
                                     <Spinner size={32} />
-                                    <span className="text-xs text-primary mt-2 font-mono">Generating...</span>
+                                    <span className="text-xs text-primary mt-2 font-mono">
+                                        Generating...
+                                    </span>
                                 </div>
                             </Card>
                         )}
@@ -407,7 +472,9 @@ const GalleryPanel = ({
                                     <div className="bg-gray-100 dark:bg-gray-800">
                                         {media.mediaType === 'VIDEO' ? (
                                             <video
-                                                src={media.publicUrl ?? media.url}
+                                                src={
+                                                    media.publicUrl ?? media.url
+                                                }
                                                 className="w-full h-auto"
                                                 muted
                                                 loop
@@ -416,7 +483,9 @@ const GalleryPanel = ({
                                                         .play()
                                                         .catch(() => {})
                                                 }}
-                                                onMouseOut={(e) => e.currentTarget.pause()}
+                                                onMouseOut={(e) =>
+                                                    e.currentTarget.pause()
+                                                }
                                             />
                                         ) : (
                                             // Prefer the durable Supabase copy; the
@@ -425,12 +494,17 @@ const GalleryPanel = ({
                                             // and would show nothing with no error. If the
                                             // primary src fails, fall back to the other.
                                             <img
-                                                src={media.publicUrl ?? media.url}
+                                                src={
+                                                    media.publicUrl ?? media.url
+                                                }
                                                 alt={media.prompt}
                                                 className="w-full h-auto"
                                                 onError={(e) => {
                                                     const img = e.currentTarget
-                                                    if (media.url && img.src !== media.url) {
+                                                    if (
+                                                        media.url &&
+                                                        img.src !== media.url
+                                                    ) {
                                                         img.src = media.url
                                                     }
                                                 }}
@@ -485,14 +559,16 @@ const GalleryPanel = ({
                                                 Save failed
                                             </span>
                                         )}
-                                        {media.postedPlatforms && media.postedPlatforms.length > 0 && (
-                                            <span
-                                                title={`Posted to: ${media.postedPlatforms.join(', ')}`}
-                                                className="px-2 py-1 text-[10px] font-medium rounded bg-sky-500 text-white inline-block"
-                                            >
-                                                Posted
-                                            </span>
-                                        )}
+                                        {media.postedPlatforms &&
+                                            media.postedPlatforms.length >
+                                                0 && (
+                                                <span
+                                                    title={`Posted to: ${media.postedPlatforms.join(', ')}`}
+                                                    className="px-2 py-1 text-[10px] font-medium rounded bg-sky-500 text-white inline-block"
+                                                >
+                                                    Posted
+                                                </span>
+                                            )}
                                     </div>
 
                                     {/* Provider/Model + owning-avatar badges */}
@@ -506,7 +582,9 @@ const GalleryPanel = ({
                                             const ownerName =
                                                 media.avatarInfo?.name ??
                                                 (media.avatarId
-                                                    ? avatarNameById.get(media.avatarId)
+                                                    ? avatarNameById.get(
+                                                          media.avatarId,
+                                                      )
                                                     : undefined)
                                             return ownerName ? (
                                                 <span className="px-2 py-1 text-[10px] font-medium rounded bg-primary/80 text-white max-w-32 truncate inline-block">
@@ -518,112 +596,135 @@ const GalleryPanel = ({
 
                                     {/* Overlay Actions */}
                                     <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-end">
-                                            <div className="w-full p-3 space-y-2">
-                                                {/* Prompt Preview */}
-                                                <p className="text-xs text-white line-clamp-2">{media.prompt}</p>
+                                        <div className="w-full p-3 space-y-2">
+                                            {/* Prompt Preview */}
+                                            <p className="text-xs text-white line-clamp-2">
+                                                {media.prompt}
+                                            </p>
 
-                                                {/* Actions */}
-                                                <div className="flex flex-wrap gap-2 items-center">
-                                                    <Button
-                                                        size="xs"
-                                                        variant="solid"
-                                                        icon={<HiOutlineDownload />}
-                                                        onClick={(e) => {
-                                                            e.stopPropagation()
-                                                            handleDownload(media)
-                                                        }}
-                                                    />
-                                                    {/* Edit/Animate live inside the preview modal — clicking
+                                            {/* Actions */}
+                                            <div className="flex flex-wrap gap-2 items-center">
+                                                <Button
+                                                    size="xs"
+                                                    variant="solid"
+                                                    icon={<HiOutlineDownload />}
+                                                    onClick={(e) => {
+                                                        e.stopPropagation()
+                                                        handleDownload(media)
+                                                    }}
+                                                />
+                                                {/* Edit/Animate live inside the preview modal — clicking
                                                         the card opens it, so a card-level Edit was redundant. */}
+                                                <Button
+                                                    size="xs"
+                                                    variant="solid"
+                                                    icon={
+                                                        <HiOutlineUserCircle />
+                                                    }
+                                                    disabled={
+                                                        media.saveState !==
+                                                        'saved'
+                                                    }
+                                                    title={
+                                                        media.saveState !==
+                                                        'saved'
+                                                            ? 'Save to gallery first'
+                                                            : 'Assign to avatar (decides whose accounts can publish it)'
+                                                    }
+                                                    onClick={(e) => {
+                                                        e.stopPropagation()
+                                                        setAssignTarget(media)
+                                                    }}
+                                                />
+                                                {onPost && (
                                                     <Button
                                                         size="xs"
                                                         variant="solid"
-                                                        icon={<HiOutlineUserCircle />}
-                                                        disabled={media.saveState !== 'saved'}
+                                                        color="green"
+                                                        icon={
+                                                            <HiOutlineShare />
+                                                        }
+                                                        disabled={
+                                                            media.saveState !==
+                                                            'saved'
+                                                        }
                                                         title={
-                                                            media.saveState !== 'saved'
-                                                                ? 'Save to gallery first'
-                                                                : 'Assign to avatar (decides whose accounts can publish it)'
+                                                            media.saveState ===
+                                                            'saving'
+                                                                ? 'Saving to gallery…'
+                                                                : media.saveState !==
+                                                                    'saved'
+                                                                  ? 'Save to gallery first'
+                                                                  : undefined
                                                         }
                                                         onClick={(e) => {
                                                             e.stopPropagation()
-                                                            setAssignTarget(media)
+                                                            onPost(media)
+                                                        }}
+                                                    >
+                                                        <span>Post</span>
+                                                    </Button>
+                                                )}
+                                                {/* Save + Delete grouped on the right, both solid so
+                                                        they stay visible over the image. */}
+                                                <div className="ml-auto flex gap-1.5">
+                                                    <Button
+                                                        size="xs"
+                                                        variant="solid"
+                                                        icon={
+                                                            media.archived ? (
+                                                                <HiArchive />
+                                                            ) : (
+                                                                <HiOutlineArchive />
+                                                            )
+                                                        }
+                                                        title={
+                                                            media.archived
+                                                                ? 'Sacar del bucket'
+                                                                : 'Archivar (mover al bucket)'
+                                                        }
+                                                        onClick={(e) => {
+                                                            e.stopPropagation()
+                                                            toggleArchive(media)
                                                         }}
                                                     />
-                                                    {onPost && (
-                                                        <Button
-                                                            size="xs"
-                                                            variant="solid"
-                                                            color="green"
-                                                            icon={<HiOutlineShare />}
-                                                            disabled={media.saveState !== 'saved'}
-                                                            title={
-                                                                media.saveState === 'saving'
-                                                                    ? 'Saving to gallery…'
-                                                                    : media.saveState !== 'saved'
-                                                                      ? 'Save to gallery first'
-                                                                      : undefined
-                                                            }
-                                                            onClick={(e) => {
-                                                                e.stopPropagation()
-                                                                onPost(media)
-                                                            }}
-                                                        >
-                                                            <span>Post</span>
-                                                        </Button>
-                                                    )}
-                                                    {/* Save + Delete grouped on the right, both solid so
-                                                        they stay visible over the image. */}
-                                                    <div className="ml-auto flex gap-1.5">
+                                                    {onSaveToGallery && (
                                                         <Button
                                                             size="xs"
                                                             variant="solid"
                                                             icon={
-                                                                media.archived ? (
-                                                                    <HiArchive />
-                                                                ) : (
-                                                                    <HiOutlineArchive />
+                                                                <HiOutlineSave />
+                                                            }
+                                                            onClick={(e) => {
+                                                                e.stopPropagation()
+                                                                onSaveToGallery(
+                                                                    media,
                                                                 )
-                                                            }
-                                                            title={
-                                                                media.archived
-                                                                    ? 'Sacar del bucket'
-                                                                    : 'Archivar (mover al bucket)'
-                                                            }
-                                                            onClick={(e) => {
-                                                                e.stopPropagation()
-                                                                toggleArchive(media)
-                                                            }}
-                                                        />
-                                                        {onSaveToGallery && (
-                                                            <Button
-                                                                size="xs"
-                                                                variant="solid"
-                                                                icon={<HiOutlineSave />}
-                                                                onClick={(e) => {
-                                                                    e.stopPropagation()
-                                                                    onSaveToGallery(media)
-                                                                }}
-                                                            >
-                                                                <span>Save</span>
-                                                            </Button>
-                                                        )}
-                                                        <Button
-                                                            size="xs"
-                                                            variant="solid"
-                                                            color="red"
-                                                            icon={<HiOutlineTrash />}
-                                                            onClick={(e) => {
-                                                                e.stopPropagation()
-                                                                setDeleteTarget(media)
                                                             }}
                                                         >
-                                                            <span>Delete</span>
+                                                            <span>Save</span>
                                                         </Button>
-                                                    </div>
+                                                    )}
+                                                    <Button
+                                                        size="xs"
+                                                        variant="solid"
+                                                        color="red"
+                                                        icon={
+                                                            <HiOutlineTrash />
+                                                        }
+                                                        onClick={(e) => {
+                                                            e.stopPropagation()
+                                                            setDeleteTarget(
+                                                                media,
+                                                            )
+                                                        }}
+                                                    >
+                                                        <span>Delete</span>
+                                                    </Button>
                                                 </div>
                                             </div>
                                         </div>
+                                    </div>
                                 </Card>
                             )
                         })}
@@ -643,7 +744,10 @@ const GalleryPanel = ({
             >
                 <p>
                     It will be removed from your gallery
-                    {deleteTarget?.generationId ? ' and deleted from the database' : ''}.
+                    {deleteTarget?.generationId
+                        ? ' and deleted from the database'
+                        : ''}
+                    .
                 </p>
             </ConfirmDialog>
 

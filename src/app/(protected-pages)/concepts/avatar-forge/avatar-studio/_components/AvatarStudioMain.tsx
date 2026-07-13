@@ -14,12 +14,23 @@ import dynamic from 'next/dynamic'
 
 // Studio-consolidation tools, lazily loaded so they don't weigh the studio
 // bundle until opened (see docs/superpowers/specs/2026-07-09-studio-consolidation-design.md)
-const VoiceStudioTool = dynamic(() => import('../../voice-studio/_components/VoiceStudioMain'), { ssr: false })
-const ReelRemixTool = dynamic(() => import('../../reel-remix/_components/ReelRemixMain'), { ssr: false })
-const ReelDownloaderTool = dynamic(() => import('../../reel-downloader/_components/ReelDownloaderMain'), { ssr: false })
+const VoiceStudioTool = dynamic(
+    () => import('../../voice-studio/_components/VoiceStudioMain'),
+    { ssr: false },
+)
+const ReelRemixTool = dynamic(
+    () => import('../../reel-remix/_components/ReelRemixMain'),
+    { ssr: false },
+)
+const ReelDownloaderTool = dynamic(
+    () => import('../../reel-downloader/_components/ReelDownloaderMain'),
+    { ssr: false },
+)
 import AvatarSelector from './AvatarSelector'
 import PromptLibraryDrawer from './PromptLibraryDrawer'
-import ProviderManagerDrawer, { DEFAULT_PROVIDERS } from './ProviderManagerDrawer'
+import ProviderManagerDrawer, {
+    DEFAULT_PROVIDERS,
+} from './ProviderManagerDrawer'
 import Button from '@/components/ui/Button'
 import Dropdown from '@/components/ui/Dropdown'
 import Spinner from '@/components/ui/Spinner'
@@ -57,10 +68,34 @@ import {
     generateVideoMiniMax,
 } from '@/services/MiniMaxService'
 import type { MiniMaxVideoModel } from '@/@types/minimax'
-import { generateImageKie, generateVideoKieSafe, generateMotionControlKieSafe, submitKieImageTask, checkKieImageTask, submitTalkingVideoKieTask, submitLipsyncVideoKieTask, checkKieVideoTask } from '@/services/KieService'
+import {
+    generateImageKie,
+    generateVideoKieSafe,
+    generateMotionControlKieSafe,
+    submitKieImageTask,
+    checkKieImageTask,
+    submitTalkingVideoKieTask,
+    submitLipsyncVideoKieTask,
+    checkKieVideoTask,
+} from '@/services/KieService'
 import { generateImageViaGateway } from '@/services/GatewayService'
-import { buildAvatarPrompt, buildDiffusionBodyPreamble, buildLeanIdentityPrompt, stripHarnessForFaceSwap, type RefRole } from '@/utils/avatarPromptBuilder'
-import { HiOutlineCog, HiOutlineBookOpen, HiX, HiChevronDown, HiChevronUp, HiOutlineUpload } from 'react-icons/hi'
+import {
+    buildAvatarPrompt,
+    buildDiffusionBodyPreamble,
+    buildLeanIdentityPrompt,
+    stripHarnessForFaceSwap,
+    type RefRole,
+} from '@/utils/avatarPromptBuilder'
+import { createPortal } from 'react-dom'
+import { useStudioHeaderSlot } from './StudioHeaderSlotContext'
+import {
+    HiOutlineCog,
+    HiOutlineBookOpen,
+    HiX,
+    HiChevronDown,
+    HiChevronUp,
+    HiOutlineUpload,
+} from 'react-icons/hi'
 import { getPostedGenerationMap } from '@/services/SocialService'
 import { AppState } from '../types'
 import type { GeneratedMedia, ReferenceImage } from '../types'
@@ -125,7 +160,9 @@ async function pollKieTalkingVideoTask(
             throw new Error(st.error)
         }
     }
-    throw new Error(`KIE tardó demasiado (>30 min). El job ${sub.taskId} puede seguir corriendo en kie.ai/logs.`)
+    throw new Error(
+        `KIE tardó demasiado (>30 min). El job ${sub.taskId} puede seguir corriendo en kie.ai/logs.`,
+    )
 }
 
 /**
@@ -181,13 +218,18 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
     // Video queued for the in-place Video Editor ToolModal (Gallery "Edit"
     // on a VIDEO). Non-null == modal open; VideoEditorMain is keyed by
     // media.id so switching videos forces a fresh mount.
-    const [videoEditorMedia, setVideoEditorMedia] = useState<GeneratedMedia | null>(null)
+    const [videoEditorMedia, setVideoEditorMedia] =
+        useState<GeneratedMedia | null>(null)
 
     // Studio-consolidation tools hosted in ToolModals (Voice / Remix / Downloader).
     // Voice Studio needs the avatar list — fetched lazily on first open.
-    const [activeTool, setActiveTool] = useState<'voice' | 'remix' | 'downloader' | null>(null)
+    const [activeTool, setActiveTool] = useState<
+        'voice' | 'remix' | 'downloader' | null
+    >(null)
     // Video queued for the Lipsync dialog (gallery video + Voice Studio audio)
-    const [lipsyncMedia, setLipsyncMedia] = useState<GeneratedMedia | null>(null)
+    const [lipsyncMedia, setLipsyncMedia] = useState<GeneratedMedia | null>(
+        null,
+    )
     const [toolAvatars, setToolAvatars] = useState<Avatar[] | null>(null)
     const openVoiceTool = useCallback(async () => {
         setActiveTool('voice')
@@ -294,6 +336,9 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
 
     // Image optimization hook for API calls
     const { prepareAvatarPayload, optimizeImage } = useImageOptimization()
+    // Tab-bar slot: the header actions (Prompts / Upload / Tools) are portaled up
+    // to the StudioTabs row to save a header row.
+    const headerSlot = useStudioHeaderSlot()
 
     // Initialize providers on mount and update when mode changes
     useEffect(() => {
@@ -303,21 +348,32 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
         }
 
         // Set appropriate default provider when mode changes or on mount
-        const currentProvider = providers.find(p => p.id === activeProviderId)
+        const currentProvider = providers.find((p) => p.id === activeProviderId)
         const isProviderValidForMode = currentProvider
-            ? (generationMode === 'IMAGE' ? currentProvider.supports_image : currentProvider.supports_video)
+            ? generationMode === 'IMAGE'
+                ? currentProvider.supports_image
+                : currentProvider.supports_video
             : false
 
         if (!activeProviderId || !isProviderValidForMode) {
-            const availableProviders = (providers.length > 0 ? providers : DEFAULT_PROVIDERS)
-            const defaultProvider = availableProviders.find(p =>
-                generationMode === 'IMAGE' ? p.supports_image : p.supports_video
+            const availableProviders =
+                providers.length > 0 ? providers : DEFAULT_PROVIDERS
+            const defaultProvider = availableProviders.find((p) =>
+                generationMode === 'IMAGE'
+                    ? p.supports_image
+                    : p.supports_video,
             )
             if (defaultProvider) {
                 setActiveProviderId(defaultProvider.id)
             }
         }
-    }, [generationMode, providers, activeProviderId, setProviders, setActiveProviderId])
+    }, [
+        generationMode,
+        providers,
+        activeProviderId,
+        setProviders,
+        setActiveProviderId,
+    ])
 
     // (The old sessionStorage['studioImport'] receiver was removed: the only
     // writer was the standalone Gallery page, now consolidated into this
@@ -336,33 +392,43 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                     apiGetGenerations(userId),
                     getPostedGenerationMap(),
                 ])
-                const postedMap = postedRes.success ? (postedRes.data ?? {}) : {}
+                const postedMap = postedRes.success
+                    ? (postedRes.data ?? {})
+                    : {}
                 const items = await Promise.all(
                     rows.map(async (gen): Promise<GeneratedMedia> => {
-                        const url = await getSignedUrl('generations', gen.storage_path)
+                        const url = await getSignedUrl(
+                            'generations',
+                            gen.storage_path,
+                        )
                         return {
                             id: crypto.randomUUID(),
                             url,
                             prompt: gen.prompt,
-                            aspectRatio: (gen.aspect_ratio as AspectRatio) || '1:1',
+                            aspectRatio:
+                                (gen.aspect_ratio as AspectRatio) || '1:1',
                             timestamp: gen.created_at
                                 ? new Date(gen.created_at).getTime()
                                 : Date.now(),
                             mediaType: gen.media_type,
                             metadata: gen.metadata ?? undefined,
-                            providerName: (gen.metadata as { providerName?: string } | null)
-                                ?.providerName,
+                            providerName: (
+                                gen.metadata as { providerName?: string } | null
+                            )?.providerName,
                             favorite:
-                                (gen.metadata as { favorite?: boolean } | null)?.favorite ??
-                                false,
+                                (gen.metadata as { favorite?: boolean } | null)
+                                    ?.favorite ?? false,
                             archived:
-                                (gen.metadata as { archived?: boolean } | null)?.archived ??
-                                false,
+                                (gen.metadata as { archived?: boolean } | null)
+                                    ?.archived ?? false,
                             generationId: gen.id,
                             avatarId: gen.avatar_id,
                             postedPlatforms: postedMap[gen.id],
                             saveState: 'saved',
-                            publicUrl: getStoragePublicUrl('generations', gen.storage_path),
+                            publicUrl: getStoragePublicUrl(
+                                'generations',
+                                gen.storage_path,
+                            ),
                         }
                     }),
                 )
@@ -374,7 +440,7 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
         return () => {
             cancelled = true
         }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [userId])
 
     // Save Avatar Handler
@@ -384,7 +450,7 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                 toast.push(
                     <Notification type="danger" title="Error">
                         You must be logged in to save avatars
-                    </Notification>
+                    </Notification>,
                 )
                 return
             }
@@ -416,20 +482,40 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                 // Upload references
                 if (savedAvatarId) {
                     const allRefs = [
-                        ...generalReferences.map((r) => ({ ...r, type: 'general' as const })),
-                        ...(faceRef ? [{ ...faceRef, type: 'face' as const }] : []),
-                        ...(angleRef ? [{ ...angleRef, type: 'angle' as const }] : []),
-                        ...(bodyRef ? [{ ...bodyRef, type: 'body' as const }] : []),
+                        ...generalReferences.map((r) => ({
+                            ...r,
+                            type: 'general' as const,
+                        })),
+                        ...(faceRef
+                            ? [{ ...faceRef, type: 'face' as const }]
+                            : []),
+                        ...(angleRef
+                            ? [{ ...angleRef, type: 'angle' as const }]
+                            : []),
+                        ...(bodyRef
+                            ? [{ ...bodyRef, type: 'body' as const }]
+                            : []),
                     ]
 
                     for (const ref of allRefs) {
                         if (!ref.storagePath) {
                             // Upload new reference
-                            const blob = await fetch(ref.url).then((r) => r.blob())
-                            const file = new File([blob], `${ref.type}-${Date.now()}.jpg`, {
-                                type: ref.mimeType,
-                            })
-                            await apiUploadReference(savedAvatarId, userId, file, ref.type)
+                            const blob = await fetch(ref.url).then((r) =>
+                                r.blob(),
+                            )
+                            const file = new File(
+                                [blob],
+                                `${ref.type}-${Date.now()}.jpg`,
+                                {
+                                    type: ref.mimeType,
+                                },
+                            )
+                            await apiUploadReference(
+                                savedAvatarId,
+                                userId,
+                                file,
+                                ref.type,
+                            )
                         }
                     }
                 }
@@ -438,14 +524,14 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                 toast.push(
                     <Notification type="success" title="Saved">
                         Avatar saved successfully
-                    </Notification>
+                    </Notification>,
                 )
             } catch (error) {
                 console.error('Failed to save avatar:', error)
                 toast.push(
                     <Notification type="danger" title="Error">
                         Failed to save avatar
-                    </Notification>
+                    </Notification>,
                 )
             } finally {
                 setIsSavingAvatar(false)
@@ -464,7 +550,7 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
             setAvatarId,
             setAvatarName,
             setIsSavingAvatar,
-        ]
+        ],
     )
 
     // Analyze Face Handler
@@ -472,13 +558,15 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
         // Filter for images with valid base64
         const validRefs = faceRef?.base64
             ? [faceRef]
-            : generalReferences.filter((r) => r.base64 && r.base64.length > 0).slice(0, 3)
+            : generalReferences
+                  .filter((r) => r.base64 && r.base64.length > 0)
+                  .slice(0, 3)
 
         if (validRefs.length === 0) {
             toast.push(
                 <Notification type="warning" title="No Images">
                     Please add reference images first
-                </Notification>
+                </Notification>,
             )
             return
         }
@@ -489,15 +577,20 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
             const optimizedRefs = (
                 await Promise.all(
                     validRefs.map((img) =>
-                        optimizeImage({ base64: img.base64, mimeType: img.mimeType }),
+                        optimizeImage({
+                            base64: img.base64,
+                            mimeType: img.mimeType,
+                        }),
                     ),
                 )
             ).filter((r): r is { base64: string; mimeType: string } => !!r)
             const description = await analyzeFaceFromImages(
-                (optimizedRefs.length > 0 ? optimizedRefs : validRefs).map((img) => ({
-                    base64: img.base64,
-                    mimeType: img.mimeType,
-                })),
+                (optimizedRefs.length > 0 ? optimizedRefs : validRefs).map(
+                    (img) => ({
+                        base64: img.base64,
+                        mimeType: img.mimeType,
+                    }),
+                ),
             )
             if (description) {
                 setFaceDescription(description)
@@ -507,7 +600,7 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
             toast.push(
                 <Notification type="danger" title="Error">
                     Failed to analyze face
-                </Notification>
+                </Notification>,
             )
         }
     }, [faceRef, generalReferences, setFaceDescription, optimizeImage])
@@ -550,7 +643,9 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                     // survives a reload (it's otherwise a session-only field).
                     metadata: {
                         ...((media.metadata as Record<string, unknown>) ?? {}),
-                        ...(media.providerName ? { providerName: media.providerName } : {}),
+                        ...(media.providerName
+                            ? { providerName: media.providerName }
+                            : {}),
                     } as typeof media.metadata,
                 })
 
@@ -575,7 +670,7 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
             toast.push(
                 <Notification type="warning" title="Please Wait">
                     Avatar references are still loading...
-                </Notification>
+                </Notification>,
             )
             return
         }
@@ -584,7 +679,7 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
             toast.push(
                 <Notification type="warning" title="Missing Prompt">
                     Please enter a prompt
-                </Notification>
+                </Notification>,
             )
             return
         }
@@ -596,8 +691,12 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
         setErrorMsg(null)
 
         // Filter out references without valid base64
-        const validGeneralRefs = generalReferences.filter((r) => r.base64 && r.base64.length > 0)
-        const validAssetRefs = assetImages.filter((r) => r.base64 && r.base64.length > 0)
+        const validGeneralRefs = generalReferences.filter(
+            (r) => r.base64 && r.base64.length > 0,
+        )
+        const validAssetRefs = assetImages.filter(
+            (r) => r.base64 && r.base64.length > 0,
+        )
 
         try {
             let resultUrl: string
@@ -613,20 +712,29 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
 
             // Optimize angle ref separately if needed
             const optimizedAngleRef = angleRef?.base64
-                ? await optimizeImage({ base64: angleRef.base64, mimeType: angleRef.mimeType })
+                ? await optimizeImage({
+                      base64: angleRef.base64,
+                      mimeType: angleRef.mimeType,
+                  })
                 : null
 
             // Optimize pose ref (session tool) — drives body position. Gemini
             // already handles poseRefImage; we also forward it to KIE multi-ref.
             const optimizedPoseRef = poseImage?.base64
-                ? await optimizeImage({ base64: poseImage.base64, mimeType: poseImage.mimeType })
+                ? await optimizeImage({
+                      base64: poseImage.base64,
+                      mimeType: poseImage.mimeType,
+                  })
                 : null
 
             // Optimize the Clone Ref IMAGE (the original to replicate). Image
             // models like GPT Image 2 can't clone body/outfit/pose from text —
             // they need the actual image (as you did in ChatGPT: face + scene).
             const optimizedCloneRef = cloneImage?.base64
-                ? await optimizeImage({ base64: cloneImage.base64, mimeType: cloneImage.mimeType })
+                ? await optimizeImage({
+                      base64: cloneImage.base64,
+                      mimeType: cloneImage.mimeType,
+                  })
                 : null
 
             // All reference images for providers that accept multiple inputs
@@ -634,11 +742,20 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
             // KieService can label it in the prompt ("Image 1 is the face…") —
             // without labels the model blends them and loses identity.
             const kieReferenceImages = [
-                optimizedPayload.faceRef && { ...optimizedPayload.faceRef, role: 'face' },
+                optimizedPayload.faceRef && {
+                    ...optimizedPayload.faceRef,
+                    role: 'face',
+                },
                 optimizedAngleRef && { ...optimizedAngleRef, role: 'angle' },
-                optimizedPayload.bodyRef && { ...optimizedPayload.bodyRef, role: 'body' },
+                optimizedPayload.bodyRef && {
+                    ...optimizedPayload.bodyRef,
+                    role: 'body',
+                },
                 optimizedPoseRef && { ...optimizedPoseRef, role: 'pose' },
-                optimizedPayload.sceneImage && { ...optimizedPayload.sceneImage, role: 'scene' },
+                optimizedPayload.sceneImage && {
+                    ...optimizedPayload.sceneImage,
+                    role: 'scene',
+                },
             ].filter(
                 (r): r is { base64: string; mimeType: string; role: string } =>
                     Boolean(r && r.base64),
@@ -653,7 +770,9 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                 if (isMiniMaxProvider) {
                     // MiniMax image-01 — direct generation with subject_reference for facial consistency
                     const subjectRef =
-                        optimizedPayload.faceRef ?? optimizedPayload.generalRefs[0] ?? null
+                        optimizedPayload.faceRef ??
+                        optimizedPayload.generalRefs[0] ??
+                        null
                     const faceReferenceUrl = subjectRef
                         ? `data:${subjectRef.mimeType};base64,${subjectRef.base64}`
                         : undefined
@@ -701,7 +820,9 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                     // single-ref, so the clone rides only on the [CLONE:] text.
                     const klingModel = activeProvider?.model || 'kling-v2-1'
                     const klingRefImages =
-                        klingModel === 'kling-v3-omni' && optimizedCloneRef && referenceImage
+                        klingModel === 'kling-v3-omni' &&
+                        optimizedCloneRef &&
+                        referenceImage
                             ? [referenceImage, optimizedCloneRef]
                             : undefined
 
@@ -735,7 +856,9 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                     //   size causes timeouts; OpenAI clones identity from clean
                     //   prompts + the reference images (as in ChatGPT itself).
                     const kieModel = activeProvider.model || ''
-                    let refRoles = kieReferenceImages.map((r) => r.role as RefRole)
+                    let refRoles = kieReferenceImages.map(
+                        (r) => r.role as RefRole,
+                    )
                     // Default for the permissive/generic diffusion models (Seedream,
                     // FLUX.2, Z-Image, Qwen, Ideogram, Nano Banana 2, Grok): port the
                     // Gemini body brain as a leading natural-language sentence. The
@@ -770,33 +893,43 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
 
                     if (
                         kieRefsToSend.length > 0 ||
-                        (kieModel.startsWith('flux-kontext') && optimizedCloneRef)
+                        (kieModel.startsWith('flux-kontext') &&
+                            optimizedCloneRef)
                     ) {
                         // Flux is single-input (edit on the Clone canvas) so it can run
                         // with ONLY a clone and no avatar ref images; the others need
                         // their ref array, hence the length>0 path above.
                         if (kieModel === 'nano-banana-pro') {
-                            const { systemPreamble, finalPrompt } = buildAvatarPrompt({
-                                prompt: fullPrompt,
-                                aspectRatio,
-                                measurements,
-                                faceDescription,
-                                identityWeight,
-                                cameraShot,
-                                cameraAngle,
-                                refRoles,
-                            })
+                            const { systemPreamble, finalPrompt } =
+                                buildAvatarPrompt({
+                                    prompt: fullPrompt,
+                                    aspectRatio,
+                                    measurements,
+                                    faceDescription,
+                                    identityWeight,
+                                    cameraShot,
+                                    cameraAngle,
+                                    refRoles,
+                                })
                             kiePrompt = `${systemPreamble}\n\n${finalPrompt}`
                         } else if (kieModel === 'gpt-image-2-text-to-image') {
                             // Face-swap EDIT, mirroring how ChatGPT processes it:
                             // Clone/original FIRST (the canvas to recreate exactly)
                             // + face SECOND (swap in the avatar's face). 2 refs,
                             // light enough to avoid the KIE 500. No angle-sheet.
-                            const faceOnly = kieReferenceImages.filter((r) => r.role === 'face')
-                            const faceRefs = faceOnly.length > 0 ? faceOnly : [kieReferenceImages[0]]
+                            const faceOnly = kieReferenceImages.filter(
+                                (r) => r.role === 'face',
+                            )
+                            const faceRefs =
+                                faceOnly.length > 0
+                                    ? faceOnly
+                                    : [kieReferenceImages[0]]
                             if (optimizedCloneRef) {
                                 kieRefsToSend = [
-                                    { ...optimizedCloneRef, role: 'scene' as const },
+                                    {
+                                        ...optimizedCloneRef,
+                                        role: 'scene' as const,
+                                    },
                                     ...faceRefs,
                                 ]
                                 // Face-swap i2i: strip the Gemini harness ([BODY:]
@@ -812,9 +945,15 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                                 )
                             } else {
                                 kieRefsToSend = faceRefs
-                                kiePrompt = buildLeanIdentityPrompt(fullPrompt, ['face'])
+                                kiePrompt = buildLeanIdentityPrompt(
+                                    fullPrompt,
+                                    ['face'],
+                                )
                             }
-                        } else if (kieModel.startsWith('flux-kontext') && optimizedCloneRef) {
+                        } else if (
+                            kieModel.startsWith('flux-kontext') &&
+                            optimizedCloneRef
+                        ) {
                             // Flux Kontext = instruction EDIT model. Feed the Clone as
                             // the single canvas image (generateImageFluxKontext puts the
                             // referenceImage into body.inputImage) and let the avatar
@@ -851,7 +990,9 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                             referenceImage: kieSingleRef,
                             referenceImages: kieRefsToSend,
                             aspectRatio,
-                            model: activeProvider.model || 'flux-kontext/text-to-image',
+                            model:
+                                activeProvider.model ||
+                                'flux-kontext/text-to-image',
                         })
                         if (!result.success) {
                             throw new Error(result.error)
@@ -913,31 +1054,51 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
 
                 // Debug logging
                 console.log('[AvatarStudio] Active Provider:', activeProvider)
-                console.log('[AvatarStudio] Provider Type:', activeProvider?.type)
-                console.log('[AvatarStudio] Is Kling Provider:', isKlingProvider)
-                console.log('[AvatarStudio] Is MiniMax Provider:', isMinimaxProvider)
+                console.log(
+                    '[AvatarStudio] Provider Type:',
+                    activeProvider?.type,
+                )
+                console.log(
+                    '[AvatarStudio] Is Kling Provider:',
+                    isKlingProvider,
+                )
+                console.log(
+                    '[AvatarStudio] Is MiniMax Provider:',
+                    isMinimaxProvider,
+                )
 
                 if (videoSubMode === 'SPEAK') {
                     // Talking-head: audio ya generado (Voice Studio) O texto → TTS
                     // con la voz clonada del avatar; luego el motor elegido.
-                    const presetAudioUrl = useAvatarStudioStore.getState().speakAudioUrl
+                    const presetAudioUrl =
+                        useAvatarStudioStore.getState().speakAudioUrl
                     // El guion vive en videoDialogue (diálogo del botón 🎤), NO en el
                     // prompt principal — así Img→Prompt no puede sobreescribirlo. El
                     // prompt principal queda como descripción visual opcional.
-                    const script = useAvatarStudioStore.getState().videoDialogue.trim()
+                    const script = useAvatarStudioStore
+                        .getState()
+                        .videoDialogue.trim()
                     if (!presetAudioUrl && !avatarDefaultVoice) {
-                        throw new Error('This avatar has no main voice. Clone one in Voice Studio and set it as main.')
+                        throw new Error(
+                            'This avatar has no main voice. Clone one in Voice Studio and set it as main.',
+                        )
                     }
                     if (!presetAudioUrl && !script) {
-                        throw new Error('Add a script first — click the 🎤 microphone button next to the prompt box')
+                        throw new Error(
+                            'Add a script first — click the 🎤 microphone button next to the prompt box',
+                        )
                     }
-                    const visualPrompt = useAvatarStudioStore.getState().prompt.trim()
+                    const visualPrompt = useAvatarStudioStore
+                        .getState()
+                        .prompt.trim()
 
                     // La imagen que habla: si hay una imagen cargada en el dropzone
                     // (galería/upload) gana sobre las refs del avatar — permite el
                     // flujo "imagen + guion → talking video". Sin imagen cargada,
                     // se usa la face ref del avatar.
-                    let speakImage = optimizedPayload.faceRef || optimizedPayload.generalRefs[0]
+                    let speakImage =
+                        optimizedPayload.faceRef ||
+                        optimizedPayload.generalRefs[0]
                     if (videoInputImage?.base64) {
                         const optimizedSpeakInput = await optimizeImage(
                             {
@@ -946,10 +1107,13 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                             },
                             'API_FULL',
                         )
-                        if (optimizedSpeakInput) speakImage = optimizedSpeakInput
+                        if (optimizedSpeakInput)
+                            speakImage = optimizedSpeakInput
                     }
                     if (!speakImage) {
-                        throw new Error('Add avatar references (a face photo) or load an image before generating a talking video')
+                        throw new Error(
+                            'Add avatar references (a face photo) or load an image before generating a talking video',
+                        )
                     }
 
                     // 1. Audio: reusar el ya generado en Voice Studio (salta el TTS)
@@ -959,15 +1123,24 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                     if (presetAudioUrl) {
                         audioUrl = presetAudioUrl
                         // Duración real del mp3 (dimensiona el video de Kling).
-                        durationMs = await new Promise<number | undefined>((resolve) => {
-                            const probe = new Audio(presetAudioUrl)
-                            probe.onloadedmetadata = () =>
-                                resolve(Number.isFinite(probe.duration) ? probe.duration * 1000 : undefined)
-                            probe.onerror = () => resolve(undefined)
-                        })
+                        durationMs = await new Promise<number | undefined>(
+                            (resolve) => {
+                                const probe = new Audio(presetAudioUrl)
+                                probe.onloadedmetadata = () =>
+                                    resolve(
+                                        Number.isFinite(probe.duration)
+                                            ? probe.duration * 1000
+                                            : undefined,
+                                    )
+                                probe.onerror = () => resolve(undefined)
+                            },
+                        )
                     } else {
                         const langMap: Record<string, string> = {
-                            es: 'Spanish', en: 'English', pt: 'Portuguese', fr: 'French',
+                            es: 'Spanish',
+                            en: 'English',
+                            pt: 'Portuguese',
+                            fr: 'French',
                         }
                         // Entrega guardada de la voz (speed/pitch/emotion/acento,
                         // ajustada en Voice Studio → Audio Preview). El guard de
@@ -983,13 +1156,16 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                                 // 'auto' deja mandar el acento de la muestra clonada.
                                 language: voiceSettings.useAutoAccent
                                     ? 'auto'
-                                    : langMap[voice.language] ?? voice.language,
+                                    : (langMap[voice.language] ??
+                                      voice.language),
                                 ...voiceSettings,
                             }),
                         })
                         if (!ttsRes.ok) {
                             const { error: ttsError } = await ttsRes.json()
-                            throw new Error(ttsError || 'Voice generation (TTS) failed')
+                            throw new Error(
+                                ttsError || 'Voice generation (TTS) failed',
+                            )
                         }
                         const ttsJson = await ttsRes.json()
                         audioUrl = ttsJson.audioUrl
@@ -1009,10 +1185,14 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                         : [
                               optimizedPayload.faceRef,
                               ...optimizedPayload.generalRefs,
-                          ].filter((r): r is { base64: string; mimeType: string } => !!r)
+                          ].filter(
+                              (r): r is { base64: string; mimeType: string } =>
+                                  !!r,
+                          )
 
                     try {
-                        const speakModel = useAvatarStudioStore.getState().speakModel
+                        const speakModel =
+                            useAvatarStudioStore.getState().speakModel
                         resultUrl = await pollKieTalkingVideoTask({
                             image: speakImage,
                             audioUrl,
@@ -1020,7 +1200,9 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                             resolution: '720p',
                             model: speakModel,
                             elementImages: speakElementImages,
-                            durationSec: durationMs ? durationMs / 1000 : undefined,
+                            durationSec: durationMs
+                                ? durationMs / 1000
+                                : undefined,
                         })
 
                         // Kling genera gran video pero IGNORA el audio del element
@@ -1032,31 +1214,44 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                                 audioUrl,
                             })
                             if (!lipsyncSub.success) {
-                                throw new Error(`Lipsync step failed to start: ${lipsyncSub.error}. Silent Kling video was generated: ${resultUrl}`)
+                                throw new Error(
+                                    `Lipsync step failed to start: ${lipsyncSub.error}. Silent Kling video was generated: ${resultUrl}`,
+                                )
                             }
                             const lipsyncDeadline = Date.now() + 30 * 60 * 1000
                             let lipsyncedUrl: string | null = null
                             while (Date.now() < lipsyncDeadline) {
                                 await new Promise((r) => setTimeout(r, 5000))
-                                const st = await checkKieVideoTask(lipsyncSub.taskId)
+                                const st = await checkKieVideoTask(
+                                    lipsyncSub.taskId,
+                                )
                                 if (st.status === 'done') {
                                     lipsyncedUrl = st.url
                                     break
                                 }
                                 if (st.status === 'failed') {
-                                    throw new Error(`Lipsync step failed: ${st.error}. Silent Kling video was generated: ${resultUrl}`)
+                                    throw new Error(
+                                        `Lipsync step failed: ${st.error}. Silent Kling video was generated: ${resultUrl}`,
+                                    )
                                 }
                             }
                             if (!lipsyncedUrl) {
-                                throw new Error(`Lipsync step timed out (>30 min). Silent Kling video was generated: ${resultUrl}`)
+                                throw new Error(
+                                    `Lipsync step timed out (>30 min). Silent Kling video was generated: ${resultUrl}`,
+                                )
                             }
                             resultUrl = lipsyncedUrl
                         }
                     } catch (speakErr) {
                         // El audio ya quedó generado y persistido; que el error lo diga
                         // para no perder ese contexto (sin fallbacks silenciosos).
-                        const msg = speakErr instanceof Error ? speakErr.message : String(speakErr)
-                        throw new Error(`Talking video failed: ${msg}. The audio was generated: ${audioUrl}`)
+                        const msg =
+                            speakErr instanceof Error
+                                ? speakErr.message
+                                : String(speakErr)
+                        throw new Error(
+                            `Talking video failed: ${msg}. The audio was generated: ${audioUrl}`,
+                        )
                     }
                 } else if (videoSubMode === 'ANIMATE') {
                     if (!videoInputImage || !videoInputImage.base64) {
@@ -1087,10 +1282,15 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                         const identityRefs = [
                             optimizedPayload.faceRef,
                             ...optimizedPayload.generalRefs,
-                        ].filter((r): r is { base64: string; mimeType: string } => !!r)
+                        ].filter(
+                            (r): r is { base64: string; mimeType: string } =>
+                                !!r,
+                        )
 
                         if (identityRefs.length === 0) {
-                            throw new Error('No avatar references available for identity-preserving continue')
+                            throw new Error(
+                                'No avatar references available for identity-preserving continue',
+                            )
                         }
 
                         console.log('[AvatarStudio] Continue with identity', {
@@ -1147,26 +1347,47 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                         }
                     } else if (isKlingProvider) {
                         // Check if Motion Control is enabled (v2.6+ only)
-                        if (klingMotionControlEnabled && (klingMotionVideoBase64 || klingMotionVideoUrl || klingPresetMotion)) {
-                            console.log('[AvatarStudio] Using Motion Control generation')
-                            console.log('[AvatarStudio] Preset:', klingPresetMotion)
-                            console.log('[AvatarStudio] Has uploaded video:', !!klingMotionVideoBase64)
-                            console.log('[AvatarStudio] Has URL video:', !!klingMotionVideoUrl)
+                        if (
+                            klingMotionControlEnabled &&
+                            (klingMotionVideoBase64 ||
+                                klingMotionVideoUrl ||
+                                klingPresetMotion)
+                        ) {
+                            console.log(
+                                '[AvatarStudio] Using Motion Control generation',
+                            )
+                            console.log(
+                                '[AvatarStudio] Preset:',
+                                klingPresetMotion,
+                            )
+                            console.log(
+                                '[AvatarStudio] Has uploaded video:',
+                                !!klingMotionVideoBase64,
+                            )
+                            console.log(
+                                '[AvatarStudio] Has URL video:',
+                                !!klingMotionVideoUrl,
+                            )
 
                             resultUrl = await generateMotionControlKling({
                                 characterImage: optimizedVideoInput,
-                                motionVideo: klingMotionVideoBase64 ? {
-                                    base64: klingMotionVideoBase64,
-                                    mimeType: 'video/mp4',
-                                } : undefined,
-                                motionVideoUrl: klingMotionVideoUrl || undefined,
+                                motionVideo: klingMotionVideoBase64
+                                    ? {
+                                          base64: klingMotionVideoBase64,
+                                          mimeType: 'video/mp4',
+                                      }
+                                    : undefined,
+                                motionVideoUrl:
+                                    klingMotionVideoUrl || undefined,
                                 presetMotion: klingPresetMotion || undefined,
                                 motionOrientation: klingMotionOrientation,
                                 keepOriginalSound: klingKeepOriginalSound,
                                 duration: klingMotionDuration,
                                 prompt: fullPrompt,
                                 mode: 'std',
-                                modelName: (activeProvider?.model as 'kling-v2-6') || 'kling-v2-6',
+                                modelName:
+                                    (activeProvider?.model as 'kling-v2-6') ||
+                                    'kling-v2-6',
                             })
                         } else {
                             // Standard Kling video generation
@@ -1175,7 +1396,8 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                                 imageInput: optimizedVideoInput,
                                 aspectRatio,
                                 duration: String(videoDuration) as '5' | '10',
-                                modelName: activeProvider?.model || 'kling-v1-6',
+                                modelName:
+                                    activeProvider?.model || 'kling-v1-6',
                             })
                         }
                     } else if (isMinimaxProvider) {
@@ -1187,18 +1409,29 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                             mode: 'image',
                             prompt: fullPrompt,
                             firstFrameImage: optimizedVideoInput,
-                            model: (activeProvider?.model as MiniMaxVideoModel) || 'MiniMax-Hailuo-2.3',
+                            model:
+                                (activeProvider?.model as MiniMaxVideoModel) ||
+                                'MiniMax-Hailuo-2.3',
                             resolution: videoResolution,
                         })
                     } else if (activeProvider?.type === 'KIE') {
-                        const isKieKling = activeProvider.model === 'kling-3.0/video'
-                        const hasMotionVideo = !!(klingMotionVideoBase64 || klingMotionVideoUrl)
-                        if (isKieKling && klingMotionControlEnabled && hasMotionVideo) {
+                        const isKieKling =
+                            activeProvider.model === 'kling-3.0/video'
+                        const hasMotionVideo = !!(
+                            klingMotionVideoBase64 || klingMotionVideoUrl
+                        )
+                        if (
+                            isKieKling &&
+                            klingMotionControlEnabled &&
+                            hasMotionVideo
+                        ) {
                             // KIE Kling 3.0 motion-control (v2v)
                             resultUrl = await genMotionControlKie({
                                 characterImage: optimizedVideoInput,
-                                motionVideoUrl: klingMotionVideoUrl || undefined,
-                                motionVideoBase64: klingMotionVideoBase64 || undefined,
+                                motionVideoUrl:
+                                    klingMotionVideoUrl || undefined,
+                                motionVideoBase64:
+                                    klingMotionVideoBase64 || undefined,
                                 prompt: fullPrompt,
                                 resolution: videoResolution,
                                 characterOrientation: klingMotionOrientation,
@@ -1208,11 +1441,15 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                             resultUrl = await genVideoKie({
                                 prompt: fullPrompt,
                                 firstFrameImage: optimizedVideoInput,
-                                model: activeProvider.model || 'veo-3.1/text-to-video',
+                                model:
+                                    activeProvider.model ||
+                                    'veo-3.1/text-to-video',
                                 aspectRatio,
                                 duration: videoDuration,
                                 resolution: videoResolution,
-                                sound: isKieKling ? klingNativeAudioEnabled : undefined,
+                                sound: isKieKling
+                                    ? klingNativeAudioEnabled
+                                    : undefined,
                             })
                         }
                     } else {
@@ -1235,28 +1472,44 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                     // AVATAR mode - use already optimized references
                     if (isKlingProvider) {
                         // For Kling AVATAR mode, use face ref or first general ref as input
-                        const avatarInput = optimizedPayload.faceRef || optimizedPayload.generalRefs[0]
+                        const avatarInput =
+                            optimizedPayload.faceRef ||
+                            optimizedPayload.generalRefs[0]
                         if (!avatarInput) {
-                            throw new Error('Please add avatar references for Kling video generation')
+                            throw new Error(
+                                'Please add avatar references for Kling video generation',
+                            )
                         }
 
                         // Check if Motion Control is enabled (v2.6+ only)
-                        if (klingMotionControlEnabled && (klingMotionVideoBase64 || klingMotionVideoUrl || klingPresetMotion)) {
-                            console.log('[AvatarStudio] AVATAR mode: Using Motion Control generation')
+                        if (
+                            klingMotionControlEnabled &&
+                            (klingMotionVideoBase64 ||
+                                klingMotionVideoUrl ||
+                                klingPresetMotion)
+                        ) {
+                            console.log(
+                                '[AvatarStudio] AVATAR mode: Using Motion Control generation',
+                            )
                             resultUrl = await generateMotionControlKling({
                                 characterImage: avatarInput,
-                                motionVideo: klingMotionVideoBase64 ? {
-                                    base64: klingMotionVideoBase64,
-                                    mimeType: 'video/mp4',
-                                } : undefined,
-                                motionVideoUrl: klingMotionVideoUrl || undefined,
+                                motionVideo: klingMotionVideoBase64
+                                    ? {
+                                          base64: klingMotionVideoBase64,
+                                          mimeType: 'video/mp4',
+                                      }
+                                    : undefined,
+                                motionVideoUrl:
+                                    klingMotionVideoUrl || undefined,
                                 presetMotion: klingPresetMotion || undefined,
                                 motionOrientation: klingMotionOrientation,
                                 keepOriginalSound: klingKeepOriginalSound,
                                 duration: klingMotionDuration,
                                 prompt: fullPrompt,
                                 mode: 'std',
-                                modelName: (activeProvider?.model as 'kling-v2-6') || 'kling-v2-6',
+                                modelName:
+                                    (activeProvider?.model as 'kling-v2-6') ||
+                                    'kling-v2-6',
                             })
                         } else {
                             // Standard Kling avatar video generation
@@ -1265,7 +1518,8 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                                 avatarImage: avatarInput,
                                 aspectRatio,
                                 duration: String(videoDuration) as '5' | '10',
-                                modelName: activeProvider?.model || 'kling-v1-6',
+                                modelName:
+                                    activeProvider?.model || 'kling-v1-6',
                             })
                         }
                     } else if (isMinimaxProvider) {
@@ -1274,17 +1528,24 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                             optimizedPayload.faceRef,
                             optimizedPayload.bodyRef,
                             ...optimizedPayload.generalRefs,
-                        ].filter((r): r is { base64: string; mimeType: string } => !!r)
+                        ].filter(
+                            (r): r is { base64: string; mimeType: string } =>
+                                !!r,
+                        )
 
                         if (refs.length === 0) {
-                            throw new Error('Please add avatar references for MiniMax video generation')
+                            throw new Error(
+                                'Please add avatar references for MiniMax video generation',
+                            )
                         }
 
                         resultUrl = await generateVideoMiniMax({
                             mode: 'subject',
                             prompt: fullPrompt,
                             characterImages: refs,
-                            model: (activeProvider?.model as MiniMaxVideoModel) || 'MiniMax-Hailuo-2.3',
+                            model:
+                                (activeProvider?.model as MiniMaxVideoModel) ||
+                                'MiniMax-Hailuo-2.3',
                             resolution: videoResolution,
                         })
                     } else if (activeProvider?.type === 'KIE') {
@@ -1294,15 +1555,25 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                             optimizedPayload.bodyRef ??
                             optimizedPayload.generalRefs[0] ??
                             null
-                        const isKieKling = activeProvider.model === 'kling-3.0/video'
-                        const hasMotionVideo = !!(klingMotionVideoBase64 || klingMotionVideoUrl)
+                        const isKieKling =
+                            activeProvider.model === 'kling-3.0/video'
+                        const hasMotionVideo = !!(
+                            klingMotionVideoBase64 || klingMotionVideoUrl
+                        )
 
-                        if (isKieKling && klingMotionControlEnabled && hasMotionVideo && firstRef) {
+                        if (
+                            isKieKling &&
+                            klingMotionControlEnabled &&
+                            hasMotionVideo &&
+                            firstRef
+                        ) {
                             // KIE Kling 3.0 motion-control (v2v)
                             resultUrl = await genMotionControlKie({
                                 characterImage: firstRef,
-                                motionVideoUrl: klingMotionVideoUrl || undefined,
-                                motionVideoBase64: klingMotionVideoBase64 || undefined,
+                                motionVideoUrl:
+                                    klingMotionVideoUrl || undefined,
+                                motionVideoBase64:
+                                    klingMotionVideoBase64 || undefined,
                                 prompt: fullPrompt,
                                 resolution: videoResolution,
                                 characterOrientation: klingMotionOrientation,
@@ -1311,11 +1582,15 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                             resultUrl = await genVideoKie({
                                 prompt: fullPrompt,
                                 firstFrameImage: firstRef,
-                                model: activeProvider.model || 'veo-3.1/text-to-video',
+                                model:
+                                    activeProvider.model ||
+                                    'veo-3.1/text-to-video',
                                 aspectRatio,
                                 duration: videoDuration,
                                 resolution: videoResolution,
-                                sound: isKieKling ? klingNativeAudioEnabled : undefined,
+                                sound: isKieKling
+                                    ? klingNativeAudioEnabled
+                                    : undefined,
                             })
                         }
                     } else {
@@ -1367,12 +1642,13 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
         } catch (error: unknown) {
             console.error('Generation failed:', error)
             setAppState(AppState.ERROR)
-            const errorMessage = error instanceof Error ? error.message : 'Generation failed'
+            const errorMessage =
+                error instanceof Error ? error.message : 'Generation failed'
             setErrorMsg(errorMessage)
             toast.push(
                 <Notification type="danger" title="Generation Failed">
                     {errorMessage}
-                </Notification>
+                </Notification>,
             )
         } finally {
             setIsGenerating(false)
@@ -1449,11 +1725,18 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
             // Find a valid context image with base64 data
             const contextImage = faceRef?.base64
                 ? faceRef
-                : generalReferences.find((r) => r.base64 && r.base64.length > 0) || null
+                : generalReferences.find(
+                      (r) => r.base64 && r.base64.length > 0,
+                  ) || null
 
             const enhanced = await enhancePrompt(
                 prompt,
-                contextImage ? { base64: contextImage.base64, mimeType: contextImage.mimeType } : null
+                contextImage
+                    ? {
+                          base64: contextImage.base64,
+                          mimeType: contextImage.mimeType,
+                      }
+                    : null,
             )
             setPrompt(enhanced)
         } catch (error) {
@@ -1475,7 +1758,7 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                 toast.push(
                     <Notification type="success" title="Prompt is Safe">
                         No risky terms detected in your prompt.
-                    </Notification>
+                    </Notification>,
                 )
             }
         } catch (error) {
@@ -1483,7 +1766,7 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
             toast.push(
                 <Notification type="danger" title="Safety Check Failed">
                     Could not analyze prompt safety.
-                </Notification>
+                </Notification>,
             )
         } finally {
             setIsAnalyzing(false)
@@ -1513,7 +1796,7 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                     toast.push(
                         <Notification type="success" title="Image Analyzed">
                             Prompt generated - check tags for removable terms
-                        </Notification>
+                        </Notification>,
                     )
                 }
             } catch (error) {
@@ -1521,13 +1804,13 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                 toast.push(
                     <Notification type="danger" title="Analysis Failed">
                         Could not generate prompt from image
-                    </Notification>
+                    </Notification>,
                 )
             } finally {
                 setIsDescribingImage(false)
             }
         },
-        [setIsDescribingImage, setPromptAndAnalyze, optimizeImage]
+        [setIsDescribingImage, setPromptAndAnalyze, optimizeImage],
     )
 
     // Animate Image Handler
@@ -1562,7 +1845,7 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
             }
             reader.readAsDataURL(blob)
         },
-        [setVideoInputImage, setGenerationMode, setVideoSubMode, setPrompt]
+        [setVideoInputImage, setGenerationMode, setVideoSubMode, setPrompt],
     )
 
     // Edit Image Handler
@@ -1572,13 +1855,19 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
             editPrompt: string,
             maskBase64: string | null,
             editAspectRatio?: AspectRatio,
-            editAssets?: Array<{ id: string; url: string; base64: string; mimeType: string }>,
+            editAssets?: Array<{
+                id: string
+                url: string
+                base64: string
+                mimeType: string
+            }>,
             editProviderId?: string,
         ) => {
             setIsGenerating(true)
             setAppState(AppState.GENERATING)
 
-            const targetAspectRatio = editAspectRatio || media.aspectRatio || '1:1'
+            const targetAspectRatio =
+                editAspectRatio || media.aspectRatio || '1:1'
 
             const referenceAssets = editAssets?.map((asset) => ({
                 base64: asset.base64,
@@ -1587,7 +1876,7 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
 
             // Resolve which provider to use for this edit (override > active default)
             const resolvedProvider = editProviderId
-                ? providers.find(p => p.id === editProviderId)
+                ? providers.find((p) => p.id === editProviderId)
                 : getActiveProvider()
 
             try {
@@ -1600,18 +1889,22 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                 // decoding failed". fetch() handles all three URL kinds.
                 const res = await fetch(media.url)
                 if (!res.ok) {
-                    throw new Error(`Failed to fetch source image (${res.status})`)
+                    throw new Error(
+                        `Failed to fetch source image (${res.status})`,
+                    )
                 }
                 const blob = await res.blob()
-                const sourceBase64 = await new Promise<string>((resolve, reject) => {
-                    const reader = new FileReader()
-                    reader.onloadend = () => {
-                        const result = reader.result as string
-                        resolve(result.split(',')[1])
-                    }
-                    reader.onerror = () => reject(reader.error)
-                    reader.readAsDataURL(blob)
-                })
+                const sourceBase64 = await new Promise<string>(
+                    (resolve, reject) => {
+                        const reader = new FileReader()
+                        reader.onloadend = () => {
+                            const result = reader.result as string
+                            resolve(result.split(',')[1])
+                        }
+                        reader.onerror = () => reject(reader.error)
+                        reader.readAsDataURL(blob)
+                    },
+                )
                 const sourceMime = blob.type || 'image/png'
 
                 if (!resolvedProvider || resolvedProvider.type === 'GOOGLE') {
@@ -1629,7 +1922,10 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                     if (resolvedProvider.type === 'KLING') {
                         const r = await generateImageKling({
                             prompt: editPrompt,
-                            referenceImage: { base64: sourceBase64, mimeType: sourceMime },
+                            referenceImage: {
+                                base64: sourceBase64,
+                                mimeType: sourceMime,
+                            },
                             aspectRatio: targetAspectRatio,
                             modelName: resolvedProvider.model || 'kling-v2-1',
                         })
@@ -1644,8 +1940,13 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                         if (!r.success) throw new Error(r.error)
                         resultUrl = r.url
                     } else if (resolvedProvider.type === 'KIE') {
-                        let editModel = resolvedProvider.model || 'flux-kontext/text-to-image'
-                        const editRef = { base64: sourceBase64, mimeType: sourceMime }
+                        let editModel =
+                            resolvedProvider.model ||
+                            'flux-kontext/text-to-image'
+                        const editRef = {
+                            base64: sourceBase64,
+                            mimeType: sourceMime,
+                        }
                         // Text-to-image-ONLY KIE models (Z-Image, Seedream, Ideogram,
                         // Nano Banana 2) can't consume the source image: their generic
                         // createTask flow drops the reference, so "editing" with them
@@ -1660,7 +1961,10 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                             editModel.startsWith('ideogram/')
                         if (isT2IOnlyEdit) {
                             toast.push(
-                                <Notification type="info" title="Editado con FLUX.2">
+                                <Notification
+                                    type="info"
+                                    title="Editado con FLUX.2"
+                                >
                                     {`${resolvedProvider?.name ?? 'Ese modelo'} solo genera desde texto (no edita imágenes). Usé FLUX.2 image-to-image para editar esta foto.`}
                                 </Notification>,
                             )
@@ -1711,7 +2015,8 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                     // Edited copies belong to the SOURCE's avatar (fallback: studio's).
                     avatarId: media.avatarId ?? avatarId ?? null,
                     avatarInfo: media.avatarInfo,
-                    providerName: resolvedProvider?.name ?? 'Gemini 3 Pro Image',
+                    providerName:
+                        resolvedProvider?.name ?? 'Gemini 3 Pro Image',
                 }
 
                 addToGallery(newMedia)
@@ -1722,13 +2027,23 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
             } catch (error: unknown) {
                 console.error('Edit failed:', error)
                 setAppState(AppState.ERROR)
-                const errorMessage = error instanceof Error ? error.message : 'Edit failed'
+                const errorMessage =
+                    error instanceof Error ? error.message : 'Edit failed'
                 setErrorMsg(errorMessage)
             } finally {
                 setIsGenerating(false)
             }
         },
-        [providers, avatarId, getActiveProvider, addToGallery, persistGeneration, setAppState, setErrorMsg, setIsGenerating]
+        [
+            providers,
+            avatarId,
+            getActiveProvider,
+            addToGallery,
+            persistGeneration,
+            setAppState,
+            setErrorMsg,
+            setIsGenerating,
+        ],
     )
 
     // Create Variant Handler
@@ -1757,7 +2072,7 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
             }
             reader.readAsDataURL(blob)
         },
-        [setPrompt, handleGenerate]
+        [setPrompt, handleGenerate],
     )
 
     // Save to Gallery Handler
@@ -1771,7 +2086,7 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                 toast.push(
                     <Notification type="info" title="Already saved">
                         This media is already in your gallery
-                    </Notification>
+                    </Notification>,
                 )
                 return
             }
@@ -1782,9 +2097,13 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                 // action 413s past ~4.5MB (Vercel cap), which every video hits.
                 const response = await fetch(media.url)
                 const blob = await response.blob()
-                const contentType = media.mediaType === 'VIDEO' ? 'video/mp4' : 'image/jpeg'
+                const contentType =
+                    media.mediaType === 'VIDEO' ? 'video/mp4' : 'image/jpeg'
 
-                const { path, token } = await apiCreateGenerationUploadUrl(userId, media.mediaType)
+                const { path, token } = await apiCreateGenerationUploadUrl(
+                    userId,
+                    media.mediaType,
+                )
                 const { error: uploadError } = await supabase.storage
                     .from('generations')
                     .uploadToSignedUrl(path, token, blob, { contentType })
@@ -1803,7 +2122,9 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                     // survives a reload (it's otherwise a session-only field).
                     metadata: {
                         ...((media.metadata as Record<string, unknown>) ?? {}),
-                        ...(media.providerName ? { providerName: media.providerName } : {}),
+                        ...(media.providerName
+                            ? { providerName: media.providerName }
+                            : {}),
                     } as typeof media.metadata,
                 })
 
@@ -1818,18 +2139,18 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                 toast.push(
                     <Notification type="success" title="Saved">
                         Generation saved to gallery
-                    </Notification>
+                    </Notification>,
                 )
             } catch (error) {
                 console.error('Failed to save:', error)
                 toast.push(
                     <Notification type="danger" title="Error">
                         Failed to save generation
-                    </Notification>
+                    </Notification>,
                 )
             }
         },
-        [userId, avatarId, updateGalleryItem]
+        [userId, avatarId, updateGalleryItem],
     )
 
     // Continue Video Handler
@@ -1852,12 +2173,15 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                 base64: frameBase64.split(',')[1] || frameBase64,
                 type: 'general',
             }
-            console.log('[AvatarStudio] handleContinueVideo: frame captured, queueing auto-generate', {
-                hasBase64: !!refImg.base64,
-                base64Length: refImg.base64.length,
-                useAvatarIdentity,
-                identityModel,
-            })
+            console.log(
+                '[AvatarStudio] handleContinueVideo: frame captured, queueing auto-generate',
+                {
+                    hasBase64: !!refImg.base64,
+                    base64Length: refImg.base64.length,
+                    useAvatarIdentity,
+                    identityModel,
+                },
+            )
             // Persist both flags BEFORE the auto-generate effect fires so
             // handleGenerate can read them. Both reset to defaults in
             // handleGenerate's finally so a follow-up standalone Animate
@@ -1874,7 +2198,16 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
             // Mark for auto-generation after state updates
             pendingAutoGenerateRef.current = true
         },
-        [setVideoInputImage, setGenerationMode, setVideoSubMode, setPrompt, setVideoDialogue, setAspectRatio, setContinueUseAvatarIdentity, setContinueIdentityModel]
+        [
+            setVideoInputImage,
+            setGenerationMode,
+            setVideoSubMode,
+            setPrompt,
+            setVideoDialogue,
+            setAspectRatio,
+            setContinueUseAvatarIdentity,
+            setContinueIdentityModel,
+        ],
     )
 
     // Keep a ref to the latest handleGenerate so the auto-generate effect can
@@ -1952,90 +2285,101 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
             toast.push(
                 <Notification
                     type={isUploadedPlaceholder ? 'info' : 'success'}
-                    title={isUploadedPlaceholder ? 'Image loaded as reference' : 'Re-using Generation'}
+                    title={
+                        isUploadedPlaceholder
+                            ? 'Image loaded as reference'
+                            : 'Re-using Generation'
+                    }
                 >
                     {isUploadedPlaceholder
                         ? 'Uploaded image set as clone reference. Describe the scene you want to generate.'
                         : 'Prompt and clone reference loaded'}
-                </Notification>
+                </Notification>,
             )
         },
-        [setPrompt, setCloneImage, setAspectRatio]
+        [setPrompt, setCloneImage, setAspectRatio],
     )
 
     return (
         <div className="flex flex-col h-full bg-gray-50 dark:bg-gray-900 rounded-xl overflow-hidden">
-            {/* Header */}
-            <div className="flex items-center justify-between px-6 py-3 border-b border-gray-200 dark:border-gray-700 shrink-0">
-                <div>
-                    <h1 className="text-lg font-bold">Avatar Studio</h1>
-                    <p className="text-xs text-gray-500">
-                        {avatarName ? `Editing: ${avatarName}` : 'Create consistent avatars with AI'}
-                    </p>
-                </div>
-                <div className="flex items-center gap-3">
-                    {/* Provider selector moved to the BottomControlBar, next to
-                        the generation dropzones (Img→Prompt / Input). */}
-
-                    {/* Prompt Library */}
-                    <Button
-                        size="sm"
-                        variant="plain"
-                        icon={<HiOutlineBookOpen />}
-                        onClick={() => setIsPromptLibraryOpen(true)}
-                    >
-                        Prompts
-                    </Button>
-
-                    {/* Upload media straight into the gallery — clicks the
-                        GalleryPanel's hidden file input via a shared ref. */}
-                    <Button
-                        size="sm"
-                        variant="plain"
-                        icon={<HiOutlineUpload />}
-                        onClick={() => galleryUploadInputRef.current?.click()}
-                    >
-                        Upload
-                    </Button>
-
-                    {/* Tools — consolidated workspaces hosted in ToolModals */}
-                    <Dropdown
-                        placement="bottom-end"
-                        renderTitle={
-                            <Button size="sm" variant="plain" icon={<HiOutlineCog />}>
-                                Tools
-                            </Button>
-                        }
-                    >
-                        <Dropdown.Item eventKey="voice" onClick={openVoiceTool}>
-                            🎙 Voice Studio
-                        </Dropdown.Item>
-                        <Dropdown.Item eventKey="remix" onClick={() => setActiveTool('remix')}>
-                            🎞 Reel Remix
-                        </Dropdown.Item>
-                        <Dropdown.Item eventKey="downloader" onClick={() => setActiveTool('downloader')}>
-                            ⬇️ Reel Downloader
-                        </Dropdown.Item>
-                        {avatarId && (
+            {/* Header actions (Prompts / Upload / Tools) are portaled UP into the
+                StudioTabs tab-bar row to reclaim a whole header row. The title +
+                subtitle are dropped: the active tab already reads "Avatar Studio"
+                and the avatar being edited shows in the control bar below. */}
+            {headerSlot &&
+                createPortal(
+                    <>
+                        <Button
+                            size="sm"
+                            variant="plain"
+                            icon={<HiOutlineBookOpen />}
+                            onClick={() => setIsPromptLibraryOpen(true)}
+                        >
+                            Prompts
+                        </Button>
+                        <Button
+                            size="sm"
+                            variant="plain"
+                            icon={<HiOutlineUpload />}
+                            onClick={() =>
+                                galleryUploadInputRef.current?.click()
+                            }
+                        >
+                            Upload
+                        </Button>
+                        <Dropdown
+                            placement="bottom-end"
+                            renderTitle={
+                                <Button
+                                    size="sm"
+                                    variant="plain"
+                                    icon={<HiOutlineCog />}
+                                >
+                                    Tools
+                                </Button>
+                            }
+                        >
                             <Dropdown.Item
-                                eventKey="agent"
-                                onClick={() =>
-                                    window.location.assign(
-                                        `/concepts/avatar-forge/agent/${avatarId}`,
-                                    )
-                                }
+                                eventKey="voice"
+                                onClick={openVoiceTool}
                             >
-                                🤖 AI Agent
+                                🎙 Voice Studio
                             </Dropdown.Item>
-                        )}
-                    </Dropdown>
-                </div>
-            </div>
+                            <Dropdown.Item
+                                eventKey="remix"
+                                onClick={() => setActiveTool('remix')}
+                            >
+                                🎞 Reel Remix
+                            </Dropdown.Item>
+                            <Dropdown.Item
+                                eventKey="downloader"
+                                onClick={() => setActiveTool('downloader')}
+                            >
+                                ⬇️ Reel Downloader
+                            </Dropdown.Item>
+                            {avatarId && (
+                                <Dropdown.Item
+                                    eventKey="agent"
+                                    onClick={() =>
+                                        window.location.assign(
+                                            `/concepts/avatar-forge/agent/${avatarId}`,
+                                        )
+                                    }
+                                >
+                                    🤖 AI Agent
+                                </Dropdown.Item>
+                            )}
+                        </Dropdown>
+                    </>,
+                    headerSlot,
+                )}
 
             {/* Error Banner */}
             {errorMsg && (
                 <div className="px-6 py-2 bg-red-50 dark:bg-red-900/20 border-b border-red-200 dark:border-red-800 shrink-0 flex items-center justify-between gap-4">
-                    <p className="text-sm text-red-600 dark:text-red-400 flex-1">{errorMsg}</p>
+                    <p className="text-sm text-red-600 dark:text-red-400 flex-1">
+                        {errorMsg}
+                    </p>
                     <button
                         onClick={() => setErrorMsg(null)}
                         className="text-red-600 dark:text-red-400 hover:text-red-800 dark:hover:text-red-200 transition-colors shrink-0 p-1"
@@ -2090,7 +2434,13 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                 {/* Cap the creation panel + let it scroll internally so it can
                     never steal the gallery's height (VIDEO mode makes it tall,
                     which used to collapse the gallery and clip its Upload row). */}
-                <div className={isCreationCollapsed ? 'hidden' : 'max-h-[50vh] overflow-y-auto'}>
+                <div
+                    className={
+                        isCreationCollapsed
+                            ? 'hidden'
+                            : 'max-h-[50vh] overflow-y-auto'
+                    }
+                >
                     <BottomControlBar
                         onGenerate={handleGenerate}
                         onChangeAvatar={() => setIsAvatarSelectorOpen(true)}
@@ -2155,9 +2505,13 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
             </ToolModal>
 
             {/* Consolidated tools — Voice Studio / Reel Remix / Reel Downloader */}
-            <ToolModal isOpen={activeTool === 'voice'} onClose={() => setActiveTool(null)}>
-                {activeTool === 'voice' && userId && (
-                    toolAvatars ? (
+            <ToolModal
+                isOpen={activeTool === 'voice'}
+                onClose={() => setActiveTool(null)}
+            >
+                {activeTool === 'voice' &&
+                    userId &&
+                    (toolAvatars ? (
                         <VoiceStudioTool
                             userId={userId}
                             avatars={toolAvatars}
@@ -2172,13 +2526,18 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                         <div className="flex items-center justify-center h-64">
                             <Spinner size={40} />
                         </div>
-                    )
-                )}
+                    ))}
             </ToolModal>
-            <ToolModal isOpen={activeTool === 'remix'} onClose={() => setActiveTool(null)}>
+            <ToolModal
+                isOpen={activeTool === 'remix'}
+                onClose={() => setActiveTool(null)}
+            >
                 {activeTool === 'remix' && <ReelRemixTool />}
             </ToolModal>
-            <ToolModal isOpen={activeTool === 'downloader'} onClose={() => setActiveTool(null)}>
+            <ToolModal
+                isOpen={activeTool === 'downloader'}
+                onClose={() => setActiveTool(null)}
+            >
                 {activeTool === 'downloader' && <ReelDownloaderTool />}
             </ToolModal>
 
