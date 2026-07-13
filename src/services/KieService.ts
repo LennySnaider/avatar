@@ -436,6 +436,12 @@ export async function generateImageKie(
                             ? 'seedream/4.5-edit'
                             : model.replace('text-to-image', 'image-to-image')
                     input.image_urls = [refUrl]
+                    // Seedream i2i weighs the TEXT heavily: body specs land great
+                    // (that's the design — measurements are the source of truth),
+                    // but without an explicit keep-face instruction the identity
+                    // can drift toward the written description (verified with a
+                    // headshot ref + conflicting text). Anchor the face to the ref.
+                    input.prompt = `The person in the attached reference image is the subject — keep her EXACT face, facial features and likeness. ${input.prompt}`
                     console.log(`[KIE] Seedream i2i (${resolvedModel}) with identity ref`)
                 } else if (model.startsWith('flux-2/')) {
                     // FLUX.2 takes up to 8 refs → send the face (identity anchor) +
