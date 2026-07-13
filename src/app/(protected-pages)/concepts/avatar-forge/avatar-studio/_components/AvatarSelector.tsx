@@ -9,7 +9,7 @@ import Spinner from '@/components/ui/Spinner'
 import ScrollBar from '@/components/ui/ScrollBar'
 import { HiOutlineUser, HiOutlineCheck, HiOutlinePlus } from 'react-icons/hi'
 import { apiGetAvatars, apiGetAvatarReferences } from '@/services/AvatarForgeService'
-import { supabase } from '@/lib/supabase'
+import { supabase, getStoragePublicUrl } from '@/lib/supabase'
 import { createThumbnail } from '@/utils/imageOptimization'
 import type { Avatar, AvatarReference } from '@/@types/supabase'
 import type { ClonedVoice } from '@/@types/voice'
@@ -51,65 +51,28 @@ const AvatarSelector = ({ userId, isOpen, onClose }: AvatarSelectorProps) => {
         clearAvatarReferences,
     } = useAvatarStudioStore()
 
-    // Helper to download and create thumbnail
-    const createAvatarThumbnail = async (storagePath: string): Promise<string | null> => {
-        try {
-            const { data, error } = await supabase.storage
-                .from('avatars')
-                .download(storagePath)
-
-            if (error || !data) return null
-
-            // Convert blob to base64
-            const base64 = await new Promise<string>((resolve) => {
-                const reader = new FileReader()
-                reader.onloadend = () => {
-                    const result = reader.result as string
-                    resolve(result.split(',')[1] || '')
-                }
-                reader.onerror = () => resolve('')
-                reader.readAsDataURL(data)
-            })
-
-            if (!base64) return null
-
-            // Create optimized thumbnail (200x200)
-            return await createThumbnail(base64, 'THUMBNAIL')
-        } catch {
-            return null
-        }
-    }
-
     const loadAvatars = async () => {
         setIsLoading(true)
         try {
+            // ONE round trip: apiGetAvatars already joins avatar_references(*).
+            // The old flow re-queried references PER avatar and then DOWNLOADED
+            // each full-res image to build a canvas thumbnail before showing
+            // anything — the modal sat on a spinner for seconds. The `avatars`
+            // bucket is public, so the card <img> can point straight at the
+            // public URL (browser scales + caches it).
             const data = await apiGetAvatars(userId)
-
-            // Get thumbnails for each avatar (download and create actual thumbnails)
-            const avatarsWithThumbnails = await Promise.all(
-                data.map(async (avatar) => {
-                    try {
-                        const refs = await apiGetAvatarReferences(avatar.id)
-                        const faceRef = refs.find(r => r.type === 'face')
-                        const firstRef = refs[0]
-                        const thumbnailRef = faceRef || firstRef
-
-                        // Download and create actual thumbnail
-                        const thumbnailUrl = thumbnailRef
-                            ? await createAvatarThumbnail(thumbnailRef.storage_path)
-                            : null
-
-                        return {
-                            ...avatar,
-                            avatar_references: refs,
-                            thumbnailUrl,
-                        }
-                    } catch {
-                        return { ...avatar, avatar_references: [], thumbnailUrl: null }
-                    }
-                })
-            )
-
+            const avatarsWithThumbnails = data.map((avatar) => {
+                const refs = avatar.avatar_references ?? []
+                const thumbnailRef =
+                    refs.find((r) => r.type === 'face') || refs[0]
+                return {
+                    ...avatar,
+                    avatar_references: refs,
+                    thumbnailUrl: thumbnailRef
+                        ? getStoragePublicUrl('avatars', thumbnailRef.storage_path)
+                        : null,
+                }
+            })
             setAvatars(avatarsWithThumbnails)
         } catch (error) {
             console.error('Failed to load avatars:', error)
@@ -313,6 +276,8 @@ const AvatarSelector = ({ userId, isOpen, onClose }: AvatarSelectorProps) => {
                                                 src={avatar.thumbnailUrl}
                                                 alt={avatar.name}
                                                 className="w-full h-full object-cover"
+                                                loading="lazy"
+                                                decoding="async"
                                             />
                                         ) : (
                                             <div className="w-full h-full flex items-center justify-center">
