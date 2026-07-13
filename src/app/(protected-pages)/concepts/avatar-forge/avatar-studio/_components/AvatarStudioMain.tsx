@@ -775,14 +775,27 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                         ? `data:${subjectRef.mimeType};base64,${subjectRef.base64}`
                         : undefined
 
-                    // Port of the Gemini "body brain": prepend the rich inline body
-                    // description (natural language — MiniMax is a diffusion model, so
-                    // it wants description, not Gemini's instruction harness) so the
-                    // head/body proportions match the direct Gemini path. Supersedes the
-                    // old one-line proportion anchor. faceDescription already rides in
-                    // fullPrompt's [FACE:] tag AND in the subject_reference, so it isn't
-                    // re-added here.
-                    const miniMaxPrompt = `${buildDiffusionBodyPreamble(measurements)} ${fullPrompt}`
+                    // MiniMax hard-caps the prompt at 1500 chars. Budget it so the
+                    // things that MUST survive actually do, in this order:
+                    //   1. Gemini body brain preamble (measurements = source of truth)
+                    //   2. the user's SCENE/POSE text (this got truncated away when
+                    //      preamble + [BODY:] + a long [FACE:] ate the cap — MiniMax
+                    //      then ignored the pose entirely)
+                    //   3. [FACE:] only if room remains — it's redundant here, the
+                    //      face already rides on subject_reference (the image).
+                    // The [BODY:]/[FACE:] tags are stripped from fullPrompt: the
+                    // preamble carries the same measurements in richer form.
+                    const MINIMAX_CAP = 1500
+                    const sceneText = fullPrompt
+                        .replace(/\[BODY:[^\]]*\]/gi, '')
+                        .replace(/\[FACE:[^\]]*\]/gi, '')
+                        .replace(/\s{2,}/g, ' ')
+                        .trim()
+                    let miniMaxPrompt = `${buildDiffusionBodyPreamble(measurements)} ${sceneText}`
+                    const faceRoom = MINIMAX_CAP - miniMaxPrompt.length - 12
+                    if (faceDescription?.trim() && faceRoom > 80) {
+                        miniMaxPrompt += ` [FACE: ${faceDescription.trim().slice(0, faceRoom)}]`
+                    }
 
                     const result = await generateImageMiniMax({
                         prompt: miniMaxPrompt,
