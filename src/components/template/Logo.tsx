@@ -42,6 +42,7 @@ const Logo = (props: LogoProps) => {
                         width={width}
                         height={height}
                         priority
+                        unoptimized
                     />
                     <Image
                         className={classNames(
@@ -54,6 +55,7 @@ const Logo = (props: LogoProps) => {
                         width={width}
                         height={height}
                         priority
+                        unoptimized
                     />
                 </>
             )}
@@ -69,6 +71,7 @@ const Logo = (props: LogoProps) => {
                         width={width}
                         height={height}
                         priority
+                        unoptimized
                     />
                     <Image
                         className={classNames(
@@ -80,6 +83,7 @@ const Logo = (props: LogoProps) => {
                         width={width}
                         height={height}
                         priority
+                        unoptimized
                     />
                 </>
             )}
