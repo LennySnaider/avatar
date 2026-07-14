@@ -55,7 +55,38 @@ export function getBodyDescriptors(m: PhysicalMeasurements): string {
         descriptors.push('inverted triangle body type', 'shoulder-emphasized proportions')
     }
 
+    // Body-mass anchor — fights the diffusion-model default of rendering a tiny
+    // waist as an underweight fashion body. Only added when the specs imply a
+    // fuller figure (full bust OR full hips OR a curvy/plus body type); slim /
+    // petite / athletic avatars are intentionally left lean.
+    const wantsFuller =
+        m.bust >= 90 || m.hips >= 90 ||
+        (m.bodyType && ['curvy', 'hourglass', 'plus-size'].includes(m.bodyType))
+    if (wantsFuller) {
+        descriptors.push('healthy natural body weight', 'soft feminine curves with natural body fat', 'NOT skinny or underweight')
+    }
+
+    // Leg shape (explicit selector wins; otherwise nothing is added here).
+    const legs = getLegDescriptor(m.legType)
+    if (legs) descriptors.push(legs)
+
     return descriptors.join(', ')
+}
+
+// Explicit leg-shape selector → prompt-ready phrase. Optional; when unset the
+// legs simply follow the overall body type / hip descriptors.
+const LEG_TYPE_PHRASE: Record<string, string> = {
+    slim: 'slim slender legs',
+    toned: 'toned smooth legs with soft definition',
+    athletic: 'athletic muscular legs with defined calves',
+    long: 'long elongated legs',
+    curvy: 'curvy shapely legs with full thighs',
+    thick: 'thick full thighs with substantial leg volume, thighs touching (no thigh gap)',
+}
+
+export function getLegDescriptor(legType?: string): string {
+    if (!legType) return ''
+    return LEG_TYPE_PHRASE[legType] || legType.replace(/-/g, ' ') + ' legs'
 }
 
 // Lead phrase for the explicit body-type selector, so a user's choice is

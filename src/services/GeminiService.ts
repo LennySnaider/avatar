@@ -4,7 +4,7 @@ import { GoogleGenAI, Type } from '@google/genai'
 import type { PhysicalMeasurements, AspectRatio } from '@/@types/supabase'
 import { filterKnownSafeCorrections } from '@/app/(protected-pages)/concepts/avatar-forge/avatar-studio/_constants/knownSafeWords'
 import { sanitizePromptForGeneration, aggressiveSanitize } from '@/utils/promptSanitizer'
-import { getBodyDescriptors, getSkinToneDescription, getHairColorDescription, getEyeColorDescription, isFashionHairColor } from '@/utils/bodyDescriptors'
+import { getBodyDescriptors, getLegDescriptor, getSkinToneDescription, getHairColorDescription, getEyeColorDescription, isFashionHairColor } from '@/utils/bodyDescriptors'
 import type { CinemaLens, CinemaFocalLength, CinemaAperture } from '@/app/(protected-pages)/concepts/avatar-forge/avatar-studio/types'
 import { CINEMA_LENSES, CINEMA_FOCAL_LENGTHS, CINEMA_APERTURES } from '@/app/(protected-pages)/concepts/avatar-forge/avatar-studio/_constants/cinemaPresets'
 import { generateImage as generateImageWithMiniMax } from '@/services/MiniMaxService'
@@ -1283,18 +1283,33 @@ export async function generateAvatar(params: {
             proportionDesc = 'lean athletic build'
         }
 
-        // Build specific body parts description
-        const upperDesc = measurements.bust >= 100 ? 'very full chest area' :
+        // Build specific body parts description. Fullness buckets use a 90cm
+        // floor for "full" so a full bust/hips isn't downgraded to "moderate/
+        // proportionate" and lost to a dominant tiny-waist cue (which made the
+        // model render skinny bodies). Keep in sync with avatarPromptBuilder.
+        const upperDesc = measurements.bust >= 100 ? 'very full, voluminous chest' :
                          measurements.bust >= 95 ? 'full, ample chest' :
-                         measurements.bust >= 88 ? 'well-developed chest' : 'moderate chest'
+                         measurements.bust >= 90 ? 'full, shapely feminine chest' :
+                         measurements.bust >= 84 ? 'moderate chest' : 'petite chest'
 
-        const waistDesc = measurements.waist <= 58 ? 'extremely tiny waist (corseted look)' :
+        const waistDesc = measurements.waist <= 58 ? 'tiny cinched waist' :
                          measurements.waist <= 62 ? 'very slim, cinched waist' :
                          measurements.waist <= 68 ? 'slim defined waist' : 'natural waist'
 
         const hipDesc = measurements.hips >= 100 ? 'very wide, full hips and thighs' :
-                       measurements.hips >= 95 ? 'wide, shapely hips' :
-                       measurements.hips >= 88 ? 'proportionate hips' : 'slim hips'
+                       measurements.hips >= 95 ? 'wide, shapely hips with full glutes' :
+                       measurements.hips >= 90 ? 'full, curvy rounded hips' :
+                       measurements.hips >= 84 ? 'proportionate hips' : 'slim hips'
+
+        const legDesc = getLegDescriptor(measurements.legType)
+
+        // Anti-skinny anchor — see avatarPromptBuilder for rationale.
+        const wantsFuller =
+            measurements.bust >= 90 || measurements.hips >= 90 ||
+            ['curvy', 'hourglass', 'plus-size'].includes(selectedBodyType)
+        const massAnchor = wantsFuller
+            ? ', at a healthy natural body weight with soft feminine flesh and natural body fat (NOT skinny, NOT underweight, NOT an emaciated fashion-model body)'
+            : ''
 
         const heightDesc = getHeightDesc(height)
 
@@ -1321,7 +1336,7 @@ export async function generateAvatar(params: {
             fullDesc += `, ${eyeColorDesc}`
         }
 
-        fullDesc += `, ${heightDesc}, with ${bodyTypeDesc}. Physical build: ${upperDesc}, ${waistDesc}, ${hipDesc}. ${proportionDesc}`
+        fullDesc += `, ${heightDesc}, with ${bodyTypeDesc}. Physical build: ${upperDesc}, ${waistDesc}, ${hipDesc}${legDesc ? `, ${legDesc}` : ''}. ${proportionDesc}${massAnchor}`
 
         return fullDesc
     }

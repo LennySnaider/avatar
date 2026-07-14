@@ -398,6 +398,9 @@ export type AspectRatio = '1:1' | '16:9' | '9:16' | '4:3' | '3:4'
 
 export type BodyType = 'petite' | 'slim' | 'athletic' | 'average' | 'curvy' | 'hourglass' | 'plus-size'
 
+// Leg shape/type. Optional — when unset the legs follow the overall body type.
+export type LegType = 'slim' | 'toned' | 'athletic' | 'long' | 'curvy' | 'thick'
+
 // Skin tone scale (1-9 loosely based on Fitzpatrick scale)
 export type SkinTone = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9
 
@@ -451,6 +454,7 @@ export interface PhysicalMeasurements {
     bust: number
     waist: number
     hips: number
+    legType?: LegType // optional leg shape; unset = follows the body type
     skinTone?: SkinTone // 1=very fair/porcelain, 9=very dark/ebony
     hairColor?: HairColor
     eyeColor?: EyeColor

@@ -577,6 +577,26 @@ const AvatarEditDrawer = ({ isOpen, onClose, onSaveAvatar }: AvatarEditDrawerPro
                                         </div>
                                     </div>
 
+                                    {/* Leg Type */}
+                                    <div>
+                                        <label className="text-xs text-gray-500 block mb-1">Leg Type</label>
+                                        <div className="flex flex-wrap gap-1">
+                                            {([undefined, 'slim', 'toned', 'athletic', 'long', 'curvy', 'thick'] as const).map((leg) => (
+                                                <button
+                                                    key={leg ?? 'auto'}
+                                                    onClick={() => setLocalMeasurements({ ...localMeasurements, legType: leg })}
+                                                    className={`px-2 py-1 text-xs rounded border transition-colors capitalize ${
+                                                        (localMeasurements.legType ?? undefined) === leg
+                                                            ? 'bg-primary text-white border-primary'
+                                                            : 'bg-gray-50 dark:bg-gray-800 border-gray-200 dark:border-gray-700 hover:border-primary'
+                                                    }`}
+                                                >
+                                                    {leg ?? 'auto'}
+                                                </button>
+                                            ))}
+                                        </div>
+                                    </div>
+
                                     {/* Skin Tone Slider */}
                                     <div>
                                         <div className="flex items-center justify-between mb-2">

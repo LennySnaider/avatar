@@ -1,5 +1,5 @@
 import type { PhysicalMeasurements } from '@/@types/supabase'
-import { getBodyDescriptors, getSkinToneDescription, getHairColorDescription, getEyeColorDescription, isFashionHairColor } from '@/utils/bodyDescriptors'
+import { getBodyDescriptors, getLegDescriptor, getSkinToneDescription, getHairColorDescription, getEyeColorDescription, isFashionHairColor } from '@/utils/bodyDescriptors'
 
 /**
  * Shared avatar prompt recipe — a faithful port of the harness in
@@ -147,19 +147,35 @@ function buildInlineBodyDescription(m: PhysicalMeasurements): string {
         proportionDesc = 'lean athletic build'
     }
 
-    const upperDesc = m.bust >= 100 ? 'very full chest area' : m.bust >= 95 ? 'full, ample chest' : m.bust >= 88 ? 'well-developed chest' : 'moderate chest'
-    const waistDesc = m.waist <= 58 ? 'extremely tiny waist (corseted look)' : m.waist <= 62 ? 'very slim, cinched waist' : m.waist <= 68 ? 'slim defined waist' : 'natural waist'
-    const hipDesc = m.hips >= 100 ? 'very wide, full hips and thighs' : m.hips >= 95 ? 'wide, shapely hips' : m.hips >= 88 ? 'proportionate hips' : 'slim hips'
+    // Fullness buckets. NOTE the 90cm floor for "full": a 90–95 bust/hips is a
+    // genuinely full, curvy measurement, so it must read as such — describing it
+    // as merely "proportionate/moderate" (the old thresholds) let a tiny waist
+    // dominate and the model rendered a skinny body. Raise the wording to match
+    // the numbers so bust/hips balance the waist instead of losing to it.
+    const upperDesc = m.bust >= 100 ? 'very full, voluminous chest' : m.bust >= 95 ? 'full, ample chest' : m.bust >= 90 ? 'full, shapely feminine chest' : m.bust >= 84 ? 'moderate chest' : 'petite chest'
+    const waistDesc = m.waist <= 58 ? 'tiny cinched waist' : m.waist <= 62 ? 'very slim, cinched waist' : m.waist <= 68 ? 'slim defined waist' : 'natural waist'
+    const hipDesc = m.hips >= 100 ? 'very wide, full hips and thighs' : m.hips >= 95 ? 'wide, shapely hips with full glutes' : m.hips >= 90 ? 'full, curvy rounded hips' : m.hips >= 84 ? 'proportionate hips' : 'slim hips'
     const heightDesc = getHeightDesc(height)
     const skinToneDesc = getSkinToneDescription(m.skinTone)
     const hairColorDesc = getHairColorDescription(m.hairColor)
     const eyeColorDesc = getEyeColorDescription(m.eyeColor)
+    const legDesc = getLegDescriptor(m.legType)
+
+    // Anti-skinny anchor — diffusion models default a tiny waist to an
+    // underweight body. Add a body-mass cue when the specs imply a fuller
+    // figure; leave slim/petite/athletic avatars lean.
+    const wantsFuller =
+        m.bust >= 90 || m.hips >= 90 ||
+        ['curvy', 'hourglass', 'plus-size'].includes(selectedBodyType)
+    const massAnchor = wantsFuller
+        ? ', at a healthy natural body weight with soft feminine flesh and natural body fat (NOT skinny, NOT underweight, NOT an emaciated fashion-model body)'
+        : ''
 
     let fullDesc = `${m.age || 25} year old woman`
     if (skinToneDesc) fullDesc += ` with ${skinToneDesc}`
     if (hairColorDesc) fullDesc += skinToneDesc ? ` and ${hairColorDesc}` : ` with ${hairColorDesc}`
     if (eyeColorDesc) fullDesc += `, ${eyeColorDesc}`
-    fullDesc += `, ${heightDesc}, with ${bodyTypeDesc}. Physical build: ${upperDesc}, ${waistDesc}, ${hipDesc}. ${proportionDesc}`
+    fullDesc += `, ${heightDesc}, with ${bodyTypeDesc}. Physical build: ${upperDesc}, ${waistDesc}, ${hipDesc}${legDesc ? `, ${legDesc}` : ''}. ${proportionDesc}${massAnchor}`
     return fullDesc
 }
 
@@ -190,6 +206,8 @@ function buildBodySpecification(m: PhysicalMeasurements): string {
     const waistDesc = m.waist <= 58 ? 'EXTREMELY NARROW WAIST - dramatically cinched, corset-like appearance, very slim midsection' : m.waist <= 62 ? 'VERY NARROW WAIST - visibly slim, well-defined midsection' : m.waist <= 68 ? 'NARROW WAIST - tapered, defined' : 'defined waist'
     const hipsDesc = m.hips >= 100 ? 'VERY WIDE HIPS & FULL LOWER CURVES - prominent lower body, rounded silhouette' : m.hips >= 95 ? 'WIDE HIPS & FULL LOWER CURVES - curvy lower body, rounded shape, feminine hips' : m.hips >= 90 ? 'CURVY HIPS - balanced, feminine lower body' : 'proportionate lower body'
     const thighsDesc = m.hips >= 100 ? 'THICK, FULL THIGHS - meaty upper legs, substantial leg volume, no thigh gap, legs touch' : m.hips >= 95 ? 'FULL, CURVY THIGHS - thick upper legs, feminine leg volume, soft inner thighs' : m.hips >= 90 ? 'SOFT, FEMININE THIGHS - some thickness, natural curves' : 'proportionate legs'
+    const legShape = getLegDescriptor(m.legType)
+    const wantsFuller = m.bust >= 90 || m.hips >= 90 || ['curvy', 'hourglass', 'plus-size'].includes(selectedBodyType)
     const skin = getSkinToneDescription(m.skinTone)
     const hair = getHairColorDescription(m.hairColor)
     const whr = (m.hips / m.waist).toFixed(2)
@@ -216,11 +234,11 @@ ${hipsDesc}
 Measurements: ${m.hips}cm hips
 
 ▓▓▓ THIGHS/LEGS ▓▓▓
-${thighsDesc}
+${thighsDesc}${legShape ? `\nLEG SHAPE (explicit): ${legShape.toUpperCase()}` : ''}
 ⚠️ DO NOT make legs thin/skinny when hips are wide - this looks unnatural!
 
 ▓▓▓ OVERALL SILHOUETTE ▓▓▓
-This character has a ${selectedBodyType.toUpperCase()} body type. The waist-to-hip ratio is ${whr} - this creates ${m.hips / m.waist >= 1.4 ? 'a DRAMATIC HOURGLASS shape' : 'visible curves'}.
+This character has a ${selectedBodyType.toUpperCase()} body type. The waist-to-hip ratio is ${whr} - this creates ${m.hips / m.waist >= 1.4 ? 'a DRAMATIC HOURGLASS shape' : 'visible curves'}.${wantsFuller ? '\n⚠️ BODY WEIGHT: healthy natural weight with soft feminine flesh and natural body fat. The narrow waist is a CURVE, not thinness — do NOT render a skinny/underweight/emaciated fashion-model body.' : ''}
 
 ⛔ DO NOT GENERATE: slim/athletic body when curvy is specified, small chest when large bust is specified, straight waist when narrow/cinched is specified, thin legs when curvy hips are specified.`
 }
