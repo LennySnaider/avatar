@@ -119,7 +119,7 @@ const GalleryPanel = ({
     useEffect(() => {
         if (!userId) return
         let cancelled = false
-        apiGetAvatars(userId)
+        apiGetAvatars()
             .then((avatars) => {
                 if (!cancelled) {
                     setAvatarOptions(

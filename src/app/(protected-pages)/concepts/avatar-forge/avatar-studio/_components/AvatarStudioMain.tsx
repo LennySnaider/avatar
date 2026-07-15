@@ -234,7 +234,7 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
         setActiveTool('voice')
         if (!toolAvatars && userId) {
             try {
-                setToolAvatars(await apiGetAvatars(userId))
+                setToolAvatars(await apiGetAvatars())
             } catch (e) {
                 console.error('Failed to load avatars for Voice Studio:', e)
                 setToolAvatars([])
@@ -388,7 +388,7 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
         ;(async () => {
             try {
                 const [rows, postedRes] = await Promise.all([
-                    apiGetGenerations(userId),
+                    apiGetGenerations(),
                     getPostedGenerationMap(),
                 ])
                 const postedMap = postedRes.success
@@ -510,7 +510,6 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                             )
                             await apiUploadReference(
                                 savedAvatarId,
-                                userId,
                                 file,
                                 ref.type,
                             )
@@ -620,7 +619,6 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                     media.mediaType === 'VIDEO' ? 'video/mp4' : 'image/jpeg'
 
                 const { path, token } = await apiCreateGenerationUploadUrl(
-                    userId,
                     media.mediaType,
                 )
                 const { error: uploadError } = await supabase.storage
@@ -2117,7 +2115,6 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                     media.mediaType === 'VIDEO' ? 'video/mp4' : 'image/jpeg'
 
                 const { path, token } = await apiCreateGenerationUploadUrl(
-                    userId,
                     media.mediaType,
                 )
                 const { error: uploadError } = await supabase.storage

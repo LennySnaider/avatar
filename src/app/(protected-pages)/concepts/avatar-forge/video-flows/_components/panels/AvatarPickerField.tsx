@@ -4,9 +4,21 @@ import { useEffect, useState } from 'react'
 import Dialog from '@/components/ui/Dialog'
 import Spinner from '@/components/ui/Spinner'
 import { HiOutlineUser, HiOutlineCheck } from 'react-icons/hi'
-import { apiGetAvatars, apiGetAvatarReferences } from '@/services/AvatarForgeService'
-import { supabase } from '@/lib/supabase'
+import { apiGetAvatars, apiGetAvatarReferences, getSignedUrl } from '@/services/AvatarForgeService'
 import type { Avatar, AvatarReference, PhysicalMeasurements } from '@/@types/supabase'
+
+// Fetch a storage object through a server-signed URL (identity/ownership
+// enforced server-side) instead of the browser's anon Supabase client.
+async function downloadViaSignedUrl(bucket: string, path: string): Promise<Blob | null> {
+    try {
+        const url = await getSignedUrl(bucket, path)
+        const res = await fetch(url)
+        if (!res.ok) return null
+        return await res.blob()
+    } catch {
+        return null
+    }
+}
 
 interface AvatarWithRefs extends Avatar {
     avatar_references?: AvatarReference[]
@@ -37,21 +49,16 @@ export default function AvatarPickerField({ value, onSelect }: AvatarPickerField
         const load = async () => {
             setIsLoading(true)
             try {
-                const { data: { user } } = await supabase.auth.getUser()
-                if (!user) throw new Error('Not authenticated')
-
-                const list = await apiGetAvatars(user.id)
+                const list = await apiGetAvatars()
                 const withThumbs = await Promise.all(
                     list.map(async (a) => {
                         const refs = a.avatar_references ?? []
                         const faceRef = refs.find((r) => r.type === 'face') ?? refs[0]
                         let thumbnailDataUrl: string | null = null
                         if (faceRef?.storage_path) {
-                            const { data } = await supabase.storage
-                                .from('avatars')
-                                .download(faceRef.storage_path)
-                            if (data) {
-                                thumbnailDataUrl = await blobToDataUrl(data)
+                            const blob = await downloadViaSignedUrl('avatars', faceRef.storage_path)
+                            if (blob) {
+                                thumbnailDataUrl = await blobToDataUrl(blob)
                             }
                         }
                         return { ...a, thumbnailDataUrl }
@@ -76,9 +83,7 @@ export default function AvatarPickerField({ value, onSelect }: AvatarPickerField
             const refs = avatar.avatar_references ?? (await apiGetAvatarReferences(avatar.id))
             const references = await Promise.all(
                 refs.map(async (ref) => {
-                    const { data } = await supabase.storage
-                        .from('avatars')
-                        .download(ref.storage_path)
+                    const data = await downloadViaSignedUrl('avatars', ref.storage_path)
                     const base64 = data ? await blobToBase64(data) : ''
                     return {
                         id: ref.id,

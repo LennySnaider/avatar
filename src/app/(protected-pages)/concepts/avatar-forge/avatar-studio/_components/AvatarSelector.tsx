@@ -8,8 +8,8 @@ import Card from '@/components/ui/Card'
 import Spinner from '@/components/ui/Spinner'
 import ScrollBar from '@/components/ui/ScrollBar'
 import { HiOutlineUser, HiOutlineCheck, HiOutlinePlus } from 'react-icons/hi'
-import { apiGetAvatars, apiGetAvatarReferences } from '@/services/AvatarForgeService'
-import { supabase, getStoragePublicUrl } from '@/lib/supabase'
+import { apiGetAvatars, apiGetAvatarReferences, getSignedUrl } from '@/services/AvatarForgeService'
+import { getStoragePublicUrl } from '@/lib/supabase'
 import { createThumbnail } from '@/utils/imageOptimization'
 import type { Avatar, AvatarReference } from '@/@types/supabase'
 import type { ClonedVoice } from '@/@types/voice'
@@ -60,7 +60,7 @@ const AvatarSelector = ({ userId, isOpen, onClose }: AvatarSelectorProps) => {
             // anything — the modal sat on a spinner for seconds. The `avatars`
             // bucket is public, so the card <img> can point straight at the
             // public URL (browser scales + caches it).
-            const data = await apiGetAvatars(userId)
+            const data = await apiGetAvatars()
             const avatarsWithThumbnails = data.map((avatar) => {
                 const refs = avatar.avatar_references ?? []
                 const thumbnailRef =
@@ -89,14 +89,16 @@ const AvatarSelector = ({ userId, isOpen, onClose }: AvatarSelectorProps) => {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [isOpen, userId])
 
-    // Helper to download and convert to base64 with thumbnail
+    // Helper to download and convert to base64 with thumbnail. Goes through a
+    // server-signed URL (ownership enforced server-side) instead of the
+    // browser's anon Supabase client.
     const downloadReferenceWithThumbnail = async (storagePath: string): Promise<{ base64: string; url: string; thumbnailUrl: string }> => {
         try {
-            const { data, error } = await supabase.storage
-                .from('avatars')
-                .download(storagePath)
+            const signedUrl = await getSignedUrl('avatars', storagePath)
+            const res = await fetch(signedUrl)
+            const data = res.ok ? await res.blob() : null
 
-            if (error || !data) {
+            if (!data) {
                 return { base64: '', url: '', thumbnailUrl: '' }
             }
 

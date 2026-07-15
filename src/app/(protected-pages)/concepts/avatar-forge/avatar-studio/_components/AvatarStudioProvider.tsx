@@ -2,7 +2,7 @@
 
 import { useEffect, useRef } from 'react'
 import { useAvatarStudioStore } from '../_store/avatarStudioStore'
-import { supabase } from '@/lib/supabase'
+import { getSignedUrl } from '@/services/AvatarForgeService'
 import { createThumbnail } from '@/utils/imageOptimization'
 import type { Avatar, AIProvider, Prompt, MediaType } from '@/@types/supabase'
 import type { ClonedVoice } from '@/@types/voice'
@@ -19,16 +19,17 @@ interface AvatarStudioProviderProps {
     initialMode?: MediaType
 }
 
-// Download file from Supabase Storage and convert to base64
+// Download file from Supabase Storage and convert to base64. Goes through a
+// server-signed URL (identity/ownership enforced server-side) instead of the
+// browser's anon Supabase client.
 const downloadAndConvertToBase64 = async (bucket: string, path: string): Promise<{ base64: string; url: string }> => {
     try {
-        // Download the file directly using Supabase client
-        const { data, error } = await supabase.storage
-            .from(bucket)
-            .download(path)
+        const signedUrl = await getSignedUrl(bucket, path)
+        const res = await fetch(signedUrl)
+        const data = res.ok ? await res.blob() : null
 
-        if (error || !data) {
-            console.error('Failed to download from storage:', error)
+        if (!data) {
+            console.error('Failed to download from storage:', path)
             return { base64: '', url: '' }
         }
 

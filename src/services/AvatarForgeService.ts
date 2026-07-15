@@ -1,6 +1,6 @@
 'use server'
 
-import { auth } from '@/auth'
+import { requireUserId } from '@/lib/session'
 import { createServerSupabaseClient } from '@/lib/supabase'
 import type {
     Avatar,
@@ -21,6 +21,60 @@ import type {
 // Helper to get server client (bypasses RLS with service role)
 const getSupabase = () => createServerSupabaseClient()
 
+type ServerSupabase = ReturnType<typeof getSupabase>
+
+// =============================================
+// OWNERSHIP GUARDS
+// =============================================
+// Every exported function here is a server action — an HTTP endpoint anyone
+// authenticated can invoke with arbitrary arguments. Identity therefore comes
+// ONLY from the session (requireUserId), and any row addressed by a raw id is
+// checked against that identity before reading or mutating (anti-IDOR).
+// Legacy rows with NULL user_id are tolerated (pre-auth data), matching the
+// original apiSetGenerationAvatar pattern.
+
+async function assertAvatarOwner(
+    supabase: ServerSupabase,
+    avatarId: string,
+    userId: string,
+) {
+    const { data, error } = await supabase
+        .from('avatars')
+        .select('id, user_id')
+        .eq('id', avatarId)
+        .single()
+    if (error) throw error
+    if (data.user_id && data.user_id !== userId) throw new Error('Not your avatar')
+}
+
+async function assertGenerationOwner(
+    supabase: ServerSupabase,
+    generationId: string,
+    userId: string,
+) {
+    const { data, error } = await supabase
+        .from('generations')
+        .select('id, user_id')
+        .eq('id', generationId)
+        .single()
+    if (error) throw error
+    if (data.user_id && data.user_id !== userId) throw new Error('Not your media')
+}
+
+async function assertPromptOwner(
+    supabase: ServerSupabase,
+    promptId: string,
+    userId: string,
+) {
+    const { data, error } = await supabase
+        .from('prompts')
+        .select('id, user_id')
+        .eq('id', promptId)
+        .single()
+    if (error) throw error
+    if (data.user_id && data.user_id !== userId) throw new Error('Not your prompt')
+}
+
 // =============================================
 // AVATARS CRUD
 // =============================================
@@ -31,27 +85,11 @@ const getSupabase = () => createServerSupabaseClient()
  * generation and the target avatar is enforced here.
  */
 export async function apiSetGenerationAvatar(generationId: string, avatarId: string | null) {
-    const session = await auth()
-    const userId = session?.user?.id
-    if (!userId) throw new Error('Not authenticated')
-
+    const userId = await requireUserId()
     const supabase = getSupabase()
-    const { data: gen, error: genErr } = await supabase
-        .from('generations')
-        .select('id, user_id')
-        .eq('id', generationId)
-        .single()
-    if (genErr) throw genErr
-    if (gen.user_id && gen.user_id !== userId) throw new Error('Not your media')
-
+    await assertGenerationOwner(supabase, generationId, userId)
     if (avatarId) {
-        const { data: avatar, error: avErr } = await supabase
-            .from('avatars')
-            .select('id, user_id')
-            .eq('id', avatarId)
-            .single()
-        if (avErr) throw avErr
-        if (avatar.user_id && avatar.user_id !== userId) throw new Error('Not your avatar')
+        await assertAvatarOwner(supabase, avatarId, userId)
     }
 
     const { error } = await supabase
@@ -61,7 +99,8 @@ export async function apiSetGenerationAvatar(generationId: string, avatarId: str
     if (error) throw error
 }
 
-export async function apiGetAvatars(userId: string) {
+export async function apiGetAvatars() {
+    const userId = await requireUserId()
     const supabase = getSupabase()
     const { data, error } = await supabase
         .from('avatars')
@@ -74,6 +113,7 @@ export async function apiGetAvatars(userId: string) {
 }
 
 export async function apiGetAvatarById(avatarId: string) {
+    const userId = await requireUserId()
     const supabase = getSupabase()
     const { data, error } = await supabase
         .from('avatars')
@@ -82,14 +122,18 @@ export async function apiGetAvatarById(avatarId: string) {
         .single()
 
     if (error) throw error
-    return data as unknown as Avatar & { avatar_references: AvatarReference[] }
+    const avatar = data as unknown as Avatar & { avatar_references: AvatarReference[] }
+    if (avatar.user_id && avatar.user_id !== userId) throw new Error('Not your avatar')
+    return avatar
 }
 
 export async function apiCreateAvatar(avatar: AvatarInsert) {
+    const userId = await requireUserId()
     const supabase = getSupabase()
+    // user_id comes from the session — a client-supplied value is overridden.
     const { data, error } = await supabase
         .from('avatars')
-        .insert(avatar as never)
+        .insert({ ...avatar, user_id: userId } as never)
         .select()
         .single()
 
@@ -98,10 +142,15 @@ export async function apiCreateAvatar(avatar: AvatarInsert) {
 }
 
 export async function apiUpdateAvatar(avatarId: string, updates: AvatarUpdate) {
+    const userId = await requireUserId()
     const supabase = getSupabase()
+    await assertAvatarOwner(supabase, avatarId, userId)
+    // Never allow re-assigning ownership through an update payload.
+    const { user_id: _ignored, ...safeUpdates } = updates as AvatarUpdate & { user_id?: string }
+    void _ignored
     const { data, error } = await supabase
         .from('avatars')
-        .update(updates as never)
+        .update(safeUpdates as never)
         .eq('id', avatarId)
         .select()
         .single()
@@ -111,7 +160,9 @@ export async function apiUpdateAvatar(avatarId: string, updates: AvatarUpdate) {
 }
 
 export async function apiDeleteAvatar(avatarId: string) {
+    const userId = await requireUserId()
     const supabase = getSupabase()
+    await assertAvatarOwner(supabase, avatarId, userId)
     const { error } = await supabase
         .from('avatars')
         .delete()
@@ -126,7 +177,10 @@ export async function apiDeleteAvatar(avatarId: string) {
 // =============================================
 
 export async function apiAddAvatarReference(reference: AvatarReferenceInsert) {
+    const userId = await requireUserId()
     const supabase = getSupabase()
+    if (!reference.avatar_id) throw new Error('avatar_id is required')
+    await assertAvatarOwner(supabase, reference.avatar_id, userId)
     const { data, error } = await supabase
         .from('avatar_references')
         .insert(reference as never)
@@ -138,7 +192,17 @@ export async function apiAddAvatarReference(reference: AvatarReferenceInsert) {
 }
 
 export async function apiDeleteAvatarReference(referenceId: string) {
+    const userId = await requireUserId()
     const supabase = getSupabase()
+    const { data: ref, error: refErr } = await supabase
+        .from('avatar_references')
+        .select('id, avatar_id')
+        .eq('id', referenceId)
+        .single()
+    if (refErr) throw refErr
+    // Orphan rows (null avatar_id) have no owner to validate against.
+    if (ref.avatar_id) await assertAvatarOwner(supabase, ref.avatar_id, userId)
+
     const { error } = await supabase
         .from('avatar_references')
         .delete()
@@ -149,7 +213,9 @@ export async function apiDeleteAvatarReference(referenceId: string) {
 }
 
 export async function apiGetAvatarReferences(avatarId: string, type?: ReferenceType) {
+    const userId = await requireUserId()
     const supabase = getSupabase()
+    await assertAvatarOwner(supabase, avatarId, userId)
     let query = supabase
         .from('avatar_references')
         .select('*')
@@ -170,7 +236,6 @@ export async function apiGetAvatarReferences(avatarId: string, type?: ReferenceT
 // =============================================
 
 export async function apiGetGenerations(
-    userId: string,
     options?: {
         mediaType?: MediaType
         avatarId?: string
@@ -178,6 +243,7 @@ export async function apiGetGenerations(
         offset?: number
     }
 ) {
+    const userId = await requireUserId()
     const supabase = getSupabase()
     let query = supabase
         .from('generations')
@@ -209,10 +275,15 @@ export async function apiGetGenerations(
 }
 
 export async function apiSaveGeneration(generation: GenerationInsert) {
+    const userId = await requireUserId()
     const supabase = getSupabase()
+    if (generation.avatar_id) {
+        await assertAvatarOwner(supabase, generation.avatar_id, userId)
+    }
+    // user_id comes from the session — a client-supplied value is overridden.
     const { data, error } = await supabase
         .from('generations')
-        .insert(generation as never)
+        .insert({ ...generation, user_id: userId } as never)
         .select()
         .single()
 
@@ -229,7 +300,9 @@ export async function apiUpdateGenerationMetadata(
     generationId: string,
     metadata: Record<string, unknown>,
 ) {
+    const userId = await requireUserId()
     const supabase = getSupabase()
+    await assertGenerationOwner(supabase, generationId, userId)
     const { error } = await supabase
         .from('generations')
         .update({ metadata } as never)
@@ -239,7 +312,9 @@ export async function apiUpdateGenerationMetadata(
 }
 
 export async function apiDeleteGeneration(generationId: string) {
+    const userId = await requireUserId()
     const supabase = getSupabase()
+    await assertGenerationOwner(supabase, generationId, userId)
     const { error } = await supabase
         .from('generations')
         .delete()
@@ -253,7 +328,8 @@ export async function apiDeleteGeneration(generationId: string) {
 // PROMPTS
 // =============================================
 
-export async function apiGetPrompts(userId: string, mediaType?: MediaType) {
+export async function apiGetPrompts(mediaType?: MediaType) {
+    const userId = await requireUserId()
     const supabase = getSupabase()
     let query = supabase
         .from('prompts')
@@ -271,10 +347,12 @@ export async function apiGetPrompts(userId: string, mediaType?: MediaType) {
 }
 
 export async function apiCreatePrompt(prompt: PromptInsert) {
+    const userId = await requireUserId()
     const supabase = getSupabase()
+    // user_id comes from the session — a client-supplied value is overridden.
     const { data, error } = await supabase
         .from('prompts')
-        .insert(prompt as never)
+        .insert({ ...prompt, user_id: userId } as never)
         .select()
         .single()
 
@@ -283,10 +361,14 @@ export async function apiCreatePrompt(prompt: PromptInsert) {
 }
 
 export async function apiUpdatePrompt(promptId: string, updates: PromptUpdate) {
+    const userId = await requireUserId()
     const supabase = getSupabase()
+    await assertPromptOwner(supabase, promptId, userId)
+    const { user_id: _ignored, ...safeUpdates } = updates as PromptUpdate & { user_id?: string }
+    void _ignored
     const { data, error } = await supabase
         .from('prompts')
-        .update(updates as never)
+        .update(safeUpdates as never)
         .eq('id', promptId)
         .select()
         .single()
@@ -296,7 +378,9 @@ export async function apiUpdatePrompt(promptId: string, updates: PromptUpdate) {
 }
 
 export async function apiDeletePrompt(promptId: string) {
+    const userId = await requireUserId()
     const supabase = getSupabase()
+    await assertPromptOwner(supabase, promptId, userId)
     const { error } = await supabase
         .from('prompts')
         .delete()
@@ -316,6 +400,7 @@ export async function apiGetProviders(options?: {
     supportsVideo?: boolean
     activeOnly?: boolean
 }) {
+    await requireUserId() // global catalog, but only for signed-in users
     const supabase = getSupabase()
     let query = supabase.from('ai_providers').select('*')
 
@@ -342,6 +427,7 @@ export async function apiGetProviders(options?: {
 }
 
 export async function apiGetProviderById(providerId: string) {
+    await requireUserId() // global catalog, but only for signed-in users
     const supabase = getSupabase()
     const { data, error } = await supabase
         .from('ai_providers')
@@ -356,8 +442,11 @@ export async function apiGetProviderById(providerId: string) {
 // =============================================
 // STORAGE HELPERS
 // =============================================
+// The upload helpers are intentionally NOT exported: exporting them from a
+// 'use server' file would make them public endpoints taking a raw userId.
+// They receive the session-derived userId from their exported wrappers.
 
-export async function uploadAvatarReference(
+async function uploadAvatarReference(
     userId: string,
     avatarId: string,
     type: ReferenceType,
@@ -379,7 +468,7 @@ export async function uploadAvatarReference(
     return filePath
 }
 
-export async function uploadGeneration(
+async function uploadGeneration(
     userId: string,
     mediaType: MediaType,
     blob: Blob,
@@ -402,16 +491,24 @@ export async function uploadGeneration(
 }
 
 export async function getStorageUrl(bucket: string, path: string): Promise<string> {
+    await requireUserId()
     const supabase = getSupabase()
     const { data } = supabase.storage.from(bucket).getPublicUrl(path)
     return data.publicUrl
 }
 
+/**
+ * Sign a storage path for reading. Both user buckets (`avatars`,
+ * `generations`) key every object under `{userId}/…`, so a signed URL is
+ * only issued for paths inside the caller's own prefix.
+ */
 export async function getSignedUrl(
     bucket: string,
     path: string,
     expiresIn: number = 3600
 ): Promise<string> {
+    const userId = await requireUserId()
+    if (!path.startsWith(`${userId}/`)) throw new Error('Not your file')
     const supabase = getSupabase()
     const { data, error } = await supabase.storage
         .from(bucket)
@@ -422,6 +519,8 @@ export async function getSignedUrl(
 }
 
 export async function deleteStorageFile(bucket: string, path: string) {
+    const userId = await requireUserId()
+    if (!path.startsWith(`${userId}/`)) throw new Error('Not your file')
     const supabase = getSupabase()
     const { error } = await supabase.storage.from(bucket).remove([path])
     if (error) throw error
@@ -437,10 +536,13 @@ export async function deleteStorageFile(bucket: string, path: string) {
  */
 export async function apiUploadReference(
     avatarId: string,
-    userId: string,
     file: File,
     type: ReferenceType
 ): Promise<AvatarReference> {
+    const userId = await requireUserId()
+    const supabase = getSupabase()
+    await assertAvatarOwner(supabase, avatarId, userId)
+
     // Upload file to storage
     const storagePath = await uploadAvatarReference(userId, avatarId, type, file)
 
@@ -462,9 +564,9 @@ export async function apiUploadReference(
  * `uploadToSignedUrl` client-side, then `apiSaveGeneration` for the row.
  */
 export async function apiCreateGenerationUploadUrl(
-    userId: string,
     mediaType: MediaType,
 ): Promise<{ path: string; token: string }> {
+    const userId = await requireUserId()
     const supabase = getSupabase()
     const folder = mediaType === 'IMAGE' ? 'images' : 'videos'
     const ext = mediaType === 'VIDEO' ? 'mp4' : 'jpg'
@@ -482,7 +584,6 @@ export async function apiCreateGenerationUploadUrl(
  * Save a generation (upload file + create record)
  */
 export async function apiSaveGenerationWithFile(
-    userId: string,
     avatarId: string | null,
     file: File,
     data: {
@@ -492,13 +593,16 @@ export async function apiSaveGenerationWithFile(
         metadata?: Record<string, unknown>
     }
 ): Promise<Generation> {
+    const userId = await requireUserId()
+
     // Determine extension
     const ext = data.media_type === 'VIDEO' ? 'mp4' : 'jpg'
 
     // Upload to storage
     const storagePath = await uploadGeneration(userId, data.media_type, file, ext)
 
-    // Create database record
+    // Create database record (apiSaveGeneration re-derives the session user
+    // and validates avatar ownership)
     const generation = await apiSaveGeneration({
         user_id: userId,
         avatar_id: avatarId,

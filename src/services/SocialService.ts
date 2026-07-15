@@ -1,6 +1,6 @@
 'use server'
 
-import { auth } from '@/auth'
+import { requireUserId } from '@/lib/session'
 import { createServerSupabaseClient, getStoragePublicUrl } from '@/lib/supabase'
 import { getSocialProvider, deriveUploadPostUsername } from '@/lib/social/provider'
 import { indexKnowledgeSource } from '@/lib/agent/indexer'
@@ -76,11 +76,7 @@ const fail = (e: unknown): { success: false; error: string } => ({
     error: e instanceof Error ? e.message : String(e),
 })
 
-async function requireSession() {
-    const session = await auth()
-    if (!session?.user?.id) throw new Error('Not authenticated')
-    return session.user.id
-}
+const requireSession = requireUserId
 
 const VALID_PLATFORMS = new Set<string>(ALL_PLATFORMS)
 

@@ -8,7 +8,7 @@
  * tokens never reach the client. Mirrors SocialService's `fail()` /
  * `requireSession()` conventions.
  */
-import { auth } from '@/auth'
+import { requireUserId } from '@/lib/session'
 import { FanvueClient } from '@/lib/fanvue/FanvueClient'
 import { uploadGenerationMedia } from '@/lib/fanvue/mediaUpload'
 import { indexKnowledgeSource } from '@/lib/agent/indexer'
@@ -107,11 +107,7 @@ const fail = (e: unknown): { success: false; error: string } => ({
     error: e instanceof Error ? e.message : String(e),
 })
 
-async function requireSession(): Promise<string> {
-    const session = await auth()
-    if (!session?.user?.id) throw new Error('Not authenticated')
-    return session.user.id
-}
+const requireSession = requireUserId
 
 function makeClient(userId: string): FanvueClient {
     return new FanvueClient({

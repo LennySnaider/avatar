@@ -81,7 +81,7 @@ const PromptLibraryDrawer = ({ userId }: PromptLibraryDrawerProps) => {
 
         setIsLoading(true)
         try {
-            const data = await apiGetPrompts(userId)
+            const data = await apiGetPrompts()
             setPrompts(data)
         } catch (error) {
             console.error('Failed to load prompts:', error)

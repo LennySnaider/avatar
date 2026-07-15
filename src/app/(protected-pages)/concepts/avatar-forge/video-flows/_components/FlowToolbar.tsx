@@ -7,25 +7,14 @@ import {
     HiOutlineTrash,
     HiOutlineFolder,
 } from 'react-icons/hi'
-import { createClient } from '@supabase/supabase-js'
+import {
+    apiSaveVideoFlow,
+    apiListVideoFlows,
+    apiGetVideoFlow,
+} from '@/services/VideoFlowService'
 import { useVideoFlowStore } from '../_store/videoFlowStore'
 import type { VideoFlowNode } from '../_engine/types'
 import type { Edge } from '@xyflow/react'
-
-// Untyped supabase client — the video_flows table is not yet in the Database types
-const supabase = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-)
-
-interface VideoFlowRow {
-    id: string
-    user_id: string
-    name: string
-    nodes: VideoFlowNode[]
-    edges: Edge[]
-    updated_at: string
-}
 
 export default function FlowToolbar() {
     const {
@@ -48,31 +37,20 @@ export default function FlowToolbar() {
     const [savedFlows, setSavedFlows] = useState<{ id: string; name: string }[]>([])
 
     // ─── Save ────────────────────────────────────────────────
+    // Identity/ownership live server-side in VideoFlowService now.
     const handleSave = async () => {
         setSaving(true)
         try {
-            const { data: { user } } = await supabase.auth.getUser()
-            if (!user) return
-
-            const payload = {
-                user_id: user.id,
-                name: flowName,
-                nodes: JSON.parse(JSON.stringify(nodes)),
-                edges: JSON.parse(JSON.stringify(edges)),
-                updated_at: new Date().toISOString(),
-            }
-
-            if (flowId) {
-                await supabase.from('video_flows').update(payload).eq('id', flowId)
-            } else {
-                const { data } = await supabase
-                    .from('video_flows')
-                    .insert(payload)
-                    .select('id')
-                    .single()
-                if (data) setFlowMeta((data as { id: string }).id, flowName)
-            }
+            const { id } = await apiSaveVideoFlow(
+                flowId,
+                flowName,
+                JSON.parse(JSON.stringify(nodes)),
+                JSON.parse(JSON.stringify(edges)),
+            )
+            if (!flowId) setFlowMeta(id, flowName)
             setIsDirty(false)
+        } catch (err) {
+            console.error('Failed to save flow:', err)
         } finally {
             setSaving(false)
         }
@@ -84,24 +62,22 @@ export default function FlowToolbar() {
             setShowLoadMenu(false)
             return
         }
-        const { data: { user } } = await supabase.auth.getUser()
-        if (!user) return
-        const { data } = await supabase
-            .from('video_flows')
-            .select('id, name')
-            .eq('user_id', user.id)
-            .order('updated_at', { ascending: false })
-            .limit(20)
-        setSavedFlows((data as { id: string; name: string }[]) ?? [])
+        try {
+            setSavedFlows(await apiListVideoFlows())
+        } catch (err) {
+            console.error('Failed to list flows:', err)
+            setSavedFlows([])
+        }
         setShowLoadMenu(true)
     }
 
     const handleLoadFlow = async (id: string) => {
-        const { data } = await supabase.from('video_flows').select('*').eq('id', id).single()
-        if (data) {
-            const row = data as VideoFlowRow
-            loadFlowData(row.nodes, row.edges)
+        try {
+            const row = await apiGetVideoFlow(id)
+            loadFlowData(row.nodes as VideoFlowNode[], row.edges as Edge[])
             setFlowMeta(row.id, row.name)
+        } catch (err) {
+            console.error('Failed to load flow:', err)
         }
         setShowLoadMenu(false)
     }

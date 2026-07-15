@@ -14,8 +14,7 @@ import ConfirmDialog from '@/components/shared/ConfirmDialog'
 import Spinner from '@/components/ui/Spinner'
 import { AvatarEditDrawer, type AvatarEditData, type AvatarReferenceImage } from '@/components/shared/AvatarEditDrawer'
 import { useAvatarListStore } from '../_store/avatarListStore'
-import { apiDeleteAvatar, apiUpdateAvatar, apiUploadReference, apiDeleteAvatarReference } from '@/services/AvatarForgeService'
-import { supabase } from '@/lib/supabase'
+import { apiDeleteAvatar, apiUpdateAvatar, apiUploadReference, apiDeleteAvatarReference, getSignedUrl } from '@/services/AvatarForgeService'
 import { createThumbnail, resizeBase64Image } from '@/utils/imageOptimization'
 import type { AvatarWithReferences } from '../types'
 import type { PhysicalMeasurements } from '@/@types/supabase'
@@ -63,11 +62,11 @@ const AvatarCard = ({ avatar }: AvatarCardProps) => {
             }
 
             try {
-                const { data, error } = await supabase.storage
-                    .from('avatars')
-                    .download(previewImage.storage_path)
+                const signedUrl = await getSignedUrl('avatars', previewImage.storage_path)
+                const res = await fetch(signedUrl)
+                const data = res.ok ? await res.blob() : null
 
-                if (error || !data) {
+                if (!data) {
                     setIsLoadingThumbnail(false)
                     return
                 }
@@ -110,11 +109,11 @@ const AvatarCard = ({ avatar }: AvatarCardProps) => {
                 if (!ref.storage_path) continue
 
                 try {
-                    const { data, error } = await supabase.storage
-                        .from('avatars')
-                        .download(ref.storage_path)
+                    const signedUrl = await getSignedUrl('avatars', ref.storage_path)
+                    const res = await fetch(signedUrl)
+                    const data = res.ok ? await res.blob() : null
 
-                    if (error || !data) continue
+                    if (!data) continue
 
                     const base64 = await new Promise<string>((resolve) => {
                         const reader = new FileReader()
@@ -241,7 +240,7 @@ const AvatarCard = ({ avatar }: AvatarCardProps) => {
                     const ext = uploadMime === 'image/jpeg' ? 'jpg' : uploadMime.split('/')[1] || 'jpg'
                     const file = new File([blob], `${ref.type}-${Date.now()}.${ext}`, { type: uploadMime })
 
-                    const saved = await apiUploadReference(avatar.id, avatar.user_id || '', file, ref.type)
+                    const saved = await apiUploadReference(avatar.id, file, ref.type)
                     uploadedRefs.push(saved)
                 } catch (err) {
                     console.error('Failed to upload reference:', err)

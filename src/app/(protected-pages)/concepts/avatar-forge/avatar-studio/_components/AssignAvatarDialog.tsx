@@ -39,7 +39,7 @@ const AssignAvatarDialog = ({ media, userId, onClose }: AssignAvatarDialogProps)
         if (!media) return
         setSelected(media.avatarId ?? '')
         if (options === null && userId) {
-            apiGetAvatars(userId)
+            apiGetAvatars()
                 .then((avatars) =>
                     setOptions(avatars.map((a) => ({ value: a.id, label: a.name }))),
                 )

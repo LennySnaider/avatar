@@ -7,7 +7,7 @@ export default async function VoiceStudioPage() {
     const session = await auth()
     if (!session?.user?.id) redirect('/sign-in')
 
-    const avatars = await apiGetAvatars(session.user.id)
+    const avatars = await apiGetAvatars()
 
     return <VoiceStudioMain userId={session.user.id} avatars={avatars} />
 }
