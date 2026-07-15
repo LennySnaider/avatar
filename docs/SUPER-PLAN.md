@@ -1,13 +1,14 @@
 # SUPER PLAN — Prime Avatar (AvatarLab): Agente IA por Avatar + Plataforma Multi-tenant de Agencias
 
-> **Última revisión: 2026-07-13.** Fases 0-3 HECHAS y verificadas en código. Siguiente: cerrar
-> el bloqueo operativo de Fanvue (abajo) → validar producto → Fase 4 (multitenant).
+> **Última revisión: 2026-07-15.** Fases 0-3 HECHAS y verificadas en código. Fanvue
+> RECONECTADO en prod (2026-07-15) y los 3 P0s de seguridad heredados CERRADOS (abajo).
+> Siguiente: validar producto (F2/F3 en prod) → Fase 4 (multitenant).
 > Este doc es la fuente de verdad portable del plan (las notas de sesión de Claude son locales
 > por máquina; esto viaja con el repo).
 
 ---
 
-## 📍 ESTADO ACTUAL (2026-07-13)
+## 📍 ESTADO ACTUAL (2026-07-15)
 
 | Fase | Entregable | Estado |
 |---|---|---|
@@ -31,27 +32,43 @@ Webhook Fanvue migrado a eventos `creator.*` (metadata-only, firma `X-Fanvue-Sig
 
 ---
 
-## 🚨 BLOQUEO OPERATIVO VIVO — Reconectar Fanvue (F2/F3 dependen de esto en prod)
+## ✅ BLOQUEO OPERATIVO CERRADO — Fanvue reconectado en prod (2026-07-15)
 
-Se cambiaron las keys del app de Fanvue → el `refresh_token` guardado quedó atado al client
-viejo → `invalid_grant`. **No es bug de código.** Pasos exactos:
+Las keys del app habían cambiado → `refresh_token` atado al client viejo → `invalid_grant`.
+Resuelto: scopes + redirect URIs configurados en el app "PrimeAvatar" (client id
+`435aac03-3c64-48c1-ab30-7e1ab7521992`), env vars `FANVUE_CLIENT_ID` /
+`FANVUE_CLIENT_SECRET` / `FANVUE_REDIRECT_URI` en Vercel, redeploy y "Reconnect agency"
+desde el deploy. F2/F3 quedan operativos en prod → empieza la validación de producto.
 
-1. **Fanvue → developers → app "PrimeAvatar" → pestaña Permisos** (o Authentication →
-   "Define permissions"): añadir los 10 scopes que usa la app (la alerta ámbar de webhooks
-   lista los que faltan): `read:self, read:agency, read:creator, write:creator, read:media,
-   write:media, read:post, write:post, read:chat, write:chat`.
-   (NO añadir `openid/offline_access/offline` — OIDC los concede solo.)
-2. **Redirect URIs del app** (ya añadidas ✅): `https://avatar-liart.vercel.app/api/fanvue/callback`
-   y `http://localhost:3030/api/fanvue/callback`. OJO: `/api/webhooks/fanvue` es la URL de
-   WEBHOOKS, no la de OAuth — son ajustes distintos.
-3. **Vercel env vars** (del MISMO app, client id `435aac03-3c64-48c1-ab30-7e1ab7521992`):
-   `FANVUE_CLIENT_ID`, `FANVUE_CLIENT_SECRET` (si no se guardó → "Restablecer secreto"),
-   `FANVUE_REDIRECT_URI=https://avatar-liart.vercel.app/api/fanvue/callback` → **redeploy**.
-4. Desde el deploy (no localhost): **Fanvue → Accounts → "Reconnect agency"** → popup OAuth →
-   listo (el token nuevo pisa el muerto).
+Verificar pendientes de entorno (Vercel) si algo falla: `FANVUE_WEBHOOK_SECRET`,
+`CRON_SECRET`, `OPENROUTER_API_KEY`, `APIFY_TOKEN`.
 
-Otros pendientes de entorno (Vercel): `FANVUE_WEBHOOK_SECRET`, `CRON_SECRET`,
-`OPENROUTER_API_KEY`, `APIFY_TOKEN`.
+---
+
+## ✅ P0s DE SEGURIDAD CERRADOS (2026-07-15, commit f8adfb5)
+
+Los 3 P0s heredados que el plan tenía para F4.0/4.2/4.5 se adelantaron y están CERRADOS:
+
+- **(a) Cliente anon del browser**: los 8 componentes ya no tocan Supabase con la anon key.
+  Storage reads → signed URLs server-side (`getSignedUrl`, ownership por prefijo
+  `{userId}/`); `FlowToolbar` → `VideoFlowService` server-side (su Save/Load estaba
+  además roto en silencio: `supabase.auth.getUser()` siempre null con NextAuth). Los
+  flujos `uploadToSignedUrl` anti-413 quedaron intactos.
+- **(b) AvatarForgeService IDOR**: identidad SOLO de sesión vía `requireUserId()`
+  (`src/lib/session.ts`, compartido con Social/Fanvue); ownership check en toda
+  operación por id; `user_id` del cliente ignorado en inserts; firmas sin `userId`.
+- **(c) Auth real**: migración `20260715090000_users` (aplicada en prod 2026-07-15) —
+  tabla `users` (id TEXT = token.sub), RLS on sin políticas, admin sembrado con el
+  mismo id/hash. `validateCredential` contra DB (scrypt de node:crypto, cero deps),
+  sign-up real (user + org propia + membership owner), OAuth provisioning sin
+  auto-linking cross-provider. Split edge-safe: `auth.config.ts` (middleware) /
+  `auth.ts` (node). El mock `authData` quedó sin uso.
+  ⚠️ El password del admin sigue siendo el del template — cambiarlo (no hay UI aún;
+  UPDATE del hash vía SQL editor).
+
+Con esto, de F4.0 ya está hecho el punto 3 (identidad real). Quedan 4.0.1 (baseline
+schema) y 4.0.2 (tipos generados) — `users` y `video_flows` siguen fuera de los tipos
+`Database` (casts locales marcados con comentario).
 
 ---
 
@@ -83,8 +100,14 @@ Estado 2026-07-13 (todo verificado en vivo contra la API de KIE, commits en main
 - **Retries KIE**: "internal error" transitorio → re-submit 1×; "text length" → recorte a
   ~900 + re-submit (KIE aplica límites más estrictos que sus docs, varían por modelo).
 - **Branding AvatarLab**: logo/icono/favicon + APP_NAME + title.
-- **Pendiente de probar por el usuario**: FLUX.2 con Body Ref; pipeline completo Seedream
-  con avatar real tras el ancla de cara.
+- **Cuerpos ya no salen flacos** (2026-07-14/15, commits e540c6e + dae7de1): buckets de
+  plenitud rebalanceados (piso 90cm para "full"), ancla anti-flaca condicional
+  (busto/cadera ≥90 o body type curvy+) en las 3 rutas de prompt, selector **Leg Type**
+  (slim/toned/athletic/long/curvy/thick, campo `legType` en measurements, sin migración),
+  y ancla BIDIRECCIONAL en Seedream i2i (cara de la imagen, cuerpo SOLO del texto — 5.0
+  Pro copiaba el cuerpo delgado de la foto de cara; cap seedream 1800→2400).
+- **Pendiente de probar por el usuario**: FLUX.2 con Body Ref; Seedream 5.0 Pro con las
+  medidas tras el ancla bidireccional; login en prod contra la tabla `users`.
 
 ---
 
