@@ -1959,18 +1959,19 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                             base64: sourceBase64,
                             mimeType: sourceMime,
                         }
-                        // Text-to-image-ONLY KIE models (Z-Image, Ideogram, Nano
-                        // Banana 2) can't consume the source image: their generic
-                        // createTask flow drops the reference, so "editing" with them
-                        // ignores the input and hallucinates a brand-new subject (a
-                        // random man replaced Ana). Re-route to FLUX.2 image-to-image —
+                        // Text-to-image-ONLY KIE models (Z-Image, Ideogram) can't
+                        // consume the source image: their generic createTask flow
+                        // drops the reference, so "editing" with them ignores the
+                        // input and hallucinates a brand-new subject (a random man
+                        // replaced Ana). Re-route to FLUX.2 image-to-image —
                         // permissive AND it actually transforms THIS photo (identity
                         // rides on the image itself, not on the text instruction).
-                        // Seedream is NOT in this list anymore: KieService now swaps
-                        // it to its real i2i variant (4.5-edit / 5-lite-image-to-image).
+                        // Seedream is NOT in this list anymore: KieService swaps it
+                        // to its real i2i variant (4.5-edit / 5-lite-image-to-image).
+                        // Nano Banana 2 / 2 Lite tampoco: KieService les manda la
+                        // foto vía image_input[] (mismo patrón que nano-banana-pro).
                         const isT2IOnlyEdit =
                             editModel === 'z-image' ||
-                            editModel === 'nano-banana-2' ||
                             editModel.startsWith('ideogram/')
                         if (isT2IOnlyEdit) {
                             toast.push(

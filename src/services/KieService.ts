@@ -337,7 +337,7 @@ export async function generateImageKie(
         // Seedream gets extra budget (documented cap 3000): the i2i face/body
         // anchor below adds ~430 chars AFTER this cap, so 2400 + anchor ≈ 2830
         // stays under the limit while letting more body-spec text survive.
-        const promptCap = model === 'nano-banana-2' ? 19000 : model === 'z-image' ? 1500 : model.startsWith('seedream/') ? 2400 : 1800
+        const promptCap = model.startsWith('nano-banana-2') ? 19000 : model === 'z-image' ? 1500 : model.startsWith('seedream/') ? 2400 : 1800
         let capped = promptText
         if (capped.length > promptCap) {
             capped = capped.slice(0, promptCap)
@@ -379,9 +379,11 @@ export async function generateImageKie(
         } else if (model.startsWith('ideogram/')) {
             input.image_size = asImageSize()
             input.rendering_speed = 'QUALITY'
-        } else if (model === 'nano-banana-2') {
+        } else if (model.startsWith('nano-banana-2')) {
             input.aspect_ratio = aspectRatio
-            input.resolution = '2K'
+            // Lite (gemini-3.1-flash-lite) is the speed/price point (~$0.034 @1K,
+            // ~4s) — 2K would double its cost. Full nano-banana-2 stays at 2K.
+            input.resolution = model === 'nano-banana-2-lite' ? '1K' : '2K'
         } else if (model === 'grok-imagine/image-to-image') {
             // Grok Imagine (xAI) — i2i ONLY + permissive (nsfw_checker off; xAI
             // barely censors, the reason we're adding it). No aspect_ratio /
@@ -406,6 +408,7 @@ export async function generateImageKie(
             (model.startsWith('flux-2/') ||
                 model.startsWith('qwen/') ||
                 model.startsWith('seedream/') ||
+                model.startsWith('nano-banana-2') ||
                 model === 'grok-imagine/image-to-image')
         ) {
             try {
@@ -449,6 +452,23 @@ export async function generateImageKie(
                     // face from the image, body ONLY from the measurements text.
                     input.prompt = `The person in the attached reference image is the subject — keep her EXACT face, facial features and likeness from the image. Use the reference image ONLY for the face and identity: do NOT copy the body, build, weight or proportions from it. Her body proportions MUST follow the text description below exactly (bust, waist, hips and thighs as written), even if the person in the reference image looks slimmer. ${input.prompt}`
                     console.log(`[KIE] Seedream i2i (${resolvedModel}) with identity ref`)
+                } else if (model.startsWith('nano-banana-2')) {
+                    // nano-banana-2 / -lite take image_input[] (URL array, up to
+                    // 14) on the SAME model id — no i2i variant swap needed.
+                    // Mirrors the nano-banana-pro wiring (verified live with
+                    // image_input on the same endpoint family). Face + optional
+                    // Body Ref; Gemini models follow the keep-face note well.
+                    const identityRefs = [
+                        referenceImage,
+                        ...(referenceImages ?? []).filter((r) => r.role === 'body'),
+                    ].slice(0, 14)
+                    const nbUrls: string[] = []
+                    for (const r of identityRefs) {
+                        nbUrls.push(await uploadReferenceToSupabase(r.base64, r.mimeType))
+                    }
+                    input.image_input = nbUrls
+                    input.prompt = `The person in the first attached reference image is the subject — keep her EXACT face, facial features and likeness. ${input.prompt}`
+                    console.log(`[KIE] ${model} with ${nbUrls.length} identity ref(s) via image_input`)
                 } else if (model.startsWith('flux-2/')) {
                     // FLUX.2 takes up to 8 refs → send the face (identity anchor) +
                     // a Body Ref (imitate the body) so BOTH are locked from images,

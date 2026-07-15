@@ -222,6 +222,19 @@ export const DEFAULT_PROVIDERS: AIProvider[] = [
         created_at: null,
     },
     {
+        id: 'kie-nano-banana-2-lite',
+        name: 'Nano Banana 2 Lite · KIE',
+        type: 'KIE' as ProviderType,
+        model: 'nano-banana-2-lite',
+        endpoint: 'https://api.kie.ai/api/v1',
+        is_active: true,
+        supports_image: true,
+        supports_video: false,
+        requires_api_key: true,
+        api_key_env_var: 'KIE_API_KEY',
+        created_at: null,
+    },
+    {
         id: 'kie-grok-imagine',
         name: 'Grok Imagine · KIE',
         type: 'KIE' as ProviderType,
@@ -410,6 +423,7 @@ const PROVIDER_COST: Record<string, string> = {
     'kie-qwen-image': '~$0.02',
     'kie-ideogram-v3': '~$0.05',
     'kie-nano-banana-2': '~$0.06',
+    'kie-nano-banana-2-lite': '~$0.034',
     'kie-grok-imagine': '~$0.02',
 }
 
@@ -433,6 +447,9 @@ const PROVIDER_TRAITS: Record<string, { face?: boolean; permissive?: boolean }> 
     'kie-flux-2-pro': { permissive: true },
     'kie-qwen-image': { permissive: true },
     'kie-grok-imagine': { face: true },
+    // Ambos reciben la cara vía image_input[] (mismo patrón que nano-banana-pro)
+    'kie-nano-banana-2': { face: true },
+    'kie-nano-banana-2-lite': { face: true },
 }
 
 const ProviderManagerDrawer = () => {
@@ -604,7 +621,9 @@ const ProviderManagerDrawer = () => {
             case 'kie-ideogram-v3':
                 return 'Ideogram V3 — el mejor para TEXTO dentro de la imagen (carteles/logos). Filtro estándar. Solo texto→imagen'
             case 'kie-nano-banana-2':
-                return 'Nano Banana 2 (Google) — calidad top hasta 4K. OJO: Google = filtro estricto (no ayuda con bloqueos). Solo texto→imagen'
+                return 'Nano Banana 2 (Google) — calidad top hasta 4K, usa la cara del avatar (image_input). OJO: Google = filtro estricto (no ayuda con bloqueos)'
+            case 'kie-nano-banana-2-lite':
+                return 'Nano Banana 2 Lite (Gemini 3.1 Flash-Lite) — el más RÁPIDO (~4s) y barato de Google, 1K, usa la cara del avatar (image_input). Filtro estricto de Google — para SFW con identidad y volumen'
             case 'kie-grok-imagine':
                 return 'Grok Imagine (xAI) · image-to-image — usa la cara del avatar (la ref se recorta al aspect ratio pedido: su salida copia el ratio del input). OJO: su PROPIO filtro bloquea bikini/sensual aun con nsfw off — para sensual usa Seedream / FLUX.2. Para SFW con identidad'
             case 'kie-kling-3-0':
