@@ -334,7 +334,10 @@ export async function generateImageKie(
         // Kept well under each model's documented max — KIE's enforced limit is
         // stricter than the docs (4900 still 500'd on FLUX.2), and for i2i the
         // identity rides on the images so the text can be short anyway.
-        const promptCap = model === 'nano-banana-2' ? 19000 : model === 'z-image' ? 1500 : 1800
+        // Seedream gets extra budget (documented cap 3000): the i2i face/body
+        // anchor below adds ~430 chars AFTER this cap, so 2400 + anchor ≈ 2830
+        // stays under the limit while letting more body-spec text survive.
+        const promptCap = model === 'nano-banana-2' ? 19000 : model === 'z-image' ? 1500 : model.startsWith('seedream/') ? 2400 : 1800
         let capped = promptText
         if (capped.length > promptCap) {
             capped = capped.slice(0, promptCap)
@@ -436,12 +439,15 @@ export async function generateImageKie(
                             ? 'seedream/4.5-edit'
                             : model.replace('text-to-image', 'image-to-image')
                     input.image_urls = [refUrl]
-                    // Seedream i2i weighs the TEXT heavily: body specs land great
-                    // (that's the design — measurements are the source of truth),
-                    // but without an explicit keep-face instruction the identity
-                    // can drift toward the written description (verified with a
-                    // headshot ref + conflicting text). Anchor the face to the ref.
-                    input.prompt = `The person in the attached reference image is the subject — keep her EXACT face, facial features and likeness. ${input.prompt}`
+                    // Two-way anchor. (1) Face rides on the IMAGE: without an
+                    // explicit keep-face instruction the identity drifts toward
+                    // the written description (verified with a headshot ref +
+                    // conflicting text). (2) Body rides on the TEXT: 5.0 Pro
+                    // weighs the ref image harder than Lite/4.5 and copies its
+                    // body/build too (verified: same prompt → Pro slim, Lite
+                    // curvy), so the anchor must decouple them explicitly —
+                    // face from the image, body ONLY from the measurements text.
+                    input.prompt = `The person in the attached reference image is the subject — keep her EXACT face, facial features and likeness from the image. Use the reference image ONLY for the face and identity: do NOT copy the body, build, weight or proportions from it. Her body proportions MUST follow the text description below exactly (bust, waist, hips and thighs as written), even if the person in the reference image looks slimmer. ${input.prompt}`
                     console.log(`[KIE] Seedream i2i (${resolvedModel}) with identity ref`)
                 } else if (model.startsWith('flux-2/')) {
                     // FLUX.2 takes up to 8 refs → send the face (identity anchor) +
