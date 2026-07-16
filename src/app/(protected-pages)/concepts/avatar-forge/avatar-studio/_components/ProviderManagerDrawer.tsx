@@ -646,7 +646,7 @@ const ProviderManagerDrawer = () => {
             case 'kie-seedream-4-5':
                 return 'Seedream 4.5 (ByteDance) — PERMISIVO (filtro NSFW off) + usa la CARA del avatar (i2i 4.5-edit, verificado). Calidad 2K, ideal fashion/sensual'
             case 'kie-flux-2-pro':
-                return 'FLUX.2 Pro (Black Forest Labs) — PERMISIVO (filtro off), 2K. Solo texto→imagen'
+                return 'FLUX.2 Pro (Black Forest Labs) — filtro de KIE off, 2K, i2i con cara + Body Ref. OJO: BFL aplica SU propia moderación (422 nsfw en swimwear atrevido/edits picantes) — para eso usa Seedream'
             case 'kie-seedream-5-lite':
                 return 'Seedream 5.0 Lite (ByteDance) — PERMISIVO (filtro off) + usa la CARA del avatar (i2i verificado: misma cara, mismo precio). 2K'
             case 'kie-seedream-5-pro':

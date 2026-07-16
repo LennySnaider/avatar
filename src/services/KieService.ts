@@ -567,8 +567,12 @@ export async function generateImageKie(
     }
 
     // Content-moderation flag from the provider (Google/OpenAI via KIE).
+    // "nsfw" incluido: FLUX.2 (Black Forest Labs) responde "422 nsfw" desde SU
+    // moderación upstream — nsfw_checker:false solo apaga el filtro de KIE, no
+    // el del proveedor del modelo. Sin este término la escalera de sanitización
+    // nunca se disparaba para FLUX.2.
     const isSensitiveBlock = (m: string) =>
-        /flagged as sensitive|sensitive|safety|content policy|moderat|violat/i.test(m)
+        /flagged as sensitive|sensitive|safety|content policy|moderat|violat|nsfw/i.test(m)
 
     // Honor "no tattoos / sin tatuajes" by removing tattoo mentions up front.
     const promptIn = stripNegatedTattoos(params.prompt)
