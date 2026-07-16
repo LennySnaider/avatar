@@ -7,7 +7,7 @@ import Button from '@/components/ui/Button'
 import Card from '@/components/ui/Card'
 import Input from '@/components/ui/Input'
 import Spinner from '@/components/ui/Spinner'
-import ScrollBar from '@/components/ui/ScrollBar'
+import ScrollBar, { type ScrollBarRef } from '@/components/ui/ScrollBar'
 import Notification from '@/components/ui/Notification'
 import toast from '@/components/ui/toast'
 import ConfirmDialog from '@/components/shared/ConfirmDialog'
@@ -30,6 +30,7 @@ import {
     HiOutlineStar,
     HiArchive,
     HiOutlineArchive,
+    HiArrowUp,
 } from 'react-icons/hi'
 import type { GeneratedMedia, AspectRatio, MediaType } from '../types'
 
@@ -82,6 +83,24 @@ const GalleryPanel = ({
     // the same hidden input; fall back to a local one when rendered standalone.
     const localUploadRef = useRef<HTMLInputElement>(null)
     const uploadInputRef = externalUploadRef ?? localUploadRef
+
+    // "Scroll to top" floating button — appears once the gallery is scrolled
+    // down past ~one viewport of cards. SimpleBar owns the scroll element.
+    const scrollBarRef = useRef<ScrollBarRef>(null)
+    const [showScrollTop, setShowScrollTop] = useState(false)
+    useEffect(() => {
+        const el = scrollBarRef.current?.getScrollElement()
+        if (!el) return
+        const onScroll = () => setShowScrollTop(el.scrollTop > 600)
+        el.addEventListener('scroll', onScroll, { passive: true })
+        onScroll()
+        return () => el.removeEventListener('scroll', onScroll)
+    }, [])
+    const scrollToTop = () => {
+        scrollBarRef.current
+            ?.getScrollElement()
+            ?.scrollTo({ top: 0, behavior: 'smooth' })
+    }
 
     // Toggle a favorite/archived flag: update the in-memory item AND merge-write
     // it into generations.metadata so it survives a reload (only once the item
@@ -300,7 +319,7 @@ const GalleryPanel = ({
     // The gallery no longer manages selection or processing state.
 
     return (
-        <div className="h-full flex flex-col">
+        <div className="h-full flex flex-col relative">
             {/* Hidden Upload Input */}
             <input
                 ref={uploadInputRef}
@@ -409,7 +428,7 @@ const GalleryPanel = ({
                 )}
             </div>
 
-            <ScrollBar className="flex-1 h-full" autoHide={false}>
+            <ScrollBar ref={scrollBarRef} className="flex-1 h-full" autoHide={false}>
                 <div className="p-4 pt-1">
                     {/* Empty State */}
                     {gallery.length === 0 && !isGenerating && (
@@ -740,6 +759,20 @@ const GalleryPanel = ({
                     </div>
                 </div>
             </ScrollBar>
+
+            {/* Scroll to top — floats bottom-right over the gallery, right
+                above the creation bar / Generate button. */}
+            {showScrollTop && (
+                <button
+                    type="button"
+                    onClick={scrollToTop}
+                    title="Volver arriba"
+                    aria-label="Volver arriba"
+                    className="absolute bottom-4 right-6 z-20 w-10 h-10 rounded-full bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-200 shadow-lg ring-1 ring-gray-300 dark:ring-gray-600 flex items-center justify-center hover:bg-gray-50 dark:hover:bg-gray-700 hover:text-primary transition-colors"
+                >
+                    <HiArrowUp className="w-5 h-5" />
+                </button>
+            )}
 
             <ConfirmDialog
                 isOpen={!!deleteTarget}
