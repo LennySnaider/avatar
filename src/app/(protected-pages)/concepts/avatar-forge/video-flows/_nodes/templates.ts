@@ -50,9 +50,9 @@ export const NODE_TEMPLATES: VideoNodeTemplate[] = [
         category: 'generation',
         icon: 'HiOutlinePhotograph',
         description: 'Generate avatar image with Gemini',
-        inputs: ['prompt', 'references', 'faceRef'],
+        inputs: ['prompt', 'references', 'faceRef', 'measurements'],
         outputs: ['imageUrl', 'fullApiPrompt'],
-        defaultData: { aspectRatio: '1:1', model: 'gemini' },
+        defaultData: { prompt: '', aspectRatio: '1:1', model: 'gemini' },
     },
     {
         type: 'generate-video',
@@ -60,9 +60,9 @@ export const NODE_TEMPLATES: VideoNodeTemplate[] = [
         category: 'generation',
         icon: 'HiOutlineFilm',
         description: 'Generate video from image with Kling',
-        inputs: ['imageUrl'],
+        inputs: ['imageUrl', 'prompt'],
         outputs: ['videoUrl', 'taskId'],
-        defaultData: { duration: '5', mode: 'standard' },
+        defaultData: { prompt: '', duration: '5', mode: 'standard' },
     },
     // ─── Transform ───────────────────────────────────────────
     {
@@ -73,6 +73,7 @@ export const NODE_TEMPLATES: VideoNodeTemplate[] = [
         description: 'Concatenate multiple videos into one',
         inputs: ['videoUrls'],
         outputs: ['stitchedVideoUrl'],
+        listInputs: ['videoUrls'],
         defaultData: { transition: 'none' },
     },
     {
@@ -114,7 +115,7 @@ export const NODE_TEMPLATES: VideoNodeTemplate[] = [
         icon: 'HiOutlineSwitchHorizontal',
         description: 'Branch flow based on a condition',
         inputs: ['value'],
-        outputs: ['result'],
+        outputs: ['true', 'false'],
         defaultData: { field: '', operator: 'equals', compareValue: '' },
     },
     // ─── Output ──────────────────────────────────────────────

@@ -1,6 +1,7 @@
 import type { Edge } from '@xyflow/react'
 import type { VideoFlowNode, ExecutionContext, VideoNodeHandler } from './types'
 import { useVideoFlowStore } from '../_store/videoFlowStore'
+import { getTemplate } from '../_nodes/templates'
 import { handlers } from '../_handlers'
 
 // ─── Topological Sort (Kahn's algorithm) ─────────────────────
@@ -45,23 +46,70 @@ function topologicalSort(nodes: VideoFlowNode[], edges: Edge[]): VideoFlowNode[]
     return sorted
 }
 
-// ─── Merge inputs from upstream nodes ────────────────────────
+// ─── Port-to-port input mapping ──────────────────────────────
+// Each edge routes ONE named output of the source node to ONE named input of
+// the target node (edge.sourceHandle → edge.targetHandle), ComfyUI-style.
+// List inputs (template.listInputs) collect every incoming edge into an array.
+// Edges saved before ports existed carry no handle ids — those fall back to
+// the legacy behavior of merging the whole upstream output object.
 function mergeInputs(
-    nodeId: string,
+    node: VideoFlowNode,
     edges: Edge[],
-    context: ExecutionContext
+    context: ExecutionContext,
 ): Record<string, unknown> {
-    const incoming = edges.filter((e) => e.target === nodeId)
+    const incoming = edges.filter((e) => e.target === node.id)
     const merged: Record<string, unknown> = {}
+    const listKeys = new Set(getTemplate(node.data.type)?.listInputs ?? [])
+    const wired = new Map<string, unknown[]>()
 
     for (const edge of incoming) {
         const upstreamOutput = context.get(edge.source)
-        if (upstreamOutput) {
+        if (!upstreamOutput) continue
+
+        if (!edge.sourceHandle || !edge.targetHandle) {
+            // Legacy edge (saved before named ports): merge everything.
             Object.assign(merged, upstreamOutput)
+            continue
+        }
+
+        const value = upstreamOutput[edge.sourceHandle]
+        if (value === undefined) continue
+
+        const values = wired.get(edge.targetHandle) ?? []
+        values.push(value)
+        wired.set(edge.targetHandle, values)
+    }
+
+    for (const [key, values] of wired) {
+        if (listKeys.has(key)) {
+            // Flatten one level so an upstream array output feeds the list too.
+            merged[key] = values.flat()
+        } else {
+            merged[key] = values[values.length - 1]
         }
     }
 
     return merged
+}
+
+// ─── Branch gating ───────────────────────────────────────────
+// A condition node "takes" its true or false output port. Edges hanging off
+// the other port are dead; a node whose live incoming edges are ALL dead gets
+// skipped (transitively, via the skipped set).
+function isEdgeLive(
+    edge: Edge,
+    skipped: Set<string>,
+    branchTaken: Map<string, 'true' | 'false'>,
+): boolean {
+    if (skipped.has(edge.source)) return false
+    const taken = branchTaken.get(edge.source)
+    if (
+        taken &&
+        (edge.sourceHandle === 'true' || edge.sourceHandle === 'false')
+    ) {
+        return edge.sourceHandle === taken
+    }
+    return true
 }
 
 // ─── Execute Flow ────────────────────────────────────────────
@@ -76,13 +124,38 @@ export async function executeFlow(): Promise<void> {
         store.setNodeStatus(node.id, 'pending')
     }
 
-    const sorted = topologicalSort(nodes, edges)
+    let sorted: VideoFlowNode[]
+    try {
+        sorted = topologicalSort(nodes, edges)
+    } catch (error) {
+        const message = error instanceof Error ? error.message : 'Invalid flow'
+        store.setExecutionError('', message)
+        store.setExecutionStatus('error')
+        return
+    }
+
     const context: ExecutionContext = new Map()
+    const skipped = new Set<string>()
+    const branchTaken = new Map<string, 'true' | 'false'>()
 
     for (const node of sorted) {
+        const incoming = edges.filter((e) => e.target === node.id)
+        const hasLiveInput =
+            incoming.length === 0 ||
+            incoming.some((e) => isEdgeLive(e, skipped, branchTaken))
+
+        if (!hasLiveInput) {
+            skipped.add(node.id)
+            store.setNodeStatus(node.id, 'skipped')
+            continue
+        }
+
         store.setNodeStatus(node.id, 'running')
 
-        const inputs = mergeInputs(node.id, edges, context)
+        const liveEdges = incoming.filter((e) =>
+            isEdgeLive(e, skipped, branchTaken),
+        )
+        const inputs = mergeInputs(node, liveEdges, context)
 
         // Merge node's own config into inputs (config acts as defaults)
         const mergedInputs = { ...node.data.config, ...inputs }
@@ -98,7 +171,15 @@ export async function executeFlow(): Promise<void> {
         try {
             const result = await handler(node, mergedInputs, context)
             context.set(node.id, result.output)
+            store.setNodeResult(node.id, result.output)
             store.setNodeStatus(node.id, 'completed')
+
+            if (node.data.type === 'condition') {
+                branchTaken.set(
+                    node.id,
+                    result.output.result ? 'true' : 'false',
+                )
+            }
         } catch (error) {
             const message = error instanceof Error ? error.message : 'Unknown error'
             store.setNodeStatus(node.id, 'error')

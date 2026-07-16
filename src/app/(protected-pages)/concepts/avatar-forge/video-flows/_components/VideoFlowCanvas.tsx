@@ -8,6 +8,7 @@ import {
     MiniMap,
     Controls,
     type ReactFlowInstance,
+    type IsValidConnection,
 } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
 import { useVideoFlowStore } from '../_store/videoFlowStore'
@@ -70,6 +71,11 @@ export default function VideoFlowCanvas() {
         setSelectedNodeId(null)
     }, [setSelectedNodeId])
 
+    const isValidConnection: IsValidConnection = useCallback(
+        (connection) => connection.source !== connection.target,
+        []
+    )
+
     return (
         <div className="relative w-full h-full" ref={reactFlowWrapper}>
             <ReactFlow
@@ -84,6 +90,8 @@ export default function VideoFlowCanvas() {
                 onNodeClick={onNodeClick}
                 onPaneClick={onPaneClick}
                 nodeTypes={nodeTypes}
+                isValidConnection={isValidConnection}
+                deleteKeyCode={['Backspace', 'Delete']}
                 fitView
                 proOptions={{ hideAttribution: true }}
                 defaultEdgeOptions={{

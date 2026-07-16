@@ -28,10 +28,39 @@ export const scriptGenerator: VideoNodeHandler = async (node, inputs) => {
     }
 }
 
+// The TTS server action returns a Node Buffer, which reaches the browser as a
+// plain byte payload — convert without relying on a client-side Buffer polyfill.
+function bytesToBase64(data: unknown): string {
+    let bytes: Uint8Array
+    if (data instanceof Uint8Array) {
+        bytes = data
+    } else if (data instanceof ArrayBuffer) {
+        bytes = new Uint8Array(data)
+    } else if (Array.isArray(data)) {
+        bytes = Uint8Array.from(data)
+    } else if (
+        data &&
+        typeof data === 'object' &&
+        Array.isArray((data as { data?: number[] }).data)
+    ) {
+        // JSON-serialized Buffer shape: { type: 'Buffer', data: [...] }
+        bytes = Uint8Array.from((data as { data: number[] }).data)
+    } else {
+        throw new Error('Unsupported audio payload from TTS service')
+    }
+
+    let binary = ''
+    const chunk = 0x8000
+    for (let i = 0; i < bytes.length; i += chunk) {
+        binary += String.fromCharCode(...bytes.subarray(i, i + chunk))
+    }
+    return btoa(binary)
+}
+
 export const textToSpeech: VideoNodeHandler = async (node, inputs) => {
     const text =
-        (inputs.script as string) ??
-        (inputs.text as string) ??
+        (inputs.text as string) ||
+        (inputs.script as string) ||
         ''
     if (!text) throw new Error('No text for speech generation')
 
@@ -46,9 +75,9 @@ export const textToSpeech: VideoNodeHandler = async (node, inputs) => {
         language: config.language as string | undefined,
     })
 
-    // Convert raw buffer to a data URI so downstream nodes (and the UI) can
-    // consume a URL rather than a Node Buffer that doesn't survive JSON.
-    const base64 = Buffer.from(result.audioBuffer).toString('base64')
+    // Convert raw bytes to a data URI so downstream nodes (and the UI) can
+    // consume a URL rather than a byte buffer that doesn't survive JSON.
+    const base64 = bytesToBase64(result.audioBuffer)
     const audioUrl = `data:audio/mp3;base64,${base64}`
 
     return {

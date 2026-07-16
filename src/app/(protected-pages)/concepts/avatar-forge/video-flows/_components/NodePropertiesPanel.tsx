@@ -34,13 +34,10 @@ export default function NodePropertiesPanel() {
 
     return (
         <>
-            {/* Backdrop — click outside to close */}
+            {/* Docked to the right (ComfyUI-style) so the canvas stays visible
+                while editing; clicking the canvas pane deselects/closes. */}
             <div
-                className="fixed inset-0 z-40 bg-black/40 backdrop-blur-[2px]"
-                onClick={() => setSelectedNodeId(null)}
-            />
-            <div
-                className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-50 w-105 max-w-[90vw] bg-slate-800/95 backdrop-blur-sm border border-slate-700 rounded-lg shadow-2xl overflow-hidden"
+                className="absolute top-16 right-4 bottom-14 z-30 w-80 max-w-[85vw] flex flex-col bg-slate-800/95 backdrop-blur-sm border border-slate-700 rounded-lg shadow-2xl overflow-hidden"
                 onClick={(e) => e.stopPropagation()}
             >
                 {/* Header */}
@@ -73,7 +70,7 @@ export default function NodePropertiesPanel() {
                 </div>
 
                 {/* Config fields */}
-                <div className="p-3 space-y-3 max-h-[70vh] overflow-y-auto">
+                <div className="p-3 space-y-3 flex-1 overflow-y-auto">
                     {/* Node-specific custom panels */}
                     {data.type === 'select-avatar' && (
                         <AvatarPickerField
@@ -161,7 +158,7 @@ export default function NodePropertiesPanel() {
 
                         // String / text fields
                         if (typeof defaultVal === 'string') {
-                            const isLongText = key === 'text' || key === 'basePrompt' || key === 'url'
+                            const isLongText = key === 'text' || key === 'basePrompt' || key === 'url' || key === 'prompt'
                             return (
                                 <label key={key} className="block">
                                     <span className="text-[10px] text-slate-500 uppercase tracking-wide">{key}</span>

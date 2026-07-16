@@ -2,7 +2,9 @@ import type { VideoNodeHandler } from '../_engine/types'
 
 export const condition: VideoNodeHandler = async (node, inputs) => {
     const { field, operator, compareValue } = node.data.config
-    const value = inputs[field as string]
+    // Evaluate against the named config field when set, otherwise whatever
+    // arrived on the `value` input port.
+    const value = field ? inputs[field as string] : inputs.value
 
     let result = false
     switch (operator) {
@@ -23,7 +25,9 @@ export const condition: VideoNodeHandler = async (node, inputs) => {
             break
     }
 
+    // The engine gates downstream edges on `result`: only edges wired to the
+    // taken port ("true"/"false") stay live. Both ports pass the value through.
     return {
-        output: { result, value },
+        output: { result, true: value, false: value },
     }
 }

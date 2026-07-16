@@ -1,6 +1,12 @@
 import type { Node } from '@xyflow/react'
 
-export type NodeStatus = 'idle' | 'running' | 'completed' | 'error' | 'pending'
+export type NodeStatus =
+    | 'idle'
+    | 'running'
+    | 'completed'
+    | 'error'
+    | 'pending'
+    | 'skipped'
 
 export type NodeCategory =
     | 'input'
@@ -17,8 +23,18 @@ export interface VideoNodeTemplate {
     category: NodeCategory
     icon: string
     description: string
+    /**
+     * Named ports. Each entry becomes a labeled ReactFlow handle; edges carry
+     * sourceHandle/targetHandle so values route port-to-port (ComfyUI-style)
+     * instead of blind key merging.
+     */
     inputs: string[]
     outputs: string[]
+    /**
+     * Input ports that accept multiple incoming edges; their wired values are
+     * collected into an array (e.g. stitch.videoUrls).
+     */
+    listInputs?: string[]
     defaultData: Record<string, unknown>
 }
 

@@ -23,6 +23,8 @@ interface VideoFlowStore {
     isDirty: boolean
     executionStatus: 'idle' | 'running' | 'completed' | 'error'
     nodeStatuses: Record<string, NodeStatus>
+    /** Output of each node from the last run — drives inline node previews. */
+    nodeResults: Record<string, Record<string, unknown>>
     executionError: { nodeId: string; message: string } | null
     selectedNodeId: string | null
     setSelectedNodeId: (id: string | null) => void
@@ -31,6 +33,7 @@ interface VideoFlowStore {
     setNodeData: (id: string, updates: Partial<VideoNodeData>) => void
     setNodeConfig: (id: string, config: Record<string, unknown>) => void
     setNodeStatus: (id: string, status: NodeStatus) => void
+    setNodeResult: (id: string, output: Record<string, unknown>) => void
     setExecutionStatus: (status: 'idle' | 'running' | 'completed' | 'error') => void
     setExecutionError: (nodeId: string, message: string) => void
     resetExecution: () => void
@@ -50,20 +53,48 @@ export const useVideoFlowStore = create<VideoFlowStore>()((set, get) => ({
         set({ edges: applyEdgeChanges(changes, get().edges), isDirty: true })
     },
     onConnect: (connection) => {
-        set({ edges: addEdge(connection, get().edges), isDirty: true })
+        set((state) => {
+            let edges = state.edges
+            // ComfyUI semantics: an input port holds ONE connection — wiring a
+            // new edge replaces the old one — except list ports (stitch), which
+            // aggregate every incoming edge.
+            if (connection.target && connection.targetHandle) {
+                const targetNode = state.nodes.find(
+                    (n) => n.id === connection.target,
+                )
+                const template = targetNode
+                    ? getTemplate(targetNode.data.type)
+                    : undefined
+                const isListInput = template?.listInputs?.includes(
+                    connection.targetHandle,
+                )
+                if (!isListInput) {
+                    edges = edges.filter(
+                        (e) =>
+                            !(
+                                e.target === connection.target &&
+                                e.targetHandle === connection.targetHandle
+                            ),
+                    )
+                }
+            }
+            return { edges: addEdge(connection, edges), isDirty: true }
+        })
     },
     flowId: null,
     flowName: 'Untitled Flow',
     isDirty: false,
     executionStatus: 'idle',
     nodeStatuses: {},
+    nodeResults: {},
     executionError: null,
     selectedNodeId: null,
     setSelectedNodeId: (id) => set({ selectedNodeId: id }),
     addNode: (type, position) => {
         const template = getTemplate(type)
         if (!template) return
-        const id = `${type}-${Date.now()}`
+        // Date.now() alone collides when two nodes drop in the same ms.
+        const id = `${type}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`
         const newNode: VideoFlowNode = {
             id,
             type: 'videoNode',
@@ -122,6 +153,11 @@ export const useVideoFlowStore = create<VideoFlowStore>()((set, get) => ({
             ),
         }))
     },
+    setNodeResult: (id, output) => {
+        set((state) => ({
+            nodeResults: { ...state.nodeResults, [id]: output },
+        }))
+    },
     setExecutionStatus: (executionStatus) => set({ executionStatus }),
     setExecutionError: (nodeId, message) =>
         set({ executionError: { nodeId, message } }),
@@ -129,6 +165,7 @@ export const useVideoFlowStore = create<VideoFlowStore>()((set, get) => ({
         set((state) => ({
             executionStatus: 'idle',
             nodeStatuses: {},
+            nodeResults: {},
             executionError: null,
             nodes: state.nodes.map((n) => ({
                 ...n,
@@ -147,8 +184,18 @@ export const useVideoFlowStore = create<VideoFlowStore>()((set, get) => ({
             isDirty: false,
             executionStatus: 'idle',
             nodeStatuses: {},
+            nodeResults: {},
             executionError: null,
             selectedNodeId: null,
         }),
-    loadFlowData: (nodes, edges) => set({ nodes, edges, isDirty: false }),
+    loadFlowData: (nodes, edges) =>
+        set({
+            nodes,
+            edges,
+            isDirty: false,
+            executionStatus: 'idle',
+            nodeStatuses: {},
+            nodeResults: {},
+            executionError: null,
+        }),
 }))

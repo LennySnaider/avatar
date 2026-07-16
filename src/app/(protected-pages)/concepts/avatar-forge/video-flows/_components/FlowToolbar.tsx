@@ -82,14 +82,15 @@ export default function FlowToolbar() {
         setShowLoadMenu(false)
     }
 
-    // ─── Run (placeholder — wired in Task 10) ───────────────
+    // ─── Run ─────────────────────────────────────────────────
     const handleRun = async () => {
         const { executeFlow } = await import('../_engine/executeFlow')
         resetExecution()
         setExecutionStatus('running')
         try {
+            // executeFlow owns the final status (completed / error). Setting
+            // 'completed' here used to overwrite a node failure's 'error'.
             await executeFlow()
-            setExecutionStatus('completed')
         } catch {
             setExecutionStatus('error')
         }
