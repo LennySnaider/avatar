@@ -1809,10 +1809,16 @@ ${hairColorSpecDesc ? `- EXACT HAIR COLOR: ${hairColorSpecDesc}` : ''}
     ${(cameraShot !== 'AUTO' || cameraAngle !== null) ? `${hasPoseRef ? '4' : '3'}. CAMERA: ${cameraShot !== 'AUTO' ? `Frame as ${cameraShot.replace(/_/g, ' ')}` : ''}${cameraShot !== 'AUTO' && cameraAngle !== null ? ' with ' : ''}${cameraAngle !== null ? `${cameraAngle.replace(/_/g, ' ')} angle` : ''}` : ''}
     ${hasStyleRef ? `${hasPoseRef ? '5' : (cameraShot !== 'AUTO' || cameraAngle !== null) ? '4' : '3'}. STYLE: Apply style from [${styleLabel}] at ${styleWeight}% influence` : `${hasPoseRef ? '5' : (cameraShot !== 'AUTO' || cameraAngle !== null) ? '4' : '3'}. SCENE: Generate from prompt description`}
 
+    👗 OUTFIT FIDELITY (MANDATORY):
+    - Dress the character in EXACTLY the garments described in the task text${hasStyleRef ? ` / worn in [${styleLabel}]` : ''} — same garment TYPES, same coverage, same colors.
+    - NEVER substitute one garment for another: a swim bottom / bikini bottom stays a brief-style swim bottom — NOT a skirt, NOT shorts, NOT a sarong or wrap.
+    - Do NOT add extra garments, layers or cover-ups that are not described.
+
     ⛔ FAILURE CONDITIONS (ABSOLUTELY FORBIDDEN):
     - Using a face that is NOT from [FACE_ANCHOR] → CRITICAL FAILURE
     ${hasPoseRef ? '- Copying the face from [POSE_REF] → CRITICAL FAILURE' : ''}
     ${hasStyleRef ? '- Copying the face from [STYLE_REF] → CRITICAL FAILURE' : ''}
+    - Substituting or adding garments (e.g. a skirt or shorts instead of the described swim bottom) → WRONG
     - Generic athletic body → WRONG
     - Average/slim body when curvy is specified → WRONG
     - Ignoring the body proportions → WRONG

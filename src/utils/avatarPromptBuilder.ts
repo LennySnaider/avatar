@@ -524,8 +524,14 @@ RENDERING ORDER (FOLLOW STRICTLY):
 ${hasPose ? '3. POSE: Apply EXACT pose from [POSE_REF] (position only, not the face)' : ''}
 ${hasClone ? `${hasPose ? '4' : '3'}. CLONE: Replicate the EXACT pose, outfit, hands, held objects, framing, lighting and scene from [CLONE_REF] — keep everything except the face identical to [CLONE_REF]` : ''}
 
+👗 OUTFIT FIDELITY (MANDATORY):
+- Dress the character in EXACTLY the garments described in the task text${hasClone ? ' / worn in [CLONE_REF]' : hasScene ? ' / worn in [STYLE_REF]' : ''} — same garment TYPES, same coverage, same colors.
+- NEVER substitute one garment for another: a swim bottom / bikini bottom stays a brief-style swim bottom — NOT a skirt, NOT shorts, NOT a sarong or wrap.
+- Do NOT add extra garments, layers or cover-ups that are not described.
+
 ⛔ FAILURE CONDITIONS (ABSOLUTELY FORBIDDEN):
 - Using a face that is NOT from [FACE_ANCHOR] → CRITICAL FAILURE
+- Substituting or adding garments (e.g. a skirt or shorts instead of the described swim bottom) → WRONG
 ${hasPose ? '- Copying the face from [POSE_REF] → CRITICAL FAILURE' : ''}
 ${hasClone ? '- Copying the face from [CLONE_REF] (it is a faceless mannequin) → CRITICAL FAILURE\n- Substituting a generic pose instead of the EXACT pose/scene in [CLONE_REF] → FAILURE' : ''}
 - Average/slim body when curvy is specified, or ignoring the body proportions → WRONG
