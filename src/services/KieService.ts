@@ -290,6 +290,12 @@ export interface GenerateImageKieParams {
     // 8 image_input). `role` lets us label each image in the prompt so the
     // model knows which one is the face to replicate (critical for identity).
     referenceImages?: Array<{ base64: string; mimeType: string; role?: string }>
+    // Short body-shape phrase (describeBody(measurements)) woven INTO the i2i
+    // face anchor. Image-heavy models (Seedream 5.0 Pro) copy the slim build
+    // of the face ref and ignore body text that only lives later in the
+    // prompt — repeating the concrete descriptors inside the anchor's early
+    // tokens is what makes them land.
+    bodyEmphasis?: string
 }
 
 /**
@@ -303,7 +309,7 @@ export async function generateImageKie(
     | { success: true; url: string; fullApiPrompt: string }
     | { success: false; error: string }
 > {
-    const { model, aspectRatio = '1:1', referenceImage, referenceImages } = params
+    const { model, aspectRatio = '1:1', referenceImage, referenceImages, bodyEmphasis } = params
 
     // Route to the right adapter with a given (already-sanitized) prompt.
     const runWithPrompt = async (promptText: string): Promise<{ url: string; fullApiPrompt: string }> => {
@@ -433,25 +439,49 @@ export async function generateImageKie(
                     // aspect_ratio/quality at the same credits as t2i (verified
                     // live: 4.5-edit + 5-lite-image-to-image, 9:16 out, same
                     // woman). Face ref → image_urls + swap to the i2i model id.
-                    const refUrl = await uploadReferenceToSupabase(
-                        referenceImage.base64,
-                        referenceImage.mimeType,
+                    // Seedream 5 supports MULTI-image i2i (up to 10) → when a
+                    // Body Ref exists, send it as image 2: 5.0 Pro weighs
+                    // images far harder than text, so the body must be an
+                    // IMAGE to win against the face ref's slim build.
+                    const bodyRefs = (referenceImages ?? []).filter(
+                        (r) => r.role === 'body',
                     )
+                    const urls: string[] = [
+                        await uploadReferenceToSupabase(
+                            referenceImage.base64,
+                            referenceImage.mimeType,
+                        ),
+                    ]
+                    for (const r of bodyRefs.slice(0, 9)) {
+                        urls.push(
+                            await uploadReferenceToSupabase(r.base64, r.mimeType),
+                        )
+                    }
                     resolvedModel =
                         model === 'seedream/4.5-text-to-image'
                             ? 'seedream/4.5-edit'
                             : model.replace('text-to-image', 'image-to-image')
-                    input.image_urls = [refUrl]
-                    // Two-way anchor. (1) Face rides on the IMAGE: without an
+                    input.image_urls = urls
+                    // Two-way anchor. (1) Face rides on IMAGE 1: without an
                     // explicit keep-face instruction the identity drifts toward
                     // the written description (verified with a headshot ref +
-                    // conflicting text). (2) Body rides on the TEXT: 5.0 Pro
-                    // weighs the ref image harder than Lite/4.5 and copies its
-                    // body/build too (verified: same prompt → Pro slim, Lite
-                    // curvy), so the anchor must decouple them explicitly —
-                    // face from the image, body ONLY from the measurements text.
-                    input.prompt = `The person in the attached reference image is the subject — keep her EXACT face, facial features and likeness from the image. Use the reference image ONLY for the face and identity: do NOT copy the body, build, weight or proportions from it. Her body proportions MUST follow the text description below exactly (bust, waist, hips and thighs as written), even if the person in the reference image looks slimmer. ${input.prompt}`
-                    console.log(`[KIE] Seedream i2i (${resolvedModel}) with identity ref`)
+                    // conflicting text). (2) Body: 5.0 Pro copies the face
+                    // ref's slim build and ignores body text that appears
+                    // later in the prompt (verified live: same prompt → Pro
+                    // slim, Lite curvy). So the body rides on IMAGE 2 when a
+                    // Body Ref exists; otherwise the CONCRETE descriptors
+                    // (bodyEmphasis) are repeated inside the anchor's early
+                    // tokens — not just a "follow the text below" pointer.
+                    const bodyClause =
+                        urls.length > 1
+                            ? 'The SECOND attached image shows her real BODY — replicate its exact body shape, proportions, curves and build; do NOT take the body from the first image.'
+                            : `Use the reference image ONLY for the face and identity: do NOT copy the body, build, weight or proportions from it — the person in the photo may look slimmer than she really is.${
+                                  bodyEmphasis
+                                      ? ` Her real body is: ${bodyEmphasis}. Render THAT body, visibly fuller and curvier than the reference photo suggests.`
+                                      : ' Her body proportions MUST follow the text description below exactly (bust, waist, hips and thighs as written).'
+                              }`
+                    input.prompt = `The person in the FIRST attached reference image is the subject — keep her EXACT face, facial features and likeness from that image. ${bodyClause} ${input.prompt}`
+                    console.log(`[KIE] Seedream i2i (${resolvedModel}) with ${urls.length} ref(s) (face${urls.length > 1 ? ' + body' : ''})`)
                 } else if (model.startsWith('nano-banana-2')) {
                     // nano-banana-2 / -lite take image_input[] (URL array, up to
                     // 14) on the SAME model id — no i2i variant swap needed.

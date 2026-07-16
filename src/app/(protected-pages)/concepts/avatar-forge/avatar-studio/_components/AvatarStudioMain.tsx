@@ -85,6 +85,7 @@ import {
     stripHarnessForFaceSwap,
     type RefRole,
 } from '@/utils/avatarPromptBuilder'
+import { describeBody } from '@/utils/bodyDescriptors'
 import { createPortal } from 'react-dom'
 import { useStudioHeaderSlot } from './StudioHeaderSlotContext'
 import {
@@ -1002,6 +1003,10 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                             model:
                                 activeProvider.model ||
                                 'flux-kontext/text-to-image',
+                            // Concrete body descriptors for the Seedream i2i
+                            // anchor — Pro ignores body text that isn't in the
+                            // anchor's early tokens (kept rendering her slim).
+                            bodyEmphasis: describeBody(measurements),
                         })
                         if (!result.success) {
                             throw new Error(result.error)
