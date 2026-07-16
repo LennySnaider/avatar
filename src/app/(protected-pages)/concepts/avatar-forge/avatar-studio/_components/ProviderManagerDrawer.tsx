@@ -400,6 +400,28 @@ function writeDefaultProviderId(mode: string, id: string) {
     }
 }
 
+// Favoritos (multi, cross-mode), persistidos en localStorage. La ⭐ de cada
+// card marca/desmarca; el chip "⭐ Favoritos" filtra la grilla. (El DEFAULT por
+// modo es aparte: ahora es simplemente el último provider seleccionado.)
+const FAVORITES_KEY = 'avatar-studio:favorite-providers'
+function readFavoriteIds(): string[] {
+    if (typeof window === 'undefined') return []
+    try {
+        const raw = window.localStorage.getItem(FAVORITES_KEY)
+        const parsed = raw ? JSON.parse(raw) : []
+        return Array.isArray(parsed) ? parsed.filter((x) => typeof x === 'string') : []
+    } catch {
+        return []
+    }
+}
+function writeFavoriteIds(ids: string[]) {
+    try {
+        window.localStorage.setItem(FAVORITES_KEY, JSON.stringify(ids))
+    } catch {
+        /* ignore (private mode / disabled storage) */
+    }
+}
+
 // Approx USD cost PER IMAGE, shown on each card so the pick weighs price too.
 // KIE models: measured live from `creditsConsumed × $0.005/credit` (KIE's rate,
 // e.g. Veo3 Fast $0.40 = 80 cr). z-image 0.8cr=$0.004 · grok 4cr=$0.02 · seedream
@@ -465,12 +487,15 @@ const ProviderManagerDrawer = () => {
         setGeminiAutoFallback,
     } = useAvatarStudioStore()
 
-    // Which provider is the persisted default for the current mode (drives the ★).
+    // Default por modo (badge "Default") = último provider seleccionado.
     const [defaultProviderId, setDefaultProviderId] = useState<string | null>(null)
+    // Favoritos multi (drive la ★ de cada card y el chip "⭐ Favoritos").
+    const [favoriteIds, setFavoriteIds] = useState<string[]>([])
     const [search, setSearch] = useState('')
-    const [filter, setFilter] = useState<'all' | 'face' | 'permissive'>('all')
+    const [filter, setFilter] = useState<'all' | 'favorites' | 'face' | 'permissive'>('all')
     useEffect(() => {
         setDefaultProviderId(readDefaultProviderId(generationMode))
+        setFavoriteIds(readFavoriteIds())
     }, [generationMode, showProviderManager])
 
     // Initialize providers on mount - always sync with DEFAULT_PROVIDERS
@@ -505,19 +530,23 @@ const ProviderManagerDrawer = () => {
         }
     }, [providers, setProviders, generationMode, activeProviderId, setActiveProviderId])
 
-    // Filter by mode, then surface the useful ones first (Cara+Permisivo → Cara →
-    // Permisivo → resto) so the best picks aren't buried in a 19-item scroll.
+    // Filter by mode, then surface favoritos first, then the useful ones
+    // (Cara+Permisivo → Cara → Permisivo → resto) so the best picks aren't
+    // buried in a 19-item scroll.
     const traitScore = (id: string) => {
         const t = PROVIDER_TRAITS[id]
         return (t?.face ? 2 : 0) + (t?.permissive ? 1 : 0)
     }
+    const rankScore = (id: string) =>
+        (favoriteIds.includes(id) ? 4 : 0) + traitScore(id)
     const availableProviders = providers
         .filter((p) => (generationMode === 'IMAGE' ? p.supports_image : p.supports_video))
         .slice()
-        .sort((a, b) => traitScore(b.id) - traitScore(a.id))
+        .sort((a, b) => rankScore(b.id) - rankScore(a.id))
 
     const filteredProviders = availableProviders.filter((p) => {
         const t = PROVIDER_TRAITS[p.id]
+        if (filter === 'favorites' && !favoriteIds.includes(p.id)) return false
         if (filter === 'face' && !t?.face) return false
         if (filter === 'permissive' && !t?.permissive) return false
         if (search.trim()) {
@@ -529,14 +558,20 @@ const ProviderManagerDrawer = () => {
 
     const handleSelectProvider = (providerId: string) => {
         setActiveProviderId(providerId)
+        // El último usado se vuelve el default del modo (con el que arranca
+        // una sesión fresca) — antes esto requería marcarlo con la ★.
+        writeDefaultProviderId(generationMode, providerId)
+        setDefaultProviderId(providerId)
         setShowProviderManager(false)
     }
 
-    const handleSetDefault = (e: React.MouseEvent, providerId: string) => {
+    const handleToggleFavorite = (e: React.MouseEvent, providerId: string) => {
         e.stopPropagation() // don't trigger the card's select
-        writeDefaultProviderId(generationMode, providerId)
-        setDefaultProviderId(providerId)
-        setActiveProviderId(providerId) // start using it right away, too
+        const next = favoriteIds.includes(providerId)
+            ? favoriteIds.filter((id) => id !== providerId)
+            : [...favoriteIds, providerId]
+        writeFavoriteIds(next)
+        setFavoriteIds(next)
     }
 
     const getProviderIcon = (type: ProviderType) => {
@@ -675,42 +710,49 @@ const ProviderManagerDrawer = () => {
                     onChange={(e) => setSearch(e.target.value)}
                     className="flex-1 min-w-[10rem]"
                 />
-                {generationMode === 'IMAGE' && (
-                    <div className="flex items-center gap-1">
-                        {(
-                            [
-                                ['all', 'Todos'],
-                                ['face', '👤 Cara'],
-                                ['permissive', '🔓 Permisivo'],
-                            ] as const
-                        ).map(([key, label]) => (
-                            <button
-                                key={key}
-                                type="button"
-                                onClick={() => setFilter(key)}
-                                className={`px-2.5 py-1 text-xs rounded-lg border transition-colors ${
-                                    filter === key
-                                        ? 'border-purple-500 bg-purple-50 dark:bg-purple-500/20 text-purple-700 dark:text-purple-200 font-medium'
-                                        : 'border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'
-                                }`}
-                            >
-                                {label}
-                            </button>
-                        ))}
-                    </div>
-                )}
+                <div className="flex items-center gap-1">
+                    {(
+                        [
+                            ['all', 'Todos'],
+                            ['favorites', '⭐ Favoritos'],
+                            // Cara/Permisivo traits solo aplican a modelos de imagen
+                            ...(generationMode === 'IMAGE'
+                                ? ([
+                                      ['face', '👤 Cara'],
+                                      ['permissive', '🔓 Permisivo'],
+                                  ] as const)
+                                : []),
+                        ] as ReadonlyArray<readonly [typeof filter, string]>
+                    ).map(([key, label]) => (
+                        <button
+                            key={key}
+                            type="button"
+                            onClick={() => setFilter(key)}
+                            className={`px-2.5 py-1 text-xs rounded-lg border transition-colors ${
+                                filter === key
+                                    ? 'border-purple-500 bg-purple-50 dark:bg-purple-500/20 text-purple-700 dark:text-purple-200 font-medium'
+                                    : 'border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'
+                            }`}
+                        >
+                            {label}
+                        </button>
+                    ))}
+                </div>
             </div>
 
             {/* Grid of providers */}
             {filteredProviders.length === 0 ? (
                 <p className="text-center text-gray-500 py-10">
-                    No hay proveedores para este filtro.
+                    {filter === 'favorites'
+                        ? 'No tienes favoritos aún — márcalos con la ⭐ de cada modelo.'
+                        : 'No hay proveedores para este filtro.'}
                 </p>
             ) : (
                 <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3 max-h-[58vh] overflow-y-auto pr-1">
                     {filteredProviders.map((provider) => {
                         const isSelected = activeProviderId === provider.id
                         const isDefault = defaultProviderId === provider.id
+                        const isFavorite = favoriteIds.includes(provider.id)
                         const tr = PROVIDER_TRAITS[provider.id]
                         return (
                             <Card
@@ -724,12 +766,12 @@ const ProviderManagerDrawer = () => {
                             >
                                 <button
                                     type="button"
-                                    onClick={(e) => handleSetDefault(e, provider.id)}
-                                    title={isDefault ? 'Default' : 'Set as default'}
-                                    aria-label="Set as default"
+                                    onClick={(e) => handleToggleFavorite(e, provider.id)}
+                                    title={isFavorite ? 'Quitar de favoritos' : 'Marcar como favorito'}
+                                    aria-label={isFavorite ? 'Quitar de favoritos' : 'Marcar como favorito'}
                                     className="absolute top-1.5 right-1.5 p-1 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
                                 >
-                                    {isDefault ? (
+                                    {isFavorite ? (
                                         <HiStar className="w-4 h-4 text-amber-400" />
                                     ) : (
                                         <HiOutlineStar className="w-4 h-4 text-gray-400" />
