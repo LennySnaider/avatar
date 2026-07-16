@@ -573,19 +573,47 @@ export async function generateImageKie(
     // Honor "no tattoos / sin tatuajes" by removing tattoo mentions up front.
     const promptIn = stripNegatedTattoos(params.prompt)
 
+    // The word-swap sanitizer exists for the Google/OpenAI models KIE hosts
+    // (their upstream filters flag "bikini" etc.). The PERMISSIVE families run
+    // with nsfw_checker OFF — sanitizing them only mangles the garment
+    // ("mini bikini" → "mini swim set" made Seedream render a MINI SKIRT and
+    // drop the bikini bottom, verified in prod). They get the RAW prompt;
+    // sanitization stays as the on-block fallback only.
+    const isPermissiveModel =
+        model.startsWith('seedream/') ||
+        model.startsWith('flux-2/') ||
+        model.startsWith('qwen/') ||
+        model === 'z-image' ||
+        model.startsWith('grok-imagine/')
+
     try {
-        // Attempt 1: light sanitization (bikini → swim set, etc.).
-        const { sanitized } = sanitizePromptForGeneration(promptIn)
+        // Attempt 1: raw for permissive models; light sanitization (bikini →
+        // two-piece swimwear, etc.) for the filtered Google/OpenAI families.
+        const first = isPermissiveModel
+            ? promptIn
+            : sanitizePromptForGeneration(promptIn).sanitized
         try {
-            return { success: true, ...(await runWithPrompt(sanitized)) }
+            return { success: true, ...(await runWithPrompt(first)) }
         } catch (err) {
             const msg = err instanceof Error ? err.message : String(err)
             if (!isSensitiveBlock(msg)) throw err
-            // Attempt 2: aggressive sanitization (strip revealing/swimwear terms
-            // entirely) — same recovery the direct Gemini path uses on a block.
-            const { sanitized: aggressive } = aggressiveSanitize(promptIn)
-            console.warn('[KIE] Sensitive-content block — retrying with aggressive sanitization')
-            return { success: true, ...(await runWithPrompt(aggressive)) }
+            // Attempt 2 on a content block: light sanitization if we haven't
+            // tried it yet, else aggressive (strip revealing terms entirely) —
+            // same recovery the direct Gemini path uses.
+            const retryPrompt = isPermissiveModel
+                ? sanitizePromptForGeneration(promptIn).sanitized
+                : aggressiveSanitize(promptIn).sanitized
+            console.warn('[KIE] Sensitive-content block — retrying with sanitized prompt')
+            try {
+                return { success: true, ...(await runWithPrompt(retryPrompt)) }
+            } catch (err2) {
+                const msg2 = err2 instanceof Error ? err2.message : String(err2)
+                if (!isSensitiveBlock(msg2) || !isPermissiveModel) throw err2
+                // Attempt 3 (permissive only): aggressive as the last resort.
+                const { sanitized: aggressive } = aggressiveSanitize(promptIn)
+                console.warn('[KIE] Still blocked — retrying with aggressive sanitization')
+                return { success: true, ...(await runWithPrompt(aggressive)) }
+            }
         }
     } catch (err) {
         // Return the real error as DATA so it survives the server→client
