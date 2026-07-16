@@ -15,6 +15,7 @@ export type KieVideoModel =
     | 'veo-3.1-fast'
     | 'bytedance/seedance-2'       // unified /jobs/createTask, first_frame_url HTTP, duration int
     | 'wan/2-7-image-to-video'     // unified /jobs/createTask, first_frame_url HTTP required
+    | 'wan/2-2-a14b-image-to-video-turbo' // unified /jobs/createTask; image_url HTTP; SIN CENSURA (nsfw_checker default false)
     | 'kling-3.0/video'            // unified /jobs/createTask; image_urls[], sound, mode std/pro
     | 'kling-3.0/motion-control'   // unified /jobs/createTask; input_urls[]+video_urls[] (v2v), mode 720p/1080p (NOT std/pro)
 

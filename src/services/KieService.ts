@@ -1314,6 +1314,9 @@ export async function generateVideoKie(
     if (params.model === 'wan/2-7-image-to-video') {
         return generateVideoWan27(params)
     }
+    if (params.model === 'wan/2-2-a14b-image-to-video-turbo') {
+        return generateVideoWan22(params)
+    }
     if (params.model === 'kling-3.0/video') {
         return generateVideoKling3(params)
     }
@@ -1472,6 +1475,49 @@ async function generateVideoWan27(params: GenerateVideoKieParams): Promise<strin
 
     const urls = await pollTask(taskId, { budgetMs: 600_000, intervalMs: 5000 })
     console.log(`[KIE/Wan2.7] Generation complete: ${urls[0]}`)
+
+    return persistToSupabase(urls[0], 'mp4', 'kie-videos')
+}
+
+/**
+ * Wan 2.2 A14B image-to-video TURBO — el modelo de video SIN CENSURA. Es
+ * open-weights (Apache 2.0, sin filtro embebido) y en KIE `nsfw_checker`
+ * viene en false POR DEFECTO (docs.kie.ai/market/wan/2-2-a14b-image-to-video-turbo);
+ * lo mandamos explícito por si el default cambia. i2v-only: la identidad
+ * viaja en la imagen (first frame). Sin parámetros de duración/aspect —
+ * el output hereda el ratio de la imagen; resolución 480p/720p.
+ */
+async function generateVideoWan22(params: GenerateVideoKieParams): Promise<string> {
+    const { prompt, firstFrameImage, resolution = '720p' } = params
+
+    if (!firstFrameImage) {
+        throw new Error('Wan 2.2 requiere una imagen de referencia (first frame). Agrega una face/general ref o usa Animate sobre una imagen.')
+    }
+
+    const url = await uploadReferenceToSupabase(
+        firstFrameImage.base64,
+        firstFrameImage.mimeType,
+    )
+    console.log(`[KIE/Wan2.2] Uploaded reference to: ${url}`)
+
+    const input: Record<string, unknown> = {
+        prompt: prompt.slice(0, 5000),
+        image_url: url,
+        // Only 480p/720p exist on this endpoint — clamp anything higher.
+        resolution: resolution === '480p' ? '480p' : '720p',
+        nsfw_checker: false,
+    }
+
+    console.log(`[KIE/Wan2.2] Submitting: resolution=${input.resolution}`)
+    const taskId = await withTimeout(
+        submitTask({ model: 'wan/2-2-a14b-image-to-video-turbo', input }),
+        30_000,
+        'KIE Wan 2.2 submit',
+    )
+    console.log(`[KIE/Wan2.2] Task submitted: ${taskId}`)
+
+    const urls = await pollTask(taskId, { budgetMs: 600_000, intervalMs: 5000 })
+    console.log(`[KIE/Wan2.2] Generation complete: ${urls[0]}`)
 
     return persistToSupabase(urls[0], 'mp4', 'kie-videos')
 }

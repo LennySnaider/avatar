@@ -366,6 +366,19 @@ export const DEFAULT_PROVIDERS: AIProvider[] = [
         created_at: null,
     },
     {
+        id: 'kie-wan-2-2-uncensored',
+        name: 'Wan 2.2 Sin Censura · KIE',
+        type: 'KIE' as ProviderType,
+        model: 'wan/2-2-a14b-image-to-video-turbo',
+        endpoint: 'https://api.kie.ai/api/v1',
+        is_active: true,
+        supports_image: false,
+        supports_video: true,
+        requires_api_key: true,
+        api_key_env_var: 'KIE_API_KEY',
+        created_at: null,
+    },
+    {
         id: 'kie-kling-3-0',
         name: 'Kling 3.0 · KIE',
         type: 'KIE' as ProviderType,
@@ -472,6 +485,9 @@ const PROVIDER_TRAITS: Record<string, { face?: boolean; permissive?: boolean }> 
     // Ambos reciben la cara vía image_input[] (mismo patrón que nano-banana-pro)
     'kie-nano-banana-2': { face: true },
     'kie-nano-banana-2-lite': { face: true },
+    // i2v: la identidad viaja en la imagen (first frame). Open-weights sin
+    // filtro; en KIE nsfw_checker default false → el permisivo REAL de video.
+    'kie-wan-2-2-uncensored': { face: true, permissive: true },
 }
 
 const ProviderManagerDrawer = () => {
@@ -663,6 +679,8 @@ const ProviderManagerDrawer = () => {
                 return 'Grok Imagine (xAI) · image-to-image — usa la cara del avatar (la ref se recorta al aspect ratio pedido: su salida copia el ratio del input). OJO: su PROPIO filtro bloquea bikini/sensual aun con nsfw off — para sensual usa Seedream / FLUX.2. Para SFW con identidad'
             case 'kie-kling-3-0':
                 return 'Kling 3.0 vía KIE — video i2v/t2v + motion-control v2v, audio nativo opcional, ~20% más barato que el directo'
+            case 'kie-wan-2-2-uncensored':
+                return 'Wan 2.2 A14B turbo (Alibaba, open-weights) — video SIN CENSURA: sin filtro embebido y nsfw_checker off. i2v: anima una imagen (la identidad viaja en el first frame — usa Animate sobre una foto del avatar). 480p/720p, ~5s, hereda el aspect de la imagen'
             case 'kie-nano-banana-pro':
                 return 'Gemini 3 Pro Image vía KIE - mismo modelo que el directo, ~30% más barato, 9:16 nativo, 2K'
             default:
