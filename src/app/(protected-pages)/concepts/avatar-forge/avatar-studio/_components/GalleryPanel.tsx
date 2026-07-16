@@ -769,7 +769,7 @@ const GalleryPanel = ({
                     onClick={scrollToTop}
                     title="Volver arriba"
                     aria-label="Volver arriba"
-                    className="absolute bottom-1 right-4 z-20 w-10 h-10 rounded-full bg-primary text-white shadow-lg ring-2 ring-white/60 dark:ring-gray-900/60 flex items-center justify-center hover:bg-primary-deep transition-colors"
+                    className="absolute bottom-10 right-4 z-20 w-10 h-10 rounded-full bg-primary text-white shadow-lg ring-2 ring-white/60 dark:ring-gray-900/60 flex items-center justify-center hover:bg-primary-deep transition-colors"
                 >
                     <HiArrowUp className="w-5 h-5" />
                 </button>
