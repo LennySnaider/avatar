@@ -1,4 +1,4 @@
-import type { VideoNodeHandler } from '../_engine/types'
+import type { VideoNodeHandler, AvatarBundle, MediaBundle } from '../_engine/types'
 import type { ImageData } from '@/services/GeminiService'
 import type { AspectRatio, PhysicalMeasurements } from '@/@types/supabase'
 import * as GeminiService from '@/services/GeminiService'
@@ -37,15 +37,16 @@ async function urlToBase64(
 export const generateImage: VideoNodeHandler = async (node, inputs) => {
     const prompt =
         (inputs.prompt as string) ||
-        (inputs.enhancedPrompt as string) ||
-        (inputs.description as string) ||
+        (node.data.config.prompt as string) ||
         ''
-    if (!prompt) throw new Error('No prompt for image generation')
+    if (!prompt) throw new Error('No prompt for image generation — type one in the node or wire a text port')
 
-    const avatarReferences =
-        (inputs.references as ImageData[]) ?? []
-    const faceRef = inputs.faceRef as ImageData | null
-    const measurements = inputs.measurements as PhysicalMeasurements | undefined
+    // The avatar cable carries identity (references, faceRef, measurements)
+    // in one bundle.
+    const avatar = inputs.avatar as AvatarBundle | undefined
+    const avatarReferences = (avatar?.references as ImageData[]) ?? []
+    const faceRef = (avatar?.faceRef as ImageData | null) ?? null
+    const measurements = avatar?.measurements as PhysicalMeasurements | undefined
     const aspectRatio = (node.data.config.aspectRatio as AspectRatio) ?? '1:1'
     const model = (node.data.config.model as string) ?? 'gemini'
 
@@ -62,12 +63,12 @@ export const generateImage: VideoNodeHandler = async (node, inputs) => {
             faceReferenceUrl,
         })
         if (!result.success) throw new Error(result.error)
-        return {
-            output: {
-                imageUrl: result.url,
-                fullApiPrompt: result.fullApiPrompt,
-            },
+        const image: MediaBundle = {
+            kind: 'image',
+            url: result.url,
+            prompt: result.fullApiPrompt,
         }
+        return { output: { image } }
     }
 
     const result = await GeminiService.generateAvatar({
@@ -75,7 +76,7 @@ export const generateImage: VideoNodeHandler = async (node, inputs) => {
         avatarReferences,
         assetReferences: [],
         sceneReference: null,
-        faceRefImage: faceRef ?? null,
+        faceRefImage: faceRef,
         bodyRefImage: null,
         angleRefImage: null,
         poseRefImage: null,
@@ -89,32 +90,31 @@ export const generateImage: VideoNodeHandler = async (node, inputs) => {
         throw new Error(result.error)
     }
 
-    return {
-        output: {
-            imageUrl: result.url,
-            fullApiPrompt: result.fullApiPrompt,
-        },
+    const image: MediaBundle = {
+        kind: 'image',
+        url: result.url,
+        prompt: result.fullApiPrompt,
     }
+    return { output: { image } }
 }
 
 export const generateVideo: VideoNodeHandler = async (node, inputs) => {
-    const imageUrl = inputs.imageUrl as string
-    let imageBase64 = (inputs.imageBase64 as string) ?? ''
-    let mimeType = 'image/png'
+    const image = inputs.image as MediaBundle | undefined
+    let imageBase64 = image?.base64 ?? ''
+    let mimeType = image?.mimeType ?? 'image/png'
 
-    // The Kling API needs base64 — derive it from the wired image URL when the
-    // upstream node (generate-image, gallery, storage) only provided a URL.
-    if (!imageBase64 && imageUrl) {
-        const converted = await urlToBase64(imageUrl)
+    // The Kling API needs base64 — derive it from the image bundle's URL when
+    // the upstream node (generate-image, storage) only provided a URL.
+    if (!imageBase64 && image?.url) {
+        const converted = await urlToBase64(image.url)
         imageBase64 = converted.base64
         mimeType = converted.mimeType
     }
-    if (!imageBase64) throw new Error('No image for video generation')
+    if (!imageBase64) throw new Error('No image for video generation — wire an image port')
 
     const prompt =
         (inputs.prompt as string) ||
-        (inputs.enhancedPrompt as string) ||
-        (inputs.description as string) ||
+        (node.data.config.prompt as string) ||
         'Animate this image with natural, subtle motion'
 
     const videoUrl = await KlingService.generateVideo({
@@ -126,10 +126,10 @@ export const generateVideo: VideoNodeHandler = async (node, inputs) => {
             (node.data.config.duration as '5' | '10') ?? '5',
     })
 
-    return {
-        output: {
-            videoUrl,
-            taskId: '',
-        },
+    const video: MediaBundle = {
+        kind: 'video',
+        url: videoUrl,
+        prompt,
     }
+    return { output: { video } }
 }

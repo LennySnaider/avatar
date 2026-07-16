@@ -21,6 +21,7 @@ import {
 } from 'react-icons/hi'
 import { TEMPLATES_BY_CATEGORY } from '../_nodes/templates'
 import { CATEGORY_COLORS } from '../_constants/categoryColors'
+import { PORT_COLORS, PORT_LEGEND } from '../_constants/portTypes'
 import type { NodeCategory } from '../_engine/types'
 
 const ICON_MAP: Record<string, React.ComponentType<{ className?: string; style?: React.CSSProperties }>> = {
@@ -63,7 +64,7 @@ export default function NodePalette() {
         return (
             <button
                 onClick={() => setIsOpen(true)}
-                className="absolute top-4 left-4 z-10 bg-slate-800 border border-slate-700 rounded-lg p-2 shadow-lg hover:bg-slate-700 text-slate-300"
+                className="absolute top-4 left-4 z-10 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-2 shadow-lg hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-300"
                 title="Open node palette"
             >
                 <HiOutlineViewGrid className="w-5 h-5" />
@@ -72,17 +73,17 @@ export default function NodePalette() {
     }
 
     return (
-        <div className="absolute top-4 left-4 z-10 w-56 bg-slate-800/95 backdrop-blur-sm border border-slate-700 rounded-lg shadow-xl overflow-hidden">
+        <div className="absolute top-4 left-4 z-10 w-56 bg-white/95 dark:bg-gray-800/95 backdrop-blur-sm border border-gray-200 dark:border-gray-700 rounded-lg shadow-xl overflow-hidden">
             {/* Header */}
-            <div className="flex items-center justify-between px-3 py-2 border-b border-slate-700">
-                <span className="text-slate-200 text-xs font-semibold">Nodes</span>
-                <button onClick={() => setIsOpen(false)} className="text-slate-400 hover:text-slate-200">
+            <div className="flex items-center justify-between px-3 py-2 border-b border-gray-200 dark:border-gray-700">
+                <span className="text-gray-900 dark:text-gray-100 text-xs font-semibold">Nodes</span>
+                <button onClick={() => setIsOpen(false)} className="text-gray-400 hover:text-gray-700 dark:hover:text-gray-200">
                     <HiOutlineChevronDown className="w-4 h-4 rotate-180" />
                 </button>
             </div>
 
             {/* Categories */}
-            <div className="max-h-[calc(100vh-12rem)] overflow-y-auto p-1.5">
+            <div className="max-h-[calc(100vh-16rem)] overflow-y-auto p-1.5">
                 {CATEGORY_ORDER.map((cat) => {
                     const templates = TEMPLATES_BY_CATEGORY[cat] ?? []
                     const colors = CATEGORY_COLORS[cat]
@@ -92,18 +93,18 @@ export default function NodePalette() {
                         <div key={cat} className="mb-1">
                             <button
                                 onClick={() => toggleCategory(cat)}
-                                className="flex items-center gap-2 w-full px-2 py-1.5 rounded text-left hover:bg-slate-700/50"
+                                className="flex items-center gap-2 w-full px-2 py-1.5 rounded text-left hover:bg-gray-100 dark:hover:bg-gray-700/50"
                             >
                                 <div
                                     className="w-2 h-2 rounded-full shrink-0"
                                     style={{ background: colors.border }}
                                 />
-                                <span className="text-[11px] font-semibold text-slate-300 flex-1">
+                                <span className="text-[11px] font-semibold text-gray-700 dark:text-gray-300 flex-1">
                                     {colors.label}
                                 </span>
                                 {isExpanded
-                                    ? <HiOutlineChevronDown className="w-3 h-3 text-slate-500" />
-                                    : <HiOutlineChevronRight className="w-3 h-3 text-slate-500" />
+                                    ? <HiOutlineChevronDown className="w-3 h-3 text-gray-400" />
+                                    : <HiOutlineChevronRight className="w-3 h-3 text-gray-400" />
                                 }
                             </button>
 
@@ -116,7 +117,7 @@ export default function NodePalette() {
                                                 key={t.type}
                                                 draggable
                                                 onDragStart={(e) => onDragStart(e, t.type)}
-                                                className="flex items-center gap-2 px-2 py-1.5 rounded cursor-grab hover:bg-slate-700/50 active:cursor-grabbing"
+                                                className="flex items-center gap-2 px-2 py-1.5 rounded cursor-grab hover:bg-gray-100 dark:hover:bg-gray-700/50 active:cursor-grabbing"
                                                 title={t.description}
                                             >
                                                 {Icon && (
@@ -125,7 +126,7 @@ export default function NodePalette() {
                                                         style={{ color: colors.border } as React.CSSProperties}
                                                     />
                                                 )}
-                                                <span className="text-[10px] text-slate-400">
+                                                <span className="text-[10px] text-gray-500 dark:text-gray-400">
                                                     {t.label}
                                                 </span>
                                             </div>
@@ -136,6 +137,24 @@ export default function NodePalette() {
                         </div>
                     )
                 })}
+            </div>
+
+            {/* Port type legend — same color connects to same color */}
+            <div className="px-3 py-2 border-t border-gray-200 dark:border-gray-700">
+                <div className="text-[9px] text-gray-400 dark:text-gray-500 uppercase tracking-wide mb-1">
+                    Connections
+                </div>
+                <div className="flex flex-wrap gap-x-2.5 gap-y-1">
+                    {PORT_LEGEND.map((type) => (
+                        <div key={type} className="flex items-center gap-1">
+                            <div
+                                className="w-2 h-2 rounded-full"
+                                style={{ background: PORT_COLORS[type] }}
+                            />
+                            <span className="text-[9px] text-gray-500 dark:text-gray-400">{type}</span>
+                        </div>
+                    ))}
+                </div>
             </div>
         </div>
     )

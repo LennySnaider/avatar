@@ -2,9 +2,14 @@ import type { VideoNodeHandler } from '../_engine/types'
 
 export const condition: VideoNodeHandler = async (node, inputs) => {
     const { field, operator, compareValue } = node.data.config
-    // Evaluate against the named config field when set, otherwise whatever
-    // arrived on the `value` input port.
-    const value = field ? inputs[field as string] : inputs.value
+    // The wired value may be a bundle (avatar/media object): when a config
+    // `field` is set, compare that property of the bundle; otherwise compare
+    // the raw wired value.
+    const wired = inputs.value
+    const value =
+        field && wired && typeof wired === 'object'
+            ? (wired as Record<string, unknown>)[field as string]
+            : wired
 
     let result = false
     switch (operator) {
@@ -26,8 +31,9 @@ export const condition: VideoNodeHandler = async (node, inputs) => {
     }
 
     // The engine gates downstream edges on `result`: only edges wired to the
-    // taken port ("true"/"false") stay live. Both ports pass the value through.
+    // taken port ("true"/"false") stay live. Both ports pass the wired value
+    // (the full bundle) through.
     return {
-        output: { result, true: value, false: value },
+        output: { result, true: wired, false: wired },
     }
 }

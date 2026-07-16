@@ -1,17 +1,20 @@
-import type { VideoNodeHandler } from '../_engine/types'
+import type { VideoNodeHandler, MediaBundle } from '../_engine/types'
 import * as VideoStitchService from '@/services/VideoStitchService'
 
 export const stitch: VideoNodeHandler = async (_node, inputs) => {
-    const videoUrls = (inputs.videoUrls as string[]) ?? []
-    const singleUrl = inputs.videoUrl as string
-    const allUrls = singleUrl ? [...videoUrls, singleUrl] : videoUrls
+    // `videos` is a list port: the engine collects every incoming edge's
+    // bundle into an array.
+    const wired = inputs.videos
+    const bundles = (Array.isArray(wired) ? wired : wired ? [wired] : []) as MediaBundle[]
+    const urls = bundles.map((v) => v.url).filter(Boolean)
 
-    if (allUrls.length < 2) throw new Error('Need at least 2 videos to stitch')
+    if (urls.length < 2) throw new Error('Need at least 2 videos to stitch — wire two video ports into "videos"')
 
-    const stitchedVideoUrl = await VideoStitchService.stitchVideos(allUrls)
+    const stitchedVideoUrl = await VideoStitchService.stitchVideos(urls)
 
+    const video: MediaBundle = { kind: 'video', url: stitchedVideoUrl }
     return {
-        output: { stitchedVideoUrl },
+        output: { video },
     }
 }
 
@@ -23,11 +26,8 @@ type OverlayPosition =
     | 'bottom-right'
 
 export const textOverlay: VideoNodeHandler = async (node, inputs) => {
-    const imageUrl = inputs.imageUrl as string | undefined
-    const videoUrl = inputs.videoUrl as string | undefined
-    const mediaUrl = imageUrl ?? videoUrl
-
-    if (!mediaUrl) throw new Error('No media for text overlay')
+    const media = inputs.media as MediaBundle | undefined
+    if (!media?.url) throw new Error('No media for text overlay')
 
     const text = (node.data.config.text as string) ?? ''
     const position = (node.data.config.position as OverlayPosition) ?? 'bottom-center'
@@ -36,17 +36,18 @@ export const textOverlay: VideoNodeHandler = async (node, inputs) => {
 
     // Images: render overlay client-side via canvas and return a data URL.
     // Videos: would require ffmpeg — not yet implemented, so we pass through
-    // the URL with the overlay config so downstream nodes/UI can handle it.
-    if (imageUrl && typeof window !== 'undefined') {
+    // the bundle with the overlay config so downstream nodes/UI can handle it.
+    if (media.kind === 'image' && typeof window !== 'undefined') {
         try {
             const outputUrl = await renderTextOnImage({
-                imageUrl,
+                imageUrl: media.url,
                 text,
                 position,
                 fontSize,
                 color,
             })
-            return { output: { outputUrl } }
+            const out: MediaBundle = { ...media, url: outputUrl, base64: undefined }
+            return { output: { media: out } }
         } catch (err) {
             console.warn('[text-overlay] canvas render failed, passing through:', err)
         }
@@ -54,7 +55,7 @@ export const textOverlay: VideoNodeHandler = async (node, inputs) => {
 
     return {
         output: {
-            outputUrl: mediaUrl,
+            media,
             overlayConfig: { text, position, fontSize, color },
         },
     }

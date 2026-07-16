@@ -1,27 +1,32 @@
-import type { VideoNodeHandler } from '../_engine/types'
+import type { VideoNodeHandler, AvatarBundle, MediaBundle } from '../_engine/types'
 
 export const selectAvatar: VideoNodeHandler = async (node) => {
-    const { avatarId } = node.data.config
+    const config = node.data.config
+    const { avatarId } = config
     if (!avatarId) throw new Error('No avatar selected')
 
-    return {
-        output: {
-            avatarId,
-            references: node.data.config.references ?? [],
-            faceRef: node.data.config.faceRef ?? null,
-            measurements: node.data.config.measurements ?? {},
-        },
+    const avatar: AvatarBundle = {
+        kind: 'avatar',
+        avatarId: avatarId as string,
+        avatarName: config.avatarName as string | undefined,
+        thumbnailUrl: config.thumbnailUrl as string | undefined,
+        references: (config.references as unknown[]) ?? [],
+        faceRef: config.faceRef ?? null,
+        measurements: (config.measurements as Record<string, unknown>) ?? {},
     }
+
+    return { output: { avatar } }
 }
 
 export const uploadImage: VideoNodeHandler = async (node) => {
     const { imageUrl, imageBase64 } = node.data.config
     if (!imageUrl && !imageBase64) throw new Error('No image uploaded')
 
-    return {
-        output: {
-            imageUrl: imageUrl ?? '',
-            imageBase64: imageBase64 ?? '',
-        },
+    const image: MediaBundle = {
+        kind: 'image',
+        url: (imageUrl as string) ?? '',
+        base64: (imageBase64 as string) || undefined,
     }
+
+    return { output: { image } }
 }

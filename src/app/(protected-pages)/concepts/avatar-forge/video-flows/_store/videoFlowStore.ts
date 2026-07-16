@@ -65,9 +65,9 @@ export const useVideoFlowStore = create<VideoFlowStore>()((set, get) => ({
                 const template = targetNode
                     ? getTemplate(targetNode.data.type)
                     : undefined
-                const isListInput = template?.listInputs?.includes(
-                    connection.targetHandle,
-                )
+                const isListInput = template?.inputs.find(
+                    (p) => p.key === connection.targetHandle,
+                )?.list
                 if (!isListInput) {
                     edges = edges.filter(
                         (e) =>

@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useRef, type DragEvent } from 'react'
+import { useCallback, useEffect, useRef, type DragEvent } from 'react'
 import {
     ReactFlow,
     Background,
@@ -11,9 +11,12 @@ import {
     type IsValidConnection,
 } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
+import useTheme from '@/utils/hooks/useTheme'
 import { useVideoFlowStore } from '../_store/videoFlowStore'
 import { nodeTypes } from '../_nodes/registry'
+import { getTemplate } from '../_nodes/templates'
 import { CATEGORY_COLORS } from '../_constants/categoryColors'
+import { arePortsCompatible } from '../_constants/portTypes'
 import type { VideoFlowNode } from '../_engine/types'
 import NodePalette from './NodePalette'
 import FlowToolbar from './FlowToolbar'
@@ -23,6 +26,9 @@ import FlowStatusBar from './FlowStatusBar'
 export default function VideoFlowCanvas() {
     const reactFlowWrapper = useRef<HTMLDivElement>(null)
     const reactFlowInstance = useRef<ReactFlowInstance<VideoFlowNode> | null>(null)
+
+    const mode = useTheme((state) => state.mode)
+    const isDark = mode === 'dark'
 
     const {
         nodes,
@@ -34,6 +40,20 @@ export default function VideoFlowCanvas() {
         selectedNodeId,
         setSelectedNodeId,
     } = useVideoFlowStore()
+
+    // Seed an empty canvas with the Select Avatar node — nearly every flow
+    // starts from an avatar, so the user has a visible starting point instead
+    // of a blank grid.
+    const seeded = useRef(false)
+    useEffect(() => {
+        if (seeded.current) return
+        seeded.current = true
+        const store = useVideoFlowStore.getState()
+        if (store.nodes.length === 0 && !store.flowId) {
+            store.addNode('select-avatar', { x: 80, y: 120 })
+            store.setIsDirty(false)
+        }
+    }, [])
 
     const onInit = useCallback((instance: ReactFlowInstance<VideoFlowNode>) => {
         reactFlowInstance.current = instance
@@ -71,10 +91,28 @@ export default function VideoFlowCanvas() {
         setSelectedNodeId(null)
     }, [setSelectedNodeId])
 
+    // Only same-typed sockets connect (media accepts image/video, any accepts
+    // all) — invalid targets simply refuse the drop, like ComfyUI.
     const isValidConnection: IsValidConnection = useCallback(
-        (connection) => connection.source !== connection.target,
+        (connection) => {
+            if (connection.source === connection.target) return false
+            const { nodes: currentNodes } = useVideoFlowStore.getState()
+            const sourceNode = currentNodes.find((n) => n.id === connection.source)
+            const targetNode = currentNodes.find((n) => n.id === connection.target)
+            if (!sourceNode || !targetNode) return false
+            const sourcePort = getTemplate(sourceNode.data.type)?.outputs.find(
+                (p) => p.key === connection.sourceHandle,
+            )
+            const targetPort = getTemplate(targetNode.data.type)?.inputs.find(
+                (p) => p.key === connection.targetHandle,
+            )
+            if (!sourcePort || !targetPort) return true
+            return arePortsCompatible(sourcePort.type, targetPort.type)
+        },
         []
     )
+
+    const showHint = nodes.length <= 1 && edges.length === 0
 
     return (
         <div className="relative w-full h-full" ref={reactFlowWrapper}>
@@ -93,27 +131,52 @@ export default function VideoFlowCanvas() {
                 isValidConnection={isValidConnection}
                 deleteKeyCode={['Backspace', 'Delete']}
                 fitView
+                fitViewOptions={{ maxZoom: 1 }}
                 proOptions={{ hideAttribution: true }}
                 defaultEdgeOptions={{
                     type: 'smoothstep',
                     animated: true,
-                    style: { stroke: '#475569', strokeWidth: 2 },
+                    style: {
+                        stroke: isDark ? '#525252' : '#a3a3a3',
+                        strokeWidth: 2,
+                    },
                 }}
             >
-                <Background variant={BackgroundVariant.Dots} gap={16} size={1} color="#334155" />
+                <Background
+                    variant={BackgroundVariant.Dots}
+                    gap={16}
+                    size={1}
+                    color={isDark ? '#404040' : '#d4d4d4'}
+                />
                 <MiniMap
                     nodeColor={(node) => {
                         const category = (node.data as Record<string, unknown>)?.category as string
-                        return CATEGORY_COLORS[category as keyof typeof CATEGORY_COLORS]?.border ?? '#475569'
+                        return CATEGORY_COLORS[category as keyof typeof CATEGORY_COLORS]?.border ?? '#737373'
                     }}
-                    maskColor="rgba(15, 23, 42, 0.8)"
-                    style={{ background: '#1e293b' }}
+                    maskColor={isDark ? 'rgba(23, 23, 23, 0.8)' : 'rgba(229, 229, 229, 0.7)'}
+                    style={{ background: isDark ? '#262626' : '#fafafa' }}
                 />
                 <Controls
                     showInteractive={false}
-                    className="!bg-slate-800 !border-slate-700 !shadow-lg [&>button]:!bg-slate-800 [&>button]:!border-slate-700 [&>button]:!text-slate-300 [&>button:hover]:!bg-slate-700"
+                    className={
+                        isDark
+                            ? '!bg-gray-800 !border-gray-700 !shadow-lg [&>button]:!bg-gray-800 [&>button]:!border-gray-700 [&>button]:!text-gray-300 [&>button:hover]:!bg-gray-700'
+                            : '!bg-white !border-gray-200 !shadow-lg [&>button]:!bg-white [&>button]:!border-gray-200 [&>button]:!text-gray-600 [&>button:hover]:!bg-gray-100'
+                    }
                 />
             </ReactFlow>
+
+            {/* First-use hint */}
+            {showHint && (
+                <div className="absolute top-1/2 left-1/2 -translate-x-1/2 mt-24 z-[5] pointer-events-none text-center max-w-sm">
+                    <p className="text-sm font-medium text-gray-500 dark:text-gray-400">
+                        Drag nodes from the palette onto the canvas
+                    </p>
+                    <p className="text-xs mt-1 text-gray-400 dark:text-gray-500">
+                        Connect ports of the same color, then press <span className="font-semibold">Run</span>
+                    </p>
+                </div>
+            )}
 
             {/* Floating panels */}
             <NodePalette />

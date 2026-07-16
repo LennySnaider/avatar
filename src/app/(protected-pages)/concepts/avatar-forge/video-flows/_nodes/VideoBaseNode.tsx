@@ -9,8 +9,9 @@ import {
     HiOutlineDocumentText, HiOutlineMicrophone, HiOutlineSwitchHorizontal,
     HiOutlineSave, HiOutlineLink, HiOutlineCheck, HiOutlineX,
 } from 'react-icons/hi'
-import type { VideoFlowNode, NodeStatus } from '../_engine/types'
+import type { VideoFlowNode, NodeStatus, MediaBundle, AvatarBundle } from '../_engine/types'
 import { CATEGORY_COLORS } from '../_constants/categoryColors'
+import { PORT_COLORS } from '../_constants/portTypes'
 import { getTemplate } from './templates'
 import { useVideoFlowStore } from '../_store/videoFlowStore'
 
@@ -27,8 +28,8 @@ function StatusBadge({ status }: { status: NodeStatus }) {
         running:   { bg: '#f43f5e20', color: '#f43f5e' },
         completed: { bg: '#10b98120', color: '#10b981' },
         error:     { bg: '#ef444420', color: '#ef4444' },
-        pending:   { bg: '#33415530', color: '#64748b' },
-        skipped:   { bg: '#33415530', color: '#475569' },
+        pending:   { bg: '#73737330', color: '#737373' },
+        skipped:   { bg: '#73737330', color: '#737373' },
     }
     const { bg, color } = config[status] ?? config.pending
     return (
@@ -59,39 +60,44 @@ function StatusBadge({ status }: { status: NodeStatus }) {
 // ─── Result preview (ComfyUI-style: outputs render on the node) ──
 type Preview =
     | { kind: 'image' | 'video' | 'audio'; url: string }
+    | { kind: 'avatar'; name?: string; thumbnailUrl?: string }
     | { kind: 'text'; text: string }
 
-function looksLikeVideo(url: string): boolean {
-    return url.includes('.mp4') || url.includes('.webm') || url.startsWith('data:video')
+function isMediaBundle(value: unknown): value is MediaBundle {
+    return (
+        !!value &&
+        typeof value === 'object' &&
+        'kind' in value &&
+        ['image', 'video', 'audio'].includes((value as MediaBundle).kind)
+    )
+}
+
+function isAvatarBundle(value: unknown): value is AvatarBundle {
+    return (
+        !!value &&
+        typeof value === 'object' &&
+        (value as AvatarBundle).kind === 'avatar'
+    )
 }
 
 function getPreview(result: Record<string, unknown> | undefined): Preview | null {
     if (!result) return null
-    const videoUrl = (result.videoUrl ?? result.stitchedVideoUrl) as string | undefined
-    if (videoUrl) return { kind: 'video', url: videoUrl }
 
-    const outputUrl = result.outputUrl as string | undefined
-    if (outputUrl) {
-        return looksLikeVideo(outputUrl)
-            ? { kind: 'video', url: outputUrl }
-            : { kind: 'image', url: outputUrl }
+    for (const value of Object.values(result)) {
+        if (isMediaBundle(value) && value.url) {
+            return { kind: value.kind, url: value.url }
+        }
     }
-
-    const imageUrl = (result.imageUrl ?? result.savedUrl) as string | undefined
-    if (imageUrl) {
-        return looksLikeVideo(imageUrl)
-            ? { kind: 'video', url: imageUrl }
-            : { kind: 'image', url: imageUrl }
+    for (const value of Object.values(result)) {
+        if (isAvatarBundle(value)) {
+            return { kind: 'avatar', name: value.avatarName, thumbnailUrl: value.thumbnailUrl }
+        }
     }
-
-    const audioUrl = result.audioUrl as string | undefined
-    if (audioUrl) return { kind: 'audio', url: audioUrl }
-
-    const text = (result.enhancedPrompt ??
-        result.description ??
-        result.script) as string | undefined
-    if (text) return { kind: 'text', text }
-
+    for (const value of Object.values(result)) {
+        if (typeof value === 'string' && value.length > 0) {
+            return { kind: 'text', text: value }
+        }
+    }
     return null
 }
 
@@ -104,7 +110,7 @@ function ResultPreview({ result }: { result: Record<string, unknown> | undefined
             <img
                 src={preview.url}
                 alt="result"
-                className="nodrag mt-1.5 w-full max-h-44 object-cover rounded-md border border-slate-700"
+                className="nodrag mt-1.5 w-full max-h-44 object-cover rounded-md border border-gray-200 dark:border-gray-700"
             />
         )
     }
@@ -116,7 +122,7 @@ function ResultPreview({ result }: { result: Record<string, unknown> | undefined
                 muted
                 loop
                 playsInline
-                className="nodrag mt-1.5 w-full max-h-44 rounded-md border border-slate-700 bg-black"
+                className="nodrag mt-1.5 w-full max-h-44 rounded-md border border-gray-200 dark:border-gray-700 bg-black"
             />
         )
     }
@@ -129,9 +135,25 @@ function ResultPreview({ result }: { result: Record<string, unknown> | undefined
             />
         )
     }
+    if (preview.kind === 'avatar') {
+        return (
+            <div className="mt-1.5 flex items-center gap-2 bg-gray-100 dark:bg-gray-900 rounded-md p-2">
+                {preview.thumbnailUrl && (
+                    <img
+                        src={preview.thumbnailUrl}
+                        alt=""
+                        className="nodrag w-8 h-8 rounded object-cover"
+                    />
+                )}
+                <span className="text-[10px] text-gray-700 dark:text-gray-300 truncate">
+                    {preview.name ?? 'Avatar'}
+                </span>
+            </div>
+        )
+    }
     if (preview.kind === 'text') {
         return (
-            <div className="mt-1.5 bg-slate-900 rounded-md p-2 text-[9px] text-slate-300 leading-snug max-h-24 overflow-y-auto whitespace-pre-wrap nodrag">
+            <div className="mt-1.5 bg-gray-100 dark:bg-gray-900 rounded-md p-2 text-[9px] text-gray-700 dark:text-gray-300 leading-snug max-h-24 overflow-y-auto whitespace-pre-wrap nodrag">
                 {preview.text}
             </div>
         )
@@ -170,11 +192,10 @@ function VideoBaseNode({ id, data }: NodeProps<VideoFlowNode>) {
 
     return (
         <div
-            className="relative rounded-[10px] p-3 w-[220px] shadow-lg"
+            className="relative rounded-[10px] p-3 w-[220px] shadow-lg bg-white dark:bg-gray-800"
             style={{
-                background: '#1e293b',
                 border: `2px solid ${status === 'error' ? '#ef4444' : colors.border}`,
-                boxShadow: status === 'running' ? `0 0 24px ${colors.border}40` : status === 'completed' ? `0 0 16px ${colors.border}20` : 'none',
+                boxShadow: status === 'running' ? `0 0 24px ${colors.border}40` : status === 'completed' ? `0 0 16px ${colors.border}20` : undefined,
                 opacity: status === 'pending' || status === 'skipped' ? 0.6 : 1,
             }}
         >
@@ -184,42 +205,43 @@ function VideoBaseNode({ id, data }: NodeProps<VideoFlowNode>) {
             <div className="flex items-center justify-between mt-1 mb-2">
                 <div className="flex items-center gap-1.5">
                     {IconComponent && <IconComponent className="w-4 h-4" style={{ color: colors.border }} />}
-                    <span className="text-slate-200 text-xs font-bold">{label}</span>
+                    <span className="text-gray-900 dark:text-gray-100 text-xs font-bold">{label}</span>
                 </div>
                 <StatusBadge status={status} />
             </div>
 
-            {/* Named ports: inputs on the left, outputs on the right */}
+            {/* Typed ports: inputs on the left, outputs on the right. The dot
+                color encodes the data type — same color connects to same color. */}
             {(inputs.length > 0 || outputs.length > 0) && (
                 <div className="flex justify-between gap-3 mb-1">
                     <div className="flex flex-col gap-1 min-w-0">
-                        {inputs.map((key) => (
-                            <div key={key} className="flex items-center gap-1.5 h-4">
+                        {inputs.map((port) => (
+                            <div key={port.key} className="flex items-center gap-1.5 h-4" title={`${port.key} (${port.type})`}>
                                 <Handle
                                     type="target"
-                                    id={key}
+                                    id={port.key}
                                     position={Position.Left}
-                                    style={HANDLE_STYLE}
-                                    className="!w-2.5 !h-2.5 !bg-slate-500 !border-2 !border-slate-700 !-ml-[19px] shrink-0"
+                                    style={{ ...HANDLE_STYLE, background: PORT_COLORS[port.type] }}
+                                    className="!w-2.5 !h-2.5 !border-2 !border-white dark:!border-gray-800 !-ml-[19px] shrink-0"
                                 />
-                                <span className="text-[8px] text-slate-400 font-mono truncate">
-                                    {key}
+                                <span className="text-[8px] text-gray-500 dark:text-gray-400 font-mono truncate">
+                                    {port.key}
                                 </span>
                             </div>
                         ))}
                     </div>
                     <div className="flex flex-col gap-1 items-end min-w-0">
-                        {outputs.map((key) => (
-                            <div key={key} className="flex items-center gap-1.5 h-4">
-                                <span className="text-[8px] text-slate-400 font-mono truncate">
-                                    {key}
+                        {outputs.map((port) => (
+                            <div key={port.key} className="flex items-center gap-1.5 h-4" title={`${port.key} (${port.type})`}>
+                                <span className="text-[8px] text-gray-500 dark:text-gray-400 font-mono truncate">
+                                    {port.key}
                                 </span>
                                 <Handle
                                     type="source"
-                                    id={key}
+                                    id={port.key}
                                     position={Position.Right}
-                                    style={{ ...HANDLE_STYLE, background: colors.border }}
-                                    className="!w-2.5 !h-2.5 !border-2 !border-slate-700 !-mr-[19px] shrink-0"
+                                    style={{ ...HANDLE_STYLE, background: PORT_COLORS[port.type] }}
+                                    className="!w-2.5 !h-2.5 !border-2 !border-white dark:!border-gray-800 !-mr-[19px] shrink-0"
                                 />
                             </div>
                         ))}
@@ -228,15 +250,15 @@ function VideoBaseNode({ id, data }: NodeProps<VideoFlowNode>) {
             )}
 
             {configSummary && (
-                <div className="bg-slate-900 rounded-md p-2 text-[10px]">
-                    <div className="text-slate-400 font-mono text-[8px] line-clamp-2 break-all">
+                <div className="bg-gray-100 dark:bg-gray-900 rounded-md p-2 text-[10px]">
+                    <div className="text-gray-500 dark:text-gray-400 font-mono text-[8px] line-clamp-2 break-all">
                         {configSummary}
                     </div>
                 </div>
             )}
 
             {status === 'error' && errorMessage && (
-                <div className="mt-1.5 bg-red-950/60 border border-red-900 rounded-md p-2 text-[9px] text-red-300 leading-snug whitespace-pre-wrap break-words">
+                <div className="mt-1.5 bg-red-50 dark:bg-red-950/60 border border-red-200 dark:border-red-900 rounded-md p-2 text-[9px] text-red-600 dark:text-red-300 leading-snug whitespace-pre-wrap break-words">
                     {errorMessage}
                 </div>
             )}

@@ -6,6 +6,7 @@ import {
 } from 'react-icons/hi'
 import { useVideoFlowStore } from '../_store/videoFlowStore'
 import { CATEGORY_COLORS } from '../_constants/categoryColors'
+import { PORT_COLORS } from '../_constants/portTypes'
 import { getTemplate } from '../_nodes/templates'
 import type { VideoNodeData, NodeCategory } from '../_engine/types'
 import AvatarPickerField from './panels/AvatarPickerField'
@@ -37,7 +38,7 @@ export default function NodePropertiesPanel() {
             {/* Docked to the right (ComfyUI-style) so the canvas stays visible
                 while editing; clicking the canvas pane deselects/closes. */}
             <div
-                className="absolute top-16 right-4 bottom-14 z-30 w-80 max-w-[85vw] flex flex-col bg-slate-800/95 backdrop-blur-sm border border-slate-700 rounded-lg shadow-2xl overflow-hidden"
+                className="absolute top-16 right-4 bottom-14 z-30 w-80 max-w-[85vw] flex flex-col bg-white/95 dark:bg-gray-800/95 backdrop-blur-sm border border-gray-200 dark:border-gray-700 rounded-lg shadow-2xl overflow-hidden"
                 onClick={(e) => e.stopPropagation()}
             >
                 {/* Header */}
@@ -47,7 +48,7 @@ export default function NodePropertiesPanel() {
                 >
                     <div className="flex items-center gap-2">
                         <div className="w-2 h-2 rounded-full" style={{ background: colors.border }} />
-                        <span className="text-slate-200 text-xs font-semibold">{data.label}</span>
+                        <span className="text-gray-900 dark:text-gray-100 text-xs font-semibold">{data.label}</span>
                     </div>
                     <div className="flex items-center gap-1">
                         <button
@@ -55,14 +56,14 @@ export default function NodePropertiesPanel() {
                                 removeNode(node.id)
                                 setSelectedNodeId(null)
                             }}
-                            className="text-slate-500 hover:text-red-400 p-0.5"
+                            className="text-gray-400 dark:text-gray-500 hover:text-red-500 dark:hover:text-red-400 p-0.5"
                             title="Delete node"
                         >
                             <HiOutlineTrash className="w-3.5 h-3.5" />
                         </button>
                         <button
                             onClick={() => setSelectedNodeId(null)}
-                            className="text-slate-400 hover:text-slate-200 p-0.5"
+                            className="text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 p-0.5"
                         >
                             <HiOutlineX className="w-3.5 h-3.5" />
                         </button>
@@ -127,9 +128,9 @@ export default function NodePropertiesPanel() {
                         if (selectOptions.length > 0) {
                             return (
                                 <label key={key} className="block">
-                                    <span className="text-[10px] text-slate-500 uppercase tracking-wide">{key}</span>
+                                    <span className="text-[10px] text-gray-400 dark:text-gray-500 uppercase tracking-wide">{key}</span>
                                     <select
-                                        className="mt-0.5 w-full bg-slate-900 border border-slate-700 rounded px-2 py-1.5 text-xs text-slate-300 outline-none focus:border-slate-500"
+                                        className="mt-0.5 w-full bg-gray-50 dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded px-2 py-1.5 text-xs text-gray-700 dark:text-gray-300 outline-none focus:border-primary"
                                         value={String(currentVal)}
                                         onChange={(e) => handleConfigChange(key, e.target.value)}
                                     >
@@ -145,10 +146,10 @@ export default function NodePropertiesPanel() {
                         if (typeof defaultVal === 'number') {
                             return (
                                 <label key={key} className="block">
-                                    <span className="text-[10px] text-slate-500 uppercase tracking-wide">{key}</span>
+                                    <span className="text-[10px] text-gray-400 dark:text-gray-500 uppercase tracking-wide">{key}</span>
                                     <input
                                         type="number"
-                                        className="mt-0.5 w-full bg-slate-900 border border-slate-700 rounded px-2 py-1.5 text-xs text-slate-300 outline-none focus:border-slate-500"
+                                        className="mt-0.5 w-full bg-gray-50 dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded px-2 py-1.5 text-xs text-gray-700 dark:text-gray-300 outline-none focus:border-primary"
                                         value={Number(currentVal)}
                                         onChange={(e) => handleConfigChange(key, Number(e.target.value))}
                                     />
@@ -161,10 +162,10 @@ export default function NodePropertiesPanel() {
                             const isLongText = key === 'text' || key === 'basePrompt' || key === 'url' || key === 'prompt'
                             return (
                                 <label key={key} className="block">
-                                    <span className="text-[10px] text-slate-500 uppercase tracking-wide">{key}</span>
+                                    <span className="text-[10px] text-gray-400 dark:text-gray-500 uppercase tracking-wide">{key}</span>
                                     {isLongText ? (
                                         <textarea
-                                            className="mt-0.5 w-full bg-slate-900 border border-slate-700 rounded px-2 py-1.5 text-xs text-slate-300 outline-none focus:border-slate-500 resize-none"
+                                            className="mt-0.5 w-full bg-gray-50 dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded px-2 py-1.5 text-xs text-gray-700 dark:text-gray-300 outline-none focus:border-primary resize-none"
                                             rows={3}
                                             value={String(currentVal)}
                                             onChange={(e) => handleConfigChange(key, e.target.value)}
@@ -172,7 +173,7 @@ export default function NodePropertiesPanel() {
                                     ) : (
                                         <input
                                             type="text"
-                                            className="mt-0.5 w-full bg-slate-900 border border-slate-700 rounded px-2 py-1.5 text-xs text-slate-300 outline-none focus:border-slate-500"
+                                            className="mt-0.5 w-full bg-gray-50 dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded px-2 py-1.5 text-xs text-gray-700 dark:text-gray-300 outline-none focus:border-primary"
                                             value={String(currentVal)}
                                             onChange={(e) => handleConfigChange(key, e.target.value)}
                                         />
@@ -184,24 +185,30 @@ export default function NodePropertiesPanel() {
                         return null
                     })}
 
-                    {/* I/O info */}
+                    {/* I/O info — dot color = port type (same color connects) */}
                     {template && (
-                        <div className="pt-2 border-t border-slate-700">
+                        <div className="pt-2 border-t border-gray-200 dark:border-gray-700">
                             {template.inputs.length > 0 && (
                                 <div className="mb-2">
-                                    <span className="text-[9px] text-slate-600 uppercase tracking-wide">Inputs:</span>
+                                    <span className="text-[9px] text-gray-400 dark:text-gray-500 uppercase tracking-wide">Inputs:</span>
                                     <div className="flex flex-wrap gap-1 mt-0.5">
-                                        {template.inputs.map((i) => (
-                                            <span key={i} className="px-1.5 py-0.5 bg-slate-900 rounded text-[8px] text-slate-500 font-mono">{i}</span>
+                                        {template.inputs.map((port) => (
+                                            <span key={port.key} className="flex items-center gap-1 px-1.5 py-0.5 bg-gray-100 dark:bg-gray-900 rounded text-[8px] text-gray-500 dark:text-gray-400 font-mono">
+                                                <span className="w-1.5 h-1.5 rounded-full" style={{ background: PORT_COLORS[port.type] }} />
+                                                {port.key}
+                                            </span>
                                         ))}
                                     </div>
                                 </div>
                             )}
                             <div>
-                                <span className="text-[9px] text-slate-600 uppercase tracking-wide">Outputs:</span>
+                                <span className="text-[9px] text-gray-400 dark:text-gray-500 uppercase tracking-wide">Outputs:</span>
                                 <div className="flex flex-wrap gap-1 mt-0.5">
-                                    {template.outputs.map((o) => (
-                                        <span key={o} className="px-1.5 py-0.5 bg-slate-900 rounded text-[8px] text-slate-500 font-mono">{o}</span>
+                                    {template.outputs.map((port) => (
+                                        <span key={port.key} className="flex items-center gap-1 px-1.5 py-0.5 bg-gray-100 dark:bg-gray-900 rounded text-[8px] text-gray-500 dark:text-gray-400 font-mono">
+                                            <span className="w-1.5 h-1.5 rounded-full" style={{ background: PORT_COLORS[port.type] }} />
+                                            {port.key}
+                                        </span>
                                     ))}
                                 </div>
                             </div>

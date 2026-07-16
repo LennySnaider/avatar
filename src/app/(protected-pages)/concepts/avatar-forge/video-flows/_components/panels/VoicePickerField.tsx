@@ -39,23 +39,23 @@ export default function VoicePickerField({ value, onChange }: VoicePickerFieldPr
 
     return (
         <div>
-            <span className="text-[10px] text-slate-500 uppercase tracking-wide">Voice</span>
+            <span className="text-[10px] text-gray-400 dark:text-gray-500 uppercase tracking-wide">Voice</span>
             {isLoading ? (
-                <div className="mt-0.5 w-full bg-slate-900 border border-slate-700 rounded px-2 py-1.5 text-xs text-slate-500">
+                <div className="mt-0.5 w-full bg-gray-50 dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded px-2 py-1.5 text-xs text-gray-400 dark:text-gray-500">
                     Loading voices…
                 </div>
             ) : error ? (
-                <div className="mt-0.5 w-full bg-slate-900 border border-red-900/60 rounded px-2 py-1.5 text-xs text-red-400">
+                <div className="mt-0.5 w-full bg-gray-50 dark:bg-gray-900 border border-red-300 dark:border-red-900/60 rounded px-2 py-1.5 text-xs text-red-500 dark:text-red-400">
                     {error}
                 </div>
             ) : voices.length === 0 ? (
-                <div className="mt-0.5 w-full bg-slate-900 border border-slate-700 rounded px-2 py-2 text-xs text-slate-400 flex items-center gap-2">
-                    <HiOutlineMicrophone className="w-4 h-4 text-slate-500" />
+                <div className="mt-0.5 w-full bg-gray-50 dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded px-2 py-2 text-xs text-gray-500 dark:text-gray-400 flex items-center gap-2">
+                    <HiOutlineMicrophone className="w-4 h-4 text-gray-400 dark:text-gray-500" />
                     <span>No voices cloned yet. Create one in Voice Studio.</span>
                 </div>
             ) : (
                 <select
-                    className="mt-0.5 w-full bg-slate-900 border border-slate-700 rounded px-2 py-1.5 text-xs text-slate-300 outline-none focus:border-slate-500"
+                    className="mt-0.5 w-full bg-gray-50 dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded px-2 py-1.5 text-xs text-gray-700 dark:text-gray-300 outline-none focus:border-primary"
                     value={value ?? ''}
                     onChange={(e) => {
                         const selected = voices.find((v) => v.provider_voice_id === e.target.value)

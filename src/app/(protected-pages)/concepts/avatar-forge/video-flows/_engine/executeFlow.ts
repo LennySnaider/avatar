@@ -59,7 +59,11 @@ function mergeInputs(
 ): Record<string, unknown> {
     const incoming = edges.filter((e) => e.target === node.id)
     const merged: Record<string, unknown> = {}
-    const listKeys = new Set(getTemplate(node.data.type)?.listInputs ?? [])
+    const listKeys = new Set(
+        (getTemplate(node.data.type)?.inputs ?? [])
+            .filter((p) => p.list)
+            .map((p) => p.key),
+    )
     const wired = new Map<string, unknown[]>()
 
     for (const edge of incoming) {

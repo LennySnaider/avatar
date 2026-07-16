@@ -114,11 +114,11 @@ export default function AvatarPickerField({ value, onSelect }: AvatarPickerField
     return (
         <>
             <div>
-                <span className="text-[10px] text-slate-500 uppercase tracking-wide">Avatar</span>
+                <span className="text-[10px] text-gray-400 dark:text-gray-500 uppercase tracking-wide">Avatar</span>
                 <button
                     type="button"
                     onClick={() => setIsOpen(true)}
-                    className="mt-0.5 w-full flex items-center gap-2 bg-slate-900 border border-slate-700 rounded px-2 py-2 hover:border-slate-500 transition-colors"
+                    className="mt-0.5 w-full flex items-center gap-2 bg-gray-50 dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded px-2 py-2 hover:border-primary transition-colors"
                 >
                     {value.thumbnailUrl ? (
                         // eslint-disable-next-line @next/next/no-img-element
@@ -128,16 +128,16 @@ export default function AvatarPickerField({ value, onSelect }: AvatarPickerField
                             className="w-8 h-8 rounded object-cover"
                         />
                     ) : (
-                        <div className="w-8 h-8 rounded bg-slate-800 flex items-center justify-center">
-                            <HiOutlineUser className="w-4 h-4 text-slate-500" />
+                        <div className="w-8 h-8 rounded bg-gray-200 dark:bg-gray-800 flex items-center justify-center">
+                            <HiOutlineUser className="w-4 h-4 text-gray-400 dark:text-gray-500" />
                         </div>
                     )}
                     <div className="flex-1 text-left">
-                        <div className="text-xs text-slate-200">
+                        <div className="text-xs text-gray-900 dark:text-gray-100">
                             {value.avatarName ?? 'Select avatar…'}
                         </div>
                         {value.avatarId && (
-                            <div className="text-[10px] text-slate-500 font-mono truncate">
+                            <div className="text-[10px] text-gray-400 dark:text-gray-500 font-mono truncate">
                                 {value.avatarId.slice(0, 8)}
                             </div>
                         )}

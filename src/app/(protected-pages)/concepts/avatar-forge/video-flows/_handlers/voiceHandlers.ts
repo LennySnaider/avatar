@@ -1,13 +1,10 @@
-import type { VideoNodeHandler } from '../_engine/types'
+import type { VideoNodeHandler, MediaBundle } from '../_engine/types'
 import type { ScriptTemplate, ScriptTone } from '@/@types/voice'
 import * as ScriptService from '@/services/ScriptService'
 import * as MiniMaxService from '@/services/MiniMaxService'
 
 export const scriptGenerator: VideoNodeHandler = async (node, inputs) => {
-    const topic =
-        (inputs.topic as string) ??
-        (inputs.description as string) ??
-        ''
+    const topic = (inputs.topic as string) ?? ''
     const config = node.data.config
 
     const script = await ScriptService.generateScript({
@@ -58,11 +55,8 @@ function bytesToBase64(data: unknown): string {
 }
 
 export const textToSpeech: VideoNodeHandler = async (node, inputs) => {
-    const text =
-        (inputs.text as string) ||
-        (inputs.script as string) ||
-        ''
-    if (!text) throw new Error('No text for speech generation')
+    const text = (inputs.text as string) || ''
+    if (!text) throw new Error('No text for speech generation — wire a text port')
 
     const config = node.data.config
     const voiceId = config.voiceId as string
@@ -78,12 +72,14 @@ export const textToSpeech: VideoNodeHandler = async (node, inputs) => {
     // Convert raw bytes to a data URI so downstream nodes (and the UI) can
     // consume a URL rather than a byte buffer that doesn't survive JSON.
     const base64 = bytesToBase64(result.audioBuffer)
-    const audioUrl = `data:audio/mp3;base64,${base64}`
+    const duration = Math.round(result.durationMs / 1000)
+    const audio: MediaBundle = {
+        kind: 'audio',
+        url: `data:audio/mp3;base64,${base64}`,
+        duration,
+    }
 
     return {
-        output: {
-            audioUrl,
-            duration: Math.round(result.durationMs / 1000),
-        },
+        output: { audio },
     }
 }

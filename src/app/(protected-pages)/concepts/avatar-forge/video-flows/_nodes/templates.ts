@@ -1,5 +1,9 @@
 import type { VideoNodeTemplate } from '../_engine/types'
 
+// Ports are TYPED BUNDLES: one `avatar` cable carries id + references +
+// faceRef + measurements together (the avatar already owns all of that);
+// `image`/`video`/`audio` cables carry { kind, url, base64?, ... }. This keeps
+// the canvas readable — one wire per concept instead of four parallel wires.
 export const NODE_TEMPLATES: VideoNodeTemplate[] = [
     // ─── Input ───────────────────────────────────────────────
     {
@@ -9,7 +13,7 @@ export const NODE_TEMPLATES: VideoNodeTemplate[] = [
         icon: 'HiOutlineUser',
         description: 'Pick an avatar from your gallery',
         inputs: [],
-        outputs: ['avatarId', 'references', 'faceRef', 'measurements'],
+        outputs: [{ key: 'avatar', type: 'avatar' }],
         defaultData: { avatarId: null },
     },
     {
@@ -19,7 +23,7 @@ export const NODE_TEMPLATES: VideoNodeTemplate[] = [
         icon: 'HiOutlineUpload',
         description: 'Upload an image from your device',
         inputs: [],
-        outputs: ['imageUrl', 'imageBase64'],
+        outputs: [{ key: 'image', type: 'image' }],
         defaultData: {},
     },
     // ─── AI Processing ───────────────────────────────────────
@@ -29,8 +33,8 @@ export const NODE_TEMPLATES: VideoNodeTemplate[] = [
         category: 'ai',
         icon: 'HiOutlineSparkles',
         description: 'Improve prompt with AI details',
-        inputs: ['basePrompt'],
-        outputs: ['enhancedPrompt'],
+        inputs: [{ key: 'prompt', type: 'text' }],
+        outputs: [{ key: 'prompt', type: 'text' }],
         defaultData: { basePrompt: '', style: 'photorealistic', intensity: 'medium' },
     },
     {
@@ -39,8 +43,8 @@ export const NODE_TEMPLATES: VideoNodeTemplate[] = [
         category: 'ai',
         icon: 'HiOutlineEye',
         description: 'Generate text description from image',
-        inputs: ['imageUrl'],
-        outputs: ['description'],
+        inputs: [{ key: 'image', type: 'image' }],
+        outputs: [{ key: 'description', type: 'text' }],
         defaultData: { detailLevel: 'detailed' },
     },
     // ─── Generation ──────────────────────────────────────────
@@ -50,8 +54,11 @@ export const NODE_TEMPLATES: VideoNodeTemplate[] = [
         category: 'generation',
         icon: 'HiOutlinePhotograph',
         description: 'Generate avatar image with Gemini',
-        inputs: ['prompt', 'references', 'faceRef', 'measurements'],
-        outputs: ['imageUrl', 'fullApiPrompt'],
+        inputs: [
+            { key: 'avatar', type: 'avatar' },
+            { key: 'prompt', type: 'text' },
+        ],
+        outputs: [{ key: 'image', type: 'image' }],
         defaultData: { prompt: '', aspectRatio: '1:1', model: 'gemini' },
     },
     {
@@ -60,8 +67,11 @@ export const NODE_TEMPLATES: VideoNodeTemplate[] = [
         category: 'generation',
         icon: 'HiOutlineFilm',
         description: 'Generate video from image with Kling',
-        inputs: ['imageUrl', 'prompt'],
-        outputs: ['videoUrl', 'taskId'],
+        inputs: [
+            { key: 'image', type: 'image' },
+            { key: 'prompt', type: 'text' },
+        ],
+        outputs: [{ key: 'video', type: 'video' }],
         defaultData: { prompt: '', duration: '5', mode: 'standard' },
     },
     // ─── Transform ───────────────────────────────────────────
@@ -71,9 +81,8 @@ export const NODE_TEMPLATES: VideoNodeTemplate[] = [
         category: 'transform',
         icon: 'HiOutlineScissors',
         description: 'Concatenate multiple videos into one',
-        inputs: ['videoUrls'],
-        outputs: ['stitchedVideoUrl'],
-        listInputs: ['videoUrls'],
+        inputs: [{ key: 'videos', type: 'video', list: true }],
+        outputs: [{ key: 'video', type: 'video' }],
         defaultData: { transition: 'none' },
     },
     {
@@ -82,8 +91,8 @@ export const NODE_TEMPLATES: VideoNodeTemplate[] = [
         category: 'transform',
         icon: 'HiOutlineAnnotation',
         description: 'Add text overlay to image or video',
-        inputs: ['imageUrl', 'videoUrl'],
-        outputs: ['outputUrl'],
+        inputs: [{ key: 'media', type: 'media' }],
+        outputs: [{ key: 'media', type: 'media' }],
         defaultData: { text: '', position: 'bottom-center', fontSize: 24, color: '#ffffff' },
     },
     // ─── Voice ───────────────────────────────────────────────
@@ -93,8 +102,8 @@ export const NODE_TEMPLATES: VideoNodeTemplate[] = [
         category: 'voice',
         icon: 'HiOutlineDocumentText',
         description: 'AI-generated script for video narration',
-        inputs: ['topic'],
-        outputs: ['script', 'duration'],
+        inputs: [{ key: 'topic', type: 'text' }],
+        outputs: [{ key: 'script', type: 'text' }],
         defaultData: { tone: 'professional', language: 'es', template: 'general', durationSeconds: 30 },
     },
     {
@@ -103,8 +112,8 @@ export const NODE_TEMPLATES: VideoNodeTemplate[] = [
         category: 'voice',
         icon: 'HiOutlineMicrophone',
         description: 'Convert text to speech with MiniMax',
-        inputs: ['text'],
-        outputs: ['audioUrl', 'duration'],
+        inputs: [{ key: 'text', type: 'text' }],
+        outputs: [{ key: 'audio', type: 'audio' }],
         defaultData: { voiceId: '', speed: 1.0, language: 'es' },
     },
     // ─── Logic ───────────────────────────────────────────────
@@ -114,8 +123,11 @@ export const NODE_TEMPLATES: VideoNodeTemplate[] = [
         category: 'logic',
         icon: 'HiOutlineSwitchHorizontal',
         description: 'Branch flow based on a condition',
-        inputs: ['value'],
-        outputs: ['true', 'false'],
+        inputs: [{ key: 'value', type: 'any' }],
+        outputs: [
+            { key: 'true', type: 'any' },
+            { key: 'false', type: 'any' },
+        ],
         defaultData: { field: '', operator: 'equals', compareValue: '' },
     },
     // ─── Output ──────────────────────────────────────────────
@@ -125,8 +137,11 @@ export const NODE_TEMPLATES: VideoNodeTemplate[] = [
         category: 'output',
         icon: 'HiOutlineSave',
         description: 'Save generated media to avatar gallery',
-        inputs: ['imageUrl', 'videoUrl', 'avatarId'],
-        outputs: ['galleryItemId', 'savedUrl'],
+        inputs: [
+            { key: 'media', type: 'media' },
+            { key: 'avatar', type: 'avatar' },
+        ],
+        outputs: [{ key: 'media', type: 'media' }],
         defaultData: { collection: 'default' },
     },
     {
@@ -135,8 +150,8 @@ export const NODE_TEMPLATES: VideoNodeTemplate[] = [
         category: 'output',
         icon: 'HiOutlineLink',
         description: 'Send results to external URL',
-        inputs: ['data'],
-        outputs: ['responseStatus'],
+        inputs: [{ key: 'data', type: 'any' }],
+        outputs: [{ key: 'status', type: 'any' }],
         defaultData: { url: '', method: 'POST', headers: {} },
     },
 ]

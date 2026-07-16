@@ -1,4 +1,4 @@
-import type { VideoNodeHandler } from '../_engine/types'
+import type { VideoNodeHandler, MediaBundle, AvatarBundle } from '../_engine/types'
 import type { MediaType } from '@/@types/supabase'
 import { supabase, getStoragePublicUrl } from '@/lib/supabase'
 import {
@@ -12,28 +12,23 @@ import {
 // would always be null), and the media itself is uploaded to storage instead
 // of stuffing a data URL into storage_path.
 export const saveToGallery: VideoNodeHandler = async (node, inputs) => {
-    const videoUrl =
-        (inputs.videoUrl as string) ??
-        (inputs.stitchedVideoUrl as string) ??
-        undefined
-    const imageUrl =
-        (inputs.imageUrl as string) ??
-        (inputs.outputUrl as string) ??
-        undefined
-    const mediaUrl = videoUrl ?? imageUrl
-    if (!mediaUrl) throw new Error('No media to save')
+    const media = inputs.media as MediaBundle | undefined
+    if (!media?.url) throw new Error('No media to save — wire an image or video port')
+    if (media.kind === 'audio') {
+        throw new Error('Only images and videos can be saved to the gallery')
+    }
 
-    const mediaType: MediaType =
-        videoUrl || mediaUrl.includes('.mp4') ? 'VIDEO' : 'IMAGE'
+    const mediaType: MediaType = media.kind === 'video' ? 'VIDEO' : 'IMAGE'
 
-    // Prefer avatarId flowing in from an upstream select-avatar node,
+    // Prefer the avatar cable from an upstream select-avatar node,
     // fall back to whatever is hard-coded in node config.
+    const avatar = inputs.avatar as AvatarBundle | undefined
     const avatarId =
-        (inputs.avatarId as string) ??
+        avatar?.avatarId ??
         (node.data.config.avatarId as string) ??
         null
 
-    const res = await fetch(mediaUrl)
+    const res = await fetch(media.url)
     if (!res.ok) {
         throw new Error(`Could not fetch media to save (HTTP ${res.status})`)
     }
@@ -54,20 +49,21 @@ export const saveToGallery: VideoNodeHandler = async (node, inputs) => {
         avatar_id: avatarId,
         media_type: mediaType,
         storage_path: path,
-        prompt:
-            (inputs.prompt as string) ??
-            (inputs.fullApiPrompt as string) ??
-            'Video Flow',
+        prompt: media.prompt ?? 'Video Flow',
         metadata: {
             collection: (node.data.config.collection as string) ?? 'default',
             source: 'video-flow',
         },
     })
 
+    const saved: MediaBundle = {
+        kind: media.kind,
+        url: getStoragePublicUrl('generations', path),
+    }
     return {
         output: {
+            media: saved,
             galleryItemId: row.id,
-            savedUrl: getStoragePublicUrl('generations', path),
         },
     }
 }
