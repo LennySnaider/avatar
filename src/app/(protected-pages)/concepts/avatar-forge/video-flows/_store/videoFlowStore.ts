@@ -28,7 +28,19 @@ interface VideoFlowStore {
     executionError: { nodeId: string; message: string } | null
     selectedNodeId: string | null
     setSelectedNodeId: (id: string | null) => void
-    addNode: (type: string, position: XYPosition) => void
+    /** Adds a node; optional config overrides the template defaults. Returns the new node id. */
+    addNode: (
+        type: string,
+        position: XYPosition,
+        config?: Record<string, unknown>,
+    ) => string | null
+    /** Wire two nodes port-to-port (used by canvas seeding / Send to flow). */
+    connectNodes: (
+        source: string,
+        sourceHandle: string,
+        target: string,
+        targetHandle: string,
+    ) => void
     removeNode: (id: string) => void
     setNodeData: (id: string, updates: Partial<VideoNodeData>) => void
     setNodeConfig: (id: string, config: Record<string, unknown>) => void
@@ -90,9 +102,9 @@ export const useVideoFlowStore = create<VideoFlowStore>()((set, get) => ({
     executionError: null,
     selectedNodeId: null,
     setSelectedNodeId: (id) => set({ selectedNodeId: id }),
-    addNode: (type, position) => {
+    addNode: (type, position, config) => {
         const template = getTemplate(type)
-        if (!template) return
+        if (!template) return null
         // Date.now() alone collides when two nodes drop in the same ms.
         const id = `${type}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`
         const newNode: VideoFlowNode = {
@@ -105,10 +117,26 @@ export const useVideoFlowStore = create<VideoFlowStore>()((set, get) => ({
                 category: template.category,
                 icon: template.icon,
                 status: 'idle',
-                config: { ...template.defaultData },
+                config: { ...template.defaultData, ...config },
             },
         }
         set((state) => ({ nodes: [...state.nodes, newNode], isDirty: true }))
+        return id
+    },
+    connectNodes: (source, sourceHandle, target, targetHandle) => {
+        set((state) => ({
+            edges: [
+                ...state.edges,
+                {
+                    id: `e-${source}-${sourceHandle}-${target}-${targetHandle}`,
+                    source,
+                    sourceHandle,
+                    target,
+                    targetHandle,
+                },
+            ],
+            isDirty: true,
+        }))
     },
     removeNode: (id) => {
         set((state) => ({

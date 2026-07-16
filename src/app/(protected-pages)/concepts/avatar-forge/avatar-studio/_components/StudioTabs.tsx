@@ -1,9 +1,10 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import Tabs from '@/components/ui/Tabs'
 import VideoFlowCanvas from '../../video-flows/_components/VideoFlowCanvas'
 import { StudioHeaderSlotContext } from './StudioHeaderSlotContext'
+import { useStudioTabStore } from '../_store/studioTabStore'
 
 const { TabList, TabNav } = Tabs
 
@@ -12,19 +13,22 @@ interface StudioTabsProps {
 }
 
 const StudioTabs = ({ children }: StudioTabsProps) => {
-    const [activeTab, setActiveTab] = useState('avatar-studio')
+    // Tab state lives in a store so the gallery's "Send to flow" action can
+    // switch to the Flow Editor from outside this component.
+    const activeTab = useStudioTabStore((s) => s.activeTab)
+    const setActiveTab = useStudioTabStore((s) => s.setActiveTab)
     // Lazy-mount the Flow Editor: ReactFlow only needs to init once its tab is
     // first activated (it requires a sized container to render).
     const [flowMounted, setFlowMounted] = useState(false)
+    useEffect(() => {
+        if (activeTab === 'flow-editor') setFlowMounted(true)
+    }, [activeTab])
     // DOM node in the tab bar where AvatarStudioMain portals its header actions
     // (Prompts / Upload / Tools) so they share the tabs' row.
     const [headerSlot, setHeaderSlot] = useState<HTMLDivElement | null>(null)
 
     const handleChange = (val: string) => {
         setActiveTab(val)
-        if (val === 'flow-editor') {
-            setFlowMounted(true)
-        }
     }
 
     return (

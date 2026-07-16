@@ -8,6 +8,8 @@ import {
     HiOutlinePhotograph, HiOutlineFilm, HiOutlineScissors, HiOutlineAnnotation,
     HiOutlineDocumentText, HiOutlineMicrophone, HiOutlineSwitchHorizontal,
     HiOutlineSave, HiOutlineLink, HiOutlineCheck, HiOutlineX,
+    HiOutlineLightningBolt, HiOutlineCollection, HiOutlineVideoCamera,
+    HiOutlineShieldCheck, HiOutlineChatAlt, HiOutlineHeart, HiOutlineGlobeAlt,
 } from 'react-icons/hi'
 import type { VideoFlowNode, NodeStatus, MediaBundle, AvatarBundle } from '../_engine/types'
 import { CATEGORY_COLORS } from '../_constants/categoryColors'
@@ -20,6 +22,8 @@ const ICON_MAP: Record<string, React.ComponentType<{ className?: string; style?:
     HiOutlinePhotograph, HiOutlineFilm, HiOutlineScissors, HiOutlineAnnotation,
     HiOutlineDocumentText, HiOutlineMicrophone, HiOutlineSwitchHorizontal,
     HiOutlineSave, HiOutlineLink,
+    HiOutlineLightningBolt, HiOutlineCollection, HiOutlineVideoCamera,
+    HiOutlineShieldCheck, HiOutlineChatAlt, HiOutlineHeart, HiOutlineGlobeAlt,
 }
 
 function StatusBadge({ status }: { status: NodeStatus }) {

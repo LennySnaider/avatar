@@ -18,6 +18,21 @@ export const selectAvatar: VideoNodeHandler = async (node) => {
     return { output: { avatar } }
 }
 
+export const fromGallery: VideoNodeHandler = async (node) => {
+    const config = node.data.config
+    if (!config.url) throw new Error('No gallery item selected')
+
+    const media: MediaBundle = {
+        kind: (config.mediaType as string) === 'VIDEO' ? 'video' : 'image',
+        url: config.url as string,
+        prompt: (config.prompt as string) || undefined,
+        generationId: (config.generationId as string) || undefined,
+        avatarId: (config.avatarId as string) || undefined,
+    }
+
+    return { output: { media } }
+}
+
 export const uploadImage: VideoNodeHandler = async (node) => {
     const { imageUrl, imageBase64 } = node.data.config
     if (!imageUrl && !imageBase64) throw new Error('No image uploaded')

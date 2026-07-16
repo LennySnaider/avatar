@@ -32,6 +32,9 @@ import {
     HiOutlineArchive,
     HiArrowUp,
 } from 'react-icons/hi'
+import { PiFlowArrowDuotone } from 'react-icons/pi'
+import { useVideoFlowStore } from '../../video-flows/_store/videoFlowStore'
+import { useStudioTabStore } from '../_store/studioTabStore'
 import type { GeneratedMedia, AspectRatio, MediaType } from '../types'
 
 interface GalleryPanelProps {
@@ -100,6 +103,26 @@ const GalleryPanel = ({
         scrollBarRef.current
             ?.getScrollElement()
             ?.scrollTo({ top: 0, behavior: 'smooth' })
+    }
+
+    // "Send to flow": drop the media into the Flow Editor as a preconfigured
+    // From Gallery node and jump to that tab. Requires the item to be saved
+    // (publishing nodes need the generations row).
+    const sendToFlow = (media: GeneratedMedia) => {
+        const flowStore = useVideoFlowStore.getState()
+        const offset = flowStore.nodes.length * 24
+        flowStore.addNode(
+            'from-gallery',
+            { x: 60 + offset, y: 320 + offset },
+            {
+                generationId: media.generationId ?? null,
+                url: media.publicUrl ?? media.url,
+                mediaType: media.mediaType,
+                prompt: media.prompt ?? '',
+                avatarId: media.avatarId ?? null,
+            },
+        )
+        useStudioTabStore.getState().setActiveTab('flow-editor')
     }
 
     // Toggle a favorite/archived flag: update the in-memory item AND merge-write
@@ -693,6 +716,27 @@ const GalleryPanel = ({
                                                         <span>Post</span>
                                                     </Button>
                                                 )}
+                                                <Button
+                                                    size="xs"
+                                                    variant="solid"
+                                                    icon={
+                                                        <PiFlowArrowDuotone />
+                                                    }
+                                                    disabled={
+                                                        media.saveState !==
+                                                        'saved'
+                                                    }
+                                                    title={
+                                                        media.saveState !==
+                                                        'saved'
+                                                            ? 'Save to gallery first'
+                                                            : 'Send to flow (opens Flow Editor with this media)'
+                                                    }
+                                                    onClick={(e) => {
+                                                        e.stopPropagation()
+                                                        sendToFlow(media)
+                                                    }}
+                                                />
                                                 {/* Save + Delete grouped on the right, both solid so
                                                         they stay visible over the image. */}
                                                 <div className="ml-auto flex gap-1.5">

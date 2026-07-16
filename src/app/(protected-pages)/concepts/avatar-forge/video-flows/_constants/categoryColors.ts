@@ -1,6 +1,7 @@
 import type { NodeCategory } from '../_engine/types'
 
 export const CATEGORY_COLORS: Record<NodeCategory, { border: string; bg: string; label: string }> = {
+    trigger:    { border: '#84cc16', bg: '#84cc1615', label: 'Trigger' },
     input:      { border: '#10b981', bg: '#10b98115', label: 'Input' },
     ai:         { border: '#8b5cf6', bg: '#8b5cf615', label: 'AI' },
     generation: { border: '#f43f5e', bg: '#f43f5e15', label: 'Generation' },

@@ -18,6 +18,13 @@ import {
     HiOutlineChevronDown,
     HiOutlineChevronRight,
     HiOutlineViewGrid,
+    HiOutlineLightningBolt,
+    HiOutlineCollection,
+    HiOutlineVideoCamera,
+    HiOutlineShieldCheck,
+    HiOutlineChatAlt,
+    HiOutlineHeart,
+    HiOutlineGlobeAlt,
 } from 'react-icons/hi'
 import { TEMPLATES_BY_CATEGORY } from '../_nodes/templates'
 import { CATEGORY_COLORS } from '../_constants/categoryColors'
@@ -38,9 +45,16 @@ const ICON_MAP: Record<string, React.ComponentType<{ className?: string; style?:
     HiOutlineSwitchHorizontal,
     HiOutlineSave,
     HiOutlineLink,
+    HiOutlineLightningBolt,
+    HiOutlineCollection,
+    HiOutlineVideoCamera,
+    HiOutlineShieldCheck,
+    HiOutlineChatAlt,
+    HiOutlineHeart,
+    HiOutlineGlobeAlt,
 }
 
-const CATEGORY_ORDER: NodeCategory[] = ['input', 'ai', 'generation', 'transform', 'voice', 'logic', 'output']
+const CATEGORY_ORDER: NodeCategory[] = ['trigger', 'input', 'ai', 'generation', 'transform', 'voice', 'logic', 'output']
 
 export default function NodePalette() {
     const [isOpen, setIsOpen] = useState(true)

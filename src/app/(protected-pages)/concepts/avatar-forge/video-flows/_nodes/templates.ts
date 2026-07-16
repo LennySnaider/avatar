@@ -5,6 +5,17 @@ import type { VideoNodeTemplate } from '../_engine/types'
 // `image`/`video`/`audio` cables carry { kind, url, base64?, ... }. This keeps
 // the canvas readable — one wire per concept instead of four parallel wires.
 export const NODE_TEMPLATES: VideoNodeTemplate[] = [
+    // ─── Trigger ─────────────────────────────────────────────
+    {
+        type: 'manual-trigger',
+        label: 'Manual Trigger',
+        category: 'trigger',
+        icon: 'HiOutlineLightningBolt',
+        description: 'Starts the flow when you press Run',
+        inputs: [],
+        outputs: [{ key: 'trigger', type: 'trigger' }],
+        defaultData: {},
+    },
     // ─── Input ───────────────────────────────────────────────
     {
         type: 'select-avatar',
@@ -12,9 +23,19 @@ export const NODE_TEMPLATES: VideoNodeTemplate[] = [
         category: 'input',
         icon: 'HiOutlineUser',
         description: 'Pick an avatar from your gallery',
-        inputs: [],
+        inputs: [{ key: 'trigger', type: 'trigger' }],
         outputs: [{ key: 'avatar', type: 'avatar' }],
         defaultData: { avatarId: null },
+    },
+    {
+        type: 'from-gallery',
+        label: 'From Gallery',
+        category: 'input',
+        icon: 'HiOutlineCollection',
+        description: 'Use an existing image/video from your gallery',
+        inputs: [{ key: 'trigger', type: 'trigger' }],
+        outputs: [{ key: 'media', type: 'media' }],
+        defaultData: { generationId: null },
     },
     {
         type: 'upload-image',
@@ -39,13 +60,49 @@ export const NODE_TEMPLATES: VideoNodeTemplate[] = [
     },
     {
         type: 'describe-image',
-        label: 'Describe Image',
+        label: 'Img→Prompt',
         category: 'ai',
         icon: 'HiOutlineEye',
-        description: 'Generate text description from image',
+        description: 'Generate text description from image (same as Studio Img→Prompt)',
         inputs: [{ key: 'image', type: 'image' }],
         outputs: [{ key: 'description', type: 'text' }],
         defaultData: { detailLevel: 'detailed' },
+    },
+    {
+        type: 'prompt-from-video',
+        label: 'Prompt from Video',
+        category: 'ai',
+        icon: 'HiOutlineVideoCamera',
+        description: 'Analyze a video and write an i2v prompt that recreates it',
+        inputs: [{ key: 'video', type: 'video' }],
+        outputs: [{ key: 'prompt', type: 'text' }],
+        defaultData: {},
+    },
+    {
+        type: 'check-prompt-safety',
+        label: 'Check Prompt Safety',
+        category: 'ai',
+        icon: 'HiOutlineShieldCheck',
+        description: 'Analyze prompt safety and get an optimized safe version',
+        inputs: [{ key: 'prompt', type: 'text' }],
+        outputs: [
+            { key: 'safePrompt', type: 'text' },
+            { key: 'isSafe', type: 'any' },
+        ],
+        defaultData: {},
+    },
+    {
+        type: 'caption-ai',
+        label: 'Caption (AI)',
+        category: 'ai',
+        icon: 'HiOutlineChatAlt',
+        description: 'Write a social caption + hashtags for the media',
+        inputs: [{ key: 'media', type: 'media' }],
+        outputs: [
+            { key: 'caption', type: 'text' },
+            { key: 'hashtags', type: 'any' },
+        ],
+        defaultData: { language: 'es', draft: '' },
     },
     // ─── Generation ──────────────────────────────────────────
     {
@@ -143,6 +200,38 @@ export const NODE_TEMPLATES: VideoNodeTemplate[] = [
         ],
         outputs: [{ key: 'media', type: 'media' }],
         defaultData: { collection: 'default' },
+    },
+    {
+        type: 'fanvue-post',
+        label: 'Fanvue: Post',
+        category: 'output',
+        icon: 'HiOutlineHeart',
+        description: 'Publish a saved gallery item to Fanvue',
+        inputs: [
+            { key: 'media', type: 'media' },
+            { key: 'caption', type: 'text' },
+        ],
+        outputs: [{ key: 'post', type: 'any' }],
+        defaultData: {
+            audience: 'subscribers',
+            priceCents: 0,
+            creatorUserUuid: '',
+        },
+    },
+    {
+        type: 'social-post',
+        label: 'Social: Publish',
+        category: 'output',
+        icon: 'HiOutlineGlobeAlt',
+        description: 'Publish a saved gallery item to Instagram/TikTok via Upload-Post',
+        inputs: [
+            { key: 'media', type: 'media' },
+            { key: 'caption', type: 'text' },
+            { key: 'hashtags', type: 'any' },
+            { key: 'avatar', type: 'avatar' },
+        ],
+        outputs: [{ key: 'post', type: 'any' }],
+        defaultData: { platforms: 'instagram' },
     },
     {
         type: 'webhook',

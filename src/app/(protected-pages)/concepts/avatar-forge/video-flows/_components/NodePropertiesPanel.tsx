@@ -13,6 +13,7 @@ import AvatarPickerField from './panels/AvatarPickerField'
 import UploadImageField from './panels/UploadImageField'
 import VoicePickerField from './panels/VoicePickerField'
 import ColorPickerField from './panels/ColorPickerField'
+import GalleryPickerField from './panels/GalleryPickerField'
 
 export default function NodePropertiesPanel() {
     const { nodes, selectedNodeId, setSelectedNodeId, setNodeConfig, removeNode } =
@@ -79,6 +80,18 @@ export default function NodePropertiesPanel() {
                                 avatarId: data.config.avatarId as string | null,
                                 avatarName: data.config.avatarName as string | undefined,
                                 thumbnailUrl: data.config.thumbnailUrl as string | undefined,
+                            }}
+                            onSelect={(patch) => setMany(patch)}
+                        />
+                    )}
+
+                    {data.type === 'from-gallery' && (
+                        <GalleryPickerField
+                            value={{
+                                generationId: data.config.generationId as string | null,
+                                url: data.config.url as string | undefined,
+                                mediaType: data.config.mediaType as string | undefined,
+                                prompt: data.config.prompt as string | undefined,
                             }}
                             onSelect={(patch) => setMany(patch)}
                         />
@@ -225,6 +238,7 @@ function isCustomField(nodeType: string, key: string): boolean {
     if (nodeType === 'select-avatar' && key === 'avatarId') return true
     if (nodeType === 'upload-image') return true
     if (nodeType === 'text-to-speech' && key === 'voiceId') return true
+    if (nodeType === 'from-gallery') return true
     return false
 }
 
@@ -241,6 +255,7 @@ function getOptionsForField(key: string): string[] {
         transition: ['none', 'fade', 'dissolve'],
         mode: ['standard', 'pro'],
         operator: ['equals', 'not-equals', 'contains', 'greater-than', 'less-than'],
+        audience: ['subscribers', 'followers-and-subscribers'],
         aspectRatio: ['1:1', '16:9', '9:16', '4:3', '3:4'],
         model: ['gemini', 'minimax'],
         duration: ['5', '10'],

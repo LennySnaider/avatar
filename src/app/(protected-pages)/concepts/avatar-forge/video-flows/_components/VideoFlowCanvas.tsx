@@ -41,16 +41,20 @@ export default function VideoFlowCanvas() {
         setSelectedNodeId,
     } = useVideoFlowStore()
 
-    // Seed an empty canvas with the Select Avatar node — nearly every flow
-    // starts from an avatar, so the user has a visible starting point instead
-    // of a blank grid.
+    // Seed an empty canvas with Trigger → Select Avatar already wired — nearly
+    // every flow starts there, so the user has a working starting point
+    // instead of a blank grid.
     const seeded = useRef(false)
     useEffect(() => {
         if (seeded.current) return
         seeded.current = true
         const store = useVideoFlowStore.getState()
         if (store.nodes.length === 0 && !store.flowId) {
-            store.addNode('select-avatar', { x: 80, y: 120 })
+            const triggerId = store.addNode('manual-trigger', { x: 40, y: 150 })
+            const avatarId = store.addNode('select-avatar', { x: 320, y: 120 })
+            if (triggerId && avatarId) {
+                store.connectNodes(triggerId, 'trigger', avatarId, 'trigger')
+            }
             store.setIsDirty(false)
         }
     }, [])

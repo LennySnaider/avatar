@@ -9,6 +9,7 @@ export type NodeStatus =
     | 'skipped'
 
 export type NodeCategory =
+    | 'trigger'
     | 'input'
     | 'ai'
     | 'generation'
@@ -24,6 +25,7 @@ export type NodeCategory =
  * `text`, so one cable carries everything a node needs.
  */
 export type PortType =
+    | 'trigger'
     | 'avatar'
     | 'image'
     | 'video'
@@ -48,6 +50,21 @@ export interface MediaBundle {
     duration?: number
     /** Prompt that produced the media — used by save-to-gallery records. */
     prompt?: string
+    /**
+     * Gallery row id when the media exists in `generations` (From Gallery /
+     * Save to Gallery set it). Publishing nodes (Fanvue/Social) require it.
+     */
+    generationId?: string
+    /** Owning avatar, when known (used by publishing nodes). */
+    avatarId?: string
+}
+
+/** Value shape carried by trigger wires (flow start context). */
+export interface TriggerBundle {
+    kind: 'trigger'
+    source: 'manual' | 'schedule' | 'event'
+    firedAt: string
+    payload?: Record<string, unknown>
 }
 
 /** Value shape carried by avatar wires: full identity in one cable. */

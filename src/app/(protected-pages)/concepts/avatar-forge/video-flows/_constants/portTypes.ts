@@ -2,6 +2,7 @@ import type { PortType } from '../_engine/types'
 
 /** Socket color per port data type (ComfyUI-style visual typing). */
 export const PORT_COLORS: Record<PortType, string> = {
+    trigger: '#84cc16', // lime (flow start)
     avatar: '#10b981', // emerald
     image:  '#f59e0b', // amber
     video:  '#f43f5e', // rose
@@ -13,6 +14,7 @@ export const PORT_COLORS: Record<PortType, string> = {
 
 /** Port types shown in the palette legend (in display order). */
 export const PORT_LEGEND: PortType[] = [
+    'trigger',
     'avatar',
     'image',
     'video',
