@@ -789,7 +789,7 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                         .replace(/\[FACE:[^\]]*\]/gi, '')
                         .replace(/\s{2,}/g, ' ')
                         .trim()
-                    let miniMaxPrompt = `${buildDiffusionBodyPreamble(measurements)} ${sceneText}`
+                    let miniMaxPrompt = `${buildDiffusionBodyPreamble(measurements, { cameraShot, cameraAngle })} ${sceneText}`
                     const faceRoom = MINIMAX_CAP - miniMaxPrompt.length - 12
                     if (faceDescription?.trim() && faceRoom > 80) {
                         miniMaxPrompt += ` [FACE: ${faceDescription.trim().slice(0, faceRoom)}]`
@@ -874,7 +874,7 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                     // instruction-following models below (Nano Banana Pro / GPT Image 2
                     // / Flux Kontext) replace kiePrompt with their own harness, so this
                     // only reaches the diffusion models that actually benefit from it.
-                    let kiePrompt = `${buildDiffusionBodyPreamble(measurements)} ${fullPrompt}`
+                    let kiePrompt = `${buildDiffusionBodyPreamble(measurements, { cameraShot, cameraAngle })} ${fullPrompt}`
                     let kieRefsToSend = kieReferenceImages
                     // The single ref passed to the sync adapters (flux-kontext /
                     // gpt-4o / generic). Defaults to the face; flux-kontext edit

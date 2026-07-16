@@ -180,19 +180,62 @@ function buildInlineBodyDescription(m: PhysicalMeasurements): string {
 }
 
 /**
+ * Natural-language framing/angle phrases for DIFFUSION models — they follow
+ * prose, not the ALL-CAPS harness of FRAMING_DESCRIPTIONS/ANGLE_DESCRIPTIONS
+ * (which never reached these models anyway: getFullPrompt() carries no camera
+ * info, so the UI's Framing selector was silently ignored outside Gemini/NBP).
+ */
+const DIFFUSION_FRAMING: Record<string, string> = {
+    EXTREME_CLOSE_UP: 'extreme close-up shot of the face, eyes in sharp detail',
+    CLOSE_UP: 'close-up portrait, head and shoulders framing',
+    MEDIUM_CLOSE_UP: 'medium close-up, framed from the chest up',
+    MEDIUM_SHOT: 'medium shot, framed from the waist up',
+    MEDIUM_FULL: 'medium-full shot, framed from the knees up',
+    FULL_SHOT: 'full body shot, the ENTIRE body visible from head to feet (legs and footwear fully in frame, nothing cropped)',
+    WIDE_SHOT: 'wide shot, full body from head to feet with the surrounding environment visible',
+    EXTREME_WIDE: 'extreme wide shot, the subject small within a vast environment',
+}
+
+const DIFFUSION_ANGLE: Record<string, string> = {
+    LOW_ANGLE: 'shot from a low camera angle looking up at the subject',
+    HIGH_ANGLE: 'shot from a high camera angle looking down at the subject',
+    DUTCH_ANGLE: 'dutch angle, tilted camera',
+    BIRDS_EYE: "bird's-eye view from directly above",
+    WORMS_EYE: "worm's-eye view from ground level looking straight up",
+    OVER_SHOULDER: 'over-the-shoulder shot',
+    POV: 'first-person POV shot',
+    PROFILE: 'profile view, the face at 90 degrees to the camera',
+    THREE_QUARTER: 'three-quarter view, the face turned 45 degrees from the camera',
+}
+
+/**
  * Diffusion-friendly identity anchor. Seedream / FLUX.2 / Z-Image / Qwen /
  * Ideogram / Grok / MiniMax are DIFFUSION models: they follow natural-language
  * description, NOT Gemini's instruction harness (the SYSTEM COMMANDS / ASCII
  * boxes / "FAILURE CONDITIONS" in buildAvatarPrompt), which those models can't
- * parse and may even try to render as text. This ports the ONE piece that
- * transfers — the rich inline body sentence Gemini feeds itself (buildAvatarPrompt's
- * `enhancedPrompt = "A ${inlineBody}. ${prompt}"`) — as a leading sentence so body
- * proportions land the SAME way they do on the direct Gemini path. Face identity
- * already rides in fullPrompt's `[FACE:]` tag (and MiniMax's subject_reference /
- * the i2i face image), so it is not re-added here.
+ * parse and may even try to render as text. This ports the pieces that
+ * transfer — the rich inline body sentence Gemini feeds itself (buildAvatarPrompt's
+ * `enhancedPrompt = "A ${inlineBody}. ${prompt}"`) plus the UI's camera
+ * framing/angle as leading prose — so body proportions AND framing land the
+ * same way they do on the direct Gemini path. Face identity already rides in
+ * fullPrompt's `[FACE:]` tag (and MiniMax's subject_reference / the i2i face
+ * image), so it is not re-added here.
  */
-export function buildDiffusionBodyPreamble(measurements: PhysicalMeasurements): string {
-    return `A ${buildInlineBodyDescription(measurements)}.`
+export function buildDiffusionBodyPreamble(
+    measurements: PhysicalMeasurements,
+    camera?: { cameraShot?: string; cameraAngle?: string | null },
+): string {
+    const framing =
+        camera?.cameraShot && camera.cameraShot !== 'AUTO'
+            ? (DIFFUSION_FRAMING[camera.cameraShot] ?? '')
+            : ''
+    const angle = camera?.cameraAngle ? (DIFFUSION_ANGLE[camera.cameraAngle] ?? '') : ''
+    const camPhrase = [framing, angle].filter(Boolean).join(', ')
+    const body = `A ${buildInlineBodyDescription(measurements)}.`
+    if (!camPhrase) return body
+    // Framing FIRST — composition instructions carry the most weight at the
+    // start of a diffusion prompt.
+    return `${camPhrase.charAt(0).toUpperCase()}${camPhrase.slice(1)}. ${body}`
 }
 
 // Emphatic body specification block (used when there's NO body reference image).
