@@ -26,17 +26,14 @@ const SANITIZATION_RULES: SanitizationRule[] = [
     { pattern: /bandeau\s+bikini/gi, replacement: 'bandeau-style swim', label: 'bandeau bikini' },
     { pattern: /triangle\s+bikini\s+top/gi, replacement: 'triangle swim top', label: 'triangle bikini top' },
     { pattern: /triangle\s+bikini/gi, replacement: 'triangle swim top', label: 'triangle bikini' },
-    { pattern: /string\s+bikini/gi, replacement: 'minimal two-piece swimwear', label: 'string bikini' },
-    { pattern: /two[- ]piece\s+bikini/gi, replacement: 'two-piece swimwear', label: 'two-piece bikini' },
+    { pattern: /string\s+bikini/gi, replacement: 'minimal swim set', label: 'string bikini' },
+    { pattern: /two[- ]piece\s+bikini/gi, replacement: 'two-piece swim set', label: 'two-piece bikini' },
     { pattern: /bikini\s+tops?\b/gi, replacement: 'swim top', label: 'bikini top' },
-    { pattern: /bikini\s+bottoms?\b/gi, replacement: 'swim bottom (brief-style swimwear, NOT a skirt or shorts)', label: 'bikini bottom' },
+    { pattern: /bikini\s+bottoms?\b/gi, replacement: 'swim bottom', label: 'bikini bottom' },
 
     // ── Single words ──
-    // "swimwear"/"swim bottom" keeps the garment TYPE explicit. The old
-    // "swim set" wording was ambiguous — Gemini rendered "mini swim set" as a
-    // sporty top + MINI SKIRT combo, replacing the bikini bottom entirely.
-    { pattern: /\bbikinis\b/gi, replacement: 'two-piece swimwear (swim top and swim bottom)', label: 'bikinis' },
-    { pattern: /\bbikini\b/gi, replacement: 'two-piece swimwear (swim top and swim bottom)', label: 'bikini' },
+    { pattern: /\bbikinis\b/gi, replacement: 'swim sets', label: 'bikinis' },
+    { pattern: /\bbikini\b/gi, replacement: 'swim set', label: 'bikini' },
     { pattern: /\bstrapless\b/gi, replacement: 'off-shoulder', label: 'strapless' },
     { pattern: /\blingerie\b/gi, replacement: 'delicate loungewear', label: 'lingerie' },
     { pattern: /\bbralette\b/gi, replacement: 'fitted top', label: 'bralette' },

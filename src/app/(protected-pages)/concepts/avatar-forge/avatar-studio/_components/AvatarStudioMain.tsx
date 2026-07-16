@@ -890,7 +890,8 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                     // Guarded on kieReferenceImages.length so we never send a lone
                     // clone with no FACE_ANCHOR image to back the [FACE_ANCHOR] label.
                     if (
-                        kieModel === 'nano-banana-pro' &&
+                        (kieModel === 'nano-banana-pro' ||
+                            kieModel.startsWith('nano-banana-2')) &&
                         optimizedCloneRef &&
                         kieReferenceImages.length > 0
                     ) {
@@ -909,7 +910,14 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                         // Flux is single-input (edit on the Clone canvas) so it can run
                         // with ONLY a clone and no avatar ref images; the others need
                         // their ref array, hence the length>0 path above.
-                        if (kieModel === 'nano-banana-pro') {
+                        // nano-banana-2 / -lite are Gemini-family too: same
+                        // instruction harness as nano-banana-pro (the plain
+                        // diffusion preamble left the face unanchored — the
+                        // output wasn't the avatar).
+                        if (
+                            kieModel === 'nano-banana-pro' ||
+                            kieModel.startsWith('nano-banana-2')
+                        ) {
                             const { systemPreamble, finalPrompt } =
                                 buildAvatarPrompt({
                                     prompt: fullPrompt,

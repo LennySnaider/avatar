@@ -760,15 +760,16 @@ const GalleryPanel = ({
                 </div>
             </ScrollBar>
 
-            {/* Scroll to top — floats bottom-right over the gallery, right
-                above the creation bar / Generate button. */}
+            {/* Scroll to top — anclado al borde inferior de la galería (pegado
+                al panel de creación), color primario para que no se pierda
+                sobre las fotos. */}
             {showScrollTop && (
                 <button
                     type="button"
                     onClick={scrollToTop}
                     title="Volver arriba"
                     aria-label="Volver arriba"
-                    className="absolute bottom-4 right-6 z-20 w-10 h-10 rounded-full bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-200 shadow-lg ring-1 ring-gray-300 dark:ring-gray-600 flex items-center justify-center hover:bg-gray-50 dark:hover:bg-gray-700 hover:text-primary transition-colors"
+                    className="absolute bottom-1 right-4 z-20 w-10 h-10 rounded-full bg-primary text-white shadow-lg ring-2 ring-white/60 dark:ring-gray-900/60 flex items-center justify-center hover:bg-primary-deep transition-colors"
                 >
                     <HiArrowUp className="w-5 h-5" />
                 </button>
