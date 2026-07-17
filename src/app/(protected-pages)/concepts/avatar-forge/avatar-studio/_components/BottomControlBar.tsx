@@ -424,6 +424,18 @@ const BottomControlBar = ({
                 const currentPrompt = useAvatarStudioStore.getState().prompt
                 const cloneText = `[CLONE: ${description}]`
                 setPrompt(currentPrompt ? `${currentPrompt} ${cloneText}` : cloneText)
+                // El analizador devuelve este fallback neutro cuando Gemini se
+                // rehúsa a describir la imagen (contenido explícito duro, aun
+                // con safetySettings relajados). Antes esto era un "Done!"
+                // silencioso sin descripción real — avisa para que el usuario
+                // sepa que puede añadir los detalles a mano.
+                if (description.includes('replicate the subject exactly as in the reference image')) {
+                    toast.push(
+                        <Notification type="info" title="Clone sin descripción">
+                            Gemini no pudo describir esta imagen (contenido explícito). El clon usará la IMAGEN tal cual — los modelos con soporte de imagen (Gemini, Nano, GPT) la replican igual; para los de solo-texto añade los detalles al prompt a mano.
+                        </Notification>,
+                    )
+                }
             }
         } catch (error) {
             console.error('Failed to analyze clone image:', error)

@@ -1,6 +1,19 @@
 'use server'
 
-import { GoogleGenAI, Type } from '@google/genai'
+import { GoogleGenAI, Type, HarmCategory, HarmBlockThreshold } from '@google/genai'
+
+// Análisis de imágenes de referencia (Clone/Pose/Place/video-prompt): es
+// ENTENDIMIENTO de imagen, no generación. Sin esto, Gemini devuelve respuesta
+// VACÍA con refs sugerentes/NSFW y el Clone caía en silencio al fallback
+// neutro ("Done!" sin descripción real). BLOCK_NONE desactiva el filtro de
+// respuesta para el análisis; si el modelo aun así se rehúsa (explícito duro),
+// los callers conservan su fallback + aviso.
+const ANALYSIS_SAFETY_SETTINGS = [
+    { category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT, threshold: HarmBlockThreshold.BLOCK_NONE },
+    { category: HarmCategory.HARM_CATEGORY_HARASSMENT, threshold: HarmBlockThreshold.BLOCK_NONE },
+    { category: HarmCategory.HARM_CATEGORY_HATE_SPEECH, threshold: HarmBlockThreshold.BLOCK_NONE },
+    { category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT, threshold: HarmBlockThreshold.BLOCK_NONE },
+]
 import type { PhysicalMeasurements, AspectRatio } from '@/@types/supabase'
 import { filterKnownSafeCorrections } from '@/app/(protected-pages)/concepts/avatar-forge/avatar-studio/_constants/knownSafeWords'
 import { sanitizePromptForGeneration, aggressiveSanitize } from '@/utils/promptSanitizer'
@@ -512,6 +525,7 @@ RULES:
 
         const response = await ai.models.generateContent({
             model: 'gemini-2.5-flash',
+            config: { safetySettings: ANALYSIS_SAFETY_SETTINGS },
             contents: {
                 parts: [
                     { inlineData: { mimeType: input.mimeType, data: cleanBase64Data(input.base64) } },
@@ -816,6 +830,7 @@ export async function analyzePoseFromImage(image: { base64: string; mimeType: st
     try {
         const response = await ai.models.generateContent({
             model: 'gemini-2.5-flash',
+            config: { safetySettings: ANALYSIS_SAFETY_SETTINGS },
             contents: {
                 parts: [
                     {
@@ -885,6 +900,7 @@ export async function analyzeImageForClone(image: { base64: string; mimeType: st
     try {
         const response = await ai.models.generateContent({
             model: 'gemini-2.5-flash',
+            config: { safetySettings: ANALYSIS_SAFETY_SETTINGS },
             contents: {
                 parts: [
                     {
@@ -976,6 +992,7 @@ export async function analyzeImageForPlace(image: { base64: string; mimeType: st
     try {
         const response = await ai.models.generateContent({
             model: 'gemini-2.5-flash',
+            config: { safetySettings: ANALYSIS_SAFETY_SETTINGS },
             contents: {
                 parts: [
                     {
