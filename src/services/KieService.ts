@@ -565,12 +565,41 @@ export async function generateImageKie(
 
         console.log(`[KIE] Submitting generic image task: model=${resolvedModel}`)
         // Submit-only (browser-polled) path: hand back the taskId, skip the poll.
+        // Keeps the sync path's self-healing SUBMIT retries — createTask rejects
+        // both failures synchronously, so they belong here too:
+        // - "text length cannot exceed the maximum limit": KIE enforces stricter
+        //   per-model/variant caps than documented → shrink to ~900 chars (the
+        //   identity anchor leads the prompt, so it survives) and resubmit once.
+        // - "internal error, please try again later": transient, resubmit once.
         if (submitSink) {
-            submitSink.taskId = await withTimeout(
-                submitTask({ model: resolvedModel, input }),
-                30_000,
-                'KIE image submit',
-            )
+            try {
+                submitSink.taskId = await withTimeout(
+                    submitTask({ model: resolvedModel, input }),
+                    30_000,
+                    'KIE image submit',
+                )
+            } catch (err) {
+                const msg = err instanceof Error ? err.message : String(err)
+                const isTransient = /internal error/i.test(msg)
+                const isTooLong = /text length|maximum limit/i.test(msg)
+                if (!isTransient && !isTooLong) throw err
+                if (isTooLong) {
+                    const hard = String(input.prompt ?? '').slice(0, 900)
+                    const cut = hard.lastIndexOf(' ')
+                    input.prompt = cut > 700 ? hard.slice(0, cut) : hard
+                    console.warn(
+                        `[KIE] ${resolvedModel} rejected the prompt length — retrying submit at ${String(input.prompt).length} chars`,
+                    )
+                } else {
+                    console.warn('[KIE] Transient internal error — resubmitting once')
+                    await new Promise((r) => setTimeout(r, 2000))
+                }
+                submitSink.taskId = await withTimeout(
+                    submitTask({ model: resolvedModel, input }),
+                    30_000,
+                    'KIE image submit (retry)',
+                )
+            }
             return { url: '', fullApiPrompt: promptText }
         }
         // Self-healing retries (ONE resubmit) for two recoverable failures:

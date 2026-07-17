@@ -241,6 +241,39 @@ async function genMotionControlKie(
     return r.url as string
 }
 
+/**
+ * Sube un blob al bucket `generations` vía URL firmada, con reintentos (3).
+ * La subida va directa del navegador a Supabase Storage (Cloudflare delante) y
+ * a veces responde una página HTML transitoria que el cliente reporta como
+ * "Unexpected token '<' … is not valid JSON" — un retry corto lo absorbe.
+ * URL firmada NUEVA en cada intento (son de un solo uso). Devuelve el path.
+ */
+async function uploadGenerationWithRetry(
+    mediaType: Parameters<typeof apiCreateGenerationUploadUrl>[0],
+    blob: Blob,
+    contentType: string,
+): Promise<string> {
+    let lastError: unknown = null
+    for (let attempt = 1; attempt <= 3; attempt++) {
+        try {
+            const { path, token } =
+                await apiCreateGenerationUploadUrl(mediaType)
+            const { error: uploadError } = await supabase.storage
+                .from('generations')
+                .uploadToSignedUrl(path, token, blob, { contentType })
+            if (uploadError) throw new Error(uploadError.message)
+            return path
+        } catch (e) {
+            lastError = e
+            console.warn(`[Gallery] Upload attempt ${attempt}/3 failed:`, e)
+            if (attempt < 3) {
+                await new Promise((r) => setTimeout(r, attempt * 1500))
+            }
+        }
+    }
+    throw lastError instanceof Error ? lastError : new Error(String(lastError))
+}
+
 const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
     const [isAvatarSelectorOpen, setIsAvatarSelectorOpen] = useState(false)
     const [isAvatarEditOpen, setIsAvatarEditOpen] = useState(false)
@@ -653,13 +686,11 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                 const contentType =
                     media.mediaType === 'VIDEO' ? 'video/mp4' : 'image/jpeg'
 
-                const { path, token } = await apiCreateGenerationUploadUrl(
+                const path = await uploadGenerationWithRetry(
                     media.mediaType,
+                    blob,
+                    contentType,
                 )
-                const { error: uploadError } = await supabase.storage
-                    .from('generations')
-                    .uploadToSignedUrl(path, token, blob, { contentType })
-                if (uploadError) throw new Error(uploadError.message)
 
                 const row = await apiSaveGeneration({
                     user_id: userId,
@@ -2162,13 +2193,11 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                 const contentType =
                     media.mediaType === 'VIDEO' ? 'video/mp4' : 'image/jpeg'
 
-                const { path, token } = await apiCreateGenerationUploadUrl(
+                const path = await uploadGenerationWithRetry(
                     media.mediaType,
+                    blob,
+                    contentType,
                 )
-                const { error: uploadError } = await supabase.storage
-                    .from('generations')
-                    .uploadToSignedUrl(path, token, blob, { contentType })
-                if (uploadError) throw new Error(uploadError.message)
 
                 const row = await apiSaveGeneration({
                     user_id: userId,
