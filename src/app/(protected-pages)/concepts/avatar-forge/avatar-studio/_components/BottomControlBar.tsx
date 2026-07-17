@@ -638,6 +638,13 @@ const BottomControlBar = ({
                 row ENVUELVE en 4 filas: [avatar+modo] / [textarea full] /
                 [provider+refs full] / [Generate full]; en md+ queda idéntico. */}
             <div className="flex flex-wrap md:flex-nowrap items-center gap-3 px-4 pt-3 pb-2">
+                {/* Cluster izquierdo: en DESKTOP el selector de provider va
+                    ARRIBA del bloque avatar+modo (md:flex-col-reverse) para que
+                    el textarea gane ancho horizontal; en móvil van en una fila
+                    que envuelve como antes. */}
+                <div className="flex flex-wrap items-center gap-2 shrink-0 md:flex-col-reverse md:items-start">
+                {/* Avatar + Modo (una sola fila dentro del cluster) */}
+                <div className="flex items-center gap-2">
                 {/* Avatar Section */}
                 <div className="flex items-center gap-2 shrink-0">
                     {hasAvatar ? (
@@ -713,10 +720,11 @@ const BottomControlBar = ({
                         <span className="hidden sm:inline">Video</span>
                     </button>
                 </div>
+                </div>{/* /Avatar + Modo */}
 
-                {/* Provider selector — junto al toggle Image/Video para ahorrar
-                    una fila (antes vivía sobre los ref slots). En Speak muestra
-                    el motor real + salida (×). */}
+                {/* Provider selector — en DESKTOP queda arriba del bloque
+                    avatar+modo (md:flex-col-reverse del cluster); en móvil, en
+                    la misma fila. En Speak muestra el motor real + salida (×). */}
                 {generationMode === 'VIDEO' && videoSubMode === 'SPEAK' ? (
                     <span className="shrink-0 flex items-center gap-1.5 px-2 py-1.5 bg-purple-500/10 rounded-lg">
                         <span className="w-1.5 h-1.5 rounded-full bg-purple-500 shrink-0" />
@@ -745,6 +753,7 @@ const BottomControlBar = ({
                         <HiOutlineCog className="w-3 h-3 shrink-0 text-gray-400" />
                     </button>
                 )}
+                </div>{/* /Cluster izquierdo */}
 
                 {/* Prompt Input with Integrated Tags */}
                 <div className="flex-1 min-w-0 basis-full md:basis-auto order-3 md:order-0">
