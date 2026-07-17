@@ -1,7 +1,10 @@
 import Container from '@/components/shared/Container'
 import AdaptiveCard from '@/components/shared/AdaptiveCard'
 import ProvidersManager from './_components/ProvidersManager'
-import { DEFAULT_PROVIDERS } from '../avatar-studio/_components/ProviderManagerDrawer'
+// Del catálogo UNIVERSAL (sin 'use client') — importar el catálogo vía el
+// drawer (client) desde este server component entregaba referencias RSC
+// opacas ("DEFAULT_PROVIDERS is not iterable").
+import { DEFAULT_PROVIDERS } from '../_shared/providerCatalog'
 
 /**
  * AI Providers — catálogo REAL: los mismos providers cableados que usa el

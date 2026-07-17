@@ -27,7 +27,7 @@ import {
     PROVIDER_COST,
     PROVIDER_TRAITS,
     getProviderDescription,
-} from '../../avatar-studio/_components/ProviderManagerDrawer'
+} from '../../_shared/providerCatalog'
 import {
     readFavoriteIds,
     writeFavoriteIds,
