@@ -24,6 +24,8 @@ import {
     writeFavoriteIds,
     readHiddenIds,
     sortByUserOrder,
+    readDefaultProviderId,
+    writeDefaultProviderId,
 } from '../../_shared/providerPrefs'
 import {
     DEFAULT_PROVIDERS,
@@ -36,25 +38,8 @@ import {
 // de este archivo; la fuente de verdad ahora es _shared/providerCatalog.
 export { DEFAULT_PROVIDERS, PROVIDER_COST, PROVIDER_TRAITS, getProviderDescription }
 
-// Default provider PER MODE, persisted in localStorage so it survives across
-// sessions — the store's activeProviderId only lives in sessionStorage, so it
-// resets when the tab closes. On a fresh session the studio starts on this one.
-const defaultProviderKey = (mode: string) => `avatar-studio:default-provider:${mode}`
-function readDefaultProviderId(mode: string): string | null {
-    if (typeof window === 'undefined') return null
-    try {
-        return window.localStorage.getItem(defaultProviderKey(mode))
-    } catch {
-        return null
-    }
-}
-function writeDefaultProviderId(mode: string, id: string) {
-    try {
-        window.localStorage.setItem(defaultProviderKey(mode), id)
-    } catch {
-        /* ignore (private mode / disabled storage) */
-    }
-}
+// El default (pin 📌) por modo vive en _shared/providerPrefs — compartido con
+// AvatarStudioMain, cuyo init también debe respetarlo.
 
 // Favoritos / ocultos / orden manual: módulo compartido con la página AI
 // Providers (misma key de ⭐ que se usaba aquí — un solo favorito en la app).

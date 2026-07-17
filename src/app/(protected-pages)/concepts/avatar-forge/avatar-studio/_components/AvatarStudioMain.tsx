@@ -86,6 +86,7 @@ import {
     type RefRole,
 } from '@/utils/avatarPromptBuilder'
 import { describeBody } from '@/utils/bodyDescriptors'
+import { readDefaultProviderId } from '../../_shared/providerPrefs'
 import { createPortal } from 'react-dom'
 import { useStudioHeaderSlot } from './StudioHeaderSlotContext'
 import {
@@ -471,11 +472,20 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
         if (!activeProviderId || !isProviderValidForMode) {
             const availableProviders =
                 providers.length > 0 ? providers : DEFAULT_PROVIDERS
-            const defaultProvider = availableProviders.find((p) =>
+            const isForMode = (p: (typeof availableProviders)[number]) =>
                 generationMode === 'IMAGE'
                     ? p.supports_image
-                    : p.supports_video,
-            )
+                    : p.supports_video
+            // El pin (📌 del Provider Manager) manda: sin él, este efecto
+            // caía SIEMPRE al primero del catálogo (Gemini 3 Pro) e ignoraba
+            // el default guardado del modo.
+            const pinned = readDefaultProviderId(generationMode)
+            const defaultProvider =
+                (pinned
+                    ? availableProviders.find(
+                          (p) => p.id === pinned && isForMode(p),
+                      )
+                    : null) ?? availableProviders.find(isForMode)
             if (defaultProvider) {
                 setActiveProviderId(defaultProvider.id)
             }

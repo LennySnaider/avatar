@@ -42,6 +42,29 @@ export const writeHiddenIds = (ids: string[]) => writeIds(HIDDEN_KEY, ids)
 export const readProviderOrder = () => readIds(ORDER_KEY)
 export const writeProviderOrder = (ids: string[]) => writeIds(ORDER_KEY, ids)
 
+// Default (pin 📌) POR MODO — el provider con el que arranca una sesión
+// fresca del Studio. Vivía en ProviderManagerDrawer; compartido aquí porque
+// AvatarStudioMain también inicializa el provider y debe respetar el pin.
+const defaultProviderKey = (mode: string) =>
+    `avatar-studio:default-provider:${mode}`
+
+export function readDefaultProviderId(mode: string): string | null {
+    if (typeof window === 'undefined') return null
+    try {
+        return window.localStorage.getItem(defaultProviderKey(mode))
+    } catch {
+        return null
+    }
+}
+
+export function writeDefaultProviderId(mode: string, id: string) {
+    try {
+        window.localStorage.setItem(defaultProviderKey(mode), id)
+    } catch {
+        /* ignore (private mode / disabled storage) */
+    }
+}
+
 /**
  * Ordena una lista por el orden manual del usuario. Los ids sin posición
  * guardada conservan su orden de catálogo, DESPUÉS de los ordenados. Sort
