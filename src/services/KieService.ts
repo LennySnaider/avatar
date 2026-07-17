@@ -543,17 +543,18 @@ export async function generateImageKie(
                         wanUrls.push(await uploadReferenceToSupabase(r.base64, r.mimeType))
                     }
                     input.input_urls = wanUrls
-                    // OJO calibración: la cláusula de Seedream ("visibly fuller
-                    // and curvier") compensa SU sesgo a copiar el build delgado
-                    // del face ref — Wan no tiene ese sesgo y con ella SE PASA
-                    // (busto/torso más pesados de lo especificado, cintura
-                    // perdida; verificado por el usuario comparando lado a
-                    // lado). Wan recibe precisión, no amplificación.
+                    // Calibración POR REGIÓN (2ª ronda, verificada con casos
+                    // reales): la amplificación global de Seedream hacía que
+                    // Wan SE PASARA en busto/torso (Evelyn), pero la precisión
+                    // pura lo dejaba CORTO en caderas (Ana 90/60/100 salía
+                    // slim). El sesgo de Wan es copiar el build del face ref en
+                    // la CADERA/muslos → amplificar SOLO lower body, con guard
+                    // explícito de busto/masa.
                     const wanBodyClause =
                         wanUrls.length > 1
                             ? ' The SECOND attached image shows her real BODY — replicate its exact body shape, proportions, curves and build; do NOT take the body from the first image.'
                             : bodyEmphasis
-                              ? ` Use the reference image ONLY for the face and identity — do NOT copy the body proportions from it. Her real body is: ${bodyEmphasis}. Render EXACTLY these proportions as written — bust, waist and hips true to the measurements, with the small cinched waist clearly visible; do NOT exaggerate or add extra body mass or bust size beyond the spec.`
+                              ? ` Use the reference image ONLY for the face and identity — do NOT copy the body proportions from it: the person in the photo looks SLIMMER than the character really is. Her real body is: ${bodyEmphasis}. Her hips, glutes and thighs must be visibly FULLER and WIDER than in the reference photo — the narrow waist makes the hip curve obvious. Keep the bust true to the spec: do NOT inflate the chest or add overall body mass beyond it.`
                               : ''
                     input.prompt = `The person in the FIRST attached reference image is the subject — keep her EXACT face, facial features and likeness from that image.${wanBodyClause} ${input.prompt}`
                     console.log(`[KIE] Wan 2.7 Image with ${wanUrls.length} ref(s) via input_urls (face${wanUrls.length > 1 ? ' + body' : ''}${wanBodyClause && wanUrls.length === 1 ? ' + body-text anchor' : ''})`)

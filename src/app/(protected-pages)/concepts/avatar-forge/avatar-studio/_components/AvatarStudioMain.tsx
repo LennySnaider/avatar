@@ -1118,10 +1118,14 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                             referenceImages: kieRefsToSend,
                             aspectRatio,
                             model: kieModel,
-                            // Concrete body descriptors for the Seedream i2i
-                            // anchor — Pro ignores body text that isn't in the
-                            // anchor's early tokens (kept rendering her slim).
-                            bodyEmphasis: describeBody(measurements),
+                            // Concrete body descriptors for the Seedream/Wan
+                            // i2i anchor — Pro ignores body text that isn't in
+                            // the anchor's early tokens (kept rendering her
+                            // slim). Los cm + ratio explícitos anclan mejor que
+                            // solo adjetivos (Ana 90/60/100 salía slim en Wan).
+                            bodyEmphasis: measurements?.waist
+                                ? `${describeBody(measurements)} (bust ${measurements.bust}cm, waist ${measurements.waist}cm, hips ${measurements.hips}cm — hip-to-waist ratio ${(measurements.hips / measurements.waist).toFixed(2)})`
+                                : describeBody(measurements),
                         })
                         resultUrl = polled.url
                         apiPrompt = polled.fullApiPrompt
