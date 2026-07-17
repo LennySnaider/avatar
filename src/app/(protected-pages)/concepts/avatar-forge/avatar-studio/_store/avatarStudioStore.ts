@@ -17,7 +17,7 @@ import type {
 } from '../types'
 import type { Avatar, AIProvider, Prompt, SkinTone } from '@/@types/supabase'
 import type { ClonedVoice } from '@/@types/voice'
-import { describeBody } from '@/utils/bodyDescriptors'
+import { describeBody, getHairColorDescription } from '@/utils/bodyDescriptors'
 import { stripNegatedTattoos } from '@/utils/promptSanitizer'
 import type {
     KlingCameraControlType,
@@ -599,7 +599,12 @@ export const useAvatarStudioStore = create<AvatarStudioState>()(
             bodyParts.push(`${skinToneToWords(measurements.skinTone)} skin`)
         }
         if (measurements.hairColor) {
-            bodyParts.push(`${measurements.hairColor.replace(/-/g, ' ')} hair`)
+            // Texto curado ("brown" → "brown hair, medium brunette hair") en
+            // vez del replace crudo: los compuestos del selector de estilo
+            // ("wavy brown") caen al fallback free-text y seguían diciendo el
+            // color, pero los valores canónicos perdían la redundancia que sí
+            // pesa en modelos de difusión.
+            bodyParts.push(getHairColorDescription(measurements.hairColor))
         }
         // Exact measurements kept as a parenthetical suffix — no info lost.
         const cmParts: string[] = []

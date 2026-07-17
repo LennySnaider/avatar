@@ -85,7 +85,7 @@ import {
     stripHarnessForFaceSwap,
     type RefRole,
 } from '@/utils/avatarPromptBuilder'
-import { describeBody } from '@/utils/bodyDescriptors'
+import { describeBody, getHairColorDescription } from '@/utils/bodyDescriptors'
 import { readDefaultProviderId } from '../../_shared/providerPrefs'
 import { createPortal } from 'react-dom'
 import { useStudioHeaderSlot } from './StudioHeaderSlotContext'
@@ -1126,6 +1126,15 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                             bodyEmphasis: measurements?.waist
                                 ? `${describeBody(measurements)} (bust ${measurements.bust}cm, waist ${measurements.waist}cm, hips ${measurements.hips}cm — hip-to-waist ratio ${(measurements.hips / measurements.waist).toFixed(2)})`
                                 : describeBody(measurements),
+                            // Color de pelo DENTRO del ancla i2i: como "brown
+                            // hair" en el [BODY:] tardío, Seedream/Wan seguían
+                            // el tono del ref/escena (reporte: MiaUltra salía
+                            // más clara en playa). Solo generación — en EDIT el
+                            // usuario puede estar recoloreando a propósito.
+                            hairEmphasis:
+                                getHairColorDescription(
+                                    measurements?.hairColor,
+                                ) || undefined,
                         })
                         resultUrl = polled.url
                         apiPrompt = polled.fullApiPrompt

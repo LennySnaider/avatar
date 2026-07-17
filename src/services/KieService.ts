@@ -296,6 +296,11 @@ export interface GenerateImageKieParams {
     // prompt — repeating the concrete descriptors inside the anchor's early
     // tokens is what makes them land.
     bodyEmphasis?: string
+    // Descripción del COLOR de cabello (getHairColorDescription) para el
+    // ancla i2i: como "brown hair" dentro del [BODY:] tardío no pesa, los
+    // modelos imagen-pesados siguen el pelo del ref/escena. En el ancla
+    // temprana funciona como override (igual que el HAIR OVERRIDE de Gemini).
+    hairEmphasis?: string
 }
 
 /**
@@ -315,7 +320,12 @@ export async function generateImageKie(
     | { success: true; url: string; fullApiPrompt: string }
     | { success: false; error: string }
 > {
-    const { model, aspectRatio = '1:1', referenceImage, referenceImages, bodyEmphasis } = params
+    const { model, aspectRatio = '1:1', referenceImage, referenceImages, bodyEmphasis, hairEmphasis } = params
+    // Override de pelo compartido por los anclas i2i (seedream/wan): recolorea
+    // aunque el ref o la escena sugieran otro tono.
+    const hairClause = hairEmphasis
+        ? ` Her hair MUST be ${hairEmphasis} — if the hair in the reference photo or the scene suggests a different color, RECOLOR it to this exact color.`
+        : ''
 
     // Route to the right adapter with a given (already-sanitized) prompt.
     const runWithPrompt = async (promptText: string): Promise<{ url: string; fullApiPrompt: string }> => {
@@ -502,8 +512,8 @@ export async function generateImageKie(
                                       ? ` Her real body is: ${bodyEmphasis}. Render THAT body, visibly fuller and curvier than the reference photo suggests.`
                                       : ' Her body proportions MUST follow the text description below exactly (bust, waist, hips and thighs as written).'
                               }`
-                    input.prompt = `The person in the FIRST attached reference image is the subject — keep her EXACT face, facial features and likeness from that image. ${bodyClause} ${input.prompt}`
-                    console.log(`[KIE] Seedream i2i (${resolvedModel}) with ${urls.length} ref(s) (face${urls.length > 1 ? ' + body' : ''})`)
+                    input.prompt = `The person in the FIRST attached reference image is the subject — keep her EXACT face, facial features and likeness from that image. ${bodyClause}${hairClause} ${input.prompt}`
+                    console.log(`[KIE] Seedream i2i (${resolvedModel}) with ${urls.length} ref(s) (face${urls.length > 1 ? ' + body' : ''}${hairClause ? ' + hair override' : ''})`)
                 } else if (model.startsWith('nano-banana-2')) {
                     // nano-banana-2 / -lite take image_input[] (URL array, up to
                     // 14) on the SAME model id — no i2i variant swap needed.
@@ -519,7 +529,7 @@ export async function generateImageKie(
                         nbUrls.push(await uploadReferenceToSupabase(r.base64, r.mimeType))
                     }
                     input.image_input = nbUrls
-                    input.prompt = `The person in the first attached reference image is the subject — keep her EXACT face, facial features and likeness. ${input.prompt}`
+                    input.prompt = `The person in the first attached reference image is the subject — keep her EXACT face, facial features and likeness.${hairClause} ${input.prompt}`
                     console.log(`[KIE] ${model} with ${nbUrls.length} identity ref(s) via image_input`)
                 } else if (model === 'wan/2-7-image') {
                     // Wan 2.7 edita/genera con refs en el MISMO id: input_urls
@@ -560,8 +570,8 @@ export async function generateImageKie(
                             : bodyEmphasis
                               ? ` Use the reference image ONLY for the face and identity — do NOT copy the body proportions from it: the person in the photo looks SLIMMER than the character really is. Her real body is: ${bodyEmphasis}. Her hips, glutes and thighs must be visibly FULLER and WIDER than in the reference photo — the narrow waist makes the hip curve obvious. Keep the bust true to the spec: do NOT inflate the chest or add overall body mass beyond it.`
                               : ''
-                    input.prompt = `The person in the FIRST attached reference image is the subject — keep her EXACT face, facial features and likeness from that image.${wanBodyClause} ${input.prompt}`
-                    console.log(`[KIE] Wan 2.7 Image with ${wanUrls.length} ref(s) via input_urls (face${wanUrls.length > 1 ? ' + body' : ''}${wanBodyClause && wanUrls.length === 1 ? ' + body-text anchor' : ''})`)
+                    input.prompt = `The person in the FIRST attached reference image is the subject — keep her EXACT face, facial features and likeness from that image.${wanBodyClause}${hairClause} ${input.prompt}`
+                    console.log(`[KIE] Wan 2.7 Image with ${wanUrls.length} ref(s) via input_urls (face${wanUrls.length > 1 ? ' + body' : ''}${wanBodyClause && wanUrls.length === 1 ? ' + body-text anchor' : ''}${hairClause ? ' + hair override' : ''})`)
                 } else if (model.startsWith('flux-2/')) {
                     // FLUX.2 takes up to 8 refs → send the face (identity anchor) +
                     // a Body Ref (imitate the body) so BOTH are locked from images,
