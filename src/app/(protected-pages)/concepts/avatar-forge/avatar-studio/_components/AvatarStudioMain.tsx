@@ -95,6 +95,7 @@ import {
     HiChevronDown,
     HiChevronUp,
     HiOutlineUpload,
+    HiOutlineSearch,
 } from 'react-icons/hi'
 import { getPostedGenerationMap } from '@/services/SocialService'
 import { AppState } from '../types'
@@ -429,7 +430,22 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
         setContinueUseAvatarIdentity,
         setContinueIdentityModel,
         geminiAutoFallback,
+        // Toggle de la barra de búsqueda+filtros de la galería (header).
+        galleryBarOpen,
+        setGalleryBarOpen,
+        gallerySearchQuery,
+        galleryMediaTypeFilter,
+        galleryAvatarFilter,
+        galleryView,
     } = useAvatarStudioStore()
+
+    // Punto en el toggle cuando hay búsqueda/filtro activo (para no “perder”
+    // un filtro con la barra cerrada).
+    const galleryFiltersActive =
+        !!gallerySearchQuery ||
+        galleryMediaTypeFilter !== 'ALL' ||
+        galleryAvatarFilter !== 'ALL' ||
+        galleryView !== 'all'
 
     // Image optimization hook for API calls
     const { prepareAvatarPayload, optimizeImage } = useImageOptimization()
@@ -2436,6 +2452,25 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
             {headerSlot &&
                 createPortal(
                     <>
+                        {/* Toggle de la barra de búsqueda+filtros de la galería:
+                            vive en el header (que ya existe) para que la barra
+                            NO ocupe una fila cuando no se usa. Punto azul si hay
+                            un filtro/búsqueda activo con la barra cerrada. */}
+                        <button
+                            type="button"
+                            onClick={() => setGalleryBarOpen(!galleryBarOpen)}
+                            title="Buscar / filtrar galería"
+                            className={`relative p-1.5 rounded-lg transition-colors ${
+                                galleryBarOpen
+                                    ? 'text-primary bg-primary/10'
+                                    : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-200'
+                            }`}
+                        >
+                            <HiOutlineSearch className="w-5 h-5" />
+                            {galleryFiltersActive && !galleryBarOpen && (
+                                <span className="absolute top-0.5 right-0.5 w-2 h-2 rounded-full bg-blue-500" />
+                            )}
+                        </button>
                         {/* En móvil solo iconos: con texto, estos tres botones
                             comprimían el TabList y el tab Flow Editor
                             desaparecía de la fila. */}

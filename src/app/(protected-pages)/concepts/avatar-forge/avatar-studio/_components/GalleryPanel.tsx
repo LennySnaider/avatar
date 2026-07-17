@@ -23,7 +23,6 @@ import {
     HiOutlinePhotograph,
     HiOutlineUpload,
     HiOutlineSearch,
-    HiOutlineFilter,
     HiOutlineX,
     HiOutlineShare,
     HiOutlineSave,
@@ -82,6 +81,8 @@ const GalleryPanel = ({
         setGalleryAvatarFilter: setAvatarFilter,
         galleryView,
         setGalleryView,
+        galleryBarOpen,
+        setGalleryBarOpen,
     } = useAvatarStudioStore()
 
     // Prefer the parent-provided ref (header "Upload" button) so both trigger
@@ -94,13 +95,6 @@ const GalleryPanel = ({
     const scrollBarRef = useRef<ScrollBarRef>(null)
     const [showScrollTop, setShowScrollTop] = useState(false)
 
-    // Móvil: los filtros (selects + Todas/Favoritas/Archivadas) colapsan tras
-    // el botón de embudo — desplegados ocupaban 3 filas de pantalla.
-    const [filtersOpen, setFiltersOpen] = useState(false)
-    // Móvil: la barra de búsqueda se despliega tras el botón de lupa.
-    const [searchOpen, setSearchOpen] = useState(false)
-    const hasActiveFilters =
-        avatarFilter !== 'ALL' || mediaTypeFilter !== 'ALL' || galleryView !== 'all'
     useEffect(() => {
         const el = scrollBarRef.current?.getScrollElement()
         if (!el) return
@@ -363,77 +357,20 @@ const GalleryPanel = ({
                 onChange={handleUpload}
             />
 
-            {/* Fixed header: title + search/filters (outside the scroll area).
-                The "Upload" button now lives in the studio header, wired to the
-                same hidden input via uploadInputRef. */}
-            <div className="px-4 pt-3 pb-1 shrink-0">
-                {gallery.length > 0 && (
+            {/* Search + filtros: TODA la barra se muestra solo con el toggle
+                del header (botón lupa) — cuando está cerrada NO se renderiza,
+                así no ocupa ninguna fila. La X interna también la cierra. */}
+            {gallery.length > 0 && galleryBarOpen && (
+                <div className="px-4 pt-3 pb-1 shrink-0">
                     <div className="flex items-center gap-2 flex-wrap">
-                        {/* Móvil: botón lupa que despliega el input; oculto
-                            cuando ya está abierto o en desktop (search siempre
-                            visible en md+). */}
-                        {!searchOpen && (
-                            <button
-                                type="button"
-                                onClick={() => setSearchOpen(true)}
-                                title="Buscar"
-                                className={`md:hidden p-2 rounded-lg border transition-colors ${
-                                    searchQuery
-                                        ? 'border-blue-500 text-blue-500 bg-blue-50 dark:bg-blue-500/20'
-                                        : 'border-gray-300 dark:border-gray-600 text-gray-500'
-                                }`}
-                            >
-                                <HiOutlineSearch className="w-4 h-4" />
-                            </button>
-                        )}
-                        {/* Input de búsqueda: en móvil solo cuando searchOpen
-                            (con X para cerrar); en md+ siempre visible. */}
-                        <div
-                            className={`${searchOpen ? 'flex' : 'hidden'} md:flex flex-1 min-w-40 items-center gap-1`}
-                        >
-                            <Input
-                                size="sm"
-                                placeholder="Search by prompt..."
-                                prefix={<HiOutlineSearch className="text-lg" />}
-                                value={searchQuery}
-                                onChange={(e) => setSearchQuery(e.target.value)}
-                                className="flex-1"
-                            />
-                            <button
-                                type="button"
-                                onClick={() => {
-                                    setSearchOpen(false)
-                                    setSearchQuery('')
-                                }}
-                                title="Cerrar búsqueda"
-                                className="md:hidden shrink-0 p-2 rounded-lg border border-gray-300 dark:border-gray-600 text-gray-500 hover:text-gray-700 dark:hover:text-gray-200"
-                            >
-                                <HiOutlineX className="w-4 h-4" />
-                            </button>
-                        </div>
-                        {/* Móvil: los filtros colapsan tras este botón (ocupaban
-                            3 filas). El punto azul avisa de filtros activos. */}
-                        <button
-                            type="button"
-                            onClick={() => setFiltersOpen((v) => !v)}
-                            title="Filtros"
-                            className={`relative md:hidden p-2 rounded-lg border transition-colors ${
-                                filtersOpen
-                                    ? 'border-blue-500 text-blue-500 bg-blue-50 dark:bg-blue-500/20'
-                                    : 'border-gray-300 dark:border-gray-600 text-gray-500'
-                            }`}
-                        >
-                            <HiOutlineFilter className="w-4 h-4" />
-                            {hasActiveFilters && (
-                                <span className="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full bg-blue-500" />
-                            )}
-                        </button>
-                        {/* md:contents disuelve este wrapper en desktop (layout
-                            idéntico al de siempre); en móvil es el bloque
-                            colapsable a ancho completo. */}
-                        <div
-                            className={`${filtersOpen ? 'flex' : 'hidden'} w-full flex-wrap items-center gap-2 md:contents`}
-                        >
+                        <Input
+                            size="sm"
+                            placeholder="Search by prompt..."
+                            prefix={<HiOutlineSearch className="text-lg" />}
+                            value={searchQuery}
+                            onChange={(e) => setSearchQuery(e.target.value)}
+                            className="flex-1 min-w-40"
+                        />
                         {(filterableAvatars.length > 0 || hasOrphanMedia) && (
                             <select
                                 value={avatarFilter}
@@ -514,10 +451,17 @@ const GalleryPanel = ({
                                 </button>
                             ))}
                         </div>
-                        </div>
+                        <button
+                            type="button"
+                            onClick={() => setGalleryBarOpen(false)}
+                            title="Cerrar filtros"
+                            className="ml-auto shrink-0 p-2 rounded-lg border border-gray-300 dark:border-gray-600 text-gray-500 hover:text-gray-700 dark:hover:text-gray-200"
+                        >
+                            <HiOutlineX className="w-4 h-4" />
+                        </button>
                     </div>
-                )}
-            </div>
+                </div>
+            )}
 
             <ScrollBar ref={scrollBarRef} className="flex-1 h-full" autoHide={false}>
                 <div className="p-4 pt-1">

@@ -146,6 +146,8 @@ interface AvatarStudioState {
     galleryMediaTypeFilter: MediaType | 'ALL'
     galleryAvatarFilter: string
     galleryView: 'all' | 'favorites' | 'archived'
+    /** Muestra/oculta TODA la barra de búsqueda+filtros (toggle en el header). */
+    galleryBarOpen: boolean
 
     // Safety Analysis
     isAnalyzing: boolean
@@ -291,6 +293,7 @@ interface AvatarStudioState {
     setGalleryMediaTypeFilter: (f: MediaType | 'ALL') => void
     setGalleryAvatarFilter: (f: string) => void
     setGalleryView: (v: 'all' | 'favorites' | 'archived') => void
+    setGalleryBarOpen: (open: boolean) => void
 
     // Actions - Safety
     setIsAnalyzing: (analyzing: boolean) => void
@@ -424,6 +427,7 @@ const initialState = {
     previewMedia: null,
     previewStartInEdit: false,
     gallerySearchQuery: '',
+    galleryBarOpen: false,
     galleryMediaTypeFilter: 'ALL' as const,
     galleryAvatarFilter: 'ALL',
     galleryView: 'all' as const,
@@ -732,6 +736,7 @@ export const useAvatarStudioStore = create<AvatarStudioState>()(
     setGalleryMediaTypeFilter: (f) => set({ galleryMediaTypeFilter: f }),
     setGalleryAvatarFilter: (f) => set({ galleryAvatarFilter: f }),
     setGalleryView: (v) => set({ galleryView: v }),
+    setGalleryBarOpen: (open) => set({ galleryBarOpen: open }),
     // Seed the gallery with persisted history from the `generations` table.
     // Dedupe by generationId (persisted rows win), keep any session items not
     // yet persisted, newest first (by timestamp).
