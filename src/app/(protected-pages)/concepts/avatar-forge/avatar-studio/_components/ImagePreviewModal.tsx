@@ -272,7 +272,10 @@ const ImagePreviewModal = ({
         const el = getMediaScrollEl()
         if (!el) return
         const onWheel = (e: WheelEvent) => {
-            if (isEditing) return
+            // El zoom también vive en modo EDIT; solo se bloquea mientras las
+            // herramientas que asumen la imagen "en fit" están activas
+            // (máscara/crop — sus overlays se alinean al tamaño mostrado).
+            if (isDrawingMask || isCropping) return
             e.preventDefault()
             if (e.deltaY < 0) {
                 handleZoomIn()
@@ -282,7 +285,7 @@ const ImagePreviewModal = ({
         }
         el.addEventListener('wheel', onWheel, { passive: false })
         return () => el.removeEventListener('wheel', onWheel)
-    }, [isEditing, handleZoomIn, handleZoomOut, previewMedia])
+    }, [isDrawingMask, isCropping, handleZoomIn, handleZoomOut, previewMedia])
 
     // Drag-to-pan: grabbing the zoomed image scrolls the overflow-auto media
     // container. Driving the container's own scrollLeft/scrollTop means every
@@ -290,7 +293,7 @@ const ImagePreviewModal = ({
     // translate/clamp jank.
     const handlePanStart = useCallback((e: React.MouseEvent) => {
         const el = getMediaScrollEl()
-        if (!el || isEditing) return
+        if (!el || isDrawingMask || isCropping) return
         const canScroll =
             el.scrollHeight > el.clientHeight || el.scrollWidth > el.clientWidth
         if (!canScroll) return
@@ -302,7 +305,7 @@ const ImagePreviewModal = ({
             scrollLeft: el.scrollLeft,
             scrollTop: el.scrollTop,
         }
-    }, [isEditing])
+    }, [isDrawingMask, isCropping])
 
     const handlePanMove = useCallback((e: MouseEvent) => {
         const el = getMediaScrollEl()
@@ -381,8 +384,28 @@ const ImagePreviewModal = ({
             } else {
                 if (!onEdit) return
                 // Preserve the source aspect ratio on an AI edit — the user
-                // didn't ask to reshape it. Reshaping is only intentional via Crop.
-                await onEdit(previewMedia, editPrompt, maskCanvas, previewMedia.aspectRatio || '1:1', editAssets, editProviderId ?? defaultEditProviderId ?? undefined)
+                // didn't ask to reshape it. Se deriva de los PÍXELES reales,
+                // no del metadato (uploads/paths viejos guardan '1:1' aunque
+                // la imagen sea vertical) — con un AR equivocado, modelos como
+                // Seedream Lite ESTIRAN la imagen (cabeza ancha/aplastada).
+                const img = imageRef.current
+                let sourceAspect: AspectRatio = previewMedia.aspectRatio || '1:1'
+                if (img && img.naturalWidth > 0 && img.naturalHeight > 0) {
+                    const r = img.naturalWidth / img.naturalHeight
+                    const candidates: Array<[AspectRatio, number]> = [
+                        ['1:1', 1],
+                        ['16:9', 16 / 9],
+                        ['9:16', 9 / 16],
+                        ['4:3', 4 / 3],
+                        ['3:4', 3 / 4],
+                    ]
+                    let best = candidates[0]
+                    for (const c of candidates) {
+                        if (Math.abs(c[1] - r) < Math.abs(best[1] - r)) best = c
+                    }
+                    sourceAspect = best[0]
+                }
+                await onEdit(previewMedia, editPrompt, maskCanvas, sourceAspect, editAssets, editProviderId ?? defaultEditProviderId ?? undefined)
                 handleClose()
             }
         } finally {
@@ -462,6 +485,8 @@ const ImagePreviewModal = ({
 
     const handleToggleMask = () => {
         setIsDrawingMask(!isDrawingMask)
+        // La máscara asume la imagen en fit — vuelve a 100% al activarla.
+        if (!isDrawingMask) setZoomLevel(1)
         if (!isDrawingMask) setIsCropping(false)
         if (!isDrawingMask && canvasRef.current) {
             // Clear canvas when starting mask mode
@@ -876,12 +901,13 @@ const ImagePreviewModal = ({
                     )}
 
                     {/* Zoom Controls — sin el % (solo aparece al hacer zoom, como
-                        botón de reset); a 100% no ocupa nada. */}
-                    {previewMedia.mediaType === 'IMAGE' && !isEditing && (
+                        botón de reset); a 100% no ocupa nada. Disponible también
+                        en modo EDIT (se bloquea solo con máscara/crop activos). */}
+                    {previewMedia.mediaType === 'IMAGE' && (
                         <div className="flex items-center gap-1 sm:gap-2 ml-auto shrink-0">
                             <button
                                 onClick={handleZoomOut}
-                                disabled={zoomLevel <= 1}
+                                disabled={zoomLevel <= 1 || isDrawingMask || isCropping}
                                 className="p-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                                 title="Zoom Out"
                             >
@@ -898,7 +924,7 @@ const ImagePreviewModal = ({
                             )}
                             <button
                                 onClick={handleZoomIn}
-                                disabled={zoomLevel >= 3}
+                                disabled={zoomLevel >= 3 || isDrawingMask || isCropping}
                                 className="p-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                                 title="Zoom In"
                             >
@@ -957,7 +983,7 @@ const ImagePreviewModal = ({
                         onMouseDown={handlePanStart}
                         style={{
                             cursor:
-                                zoomLevel > 1 && !isEditing
+                                zoomLevel > 1 && !isDrawingMask && !isCropping
                                     ? isPanning
                                         ? 'grabbing'
                                         : 'grab'
@@ -1065,7 +1091,7 @@ const ImagePreviewModal = ({
                                     }}
                                     className="rounded-lg block select-none"
                                     style={
-                                        !isEditing && zoomLevel > 1
+                                        zoomLevel > 1 && !isDrawingMask && !isCropping
                                             ? {
                                                   // Altura EXPLÍCITA: con max-*
                                                   // la imagen dejaba de crecer al
@@ -1230,6 +1256,8 @@ const ImagePreviewModal = ({
                                         // Entering crop: default the crop ratio to
                                         // the image's own ratio so it doesn't reshape.
                                         if (!c) setEditAspectRatio(previewMedia.aspectRatio || '1:1')
+                                        // El overlay de crop asume fit — 100%.
+                                        if (!c) setZoomLevel(1)
                                         return !c
                                     })
                                     setIsDrawingMask(false)
