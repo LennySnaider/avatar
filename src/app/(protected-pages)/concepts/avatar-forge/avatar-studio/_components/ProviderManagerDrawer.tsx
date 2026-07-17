@@ -18,6 +18,12 @@ import {
     HiOutlineSearch,
 } from 'react-icons/hi'
 import type { AIProvider, ProviderType } from '@/@types/supabase'
+import {
+    readFavoriteIds,
+    writeFavoriteIds,
+    readHiddenIds,
+    sortByUserOrder,
+} from '../../_shared/providerPrefs'
 
 // Predefined providers - exported for use in initialization
 export const DEFAULT_PROVIDERS: AIProvider[] = [
@@ -426,27 +432,8 @@ function writeDefaultProviderId(mode: string, id: string) {
     }
 }
 
-// Favoritos (multi, cross-mode), persistidos en localStorage. La ⭐ de cada
-// card marca/desmarca; el chip "⭐ Favoritos" filtra la grilla. (El DEFAULT por
-// modo es aparte: ahora es simplemente el último provider seleccionado.)
-const FAVORITES_KEY = 'avatar-studio:favorite-providers'
-function readFavoriteIds(): string[] {
-    if (typeof window === 'undefined') return []
-    try {
-        const raw = window.localStorage.getItem(FAVORITES_KEY)
-        const parsed = raw ? JSON.parse(raw) : []
-        return Array.isArray(parsed) ? parsed.filter((x) => typeof x === 'string') : []
-    } catch {
-        return []
-    }
-}
-function writeFavoriteIds(ids: string[]) {
-    try {
-        window.localStorage.setItem(FAVORITES_KEY, JSON.stringify(ids))
-    } catch {
-        /* ignore (private mode / disabled storage) */
-    }
-}
+// Favoritos / ocultos / orden manual: módulo compartido con la página AI
+// Providers (misma key de ⭐ que se usaba aquí — un solo favorito en la app).
 
 // Approx USD cost PER IMAGE, shown on each card so the pick weighs price too.
 // KIE models: measured live from `creditsConsumed × $0.005/credit` (KIE's rate,
@@ -455,7 +442,7 @@ function writeFavoriteIds(ids: string[]) {
 // 12cr=$0.06. Non-KIE + kontext/gpt from docs/cost-routing.md. qwen/ideogram/
 // gemini/minimax are estimates (KIE errored on the probe / no live meter) → keep
 // the ~ prefix honest. Re-measure from kie.ai/logs if a price drifts.
-const PROVIDER_COST: Record<string, string> = {
+export const PROVIDER_COST: Record<string, string> = {
     'gemini-nano-banana': '~$0.13',
     'gemini-flash-lite-image': '~$0.02',
     'kie-nano-banana-pro': '~$0.09',
@@ -482,7 +469,7 @@ const PROVIDER_COST: Record<string, string> = {
 //  permissive = disables the content filter (nsfw off / less restrictive).
 // The sweet spot is BOTH (MiniMax). Drives the badges on each card so the pick
 // is obvious instead of trial-and-error.
-const PROVIDER_TRAITS: Record<string, { face?: boolean; permissive?: boolean }> = {
+export const PROVIDER_TRAITS: Record<string, { face?: boolean; permissive?: boolean }> = {
     'gemini-nano-banana': { face: true },
     'gemini-flash-lite-image': { face: true },
     'kie-nano-banana-pro': { face: true },
@@ -508,6 +495,67 @@ const PROVIDER_TRAITS: Record<string, { face?: boolean; permissive?: boolean }> 
     'kie-wan-image': { face: true, permissive: true },
 }
 
+// Descripción por provider — a nivel módulo para compartirla con la página
+// AI Providers (misma fuente de verdad que el selector del Studio).
+export const getProviderDescription = (provider: AIProvider): string => {
+    switch (provider.id) {
+        case 'gemini-nano-banana':
+            return 'Studio-quality images, text rendering, multi-image blending'
+        case 'gemini-flash-lite-image':
+            return 'Rápido y barato (~3s), 9:16 nativo — ideal para volumen'
+        case 'gemini-veo-3-1':
+            return 'Veo 3.1 - audio nativo, hasta 3 ref images + first frame, 9:16 vertical'
+        case 'kling-v1-6':
+            return 'Video estable, motion brush, camera control'
+        case 'kling-v2-6':
+            return 'Voice synthesis, lip-sync, talking avatars'
+        case 'kling-v3':
+            return 'Video generation, motion control, voice synthesis, mejor calidad'
+        case 'minimax-image-01':
+            return 'Menos restrictivo, subject reference, fashion-friendly'
+        case 'minimax-hailuo-2-3':
+            return 'Video Hailuo 2.3, subject reference (avatar lock), 1080P'
+        case 'minimax-hailuo-2-3-fast':
+            return 'Hailuo 2.3 Fast - más rápido y económico'
+        case 'kie-flux-kontext':
+            return 'Flux.1 Kontext Pro - context-aware editing, 8 unidades por imagen'
+        case 'kie-flux-kontext-max':
+            return 'Flux.1 Kontext Max - mejor calidad para escenas complejas'
+        case 'kie-gpt-4o-image':
+            return 'OpenAI GPT 4o - photorealistic, mejor con texto en imagen'
+        case 'kie-gpt-image-2':
+            return 'OpenAI GPT Image 2 vía KIE - usa refs (image-to-image, hasta 16), 9:16 nativo, 2K'
+        case 'kie-seedream-4-5':
+            return 'Seedream 4.5 (ByteDance) — PERMISIVO (filtro NSFW off) + usa la CARA del avatar (i2i 4.5-edit, verificado). Calidad 2K, ideal fashion/sensual'
+        case 'kie-flux-2-pro':
+            return 'FLUX.2 Pro (Black Forest Labs) — filtro de KIE off, 2K, i2i con cara + Body Ref. OJO: BFL aplica SU propia moderación (422 nsfw en swimwear atrevido/edits picantes) — para eso usa Seedream'
+        case 'kie-seedream-5-lite':
+            return 'Seedream 5.0 Lite (ByteDance) — PERMISIVO (filtro off) + usa la CARA del avatar (i2i verificado: misma cara, mismo precio). 2K'
+        case 'kie-seedream-5-pro':
+            return 'Seedream 5.0 Pro (ByteDance) — PERMISIVO + CARA del avatar (image-to-image nativo, verificado). Más calidad que Lite. Requiere avatar con cara'
+        case 'kie-qwen-image':
+            return 'Qwen Image 2.0 (Alibaba) — filtro de KIE off, PERO su moderación upstream bloquea desnudos ("flagged as sensitive", verificado). Fashion/sensual OK; para NSFW real usa Wan 2.7 Image. i2i con cara (image_url)'
+        case 'kie-ideogram-v3':
+            return 'Ideogram V3 — el mejor para TEXTO dentro de la imagen (carteles/logos). Filtro estándar. Solo texto→imagen'
+        case 'kie-nano-banana-2':
+            return 'Nano Banana 2 (Google) — calidad top hasta 4K, usa la cara del avatar (image_input). OJO: Google = filtro estricto (no ayuda con bloqueos)'
+        case 'kie-nano-banana-2-lite':
+            return 'Nano Banana 2 Lite (Gemini 3.1 Flash-Lite) — el más RÁPIDO (~4s) y barato de Google, 1K, usa la cara del avatar (image_input). Filtro estricto de Google — para SFW con identidad y volumen'
+        case 'kie-grok-imagine':
+            return 'Grok Imagine (xAI) · image-to-image — usa la cara del avatar (la ref se recorta al aspect ratio pedido: su salida copia el ratio del input). OJO: su PROPIO filtro bloquea bikini/sensual aun con nsfw off — para sensual usa Seedream / FLUX.2. Para SFW con identidad'
+        case 'kie-wan-image':
+            return 'Wan 2.7 Image (Alibaba) — SIN CENSURA real de imagen: nsfw off y SIN moderación upstream (edit NSFW verificado live). Genera Y edita en el mismo modelo, usa la cara del avatar (input_urls, hasta 9 refs), 9:16 nativo, 2K, ~30s. El único que edita desnudos — Qwen/FLUX.2/Grok bloquean upstream'
+        case 'kie-kling-3-0':
+            return 'Kling 3.0 vía KIE — video i2v/t2v + motion-control v2v, audio nativo opcional, ~20% más barato que el directo'
+        case 'kie-wan-2-2-uncensored':
+            return 'Wan 2.2 A14B turbo (Alibaba, open-weights) — video SIN CENSURA: sin filtro embebido y nsfw_checker off. i2v: anima una imagen (la identidad viaja en el first frame — usa Animate sobre una foto del avatar). 480p/720p, ~5s, hereda el aspect de la imagen'
+        case 'kie-nano-banana-pro':
+            return 'Gemini 3 Pro Image vía KIE - mismo modelo que el directo, ~30% más barato, 9:16 nativo, 2K'
+        default:
+            return provider.model
+    }
+}
+
 const ProviderManagerDrawer = () => {
     const {
         showProviderManager,
@@ -525,11 +573,14 @@ const ProviderManagerDrawer = () => {
     const [defaultProviderId, setDefaultProviderId] = useState<string | null>(null)
     // Favoritos multi (drive la ★ de cada card y el chip "⭐ Favoritos").
     const [favoriteIds, setFavoriteIds] = useState<string[]>([])
+    // Ocultos desde la página AI Providers — no se muestran en este selector.
+    const [hiddenIds, setHiddenIds] = useState<string[]>([])
     const [search, setSearch] = useState('')
     const [filter, setFilter] = useState<'all' | 'favorites' | 'face' | 'permissive'>('all')
     useEffect(() => {
         setDefaultProviderId(readDefaultProviderId(generationMode))
         setFavoriteIds(readFavoriteIds())
+        setHiddenIds(readHiddenIds())
     }, [generationMode, showProviderManager])
 
     // Initialize providers on mount - always sync with DEFAULT_PROVIDERS
@@ -573,9 +624,15 @@ const ProviderManagerDrawer = () => {
     }
     const rankScore = (id: string) =>
         (favoriteIds.includes(id) ? 4 : 0) + traitScore(id)
-    const availableProviders = providers
-        .filter((p) => (generationMode === 'IMAGE' ? p.supports_image : p.supports_video))
-        .slice()
+    // Orden manual del usuario (página AI Providers) como orden BASE; el sort
+    // estable por rank (favoritos/traits) lo respeta entre empates. Los
+    // ocultados desde esa página no aparecen aquí.
+    const availableProviders = sortByUserOrder(
+        providers.filter((p) =>
+            generationMode === 'IMAGE' ? p.supports_image : p.supports_video,
+        ),
+    )
+        .filter((p) => !hiddenIds.includes(p.id))
         .sort((a, b) => rankScore(b.id) - rankScore(a.id))
 
     const filteredProviders = availableProviders.filter((p) => {
@@ -646,65 +703,6 @@ const ProviderManagerDrawer = () => {
                         ?
                     </div>
                 )
-        }
-    }
-
-    const getProviderDescription = (provider: AIProvider) => {
-        switch (provider.id) {
-            case 'gemini-nano-banana':
-                return 'Studio-quality images, text rendering, multi-image blending'
-            case 'gemini-flash-lite-image':
-                return 'Rápido y barato (~3s), 9:16 nativo — ideal para volumen'
-            case 'gemini-veo-3-1':
-                return 'Veo 3.1 - audio nativo, hasta 3 ref images + first frame, 9:16 vertical'
-            case 'kling-v1-6':
-                return 'Video estable, motion brush, camera control'
-            case 'kling-v2-6':
-                return 'Voice synthesis, lip-sync, talking avatars'
-            case 'kling-v3':
-                return 'Video generation, motion control, voice synthesis, mejor calidad'
-            case 'minimax-image-01':
-                return 'Menos restrictivo, subject reference, fashion-friendly'
-            case 'minimax-hailuo-2-3':
-                return 'Video Hailuo 2.3, subject reference (avatar lock), 1080P'
-            case 'minimax-hailuo-2-3-fast':
-                return 'Hailuo 2.3 Fast - m\u00e1s r\u00e1pido y econ\u00f3mico'
-            case 'kie-flux-kontext':
-                return 'Flux.1 Kontext Pro - context-aware editing, 8 unidades por imagen'
-            case 'kie-flux-kontext-max':
-                return 'Flux.1 Kontext Max - mejor calidad para escenas complejas'
-            case 'kie-gpt-4o-image':
-                return 'OpenAI GPT 4o - photorealistic, mejor con texto en imagen'
-            case 'kie-gpt-image-2':
-                return 'OpenAI GPT Image 2 vía KIE - usa refs (image-to-image, hasta 16), 9:16 nativo, 2K'
-            case 'kie-seedream-4-5':
-                return 'Seedream 4.5 (ByteDance) — PERMISIVO (filtro NSFW off) + usa la CARA del avatar (i2i 4.5-edit, verificado). Calidad 2K, ideal fashion/sensual'
-            case 'kie-flux-2-pro':
-                return 'FLUX.2 Pro (Black Forest Labs) — filtro de KIE off, 2K, i2i con cara + Body Ref. OJO: BFL aplica SU propia moderación (422 nsfw en swimwear atrevido/edits picantes) — para eso usa Seedream'
-            case 'kie-seedream-5-lite':
-                return 'Seedream 5.0 Lite (ByteDance) — PERMISIVO (filtro off) + usa la CARA del avatar (i2i verificado: misma cara, mismo precio). 2K'
-            case 'kie-seedream-5-pro':
-                return 'Seedream 5.0 Pro (ByteDance) — PERMISIVO + CARA del avatar (image-to-image nativo, verificado). Más calidad que Lite. Requiere avatar con cara'
-            case 'kie-qwen-image':
-                return 'Qwen Image 2.0 (Alibaba) — filtro de KIE off, PERO su moderación upstream bloquea desnudos ("flagged as sensitive", verificado). Fashion/sensual OK; para NSFW real usa Wan 2.7 Image. i2i con cara (image_url)'
-            case 'kie-ideogram-v3':
-                return 'Ideogram V3 — el mejor para TEXTO dentro de la imagen (carteles/logos). Filtro estándar. Solo texto→imagen'
-            case 'kie-nano-banana-2':
-                return 'Nano Banana 2 (Google) — calidad top hasta 4K, usa la cara del avatar (image_input). OJO: Google = filtro estricto (no ayuda con bloqueos)'
-            case 'kie-nano-banana-2-lite':
-                return 'Nano Banana 2 Lite (Gemini 3.1 Flash-Lite) — el más RÁPIDO (~4s) y barato de Google, 1K, usa la cara del avatar (image_input). Filtro estricto de Google — para SFW con identidad y volumen'
-            case 'kie-grok-imagine':
-                return 'Grok Imagine (xAI) · image-to-image — usa la cara del avatar (la ref se recorta al aspect ratio pedido: su salida copia el ratio del input). OJO: su PROPIO filtro bloquea bikini/sensual aun con nsfw off — para sensual usa Seedream / FLUX.2. Para SFW con identidad'
-            case 'kie-wan-image':
-                return 'Wan 2.7 Image (Alibaba) — SIN CENSURA real de imagen: nsfw off y SIN moderación upstream (edit NSFW verificado live). Genera Y edita en el mismo modelo, usa la cara del avatar (input_urls, hasta 9 refs), 9:16 nativo, 2K, ~30s. El único que edita desnudos — Qwen/FLUX.2/Grok bloquean upstream'
-            case 'kie-kling-3-0':
-                return 'Kling 3.0 vía KIE — video i2v/t2v + motion-control v2v, audio nativo opcional, ~20% más barato que el directo'
-            case 'kie-wan-2-2-uncensored':
-                return 'Wan 2.2 A14B turbo (Alibaba, open-weights) — video SIN CENSURA: sin filtro embebido y nsfw_checker off. i2v: anima una imagen (la identidad viaja en el first frame — usa Animate sobre una foto del avatar). 480p/720p, ~5s, hereda el aspect de la imagen'
-            case 'kie-nano-banana-pro':
-                return 'Gemini 3 Pro Image vía KIE - mismo modelo que el directo, ~30% más barato, 9:16 nativo, 2K'
-            default:
-                return provider.model
         }
     }
 

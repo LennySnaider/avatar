@@ -9,6 +9,7 @@ import Input from '@/components/ui/Input'
 import Slider from '@/components/ui/Slider'
 import ContinueVideoDialog from './ContinueVideoDialog'
 import ExtractFrameDialog from './ExtractFrameDialog'
+import { readHiddenIds, sortByUserOrder } from '../../_shared/providerPrefs'
 import {
     HiOutlineDownload,
     HiOutlineChevronLeft,
@@ -112,7 +113,11 @@ const ImagePreviewModal = ({
             m.startsWith('grok-imagine/')
         )
     }
-    const editProviders = imageProviders.filter(canEditImage)
+    // Orden manual + ocultos de la página AI Providers también aplican aquí.
+    const hiddenProviderIds = readHiddenIds()
+    const editProviders = sortByUserOrder(
+        imageProviders.filter(canEditImage),
+    ).filter((p) => !hiddenProviderIds.includes(p.id))
     // If the studio's active provider can't edit, default the edit dropdown to a
     // real editor (Gemini first) instead of a broken choice.
     const defaultEditProviderId =
