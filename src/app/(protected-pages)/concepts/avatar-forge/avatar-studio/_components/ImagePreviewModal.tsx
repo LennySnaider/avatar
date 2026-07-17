@@ -1384,7 +1384,7 @@ const ImagePreviewModal = ({
                             dan el nombre en hover/long-press. */}
                         <div className="flex flex-wrap items-center gap-2">
                             <Button variant="solid" onClick={handleDownload} icon={<HiOutlineDownload />} title="Download">
-                                <span>Download</span>
+                                <span className="hidden sm:inline">Download</span>
                             </Button>
 
                             {previewMedia.mediaType === 'IMAGE' && (
