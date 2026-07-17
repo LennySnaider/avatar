@@ -1378,17 +1378,20 @@ const ImagePreviewModal = ({
                             </div>
                         </div>
 
-                        {/* Action Buttons */}
+                        {/* Action Buttons — en móvil solo-icono (label oculto
+                            <sm) para que 9 acciones no ocupen 5 filas; Download
+                            conserva su label como acción primaria. Los `title`
+                            dan el nombre en hover/long-press. */}
                         <div className="flex flex-wrap items-center gap-2">
-                            <Button variant="solid" onClick={handleDownload} icon={<HiOutlineDownload />}>
+                            <Button variant="solid" onClick={handleDownload} icon={<HiOutlineDownload />} title="Download">
                                 <span>Download</span>
                             </Button>
 
                             {previewMedia.mediaType === 'IMAGE' && (
                                 <>
                                     {onEdit && (
-                                        <Button variant="plain" onClick={handleStartEdit} icon={<HiOutlinePencil />}>
-                                            <span>Edit</span>
+                                        <Button variant="plain" onClick={handleStartEdit} icon={<HiOutlinePencil />} title="Edit">
+                                            <span className="hidden sm:inline">Edit</span>
                                         </Button>
                                     )}
                                     {onAnimate && (
@@ -1400,8 +1403,9 @@ const ImagePreviewModal = ({
                                                 handleClose()
                                             }}
                                             icon={<HiOutlineFilm />}
+                                            title="Animate"
                                         >
-                                            <span>Animate</span>
+                                            <span className="hidden sm:inline">Animate</span>
                                         </Button>
                                     )}
                                     {onVariant && (
@@ -1412,8 +1416,9 @@ const ImagePreviewModal = ({
                                                 handleClose()
                                             }}
                                             icon={<HiOutlineDuplicate />}
+                                            title="Variant"
                                         >
-                                            <span>Variant</span>
+                                            <span className="hidden sm:inline">Variant</span>
                                         </Button>
                                     )}
                                     {onReuse && (
@@ -1425,8 +1430,9 @@ const ImagePreviewModal = ({
                                                 handleClose()
                                             }}
                                             icon={<HiOutlineRefresh />}
+                                            title="Re-use"
                                         >
-                                            <span>Re-use</span>
+                                            <span className="hidden sm:inline">Re-use</span>
                                         </Button>
                                     )}
                                 </>
@@ -1440,20 +1446,21 @@ const ImagePreviewModal = ({
                                         handleClose()
                                     }}
                                     icon={<HiOutlinePencil />}
+                                    title="Edit"
                                 >
-                                    <span>Edit</span>
+                                    <span className="hidden sm:inline">Edit</span>
                                 </Button>
                             )}
 
                             {previewMedia.mediaType === 'VIDEO' && (
-                                <Button variant="plain" onClick={captureFrameAsImage} icon={<HiOutlineCamera />}>
-                                    <span>Frame</span>
+                                <Button variant="plain" onClick={captureFrameAsImage} icon={<HiOutlineCamera />} title="Frame">
+                                    <span className="hidden sm:inline">Frame</span>
                                 </Button>
                             )}
 
                             {previewMedia.mediaType === 'VIDEO' && onContinueVideo && (
-                                <Button variant="plain" color="purple" onClick={captureFrame} icon={<HiOutlineFilm />}>
-                                    <span>Continue</span>
+                                <Button variant="plain" color="purple" onClick={captureFrame} icon={<HiOutlineFilm />} title="Continue">
+                                    <span className="hidden sm:inline">Continue</span>
                                 </Button>
                             )}
 
@@ -1465,8 +1472,9 @@ const ImagePreviewModal = ({
                                         handleClose()
                                     }}
                                     icon={<HiOutlineVolumeUp />}
+                                    title="Lipsync"
                                 >
-                                    <span>Lipsync</span>
+                                    <span className="hidden sm:inline">Lipsync</span>
                                 </Button>
                             )}
 
@@ -1477,8 +1485,9 @@ const ImagePreviewModal = ({
                                         onSave(previewMedia)
                                     }}
                                     icon={<HiOutlineSave />}
+                                    title="Save"
                                 >
-                                    <span>Save</span>
+                                    <span className="hidden sm:inline">Save</span>
                                 </Button>
                             )}
 
@@ -1493,7 +1502,7 @@ const ImagePreviewModal = ({
                                         : 'Assign to avatar (decides whose accounts can publish it)'
                                 }
                             >
-                                <span>Avatar</span>
+                                <span className="hidden sm:inline">Avatar</span>
                             </Button>
 
                             {onPost && (
@@ -1509,12 +1518,12 @@ const ImagePreviewModal = ({
                                             : 'Post to social platforms or Fanvue'
                                     }
                                 >
-                                    <span>Post</span>
+                                    <span className="hidden sm:inline">Post</span>
                                 </Button>
                             )}
 
-                            <Button variant="plain" color="red" onClick={handleDelete} icon={<HiOutlineTrash />} className="ml-auto">
-                                <span>Delete</span>
+                            <Button variant="plain" color="red" onClick={handleDelete} icon={<HiOutlineTrash />} className="ml-auto" title="Delete">
+                                <span className="hidden sm:inline">Delete</span>
                             </Button>
                         </div>
                     </div>
