@@ -1603,12 +1603,28 @@ async function submitVideoWan22(params: GenerateVideoKieParams): Promise<string>
     )
     console.log(`[KIE/Wan2.2] Uploaded reference to: ${url}`)
 
+    // Wan 2.2 turbo 500s ("Internal Error, Please try again later") on the
+    // structured avatar harness — verified live 2026-07-17: same image, prompt
+    // WITH [BODY:]/[FACE:] blocks (925 chars) → fail 500 twice (task
+    // 80cea769…); short motion-only prompt → success. In i2v the identity
+    // rides on the IMAGE anyway, so strip the bracket blocks (motion text is
+    // what matters) and keep the rest well under the choke point. Wan 2.7
+    // tolerates the harness fine — this is 2.2-only.
+    const motionPrompt = prompt
+        .replace(/\[[A-Z][A-Z_ ]*:[^\]]*\]/g, ' ')
+        .replace(/\s{2,}/g, ' ')
+        .trim()
+        .slice(0, 800)
+
     const input: Record<string, unknown> = {
-        prompt: prompt.slice(0, 5000),
+        prompt: motionPrompt || 'natural subtle motion, cinematic',
         image_url: url,
         // Only 480p/720p exist on this endpoint — clamp anything higher.
         resolution: resolution === '480p' ? '480p' : '720p',
         nsfw_checker: false,
+    }
+    if (motionPrompt.length !== prompt.trim().length) {
+        console.log(`[KIE/Wan2.2] Prompt stripped for turbo: ${prompt.length}→${String(input.prompt).length} chars`)
     }
 
     console.log(`[KIE/Wan2.2] Submitting: resolution=${input.resolution}`)
