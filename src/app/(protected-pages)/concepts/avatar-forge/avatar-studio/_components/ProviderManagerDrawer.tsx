@@ -17,6 +17,7 @@ import {
     HiOutlineLockOpen,
     HiOutlineSearch,
 } from 'react-icons/hi'
+import { PiPushPin, PiPushPinFill } from 'react-icons/pi'
 import type { AIProvider, ProviderType } from '@/@types/supabase'
 import {
     readFavoriteIds,
@@ -154,11 +155,24 @@ const ProviderManagerDrawer = () => {
 
     const handleSelectProvider = (providerId: string) => {
         setActiveProviderId(providerId)
-        // El último usado se vuelve el default del modo (con el que arranca
-        // una sesión fresca) — antes esto requería marcarlo con la ★.
+        // Seleccionar ya NO pisa el default: el default se fija SOLO con el
+        // pin (📌) de la card — así puedes probar otros modelos sin perder tu
+        // arranque preferido. Si nunca has pineado, el primer select lo fija
+        // como default inicial para que una sesión fresca no caiga en el
+        // primero del catálogo.
+        if (!defaultProviderId) {
+            writeDefaultProviderId(generationMode, providerId)
+            setDefaultProviderId(providerId)
+        }
+        setShowProviderManager(false)
+    }
+
+    // Pin explícito: fija este provider como el default de arranque del modo
+    // actual, SIN seleccionarlo ni cerrar el modal.
+    const handlePinDefault = (e: React.MouseEvent, providerId: string) => {
+        e.stopPropagation() // don't trigger the card's select
         writeDefaultProviderId(generationMode, providerId)
         setDefaultProviderId(providerId)
-        setShowProviderManager(false)
     }
 
     const handleToggleFavorite = (e: React.MouseEvent, providerId: string) => {
@@ -305,26 +319,43 @@ const ProviderManagerDrawer = () => {
                                 }`}
                                 onClick={() => handleSelectProvider(provider.id)}
                             >
-                                <button
-                                    type="button"
-                                    onClick={(e) => handleToggleFavorite(e, provider.id)}
-                                    title={isFavorite ? 'Quitar de favoritos' : 'Marcar como favorito'}
-                                    aria-label={isFavorite ? 'Quitar de favoritos' : 'Marcar como favorito'}
-                                    className="absolute top-1.5 right-1.5 p-1 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
-                                >
-                                    {isFavorite ? (
-                                        <HiStar className="w-4 h-4 text-amber-400" />
-                                    ) : (
-                                        <HiOutlineStar className="w-4 h-4 text-gray-400" />
-                                    )}
-                                </button>
+                                <div className="absolute top-1.5 right-1.5 flex items-center">
+                                    {/* 📌 fija el DEFAULT de arranque del modo
+                                        sin seleccionar ni cerrar el modal. */}
+                                    <button
+                                        type="button"
+                                        onClick={(e) => handlePinDefault(e, provider.id)}
+                                        title={isDefault ? 'Default de arranque de este modo' : 'Fijar como default de arranque'}
+                                        aria-label={isDefault ? 'Default de arranque de este modo' : 'Fijar como default de arranque'}
+                                        className="p-1 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
+                                    >
+                                        {isDefault ? (
+                                            <PiPushPinFill className="w-4 h-4 text-orange-400" />
+                                        ) : (
+                                            <PiPushPin className="w-4 h-4 text-gray-400" />
+                                        )}
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={(e) => handleToggleFavorite(e, provider.id)}
+                                        title={isFavorite ? 'Quitar de favoritos' : 'Marcar como favorito'}
+                                        aria-label={isFavorite ? 'Quitar de favoritos' : 'Marcar como favorito'}
+                                        className="p-1 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
+                                    >
+                                        {isFavorite ? (
+                                            <HiStar className="w-4 h-4 text-amber-400" />
+                                        ) : (
+                                            <HiOutlineStar className="w-4 h-4 text-gray-400" />
+                                        )}
+                                    </button>
+                                </div>
                                 <div className="flex items-center gap-2 mb-1.5">
                                     {getProviderIcon(provider.type)}
                                     {isSelected && (
                                         <HiOutlineCheck className="w-4 h-4 text-blue-500" />
                                     )}
                                 </div>
-                                <h3 className="font-medium text-sm text-gray-900 dark:text-white leading-tight pr-5">
+                                <h3 className="font-medium text-sm text-gray-900 dark:text-white leading-tight pr-12">
                                     {provider.name}
                                 </h3>
                                 <p className="text-[11px] text-gray-500 dark:text-gray-400 mt-1 line-clamp-3">
