@@ -9,14 +9,23 @@ import {
     Controls,
     type ReactFlowInstance,
     type IsValidConnection,
+    type OnConnectStart,
+    type OnConnectEnd,
 } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
 import useTheme from '@/utils/hooks/useTheme'
+import toast from '@/components/ui/toast'
+import Notification from '@/components/ui/Notification'
 import { useVideoFlowStore } from '../_store/videoFlowStore'
 import { nodeTypes } from '../_nodes/registry'
 import { getTemplate } from '../_nodes/templates'
 import { CATEGORY_COLORS } from '../_constants/categoryColors'
-import { arePortsCompatible } from '../_constants/portTypes'
+import {
+    arePortsCompatible,
+    getPortType,
+    PORT_LABEL_ES,
+    nodesAcceptingPort,
+} from '../_constants/portTypes'
 import type { VideoFlowNode } from '../_engine/types'
 import NodePalette from './NodePalette'
 import FlowToolbar from './FlowToolbar'
@@ -39,6 +48,7 @@ export default function VideoFlowCanvas() {
         addNode,
         selectedNodeId,
         setSelectedNodeId,
+        setConnectingFrom,
     } = useVideoFlowStore()
 
     // Seed an empty canvas with Trigger → Select Avatar already wired — nearly
@@ -116,6 +126,65 @@ export default function VideoFlowCanvas() {
         []
     )
 
+    // While a wire is being dragged, publish the origin handle's data type so
+    // every node can dim the sockets this wire can't legally land on.
+    const onConnectStart: OnConnectStart = useCallback(
+        (_event, { nodeId, handleId, handleType }) => {
+            if (!nodeId || !handleType) return
+            const node = useVideoFlowStore
+                .getState()
+                .nodes.find((n) => n.id === nodeId)
+            if (!node) return
+            const portType = getPortType(
+                node.data.type,
+                handleId,
+                handleType === 'source' ? 'source' : 'target',
+            )
+            if (portType) setConnectingFrom({ portType, handleType })
+        },
+        [setConnectingFrom],
+    )
+
+    // Clear the drag feedback and, when the wire was dropped on an INCOMPATIBLE
+    // socket (isValid === false), explain WHY it refused — the silent snap-back
+    // was the whole reason "I can't connect anything" felt broken.
+    const onConnectEnd: OnConnectEnd = useCallback(
+        (_event, state) => {
+            setConnectingFrom(null)
+            if (state.isValid !== false) return
+            const { fromHandle, toHandle } = state
+            if (!fromHandle || !toHandle) return
+            const { nodes: currentNodes } = useVideoFlowStore.getState()
+            const typeOf = (handle: typeof fromHandle) => {
+                const n = currentNodes.find((node) => node.id === handle.nodeId)
+                if (!n) return undefined
+                return getPortType(
+                    n.data.type,
+                    handle.id,
+                    handle.type === 'source' ? 'source' : 'target',
+                )
+            }
+            const fromType = typeOf(fromHandle)
+            const toType = typeOf(toHandle)
+            if (!fromType || !toType) return
+            // The wire always carries the OUTPUT (source) type; name whichever
+            // handle is the source so the message reads correctly either way.
+            const outType = fromHandle.type === 'source' ? fromType : toType
+            const inType = fromHandle.type === 'source' ? toType : fromType
+            const targets = nodesAcceptingPort(outType).slice(0, 4)
+            toast.push(
+                <Notification type="warning" title="Puertos incompatibles">
+                    {`El puerto ${PORT_LABEL_ES[outType]} no conecta con ${PORT_LABEL_ES[inType]} — solo se unen puertos del mismo color.${
+                        targets.length
+                            ? ` Un puerto ${PORT_LABEL_ES[outType]} va a: ${targets.join(', ')}.`
+                            : ''
+                    }`}
+                </Notification>,
+            )
+        },
+        [setConnectingFrom],
+    )
+
     const showHint = nodes.length <= 1 && edges.length === 0
 
     return (
@@ -126,6 +195,8 @@ export default function VideoFlowCanvas() {
                 onNodesChange={onNodesChange}
                 onEdgesChange={onEdgesChange}
                 onConnect={onConnect}
+                onConnectStart={onConnectStart}
+                onConnectEnd={onConnectEnd}
                 onInit={onInit}
                 onDrop={onDrop}
                 onDragOver={onDragOver}

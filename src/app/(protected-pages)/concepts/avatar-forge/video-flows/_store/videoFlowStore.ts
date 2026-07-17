@@ -9,8 +9,16 @@ import {
     type XYPosition,
     type Edge,
 } from '@xyflow/react'
-import type { VideoFlowNode, VideoNodeData, NodeStatus } from '../_engine/types'
+import type { VideoFlowNode, VideoNodeData, NodeStatus, PortType } from '../_engine/types'
 import { getTemplate } from '../_nodes/templates'
+
+/** In-progress connection drag: the origin handle's data type + which side it
+ *  is (source=output / target=input). Nodes read this to dim incompatible
+ *  handles so the user sees, live, where the wire can legally land. */
+export interface ConnectingFrom {
+    portType: PortType
+    handleType: 'source' | 'target'
+}
 
 interface VideoFlowStore {
     nodes: VideoFlowNode[]
@@ -28,6 +36,9 @@ interface VideoFlowStore {
     executionError: { nodeId: string; message: string } | null
     selectedNodeId: string | null
     setSelectedNodeId: (id: string | null) => void
+    /** Origin of the wire currently being dragged (null when not connecting). */
+    connectingFrom: ConnectingFrom | null
+    setConnectingFrom: (value: ConnectingFrom | null) => void
     /** Adds a node; optional config overrides the template defaults. Returns the new node id. */
     addNode: (
         type: string,
@@ -102,6 +113,8 @@ export const useVideoFlowStore = create<VideoFlowStore>()((set, get) => ({
     executionError: null,
     selectedNodeId: null,
     setSelectedNodeId: (id) => set({ selectedNodeId: id }),
+    connectingFrom: null,
+    setConnectingFrom: (value) => set({ connectingFrom: value }),
     addNode: (type, position, config) => {
         const template = getTemplate(type)
         if (!template) return null

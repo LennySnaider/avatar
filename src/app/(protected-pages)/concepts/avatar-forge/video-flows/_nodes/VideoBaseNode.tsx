@@ -11,9 +11,9 @@ import {
     HiOutlineLightningBolt, HiOutlineCollection, HiOutlineVideoCamera,
     HiOutlineShieldCheck, HiOutlineChatAlt, HiOutlineHeart, HiOutlineGlobeAlt,
 } from 'react-icons/hi'
-import type { VideoFlowNode, NodeStatus, MediaBundle, AvatarBundle } from '../_engine/types'
+import type { VideoFlowNode, NodeStatus, MediaBundle, AvatarBundle, PortDef } from '../_engine/types'
 import { CATEGORY_COLORS } from '../_constants/categoryColors'
-import { PORT_COLORS } from '../_constants/portTypes'
+import { PORT_COLORS, arePortsCompatible } from '../_constants/portTypes'
 import { getTemplate } from './templates'
 import { useVideoFlowStore } from '../_store/videoFlowStore'
 
@@ -186,6 +186,22 @@ function VideoBaseNode({ id, data }: NodeProps<VideoFlowNode>) {
         s.executionError?.nodeId === id ? s.executionError.message : null,
     )
 
+    // ComfyUI-style live affordance: while a wire is being dragged, fade the
+    // sockets it can't legally land on so the valid targets pop. A wire from an
+    // OUTPUT can only enter an INPUT of a compatible type (and vice-versa).
+    const connectingFrom = useVideoFlowStore((s) => s.connectingFrom)
+    const isPortDimmed = (port: PortDef, side: 'input' | 'output'): boolean => {
+        if (!connectingFrom) return false
+        if (connectingFrom.handleType === 'source') {
+            // Dragging from an output → only inputs can receive it.
+            if (side === 'output') return true
+            return !arePortsCompatible(connectingFrom.portType, port.type)
+        }
+        // Dragging from an input → only outputs can feed it.
+        if (side === 'input') return true
+        return !arePortsCompatible(port.type, connectingFrom.portType)
+    }
+
     const configSummary = Object.entries(config)
         .filter(([, v]) =>
             v !== null && v !== '' && v !== undefined &&
@@ -219,36 +235,42 @@ function VideoBaseNode({ id, data }: NodeProps<VideoFlowNode>) {
             {(inputs.length > 0 || outputs.length > 0) && (
                 <div className="flex justify-between gap-3 mb-1">
                     <div className="flex flex-col gap-1 min-w-0">
-                        {inputs.map((port) => (
+                        {inputs.map((port) => {
+                            const dimmed = isPortDimmed(port, 'input')
+                            return (
                             <div key={port.key} className="flex items-center gap-1.5 h-4" title={`${port.key} (${port.type})`}>
                                 <Handle
                                     type="target"
                                     id={port.key}
                                     position={Position.Left}
-                                    style={{ ...HANDLE_STYLE, background: PORT_COLORS[port.type] }}
+                                    style={{ ...HANDLE_STYLE, background: PORT_COLORS[port.type], opacity: dimmed ? 0.2 : 1, transition: 'opacity 120ms' }}
                                     className="!w-2.5 !h-2.5 !border-2 !border-white dark:!border-gray-800 !-ml-[19px] shrink-0"
                                 />
-                                <span className="text-[8px] text-gray-500 dark:text-gray-400 font-mono truncate">
+                                <span className={`text-[8px] font-mono truncate ${dimmed ? 'text-gray-300 dark:text-gray-600' : 'text-gray-500 dark:text-gray-400'}`}>
                                     {port.key}
                                 </span>
                             </div>
-                        ))}
+                            )
+                        })}
                     </div>
                     <div className="flex flex-col gap-1 items-end min-w-0">
-                        {outputs.map((port) => (
+                        {outputs.map((port) => {
+                            const dimmed = isPortDimmed(port, 'output')
+                            return (
                             <div key={port.key} className="flex items-center gap-1.5 h-4" title={`${port.key} (${port.type})`}>
-                                <span className="text-[8px] text-gray-500 dark:text-gray-400 font-mono truncate">
+                                <span className={`text-[8px] font-mono truncate ${dimmed ? 'text-gray-300 dark:text-gray-600' : 'text-gray-500 dark:text-gray-400'}`}>
                                     {port.key}
                                 </span>
                                 <Handle
                                     type="source"
                                     id={port.key}
                                     position={Position.Right}
-                                    style={{ ...HANDLE_STYLE, background: PORT_COLORS[port.type] }}
+                                    style={{ ...HANDLE_STYLE, background: PORT_COLORS[port.type], opacity: dimmed ? 0.2 : 1, transition: 'opacity 120ms' }}
                                     className="!w-2.5 !h-2.5 !border-2 !border-white dark:!border-gray-800 !-mr-[19px] shrink-0"
                                 />
                             </div>
-                        ))}
+                            )
+                        })}
                     </div>
                 </div>
             )}
