@@ -273,6 +273,10 @@ const VideoEditorMain = ({ userId, initialVideoUrl }: VideoEditorMainProps) => {
 
     // ─── DOM refs ───────────────────────────────────────────────────────
     const videoRef = useRef<HTMLVideoElement>(null)
+    // Overlay que congela el último frame durante el cambio de clip (el swap
+    // de src del <video> único parpadea en negro un instante).
+    const transitionCanvasRef = useRef<HTMLCanvasElement>(null)
+    const [isTransitioning, setIsTransitioning] = useState(false)
     const fileInputRef = useRef<HTMLInputElement>(null)
     const blockRefs = useRef<Record<string, HTMLDivElement | null>>({})
     // The timeline track container — read fresh on each trim-drag mousemove
@@ -477,6 +481,20 @@ const VideoEditorMain = ({ userId, initialVideoUrl }: VideoEditorMainProps) => {
         const next = list[idx + 1]
         const v = videoRef.current
         if (next) {
+            // Anti-parpadeo: el swap de src pasa por un frame negro. Congela
+            // el ÚLTIMO frame del clip actual en un canvas overlay; se oculta
+            // cuando el siguiente clip ya pinta ('playing'/'seeked').
+            const c = transitionCanvasRef.current
+            if (v && c && v.videoWidth > 0) {
+                c.width = v.videoWidth
+                c.height = v.videoHeight
+                try {
+                    c.getContext('2d')?.drawImage(v, 0, 0)
+                    setIsTransitioning(true)
+                } catch {
+                    /* CORS taint u otro fallo: sin overlay, solo el parpadeo */
+                }
+            }
             pendingSeekRef.current = next.inPoint
             pendingPlayRef.current = true
             setSelectedClipId(next.id)
@@ -528,18 +546,25 @@ const VideoEditorMain = ({ userId, initialVideoUrl }: VideoEditorMainProps) => {
             setIsPlaying(false)
             handleClipBoundary()
         }
+        // El nuevo clip ya pinta frames → retira el frame congelado del
+        // overlay de transición.
+        const onRendering = () => setIsTransitioning(false)
 
         v.addEventListener('loadedmetadata', onLoadedMeta)
         v.addEventListener('timeupdate', onTimeUpdate)
         v.addEventListener('play', onPlay)
         v.addEventListener('pause', onPause)
         v.addEventListener('ended', onEnded)
+        v.addEventListener('playing', onRendering)
+        v.addEventListener('seeked', onRendering)
         return () => {
             v.removeEventListener('loadedmetadata', onLoadedMeta)
             v.removeEventListener('timeupdate', onTimeUpdate)
             v.removeEventListener('play', onPlay)
             v.removeEventListener('pause', onPause)
             v.removeEventListener('ended', onEnded)
+            v.removeEventListener('playing', onRendering)
+            v.removeEventListener('seeked', onRendering)
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [selectedClipId])
@@ -572,13 +597,34 @@ const VideoEditorMain = ({ userId, initialVideoUrl }: VideoEditorMainProps) => {
         }
     }
 
+    // Seek GLOBAL: la barra representa la línea de tiempo completa — el clic
+    // localiza el clip destino y su tiempo local; si es otro clip, cambia la
+    // selección con seek pendiente (conservando play/pausa).
     const handleSeek = (e: React.MouseEvent<HTMLDivElement>) => {
         const v = videoRef.current
-        const clip = selectedClip
-        if (!v || !clip) return
+        const list = clipsRef.current
+        if (!v || list.length === 0) return
+        const total = list.reduce((s, c) => s + Math.max(0.01, c.outPoint - c.inPoint), 0)
+        if (total <= 0) return
         const bar = e.currentTarget.getBoundingClientRect()
         const ratio = Math.max(0, Math.min(1, (e.clientX - bar.left) / bar.width))
-        v.currentTime = clip.inPoint + ratio * (clip.outPoint - clip.inPoint)
+        let target = ratio * total
+        for (let i = 0; i < list.length; i++) {
+            const c = list[i]
+            const len = Math.max(0.01, c.outPoint - c.inPoint)
+            if (target <= len || i === list.length - 1) {
+                const local = c.inPoint + Math.min(target, len)
+                if (c.id === selectedClipIdRef.current) {
+                    v.currentTime = local
+                } else {
+                    pendingSeekRef.current = local
+                    pendingPlayRef.current = !v.paused
+                    setSelectedClipId(c.id)
+                }
+                return
+            }
+            target -= len
+        }
     }
 
     const toggleMute = () => {
@@ -1358,7 +1404,17 @@ const VideoEditorMain = ({ userId, initialVideoUrl }: VideoEditorMainProps) => {
     }
 
     const trimmedLenOf = (c: TimelineClip) => Math.max(0.01, c.outPoint - c.inPoint)
-    const selectedTrimmedLen = selectedClip ? trimmedLenOf(selectedClip) : 0
+
+    // Posición GLOBAL en la línea de tiempo: clips previos + posición local.
+    // El indicador/barra del player reflejan el TOTAL (0:08 / 0:10), no el
+    // clip suelto — al encadenar clips el tiempo "suma".
+    let selectedClipOffset = 0
+    for (const c of clips) {
+        if (c.id === selectedClipId) break
+        selectedClipOffset += trimmedLenOf(c)
+    }
+    const globalPlayhead =
+        selectedClipOffset + Math.max(0, playhead - (selectedClip?.inPoint ?? 0))
 
     return (
         <div className="h-full flex flex-col">
@@ -1425,6 +1481,17 @@ const VideoEditorMain = ({ userId, initialVideoUrl }: VideoEditorMainProps) => {
                             style={{ pointerEvents: 'none' }}
                         />
 
+                        {/* Frame congelado durante la transición entre clips
+                            (tapa el parpadeo negro del swap de src). */}
+                        <canvas
+                            ref={transitionCanvasRef}
+                            className="absolute inset-0 w-full h-full pointer-events-none"
+                            style={{
+                                objectFit: 'contain',
+                                display: isTransitioning ? 'block' : 'none',
+                            }}
+                        />
+
                         {/* Watermark freehand rect */}
                         {toolMode === 'watermark' && wmRect && wmRect.w > 4 && wmRect.h > 4 && (
                             <div
@@ -1488,14 +1555,28 @@ const VideoEditorMain = ({ userId, initialVideoUrl }: VideoEditorMainProps) => {
                             <div
                                 className="absolute h-full bg-purple-500 rounded transition-[width] duration-100"
                                 style={{
-                                    width: `${selectedTrimmedLen > 0
-                                        ? Math.max(0, Math.min(1, (playhead - (selectedClip?.inPoint ?? 0)) / selectedTrimmedLen)) * 100
+                                    width: `${totalTrimmed > 0
+                                        ? Math.max(0, Math.min(1, globalPlayhead / totalTrimmed)) * 100
                                         : 0}%`,
                                 }}
                             />
+                            {/* Separadores entre clips sobre la barra global */}
+                            {clips.length > 1 && (() => {
+                                let acc = 0
+                                return clips.slice(0, -1).map((c) => {
+                                    acc += trimmedLenOf(c)
+                                    return (
+                                        <div
+                                            key={c.id}
+                                            className="absolute top-0 h-full w-px bg-white/40"
+                                            style={{ left: `${(acc / totalTrimmed) * 100}%` }}
+                                        />
+                                    )
+                                })
+                            })()}
                         </div>
                         <span className="text-xs font-mono text-gray-500 dark:text-gray-400 min-w-20 text-right">
-                            {fmtTime(Math.max(0, playhead - (selectedClip?.inPoint ?? 0)))} / {fmtTime(selectedTrimmedLen)}
+                            {fmtTime(globalPlayhead)} / {fmtTime(totalTrimmed)}
                         </span>
                         <button
                             type="button"
