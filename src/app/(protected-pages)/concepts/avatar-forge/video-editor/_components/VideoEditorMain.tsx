@@ -24,7 +24,9 @@ import {
     HiOutlineX,
     HiOutlinePlus,
     HiOutlineMusicNote,
+    HiOutlineLink,
 } from 'react-icons/hi'
+import { PiScissors } from 'react-icons/pi'
 import { useAvatarStudioStore } from '../../avatar-studio/_store/avatarStudioStore'
 import type { GeneratedMedia } from '../../avatar-studio/types'
 import { muxAudioIntoVideo } from '@/services/AudioMuxService'
@@ -632,6 +634,61 @@ const VideoEditorMain = ({ userId, initialVideoUrl }: VideoEditorMainProps) => {
         if (!v) return
         v.muted = !v.muted
         setIsMuted(v.muted)
+    }
+
+    // ─── Cortar / Unir ────────────────────────────────────────────────
+    // Cortar: divide el clip seleccionado en el playhead → dos segmentos del
+    // MISMO source (comparten url, solo cambian in/out; el filmstrip va por
+    // url, así que ambos conservan miniaturas). Para BORRAR un tramo: corta a
+    // ambos lados y elimina el pedazo con su ✕.
+    const handleSplitAtPlayhead = () => {
+        const v = videoRef.current
+        const clip = selectedClip
+        if (!v || !clip) return
+        const t = v.currentTime
+        if (t <= clip.inPoint + MIN_CLIP_LEN || t >= clip.outPoint - MIN_CLIP_LEN) {
+            toast.push(
+                <Notification type="warning" title="Corte muy al borde">
+                    Mueve el playhead hacia el interior del clip para cortar.
+                </Notification>,
+            )
+            return
+        }
+        const secondId = `clip-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+        setClips((prev) =>
+            prev.flatMap((c) =>
+                c.id === clip.id
+                    ? [
+                          { ...c, outPoint: t },
+                          { ...c, id: secondId, inPoint: t },
+                      ]
+                    : [c],
+            ),
+        )
+    }
+
+    // Unir: re-fusiona el clip seleccionado con el SIGUIENTE cuando son
+    // cortes contiguos del mismo source (deshace un corte).
+    const nextClip = (() => {
+        const idx = clips.findIndex((c) => c.id === selectedClipId)
+        return idx >= 0 ? clips[idx + 1] : undefined
+    })()
+    const canJoinNext =
+        !!selectedClip &&
+        !!nextClip &&
+        nextClip.url === selectedClip.url &&
+        Math.abs(nextClip.inPoint - selectedClip.outPoint) < 0.05
+
+    const handleJoinWithNext = () => {
+        const clip = selectedClip
+        if (!clip || !nextClip || !canJoinNext) return
+        setClips((prev) =>
+            prev
+                .filter((c) => c.id !== nextClip.id)
+                .map((c) =>
+                    c.id === clip.id ? { ...c, outPoint: nextClip.outPoint } : c,
+                ),
+        )
     }
 
     const fmtTime = (s: number): string => {
@@ -1588,9 +1645,34 @@ const VideoEditorMain = ({ userId, initialVideoUrl }: VideoEditorMainProps) => {
                         </button>
                     </div>
 
-                    {/* Tools: Crop / Watermark, applied to the selected clip */}
+                    {/* Tools: Cortar/Unir + Crop / Watermark, applied to the selected clip */}
                     <div className="w-full max-w-2xl">
-                        <div className="flex items-center gap-2 mb-2">
+                        <div className="flex items-center gap-2 mb-2 flex-wrap">
+                            <Button
+                                size="xs"
+                                variant="plain"
+                                icon={<PiScissors />}
+                                onClick={handleSplitAtPlayhead}
+                                disabled={isProcessing || !selectedClip}
+                                title="Divide el clip en el playhead — borra luego el pedazo con su ✕"
+                            >
+                                Cortar
+                            </Button>
+                            <Button
+                                size="xs"
+                                variant="plain"
+                                icon={<HiOutlineLink />}
+                                onClick={handleJoinWithNext}
+                                disabled={isProcessing || !canJoinNext}
+                                title={
+                                    canJoinNext
+                                        ? 'Une este clip con el siguiente (deshace el corte)'
+                                        : 'Solo se pueden unir cortes contiguos del mismo clip'
+                                }
+                            >
+                                Unir
+                            </Button>
+                            <span className="w-px h-4 bg-gray-300 dark:bg-gray-600" />
                             <Button
                                 size="xs"
                                 variant={toolMode === 'crop' ? 'solid' : 'plain'}
