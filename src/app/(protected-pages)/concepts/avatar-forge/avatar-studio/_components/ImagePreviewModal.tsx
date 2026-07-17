@@ -1418,151 +1418,153 @@ const ImagePreviewModal = ({
                             </div>
                         </div>
 
-                        {/* Action Buttons — en móvil solo-icono (label oculto
-                            <sm) para que 9 acciones no ocupen 5 filas; Download
-                            conserva su label como acción primaria. Los `title`
-                            dan el nombre en hover/long-press. */}
-                        <div className="flex flex-wrap items-center gap-2">
-                            <Button variant="solid" onClick={handleDownload} icon={<HiOutlineDownload />} title="Download">
-                                <span className="hidden sm:inline">Download</span>
-                            </Button>
+                        {/* Toolbar de acciones: SOLO iconos + Tooltip (compacto
+                            en todas las resoluciones). Delete vive en la esquina
+                            de la media. Los deshabilitados usan el mismo patrón
+                            Tooltip>Button que undo/redo de la máscara. */}
+                        <div className="flex flex-wrap items-center gap-1">
+                            <Tooltip title="Download">
+                                <Button size="sm" variant="solid" onClick={handleDownload} icon={<HiOutlineDownload />} />
+                            </Tooltip>
 
                             {previewMedia.mediaType === 'IMAGE' && (
                                 <>
                                     {onEdit && (
-                                        <Button variant="plain" onClick={handleStartEdit} icon={<HiOutlinePencil />} title="Edit">
-                                            <span className="hidden sm:inline">Edit</span>
-                                        </Button>
+                                        <Tooltip title="Edit">
+                                            <Button size="sm" variant="plain" onClick={handleStartEdit} icon={<HiOutlinePencil />} />
+                                        </Tooltip>
                                     )}
                                     {onAnimate && (
-                                        <Button
-                                            variant="plain"
-                                            color="purple"
-                                            onClick={() => {
-                                                onAnimate(previewMedia)
-                                                handleClose()
-                                            }}
-                                            icon={<HiOutlineFilm />}
-                                            title="Animate"
-                                        >
-                                            <span className="hidden sm:inline">Animate</span>
-                                        </Button>
+                                        <Tooltip title="Animate">
+                                            <Button
+                                                size="sm"
+                                                variant="plain"
+                                                color="purple"
+                                                onClick={() => {
+                                                    onAnimate(previewMedia)
+                                                    handleClose()
+                                                }}
+                                                icon={<HiOutlineFilm />}
+                                            />
+                                        </Tooltip>
                                     )}
                                     {onVariant && (
-                                        <Button
-                                            variant="plain"
-                                            onClick={() => {
-                                                onVariant(previewMedia)
-                                                handleClose()
-                                            }}
-                                            icon={<HiOutlineDuplicate />}
-                                            title="Variant"
-                                        >
-                                            <span className="hidden sm:inline">Variant</span>
-                                        </Button>
+                                        <Tooltip title="Variant">
+                                            <Button
+                                                size="sm"
+                                                variant="plain"
+                                                onClick={() => {
+                                                    onVariant(previewMedia)
+                                                    handleClose()
+                                                }}
+                                                icon={<HiOutlineDuplicate />}
+                                            />
+                                        </Tooltip>
                                     )}
                                     {onReuse && (
-                                        <Button
-                                            variant="plain"
-                                            color="green"
-                                            onClick={() => {
-                                                onReuse(previewMedia)
-                                                handleClose()
-                                            }}
-                                            icon={<HiOutlineRefresh />}
-                                            title="Re-use"
-                                        >
-                                            <span className="hidden sm:inline">Re-use</span>
-                                        </Button>
+                                        <Tooltip title="Re-use">
+                                            <Button
+                                                size="sm"
+                                                variant="plain"
+                                                color="green"
+                                                onClick={() => {
+                                                    onReuse(previewMedia)
+                                                    handleClose()
+                                                }}
+                                                icon={<HiOutlineRefresh />}
+                                            />
+                                        </Tooltip>
                                     )}
                                 </>
                             )}
 
                             {previewMedia.mediaType === 'VIDEO' && onEditVideo && (
-                                <Button
-                                    variant="plain"
-                                    onClick={() => {
-                                        onEditVideo(previewMedia)
-                                        handleClose()
-                                    }}
-                                    icon={<HiOutlinePencil />}
-                                    title="Edit"
-                                >
-                                    <span className="hidden sm:inline">Edit</span>
-                                </Button>
+                                <Tooltip title="Edit">
+                                    <Button
+                                        size="sm"
+                                        variant="plain"
+                                        onClick={() => {
+                                            onEditVideo(previewMedia)
+                                            handleClose()
+                                        }}
+                                        icon={<HiOutlinePencil />}
+                                    />
+                                </Tooltip>
                             )}
 
                             {previewMedia.mediaType === 'VIDEO' && (
-                                <Button variant="plain" onClick={captureFrameAsImage} icon={<HiOutlineCamera />} title="Frame">
-                                    <span className="hidden sm:inline">Frame</span>
-                                </Button>
+                                <Tooltip title="Frame">
+                                    <Button size="sm" variant="plain" onClick={captureFrameAsImage} icon={<HiOutlineCamera />} />
+                                </Tooltip>
                             )}
 
                             {previewMedia.mediaType === 'VIDEO' && onContinueVideo && (
-                                <Button variant="plain" color="purple" onClick={captureFrame} icon={<HiOutlineFilm />} title="Continue">
-                                    <span className="hidden sm:inline">Continue</span>
-                                </Button>
+                                <Tooltip title="Continue">
+                                    <Button size="sm" variant="plain" color="purple" onClick={captureFrame} icon={<HiOutlineFilm />} />
+                                </Tooltip>
                             )}
 
                             {previewMedia.mediaType === 'VIDEO' && onLipsync && (
-                                <Button
-                                    variant="plain"
-                                    onClick={() => {
-                                        onLipsync(previewMedia)
-                                        handleClose()
-                                    }}
-                                    icon={<HiOutlineVolumeUp />}
-                                    title="Lipsync"
-                                >
-                                    <span className="hidden sm:inline">Lipsync</span>
-                                </Button>
+                                <Tooltip title="Lipsync">
+                                    <Button
+                                        size="sm"
+                                        variant="plain"
+                                        onClick={() => {
+                                            onLipsync(previewMedia)
+                                            handleClose()
+                                        }}
+                                        icon={<HiOutlineVolumeUp />}
+                                    />
+                                </Tooltip>
                             )}
 
                             {onSave && (
-                                <Button
-                                    variant="plain"
-                                    onClick={() => {
-                                        onSave(previewMedia)
-                                    }}
-                                    icon={<HiOutlineSave />}
-                                    title="Save"
-                                >
-                                    <span className="hidden sm:inline">Save</span>
-                                </Button>
+                                <Tooltip title="Save">
+                                    <Button
+                                        size="sm"
+                                        variant="plain"
+                                        onClick={() => {
+                                            onSave(previewMedia)
+                                        }}
+                                        icon={<HiOutlineSave />}
+                                    />
+                                </Tooltip>
                             )}
 
-                            <Button
-                                variant="plain"
-                                onClick={() => setAssignMedia(previewMedia)}
-                                disabled={previewMedia.saveState !== 'saved'}
-                                icon={<HiOutlineUserCircle />}
+                            <Tooltip
                                 title={
                                     previewMedia.saveState !== 'saved'
                                         ? 'Saving… available once this media is saved'
                                         : 'Assign to avatar (decides whose accounts can publish it)'
                                 }
                             >
-                                <span className="hidden sm:inline">Avatar</span>
-                            </Button>
+                                <Button
+                                    size="sm"
+                                    variant="plain"
+                                    onClick={() => setAssignMedia(previewMedia)}
+                                    disabled={previewMedia.saveState !== 'saved'}
+                                    icon={<HiOutlineUserCircle />}
+                                />
+                            </Tooltip>
 
                             {onPost && (
-                                <Button
-                                    variant="plain"
-                                    color="blue"
-                                    onClick={() => onPost(previewMedia)}
-                                    disabled={previewMedia.saveState !== 'saved'}
-                                    icon={<HiOutlineShare />}
+                                <Tooltip
                                     title={
                                         previewMedia.saveState !== 'saved'
                                             ? 'Saving… available once this media is saved'
                                             : 'Post to social platforms or Fanvue'
                                     }
                                 >
-                                    <span className="hidden sm:inline">Post</span>
-                                </Button>
+                                    <Button
+                                        size="sm"
+                                        variant="plain"
+                                        color="blue"
+                                        onClick={() => onPost(previewMedia)}
+                                        disabled={previewMedia.saveState !== 'saved'}
+                                        icon={<HiOutlineShare />}
+                                    />
+                                </Tooltip>
                             )}
-
-                            {/* Delete vive ahora en la esquina de la media. */}
                         </div>
                     </div>
                 )}
