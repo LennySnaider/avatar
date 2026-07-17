@@ -3,7 +3,8 @@
 import { useEffect, useState } from 'react'
 import Dialog from '@/components/ui/Dialog'
 import Spinner from '@/components/ui/Spinner'
-import { HiOutlineUser, HiOutlineCheck } from 'react-icons/hi'
+import { HiOutlineUser } from 'react-icons/hi'
+import AvatarGridPicker from '../../../_shared/AvatarGridPicker'
 import { apiGetAvatars, apiGetAvatarReferences, getSignedUrl } from '@/services/AvatarForgeService'
 import type { Avatar, AvatarReference, PhysicalMeasurements } from '@/@types/supabase'
 
@@ -121,7 +122,7 @@ export default function AvatarPickerField({ value, onSelect }: AvatarPickerField
                     className="mt-0.5 w-full flex items-center gap-2 bg-gray-50 dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded px-2 py-2 hover:border-primary transition-colors"
                 >
                     {value.thumbnailUrl ? (
-                        // eslint-disable-next-line @next/next/no-img-element
+                         
                         <img
                             src={value.thumbnailUrl}
                             alt=""
@@ -162,43 +163,25 @@ export default function AvatarPickerField({ value, onSelect }: AvatarPickerField
                             No avatars yet. Create one in Avatar Studio first.
                         </div>
                     ) : (
-                        <div className="grid grid-cols-3 gap-3 max-h-[60vh] overflow-y-auto">
-                            {avatars.map((a) => (
-                                <button
-                                    key={a.id}
-                                    type="button"
-                                    onClick={() => handlePick(a)}
-                                    disabled={isLoadingRefs}
-                                    className={`relative rounded-lg overflow-hidden border-2 transition-all ${
-                                        value.avatarId === a.id
-                                            ? 'border-emerald-500'
-                                            : 'border-transparent hover:border-gray-300'
-                                    } ${isLoadingRefs ? 'opacity-50 cursor-wait' : ''}`}
-                                >
-                                    {a.thumbnailDataUrl ? (
-                                        // eslint-disable-next-line @next/next/no-img-element
-                                        <img
-                                            src={a.thumbnailDataUrl}
-                                            alt={a.name}
-                                            className="w-full aspect-square object-cover"
-                                        />
-                                    ) : (
-                                        <div className="w-full aspect-square bg-gray-200 flex items-center justify-center">
-                                            <HiOutlineUser className="w-10 h-10 text-gray-400" />
-                                        </div>
-                                    )}
-                                    <div className="absolute bottom-0 inset-x-0 bg-gradient-to-t from-black/80 to-transparent p-2">
-                                        <div className="text-white text-xs font-medium truncate">
-                                            {a.name}
-                                        </div>
-                                    </div>
-                                    {value.avatarId === a.id && (
-                                        <div className="absolute top-1 right-1 bg-emerald-500 rounded-full p-0.5">
-                                            <HiOutlineCheck className="w-3 h-3 text-white" />
-                                        </div>
-                                    )}
-                                </button>
-                            ))}
+                        <div className="max-h-[60vh] overflow-y-auto">
+                            {/* Grid compartido (misma UI que el AvatarSelector
+                                del Studio — DRY en _shared/AvatarGridPicker). */}
+                            <AvatarGridPicker
+                                items={avatars.map((a) => ({
+                                    id: a.id,
+                                    name: a.name,
+                                    thumbnailUrl: a.thumbnailDataUrl,
+                                }))}
+                                selectedId={value.avatarId}
+                                disabled={isLoadingRefs}
+                                gridClassName="grid grid-cols-3 gap-3"
+                                onPick={(item) => {
+                                    const avatar = avatars.find(
+                                        (a) => a.id === item.id,
+                                    )
+                                    if (avatar) handlePick(avatar)
+                                }}
+                            />
                         </div>
                     )}
                 </div>

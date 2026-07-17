@@ -3,11 +3,11 @@
 import { useState, useEffect, useRef } from 'react'
 import { useAvatarStudioStore } from '../_store/avatarStudioStore'
 import Dialog from '@/components/ui/Dialog'
+import AvatarGridPicker from '../../_shared/AvatarGridPicker'
 import Button from '@/components/ui/Button'
-import Card from '@/components/ui/Card'
 import Spinner from '@/components/ui/Spinner'
 import ScrollBar from '@/components/ui/ScrollBar'
-import { HiOutlineUser, HiOutlineCheck, HiOutlinePlus } from 'react-icons/hi'
+import { HiOutlineUser, HiOutlinePlus } from 'react-icons/hi'
 import { apiGetAvatars, apiGetAvatarReferences, getSignedUrl } from '@/services/AvatarForgeService'
 import { getStoragePublicUrl } from '@/lib/supabase'
 import { createThumbnail } from '@/utils/imageOptimization'
@@ -86,7 +86,7 @@ const AvatarSelector = ({ userId, isOpen, onClose }: AvatarSelectorProps) => {
         if (isOpen && userId) {
             loadAvatars()
         }
-        // eslint-disable-next-line react-hooks/exhaustive-deps
+         
     }, [isOpen, userId])
 
     // Helper to download and convert to base64 with thumbnail. Goes through a
@@ -259,53 +259,24 @@ const AvatarSelector = ({ userId, isOpen, onClose }: AvatarSelectorProps) => {
                     </div>
                 ) : (
                     <ScrollBar style={{ maxHeight: '400px' }}>
-                        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 sm:gap-4">
-                            {avatars.map((avatar) => (
-                                <Card
-                                    key={avatar.id}
-                                    className={`relative cursor-pointer transition-all hover:shadow-lg ${
-                                        currentAvatarId === avatar.id
-                                            ? 'ring-2 ring-primary'
-                                            : selectedAvatarId === avatar.id
-                                            ? 'ring-2 ring-green-500'
-                                            : ''
-                                    }`}
-                                    onClick={() => handleSelectAvatar(avatar)}
-                                >
-                                    {/* Thumbnail */}
-                                    <div className="aspect-square bg-gray-100 dark:bg-gray-800 rounded-t-lg overflow-hidden">
-                                        {avatar.thumbnailUrl ? (
-                                            <img
-                                                src={avatar.thumbnailUrl}
-                                                alt={avatar.name}
-                                                className="w-full h-full object-cover"
-                                                loading="lazy"
-                                                decoding="async"
-                                            />
-                                        ) : (
-                                            <div className="w-full h-full flex items-center justify-center">
-                                                <HiOutlineUser className="w-12 h-12 text-gray-400" />
-                                            </div>
-                                        )}
-                                    </div>
-
-                                    {/* Info */}
-                                    <div className="p-3">
-                                        <p className="font-medium text-sm truncate">{avatar.name}</p>
-                                        <p className="text-xs text-gray-500 truncate">
-                                            {avatar.avatar_references?.length || 0} refs
-                                        </p>
-                                    </div>
-
-                                    {/* Selection indicator */}
-                                    {currentAvatarId === avatar.id && (
-                                        <div className="absolute top-2 right-2 w-6 h-6 bg-primary text-white rounded-full flex items-center justify-center">
-                                            <HiOutlineCheck className="w-4 h-4" />
-                                        </div>
-                                    )}
-                                </Card>
-                            ))}
-                        </div>
+                        {/* Grid compartido estilo Flow Builder (DRY con
+                            AvatarPickerField); Create New sigue en el header. */}
+                        <AvatarGridPicker
+                            items={avatars.map((a) => ({
+                                id: a.id,
+                                name: a.name,
+                                thumbnailUrl: a.thumbnailUrl,
+                                subtitle: `${a.avatar_references?.length || 0} refs`,
+                            }))}
+                            selectedId={selectedAvatarId}
+                            currentId={currentAvatarId}
+                            onPick={(item) => {
+                                const avatar = avatars.find(
+                                    (a) => a.id === item.id,
+                                )
+                                if (avatar) handleSelectAvatar(avatar)
+                            }}
+                        />
                     </ScrollBar>
                 )}
 
