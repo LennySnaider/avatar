@@ -40,6 +40,10 @@ const Drawer = (props: DrawerProps) => {
         overlayClassName,
         placement = 'right',
         portalClassName,
+        // Default ON: al cerrar, react-modal re-enfoca el elemento que abrió el
+        // drawer y el navegador hace scroll para revelarlo — arrastrando las
+        // filas superiores (tabs/filtros del Studio) fuera de vista.
+        preventScroll = true,
         showBackdrop = true,
         title,
         width = 400,
@@ -126,6 +130,7 @@ const Drawer = (props: DrawerProps) => {
             ariaHideApp={false}
             isOpen={isOpen}
             closeTimeoutMS={closeTimeoutMS}
+            preventScroll={preventScroll}
             {...rest}
         >
             <div

@@ -30,6 +30,10 @@ const Dialog = (props: DialogProps) => {
         onClose,
         overlayClassName,
         portalClassName,
+        // Default ON: al cerrar, react-modal re-enfoca el elemento que abrió el
+        // modal y el navegador hace scroll para revelarlo — arrastrando las
+        // filas superiores (tabs/filtros del Studio) fuera de vista.
+        preventScroll = true,
         style,
         width = 520,
         ...rest
@@ -101,6 +105,7 @@ const Dialog = (props: DialogProps) => {
             isOpen={isOpen}
             style={{ ...contentStyle }}
             closeTimeoutMS={closeTimeoutMS}
+            preventScroll={preventScroll}
             {...rest}
         >
             <div
