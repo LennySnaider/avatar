@@ -912,19 +912,6 @@ const ImagePreviewModal = ({
                     ref={viewportRef}
                     className="flex-1 relative flex items-center justify-center p-4 bg-gray-100 dark:bg-gray-800 overflow-hidden"
                 >
-                    {/* Delete — esquina superior derecha de la media (rojo).
-                        Movido aquí desde la barra de acciones para ahorrar
-                        espacio en el panel inferior. */}
-                    {!isEditing && (
-                        <button
-                            onClick={handleDelete}
-                            title="Delete"
-                            className="absolute top-4 right-4 z-20 p-2.5 bg-red-500 hover:bg-red-600 text-white rounded-full shadow-lg transition-colors"
-                        >
-                            <HiOutlineTrash className="w-5 h-5" />
-                        </button>
-                    )}
-
                     {/* Toggle: colapsar/expandir el panel inferior para ver la
                         media completa sin obstrucción. Flota abajo-centro de la
                         media y permanece visible en ambos estados. */}
@@ -1565,6 +1552,23 @@ const ImagePreviewModal = ({
                                     />
                                 </Tooltip>
                             )}
+
+                            {/* Delete — al final del toolbar y en ROJO (antes
+                                flotaba junto al zoom: demasiado fácil tocarlo
+                                por accidente). ml-auto lo separa del resto. */}
+                            <div className="ml-auto">
+                                <Tooltip title="Delete">
+                                    <Button
+                                        size="sm"
+                                        variant="solid"
+                                        customColorClass={() =>
+                                            'bg-red-500 hover:bg-red-400 text-white'
+                                        }
+                                        onClick={handleDelete}
+                                        icon={<HiOutlineTrash />}
+                                    />
+                                </Tooltip>
+                            </div>
                         </div>
                     </div>
                 )}
