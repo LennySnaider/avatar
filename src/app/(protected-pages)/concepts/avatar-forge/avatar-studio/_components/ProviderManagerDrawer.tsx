@@ -247,6 +247,19 @@ export const DEFAULT_PROVIDERS: AIProvider[] = [
         api_key_env_var: 'KIE_API_KEY',
         created_at: null,
     },
+    {
+        id: 'kie-wan-image',
+        name: 'Wan 2.7 Image · KIE',
+        type: 'KIE' as ProviderType,
+        model: 'wan/2-7-image',
+        endpoint: 'https://api.kie.ai/api/v1',
+        is_active: true,
+        supports_image: true,
+        supports_video: false,
+        requires_api_key: true,
+        api_key_env_var: 'KIE_API_KEY',
+        created_at: null,
+    },
     // Video Providers
     {
         id: 'gemini-veo-3-1',
@@ -460,6 +473,8 @@ const PROVIDER_COST: Record<string, string> = {
     'kie-nano-banana-2': '~$0.06',
     'kie-nano-banana-2-lite': '~$0.034',
     'kie-grok-imagine': '~$0.02',
+    // Medido live 2026-07-16: 4.8cr en 1K y en 2K (precio plano por imagen).
+    'kie-wan-image': '~$0.024',
 }
 
 // Verified against the generation dispatch (AvatarStudioMain.handleGenerate):
@@ -488,6 +503,9 @@ const PROVIDER_TRAITS: Record<string, { face?: boolean; permissive?: boolean }> 
     // i2v: la identidad viaja en la imagen (first frame). Open-weights sin
     // filtro; en KIE nsfw_checker default false → el permisivo REAL de video.
     'kie-wan-2-2-uncensored': { face: true, permissive: true },
+    // Unified t2i+edit; refs vía input_urls (cara + body). Sin moderación
+    // upstream (edit NSFW verificado live) → el permisivo REAL de imagen.
+    'kie-wan-image': { face: true, permissive: true },
 }
 
 const ProviderManagerDrawer = () => {
@@ -668,7 +686,7 @@ const ProviderManagerDrawer = () => {
             case 'kie-seedream-5-pro':
                 return 'Seedream 5.0 Pro (ByteDance) — PERMISIVO + CARA del avatar (image-to-image nativo, verificado). Más calidad que Lite. Requiere avatar con cara'
             case 'kie-qwen-image':
-                return 'Qwen Image 2.0 (Alibaba) — PERMISIVO (safety + nsfw off). Solo texto→imagen'
+                return 'Qwen Image 2.0 (Alibaba) — filtro de KIE off, PERO su moderación upstream bloquea desnudos ("flagged as sensitive", verificado). Fashion/sensual OK; para NSFW real usa Wan 2.7 Image. i2i con cara (image_url)'
             case 'kie-ideogram-v3':
                 return 'Ideogram V3 — el mejor para TEXTO dentro de la imagen (carteles/logos). Filtro estándar. Solo texto→imagen'
             case 'kie-nano-banana-2':
@@ -677,6 +695,8 @@ const ProviderManagerDrawer = () => {
                 return 'Nano Banana 2 Lite (Gemini 3.1 Flash-Lite) — el más RÁPIDO (~4s) y barato de Google, 1K, usa la cara del avatar (image_input). Filtro estricto de Google — para SFW con identidad y volumen'
             case 'kie-grok-imagine':
                 return 'Grok Imagine (xAI) · image-to-image — usa la cara del avatar (la ref se recorta al aspect ratio pedido: su salida copia el ratio del input). OJO: su PROPIO filtro bloquea bikini/sensual aun con nsfw off — para sensual usa Seedream / FLUX.2. Para SFW con identidad'
+            case 'kie-wan-image':
+                return 'Wan 2.7 Image (Alibaba) — SIN CENSURA real de imagen: nsfw off y SIN moderación upstream (edit NSFW verificado live). Genera Y edita en el mismo modelo, usa la cara del avatar (input_urls, hasta 9 refs), 9:16 nativo, 2K, ~30s. El único que edita desnudos — Qwen/FLUX.2/Grok bloquean upstream'
             case 'kie-kling-3-0':
                 return 'Kling 3.0 vía KIE — video i2v/t2v + motion-control v2v, audio nativo opcional, ~20% más barato que el directo'
             case 'kie-wan-2-2-uncensored':

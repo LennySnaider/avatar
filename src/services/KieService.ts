@@ -305,6 +305,12 @@ export interface GenerateImageKieParams {
  */
 export async function generateImageKie(
     params: GenerateImageKieParams,
+    // When provided, run in SUBMIT-ONLY mode: build the input, submit the KIE
+    // task, write its id into `submitSink.taskId`, and return WITHOUT the long
+    // server-side poll. The browser then polls `checkKieImageTask` — keeping the
+    // server request short so a 50–140s generation can't outlive the serverless/
+    // HTTP window (which silently lost finished results and double-charged).
+    submitSink?: { taskId?: string },
 ): Promise<
     | { success: true; url: string; fullApiPrompt: string }
     | { success: false; error: string }
@@ -382,6 +388,17 @@ export async function generateImageKie(
             input.image_size = asImageSize()
             input.enable_safety_checker = false
             input.nsfw_checker = false
+        } else if (model === 'wan/2-7-image') {
+            // Wan 2.7 Image (Alibaba) — unified t2i + edit on the SAME id.
+            // Precio plano 4.8cr (~$0.024) POR IMAGEN en 1K y 2K (medido
+            // live) → 2K. n=1 OBLIGATORIO: sin él KIE genera 4 imágenes y
+            // cobra 4× (19.2cr, verificado live). Sin moderación upstream
+            // (edit NSFW verificado → success), a diferencia de
+            // Qwen/FLUX.2/Grok que bloquean en SU lado.
+            input.aspect_ratio = aspectRatio
+            input.resolution = '2K'
+            input.n = 1
+            input.nsfw_checker = false
         } else if (model.startsWith('ideogram/')) {
             input.image_size = asImageSize()
             input.rendering_speed = 'QUALITY'
@@ -415,6 +432,7 @@ export async function generateImageKie(
                 model.startsWith('qwen/') ||
                 model.startsWith('seedream/') ||
                 model.startsWith('nano-banana-2') ||
+                model === 'wan/2-7-image' ||
                 model === 'grok-imagine/image-to-image')
         ) {
             try {
@@ -499,6 +517,21 @@ export async function generateImageKie(
                     input.image_input = nbUrls
                     input.prompt = `The person in the first attached reference image is the subject — keep her EXACT face, facial features and likeness. ${input.prompt}`
                     console.log(`[KIE] ${model} with ${nbUrls.length} identity ref(s) via image_input`)
+                } else if (model === 'wan/2-7-image') {
+                    // Wan 2.7 edita/genera con refs en el MISMO id: input_urls
+                    // (hasta 9). Cara primero + Body Ref opcional; conserva el
+                    // aspect_ratio/resolution ya seteados en el branch t2i.
+                    const identityRefs = [
+                        referenceImage,
+                        ...(referenceImages ?? []).filter((r) => r.role === 'body'),
+                    ].slice(0, 9)
+                    const wanUrls: string[] = []
+                    for (const r of identityRefs) {
+                        wanUrls.push(await uploadReferenceToSupabase(r.base64, r.mimeType))
+                    }
+                    input.input_urls = wanUrls
+                    input.prompt = `The person in the first attached reference image is the subject — keep her EXACT face, facial features and likeness. ${input.prompt}`
+                    console.log(`[KIE] Wan 2.7 Image with ${wanUrls.length} ref(s) via input_urls`)
                 } else if (model.startsWith('flux-2/')) {
                     // FLUX.2 takes up to 8 refs → send the face (identity anchor) +
                     // a Body Ref (imitate the body) so BOTH are locked from images,
@@ -531,6 +564,15 @@ export async function generateImageKie(
         }
 
         console.log(`[KIE] Submitting generic image task: model=${resolvedModel}`)
+        // Submit-only (browser-polled) path: hand back the taskId, skip the poll.
+        if (submitSink) {
+            submitSink.taskId = await withTimeout(
+                submitTask({ model: resolvedModel, input }),
+                30_000,
+                'KIE image submit',
+            )
+            return { url: '', fullApiPrompt: promptText }
+        }
         // Self-healing retries (ONE resubmit) for two recoverable failures:
         // - "internal error, please try again later" — transient on KIE's side
         //   (their own message says to retry).
@@ -588,7 +630,25 @@ export async function generateImageKie(
         model.startsWith('flux-2/') ||
         model.startsWith('qwen/') ||
         model === 'z-image' ||
+        model === 'wan/2-7-image' ||
         model.startsWith('grok-imagine/')
+
+    // Submit-only mode: ONE submit, no sanitization ladder (permissive models
+    // rarely block with nsfw off — same single-submit behavior as the other
+    // async KIE image models). The browser polls checkKieImageTask afterward.
+    if (submitSink) {
+        try {
+            const first = isPermissiveModel
+                ? promptIn
+                : sanitizePromptForGeneration(promptIn).sanitized
+            return { success: true, ...(await runWithPrompt(first)) }
+        } catch (err) {
+            return {
+                success: false,
+                error: err instanceof Error ? err.message : String(err),
+            }
+        }
+    }
 
     try {
         // Attempt 1: raw for permissive models; light sanitization (bikini →
@@ -604,9 +664,21 @@ export async function generateImageKie(
             // Attempt 2 on a content block: light sanitization if we haven't
             // tried it yet, else aggressive (strip revealing terms entirely) —
             // same recovery the direct Gemini path uses.
-            const retryPrompt = isPermissiveModel
+            // Si sanitizar VACÍA el prompt (p.ej. era solo "topless"), no
+            // reenviamos: KIE respondería el críptico 500 "prompt is required".
+            // Devolvemos el bloqueo real con la salida recomendada.
+            const upstreamBlocked = (m: string) =>
+                new Error(
+                    `La moderación del proveedor del modelo bloqueó este contenido (${m}) y no queda prompt utilizable tras sanitizar. Para ediciones NSFW usa Wan 2.7 Image · KIE.`,
+                )
+            let retryPrompt = isPermissiveModel
                 ? sanitizePromptForGeneration(promptIn).sanitized
                 : aggressiveSanitize(promptIn).sanitized
+            // Si la sanitización ligera no cambió NADA (p.ej. "topless" no está
+            // en sus reglas), reintentar sería repetir la misma petición
+            // bloqueada — salta directo a la agresiva.
+            if (retryPrompt === first) retryPrompt = aggressiveSanitize(promptIn).sanitized
+            if (!retryPrompt.trim()) throw upstreamBlocked(msg)
             console.warn('[KIE] Sensitive-content block — retrying with sanitized prompt')
             try {
                 return { success: true, ...(await runWithPrompt(retryPrompt)) }
@@ -615,6 +687,9 @@ export async function generateImageKie(
                 if (!isSensitiveBlock(msg2) || !isPermissiveModel) throw err2
                 // Attempt 3 (permissive only): aggressive as the last resort.
                 const { sanitized: aggressive } = aggressiveSanitize(promptIn)
+                if (!aggressive.trim()) throw upstreamBlocked(msg2)
+                // Ya se intentó exactamente esto en el intento 2 — no repetir.
+                if (aggressive === retryPrompt) throw err2
                 console.warn('[KIE] Still blocked — retrying with aggressive sanitization')
                 return { success: true, ...(await runWithPrompt(aggressive)) }
             }
@@ -661,7 +736,17 @@ export async function submitKieImageTask(
             const taskId = await withTimeout(submitTask({ model: kieModel, input }), 30_000, 'KIE GPT Image 2 submit')
             return { success: true, taskId, fullApiPrompt: prompt }
         }
-        return { success: false, error: `submitKieImageTask: modelo no soportado (${model})` }
+        // Generic permissive/diffusion models (seedream, flux-2, qwen, ideogram,
+        // z-image, nano-banana-2, grok, wan-image): reuse generateImageKie's full
+        // input-building (i2i refs, model-aware params) in SUBMIT-ONLY mode so the
+        // long poll moves to the browser (checkKieImageTask). Same fix as video.
+        const sink: { taskId?: string } = {}
+        const r = await generateImageKie(params, sink)
+        if (!r.success) return { success: false, error: r.error }
+        if (!sink.taskId) {
+            return { success: false, error: 'KIE no devolvió taskId (submit)' }
+        }
+        return { success: true, taskId: sink.taskId, fullApiPrompt: r.fullApiPrompt }
     } catch (err) {
         const message = err instanceof Error ? err.message : String(err)
         console.error('[KIE] submit failed:', message)
@@ -1105,7 +1190,7 @@ function clampKlingAspect(aspect: string): '16:9' | '9:16' | '1:1' {
  * be a public HTTP URL (uploaded to Supabase first) → image-to-video; absent
  * → text-to-video.
  */
-async function generateVideoKling3(params: GenerateVideoKieParams): Promise<string> {
+async function submitVideoKling3(params: GenerateVideoKieParams): Promise<string> {
     const {
         prompt,
         firstFrameImage,
@@ -1143,11 +1228,7 @@ async function generateVideoKling3(params: GenerateVideoKieParams): Promise<stri
         'KIE Kling 3.0 submit',
     )
     console.log(`[KIE/Kling3] Task submitted: ${taskId}`)
-
-    const urls = await pollTask(taskId, { budgetMs: 600_000, intervalMs: 5000 })
-    console.log(`[KIE/Kling3] Generation complete: ${urls[0]}`)
-
-    return persistToSupabase(urls[0], 'mp4', 'kie-videos')
+    return taskId
 }
 
 export interface MotionVideoUploadTicket {
@@ -1301,24 +1382,31 @@ export async function generateMotionControlKieSafe(
 }
 
 /**
- * Generate a video via KIE AI. Routes to the right adapter based on the
- * model — newer KIE endpoints (Seedance, Wan) require HTTP-only references
- * and integer durations, so they can't share the legacy generic body.
+ * SUBMIT a KIE video task and return its taskId immediately (NO long poll).
+ * Routes per model — newer KIE endpoints (Seedance, Wan) need HTTP-only
+ * references + integer durations, so they can't share the legacy generic body.
+ *
+ * Why submit-only: the previous flow held ONE server request open the full
+ * 50–140s while polling KIE. When that wait outlived the serverless function /
+ * HTTP connection window, the client's await REJECTED even though KIE finished
+ * — so successful videos were never added to the gallery, and the user, seeing
+ * a "failure", re-generated → duplicate task → double charge. The browser now
+ * polls `checkKieVideoTask` instead, so no single request runs long.
  */
-export async function generateVideoKie(
+async function submitVideoKieTaskId(
     params: GenerateVideoKieParams,
 ): Promise<string> {
     if (params.model === 'bytedance/seedance-2') {
-        return generateVideoSeedance(params)
+        return submitVideoSeedance(params)
     }
     if (params.model === 'wan/2-7-image-to-video') {
-        return generateVideoWan27(params)
+        return submitVideoWan27(params)
     }
     if (params.model === 'wan/2-2-a14b-image-to-video-turbo') {
-        return generateVideoWan22(params)
+        return submitVideoWan22(params)
     }
     if (params.model === 'kling-3.0/video') {
-        return generateVideoKling3(params)
+        return submitVideoKling3(params)
     }
 
     const {
@@ -1350,12 +1438,35 @@ export async function generateVideoKie(
         'KIE video submit',
     )
     console.log(`[KIE] Video task submitted: ${taskId}`)
+    return taskId
+}
 
+/**
+ * Poll+persist wrapper so existing SERVER callers keep the URL-returning API.
+ * Still susceptible to the long-request timeout — new CLIENT code should use
+ * `submitVideoKieTask` + browser polling (`checkKieVideoTask`) instead.
+ */
+export async function generateVideoKie(
+    params: GenerateVideoKieParams,
+): Promise<string> {
+    const taskId = await submitVideoKieTaskId(params)
     const urls = await pollTask(taskId, { budgetMs: 600_000, intervalMs: 5000 })
-    console.log(`[KIE] Video task complete: ${urls[0]}`)
+    return persistToSupabase(urls[0], 'mp4', 'kie-videos')
+}
 
-    const persistedUrl = await persistToSupabase(urls[0], 'mp4', 'kie-videos')
-    return persistedUrl
+/**
+ * Error-as-data SUBMIT for the browser-polled video flow (mirrors
+ * `submitKieImageTask` / `submitTalkingVideoKieTask`). Returns a taskId fast;
+ * the client then polls `checkKieVideoTask` until the mp4 is ready.
+ */
+export async function submitVideoKieTask(
+    params: GenerateVideoKieParams,
+): Promise<{ success: true; taskId: string } | { success: false; error: string }> {
+    try {
+        return { success: true, taskId: await submitVideoKieTaskId(params) }
+    } catch (e) {
+        return { success: false, error: e instanceof Error ? e.message : String(e) }
+    }
 }
 
 /**
@@ -1363,7 +1474,7 @@ export async function generateVideoKie(
  * /jobs/recordInfo. Reference image must be a public HTTP URL (we upload
  * to Supabase first), and duration must be an integer (not stringified).
  */
-async function generateVideoSeedance(params: GenerateVideoKieParams): Promise<string> {
+async function submitVideoSeedance(params: GenerateVideoKieParams): Promise<string> {
     const {
         prompt,
         firstFrameImage,
@@ -1429,18 +1540,14 @@ async function generateVideoSeedance(params: GenerateVideoKieParams): Promise<st
         'KIE Seedance submit',
     )
     console.log(`[KIE/Seedance] Task submitted: ${taskId}`)
-
-    const urls = await pollTask(taskId, { budgetMs: 600_000, intervalMs: 5000 })
-    console.log(`[KIE/Seedance] Generation complete: ${urls[0]}`)
-
-    return persistToSupabase(urls[0], 'mp4', 'kie-videos')
+    return taskId
 }
 
 /**
  * Wan 2.7 image-to-video. Requires a first frame; aspect ratio is inferred
  * from the reference image rather than being a separate parameter.
  */
-async function generateVideoWan27(params: GenerateVideoKieParams): Promise<string> {
+async function submitVideoWan27(params: GenerateVideoKieParams): Promise<string> {
     const {
         prompt,
         firstFrameImage,
@@ -1472,11 +1579,7 @@ async function generateVideoWan27(params: GenerateVideoKieParams): Promise<strin
         'KIE Wan 2.7 submit',
     )
     console.log(`[KIE/Wan2.7] Task submitted: ${taskId}`)
-
-    const urls = await pollTask(taskId, { budgetMs: 600_000, intervalMs: 5000 })
-    console.log(`[KIE/Wan2.7] Generation complete: ${urls[0]}`)
-
-    return persistToSupabase(urls[0], 'mp4', 'kie-videos')
+    return taskId
 }
 
 /**
@@ -1487,7 +1590,7 @@ async function generateVideoWan27(params: GenerateVideoKieParams): Promise<strin
  * viaja en la imagen (first frame). Sin parámetros de duración/aspect —
  * el output hereda el ratio de la imagen; resolución 480p/720p.
  */
-async function generateVideoWan22(params: GenerateVideoKieParams): Promise<string> {
+async function submitVideoWan22(params: GenerateVideoKieParams): Promise<string> {
     const { prompt, firstFrameImage, resolution = '720p' } = params
 
     if (!firstFrameImage) {
@@ -1515,11 +1618,7 @@ async function generateVideoWan22(params: GenerateVideoKieParams): Promise<strin
         'KIE Wan 2.2 submit',
     )
     console.log(`[KIE/Wan2.2] Task submitted: ${taskId}`)
-
-    const urls = await pollTask(taskId, { budgetMs: 600_000, intervalMs: 5000 })
-    console.log(`[KIE/Wan2.2] Generation complete: ${urls[0]}`)
-
-    return persistToSupabase(urls[0], 'mp4', 'kie-videos')
+    return taskId
 }
 
 // =============================================

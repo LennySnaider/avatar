@@ -69,7 +69,7 @@ import {
 import type { MiniMaxVideoModel } from '@/@types/minimax'
 import {
     generateImageKie,
-    generateVideoKieSafe,
+    submitVideoKieTask,
     generateMotionControlKieSafe,
     submitKieImageTask,
     checkKieImageTask,
@@ -136,6 +136,21 @@ async function pollKieImageTask(
 
 /** KIE models that use the unified async createTask + client-poll flow. */
 const KIE_ASYNC_MODELS = ['nano-banana-pro', 'gpt-image-2-text-to-image']
+// ALL KIE generic-createTask image models now poll async in the BROWSER (submit
+// returns a taskId fast, then checkKieImageTask). The old synchronous server
+// poll held one request open 50–140s; when it outlived the serverless/HTTP
+// window the client saw a "failure" even though KIE had finished — losing the
+// result from the gallery and prompting a duplicate re-gen (double charge).
+const isKieAsyncImageModel = (m: string): boolean =>
+    KIE_ASYNC_MODELS.includes(m) ||
+    m.startsWith('seedream/') ||
+    m.startsWith('flux-2/') ||
+    m.startsWith('qwen/') ||
+    m.startsWith('ideogram/') ||
+    m === 'z-image' ||
+    m.startsWith('nano-banana-2') ||
+    m.startsWith('grok-imagine/') ||
+    m === 'wan/2-7-image'
 
 /**
  * InfiniteTalk talking-heads regularly run past 10 minutes — same async
@@ -182,19 +197,38 @@ async function genVideoGemini(
 }
 
 /**
- * Client unwrap for generateVideoKieSafe / generateMotionControlKieSafe. The
- * server returns the KIE error as DATA (a thrown 'use server' error is masked as
- * a generic 500 in prod); we re-throw the REAL message HERE so handleGenerate's
- * catch shows it. Mirrors genVideoGemini.
+ * KIE video generation via ASYNC submit + BROWSER polling (mirrors
+ * pollKieTalkingVideoTask). The server returns a taskId in ~1s, then the
+ * browser polls checkKieVideoTask every 5s. This replaces the old single
+ * long-held server request (generateVideoKieSafe), which — when the 50–140s
+ * poll outlived the serverless/HTTP window — REJECTED on the client even
+ * though KIE had finished, losing the video from the gallery and prompting a
+ * duplicate re-generation (double charge). Same params/signature, so the
+ * call sites are unchanged.
  */
 async function genVideoKie(
-    params: Parameters<typeof generateVideoKieSafe>[0],
+    params: Parameters<typeof submitVideoKieTask>[0],
 ): Promise<string> {
-    const r = await generateVideoKieSafe(params)
-    if (!r.success) {
-        throw new Error(r.error)
+    const sub = await submitVideoKieTask(params)
+    if (!sub.success) {
+        throw new Error(sub.error)
     }
-    return r.url as string
+    // KIE video can take minutes; poll up to 30 min. Each request is short, so
+    // no single call can time out — the taskId survives on KIE regardless.
+    const deadlineMs = Date.now() + 30 * 60 * 1000
+    while (Date.now() < deadlineMs) {
+        await new Promise((r) => setTimeout(r, 5000))
+        const st = await checkKieVideoTask(sub.taskId)
+        if (st.status === 'done') {
+            return st.url
+        }
+        if (st.status === 'failed') {
+            throw new Error(st.error)
+        }
+    }
+    throw new Error(
+        `KIE tardó demasiado (>30 min). El job ${sub.taskId} puede seguir corriendo en kie.ai/logs.`,
+    )
 }
 
 async function genMotionControlKie(
@@ -991,7 +1025,7 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                         }
                     }
 
-                    if (KIE_ASYNC_MODELS.includes(kieModel)) {
+                    if (isKieAsyncImageModel(kieModel)) {
                         // ASYNC submit + browser poll (see pollKieImageTask).
                         const polled = await pollKieImageTask({
                             prompt: kiePrompt,
@@ -999,6 +1033,10 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                             referenceImages: kieRefsToSend,
                             aspectRatio,
                             model: kieModel,
+                            // Concrete body descriptors for the Seedream i2i
+                            // anchor — Pro ignores body text that isn't in the
+                            // anchor's early tokens (kept rendering her slim).
+                            bodyEmphasis: describeBody(measurements),
                         })
                         resultUrl = polled.url
                         apiPrompt = polled.fullApiPrompt
@@ -1011,10 +1049,6 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                             model:
                                 activeProvider.model ||
                                 'flux-kontext/text-to-image',
-                            // Concrete body descriptors for the Seedream i2i
-                            // anchor — Pro ignores body text that isn't in the
-                            // anchor's early tokens (kept rendering her slim).
-                            bodyEmphasis: describeBody(measurements),
                         })
                         if (!result.success) {
                             throw new Error(result.error)
@@ -1997,7 +2031,7 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                             )
                             editModel = 'flux-2/pro-text-to-image'
                         }
-                        if (KIE_ASYNC_MODELS.includes(editModel)) {
+                        if (isKieAsyncImageModel(editModel)) {
                             // Same async submit+poll as handleGenerate — otherwise the
                             // edit path falls back to the retired 600s sync poll that
                             // abandons slow nano-banana/gpt-image-2 tasks (phantom dupes).
