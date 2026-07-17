@@ -1,0 +1,26 @@
+/* Scrollbar fino con la estética del template — para contenedores con
+   overflow nativo donde SimpleBar no aplica (p.ej. la media del preview:
+   SimpleBar rompía el render). Las clases `scrollbar-thin` de tailwind-
+   scrollbar que había en el código NO generan CSS (el plugin no está
+   instalado); esta utilidad las sustituye. */
+.thin-scrollbar {
+    scrollbar-width: thin; /* Firefox */
+    scrollbar-color: rgb(107 114 128 / 0.5) transparent;
+}
+.thin-scrollbar::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+}
+.thin-scrollbar::-webkit-scrollbar-track {
+    background: transparent;
+}
+.thin-scrollbar::-webkit-scrollbar-corner {
+    background: transparent;
+}
+.thin-scrollbar::-webkit-scrollbar-thumb {
+    background: rgb(107 114 128 / 0.5);
+    border-radius: 9999px;
+}
+.thin-scrollbar::-webkit-scrollbar-thumb:hover {
+    background: rgb(107 114 128 / 0.8);
+}

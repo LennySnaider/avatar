@@ -953,7 +953,7 @@ const ImagePreviewModal = ({
                         rompía el render de la media (área vacía). */}
                     <div
                         ref={mediaContainerRef}
-                        className="relative max-h-full max-w-full overflow-auto scrollbar-thin scrollbar-thumb-gray-400 dark:scrollbar-thumb-gray-600 scrollbar-track-transparent"
+                        className="relative max-h-full max-w-full overflow-auto thin-scrollbar"
                         onMouseDown={handlePanStart}
                         style={{
                             cursor:
