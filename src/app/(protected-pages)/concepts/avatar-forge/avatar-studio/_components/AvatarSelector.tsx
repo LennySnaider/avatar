@@ -220,19 +220,20 @@ const AvatarSelector = ({ userId, isOpen, onClose }: AvatarSelectorProps) => {
             onClose={onClose}
             width={700}
         >
-            <div className="p-6">
-                <div className="flex items-center justify-between mb-6">
-                    <div className="flex items-center gap-3">
-                        <HiOutlineUser className="w-6 h-6 text-primary" />
-                        <div>
-                            <h2 className="text-lg font-bold">Select Avatar</h2>
-                            <p className="text-xs text-gray-500">Choose an avatar to use in the studio</p>
+            <div className="p-4 sm:p-6">
+                <div className="flex items-center justify-between gap-3 mb-4 sm:mb-6">
+                    <div className="flex items-center gap-3 min-w-0">
+                        <HiOutlineUser className="w-6 h-6 text-primary shrink-0" />
+                        <div className="min-w-0">
+                            <h2 className="text-lg font-bold whitespace-nowrap">Select Avatar</h2>
+                            <p className="text-xs text-gray-500 hidden sm:block">Choose an avatar to use in the studio</p>
                         </div>
                     </div>
                     <Button
                         size="sm"
                         variant="solid"
                         icon={<HiOutlinePlus />}
+                        className="shrink-0"
                         onClick={handleGoToCreator}
                     >
                         Create New
@@ -258,7 +259,7 @@ const AvatarSelector = ({ userId, isOpen, onClose }: AvatarSelectorProps) => {
                     </div>
                 ) : (
                     <ScrollBar style={{ maxHeight: '400px' }}>
-                        <div className="grid grid-cols-3 gap-4">
+                        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 sm:gap-4">
                             {avatars.map((avatar) => (
                                 <Card
                                     key={avatar.id}
@@ -291,8 +292,8 @@ const AvatarSelector = ({ userId, isOpen, onClose }: AvatarSelectorProps) => {
                                     {/* Info */}
                                     <div className="p-3">
                                         <p className="font-medium text-sm truncate">{avatar.name}</p>
-                                        <p className="text-xs text-gray-500">
-                                            {avatar.avatar_references?.length || 0} references
+                                        <p className="text-xs text-gray-500 truncate">
+                                            {avatar.avatar_references?.length || 0} refs
                                         </p>
                                     </div>
 

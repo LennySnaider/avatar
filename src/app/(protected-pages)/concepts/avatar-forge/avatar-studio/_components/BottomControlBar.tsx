@@ -631,8 +631,13 @@ const BottomControlBar = ({
 
     return (
         <div className="border-t border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 pb-6">
-            {/* Row 1: Avatar + Prompt + Dropzones + Generate */}
-            <div className="flex items-center gap-3 px-4 pt-3 pb-2">
+            {/* Row 1: Avatar + Prompt + Dropzones + Generate.
+                Responsive: en móvil las columnas shrink-0 (avatar+modo+refs+
+                Generate) suman más que el viewport y aplastaban el textarea
+                flex-1 a ~0px (placeholder de una letra por línea). En <md el
+                row ENVUELVE en 4 filas: [avatar+modo] / [textarea full] /
+                [provider+refs full] / [Generate full]; en md+ queda idéntico. */}
+            <div className="flex flex-wrap md:flex-nowrap items-center gap-3 px-4 pt-3 pb-2">
                 {/* Avatar Section */}
                 <div className="flex items-center gap-2 shrink-0">
                     {hasAvatar ? (
@@ -710,7 +715,7 @@ const BottomControlBar = ({
                 </div>
 
                 {/* Prompt Input with Integrated Tags */}
-                <div className="flex-1">
+                <div className="flex-1 min-w-0 basis-full md:basis-auto order-3 md:order-0">
                     <PromptTextareaWithTags
                         value={prompt}
                         onChange={setPrompt}
@@ -829,7 +834,7 @@ const BottomControlBar = ({
                 </div>
 
                 {/* Provider selector + Dropzones column */}
-                <div className="flex flex-col gap-1.5 shrink-0">
+                <div className="flex flex-col gap-1.5 shrink-0 basis-full md:basis-auto order-4 md:order-0 items-center md:items-stretch">
                 {/* Active provider — moved from the studio header so it sits
                     with the generation controls. In Speak mode the provider
                     doesn't generate; show the real engine + an exit (×). */}
@@ -862,8 +867,8 @@ const BottomControlBar = ({
                     </button>
                 )}
 
-                {/* Dropzones - Tools Grid 2x3 */}
-                <div className="grid grid-cols-3 gap-1.5 shrink-0">
+                {/* Dropzones - Tools Grid 2x3 (móvil: fila envolvente centrada) */}
+                <div className="flex flex-wrap justify-center gap-1.5 shrink-0 md:grid md:grid-cols-3">
                     {/* Image to Prompt Dropzone */}
                     <div className="flex flex-col items-center gap-0.5">
                         {describeInputImage ? (
@@ -1245,14 +1250,14 @@ const BottomControlBar = ({
                 </div>
                 </div>
 
-                {/* Generate Button */}
+                {/* Generate Button (móvil: CTA a ancho completo) */}
                 <Button
                     variant="solid"
                     color={generationMode === 'VIDEO' ? 'purple' : 'blue'}
                     onClick={onGenerate}
                     loading={isGenerating}
                     disabled={!canGenerate()}
-                    className="shrink-0 h-11"
+                    className="shrink-0 h-11 w-full md:w-auto order-5 md:order-0"
                 >
                     {isGenerating ? 'Generating...' : 'Generate'}
                 </Button>
