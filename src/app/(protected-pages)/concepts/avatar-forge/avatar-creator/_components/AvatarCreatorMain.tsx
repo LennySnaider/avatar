@@ -684,6 +684,26 @@ const AvatarCreatorMain = ({ userId, existingAvatar }: AvatarCreatorMainProps) =
                                         </div>
                                     </div>
 
+                                    {/* Leg Type (paridad con el Edit drawer) */}
+                                    <div>
+                                        <label className="text-xs text-gray-500 block mb-1">Leg Type</label>
+                                        <div className="flex flex-wrap gap-1">
+                                            {([undefined, 'slim', 'toned', 'athletic', 'long', 'curvy', 'thick'] as const).map((leg) => (
+                                                <button
+                                                    key={leg ?? 'auto'}
+                                                    onClick={() => setMeasurements({ ...measurements, legType: leg })}
+                                                    className={`px-2 py-1 text-xs rounded border transition-colors capitalize ${
+                                                        (measurements.legType ?? undefined) === leg
+                                                            ? 'bg-primary text-white border-primary'
+                                                            : 'bg-gray-50 dark:bg-gray-800 border-gray-200 dark:border-gray-700 hover:border-primary'
+                                                    }`}
+                                                >
+                                                    {leg ?? 'auto'}
+                                                </button>
+                                            ))}
+                                        </div>
+                                    </div>
+
                                     {/* Skin Tone */}
                                     <div>
                                         <div className="flex items-center justify-between mb-1">
@@ -736,10 +756,13 @@ const AvatarCreatorMain = ({ userId, existingAvatar }: AvatarCreatorMainProps) =
                                         </div>
                                     </div>
 
-                                    {/* Hair Color */}
+                                    {/* Hair Type + Color (degradado 2-3 tonos) */}
                                     <HairColorPicker
                                         value={measurements.hairColor}
+                                        tones={measurements.hairColors}
+                                        hairStyle={measurements.hairStyle}
                                         onChange={(c) => setMeasurements({ ...measurements, hairColor: c })}
+                                        onGradientChange={(p) => setMeasurements({ ...measurements, ...p })}
                                     />
 
                                     {/* Eye Color */}

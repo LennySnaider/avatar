@@ -659,10 +659,13 @@ const AvatarEditDrawer = ({ isOpen, onClose, onSaveAvatar }: AvatarEditDrawerPro
                                         />
                                     </div>
 
-                                    {/* Hair Color */}
+                                    {/* Hair Type + Color (degradado 2-3 tonos) */}
                                     <HairColorPicker
                                         value={localMeasurements.hairColor}
+                                        tones={localMeasurements.hairColors}
+                                        hairStyle={localMeasurements.hairStyle}
                                         onChange={(c) => setLocalMeasurements({ ...localMeasurements, hairColor: c })}
+                                        onGradientChange={(p) => setLocalMeasurements({ ...localMeasurements, ...p })}
                                     />
 
                                     {/* Eye Color */}

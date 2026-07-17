@@ -401,6 +401,10 @@ export type BodyType = 'petite' | 'slim' | 'athletic' | 'average' | 'curvy' | 'h
 // Leg shape/type. Optional — when unset the legs follow the overall body type.
 export type LegType = 'slim' | 'toned' | 'athletic' | 'long' | 'curvy' | 'thick'
 
+// Hair texture/type. Optional — when unset the hair follows the face
+// description (auto-analyzed from the reference photos).
+export type HairStyle = 'straight' | 'wavy' | 'curly' | 'coily' | (string & {})
+
 // Skin tone scale (1-9 loosely based on Fitzpatrick scale)
 export type SkinTone = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9
 
@@ -457,6 +461,15 @@ export interface PhysicalMeasurements {
     legType?: LegType // optional leg shape; unset = follows the body type
     skinTone?: SkinTone // 1=very fair/porcelain, 9=very dark/ebony
     hairColor?: HairColor
+    /**
+     * Tonos ordenados raíces→puntas para degradado/ombre (máx 3). Estado
+     * ESTRUCTURADO para re-seleccionar la UI; el descriptor que viaja al
+     * prompt es SIEMPRE `hairColor` (compuesto por el HairColorPicker, p.ej.
+     * "black roots melting into purple ends, ombre gradient").
+     */
+    hairColors?: HairColor[]
+    /** Textura del cabello (straight/wavy/curly/coily). También se compone dentro de `hairColor`. */
+    hairStyle?: HairStyle
     eyeColor?: EyeColor
 }
 
