@@ -43,10 +43,17 @@ const StudioTabs = ({ children }: StudioTabsProps) => {
                 they share this row instead of taking their own header. The
                 underline border moves from the TabList to this wrapper so it
                 still spans the full width. */}
-                <div className="flex items-center justify-between border-b border-gray-200 dark:border-gray-700 pr-3">
-                    <TabList className="border-b-0">
-                        <TabNav value="avatar-studio">Avatar Studio</TabNav>
-                        <TabNav value="flow-editor">Flow Editor</TabNav>
+                <div className="flex items-center justify-between border-b border-gray-200 dark:border-gray-700 pr-3 overflow-x-auto">
+                    {/* shrink-0 + nowrap: sin esto los botones portaleados
+                        (Prompts/Upload/Tools) comprimían el TabList en móvil y
+                        el tab Flow Editor quedaba fuera de la fila. */}
+                    <TabList className="border-b-0 shrink-0">
+                        <TabNav value="avatar-studio">
+                            <span className="whitespace-nowrap">Avatar Studio</span>
+                        </TabNav>
+                        <TabNav value="flow-editor">
+                            <span className="whitespace-nowrap">Flow Editor</span>
+                        </TabNav>
                     </TabList>
                     <div
                         ref={setHeaderSlot}

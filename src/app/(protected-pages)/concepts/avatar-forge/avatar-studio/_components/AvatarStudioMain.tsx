@@ -2436,13 +2436,16 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
             {headerSlot &&
                 createPortal(
                     <>
+                        {/* En móvil solo iconos: con texto, estos tres botones
+                            comprimían el TabList y el tab Flow Editor
+                            desaparecía de la fila. */}
                         <Button
                             size="sm"
                             variant="plain"
                             icon={<HiOutlineBookOpen />}
                             onClick={() => setIsPromptLibraryOpen(true)}
                         >
-                            Prompts
+                            <span className="hidden sm:inline">Prompts</span>
                         </Button>
                         <Button
                             size="sm"
@@ -2452,7 +2455,7 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                                 galleryUploadInputRef.current?.click()
                             }
                         >
-                            Upload
+                            <span className="hidden sm:inline">Upload</span>
                         </Button>
                         <Dropdown
                             placement="bottom-end"
@@ -2462,7 +2465,7 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                                     variant="plain"
                                     icon={<HiOutlineCog />}
                                 >
-                                    Tools
+                                    <span className="hidden sm:inline">Tools</span>
                                 </Button>
                             }
                         >
