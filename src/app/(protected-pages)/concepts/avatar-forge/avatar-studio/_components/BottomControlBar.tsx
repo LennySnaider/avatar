@@ -642,7 +642,7 @@ const BottomControlBar = ({
                     ARRIBA del bloque avatar+modo (md:flex-col-reverse) para que
                     el textarea gane ancho horizontal; en móvil van en una fila
                     que envuelve como antes. */}
-                <div className="flex flex-wrap items-center gap-2 shrink-0 md:flex-col-reverse md:items-start">
+                <div className="flex flex-wrap items-center gap-2 shrink-0 md:flex-col-reverse md:items-stretch">
                 {/* Avatar + Modo (una sola fila dentro del cluster) */}
                 <div className="flex items-center gap-2">
                 {/* Avatar Section */}
@@ -726,7 +726,7 @@ const BottomControlBar = ({
                     avatar+modo (md:flex-col-reverse del cluster); en móvil, en
                     la misma fila. En Speak muestra el motor real + salida (×). */}
                 {generationMode === 'VIDEO' && videoSubMode === 'SPEAK' ? (
-                    <span className="shrink-0 flex items-center gap-1.5 px-2 py-1.5 bg-purple-500/10 rounded-lg">
+                    <span className="shrink-0 flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-lg border-2 border-dashed border-purple-400/60">
                         <span className="w-1.5 h-1.5 rounded-full bg-purple-500 shrink-0" />
                         <span className="text-[10px] font-medium text-purple-500 truncate max-w-24">
                             Speak · {speakModel === 'omnihuman' ? 'OmniHuman 1.5' : speakModel === 'kling' ? 'Kling 3.0' : 'InfiniteTalk'}
@@ -744,10 +744,10 @@ const BottomControlBar = ({
                     <button
                         onClick={() => setShowProviderManager(true)}
                         title="Change AI provider"
-                        className="shrink-0 flex items-center gap-1.5 px-2 py-1.5 bg-gray-100 dark:bg-gray-800 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
+                        className="shrink-0 flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-lg border-2 border-dashed border-gray-300 dark:border-gray-600 hover:border-primary hover:text-primary transition-colors"
                     >
                         <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${activeProvider ? 'bg-green-500' : 'bg-gray-400'}`} />
-                        <span className="text-[10px] font-medium truncate max-w-24">
+                        <span className="text-[10px] font-medium truncate max-w-28">
                             {activeProvider?.name ?? 'Default Provider'}
                         </span>
                         <HiOutlineCog className="w-3 h-3 shrink-0 text-gray-400" />
