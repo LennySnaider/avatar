@@ -23,6 +23,7 @@ import {
     HiOutlinePhotograph,
     HiOutlineUpload,
     HiOutlineSearch,
+    HiOutlineFilter,
     HiOutlineShare,
     HiOutlineSave,
     HiOutlineUserCircle,
@@ -91,6 +92,12 @@ const GalleryPanel = ({
     // down past ~one viewport of cards. SimpleBar owns the scroll element.
     const scrollBarRef = useRef<ScrollBarRef>(null)
     const [showScrollTop, setShowScrollTop] = useState(false)
+
+    // Móvil: los filtros (selects + Todas/Favoritas/Archivadas) colapsan tras
+    // el botón de embudo — desplegados ocupaban 3 filas de pantalla.
+    const [filtersOpen, setFiltersOpen] = useState(false)
+    const hasActiveFilters =
+        avatarFilter !== 'ALL' || mediaTypeFilter !== 'ALL' || galleryView !== 'all'
     useEffect(() => {
         const el = scrollBarRef.current?.getScrollElement()
         if (!el) return
@@ -367,6 +374,29 @@ const GalleryPanel = ({
                             onChange={(e) => setSearchQuery(e.target.value)}
                             className="flex-1 min-w-40"
                         />
+                        {/* Móvil: los filtros colapsan tras este botón (ocupaban
+                            3 filas). El punto azul avisa de filtros activos. */}
+                        <button
+                            type="button"
+                            onClick={() => setFiltersOpen((v) => !v)}
+                            title="Filtros"
+                            className={`relative md:hidden p-2 rounded-lg border transition-colors ${
+                                filtersOpen
+                                    ? 'border-blue-500 text-blue-500 bg-blue-50 dark:bg-blue-500/20'
+                                    : 'border-gray-300 dark:border-gray-600 text-gray-500'
+                            }`}
+                        >
+                            <HiOutlineFilter className="w-4 h-4" />
+                            {hasActiveFilters && (
+                                <span className="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full bg-blue-500" />
+                            )}
+                        </button>
+                        {/* md:contents disuelve este wrapper en desktop (layout
+                            idéntico al de siempre); en móvil es el bloque
+                            colapsable a ancho completo. */}
+                        <div
+                            className={`${filtersOpen ? 'flex' : 'hidden'} w-full flex-wrap items-center gap-2 md:contents`}
+                        >
                         {(filterableAvatars.length > 0 || hasOrphanMedia) && (
                             <select
                                 value={avatarFilter}
@@ -446,6 +476,7 @@ const GalleryPanel = ({
                                     </span>
                                 </button>
                             ))}
+                        </div>
                         </div>
                     </div>
                 )}
