@@ -116,22 +116,38 @@ interface AvatarStudioMainProps {
 async function pollKieImageTask(
     params: Parameters<typeof submitKieImageTask>[0],
 ): Promise<{ url: string; fullApiPrompt: string }> {
-    const sub = await submitKieImageTask(params)
-    if (!sub.success) {
-        throw new Error(sub.error)
-    }
-    const deadlineMs = Date.now() + 18 * 60 * 1000
-    while (Date.now() < deadlineMs) {
-        await new Promise((r) => setTimeout(r, 5000))
-        const st = await checkKieImageTask(sub.taskId)
-        if (st.status === 'done') {
-            return { url: st.url, fullApiPrompt: sub.fullApiPrompt }
+    // Hasta 2 tareas: KIE marca tareas fallidas con "internal error, please
+    // try again later" (transitorio — su propio mensaje pide reintentar; las
+    // tareas fallidas cobran 0 créditos). El path síncrono viejo re-enviaba
+    // una vez; este es el mismo self-healing a nivel poll. Qwen es el que más
+    // lo dispara.
+    for (let attempt = 1; attempt <= 2; attempt++) {
+        const sub = await submitKieImageTask(params)
+        if (!sub.success) {
+            throw new Error(sub.error)
         }
-        if (st.status === 'failed') {
-            throw new Error(st.error)
+        let failMsg = ''
+        const deadlineMs = Date.now() + 18 * 60 * 1000
+        while (Date.now() < deadlineMs) {
+            await new Promise((r) => setTimeout(r, 5000))
+            const st = await checkKieImageTask(sub.taskId)
+            if (st.status === 'done') {
+                return { url: st.url, fullApiPrompt: sub.fullApiPrompt }
+            }
+            if (st.status === 'failed') {
+                failMsg = st.error
+                break
+            }
         }
+        if (!failMsg) {
+            throw new Error('KIE tardó demasiado (>18 min). Intenta de nuevo.')
+        }
+        if (!/internal error/i.test(failMsg) || attempt === 2) {
+            throw new Error(failMsg)
+        }
+        console.warn('[KIE] Task failed with transient internal error — resubmitting once')
     }
-    throw new Error('KIE tardó demasiado (>18 min). Intenta de nuevo.')
+    throw new Error('KIE image task failed')
 }
 
 /** KIE models that use the unified async createTask + client-poll flow. */
@@ -209,26 +225,40 @@ async function genVideoGemini(
 async function genVideoKie(
     params: Parameters<typeof submitVideoKieTask>[0],
 ): Promise<string> {
-    const sub = await submitVideoKieTask(params)
-    if (!sub.success) {
-        throw new Error(sub.error)
-    }
-    // KIE video can take minutes; poll up to 30 min. Each request is short, so
-    // no single call can time out — the taskId survives on KIE regardless.
-    const deadlineMs = Date.now() + 30 * 60 * 1000
-    while (Date.now() < deadlineMs) {
-        await new Promise((r) => setTimeout(r, 5000))
-        const st = await checkKieVideoTask(sub.taskId)
-        if (st.status === 'done') {
-            return st.url
+    // Hasta 2 tareas: mismo self-healing que pollKieImageTask para el
+    // "internal error, please try again later" transitorio de KIE (las tareas
+    // fallidas cobran 0 créditos).
+    for (let attempt = 1; attempt <= 2; attempt++) {
+        const sub = await submitVideoKieTask(params)
+        if (!sub.success) {
+            throw new Error(sub.error)
         }
-        if (st.status === 'failed') {
-            throw new Error(st.error)
+        // KIE video can take minutes; poll up to 30 min. Each request is short,
+        // so no single call can time out — the taskId survives on KIE regardless.
+        let failMsg = ''
+        const deadlineMs = Date.now() + 30 * 60 * 1000
+        while (Date.now() < deadlineMs) {
+            await new Promise((r) => setTimeout(r, 5000))
+            const st = await checkKieVideoTask(sub.taskId)
+            if (st.status === 'done') {
+                return st.url
+            }
+            if (st.status === 'failed') {
+                failMsg = st.error
+                break
+            }
         }
+        if (!failMsg) {
+            throw new Error(
+                `KIE tardó demasiado (>30 min). El job ${sub.taskId} puede seguir corriendo en kie.ai/logs.`,
+            )
+        }
+        if (!/internal error/i.test(failMsg) || attempt === 2) {
+            throw new Error(failMsg)
+        }
+        console.warn('[KIE] Video task failed with transient internal error — resubmitting once')
     }
-    throw new Error(
-        `KIE tardó demasiado (>30 min). El job ${sub.taskId} puede seguir corriendo en kie.ai/logs.`,
-    )
+    throw new Error('KIE video task failed')
 }
 
 async function genMotionControlKie(
