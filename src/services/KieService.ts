@@ -521,17 +521,36 @@ export async function generateImageKie(
                     // Wan 2.7 edita/genera con refs en el MISMO id: input_urls
                     // (hasta 9). Cara primero + Body Ref opcional; conserva el
                     // aspect_ratio/resolution ya seteados en el branch t2i.
+                    // Igual que Seedream 5 Pro, pesa MÁS las imágenes que el
+                    // texto: sin ancla de cuerpo copia el build delgado del
+                    // face ref e ignora las medidas [BODY:] que van después
+                    // (reporte del usuario: misma generación → Gemini con las
+                    // medidas, Wan plano). Mismo two-way anchor que Seedream:
+                    // cuerpo por IMAGEN 2 si hay Body Ref; si no, los
+                    // descriptores concretos (bodyEmphasis) dentro del ancla.
+                    // En EDICIÓN (sin bodyEmphasis ni Body Ref) se conserva el
+                    // keep-face simple verificado — el cuerpo ya viene en la
+                    // foto fuente y no hay que "engordarlo".
+                    const wanBodyRefs = (referenceImages ?? []).filter(
+                        (r) => r.role === 'body',
+                    )
                     const identityRefs = [
                         referenceImage,
-                        ...(referenceImages ?? []).filter((r) => r.role === 'body'),
+                        ...wanBodyRefs,
                     ].slice(0, 9)
                     const wanUrls: string[] = []
                     for (const r of identityRefs) {
                         wanUrls.push(await uploadReferenceToSupabase(r.base64, r.mimeType))
                     }
                     input.input_urls = wanUrls
-                    input.prompt = `The person in the first attached reference image is the subject — keep her EXACT face, facial features and likeness. ${input.prompt}`
-                    console.log(`[KIE] Wan 2.7 Image with ${wanUrls.length} ref(s) via input_urls`)
+                    const wanBodyClause =
+                        wanUrls.length > 1
+                            ? ' The SECOND attached image shows her real BODY — replicate its exact body shape, proportions, curves and build; do NOT take the body from the first image.'
+                            : bodyEmphasis
+                              ? ` Use the reference image ONLY for the face and identity: do NOT copy the body, build, weight or proportions from it — the person in the photo may look slimmer than she really is. Her real body is: ${bodyEmphasis}. Render THAT body, visibly fuller and curvier than the reference photo suggests.`
+                              : ''
+                    input.prompt = `The person in the FIRST attached reference image is the subject — keep her EXACT face, facial features and likeness from that image.${wanBodyClause} ${input.prompt}`
+                    console.log(`[KIE] Wan 2.7 Image with ${wanUrls.length} ref(s) via input_urls (face${wanUrls.length > 1 ? ' + body' : ''}${wanBodyClause && wanUrls.length === 1 ? ' + body-text anchor' : ''})`)
                 } else if (model.startsWith('flux-2/')) {
                     // FLUX.2 takes up to 8 refs → send the face (identity anchor) +
                     // a Body Ref (imitate the body) so BOTH are locked from images,
