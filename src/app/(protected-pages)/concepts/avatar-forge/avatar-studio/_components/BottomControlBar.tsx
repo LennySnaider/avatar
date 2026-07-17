@@ -3,6 +3,7 @@
 import { useRef, useState, useCallback, useEffect } from 'react'
 import { useAvatarStudioStore } from '../_store/avatarStudioStore'
 import { analyzePoseFromImage, analyzeImageForClone, analyzeImageForPlace, generateVideoPromptFromImage } from '@/services/GeminiService'
+import { apiCreatePrompt } from '@/services/AvatarForgeService'
 import { resizeBase64Image } from '@/utils/imageOptimization'
 import Button from '@/components/ui/Button'
 import Notification from '@/components/ui/Notification'
@@ -30,6 +31,7 @@ import {
     HiOutlineLightBulb,
     HiStar,
     HiOutlineStar,
+    HiOutlineSave,
 } from 'react-icons/hi'
 import { PiLightningFill } from 'react-icons/pi'
 import { MODEL_ACTION_PRESETS } from '../_constants/modelActionPresets'
@@ -210,6 +212,38 @@ const BottomControlBar = ({
     const [isAnalyzingPlace, setIsAnalyzingPlace] = useState(false)
     const [describeInputImage, setDescribeInputImage] = useState<string | null>(null) // URL for visual preview
     const [isVideoToPromptOpen, setIsVideoToPromptOpen] = useState(false)
+
+    // Save-to-library de un tap: nombre auto (primeras palabras del prompt).
+    const [isSavingPromptLib, setIsSavingPromptLib] = useState(false)
+    const handleSavePromptToLibrary = async () => {
+        const text = prompt.trim()
+        if (!text || isSavingPromptLib) return
+        setIsSavingPromptLib(true)
+        try {
+            const head = text.slice(0, 48)
+            const cut = head.lastIndexOf(' ')
+            const name = (cut > 24 ? head.slice(0, cut) : head) + (text.length > 48 ? '…' : '')
+            await apiCreatePrompt({
+                name,
+                text,
+                media_type: generationMode,
+            })
+            toast.push(
+                <Notification type="success" title="Saved">
+                    Prompt guardado en la librería
+                </Notification>,
+            )
+        } catch (error) {
+            console.error('Failed to save prompt to library:', error)
+            toast.push(
+                <Notification type="danger" title="Error">
+                    No se pudo guardar el prompt
+                </Notification>,
+            )
+        } finally {
+            setIsSavingPromptLib(false)
+        }
+    }
     const [isGeneratingVideoPrompt, setIsGeneratingVideoPrompt] = useState(false)
 
     // AI looks at the video Input image and writes an i2v motion/camera prompt.
@@ -782,6 +816,19 @@ const BottomControlBar = ({
                                         className="p-1.5 text-gray-400 hover:text-primary transition-colors border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800"
                                     >
                                         <HiOutlineBookOpen className="w-4 h-4" />
+                                    </button>
+                                </Tooltip>
+                                <Tooltip title="Save to Prompt Library">
+                                    <button
+                                        onClick={handleSavePromptToLibrary}
+                                        disabled={!prompt.trim() || isSavingPromptLib}
+                                        className="p-1.5 text-gray-400 hover:text-emerald-500 transition-colors disabled:opacity-50 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800"
+                                    >
+                                        {isSavingPromptLib ? (
+                                            <Spinner size={16} />
+                                        ) : (
+                                            <HiOutlineSave className="w-4 h-4" />
+                                        )}
                                     </button>
                                 </Tooltip>
                                 <Tooltip title="Check prompt safety">
