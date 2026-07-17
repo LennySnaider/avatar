@@ -1,12 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
-import {
-    DragDropContext,
-    Droppable,
-    Draggable,
-    type DropResult,
-} from '@hello-pangea/dnd'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import Card from '@/components/ui/Card'
 import Tooltip from '@/components/ui/Tooltip'
 import {
@@ -17,11 +11,10 @@ import {
     HiOutlineStar,
     HiOutlineEye,
     HiOutlineEyeOff,
-    HiOutlineMenuAlt4,
     HiOutlineUserCircle,
     HiOutlineLockOpen,
 } from 'react-icons/hi'
-import type { AIProvider } from '@/@types/supabase'
+import type { AIProvider, ProviderType } from '@/@types/supabase'
 import {
     DEFAULT_PROVIDERS,
     PROVIDER_COST,
@@ -85,18 +78,42 @@ const SECTIONS: Array<{
 const sectionOf = (p: AIProvider): SectionKey =>
     p.supports_image ? 'image' : p.supports_video ? 'video' : 'audio'
 
+/** Mismo avatar circular por tipo que usan las cards del selector del Studio. */
+const TypeBadge = ({ type }: { type: ProviderType }) => {
+    const styles: Record<string, { bg: string; letter: string }> = {
+        GOOGLE: { bg: 'from-blue-500 to-green-500', letter: 'G' },
+        KLING: { bg: 'from-orange-500 to-red-500', letter: 'K' },
+        MINIMAX: { bg: 'from-pink-500 to-purple-500', letter: 'M' },
+        KIE: { bg: 'from-sky-500 to-blue-600', letter: 'K' },
+        GATEWAY: { bg: 'from-gray-700 to-gray-900', letter: '▲' },
+        OPENAI: { bg: 'from-emerald-500 to-teal-600', letter: 'O' },
+    }
+    const s = styles[type] ?? { bg: 'from-gray-500 to-gray-600', letter: '?' }
+    return (
+        <div
+            className={`w-8 h-8 rounded-full bg-linear-to-br ${s.bg} flex items-center justify-center text-white font-bold text-sm shrink-0`}
+        >
+            {s.letter}
+        </div>
+    )
+}
+
 const ProvidersManager = ({ envStatus }: ProvidersManagerProps) => {
     // Prefs desde localStorage — leídas en efecto para no romper la hidratación.
     const [favorites, setFavorites] = useState<string[]>([])
     const [hidden, setHidden] = useState<string[]>([])
-    // El orden vive como lista de secciones ya ordenadas (ids). Se persiste
-    // concatenado en providerPrefs para que el Studio lo use como orden base.
+    // Cada sección mantiene su lista ya ordenada; el orden global persistido es
+    // la concatenación (orden BASE de los selectores del Studio).
     const [sections, setSections] = useState<Record<SectionKey, AIProvider[]>>({
         image: [],
         video: [],
         audio: [],
     })
     const [mounted, setMounted] = useState(false)
+    // Drag nativo HTML5 (la lib de dnd no soporta grids multi-línea): id en
+    // vuelo + reorden en vivo al pasar sobre otra card de la misma sección.
+    const [draggingId, setDraggingId] = useState<string | null>(null)
+    const dragSection = useRef<SectionKey | null>(null)
 
     useEffect(() => {
         const all = [...DEFAULT_PROVIDERS, ...AUDIO_PROVIDERS]
@@ -117,18 +134,35 @@ const ProvidersManager = ({ envStatus }: ProvidersManagerProps) => {
         )
     }
 
-    const onDragEnd = (result: DropResult) => {
-        const { source, destination } = result
-        if (!destination) return
-        // Solo reorden dentro de la misma sección (un provider no cambia de tipo).
-        if (source.droppableId !== destination.droppableId) return
-        const key = source.droppableId as SectionKey
-        const list = sections[key].slice()
-        const [moved] = list.splice(source.index, 1)
-        list.splice(destination.index, 0, moved)
-        const next = { ...sections, [key]: list }
-        setSections(next)
-        persistOrder(next)
+    const handleDragStart = (key: SectionKey, id: string) => {
+        dragSection.current = key
+        setDraggingId(id)
+    }
+
+    // Reorden EN VIVO: al arrastrar sobre otra card de la misma sección, la
+    // card en vuelo se recoloca en esa posición (patrón swap-on-hover).
+    const handleDragOver = (key: SectionKey, overId: string, e: React.DragEvent) => {
+        e.preventDefault()
+        if (!draggingId || draggingId === overId || dragSection.current !== key) return
+        setSections((prev) => {
+            const list = prev[key]
+            const from = list.findIndex((p) => p.id === draggingId)
+            const to = list.findIndex((p) => p.id === overId)
+            if (from < 0 || to < 0 || from === to) return prev
+            const next = list.slice()
+            const [moved] = next.splice(from, 1)
+            next.splice(to, 0, moved)
+            return { ...prev, [key]: next }
+        })
+    }
+
+    const handleDragEnd = () => {
+        setDraggingId(null)
+        dragSection.current = null
+        setSections((prev) => {
+            persistOrder(prev)
+            return prev
+        })
     }
 
     const toggleFavorite = (id: string) => {
@@ -161,15 +195,16 @@ const ProvidersManager = ({ envStatus }: ProvidersManagerProps) => {
     }
 
     return (
-        <div className="space-y-6">
+        <div className="space-y-8">
             {/* Header */}
             <div className="flex flex-wrap items-end justify-between gap-2">
                 <div>
                     <h3 className="text-xl font-semibold mb-1">AI Providers</h3>
                     <p className="text-sm text-gray-500">
-                        El catálogo REAL cableado al Avatar Studio. Arrastra para
-                        ordenar, ⭐ marca favoritos y el ojo los oculta de los
-                        selectores — todo se refleja al instante en el Studio.
+                        El catálogo REAL cableado al Avatar Studio. Arrastra las
+                        cards para ordenar, ⭐ marca favoritos y el ojo los oculta
+                        de los selectores — todo se refleja al instante en el
+                        Studio.
                     </p>
                 </div>
                 {hiddenCount > 0 && (
@@ -179,150 +214,129 @@ const ProvidersManager = ({ envStatus }: ProvidersManagerProps) => {
                 )}
             </div>
 
-            <DragDropContext onDragEnd={onDragEnd}>
-                {SECTIONS.map((section) => (
-                    <div key={section.key}>
-                        <div className={`flex items-center gap-2 mb-2 ${section.accent}`}>
-                            {section.icon}
-                            <h4 className="text-base font-semibold text-gray-900 dark:text-gray-100">
-                                {section.title}
-                            </h4>
-                            <span className="text-xs text-gray-400">
-                                {sections[section.key].length} providers
-                            </span>
-                        </div>
-                        <Droppable droppableId={section.key}>
-                            {(dropProvided) => (
-                                <div
-                                    ref={dropProvided.innerRef}
-                                    {...dropProvided.droppableProps}
-                                    className="space-y-2"
-                                >
-                                    {sections[section.key].map((p, index) => {
-                                        const isHidden = hidden.includes(p.id)
-                                        const isFav = favorites.includes(p.id)
-                                        const traits = PROVIDER_TRAITS[p.id]
-                                        const cost = PROVIDER_COST[p.id]
-                                        const envVar = p.api_key_env_var
-                                        const keyOk = envVar
-                                            ? (envStatus[envVar] ?? false)
-                                            : true
-                                        return (
-                                            <Draggable
-                                                key={p.id}
-                                                draggableId={p.id}
-                                                index={index}
-                                            >
-                                                {(dragProvided, snapshot) => (
-                                                    <div
-                                                        ref={dragProvided.innerRef}
-                                                        {...dragProvided.draggableProps}
-                                                    >
-                                                        <Card
-                                                            className={`p-3 transition-opacity ${
-                                                                isHidden ? 'opacity-45' : ''
-                                                            } ${snapshot.isDragging ? 'ring-2 ring-primary shadow-xl' : ''}`}
-                                                        >
-                                                            <div className="flex items-center gap-3">
-                                                                {/* Drag handle */}
-                                                                <span
-                                                                    {...dragProvided.dragHandleProps}
-                                                                    className="shrink-0 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 cursor-grab active:cursor-grabbing"
-                                                                    title="Arrastra para ordenar"
-                                                                >
-                                                                    <HiOutlineMenuAlt4 className="w-4 h-4" />
-                                                                </span>
-
-                                                                {/* Nombre + modelo + badges */}
-                                                                <div className="min-w-0 flex-1">
-                                                                    <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-                                                                        <span className="font-medium text-sm truncate">
-                                                                            {p.name}
-                                                                        </span>
-                                                                        {cost && (
-                                                                            <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300">
-                                                                                {cost}
-                                                                            </span>
-                                                                        )}
-                                                                        {traits?.face && (
-                                                                            <span className="inline-flex items-center gap-0.5 text-[10px] px-1.5 py-0.5 rounded bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300">
-                                                                                <HiOutlineUserCircle className="w-3 h-3" />
-                                                                                Cara
-                                                                            </span>
-                                                                        )}
-                                                                        {traits?.permissive && (
-                                                                            <span className="inline-flex items-center gap-0.5 text-[10px] px-1.5 py-0.5 rounded bg-rose-100 dark:bg-rose-900/40 text-rose-700 dark:text-rose-300">
-                                                                                <HiOutlineLockOpen className="w-3 h-3" />
-                                                                                Permisivo
-                                                                            </span>
-                                                                        )}
-                                                                        <span
-                                                                            className={`text-[10px] px-1.5 py-0.5 rounded ${
-                                                                                keyOk
-                                                                                    ? 'bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-300'
-                                                                                    : 'bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-300'
-                                                                            }`}
-                                                                            title={
-                                                                                envVar
-                                                                                    ? `${envVar} ${keyOk ? 'configurada' : 'FALTA en el entorno'}`
-                                                                                    : 'No requiere API key'
-                                                                            }
-                                                                        >
-                                                                            {keyOk ? 'Activo' : `Falta ${envVar}`}
-                                                                        </span>
-                                                                    </div>
-                                                                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5 line-clamp-2">
-                                                                        <span className="font-mono text-[10px] text-gray-400">
-                                                                            {p.model}
-                                                                        </span>
-                                                                        {' — '}
-                                                                        {describe(p)}
-                                                                    </p>
-                                                                </div>
-
-                                                                {/* Acciones */}
-                                                                <div className="shrink-0 flex items-center gap-1">
-                                                                    <Tooltip title={isFav ? 'Quitar de favoritos' : 'Marcar favorito'}>
-                                                                        <button
-                                                                            type="button"
-                                                                            onClick={() => toggleFavorite(p.id)}
-                                                                            className="p-1.5 rounded hover:bg-gray-100 dark:hover:bg-gray-800"
-                                                                        >
-                                                                            {isFav ? (
-                                                                                <HiStar className="w-5 h-5 text-amber-400" />
-                                                                            ) : (
-                                                                                <HiOutlineStar className="w-5 h-5 text-gray-400" />
-                                                                            )}
-                                                                        </button>
-                                                                    </Tooltip>
-                                                                    <Tooltip title={isHidden ? 'Mostrar en los selectores' : 'Ocultar de los selectores'}>
-                                                                        <button
-                                                                            type="button"
-                                                                            onClick={() => toggleHidden(p.id)}
-                                                                            className="p-1.5 rounded hover:bg-gray-100 dark:hover:bg-gray-800"
-                                                                        >
-                                                                            {isHidden ? (
-                                                                                <HiOutlineEyeOff className="w-5 h-5 text-gray-400" />
-                                                                            ) : (
-                                                                                <HiOutlineEye className="w-5 h-5 text-gray-500 dark:text-gray-300" />
-                                                                            )}
-                                                                        </button>
-                                                                    </Tooltip>
-                                                                </div>
-                                                            </div>
-                                                        </Card>
-                                                    </div>
-                                                )}
-                                            </Draggable>
-                                        )
-                                    })}
-                                    {dropProvided.placeholder}
-                                </div>
-                            )}
-                        </Droppable>
+            {SECTIONS.map((section) => (
+                <div key={section.key}>
+                    <div className={`flex items-center gap-2 mb-3 ${section.accent}`}>
+                        {section.icon}
+                        <h4 className="text-base font-semibold text-gray-900 dark:text-gray-100">
+                            {section.title}
+                        </h4>
+                        <span className="text-xs text-gray-400">
+                            {sections[section.key].length} providers
+                        </span>
                     </div>
-                ))}
-            </DragDropContext>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
+                        {sections[section.key].map((p) => {
+                            const isHidden = hidden.includes(p.id)
+                            const isFav = favorites.includes(p.id)
+                            const traits = PROVIDER_TRAITS[p.id]
+                            const cost = PROVIDER_COST[p.id]
+                            const envVar = p.api_key_env_var
+                            const keyOk = envVar
+                                ? (envStatus[envVar] ?? false)
+                                : true
+                            const isDragging = draggingId === p.id
+                            return (
+                                <div
+                                    key={p.id}
+                                    draggable
+                                    onDragStart={() => handleDragStart(section.key, p.id)}
+                                    onDragOver={(e) => handleDragOver(section.key, p.id, e)}
+                                    onDragEnd={handleDragEnd}
+                                    onDrop={(e) => e.preventDefault()}
+                                    className={isDragging ? 'opacity-40' : ''}
+                                >
+                                    <Card
+                                        className={`p-3 h-full cursor-grab active:cursor-grabbing transition-all select-none ${
+                                            isHidden ? 'opacity-45' : ''
+                                        } ${isDragging ? 'ring-2 ring-primary' : 'hover:border-primary'}`}
+                                    >
+                                        {/* Fila superior: icono tipo + acciones */}
+                                        <div className="flex items-start justify-between mb-2">
+                                            <TypeBadge type={p.type} />
+                                            <div className="flex items-center gap-0.5">
+                                                <Tooltip title={isFav ? 'Quitar de favoritos' : 'Marcar favorito'}>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => toggleFavorite(p.id)}
+                                                        className="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800"
+                                                    >
+                                                        {isFav ? (
+                                                            <HiStar className="w-4.5 h-4.5 text-amber-400" />
+                                                        ) : (
+                                                            <HiOutlineStar className="w-4.5 h-4.5 text-gray-400" />
+                                                        )}
+                                                    </button>
+                                                </Tooltip>
+                                                <Tooltip title={isHidden ? 'Mostrar en los selectores' : 'Ocultar de los selectores'}>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => toggleHidden(p.id)}
+                                                        className="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800"
+                                                    >
+                                                        {isHidden ? (
+                                                            <HiOutlineEyeOff className="w-4.5 h-4.5 text-gray-400" />
+                                                        ) : (
+                                                            <HiOutlineEye className="w-4.5 h-4.5 text-gray-500 dark:text-gray-300" />
+                                                        )}
+                                                    </button>
+                                                </Tooltip>
+                                            </div>
+                                        </div>
+
+                                        {/* Nombre + descripción */}
+                                        <div className="font-medium text-sm mb-1">{p.name}</div>
+                                        <p className="text-xs text-gray-500 dark:text-gray-400 line-clamp-3 mb-2">
+                                            {describe(p)}
+                                        </p>
+
+                                        {/* Badges (mismo lenguaje visual que el selector) */}
+                                        <div className="flex flex-wrap items-center gap-1">
+                                            {traits?.face && (
+                                                <span className="inline-flex items-center gap-0.5 text-[10px] px-1.5 py-0.5 rounded bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300">
+                                                    <HiOutlineUserCircle className="w-3 h-3" />
+                                                    Cara
+                                                </span>
+                                            )}
+                                            {traits?.permissive && (
+                                                <span className="inline-flex items-center gap-0.5 text-[10px] px-1.5 py-0.5 rounded bg-rose-100 dark:bg-rose-900/40 text-rose-700 dark:text-rose-300">
+                                                    <HiOutlineLockOpen className="w-3 h-3" />
+                                                    Permisivo
+                                                </span>
+                                            )}
+                                            <span
+                                                className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400 max-w-28 truncate"
+                                                title={p.model}
+                                            >
+                                                {p.model}
+                                            </span>
+                                            {cost && (
+                                                <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300">
+                                                    {cost}
+                                                </span>
+                                            )}
+                                            <span
+                                                className={`text-[10px] px-1.5 py-0.5 rounded ${
+                                                    keyOk
+                                                        ? 'bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-300'
+                                                        : 'bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-300'
+                                                }`}
+                                                title={
+                                                    envVar
+                                                        ? `${envVar} ${keyOk ? 'configurada' : 'FALTA en el entorno'}`
+                                                        : 'No requiere API key'
+                                                }
+                                            >
+                                                {keyOk ? 'Activo' : `Falta ${envVar}`}
+                                            </span>
+                                        </div>
+                                    </Card>
+                                </div>
+                            )
+                        })}
+                    </div>
+                </div>
+            ))}
         </div>
     )
 }

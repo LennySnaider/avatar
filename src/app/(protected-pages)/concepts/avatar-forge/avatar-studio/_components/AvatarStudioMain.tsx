@@ -555,41 +555,52 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
             try {
                 let savedAvatarId = avatarId
 
+                // Estado FRESCO del store, no el closure del render: el Edit
+                // drawer hace setMeasurements(...) y llama onSaveAvatar en el
+                // MISMO tick, así que el closure aún trae los valores del
+                // render anterior — se persistía la edición ANTERIOR (Nova
+                // quedó con hairColor viejo tras guardar el degradado).
+                const fresh = useAvatarStudioStore.getState()
+                const freshMeasurements = fresh.measurements
+                const freshFaceDescription = fresh.faceDescription
+                const freshIdentityWeight = fresh.identityWeight
+
                 // Create or update avatar
                 if (avatarId) {
                     await apiUpdateAvatar(avatarId, {
                         name,
-                        identity_weight: identityWeight,
-                        face_description: faceDescription,
-                        measurements,
+                        identity_weight: freshIdentityWeight,
+                        face_description: freshFaceDescription,
+                        measurements: freshMeasurements,
                     })
                 } else {
                     const newAvatar = await apiCreateAvatar({
                         name,
                         user_id: userId,
-                        identity_weight: identityWeight,
-                        face_description: faceDescription,
-                        measurements,
+                        identity_weight: freshIdentityWeight,
+                        face_description: freshFaceDescription,
+                        measurements: freshMeasurements,
                     })
                     savedAvatarId = newAvatar.id
                     setAvatarId(newAvatar.id)
                 }
 
-                // Upload references
+                // Upload references — también del estado FRESCO (el drawer las
+                // setea en el mismo tick que dispara este save).
                 if (savedAvatarId) {
                     const allRefs = [
-                        ...generalReferences.map((r) => ({
+                        ...fresh.generalReferences.map((r) => ({
                             ...r,
                             type: 'general' as const,
                         })),
-                        ...(faceRef
-                            ? [{ ...faceRef, type: 'face' as const }]
+                        ...(fresh.faceRef
+                            ? [{ ...fresh.faceRef, type: 'face' as const }]
                             : []),
-                        ...(angleRef
-                            ? [{ ...angleRef, type: 'angle' as const }]
+                        ...(fresh.angleRef
+                            ? [{ ...fresh.angleRef, type: 'angle' as const }]
                             : []),
-                        ...(bodyRef
-                            ? [{ ...bodyRef, type: 'body' as const }]
+                        ...(fresh.bodyRef
+                            ? [{ ...fresh.bodyRef, type: 'body' as const }]
                             : []),
                     ]
 
@@ -632,20 +643,7 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                 setIsSavingAvatar(false)
             }
         },
-        [
-            userId,
-            avatarId,
-            identityWeight,
-            faceDescription,
-            measurements,
-            generalReferences,
-            faceRef,
-            angleRef,
-            bodyRef,
-            setAvatarId,
-            setAvatarName,
-            setIsSavingAvatar,
-        ],
+        [userId, avatarId, setAvatarId, setAvatarName, setIsSavingAvatar],
     )
 
     // Analyze Face Handler
