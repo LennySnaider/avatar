@@ -1268,6 +1268,13 @@ export async function generateAvatar(params: {
     - Even if [STYLE_REF] has a beautiful face, DO NOT USE IT - use [FACE_ANCHOR]
     ` : ''}
 
+    ⛔ BODY EXCLUSION (critical): the deepfake applies to the FACE ONLY.
+    - Do NOT copy the body, build, weight or proportions visible in
+      [FACE_ANCHOR]/[ANGLE_SHEET] — the person there may look slimmer than
+      the character really is.
+    - The body comes ONLY from the BODY SHAPE SPECIFICATIONS${' '}sections
+      (and [BODY_SHAPE] if provided). Face from the photo, body from the spec.
+
     IDENTITY CHECKLIST (ALL MUST BE TRUE):
     ✓ Eye shape matches [FACE_ANCHOR]
     ✓ Nose matches [FACE_ANCHOR]
@@ -1276,6 +1283,7 @@ export async function generateAvatar(params: {
     ✓ Skin tone matches [FACE_ANCHOR]
     ✓ Ethnicity matches [FACE_ANCHOR]
     ✓ Overall face is SAME PERSON as [FACE_ANCHOR]
+    ✓ Body follows the BODY SPECIFICATIONS, NOT the reference photos
     `
     } else {
         identityInstructions = `
@@ -1284,6 +1292,8 @@ export async function generateAvatar(params: {
     ═══════════════════════════════════════════════════════════════
     - Use [FACE_ANCHOR] as the PRIMARY face reference
     - The character must be clearly recognizable as the person in [FACE_ANCHOR]
+    - ⛔ Do NOT copy the body/build from [FACE_ANCHOR] — the body follows the
+      BODY SPECIFICATIONS sections, not the reference photos.
     ${hasPoseOrStyle ? `
     ⛔ WARNING: [POSE_REF] and [STYLE_REF] contain OTHER people's faces
     - Do NOT copy faces from [POSE_REF] or [STYLE_REF]
