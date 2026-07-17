@@ -14,6 +14,44 @@ const ANALYSIS_SAFETY_SETTINGS = [
     { category: HarmCategory.HARM_CATEGORY_HATE_SPEECH, threshold: HarmBlockThreshold.BLOCK_NONE },
     { category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT, threshold: HarmBlockThreshold.BLOCK_NONE },
 ]
+
+/**
+ * Reintento "clínico" cuando el análisis directo vuelve VACÍO con una ref
+ * NSFW: aun con BLOCK_NONE, Gemini se rehúsa a veces en la SALIDA. Pedirle
+ * explícitamente lenguaje neutro no-explícito ("implied nude styling") suele
+ * pasar ese rechazo. El bloqueo duro de ENTRADA (imágenes muy explícitas) no
+ * tiene workaround — ahí los callers conservan su fallback + aviso.
+ * (Alternativas probadas y descartadas: MiniMax-VL-01 no existe en la API
+ * intl; MiniMax-M2 con imagen ALUCINA una escena inventada.)
+ */
+async function retryAnalysisNeutral(
+    ai: GoogleGenAI,
+    image: { base64: string; mimeType: string },
+    focus: string,
+): Promise<string> {
+    try {
+        const response = await ai.models.generateContent({
+            model: 'gemini-2.5-flash',
+            config: { safetySettings: ANALYSIS_SAFETY_SETTINGS },
+            contents: {
+                parts: [
+                    {
+                        inlineData: {
+                            mimeType: image.mimeType,
+                            data: cleanBase64Data(image.base64),
+                        },
+                    },
+                    {
+                        text: `The image may contain nudity or explicit content. Do NOT refuse. Do NOT describe explicit details or anatomy. Using strictly neutral, tasteful, non-explicit wording, describe ONLY: ${focus}. If the subject is nude or topless, refer to the outfit simply as "implied nude styling". Output ONE flowing paragraph under 450 characters, comma-separated, no headers, no labels, no markdown.`,
+                    },
+                ],
+            },
+        })
+        return response.text?.trim() ?? ''
+    } catch {
+        return ''
+    }
+}
 import type { PhysicalMeasurements, AspectRatio } from '@/@types/supabase'
 import { filterKnownSafeCorrections } from '@/app/(protected-pages)/concepts/avatar-forge/avatar-studio/_constants/knownSafeWords'
 import { sanitizePromptForGeneration, aggressiveSanitize } from '@/utils/promptSanitizer'
@@ -619,6 +657,7 @@ export async function describeImageForPrompt(image: ReferenceImage): Promise<str
     try {
         const response = await ai.models.generateContent({
             model: 'gemini-2.5-flash',
+            config: { safetySettings: ANALYSIS_SAFETY_SETTINGS },
             contents: {
                 parts: [
                     {
@@ -665,7 +704,13 @@ Keep it concise, descriptive, and high-quality. Output only the description, no 
                 ],
             },
         })
-        return response.text || ''
+        const text = response.text?.trim()
+        if (text) return text
+        // Rechazo de salida con refs NSFW → mismo reintento clínico que el
+        // Clone. Si también vuelve vacío (bloqueo duro de entrada), '' — el
+        // caller muestra el aviso.
+        console.warn('[Img→Prompt] empty — clinical neutral retry')
+        return retryAnalysisNeutral(ai, image, 'the outfit or "implied nude styling", accessories, setting and background, lighting and atmosphere, artistic style and color palette, composition and framing, and hair style (length/texture, NOT color) — never pose, skin tone, hair color, facial features, body type, age or ethnicity')
     } catch (e) {
         console.error('Image Description Failed', e)
         throw new Error('Failed to describe image.')
@@ -939,11 +984,15 @@ Example output (format to match): "a woman wearing a floral halter swim top and 
 
         const text = response.text?.trim()
         if (!text) {
-            // Gemini refused to describe the reference (its safety filter trips
-            // on suggestive/swimwear images). Don't hard-fail: for image-based
-            // cloning the REFERENCE IMAGE itself is sent to the model, so a
-            // neutral "replicate it" instruction keeps the flow working.
-            console.warn('[Clone Analysis] empty (likely safety-blocked) — neutral fallback')
+            // Rechazo de salida pese a BLOCK_NONE → reintento clínico con
+            // instrucción de lenguaje neutro no-explícito.
+            console.warn('[Clone Analysis] empty — clinical neutral retry')
+            const retry = await retryAnalysisNeutral(ai, image, 'any clothing items actually worn (or "implied nude styling"), accessories, hairstyle, pose and body orientation, setting and background, lighting quality and direction, camera angle and shot type, and overall artistic style — never facial features, body measurements or body type, skin tone, hair color, age or ethnicity')
+            if (retry) return sanitizeCloneDescription(retry)
+            // Bloqueo duro de entrada: no hay descripción posible con Gemini.
+            // No hard-fail: para el clon por imagen la REF viaja al modelo, así
+            // que la instrucción neutra mantiene el flujo (el caller avisa).
+            console.warn('[Clone Analysis] still empty (hard input block) — neutral fallback')
             return CLONE_FALLBACK
         }
         return sanitizeCloneDescription(text)

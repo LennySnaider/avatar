@@ -1916,6 +1916,15 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                             Prompt generated - check tags for removable terms
                         </Notification>,
                     )
+                } else {
+                    // Vacío = Gemini se rehusó incluso tras el reintento
+                    // clínico (bloqueo duro con contenido explícito). Antes
+                    // esto no hacía NADA en silencio.
+                    toast.push(
+                        <Notification type="warning" title="Sin descripción">
+                            Gemini no pudo describir esta imagen (contenido explícito — su bloqueo duro no es configurable). Escribe el prompt a mano o usa la imagen como Clone Ref (viaja tal cual a los modelos i2i).
+                        </Notification>,
+                    )
                 }
             } catch (error) {
                 console.error('Image description failed:', error)
