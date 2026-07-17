@@ -851,10 +851,12 @@ const ImagePreviewModal = ({
             className="p-0! bg-white! dark:bg-gray-900!"
         >
             <div className="flex flex-col h-[80vh]">
-                {/* Header */}
-                <div className="flex items-center gap-4 p-4 border-b border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-900">
+                {/* Header — una sola fila: badge + índice + provider (nowrap,
+                    truncado en móvil para no crecer en alto) + zoom compacto.
+                    pr-10 deja hueco para la X del Dialog (esquina superior). */}
+                <div className="flex items-center gap-2 sm:gap-4 p-4 pr-12 border-b border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-900">
                     <span
-                        className={`px-2 py-1 text-xs font-bold rounded ${
+                        className={`shrink-0 px-2 py-1 text-xs font-bold rounded ${
                             previewMedia.mediaType === 'VIDEO'
                                 ? 'bg-purple-500 text-white'
                                 : 'bg-blue-500 text-white'
@@ -862,19 +864,20 @@ const ImagePreviewModal = ({
                     >
                         {previewMedia.mediaType}
                     </span>
-                    <span className="text-sm text-gray-600 dark:text-gray-300">
+                    <span className="shrink-0 text-sm text-gray-600 dark:text-gray-300 whitespace-nowrap">
                         {currentIndex + 1} / {gallery.length}
                     </span>
 
                     {previewMedia.providerName && (
-                        <span className="px-2 py-1 text-xs font-medium rounded bg-gray-200 text-gray-700 dark:bg-gray-700 dark:text-gray-200">
+                        <span className="min-w-0 truncate px-2 py-1 text-xs font-medium rounded bg-gray-200 text-gray-700 dark:bg-gray-700 dark:text-gray-200 whitespace-nowrap">
                             {previewMedia.providerName}
                         </span>
                     )}
 
-                    {/* Zoom Controls */}
+                    {/* Zoom Controls — sin el % (solo aparece al hacer zoom, como
+                        botón de reset); a 100% no ocupa nada. */}
                     {previewMedia.mediaType === 'IMAGE' && !isEditing && (
-                        <div className="flex items-center gap-2 ml-auto">
+                        <div className="flex items-center gap-1 sm:gap-2 ml-auto shrink-0">
                             <button
                                 onClick={handleZoomOut}
                                 disabled={zoomLevel <= 1}
@@ -883,13 +886,15 @@ const ImagePreviewModal = ({
                             >
                                 <HiOutlineZoomOut className="w-4 h-4" />
                             </button>
-                            <button
-                                onClick={handleResetZoom}
-                                className="px-2 py-1 text-xs text-gray-600 hover:text-gray-900 dark:text-gray-300 dark:hover:text-white min-w-12 text-center"
-                                title="Reset Zoom"
-                            >
-                                {Math.round(zoomLevel * 100)}%
-                            </button>
+                            {zoomLevel !== 1 && (
+                                <button
+                                    onClick={handleResetZoom}
+                                    className="px-2 py-1 text-xs text-gray-600 hover:text-gray-900 dark:text-gray-300 dark:hover:text-white text-center whitespace-nowrap"
+                                    title="Reset Zoom"
+                                >
+                                    {Math.round(zoomLevel * 100)}%
+                                </button>
+                            )}
                             <button
                                 onClick={handleZoomIn}
                                 disabled={zoomLevel >= 3}
