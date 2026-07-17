@@ -14,6 +14,8 @@ import {
     HiOutlineDownload,
     HiOutlineChevronLeft,
     HiOutlineChevronRight,
+    HiOutlineChevronDown,
+    HiOutlineChevronUp,
     HiOutlineFilm,
     HiOutlinePencil,
     HiOutlineDuplicate,
@@ -147,6 +149,8 @@ const ImagePreviewModal = ({
     const [dragStart, setDragStart] = useState({ x: 0, y: 0 })
     const [zoomLevel, setZoomLevel] = useState(1)
     const [isPanning, setIsPanning] = useState(false)
+    // Colapsar el panel inferior (prompt + acciones) para ver la media completa.
+    const [panelCollapsed, setPanelCollapsed] = useState(false)
     // Drag-to-pan scrolls the overflow-auto media container; we stash the
     // pointer + scroll origin here on mousedown.
     const dragScrollRef = useRef<{
@@ -903,6 +907,36 @@ const ImagePreviewModal = ({
                     ref={viewportRef}
                     className="flex-1 relative flex items-center justify-center p-4 bg-gray-100 dark:bg-gray-800 overflow-hidden"
                 >
+                    {/* Delete — esquina superior derecha de la media (rojo).
+                        Movido aquí desde la barra de acciones para ahorrar
+                        espacio en el panel inferior. */}
+                    {!isEditing && (
+                        <button
+                            onClick={handleDelete}
+                            title="Delete"
+                            className="absolute top-4 right-4 z-20 p-2.5 bg-red-500 hover:bg-red-600 text-white rounded-full shadow-lg transition-colors"
+                        >
+                            <HiOutlineTrash className="w-5 h-5" />
+                        </button>
+                    )}
+
+                    {/* Toggle: colapsar/expandir el panel inferior para ver la
+                        media completa sin obstrucción. Flota abajo-centro de la
+                        media y permanece visible en ambos estados. */}
+                    {!isEditing && (
+                        <button
+                            onClick={() => setPanelCollapsed((v) => !v)}
+                            title={panelCollapsed ? 'Mostrar panel' : 'Ocultar panel — ver completa'}
+                            className="absolute bottom-3 left-1/2 -translate-x-1/2 z-20 px-3 py-1 bg-white/90 text-gray-700 rounded-full hover:bg-white dark:bg-gray-800/90 dark:text-gray-200 dark:hover:bg-gray-800 shadow-lg transition-colors flex items-center"
+                        >
+                            {panelCollapsed ? (
+                                <HiOutlineChevronUp className="w-5 h-5" />
+                            ) : (
+                                <HiOutlineChevronDown className="w-5 h-5" />
+                            )}
+                        </button>
+                    )}
+
                     {/* Navigation Arrows */}
                     {hasPrev && (
                         <button
@@ -1311,8 +1345,9 @@ const ImagePreviewModal = ({
                     </div>
                 )}
 
-                {/* Footer Actions */}
-                {!isEditing && (
+                {/* Footer Actions — se oculta con el toggle de la media para
+                    ver la imagen/video completo. */}
+                {!isEditing && !panelCollapsed && (
                     <div className="p-4 border-t border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-900">
                         {/* Avatar Info + Prompt */}
                         <div className="flex gap-3 mb-4">
@@ -1522,9 +1557,7 @@ const ImagePreviewModal = ({
                                 </Button>
                             )}
 
-                            <Button variant="plain" color="red" onClick={handleDelete} icon={<HiOutlineTrash />} className="ml-auto" title="Delete">
-                                <span className="hidden sm:inline">Delete</span>
-                            </Button>
+                            {/* Delete vive ahora en la esquina de la media. */}
                         </div>
                     </div>
                 )}
