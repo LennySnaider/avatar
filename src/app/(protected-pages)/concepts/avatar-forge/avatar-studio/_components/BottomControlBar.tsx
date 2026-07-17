@@ -714,6 +714,38 @@ const BottomControlBar = ({
                     </button>
                 </div>
 
+                {/* Provider selector — junto al toggle Image/Video para ahorrar
+                    una fila (antes vivía sobre los ref slots). En Speak muestra
+                    el motor real + salida (×). */}
+                {generationMode === 'VIDEO' && videoSubMode === 'SPEAK' ? (
+                    <span className="shrink-0 flex items-center gap-1.5 px-2 py-1.5 bg-purple-500/10 rounded-lg">
+                        <span className="w-1.5 h-1.5 rounded-full bg-purple-500 shrink-0" />
+                        <span className="text-[10px] font-medium text-purple-500 truncate max-w-24">
+                            Speak · {speakModel === 'omnihuman' ? 'OmniHuman 1.5' : speakModel === 'kling' ? 'Kling 3.0' : 'InfiniteTalk'}
+                        </span>
+                        <button
+                            type="button"
+                            onClick={() => setVideoSubMode('ANIMATE')}
+                            title="Exit Speak mode — back to video providers"
+                            className="p-0.5 rounded-full text-purple-400 hover:text-white hover:bg-purple-500 transition-colors shrink-0"
+                        >
+                            <HiOutlineX className="w-3 h-3" />
+                        </button>
+                    </span>
+                ) : (
+                    <button
+                        onClick={() => setShowProviderManager(true)}
+                        title="Change AI provider"
+                        className="shrink-0 flex items-center gap-1.5 px-2 py-1.5 bg-gray-100 dark:bg-gray-800 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
+                    >
+                        <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${activeProvider ? 'bg-green-500' : 'bg-gray-400'}`} />
+                        <span className="text-[10px] font-medium truncate max-w-24">
+                            {activeProvider?.name ?? 'Default Provider'}
+                        </span>
+                        <HiOutlineCog className="w-3 h-3 shrink-0 text-gray-400" />
+                    </button>
+                )}
+
                 {/* Prompt Input with Integrated Tags */}
                 <div className="flex-1 min-w-0 basis-full md:basis-auto order-3 md:order-0">
                     <PromptTextareaWithTags
@@ -833,40 +865,9 @@ const BottomControlBar = ({
                     />
                 </div>
 
-                {/* Provider selector + Dropzones column */}
+                {/* Dropzones column (el selector de provider se movió arriba,
+                    junto al toggle Image/Video, para ahorrar una fila). */}
                 <div className="flex flex-col gap-1.5 shrink-0 basis-full md:basis-auto order-4 md:order-0 items-center md:items-stretch">
-                {/* Active provider — moved from the studio header so it sits
-                    with the generation controls. In Speak mode the provider
-                    doesn't generate; show the real engine + an exit (×). */}
-                {generationMode === 'VIDEO' && videoSubMode === 'SPEAK' ? (
-                    <span className="flex items-center justify-center gap-1.5 px-2 py-1 bg-purple-500/10 rounded-lg">
-                        <span className="w-1.5 h-1.5 rounded-full bg-purple-500 shrink-0" />
-                        <span className="text-[10px] font-medium text-purple-500 truncate">
-                            Speak · {speakModel === 'omnihuman' ? 'OmniHuman 1.5' : speakModel === 'kling' ? 'Kling 3.0' : 'InfiniteTalk'}
-                        </span>
-                        <button
-                            type="button"
-                            onClick={() => setVideoSubMode('ANIMATE')}
-                            title="Exit Speak mode — back to video providers"
-                            className="p-0.5 rounded-full text-purple-400 hover:text-white hover:bg-purple-500 transition-colors shrink-0"
-                        >
-                            <HiOutlineX className="w-3 h-3" />
-                        </button>
-                    </span>
-                ) : (
-                    <button
-                        onClick={() => setShowProviderManager(true)}
-                        title="Change AI provider"
-                        className="flex items-center justify-center gap-1.5 px-2 py-1 bg-gray-100 dark:bg-gray-800 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
-                    >
-                        <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${activeProvider ? 'bg-green-500' : 'bg-gray-400'}`} />
-                        <span className="text-[10px] font-medium truncate max-w-28">
-                            {activeProvider?.name ?? 'Default Provider'}
-                        </span>
-                        <HiOutlineCog className="w-3 h-3 shrink-0 text-gray-400" />
-                    </button>
-                )}
-
                 {/* Dropzones - Tools Grid 2x3 (móvil: fila envolvente centrada) */}
                 <div className="flex flex-wrap justify-center gap-1.5 shrink-0 md:grid md:grid-cols-3">
                     {/* Image to Prompt Dropzone */}
