@@ -4,6 +4,7 @@ import { useState, useRef, useEffect, useCallback } from 'react'
 import { useAvatarStudioStore } from '../_store/avatarStudioStore'
 import { downloadMediaUrl } from '../../_utils/mediaDownload'
 import Dialog from '@/components/ui/Dialog'
+import ScrollBar, { type ScrollBarRef } from '@/components/ui/ScrollBar'
 import Button from '@/components/ui/Button'
 import Input from '@/components/ui/Input'
 import Slider from '@/components/ui/Slider'
@@ -170,7 +171,12 @@ const ImagePreviewModal = ({
     const editAssetInputRef = useRef<HTMLInputElement>(null)
     const imageRef = useRef<HTMLImageElement>(null)
     const videoRef = useRef<HTMLVideoElement>(null)
-    const mediaContainerRef = useRef<HTMLDivElement>(null)
+    // ScrollBar de ECME (SimpleBar) envuelve la media; el elemento que
+    // realmente scrollea es su scroll element interno — wheel-zoom y
+    // drag-to-pan operan sobre él.
+    const mediaScrollRef = useRef<ScrollBarRef>(null)
+    const getMediaScrollEl = () =>
+        mediaScrollRef.current?.getScrollElement() ?? null
     const viewportRef = useRef<HTMLDivElement>(null)
     const isDrawingRef = useRef(false)
     const lastPosRef = useRef({ x: 0, y: 0 })
@@ -268,7 +274,7 @@ const ImagePreviewModal = ({
     // Mouse wheel zoom — use native listener with { passive: false }
     // so preventDefault() works (React's onWheel is passive by default in modern browsers)
     useEffect(() => {
-        const el = mediaContainerRef.current
+        const el = getMediaScrollEl()
         if (!el) return
         const onWheel = (e: WheelEvent) => {
             if (isEditing) return
@@ -288,7 +294,7 @@ const ImagePreviewModal = ({
     // region (incl. the bottom of tall images) is reachable, with no
     // translate/clamp jank.
     const handlePanStart = useCallback((e: React.MouseEvent) => {
-        const el = mediaContainerRef.current
+        const el = getMediaScrollEl()
         if (!el || isEditing) return
         const canScroll =
             el.scrollHeight > el.clientHeight || el.scrollWidth > el.clientWidth
@@ -304,7 +310,7 @@ const ImagePreviewModal = ({
     }, [isEditing])
 
     const handlePanMove = useCallback((e: MouseEvent) => {
-        const el = mediaContainerRef.current
+        const el = getMediaScrollEl()
         const drag = dragScrollRef.current
         if (!el || !drag) return
         el.scrollLeft = drag.scrollLeft - (e.clientX - drag.startX)
@@ -947,10 +953,15 @@ const ImagePreviewModal = ({
                         </button>
                     )}
 
-                    {/* Media Display */}
+                    {/* Media Display — ScrollBar de ECME en vez del overflow
+                        nativo (scrollbars finos con la estética del template). */}
+                    <ScrollBar
+                        ref={mediaScrollRef}
+                        className="max-h-full max-w-full"
+                        autoHide={false}
+                    >
                     <div
-                        ref={mediaContainerRef}
-                        className="relative max-h-full max-w-full overflow-auto"
+                        className="relative"
                         onMouseDown={handlePanStart}
                         style={{
                             cursor:
@@ -1061,11 +1072,26 @@ const ImagePreviewModal = ({
                                         }
                                     }}
                                     className="rounded-lg block select-none"
-                                    style={{
-                                        maxHeight: `${60 * zoomLevel}vh`,
-                                        maxWidth: isEditing ? '100%' : `${100 * zoomLevel}%`,
-                                        transition: isPanning ? 'none' : 'max-height 0.2s ease-out, max-width 0.2s ease-out',
-                                    }}
+                                    style={
+                                        !isEditing && zoomLevel > 1
+                                            ? {
+                                                  // Altura EXPLÍCITA: con max-*
+                                                  // la imagen dejaba de crecer al
+                                                  // llegar a su tamaño natural
+                                                  // aunque el % siguiera subiendo
+                                                  // ("se queda en 200%").
+                                                  height: `${60 * zoomLevel}vh`,
+                                                  width: 'auto',
+                                                  maxHeight: 'none',
+                                                  maxWidth: 'none',
+                                                  transition: isPanning ? 'none' : 'height 0.2s ease-out',
+                                              }
+                                            : {
+                                                  maxHeight: '60vh',
+                                                  maxWidth: '100%',
+                                                  transition: isPanning ? 'none' : 'max-height 0.2s ease-out, max-width 0.2s ease-out',
+                                              }
+                                    }
                                     onLoad={updateCanvasSize}
                                     draggable={false}
                                 />
@@ -1143,6 +1169,7 @@ const ImagePreviewModal = ({
                             </div>
                         )}
                     </div>
+                    </ScrollBar>
                 </div>
 
                 {/* Edit Mode Panel */}
