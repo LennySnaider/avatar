@@ -4,7 +4,6 @@ import { useState, useRef, useEffect, useCallback } from 'react'
 import { useAvatarStudioStore } from '../_store/avatarStudioStore'
 import { downloadMediaUrl } from '../../_utils/mediaDownload'
 import Dialog from '@/components/ui/Dialog'
-import ScrollBar, { type ScrollBarRef } from '@/components/ui/ScrollBar'
 import Button from '@/components/ui/Button'
 import Input from '@/components/ui/Input'
 import Slider from '@/components/ui/Slider'
@@ -171,12 +170,8 @@ const ImagePreviewModal = ({
     const editAssetInputRef = useRef<HTMLInputElement>(null)
     const imageRef = useRef<HTMLImageElement>(null)
     const videoRef = useRef<HTMLVideoElement>(null)
-    // ScrollBar de ECME (SimpleBar) envuelve la media; el elemento que
-    // realmente scrollea es su scroll element interno — wheel-zoom y
-    // drag-to-pan operan sobre él.
-    const mediaScrollRef = useRef<ScrollBarRef>(null)
-    const getMediaScrollEl = () =>
-        mediaScrollRef.current?.getScrollElement() ?? null
+    const mediaContainerRef = useRef<HTMLDivElement>(null)
+    const getMediaScrollEl = () => mediaContainerRef.current
     const viewportRef = useRef<HTMLDivElement>(null)
     const isDrawingRef = useRef(false)
     const lastPosRef = useRef({ x: 0, y: 0 })
@@ -953,15 +948,12 @@ const ImagePreviewModal = ({
                         </button>
                     )}
 
-                    {/* Media Display — ScrollBar de ECME en vez del overflow
-                        nativo (scrollbars finos con la estética del template). */}
-                    <ScrollBar
-                        ref={mediaScrollRef}
-                        className="max-h-full max-w-full"
-                        autoHide={false}
-                    >
+                    {/* Media Display — overflow nativo con scrollbars FINOS del
+                        template (plugin tailwind-scrollbar). SimpleBar aquí
+                        rompía el render de la media (área vacía). */}
                     <div
-                        className="relative"
+                        ref={mediaContainerRef}
+                        className="relative max-h-full max-w-full overflow-auto scrollbar-thin scrollbar-thumb-gray-400 dark:scrollbar-thumb-gray-600 scrollbar-track-transparent"
                         onMouseDown={handlePanStart}
                         style={{
                             cursor:
@@ -1169,7 +1161,6 @@ const ImagePreviewModal = ({
                             </div>
                         )}
                     </div>
-                    </ScrollBar>
                 </div>
 
                 {/* Edit Mode Panel */}
