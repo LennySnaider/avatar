@@ -691,7 +691,6 @@ const GalleryPanel = ({
                                                     <Button
                                                         size="xs"
                                                         variant="solid"
-                                                        color="green"
                                                         icon={
                                                             <HiOutlineShare />
                                                         }
@@ -706,15 +705,13 @@ const GalleryPanel = ({
                                                                 : media.saveState !==
                                                                     'saved'
                                                                   ? 'Save to gallery first'
-                                                                  : undefined
+                                                                  : 'Post'
                                                         }
                                                         onClick={(e) => {
                                                             e.stopPropagation()
                                                             onPost(media)
                                                         }}
-                                                    >
-                                                        <span>Post</span>
-                                                    </Button>
+                                                    />
                                                 )}
                                                 <Button
                                                     size="xs"
@@ -767,22 +764,24 @@ const GalleryPanel = ({
                                                             icon={
                                                                 <HiOutlineSave />
                                                             }
+                                                            title="Save"
                                                             onClick={(e) => {
                                                                 e.stopPropagation()
                                                                 onSaveToGallery(
                                                                     media,
                                                                 )
                                                             }}
-                                                        >
-                                                            <span>Save</span>
-                                                        </Button>
+                                                        />
                                                     )}
                                                     <Button
                                                         size="xs"
                                                         variant="solid"
-                                                        color="red"
                                                         icon={
                                                             <HiOutlineTrash />
+                                                        }
+                                                        title="Delete"
+                                                        customColorClass={() =>
+                                                            'bg-red-500 hover:bg-red-400 text-white'
                                                         }
                                                         onClick={(e) => {
                                                             e.stopPropagation()
@@ -790,9 +789,7 @@ const GalleryPanel = ({
                                                                 media,
                                                             )
                                                         }}
-                                                    >
-                                                        <span>Delete</span>
-                                                    </Button>
+                                                    />
                                                 </div>
                                             </div>
                                         </div>
