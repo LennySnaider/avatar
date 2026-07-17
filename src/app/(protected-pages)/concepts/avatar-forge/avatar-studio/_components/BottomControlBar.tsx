@@ -28,6 +28,8 @@ import {
     HiOutlineCheck,
     HiOutlineMicrophone,
     HiOutlineLightBulb,
+    HiStar,
+    HiOutlineStar,
 } from 'react-icons/hi'
 import { PiLightningFill } from 'react-icons/pi'
 import { MODEL_ACTION_PRESETS } from '../_constants/modelActionPresets'
@@ -54,6 +56,26 @@ import KlingCameraControls from './KlingCameraControls'
 import KlingMotionBrushEditor from './KlingMotionBrushEditor'
 import VideoToPromptDialog from './VideoToPromptDialog'
 import SpeakScriptDialog from './SpeakScriptDialog'
+
+// Aspect ratio por DEFECTO, persistido en localStorage (mismo patrón que el
+// default de provider por modo): con la ★ del dropdown se fija, y cada sesión
+// fresca del Studio arranca en ese ratio en vez del '1:1' del store.
+const DEFAULT_AR_KEY = 'avatar-studio:default-aspect-ratio'
+function readDefaultAspectRatio(): AspectRatio | null {
+    if (typeof window === 'undefined') return null
+    try {
+        return window.localStorage.getItem(DEFAULT_AR_KEY) as AspectRatio | null
+    } catch {
+        return null
+    }
+}
+function writeDefaultAspectRatio(ratio: AspectRatio) {
+    try {
+        window.localStorage.setItem(DEFAULT_AR_KEY, ratio)
+    } catch {
+        /* ignore (private mode / disabled storage) */
+    }
+}
 
 // Aspect Ratio Icon Component - renders visual representation of each ratio
 const AspectRatioIcon = ({ ratio, isSelected }: { ratio: string; isSelected: boolean }) => {
@@ -225,6 +247,19 @@ const BottomControlBar = ({
     // Prevent hydration mismatch with FloatingUI-generated IDs
     useEffect(() => {
         setHasMounted(true)
+    }, [])
+
+    // Default de aspect ratio: al montar, si hay uno guardado y el store sigue
+    // en su valor inicial ('1:1' = nadie lo tocó aún esta sesión), aplícalo.
+    // La condición evita pisar una elección hecha antes de un remount.
+    const [defaultAspectRatio, setDefaultAspectRatio] = useState<AspectRatio | null>(null)
+    useEffect(() => {
+        const saved = readDefaultAspectRatio()
+        setDefaultAspectRatio(saved)
+        if (saved && useAvatarStudioStore.getState().aspectRatio === '1:1') {
+            setAspectRatio(saved)
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [])
 
     const {
@@ -1249,6 +1284,27 @@ const BottomControlBar = ({
                             <span className={aspectRatio === r.value ? 'text-primary font-medium' : ''}>
                                 {r.label}
                             </span>
+                            {/* ★ fija este ratio como default de arranque */}
+                            <button
+                                type="button"
+                                title={
+                                    defaultAspectRatio === r.value
+                                        ? 'Default de arranque'
+                                        : 'Hacer default de arranque'
+                                }
+                                onClick={(e) => {
+                                    e.stopPropagation()
+                                    writeDefaultAspectRatio(r.value as AspectRatio)
+                                    setDefaultAspectRatio(r.value as AspectRatio)
+                                }}
+                                className="ml-auto p-0.5 rounded hover:bg-gray-200 dark:hover:bg-gray-600"
+                            >
+                                {defaultAspectRatio === r.value ? (
+                                    <HiStar className="w-4 h-4 text-amber-400" />
+                                ) : (
+                                    <HiOutlineStar className="w-4 h-4 text-gray-400" />
+                                )}
+                            </button>
                         </Dropdown.Item>
                     ))}
                 </Dropdown>
