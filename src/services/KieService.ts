@@ -393,8 +393,8 @@ function planExtraRefs(
             case 'clone':
                 parts.push(
                     deepfakeMode
-                        ? `Image ${n} is the ORIGINAL photo to reproduce — recreate it EXACTLY: same body, build, proportions, outfit, pose, hands, framing, camera angle, lighting, background and setting, EVERYTHING unchanged. ONLY swap the person's FACE for the face from the FIRST image (exact features, freckles, likeness). The person in image ${n} is a FACELESS MANNEQUIN for the face only. Do NOT alter or remove any clothing.`
-                        : `Image ${n} is the CLONE source — recreate its EXACT pose, body position, outfit, hands, any object held, framing, camera angle, lighting and setting. The person in image ${n} is a FACELESS MANNEQUIN: IGNORE their face and identity completely; the face comes ONLY from the FIRST image. Keep her FULLY dressed exactly as shown in the clone image — do NOT remove, open, shorten or reduce any clothing.`,
+                        ? `Image ${n} is the ORIGINAL photo to reproduce — recreate it EXACTLY: same body, build, proportions, outfit, pose, hands, framing, camera angle, lighting, background and setting. The FACE SWAP is MANDATORY: the output face MUST be recognizably the person from the FIRST image (exact features, freckles, likeness) — never keep the original face. The person in image ${n} is a FACELESS MANNEQUIN for the face only. Do NOT alter or remove any clothing. REMOVE any overlaid stickers, watermarks, emojis, logos or UI graphics pasted on the photo — output a clean photograph.`
+                        : `Image ${n} is the CLONE source — recreate its EXACT pose, body position, outfit, hands, any object held, framing, camera angle, lighting and setting. The person in image ${n} is a FACELESS MANNEQUIN: IGNORE their face and identity completely; the face comes ONLY from the FIRST image. Keep her FULLY dressed exactly as shown in the clone image — do NOT remove, open, shorten or reduce any clothing. REMOVE any overlaid stickers, watermarks, emojis or UI graphics pasted on the photo — output a clean photograph.`,
                 )
                 break
         }
