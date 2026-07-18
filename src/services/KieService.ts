@@ -370,9 +370,15 @@ function planExtraRefs(
                     `Image ${n} = her real GLUTES and hips: copy ONLY their size, shape, fullness and projection (thighs proportionally full). IGNORE that image's clothing/nudity, pose, scene and lighting — outfit, pose and scene come from ${outfitSrc}.`,
                 )
                 break
+            // La cláusula vieja ("print this EXACT design on her clothing")
+            // era una orden imperativa SIN ámbito: con la escena decapitada el
+            // modelo estampaba logos/texto-marca alucinado en la camiseta
+            // (reporte: "LOXEANG" en Wan). Además el slot se usa también para
+            // PRENDAS, no solo logos — la orden de "imprimir" convertía la
+            // prenda en estampado forzado.
             case 'asset':
                 parts.push(
-                    `Image ${n} = brand asset (logo/graphic): print this EXACT design on her clothing/props where a logo appears, faithful shapes and colors; never write placeholder text like "LOGO".`,
+                    `Image ${n} = product ASSET. If it is a garment/accessory: dress her in this EXACT item (same cut, fabric, colors and prints). If it is a logo/graphic: print it with faithful shapes and colors ONLY where the scene text places it — nowhere else. NEVER add any other logos, brand names or invented text on clothing or props; never write placeholder text like "LOGO".`,
                 )
                 break
             case 'pose':
@@ -405,6 +411,33 @@ function planExtraRefs(
         hasBody: ordered.some((r) => r.role === 'body'),
         hasClone,
     }
+}
+
+/**
+ * En los branches i2i de Seedream/Wan la identidad física YA viaja en el ANCLA
+ * (imagen 1 + bodyEmphasis/hair/eye), pero el prompt que llega del Studio trae
+ * además el preámbulo de difusión ("A 21 year old woman…") y los bloques
+ * [BODY:]/[FACE:] — ~1,300 chars duplicados. Con el presupuesto duro de ~2,750
+ * y el recorte por el FINAL, la redundancia sobrevivía y la ESCENA del usuario
+ * (outfit/pose/lugar/luz) se decapitaba — medido live en 5-lite: solo 155
+ * chars de escena llegaron al modelo, cortados justo antes de la ropa (por eso
+ * "hacía lo que quería": nunca leyó el prompt). Se quita AQUÍ la redundancia
+ * para que la escena completa quepa en el presupuesto.
+ * `bodyInAnchor` = el ancla ya carga el cuerpo (bodyEmphasis / Body Ref /
+ * deepfake): solo entonces es seguro tirar el texto de cuerpo; [FACE:] siempre
+ * sobra — la cara va en la imagen 1 y el texto solo pelea con la foto.
+ */
+function stripIdentityRedundancy(text: string, bodyInAnchor: boolean): string {
+    let out = text
+    if (bodyInAnchor) {
+        out = out
+            .replace(/\bA \d+ year old woman\b[^]*?(?=\[(?:BODY|FACE):)/i, '')
+            .replace(/\[BODY:[^\]]*\]/gi, ' ')
+    }
+    return out
+        .replace(/\[FACE:[^\]]*\]/gi, ' ')
+        .replace(/\s{2,}/g, ' ')
+        .trim()
 }
 
 /**
@@ -482,6 +515,21 @@ export async function generateImageKie(
         // anchor below adds ~430 chars AFTER this cap, so 2400 + anchor ≈ 2830
         // stays under the limit while letting more body-spec text survive.
         const promptCap = model.startsWith('nano-banana-2') ? 19000 : model === 'z-image' ? 1500 : model.startsWith('seedream/') ? 2400 : 1800
+        // Seedream/Wan i2i: la redundancia de identidad (preámbulo +
+        // [BODY:]/[FACE:]) se quita ANTES del cap genérico — si se hiciera en
+        // el branch, este cap ya habría comido la cola de la ESCENA (outfit/
+        // luz) mientras conservaba el duplicado.
+        if (
+            referenceImage &&
+            (model.startsWith('seedream/') || model === 'wan/2-7-image')
+        ) {
+            promptText = stripIdentityRedundancy(
+                promptText,
+                Boolean(deepfakeMode) ||
+                    Boolean(bodyEmphasis) ||
+                    (referenceImages ?? []).some((r) => r.role === 'body'),
+            )
+        }
         let capped = promptText
         if (capped.length > promptCap) {
             capped = capped.slice(0, promptCap)
@@ -665,6 +713,8 @@ export async function generateImageKie(
                     // verificado; 2750 da margen. Piso 400 (no 600) para que
                     // un ancla grande no haga rebasar el total.
                     const sceneRoom = Math.max(250, 2750 - seedreamAnchor.length)
+                    // input.prompt ya llega SIN preámbulo/[BODY:]/[FACE:] —
+                    // stripIdentityRedundancy corre antes del cap genérico.
                     let sceneText = String(input.prompt)
                     // Con el clone como IMAGEN, su texto [CLONE:] es redundante
                     // (~600 chars) y pelea con la cláusula de la imagen.
@@ -758,6 +808,8 @@ export async function generateImageKie(
                     // iba SIN cap (4531 chars reales) y la adherencia se diluía.
                     const wanAnchor = `The person in the FIRST attached reference image is the subject — keep her EXACT face, facial features and likeness from that image.${faceFidelityClause}${wanBodyClause}${hairClause}${eyeClause}${wanExtraClauses} Follow the SCENE, POSE and ACTION described below EXACTLY.`
                     const wanSceneRoom = Math.max(250, 2750 - wanAnchor.length)
+                    // input.prompt ya llega SIN preámbulo/[BODY:]/[FACE:] —
+                    // stripIdentityRedundancy corre antes del cap genérico.
                     let wanSceneText = String(input.prompt)
                     if (wanHasClone) {
                         wanSceneText = wanSceneText
