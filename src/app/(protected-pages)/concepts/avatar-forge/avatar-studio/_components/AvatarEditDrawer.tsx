@@ -13,6 +13,7 @@ import ScrollBar from '@/components/ui/ScrollBar'
 import Notification from '@/components/ui/Notification'
 import toast from '@/components/ui/toast'
 import Tooltip from '@/components/ui/Tooltip'
+import { BODY_TYPE_TOOLTIP, LEG_TYPE_TOOLTIP } from '@/utils/bodyDescriptors'
 import {
     HiOutlineUpload,
     HiOutlineX,
@@ -562,17 +563,18 @@ const AvatarEditDrawer = ({ isOpen, onClose, onSaveAvatar }: AvatarEditDrawerPro
                                         <label className="text-xs text-gray-500 block mb-1">Body Type</label>
                                         <div className="flex flex-wrap gap-1">
                                             {(['petite', 'slim', 'athletic', 'average', 'curvy', 'hourglass', 'plus-size'] as const).map((type) => (
-                                                <button
-                                                    key={type}
-                                                    onClick={() => setLocalMeasurements({ ...localMeasurements, bodyType: type })}
-                                                    className={`px-2 py-1 text-xs rounded border transition-colors capitalize ${
-                                                        localMeasurements.bodyType === type
-                                                            ? 'bg-primary text-white border-primary'
-                                                            : 'bg-gray-50 dark:bg-gray-800 border-gray-200 dark:border-gray-700 hover:border-primary'
-                                                    }`}
-                                                >
-                                                    {type}
-                                                </button>
+                                                <Tooltip key={type} title={BODY_TYPE_TOOLTIP[type]}>
+                                                    <button
+                                                        onClick={() => setLocalMeasurements({ ...localMeasurements, bodyType: type })}
+                                                        className={`px-2 py-1 text-xs rounded border transition-colors capitalize ${
+                                                            localMeasurements.bodyType === type
+                                                                ? 'bg-primary text-white border-primary'
+                                                                : 'bg-gray-50 dark:bg-gray-800 border-gray-200 dark:border-gray-700 hover:border-primary'
+                                                        }`}
+                                                    >
+                                                        {type}
+                                                    </button>
+                                                </Tooltip>
                                             ))}
                                         </div>
                                     </div>
@@ -581,18 +583,19 @@ const AvatarEditDrawer = ({ isOpen, onClose, onSaveAvatar }: AvatarEditDrawerPro
                                     <div>
                                         <label className="text-xs text-gray-500 block mb-1">Leg Type</label>
                                         <div className="flex flex-wrap gap-1">
-                                            {([undefined, 'slim', 'toned', 'athletic', 'long', 'curvy', 'thick'] as const).map((leg) => (
-                                                <button
-                                                    key={leg ?? 'auto'}
-                                                    onClick={() => setLocalMeasurements({ ...localMeasurements, legType: leg })}
-                                                    className={`px-2 py-1 text-xs rounded border transition-colors capitalize ${
-                                                        (localMeasurements.legType ?? undefined) === leg
-                                                            ? 'bg-primary text-white border-primary'
-                                                            : 'bg-gray-50 dark:bg-gray-800 border-gray-200 dark:border-gray-700 hover:border-primary'
-                                                    }`}
-                                                >
-                                                    {leg ?? 'auto'}
-                                                </button>
+                                            {([undefined, 'slim', 'toned', 'athletic', 'muscular-thighs', 'long', 'curvy', 'thick'] as const).map((leg) => (
+                                                <Tooltip key={leg ?? 'auto'} title={LEG_TYPE_TOOLTIP[leg ?? 'auto']}>
+                                                    <button
+                                                        onClick={() => setLocalMeasurements({ ...localMeasurements, legType: leg })}
+                                                        className={`px-2 py-1 text-xs rounded border transition-colors capitalize ${
+                                                            (localMeasurements.legType ?? undefined) === leg
+                                                                ? 'bg-primary text-white border-primary'
+                                                                : 'bg-gray-50 dark:bg-gray-800 border-gray-200 dark:border-gray-700 hover:border-primary'
+                                                        }`}
+                                                    >
+                                                        {leg ?? 'auto'}
+                                                    </button>
+                                                </Tooltip>
                                             ))}
                                         </div>
                                     </div>

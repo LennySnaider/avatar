@@ -19,6 +19,7 @@ import {
 } from '@/services/AvatarForgeService'
 import { analyzeFaceFromImages, generateAvatar } from '@/services/GeminiService'
 import { resizeBase64Image } from '@/utils/imageOptimization'
+import { BODY_TYPE_TOOLTIP, LEG_TYPE_TOOLTIP } from '@/utils/bodyDescriptors'
 import HairColorPicker from '@/components/shared/HairColorPicker'
 import EyeColorPicker from '@/components/shared/EyeColorPicker'
 import {
@@ -669,17 +670,18 @@ const AvatarCreatorMain = ({ userId, existingAvatar }: AvatarCreatorMainProps) =
                                         <label className="text-xs text-gray-500 block mb-1">Body Type</label>
                                         <div className="flex flex-wrap gap-1">
                                             {(['petite', 'slim', 'athletic', 'average', 'curvy', 'hourglass', 'plus-size'] as const).map((type) => (
-                                                <button
-                                                    key={type}
-                                                    onClick={() => setMeasurements({ ...measurements, bodyType: type })}
-                                                    className={`px-2 py-1 text-xs rounded border transition-colors capitalize ${
-                                                        measurements.bodyType === type
-                                                            ? 'bg-primary text-white border-primary'
-                                                            : 'bg-gray-50 dark:bg-gray-800 border-gray-200 dark:border-gray-700 hover:border-primary'
-                                                    }`}
-                                                >
-                                                    {type}
-                                                </button>
+                                                <Tooltip key={type} title={BODY_TYPE_TOOLTIP[type]}>
+                                                    <button
+                                                        onClick={() => setMeasurements({ ...measurements, bodyType: type })}
+                                                        className={`px-2 py-1 text-xs rounded border transition-colors capitalize ${
+                                                            measurements.bodyType === type
+                                                                ? 'bg-primary text-white border-primary'
+                                                                : 'bg-gray-50 dark:bg-gray-800 border-gray-200 dark:border-gray-700 hover:border-primary'
+                                                        }`}
+                                                    >
+                                                        {type}
+                                                    </button>
+                                                </Tooltip>
                                             ))}
                                         </div>
                                     </div>
@@ -688,18 +690,19 @@ const AvatarCreatorMain = ({ userId, existingAvatar }: AvatarCreatorMainProps) =
                                     <div>
                                         <label className="text-xs text-gray-500 block mb-1">Leg Type</label>
                                         <div className="flex flex-wrap gap-1">
-                                            {([undefined, 'slim', 'toned', 'athletic', 'long', 'curvy', 'thick'] as const).map((leg) => (
-                                                <button
-                                                    key={leg ?? 'auto'}
-                                                    onClick={() => setMeasurements({ ...measurements, legType: leg })}
-                                                    className={`px-2 py-1 text-xs rounded border transition-colors capitalize ${
-                                                        (measurements.legType ?? undefined) === leg
-                                                            ? 'bg-primary text-white border-primary'
-                                                            : 'bg-gray-50 dark:bg-gray-800 border-gray-200 dark:border-gray-700 hover:border-primary'
-                                                    }`}
-                                                >
-                                                    {leg ?? 'auto'}
-                                                </button>
+                                            {([undefined, 'slim', 'toned', 'athletic', 'muscular-thighs', 'long', 'curvy', 'thick'] as const).map((leg) => (
+                                                <Tooltip key={leg ?? 'auto'} title={LEG_TYPE_TOOLTIP[leg ?? 'auto']}>
+                                                    <button
+                                                        onClick={() => setMeasurements({ ...measurements, legType: leg })}
+                                                        className={`px-2 py-1 text-xs rounded border transition-colors capitalize ${
+                                                            (measurements.legType ?? undefined) === leg
+                                                                ? 'bg-primary text-white border-primary'
+                                                                : 'bg-gray-50 dark:bg-gray-800 border-gray-200 dark:border-gray-700 hover:border-primary'
+                                                        }`}
+                                                    >
+                                                        {leg ?? 'auto'}
+                                                    </button>
+                                                </Tooltip>
                                             ))}
                                         </div>
                                     </div>

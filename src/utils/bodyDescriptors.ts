@@ -79,6 +79,10 @@ const LEG_TYPE_PHRASE: Record<string, string> = {
     slim: 'slim slender legs',
     toned: 'toned smooth legs with soft definition',
     athletic: 'athletic muscular legs with defined calves',
+    // Músculo centrado en MUSLOS (athletic marca pantorrillas): cuádriceps/
+    // femorales esculpidos, piernas de gimnasio.
+    'muscular-thighs':
+        'muscular sculpted thighs with strong defined quadriceps and hamstrings, powerful gym-built legs',
     long: 'long elongated legs',
     curvy: 'curvy shapely legs with full thighs',
     thick: 'thick full thighs with substantial leg volume, thighs touching (no thigh gap)',
@@ -87,6 +91,27 @@ const LEG_TYPE_PHRASE: Record<string, string> = {
 export function getLegDescriptor(legType?: string): string {
     if (!legType) return ''
     return LEG_TYPE_PHRASE[legType] || legType.replace(/-/g, ' ') + ' legs'
+}
+
+// Tooltips para los selectores de UI (creator + edit drawer): la frase EXACTA
+// que se inyecta al prompt, para que el usuario sepa qué pide cada opción.
+// Body Type combina la frase líder (BODY_TYPE_PHRASE) + la línea de
+// proporciones de BODY_TYPE_DESCRIPTIONS (avatarPromptBuilder) — mantener en
+// sync si esos mapas cambian.
+export const BODY_TYPE_TOOLTIP: Record<string, string> = {
+    petite: 'petite delicate frame — small-boned, compact proportions',
+    slim: 'slim slender figure — lean, elongated proportions',
+    athletic: 'athletic toned physique — muscular definition, sporty build',
+    average: 'average balanced figure — proportionate, natural build',
+    curvy: 'curvy voluptuous figure — fuller proportions with defined curves',
+    hourglass:
+        'classic hourglass figure, pin-up proportions — narrow waist with fuller bust and hips',
+    'plus-size': 'plus-size full figure — generous proportions throughout',
+}
+
+export const LEG_TYPE_TOOLTIP: Record<string, string> = {
+    auto: 'no explicit phrase — legs follow the Body Type and hip descriptors',
+    ...LEG_TYPE_PHRASE,
 }
 
 // Lead phrase for the explicit body-type selector, so a user's choice is

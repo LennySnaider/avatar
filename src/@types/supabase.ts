@@ -399,7 +399,7 @@ export type AspectRatio = '1:1' | '16:9' | '9:16' | '4:3' | '3:4'
 export type BodyType = 'petite' | 'slim' | 'athletic' | 'average' | 'curvy' | 'hourglass' | 'plus-size'
 
 // Leg shape/type. Optional — when unset the legs follow the overall body type.
-export type LegType = 'slim' | 'toned' | 'athletic' | 'long' | 'curvy' | 'thick'
+export type LegType = 'slim' | 'toned' | 'athletic' | 'muscular-thighs' | 'long' | 'curvy' | 'thick'
 
 // Hair texture/type. Optional — when unset the hair follows the face
 // description (auto-analyzed from the reference photos).
