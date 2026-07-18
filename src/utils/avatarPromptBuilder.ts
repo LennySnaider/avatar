@@ -13,7 +13,7 @@ import { getBodyDescriptors, getLegDescriptor, getSkinToneDescription, getHairCo
  *   FACE_ANCHOR, ANGLE_SHEET, BODY_SHAPE, POSE_REF, STYLE, ASSET…
  */
 
-export type RefRole = 'face' | 'angle' | 'body' | 'pose' | 'scene' | 'place' | 'clone' | 'asset'
+export type RefRole = 'face' | 'angle' | 'body' | 'bust' | 'glutes' | 'pose' | 'scene' | 'place' | 'clone' | 'asset'
 
 export interface AvatarPromptOptions {
     prompt: string
@@ -359,6 +359,8 @@ const ROLE_LABEL: Record<RefRole, string> = {
     face: 'FACE_ANCHOR',
     angle: 'ANGLE_SHEET',
     body: 'BODY_SHAPE',
+    bust: 'BUST_REF',
+    glutes: 'GLUTES_REF',
     pose: 'POSE_REF',
     scene: 'STYLE_REF',
     place: 'PLACE_REF',
@@ -370,6 +372,8 @@ const ROLE_DESC: Record<RefRole, string> = {
     face: 'IDENTITY SOURCE — copy this exact face, features, bone structure and likeness PRECISELY',
     angle: 'GEOMETRY SOURCE — multiple angles of the same face, for facial consistency',
     body: 'CRITICAL BODY REFERENCE — COPY THIS EXACT SILHOUETTE (waist, hips, bust, curves). MANDATORY',
+    bust: 'BUST REFERENCE — replicate this exact bust size, shape and fullness on the generated body',
+    glutes: 'GLUTES REFERENCE — replicate these exact glutes/hips (size, shape, projection), thighs proportionally full to match',
     pose: 'POSE ONLY REFERENCE — copy ONLY the body position/pose, NOT the face or proportions',
     scene: 'STYLE/SCENE reference — use for setting/composition, REPLACE the subject with [FACE_ANCHOR]',
     place: 'LOCATION reference — place the subject inside THIS exact environment; keep its architecture, furniture, background and lighting faithfully',

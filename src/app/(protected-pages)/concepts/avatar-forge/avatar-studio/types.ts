@@ -46,7 +46,7 @@ export interface ReferenceImage {
     url: string
     mimeType: string
     base64: string
-    type: 'general' | 'face' | 'angle' | 'body' | 'pose'
+    type: 'general' | 'face' | 'angle' | 'body' | 'bust' | 'glutes' | 'pose'
     storagePath?: string
     thumbnailUrl?: string // Optimized thumbnail for UI display
 }

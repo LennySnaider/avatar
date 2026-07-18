@@ -331,6 +331,8 @@ function planExtraRefs(
         (referenceImages ?? []).filter((r) => r.role === role)
     const ordered = [
         ...byRole('body').slice(0, 3),
+        ...byRole('bust').slice(0, 1),
+        ...byRole('glutes').slice(0, 1),
         ...byRole('asset').slice(0, 3),
         ...byRole('pose').slice(0, 1),
         ...byRole('scene').slice(0, 1),
@@ -341,6 +343,16 @@ function planExtraRefs(
     ordered.forEach((r, i) => {
         const n = i + 2
         switch (r.role) {
+            case 'bust':
+                parts.push(
+                    `Image ${n} shows her real BUST — replicate its exact size, shape, fullness and proportions on the generated body; do NOT take the chest from the face reference or invent a different size.`,
+                )
+                break
+            case 'glutes':
+                parts.push(
+                    `Image ${n} shows her real GLUTES and hips — replicate their exact size, shape, fullness and projection on the generated body, with thighs proportionally full to match; do NOT take the lower body from the face reference.`,
+                )
+                break
             case 'asset':
                 parts.push(
                     `Image ${n} is a brand asset (logo/graphic/product) — print this EXACT design on her clothing or props wherever the outfit shows a logo or graphic, reproducing its shapes, colors and lettering faithfully; never write placeholder text such as "LOGO".`,

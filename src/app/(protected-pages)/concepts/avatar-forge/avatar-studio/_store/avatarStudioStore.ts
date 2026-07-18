@@ -62,6 +62,10 @@ interface AvatarStudioState {
     faceRef: ReferenceImage | null
     angleRef: ReferenceImage | null
     bodyRef: ReferenceImage | null
+    // Refs de REGIÓN (como Body Ref pero independientes): persisten por
+    // avatar y SOLO viajan a modelos permisivos.
+    bustRef: ReferenceImage | null
+    glutesRef: ReferenceImage | null
     assetImages: ReferenceImage[]
     cloneImage: ReferenceImage | null // Clone Ref - clones everything except face and body type
     cloneDescription: string // Text description of clone (analyzed from image)
@@ -198,6 +202,8 @@ interface AvatarStudioState {
     setFaceRef: (ref: ReferenceImage | null) => void
     setAngleRef: (ref: ReferenceImage | null) => void
     setBodyRef: (ref: ReferenceImage | null) => void
+    setBustRef: (ref: ReferenceImage | null) => void
+    setGlutesRef: (ref: ReferenceImage | null) => void
     setAssetImages: (images: ReferenceImage[]) => void
     addAssetImage: (image: ReferenceImage) => void
     removeAssetImage: (id: string) => void
@@ -334,7 +340,9 @@ interface AvatarStudioState {
         references: ReferenceImage[],
         faceRef: ReferenceImage | null,
         angleRef: ReferenceImage | null,
-        bodyRef: ReferenceImage | null
+        bodyRef: ReferenceImage | null,
+        bustRef?: ReferenceImage | null,
+        glutesRef?: ReferenceImage | null,
     ) => void
 }
 
@@ -358,6 +366,8 @@ const initialState = {
     faceRef: null,
     angleRef: null,
     bodyRef: null,
+    bustRef: null,
+    glutesRef: null,
     assetImages: [],
     cloneImage: null,
     cloneDescription: '',
@@ -483,6 +493,8 @@ export const useAvatarStudioStore = create<AvatarStudioState>()(
     setFaceRef: (ref) => set({ faceRef: ref }),
     setAngleRef: (ref) => set({ angleRef: ref }),
     setBodyRef: (ref) => set({ bodyRef: ref }),
+    setBustRef: (ref) => set({ bustRef: ref }),
+    setGlutesRef: (ref) => set({ glutesRef: ref }),
     setAssetImages: (images) => set({ assetImages: images }),
     addAssetImage: (image) =>
         set((state) => ({
@@ -514,6 +526,8 @@ export const useAvatarStudioStore = create<AvatarStudioState>()(
             faceRef: null,
             angleRef: null,
             bodyRef: null,
+            bustRef: null,
+            glutesRef: null,
         }),
     // Clears everything including session tools (full reset)
     clearAllReferences: () =>
@@ -522,6 +536,8 @@ export const useAvatarStudioStore = create<AvatarStudioState>()(
             faceRef: null,
             angleRef: null,
             bodyRef: null,
+            bustRef: null,
+            glutesRef: null,
             assetImages: [],
             cloneImage: null,
             cloneDescription: '',
@@ -821,7 +837,7 @@ export const useAvatarStudioStore = create<AvatarStudioState>()(
 
     // Reset
     resetStore: () => set(initialState),
-    loadAvatarData: (avatar, references, faceRef, angleRef, bodyRef) =>
+    loadAvatarData: (avatar, references, faceRef, angleRef, bodyRef, bustRef = null, glutesRef = null) =>
         set({
             currentAvatar: avatar,
             avatarId: avatar.id,
@@ -830,6 +846,8 @@ export const useAvatarStudioStore = create<AvatarStudioState>()(
             faceRef,
             angleRef,
             bodyRef,
+            bustRef,
+            glutesRef,
             identityWeight: avatar.identity_weight || 85,
             measurements: avatar.measurements || initialMeasurements,
             faceDescription: avatar.face_description || '',

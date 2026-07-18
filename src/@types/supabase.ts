@@ -391,7 +391,9 @@ export type Database = {
 }
 
 // Custom types
-export type ReferenceType = 'general' | 'face' | 'angle' | 'body'
+// bust/glutes: refs de región (como Body Ref pero independientes) — solo
+// viajan a modelos con trait `permissive`.
+export type ReferenceType = 'general' | 'face' | 'angle' | 'body' | 'bust' | 'glutes'
 export type MediaType = 'IMAGE' | 'VIDEO'
 export type ProviderType = 'GOOGLE' | 'KLING' | 'OPENAI' | 'RUNWAY' | 'QWEN' | 'MINIMAX' | 'KIE' | 'GATEWAY' | 'CUSTOM'
 export type AspectRatio = '1:1' | '16:9' | '9:16' | '4:3' | '3:4'

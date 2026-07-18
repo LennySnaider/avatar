@@ -359,6 +359,8 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
         poseImage,
         cloneImage,
         placeImage,
+        bustRef,
+        glutesRef,
         videoInputImage,
         identityWeight,
         measurements,
@@ -630,6 +632,12 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                         ...(fresh.bodyRef
                             ? [{ ...fresh.bodyRef, type: 'body' as const }]
                             : []),
+                        ...(fresh.bustRef
+                            ? [{ ...fresh.bustRef, type: 'bust' as const }]
+                            : []),
+                        ...(fresh.glutesRef
+                            ? [{ ...fresh.glutesRef, type: 'glutes' as const }]
+                            : []),
                     ]
 
                     for (const ref of allRefs) {
@@ -865,6 +873,26 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                   })
                 : null
 
+            // Refs de REGIÓN (Bust/Glutes) — como Body Ref pero
+            // independientes. SOLO viajan a providers con trait permissive:
+            // con un modelo no permisivo ni siquiera entran al array.
+            const isPermissiveProvider =
+                PROVIDER_TRAITS[activeProvider?.id ?? '']?.permissive === true
+            const optimizedBustRef =
+                isPermissiveProvider && bustRef?.base64
+                    ? await optimizeImage({
+                          base64: bustRef.base64,
+                          mimeType: bustRef.mimeType,
+                      })
+                    : null
+            const optimizedGlutesRef =
+                isPermissiveProvider && glutesRef?.base64
+                    ? await optimizeImage({
+                          base64: glutesRef.base64,
+                          mimeType: glutesRef.mimeType,
+                      })
+                    : null
+
             // All reference images for providers that accept multiple inputs
             // (Nano Banana Pro / GPT Image 2 via KIE). Each carries a `role` so
             // KieService can label it in the prompt ("Image 1 is the face…") —
@@ -878,6 +906,11 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                 optimizedPayload.bodyRef && {
                     ...optimizedPayload.bodyRef,
                     role: 'body',
+                },
+                optimizedBustRef && { ...optimizedBustRef, role: 'bust' },
+                optimizedGlutesRef && {
+                    ...optimizedGlutesRef,
+                    role: 'glutes',
                 },
                 // Assets (logo/producto) antes solo llegaban al path Gemini
                 // (assetReferences) — en KIE el clone decía "hoodie with logo"
@@ -1141,9 +1174,7 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                     // es, la frase NO viaja (petición explícita del usuario).
                     // Canal: bodyEmphasis → anclas i2i Seedream/Wan/FLUX.2;
                     // nunca entra al [BODY:] genérico que ven Gemini/nano.
-                    const curvesEmphasis = PROVIDER_TRAITS[
-                        activeProvider?.id ?? ''
-                    ]?.permissive
+                    const curvesEmphasis = isPermissiveProvider
                         ? buildCurvesEmphasis(measurements)
                         : ''
                     const baseBodyEmphasis = measurements?.waist
@@ -1880,6 +1911,8 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
         poseImage,
         cloneImage,
         placeImage,
+        bustRef,
+        glutesRef,
         videoInputImage,
         aspectRatio,
         videoDuration,

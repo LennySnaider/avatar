@@ -44,6 +44,8 @@ const AvatarSelector = ({ userId, isOpen, onClose }: AvatarSelectorProps) => {
         setFaceRef,
         setAngleRef,
         setBodyRef,
+        setBustRef,
+        setGlutesRef,
         setIdentityWeight,
         setMeasurements,
         setFaceDescription,
@@ -151,7 +153,7 @@ const AvatarSelector = ({ userId, isOpen, onClose }: AvatarSelectorProps) => {
                     url,
                     mimeType: ref.mime_type,
                     base64,
-                    type: ref.type as 'general' | 'face' | 'angle' | 'body',
+                    type: ref.type as ReferenceImage['type'],
                     storagePath: ref.storage_path,
                     thumbnailUrl,
                 }
@@ -168,6 +170,12 @@ const AvatarSelector = ({ userId, isOpen, onClose }: AvatarSelectorProps) => {
                         break
                     case 'body':
                         setBodyRef(refImage)
+                        break
+                    case 'bust':
+                        setBustRef(refImage)
+                        break
+                    case 'glutes':
+                        setGlutesRef(refImage)
                         break
                 }
             }
