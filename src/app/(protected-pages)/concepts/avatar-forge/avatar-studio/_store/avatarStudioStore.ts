@@ -51,6 +51,16 @@ export type VideoSubMode = 'ANIMATE' | 'AVATAR' | 'SPEAK'
 /** Motor del modo Speak: InfiniteTalk (clips largos), OmniHuman (≤15s, mejores gestos) o Kling 3.0 (mejor calidad de video, audio 5-30s). */
 export type SpeakModel = 'infinitalk' | 'omnihuman' | 'kling'
 
+// Generación mandada a segundo plano con "Dejar en espera" — solo metadata
+// para el card de la galería; el run real vive en el closure de handleGenerate.
+export interface PendingGeneration {
+    id: string // runId del handleGenerate que la parió
+    label: string // nombre del provider (p.ej. "Wan 2.7 Image · KIE")
+    mediaType: MediaType
+    avatarName?: string
+    startedAt: number
+}
+
 interface AvatarStudioState {
     // Current Avatar
     currentAvatar: Avatar | null
@@ -193,6 +203,12 @@ interface AvatarStudioState {
     isSavingAvatar: boolean
     isLoadingReferences: boolean
 
+    // Generaciones enviadas a SEGUNDO PLANO ("dejar en espera"): la tarea KIE
+    // sigue viva (no hay cancel en su API) y su poll continúa en el navegador;
+    // esto solo libera el botón Generate y pinta un card "En espera" en la
+    // galería hasta que el run termine (success → entra a galería, fail → toast).
+    pendingGenerations: PendingGeneration[]
+
     // Actions - Avatar
     setCurrentAvatar: (avatar: Avatar | null) => void
     setAvatarId: (id: string | null) => void
@@ -330,6 +346,8 @@ interface AvatarStudioState {
 
     // Actions - Loading
     setIsGenerating: (generating: boolean) => void
+    addPendingGeneration: (p: PendingGeneration) => void
+    removePendingGeneration: (id: string) => void
     setIsSavingAvatar: (saving: boolean) => void
     setIsLoadingReferences: (loading: boolean) => void
 
@@ -471,6 +489,7 @@ const initialState = {
     showProviderManager: false,
 
     isGenerating: false,
+    pendingGenerations: [],
     isSavingAvatar: false,
     isLoadingReferences: false,
 }
@@ -823,6 +842,16 @@ export const useAvatarStudioStore = create<AvatarStudioState>()(
 
     // Actions - Loading
     setIsGenerating: (generating) => set({ isGenerating: generating }),
+    addPendingGeneration: (p) =>
+        set((state) => ({
+            pendingGenerations: [...state.pendingGenerations, p],
+        })),
+    removePendingGeneration: (id) =>
+        set((state) => ({
+            pendingGenerations: state.pendingGenerations.filter(
+                (p) => p.id !== id,
+            ),
+        })),
     setIsSavingAvatar: (saving) => set({ isSavingAvatar: saving }),
     setIsLoadingReferences: (loading) => set({ isLoadingReferences: loading }),
 

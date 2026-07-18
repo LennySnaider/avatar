@@ -67,6 +67,7 @@ const GalleryPanel = ({
     const {
         gallery,
         isGenerating,
+        pendingGenerations,
         setPreviewMedia,
         removeFromGallery,
         addToGallery,
@@ -466,7 +467,9 @@ const GalleryPanel = ({
             <ScrollBar ref={scrollBarRef} className="flex-1 h-full" autoHide={false}>
                 <div className="p-4 pt-1">
                     {/* Empty State */}
-                    {gallery.length === 0 && !isGenerating && (
+                    {gallery.length === 0 &&
+                        !isGenerating &&
+                        pendingGenerations.length === 0 && (
                         <div className="flex flex-col items-center justify-center h-64 text-gray-400">
                             <div className="w-16 h-16 rounded-full border-2 border-gray-300 flex items-center justify-center mb-4">
                                 <HiOutlinePhotograph className="w-8 h-8" />
@@ -513,6 +516,34 @@ const GalleryPanel = ({
                                 </div>
                             </Card>
                         )}
+
+                        {/* Generaciones "en espera" (segundo plano): la tarea
+                            sigue viva en KIE; su resultado entra solo a la
+                            galería al terminar (o toast si falla). */}
+                        {pendingGenerations.map((p) => (
+                            <Card
+                                key={p.id}
+                                className="h-64 flex items-center justify-center bg-amber-50 dark:bg-amber-900/10 border border-dashed border-amber-300 dark:border-amber-700"
+                            >
+                                <div className="flex flex-col items-center px-4 text-center">
+                                    <Spinner size={28} />
+                                    <span className="text-xs font-semibold text-amber-600 dark:text-amber-400 mt-2">
+                                        En espera · {p.mediaType === 'VIDEO' ? 'Video' : 'Imagen'}
+                                    </span>
+                                    <span className="text-[11px] text-gray-500 mt-1 font-mono">
+                                        {p.label}
+                                    </span>
+                                    {p.avatarName && (
+                                        <span className="text-[11px] text-gray-400 mt-0.5">
+                                            {p.avatarName}
+                                        </span>
+                                    )}
+                                    <span className="text-[10px] text-gray-400 mt-1">
+                                        Llegará sola a la galería al terminar
+                                    </span>
+                                </div>
+                            </Card>
+                        ))}
 
                         {/* Gallery Items */}
                         {filteredGallery.map((media) => {

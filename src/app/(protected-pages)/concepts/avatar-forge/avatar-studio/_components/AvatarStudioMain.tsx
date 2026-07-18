@@ -351,6 +351,12 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
         }
     }, [toolAvatars, userId])
     const pendingAutoGenerateRef = useRef(false)
+    // "Dejar en espera": id del run de generación en PRIMER plano + set de
+    // runs mandados a segundo plano. KIE no tiene API de cancelación — el run
+    // backgroundeado sigue vivo en su closure (poll incluido) y estos refs
+    // evitan que su success/catch/finally pise el estado del run nuevo.
+    const foregroundRunIdRef = useRef<string | null>(null)
+    const backgroundedRunsRef = useRef<Set<string>>(new Set())
     // Drives the gallery's hidden upload input from the header "Upload" button.
     const galleryUploadInputRef = useRef<HTMLInputElement>(null)
 
@@ -425,6 +431,8 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
         setErrorMsg,
         setIsGenerating,
         setIsSavingAvatar,
+        addPendingGeneration,
+        removePendingGeneration,
         addToGallery,
         updateGalleryItem,
         loadPersistedGallery,
@@ -875,6 +883,11 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                 return
             }
         }
+
+        // Identidad de ESTE run — si el usuario lo manda "a espera", el run
+        // deja de ser foreground y sus setters de estado global se saltan.
+        const runId = crypto.randomUUID()
+        foregroundRunIdRef.current = runId
 
         setIsGenerating(true)
         setAppState(AppState.GENERATING)
@@ -2010,30 +2023,60 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
             }
 
             addToGallery(newMedia)
-            setAppState(AppState.SUCCESS)
             // Fire-and-forget: persist to the gallery in the background so the
             // inline gallery IS the history and the item becomes postable.
             void persistGeneration(newMedia)
+            if (backgroundedRunsRef.current.has(runId)) {
+                // Run "en espera": no toca el appState del run actual — solo
+                // retira su card pendiente y avisa que ya está en la galería.
+                backgroundedRunsRef.current.delete(runId)
+                removePendingGeneration(runId)
+                toast.push(
+                    <Notification type="success" title="Generación en espera lista">
+                        {`${activeProvider?.name ?? 'La tarea'} terminó — el resultado ya está en la galería.`}
+                    </Notification>,
+                )
+            } else {
+                setAppState(AppState.SUCCESS)
+            }
         } catch (error: unknown) {
             // warn, NOT error: this failure is fully handled below (banner +
             // toast). console.error pops the Next dev overlay, which pushed the
             // user to hard-reload the page — wiping gallery search/session state.
             console.warn('Generation failed:', error)
-            setAppState(AppState.ERROR)
             const errorMessage =
                 error instanceof Error ? error.message : 'Generation failed'
-            setErrorMsg(errorMessage)
-            toast.push(
-                <Notification type="danger" title="Generation Failed">
-                    {errorMessage}
-                </Notification>,
-            )
+            if (backgroundedRunsRef.current.has(runId)) {
+                // Run "en espera" falló: toast informativo sin ensuciar el
+                // banner de error del run que el usuario tenga en curso.
+                backgroundedRunsRef.current.delete(runId)
+                removePendingGeneration(runId)
+                toast.push(
+                    <Notification type="danger" title="Generación en espera falló">
+                        {errorMessage}
+                    </Notification>,
+                )
+            } else {
+                setAppState(AppState.ERROR)
+                setErrorMsg(errorMessage)
+                toast.push(
+                    <Notification type="danger" title="Generation Failed">
+                        {errorMessage}
+                    </Notification>,
+                )
+            }
         } finally {
-            setIsGenerating(false)
-            // Always clear the Continue-with-Identity flags so a follow-up
-            // standalone Animate doesn't accidentally inherit them.
-            setContinueUseAvatarIdentity(false)
-            setContinueIdentityModel('veo-3-1')
+            // Solo el run que sigue en PRIMER plano puede liberar la UI — un
+            // run backgroundeado que termina tarde no debe pisar el
+            // isGenerating/flags del run nuevo.
+            if (foregroundRunIdRef.current === runId) {
+                foregroundRunIdRef.current = null
+                setIsGenerating(false)
+                // Always clear the Continue-with-Identity flags so a follow-up
+                // standalone Animate doesn't accidentally inherit them.
+                setContinueUseAvatarIdentity(false)
+                setContinueIdentityModel('veo-3-1')
+            }
         }
     }, [
         isGenerating,
@@ -2087,6 +2130,7 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
         getFullPrompt,
         addToGallery,
         persistGeneration,
+        removePendingGeneration,
         setAppState,
         setErrorMsg,
         setIsGenerating,
@@ -2096,6 +2140,34 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
         continueIdentityModel,
         setContinueUseAvatarIdentity,
         setContinueIdentityModel,
+    ])
+
+    // "Dejar en espera": manda el run en curso a segundo plano y libera la UI
+    // para generar otra cosa. La tarea en KIE NO se cancela (su API no lo
+    // soporta) — el poll sigue en su closure; si triunfa entra a la galería
+    // (toast), si falla solo avisa. Waiting/fail cobran 0 créditos en KIE.
+    const handleSendToBackground = useCallback(() => {
+        const runId = foregroundRunIdRef.current
+        if (!runId) return
+        const provider = getActiveProvider()
+        backgroundedRunsRef.current.add(runId)
+        addPendingGeneration({
+            id: runId,
+            label: provider?.name ?? 'KIE',
+            mediaType: generationMode,
+            avatarName: avatarName || undefined,
+            startedAt: Date.now(),
+        })
+        foregroundRunIdRef.current = null
+        setIsGenerating(false)
+        setAppState(AppState.IDLE)
+    }, [
+        getActiveProvider,
+        generationMode,
+        avatarName,
+        addPendingGeneration,
+        setIsGenerating,
+        setAppState,
     ])
 
     // Enhance Prompt Handler
@@ -2856,6 +2928,7 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                 >
                     <BottomControlBar
                         onGenerate={handleGenerate}
+                        onSendToBackground={handleSendToBackground}
                         onChangeAvatar={() => setIsAvatarSelectorOpen(true)}
                         onDeselectAvatar={() => {
                             setAvatarId(null)
