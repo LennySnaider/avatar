@@ -20,6 +20,10 @@ import {
     GLUTES_LEVEL_PHRASE,
     THIGHS_LEVEL_PHRASE,
     BUST_SHAPES,
+    BUST_LEVEL_TO_CM,
+    GLUTES_LEVEL_TO_CM,
+    cmToBustLevel,
+    cmToGlutesLevel,
     GLUTES_SHAPES,
     BUST_SHAPE_PHRASE,
     GLUTES_SHAPE_PHRASE,
@@ -618,9 +622,7 @@ const AvatarEditDrawer = ({ isOpen, onClose, onSaveAvatar }: AvatarEditDrawerPro
                                     <div className="space-y-2">
                                         <MeasurementSlider label="Age" min={18} max={65} value={localMeasurements.age} onChange={(v) => setLocalMeasurements({ ...localMeasurements, age: v })} />
                                         <MeasurementSlider label="Height" unit="cm" min={140} max={200} value={localMeasurements.height} onChange={(v) => setLocalMeasurements({ ...localMeasurements, height: v })} />
-                                        <MeasurementSlider label="Bust" unit="cm" min={70} max={130} value={localMeasurements.bust} onChange={(v) => setLocalMeasurements({ ...localMeasurements, bust: v })} />
                                         <MeasurementSlider label="Waist" unit="cm" min={45} max={100} value={localMeasurements.waist} onChange={(v) => setLocalMeasurements({ ...localMeasurements, waist: v })} />
-                                        <MeasurementSlider label="Hips" unit="cm" min={70} max={140} value={localMeasurements.hips} onChange={(v) => setLocalMeasurements({ ...localMeasurements, hips: v })} />
                                     </div>
 
                                     {/* Leg Type */}
@@ -716,6 +718,12 @@ const AvatarEditDrawer = ({ isOpen, onClose, onSaveAvatar }: AvatarEditDrawerPro
                                                         : key === 'glutesLevel'
                                                           ? glutesInputRef
                                                           : null
+                                                // Control UNIFICADO: el slider 1-5 manda y escribe el cm
+                                                // mapeado; el input cm permite manual (deriva nivel).
+                                                const cmField = key === 'bustLevel' ? 'bust' : 'hips'
+                                                const cmValue = key === 'bustLevel' ? localMeasurements.bust : localMeasurements.hips
+                                                const levelToCm = key === 'bustLevel' ? BUST_LEVEL_TO_CM : GLUTES_LEVEL_TO_CM
+                                                const cmToLevel = key === 'bustLevel' ? cmToBustLevel : cmToGlutesLevel
                                                 return (
                                                 <div key={key} className="flex items-start gap-2">
                                                     <div className="flex-1 min-w-0">
@@ -725,20 +733,44 @@ const AvatarEditDrawer = ({ isOpen, onClose, onSaveAvatar }: AvatarEditDrawerPro
                                                             {localMeasurements[key] ? `${localMeasurements[key]}/5` : 'Auto'}
                                                         </span>
                                                     </div>
-                                                    <Slider
-                                                        value={localMeasurements[key] ?? 0}
-                                                        onChange={(val) =>
-                                                            setLocalMeasurements({
-                                                                ...localMeasurements,
-                                                                [key]:
-                                                                    (val as number) === 0
-                                                                        ? undefined
-                                                                        : ((val as number) as CurveLevel),
-                                                            })
-                                                        }
-                                                        min={0}
-                                                        max={5}
-                                                    />
+                                                    <div className="flex items-center gap-2">
+                                                        <div className="flex-1 min-w-0">
+                                                            <Slider
+                                                                value={localMeasurements[key] ?? 0}
+                                                                onChange={(val) => {
+                                                                    const lvl =
+                                                                        (val as number) === 0
+                                                                            ? undefined
+                                                                            : ((val as number) as CurveLevel)
+                                                                    setLocalMeasurements({
+                                                                        ...localMeasurements,
+                                                                        [key]: lvl,
+                                                                        ...(lvl ? { [cmField]: levelToCm[lvl] } : {}),
+                                                                    })
+                                                                }}
+                                                                min={0}
+                                                                max={5}
+                                                            />
+                                                        </div>
+                                                        <div className="flex items-center gap-1 shrink-0">
+                                                            <Input
+                                                                size="sm"
+                                                                type="number"
+                                                                className="w-16 text-right py-0.5 px-1.5"
+                                                                value={cmValue}
+                                                                onChange={(e) => {
+                                                                    const n = parseInt(e.target.value)
+                                                                    if (!Number.isFinite(n)) return
+                                                                    setLocalMeasurements({
+                                                                        ...localMeasurements,
+                                                                        [cmField]: n,
+                                                                        [key]: cmToLevel(n),
+                                                                    })
+                                                                }}
+                                                            />
+                                                            <span className="text-[10px] text-gray-400">cm</span>
+                                                        </div>
+                                                    </div>
                                                     {localMeasurements[key] ? (
                                                         <p className="text-[10px] text-gray-400 mt-0.5">
                                                             {phrases[localMeasurements[key]!]}

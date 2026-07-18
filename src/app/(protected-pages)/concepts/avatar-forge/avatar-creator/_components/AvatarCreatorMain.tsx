@@ -26,6 +26,10 @@ import {
     GLUTES_LEVEL_PHRASE,
     THIGHS_LEVEL_PHRASE,
     BUST_SHAPES,
+    BUST_LEVEL_TO_CM,
+    GLUTES_LEVEL_TO_CM,
+    cmToBustLevel,
+    cmToGlutesLevel,
     GLUTES_SHAPES,
     BUST_SHAPE_PHRASE,
     GLUTES_SHAPE_PHRASE,
@@ -717,9 +721,7 @@ const AvatarCreatorMain = ({ userId, existingAvatar }: AvatarCreatorMainProps) =
                                     <div className="space-y-2">
                                         <MeasurementSlider label="Age" min={18} max={65} value={measurements.age} onChange={(v) => setMeasurements({ ...measurements, age: v })} />
                                         <MeasurementSlider label="Height" unit="cm" min={140} max={200} value={measurements.height} onChange={(v) => setMeasurements({ ...measurements, height: v })} />
-                                        <MeasurementSlider label="Bust" unit="cm" min={70} max={130} value={measurements.bust} onChange={(v) => setMeasurements({ ...measurements, bust: v })} />
                                         <MeasurementSlider label="Waist" unit="cm" min={45} max={100} value={measurements.waist} onChange={(v) => setMeasurements({ ...measurements, waist: v })} />
-                                        <MeasurementSlider label="Hips" unit="cm" min={70} max={140} value={measurements.hips} onChange={(v) => setMeasurements({ ...measurements, hips: v })} />
                                     </div>
 
                                     {/* Leg Type (paridad con el Edit drawer) */}
@@ -813,6 +815,12 @@ const AvatarCreatorMain = ({ userId, existingAvatar }: AvatarCreatorMainProps) =
                                                         : key === 'glutesLevel'
                                                           ? glutesInputRef
                                                           : null
+                                                // Control UNIFICADO: el slider 1-5 manda y escribe el cm
+                                                // mapeado; el input cm permite manual (deriva nivel).
+                                                const cmField = key === 'bustLevel' ? 'bust' : 'hips'
+                                                const cmValue = key === 'bustLevel' ? measurements.bust : measurements.hips
+                                                const levelToCm = key === 'bustLevel' ? BUST_LEVEL_TO_CM : GLUTES_LEVEL_TO_CM
+                                                const cmToLevel = key === 'bustLevel' ? cmToBustLevel : cmToGlutesLevel
                                                 return (
                                                 <div key={key} className="flex items-start gap-2">
                                                     <div className="flex-1 min-w-0">
@@ -822,20 +830,44 @@ const AvatarCreatorMain = ({ userId, existingAvatar }: AvatarCreatorMainProps) =
                                                             {measurements[key] ? `${measurements[key]}/5` : 'Auto'}
                                                         </span>
                                                     </div>
-                                                    <Slider
-                                                        value={measurements[key] ?? 0}
-                                                        onChange={(val) =>
-                                                            setMeasurements({
-                                                                ...measurements,
-                                                                [key]:
-                                                                    (val as number) === 0
-                                                                        ? undefined
-                                                                        : ((val as number) as CurveLevel),
-                                                            })
-                                                        }
-                                                        min={0}
-                                                        max={5}
-                                                    />
+                                                    <div className="flex items-center gap-2">
+                                                        <div className="flex-1 min-w-0">
+                                                            <Slider
+                                                                value={measurements[key] ?? 0}
+                                                                onChange={(val) => {
+                                                                    const lvl =
+                                                                        (val as number) === 0
+                                                                            ? undefined
+                                                                            : ((val as number) as CurveLevel)
+                                                                    setMeasurements({
+                                                                        ...measurements,
+                                                                        [key]: lvl,
+                                                                        ...(lvl ? { [cmField]: levelToCm[lvl] } : {}),
+                                                                    })
+                                                                }}
+                                                                min={0}
+                                                                max={5}
+                                                            />
+                                                        </div>
+                                                        <div className="flex items-center gap-1 shrink-0">
+                                                            <Input
+                                                                size="sm"
+                                                                type="number"
+                                                                className="w-16 text-right py-0.5 px-1.5"
+                                                                value={cmValue}
+                                                                onChange={(e) => {
+                                                                    const n = parseInt(e.target.value)
+                                                                    if (!Number.isFinite(n)) return
+                                                                    setMeasurements({
+                                                                        ...measurements,
+                                                                        [cmField]: n,
+                                                                        [key]: cmToLevel(n),
+                                                                    })
+                                                                }}
+                                                            />
+                                                            <span className="text-[10px] text-gray-400">cm</span>
+                                                        </div>
+                                                    </div>
                                                     {measurements[key] ? (
                                                         <p className="text-[10px] text-gray-400 mt-0.5">
                                                             {phrases[measurements[key]!]}

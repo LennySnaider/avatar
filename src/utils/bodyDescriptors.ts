@@ -1,4 +1,4 @@
-import type { PhysicalMeasurements } from '@/@types/supabase'
+import type { PhysicalMeasurements, CurveLevel } from '@/@types/supabase'
 
 /**
  * Translate raw body measurements into professional fashion/modeling
@@ -197,6 +197,44 @@ export function buildCurvesEmphasis(m: PhysicalMeasurements): string {
     }
     return parts.join(', ')
 }
+
+// ── Mapeo nivel 1-5 ↔ cm (control UNIFICADO por zona) ───────────────────────
+// El slider 1-5 MANDA: al moverlo escribe el cm mapeado en measurements
+// (bust/hips); escribir cm manual deriva el nivel más cercano. Una sola
+// fuente por zona — sin controles duplicados.
+export const BUST_LEVEL_TO_CM: Record<number, number> = {
+    1: 75,
+    2: 82,
+    3: 90,
+    4: 100,
+    5: 110,
+}
+
+export const GLUTES_LEVEL_TO_CM: Record<number, number> = {
+    1: 82,
+    2: 90,
+    3: 97,
+    4: 106,
+    5: 116,
+}
+
+const nearestLevel = (map: Record<number, number>, cm: number): CurveLevel => {
+    let best = 1
+    let bestDiff = Infinity
+    for (const [lvl, v] of Object.entries(map)) {
+        const d = Math.abs(v - cm)
+        if (d < bestDiff) {
+            bestDiff = d
+            best = Number(lvl)
+        }
+    }
+    return best as CurveLevel
+}
+
+export const cmToBustLevel = (cm: number): CurveLevel =>
+    nearestLevel(BUST_LEVEL_TO_CM, cm)
+export const cmToGlutesLevel = (cm: number): CurveLevel =>
+    nearestLevel(GLUTES_LEVEL_TO_CM, cm)
 
 // Tooltips para los selectores de UI (creator + edit drawer): la frase EXACTA
 // que se inyecta al prompt, para que el usuario sepa qué pide cada opción.
