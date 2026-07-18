@@ -19,6 +19,7 @@ import {
     BUST_LEVEL_PHRASE,
     GLUTES_LEVEL_PHRASE,
     THIGHS_LEVEL_PHRASE,
+    effectiveThighsLevel,
 } from '@/utils/bodyDescriptors'
 import type { CurveLevel } from '@/@types/supabase'
 import {
@@ -648,6 +649,13 @@ const AvatarEditDrawer = ({ isOpen, onClose, onSaveAvatar }: AvatarEditDrawerPro
                                                     {localMeasurements[key] ? (
                                                         <p className="text-[10px] text-gray-400 mt-0.5">
                                                             {phrases[localMeasurements[key]!]}
+                                                        </p>
+                                                    ) : null}
+                                                    {key === 'thighsLevel' &&
+                                                    (effectiveThighsLevel(localMeasurements) ?? 0) >
+                                                        (localMeasurements.thighsLevel ?? 0) ? (
+                                                        <p className="text-[10px] text-amber-500 mt-0.5">
+                                                            auto ≥{effectiveThighsLevel(localMeasurements)}/5 para hacer match con Glutes {localMeasurements.glutesLevel}/5 (coherencia anatómica)
                                                         </p>
                                                     ) : null}
                                                 </div>

@@ -126,6 +126,23 @@ export const THIGHS_LEVEL_PHRASE: Record<number, string> = {
 }
 
 /**
+ * COHERENCIA ANATÓMICA glúteos→muslos: busto y glúteos pueden ir
+ * desproporcionados (cirugía), pero glúteos llenos sobre piernas delgadas no
+ * existen — comparten estructura. Piso automático: muslos efectivos =
+ * max(elegidos, glúteos − 1). La MISMA regla la usan el prompt-builder y la
+ * UI (hint bajo el slider de Thighs) — no duplicar la fórmula.
+ */
+export function effectiveThighsLevel(
+    m: PhysicalMeasurements,
+): number | undefined {
+    const floor =
+        m.glutesLevel && m.glutesLevel >= 2 ? m.glutesLevel - 1 : undefined
+    if (!floor) return m.thighsLevel
+    if (!m.thighsLevel || m.thighsLevel < floor) return floor
+    return m.thighsLevel
+}
+
+/**
  * Frase combinada de los sliders de curvas (1-5). Vacía si todo está en Auto.
  * El caller decide si el provider la merece (trait permissive).
  */
@@ -137,8 +154,17 @@ export function buildCurvesEmphasis(m: PhysicalMeasurements): string {
     if (m.glutesLevel && GLUTES_LEVEL_PHRASE[m.glutesLevel]) {
         parts.push(GLUTES_LEVEL_PHRASE[m.glutesLevel])
     }
-    if (m.thighsLevel && THIGHS_LEVEL_PHRASE[m.thighsLevel]) {
-        parts.push(THIGHS_LEVEL_PHRASE[m.thighsLevel])
+    const thighs = effectiveThighsLevel(m)
+    if (thighs && THIGHS_LEVEL_PHRASE[thighs]) {
+        parts.push(THIGHS_LEVEL_PHRASE[thighs])
+    }
+    // Puente de continuidad: con glúteos llenos, la curva glúteo→muslo debe
+    // ser UNA sola — evita el mismatch "butt grande sobre piernas flacas"
+    // aunque el legType diga slim.
+    if (m.glutesLevel && m.glutesLevel >= 4) {
+        parts.push(
+            'her full glutes flow into proportionally full thighs in one continuous natural curve — never slim or skinny legs under full glutes',
+        )
     }
     return parts.join(', ')
 }

@@ -25,6 +25,7 @@ import {
     BUST_LEVEL_PHRASE,
     GLUTES_LEVEL_PHRASE,
     THIGHS_LEVEL_PHRASE,
+    effectiveThighsLevel,
 } from '@/utils/bodyDescriptors'
 import type { CurveLevel } from '@/@types/supabase'
 import HairColorPicker from '@/components/shared/HairColorPicker'
@@ -755,6 +756,13 @@ const AvatarCreatorMain = ({ userId, existingAvatar }: AvatarCreatorMainProps) =
                                                     {measurements[key] ? (
                                                         <p className="text-[10px] text-gray-400 mt-0.5">
                                                             {phrases[measurements[key]!]}
+                                                        </p>
+                                                    ) : null}
+                                                    {key === 'thighsLevel' &&
+                                                    (effectiveThighsLevel(measurements) ?? 0) >
+                                                        (measurements.thighsLevel ?? 0) ? (
+                                                        <p className="text-[10px] text-amber-500 mt-0.5">
+                                                            auto ≥{effectiveThighsLevel(measurements)}/5 para hacer match con Glutes {measurements.glutesLevel}/5 (coherencia anatómica)
                                                         </p>
                                                     ) : null}
                                                 </div>
