@@ -32,6 +32,7 @@ import {
     effectiveThighsLevel,
 } from '@/utils/bodyDescriptors'
 import type { CurveLevel, BustShape, GlutesShape } from '@/@types/supabase'
+import MeasurementSlider from '../../_shared/MeasurementSlider'
 import HairColorPicker from '@/components/shared/HairColorPicker'
 import EyeColorPicker from '@/components/shared/EyeColorPicker'
 import {
@@ -712,83 +713,13 @@ const AvatarCreatorMain = ({ userId, existingAvatar }: AvatarCreatorMainProps) =
                                         </div>
                                     </div>
 
-                                    {/* Measurements */}
-                                    <div className="flex gap-2">
-                                        <div>
-                                            <label className="text-xs text-gray-500">Age</label>
-                                            <Input
-                                                size="sm"
-                                                type="number"
-                                                style={{ width: '70px' }}
-                                                value={measurements.age}
-                                                onChange={(e) =>
-                                                    setMeasurements({
-                                                        ...measurements,
-                                                        age: parseInt(e.target.value) || 25,
-                                                    })
-                                                }
-                                            />
-                                        </div>
-                                        <div>
-                                            <label className="text-xs text-gray-500">Height</label>
-                                            <Input
-                                                size="sm"
-                                                type="number"
-                                                style={{ width: '70px' }}
-                                                value={measurements.height}
-                                                onChange={(e) =>
-                                                    setMeasurements({
-                                                        ...measurements,
-                                                        height: parseInt(e.target.value) || 165,
-                                                    })
-                                                }
-                                            />
-                                        </div>
-                                        <div>
-                                            <label className="text-xs text-gray-500">Bust</label>
-                                            <Input
-                                                size="sm"
-                                                type="number"
-                                                style={{ width: '70px' }}
-                                                value={measurements.bust}
-                                                onChange={(e) =>
-                                                    setMeasurements({
-                                                        ...measurements,
-                                                        bust: parseInt(e.target.value) || 90,
-                                                    })
-                                                }
-                                            />
-                                        </div>
-                                        <div>
-                                            <label className="text-xs text-gray-500">Waist</label>
-                                            <Input
-                                                size="sm"
-                                                type="number"
-                                                style={{ width: '70px' }}
-                                                value={measurements.waist}
-                                                onChange={(e) =>
-                                                    setMeasurements({
-                                                        ...measurements,
-                                                        waist: parseInt(e.target.value) || 60,
-                                                    })
-                                                }
-                                            />
-                                        </div>
-                                        <div>
-                                            <label className="text-xs text-gray-500">Hips</label>
-                                            <Input
-                                                size="sm"
-                                                type="number"
-                                                style={{ width: '70px' }}
-                                                value={measurements.hips}
-                                                onChange={(e) =>
-                                                    setMeasurements({
-                                                        ...measurements,
-                                                        hips: parseInt(e.target.value) || 90,
-                                                    })
-                                                }
-                                            />
-                                        </div>
+                                    {/* Measurements — slider dinámico + número al lado */}
+                                    <div className="space-y-2">
+                                        <MeasurementSlider label="Age" min={18} max={65} value={measurements.age} onChange={(v) => setMeasurements({ ...measurements, age: v })} />
+                                        <MeasurementSlider label="Height" unit="cm" min={140} max={200} value={measurements.height} onChange={(v) => setMeasurements({ ...measurements, height: v })} />
+                                        <MeasurementSlider label="Bust" unit="cm" min={70} max={130} value={measurements.bust} onChange={(v) => setMeasurements({ ...measurements, bust: v })} />
+                                        <MeasurementSlider label="Waist" unit="cm" min={45} max={100} value={measurements.waist} onChange={(v) => setMeasurements({ ...measurements, waist: v })} />
+                                        <MeasurementSlider label="Hips" unit="cm" min={70} max={140} value={measurements.hips} onChange={(v) => setMeasurements({ ...measurements, hips: v })} />
                                     </div>
 
                                     {/* Leg Type (paridad con el Edit drawer) */}

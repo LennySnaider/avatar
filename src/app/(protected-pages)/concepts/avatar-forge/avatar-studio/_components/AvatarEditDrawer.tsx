@@ -26,6 +26,7 @@ import {
     effectiveThighsLevel,
 } from '@/utils/bodyDescriptors'
 import type { CurveLevel, BustShape, GlutesShape } from '@/@types/supabase'
+import MeasurementSlider from '../../_shared/MeasurementSlider'
 import {
     HiOutlineUpload,
     HiOutlineX,
@@ -613,53 +614,13 @@ const AvatarEditDrawer = ({ isOpen, onClose, onSaveAvatar }: AvatarEditDrawerPro
                                         </div>
                                     </div>
 
-                                    {/* Measurements */}
-                                    <div className="flex gap-2 flex-wrap">
-                                        <div className="w-20">
-                                            <label className="text-xs text-gray-500">Age</label>
-                                            <Input
-                                                size="sm"
-                                                type="number"
-                                                value={localMeasurements.age}
-                                                onChange={(e) => setLocalMeasurements({ ...localMeasurements, age: parseInt(e.target.value) || 25 })}
-                                            />
-                                        </div>
-                                        <div className="w-20">
-                                            <label className="text-xs text-gray-500">Height</label>
-                                            <Input
-                                                size="sm"
-                                                type="number"
-                                                value={localMeasurements.height}
-                                                onChange={(e) => setLocalMeasurements({ ...localMeasurements, height: parseInt(e.target.value) || 165 })}
-                                            />
-                                        </div>
-                                        <div className="w-20">
-                                            <label className="text-xs text-gray-500">Bust</label>
-                                            <Input
-                                                size="sm"
-                                                type="number"
-                                                value={localMeasurements.bust}
-                                                onChange={(e) => setLocalMeasurements({ ...localMeasurements, bust: parseInt(e.target.value) || 90 })}
-                                            />
-                                        </div>
-                                        <div className="w-20">
-                                            <label className="text-xs text-gray-500">Waist</label>
-                                            <Input
-                                                size="sm"
-                                                type="number"
-                                                value={localMeasurements.waist}
-                                                onChange={(e) => setLocalMeasurements({ ...localMeasurements, waist: parseInt(e.target.value) || 60 })}
-                                            />
-                                        </div>
-                                        <div className="w-20">
-                                            <label className="text-xs text-gray-500">Hips</label>
-                                            <Input
-                                                size="sm"
-                                                type="number"
-                                                value={localMeasurements.hips}
-                                                onChange={(e) => setLocalMeasurements({ ...localMeasurements, hips: parseInt(e.target.value) || 90 })}
-                                            />
-                                        </div>
+                                    {/* Measurements — slider dinámico + número al lado */}
+                                    <div className="space-y-2">
+                                        <MeasurementSlider label="Age" min={18} max={65} value={localMeasurements.age} onChange={(v) => setLocalMeasurements({ ...localMeasurements, age: v })} />
+                                        <MeasurementSlider label="Height" unit="cm" min={140} max={200} value={localMeasurements.height} onChange={(v) => setLocalMeasurements({ ...localMeasurements, height: v })} />
+                                        <MeasurementSlider label="Bust" unit="cm" min={70} max={130} value={localMeasurements.bust} onChange={(v) => setLocalMeasurements({ ...localMeasurements, bust: v })} />
+                                        <MeasurementSlider label="Waist" unit="cm" min={45} max={100} value={localMeasurements.waist} onChange={(v) => setLocalMeasurements({ ...localMeasurements, waist: v })} />
+                                        <MeasurementSlider label="Hips" unit="cm" min={70} max={140} value={localMeasurements.hips} onChange={(v) => setLocalMeasurements({ ...localMeasurements, hips: v })} />
                                     </div>
 
                                     {/* Leg Type */}
