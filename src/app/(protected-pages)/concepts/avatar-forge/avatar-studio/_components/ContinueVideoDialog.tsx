@@ -215,9 +215,12 @@ const ContinueVideoDialog = ({
             overlayClassName="!z-[60]"
             closable={true}
         >
-            <div className="flex flex-col">
+            {/* max-h + body scrolleable: el contenido creció más que el
+                viewport y los botones quedaban fuera sin scroll. Header y
+                footer fijos; solo el cuerpo scrollea. */}
+            <div className="flex flex-col max-h-[82vh]">
                 {/* Header */}
-                <div className="flex items-center gap-3 p-5 border-b border-gray-200 dark:border-gray-700">
+                <div className="flex items-center gap-3 px-5 py-4 border-b border-gray-200 dark:border-gray-700 shrink-0">
                     <div className="p-2 bg-purple-100 dark:bg-purple-500/20 rounded-lg">
                         <HiOutlineFilm className="w-5 h-5 text-purple-600 dark:text-purple-300" />
                     </div>
@@ -232,14 +235,14 @@ const ContinueVideoDialog = ({
                 </div>
 
                 {/* Body */}
-                <div className="p-5 space-y-4">
+                <div className="px-5 py-4 space-y-3 flex-1 min-h-0 overflow-y-auto thin-scrollbar">
                     {/* Frame Preview */}
                     {frameBase64 && (
-                        <div className="flex items-center gap-3 p-3 bg-gray-50 dark:bg-gray-800 rounded-lg">
+                        <div className="flex items-center gap-3 p-2 bg-gray-50 dark:bg-gray-800 rounded-lg">
                             <img
                                 src={frameBase64}
                                 alt="Last frame"
-                                className="w-16 h-16 object-cover rounded border border-gray-200 dark:border-gray-700"
+                                className="w-12 h-12 object-cover rounded border border-gray-200 dark:border-gray-700"
                             />
                             <div className="flex-1">
                                 <p className="text-xs font-medium text-gray-700 dark:text-gray-200">
@@ -298,7 +301,8 @@ const ContinueVideoDialog = ({
                         </div>
                     </div>
 
-                    {/* Duration Selector — options adapt to the selected model. */}
+                    {/* Duration + Resolution lado a lado (compacta el modal) */}
+                    <div className={resolutionOptions ? 'grid grid-cols-2 gap-3' : ''}>
                     <div>
                         <label className="text-sm font-medium text-gray-700 dark:text-gray-200 mb-2 block">
                             Duration
@@ -348,6 +352,7 @@ const ContinueVideoDialog = ({
                             </div>
                         </div>
                     )}
+                    </div>
 
                     {/* Avatar Identity Toggle — when ON, handleGenerate
                         routes the request to Seedance-2 (KIE) which is the
@@ -445,9 +450,6 @@ const ContinueVideoDialog = ({
                             placeholder="What should they say?"
                             className="w-full p-3 border border-gray-300 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-sm text-gray-900 dark:text-gray-100 placeholder:text-gray-400 dark:placeholder:text-gray-500 focus:border-purple-500 focus:ring-2 focus:ring-purple-200 dark:focus:ring-purple-500/40 transition-all"
                         />
-                        <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">
-                            Optional — leave empty for no speech
-                        </p>
                     </div>
 
                     {/* Prompt Input */}
@@ -472,7 +474,7 @@ const ContinueVideoDialog = ({
                             onChange={(e) => setEditablePrompt(e.target.value)}
                             onKeyDown={handleKeyDown}
                             placeholder="Describe what happens next..."
-                            rows={4}
+                            rows={3}
                             className="w-full p-3 border border-gray-300 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 resize-none text-sm text-gray-900 dark:text-gray-100 placeholder:text-gray-400 dark:placeholder:text-gray-500 focus:border-purple-500 focus:ring-2 focus:ring-purple-200 dark:focus:ring-purple-500/40 transition-all"
                             autoFocus
                         />
@@ -504,21 +506,13 @@ const ContinueVideoDialog = ({
                         </div>
                     )}
 
-                    {/* Help Text */}
-                    <div className="flex items-start gap-2 p-3 bg-purple-50 dark:bg-purple-500/10 rounded-lg">
-                        <div className="text-purple-600 dark:text-purple-300 mt-0.5">
-                            <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
-                                <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
-                            </svg>
-                        </div>
-                        <p className="text-xs text-purple-700 dark:text-purple-200">
-                            Tip: Press <kbd className="px-1.5 py-0.5 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded text-xs text-gray-700 dark:text-gray-200">Cmd/Ctrl + Enter</kbd> to quickly confirm
-                        </p>
-                    </div>
                 </div>
 
-                {/* Footer */}
-                <div className="flex items-center justify-end gap-3 p-5 border-t border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900">
+                {/* Footer (fijo, con el tip integrado) */}
+                <div className="flex items-center gap-3 px-5 py-3 border-t border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900 shrink-0">
+                    <p className="text-xs text-gray-400 dark:text-gray-500 mr-auto hidden sm:block">
+                        <kbd className="px-1.5 py-0.5 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded text-xs text-gray-700 dark:text-gray-200">Cmd/Ctrl + Enter</kbd> para confirmar
+                    </p>
                     <Button
                         variant="plain"
                         onClick={onClose}
