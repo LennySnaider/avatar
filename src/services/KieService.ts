@@ -303,19 +303,68 @@ export interface GenerateImageKieParams {
     hairEmphasis?: string
 }
 
+type KieRefWithRole = { base64: string; mimeType: string; role?: string }
+
 /**
- * Cláusula para refs con rol 'asset' (logo/producto), que van AL FINAL del
- * array de imágenes en los branches i2i. Sin imagen + instrucción explícita,
- * el texto del clone-analyzer ("hoodie with logo") hace que los modelos de
- * difusión pinten la palabra literal "LOGO" como placeholder en la prenda.
+ * Selección + orden CANÓNICO de los refs que acompañan a la cara en los
+ * branches i2i multi-imagen (Seedream/Wan/FLUX.2), con su cláusula indexada
+ * por imagen ("Image 3 is…" — la cara siempre es la imagen 1). Antes esos
+ * branches solo leían body/asset y descartaban en silencio pose/scene/clone/
+ * place aunque ya viajaban en referenceImages (mismo bug que los Assets:
+ * "hoodie with logo" pintaba la palabra literal "LOGO"). Orden: body primero
+ * (las cláusulas de cuerpo calibradas dicen "SECOND attached image"), clone
+ * AL FINAL (igual que nano-banana-pro, el patrón que arregló GPT Image 2).
  */
-function buildAssetClause(count: number): string {
-    if (count <= 0) return ''
-    const which =
-        count === 1
-            ? 'The LAST attached image is a brand asset (logo/graphic/product)'
-            : `The LAST ${count} attached images are brand assets (logos/graphics/products)`
-    return ` ${which} — print this EXACT design on her clothing wherever the outfit shows a logo or graphic, reproducing its shapes, colors and lettering faithfully. Never write placeholder text such as "LOGO" — always use the attached design itself.`
+function planExtraRefs(
+    referenceImages: KieRefWithRole[] | undefined,
+    maxExtras: number,
+): { extras: KieRefWithRole[]; clauses: string; hasBody: boolean } {
+    const byRole = (role: string) =>
+        (referenceImages ?? []).filter((r) => r.role === role)
+    const ordered = [
+        ...byRole('body').slice(0, 3),
+        ...byRole('asset').slice(0, 3),
+        ...byRole('pose').slice(0, 1),
+        ...byRole('scene').slice(0, 1),
+        ...byRole('place').slice(0, 1),
+        ...byRole('clone').slice(0, 1),
+    ].slice(0, maxExtras)
+    const parts: string[] = []
+    ordered.forEach((r, i) => {
+        const n = i + 2
+        switch (r.role) {
+            case 'asset':
+                parts.push(
+                    `Image ${n} is a brand asset (logo/graphic/product) — print this EXACT design on her clothing or props wherever the outfit shows a logo or graphic, reproducing its shapes, colors and lettering faithfully; never write placeholder text such as "LOGO".`,
+                )
+                break
+            case 'pose':
+                parts.push(
+                    `Image ${n} is a POSE reference — copy ONLY the body position and pose from it; do NOT copy its face, identity, body proportions or clothing.`,
+                )
+                break
+            case 'scene':
+                parts.push(
+                    `Image ${n} is a STYLE/SCENE reference — use it for the setting, lighting and composition; REPLACE its subject with her.`,
+                )
+                break
+            case 'place':
+                parts.push(
+                    `Image ${n} shows the LOCATION — place her inside THIS exact environment, keeping its architecture, furniture, background and lighting.`,
+                )
+                break
+            case 'clone':
+                parts.push(
+                    `Image ${n} is the CLONE source — recreate its EXACT pose, body position, outfit, hands, any object held, framing, camera angle, lighting and setting. The person in image ${n} is a FACELESS MANNEQUIN: IGNORE their face and identity completely; the face comes ONLY from the FIRST image.`,
+                )
+                break
+        }
+    })
+    return {
+        extras: ordered,
+        clauses: parts.length > 0 ? ` ${parts.join(' ')}` : '',
+        hasBody: ordered.some((r) => r.role === 'body'),
+    }
 }
 
 /**
@@ -480,7 +529,12 @@ export async function generateImageKie(
                         cropped.mimeType,
                     )
                     input.image_urls = [refUrl]
-                    console.log('[KIE] Grok i2i with 1 identity ref (AR-cropped)')
+                    // Single-input: lo único portable del kit Gemini es el
+                    // override de pelo (paridad con seedream/wan).
+                    if (hairClause) {
+                        input.prompt = `Keep the EXACT face and likeness of the person in the reference image.${hairClause} ${input.prompt}`
+                    }
+                    console.log(`[KIE] Grok i2i with 1 identity ref (AR-cropped)${hairClause ? ' + hair override' : ''}`)
                 } else if (model.startsWith('seedream/')) {
                     // Seedream has real i2i variants that keep identity AND honor
                     // aspect_ratio/quality at the same credits as t2i (verified
@@ -490,22 +544,18 @@ export async function generateImageKie(
                     // Body Ref exists, send it as image 2: 5.0 Pro weighs
                     // images far harder than text, so the body must be an
                     // IMAGE to win against the face ref's slim build.
-                    const bodyRefs = (referenceImages ?? [])
-                        .filter((r) => r.role === 'body')
-                        .slice(0, 6)
-                    // Assets (logo/producto) van AL FINAL de image_urls con su
-                    // propia cláusula — sin ellos el clone-text "with logo"
-                    // hacía que Seedream pintara la palabra literal "LOGO".
-                    const assetRefs = (referenceImages ?? [])
-                        .filter((r) => r.role === 'asset')
-                        .slice(0, Math.max(0, 9 - bodyRefs.length))
+                    // Refs extra en orden canónico (body/asset/pose/scene/
+                    // place/clone) + cláusulas indexadas — Seedream 5 acepta
+                    // hasta 10 imágenes.
+                    const { extras, clauses: extraClauses, hasBody } =
+                        planExtraRefs(referenceImages, 9)
                     const urls: string[] = [
                         await uploadReferenceToSupabase(
                             referenceImage.base64,
                             referenceImage.mimeType,
                         ),
                     ]
-                    for (const r of [...bodyRefs, ...assetRefs]) {
+                    for (const r of extras) {
                         urls.push(
                             await uploadReferenceToSupabase(r.base64, r.mimeType),
                         )
@@ -526,37 +576,38 @@ export async function generateImageKie(
                     // (bodyEmphasis) are repeated inside the anchor's early
                     // tokens — not just a "follow the text below" pointer.
                     const bodyClause =
-                        bodyRefs.length > 0
+                        hasBody
                             ? 'The SECOND attached image shows her real BODY — replicate its exact body shape, proportions, curves and build; do NOT take the body from the first image.'
                             : `Use the reference image ONLY for the face and identity: do NOT copy the body, build, weight or proportions from it — the person in the photo may look slimmer than she really is.${
                                   bodyEmphasis
                                       ? ` Her real body is: ${bodyEmphasis}. Render THAT body, visibly fuller and curvier than the reference photo suggests.`
                                       : ' Her body proportions MUST follow the text description below exactly (bust, waist, hips and thighs as written).'
                               }`
-                    const assetClause = buildAssetClause(assetRefs.length)
-                    input.prompt = `The person in the FIRST attached reference image is the subject — keep her EXACT face, facial features and likeness from that image. ${bodyClause}${hairClause}${assetClause} ${input.prompt}`
-                    console.log(`[KIE] Seedream i2i (${resolvedModel}) with ${urls.length} ref(s) (face${bodyRefs.length > 0 ? ' + body' : ''}${assetRefs.length > 0 ? ` + ${assetRefs.length} asset(s)` : ''}${hairClause ? ' + hair override' : ''})`)
+                    input.prompt = `The person in the FIRST attached reference image is the subject — keep her EXACT face, facial features and likeness from that image. ${bodyClause}${hairClause}${extraClauses} ${input.prompt}`
+                    console.log(`[KIE] Seedream i2i (${resolvedModel}) with ${urls.length} ref(s) (roles: face${extras.length > 0 ? ', ' + extras.map((r) => r.role).join(', ') : ''}${hairClause ? ' + hair override' : ''})`)
                 } else if (model.startsWith('nano-banana-2')) {
                     // nano-banana-2 / -lite take image_input[] (URL array, up to
                     // 14) on the SAME model id — no i2i variant swap needed.
                     // Mirrors the nano-banana-pro wiring (verified live with
                     // image_input on the same endpoint family). Face + optional
                     // Body Ref; Gemini models follow the keep-face note well.
-                    const nbAssetRefs = (referenceImages ?? []).filter(
-                        (r) => r.role === 'asset',
-                    )
-                    const identityRefs = [
-                        referenceImage,
-                        ...(referenceImages ?? []).filter((r) => r.role === 'body'),
-                        ...nbAssetRefs,
-                    ].slice(0, 14)
+                    // TODOS los refs en el ORDEN original (como nano-banana-
+                    // pro): el REFERENCE MAPPING del harness (buildAvatarPrompt
+                    // en el caller) etiqueta Image 1..N por ese orden — antes
+                    // este branch re-armaba la lista (solo face+body+asset) y
+                    // las etiquetas de pose/scene/clone mentían o se perdían.
+                    const nbRefs = (
+                        referenceImages && referenceImages.length > 0
+                            ? referenceImages
+                            : [referenceImage]
+                    ).slice(0, 14)
                     const nbUrls: string[] = []
-                    for (const r of identityRefs) {
+                    for (const r of nbRefs) {
                         nbUrls.push(await uploadReferenceToSupabase(r.base64, r.mimeType))
                     }
                     input.image_input = nbUrls
-                    input.prompt = `The person in the first attached reference image is the subject — keep her EXACT face, facial features and likeness.${hairClause}${buildAssetClause(nbAssetRefs.length)} ${input.prompt}`
-                    console.log(`[KIE] ${model} with ${nbUrls.length} identity ref(s) via image_input${nbAssetRefs.length > 0 ? ` (+${nbAssetRefs.length} asset)` : ''}`)
+                    input.prompt = `The person in the first attached reference image is the subject — keep her EXACT face, facial features and likeness.${hairClause} ${input.prompt}`
+                    console.log(`[KIE] ${model} with ${nbUrls.length} ref(s) via image_input (roles: ${nbRefs.map((r) => ('role' in r && r.role) || 'face').join(', ')})`)
                 } else if (model === 'wan/2-7-image') {
                     // Wan 2.7 edita/genera con refs en el MISMO id: input_urls
                     // (hasta 9). Cara primero + Body Ref opcional; conserva el
@@ -571,19 +622,20 @@ export async function generateImageKie(
                     // En EDICIÓN (sin bodyEmphasis ni Body Ref) se conserva el
                     // keep-face simple verificado — el cuerpo ya viene en la
                     // foto fuente y no hay que "engordarlo".
-                    const wanBodyRefs = (referenceImages ?? [])
-                        .filter((r) => r.role === 'body')
-                        .slice(0, 5)
-                    const wanAssetRefs = (referenceImages ?? [])
-                        .filter((r) => r.role === 'asset')
-                        .slice(0, Math.max(0, 8 - wanBodyRefs.length))
-                    const identityRefs = [
-                        referenceImage,
-                        ...wanBodyRefs,
-                        ...wanAssetRefs,
-                    ].slice(0, 9)
-                    const wanUrls: string[] = []
-                    for (const r of identityRefs) {
+                    // Refs extra en orden canónico + cláusulas indexadas —
+                    // Wan acepta hasta 9 input_urls (cara + 8 extras).
+                    const {
+                        extras: wanExtras,
+                        clauses: wanExtraClauses,
+                        hasBody: wanHasBody,
+                    } = planExtraRefs(referenceImages, 8)
+                    const wanUrls: string[] = [
+                        await uploadReferenceToSupabase(
+                            referenceImage.base64,
+                            referenceImage.mimeType,
+                        ),
+                    ]
+                    for (const r of wanExtras) {
                         wanUrls.push(await uploadReferenceToSupabase(r.base64, r.mimeType))
                     }
                     input.input_urls = wanUrls
@@ -595,30 +647,42 @@ export async function generateImageKie(
                     // la CADERA/muslos → amplificar SOLO lower body, con guard
                     // explícito de busto/masa.
                     const wanBodyClause =
-                        wanBodyRefs.length > 0
+                        wanHasBody
                             ? ' The SECOND attached image shows her real BODY — replicate its exact body shape, proportions, curves and build; do NOT take the body from the first image.'
                             : bodyEmphasis
                               ? ` Use the reference image ONLY for the face and identity — do NOT copy the body proportions from it: the person in the photo looks SLIMMER than the character really is. Her real body is: ${bodyEmphasis}. Her hips, glutes and thighs must be visibly FULLER and WIDER than in the reference photo — the narrow waist makes the hip curve obvious. Keep the bust true to the spec: do NOT inflate the chest or add overall body mass beyond it.`
                               : ''
-                    const wanAssetClause = buildAssetClause(wanAssetRefs.length)
-                    input.prompt = `The person in the FIRST attached reference image is the subject — keep her EXACT face, facial features and likeness from that image.${wanBodyClause}${hairClause}${wanAssetClause} ${input.prompt}`
-                    console.log(`[KIE] Wan 2.7 Image with ${wanUrls.length} ref(s) via input_urls (face${wanBodyRefs.length > 0 ? ' + body' : ''}${wanAssetRefs.length > 0 ? ` + ${wanAssetRefs.length} asset(s)` : ''}${wanBodyClause && wanBodyRefs.length === 0 ? ' + body-text anchor' : ''}${hairClause ? ' + hair override' : ''})`)
+                    input.prompt = `The person in the FIRST attached reference image is the subject — keep her EXACT face, facial features and likeness from that image.${wanBodyClause}${hairClause}${wanExtraClauses} ${input.prompt}`
+                    console.log(`[KIE] Wan 2.7 Image with ${wanUrls.length} ref(s) via input_urls (roles: face${wanExtras.length > 0 ? ', ' + wanExtras.map((r) => r.role).join(', ') : ''}${wanBodyClause && !wanHasBody ? ' + body-text anchor' : ''}${hairClause ? ' + hair override' : ''})`)
                 } else if (model.startsWith('flux-2/')) {
                     // FLUX.2 takes up to 8 refs → send the face (identity anchor) +
                     // a Body Ref (imitate the body) so BOTH are locked from images,
                     // not just the face. Measurements text stays the default when
                     // there's no Body Ref.
-                    const identityRefs = [
-                        referenceImage,
-                        ...(referenceImages ?? []).filter((r) => r.role === 'body'),
-                    ].slice(0, 8)
-                    const urls: string[] = []
-                    for (const r of identityRefs) {
+                    // Mismo plan de refs extra que Seedream/Wan (≤8 URLs
+                    // total) + ancla keep-face con override de pelo — antes
+                    // FLUX.2 no llevaba ancla y descartaba assets/pose/scene.
+                    const {
+                        extras: fluxExtras,
+                        clauses: fluxClauses,
+                        hasBody: fluxHasBody,
+                    } = planExtraRefs(referenceImages, 7)
+                    const urls: string[] = [
+                        await uploadReferenceToSupabase(
+                            referenceImage.base64,
+                            referenceImage.mimeType,
+                        ),
+                    ]
+                    for (const r of fluxExtras) {
                         urls.push(await uploadReferenceToSupabase(r.base64, r.mimeType))
                     }
                     resolvedModel = model.replace('text-to-image', 'image-to-image')
                     input.input_urls = urls
-                    console.log(`[KIE] FLUX.2 i2i with ${urls.length} identity ref(s)`)
+                    const fluxBodyClause = fluxHasBody
+                        ? ' The SECOND attached image shows her real BODY — replicate its exact body shape, proportions, curves and build; do NOT take the body from the first image.'
+                        : ''
+                    input.prompt = `The person in the FIRST attached image is the subject — keep her EXACT face, facial features and likeness from that image.${fluxBodyClause}${hairClause}${fluxClauses} ${input.prompt}`
+                    console.log(`[KIE] FLUX.2 i2i with ${urls.length} ref(s) (roles: face${fluxExtras.length > 0 ? ', ' + fluxExtras.map((r) => r.role).join(', ') : ''})`)
                 } else {
                     // qwen/image-to-image: single image_url (face); size from the ref.
                     const refUrl = await uploadReferenceToSupabase(
@@ -628,6 +692,8 @@ export async function generateImageKie(
                     resolvedModel = model.replace('text-to-image', 'image-to-image')
                     input.image_url = refUrl
                     delete input.image_size
+                    // Single-input: paridad mínima — keep-face + override de pelo.
+                    input.prompt = `Keep the EXACT face and likeness of the person in the reference image.${hairClause} ${input.prompt}`
                 }
             } catch (e) {
                 console.warn('[KIE] ref upload failed, staying text-only:', e)

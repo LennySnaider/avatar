@@ -13,7 +13,7 @@ import { getBodyDescriptors, getLegDescriptor, getSkinToneDescription, getHairCo
  *   FACE_ANCHOR, ANGLE_SHEET, BODY_SHAPE, POSE_REF, STYLE, ASSET…
  */
 
-export type RefRole = 'face' | 'angle' | 'body' | 'pose' | 'scene' | 'clone' | 'asset'
+export type RefRole = 'face' | 'angle' | 'body' | 'pose' | 'scene' | 'place' | 'clone' | 'asset'
 
 export interface AvatarPromptOptions {
     prompt: string
@@ -361,6 +361,7 @@ const ROLE_LABEL: Record<RefRole, string> = {
     body: 'BODY_SHAPE',
     pose: 'POSE_REF',
     scene: 'STYLE_REF',
+    place: 'PLACE_REF',
     clone: 'CLONE_REF',
     asset: 'ASSET',
 }
@@ -371,6 +372,7 @@ const ROLE_DESC: Record<RefRole, string> = {
     body: 'CRITICAL BODY REFERENCE — COPY THIS EXACT SILHOUETTE (waist, hips, bust, curves). MANDATORY',
     pose: 'POSE ONLY REFERENCE — copy ONLY the body position/pose, NOT the face or proportions',
     scene: 'STYLE/SCENE reference — use for setting/composition, REPLACE the subject with [FACE_ANCHOR]',
+    place: 'LOCATION reference — place the subject inside THIS exact environment; keep its architecture, furniture, background and lighting faithfully',
     clone: 'CLONE SOURCE — copy the EXACT pose, body position, outfit, hands, any object held (e.g. a phone), framing, camera angle, lighting and setting from this image. The person shown is a FACELESS MANNEQUIN — IGNORE their face/identity. Take the face ONLY from [FACE_ANCHOR].',
     asset: 'BRAND ASSET (logo/graphic/product) — print this EXACT design on the outfit/props wherever a logo or graphic appears; reproduce its shapes, colors and lettering faithfully. Never write placeholder text such as "LOGO".',
 }

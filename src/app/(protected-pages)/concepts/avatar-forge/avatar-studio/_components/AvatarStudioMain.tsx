@@ -357,6 +357,7 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
         sceneImage,
         poseImage,
         cloneImage,
+        placeImage,
         videoInputImage,
         identityWeight,
         measurements,
@@ -853,6 +854,16 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                   })
                 : null
 
+            // Place Ref IMAGE — antes SOLO viajaba su texto [PLACE:] (ningún
+            // path recibía la foto del lugar). Va a los modelos KIE multi-ref
+            // con rol 'place'; el path Gemini queda intocado (benchmark).
+            const optimizedPlaceRef = placeImage?.base64
+                ? await optimizeImage({
+                      base64: placeImage.base64,
+                      mimeType: placeImage.mimeType,
+                  })
+                : null
+
             // All reference images for providers that accept multiple inputs
             // (Nano Banana Pro / GPT Image 2 via KIE). Each carries a `role` so
             // KieService can label it in the prompt ("Image 1 is the face…") —
@@ -879,6 +890,7 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                     ...optimizedPayload.sceneImage,
                     role: 'scene',
                 },
+                optimizedPlaceRef && { ...optimizedPlaceRef, role: 'place' },
             ].filter(
                 (r): r is { base64: string; mimeType: string; role: string } =>
                     Boolean(r && r.base64),
@@ -1008,16 +1020,22 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                     // mode overrides it to the Clone (the canvas to edit).
                     let kieSingleRef = referenceImage
 
-                    // Nano Banana Pro ONLY: feed the Clone Ref IMAGE (not just the
-                    // [CLONE:] text) so it clones the EXACT pose/outfit/framing/scene
-                    // — same lever that fixed GPT Image 2. Appended LAST so
-                    // FACE_ANCHOR stays slot 1 (high-fidelity identity) and the
-                    // image_input order == refRoles order for the prompt's mapping.
-                    // Guarded on kieReferenceImages.length so we never send a lone
-                    // clone with no FACE_ANCHOR image to back the [FACE_ANCHOR] label.
+                    // Feed the Clone Ref IMAGE (not just the [CLONE:] text) so the
+                    // model clones the EXACT pose/outfit/framing/scene — same lever
+                    // that fixed GPT Image 2. Appended LAST so FACE_ANCHOR stays
+                    // slot 1 (high-fidelity identity) and the image order == refRoles
+                    // order for the prompt's mapping. Guarded on
+                    // kieReferenceImages.length so we never send a lone clone with
+                    // no face image behind the keep-face anchor. Además de los nano
+                    // (harness propio), Seedream/Wan/FLUX.2 lo consumen vía
+                    // planExtraRefs con guard de maniquí (KieService) — antes solo
+                    // recibían el texto [CLONE:] y re-imaginaban el outfit.
                     if (
                         (kieModel === 'nano-banana-pro' ||
-                            kieModel.startsWith('nano-banana-2')) &&
+                            kieModel.startsWith('nano-banana-2') ||
+                            kieModel.startsWith('seedream/') ||
+                            kieModel === 'wan/2-7-image' ||
+                            kieModel.startsWith('flux-2/')) &&
                         optimizedCloneRef &&
                         kieReferenceImages.length > 0
                     ) {
@@ -1838,6 +1856,7 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
         angleRef,
         poseImage,
         cloneImage,
+        placeImage,
         videoInputImage,
         aspectRatio,
         videoDuration,
