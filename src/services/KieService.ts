@@ -498,8 +498,12 @@ export async function generateImageKie(
         } else if (model === 'z-image') {
             input.aspect_ratio = aspectRatio
             input.nsfw_checker = false
-        } else if (model.startsWith('qwen/')) {
-            input.image_size = asImageSize()
+        } else if (model.startsWith('qwen')) {
+            // Qwen Image 2.0 migró en KIE a la familia `qwen2/*` (los ids
+            // viejos `qwen/*` quedaron dando 500 "internal error" SIEMPRE,
+            // verificado live 2026-07-18). image_size ahora acepta el RATIO
+            // directo ("9:16"), no el enum viejo (square_hd → 500).
+            input.image_size = aspectRatio
             input.enable_safety_checker = false
             input.nsfw_checker = false
         } else if (model === 'wan/2-7-image') {
@@ -543,7 +547,7 @@ export async function generateImageKie(
         if (
             referenceImage &&
             (model.startsWith('flux-2/') ||
-                model.startsWith('qwen/') ||
+                model.startsWith('qwen') ||
                 model.startsWith('seedream/') ||
                 model.startsWith('nano-banana-2') ||
                 model === 'wan/2-7-image' ||
@@ -739,14 +743,16 @@ export async function generateImageKie(
                     input.prompt = `The person in the FIRST attached image is the subject — keep her EXACT face, facial features and likeness from that image.${faceFidelityClause}${fluxBodyClause}${hairClause}${eyeClause}${fluxClauses} Follow the SCENE, POSE and ACTION described below EXACTLY. ${input.prompt}`
                     console.log(`[KIE] FLUX.2 i2i with ${urls.length} ref(s) (roles: face${fluxExtras.length > 0 ? ', ' + fluxExtras.map((r) => r.role).join(', ') : ''})`)
                 } else {
-                    // qwen/image-to-image: single image_url (face); size from the ref.
+                    // qwen2/image-edit: single image_url (face). image_size
+                    // (ratio) es OBLIGATORIO — sin él KIE devuelve "generate
+                    // failed" en 1s (verificado live probando variantes).
                     const refUrl = await uploadReferenceToSupabase(
                         referenceImage.base64,
                         referenceImage.mimeType,
                     )
-                    resolvedModel = model.replace('text-to-image', 'image-to-image')
+                    resolvedModel = 'qwen2/image-edit'
                     input.image_url = refUrl
-                    delete input.image_size
+                    input.image_size = aspectRatio
                     // Single-input: paridad mínima — keep-face + fidelidad +
                     // overrides de pelo/ojos.
                     input.prompt = `Keep the EXACT face and likeness of the person in the reference image.${faceFidelityClause}${hairClause}${eyeClause} ${input.prompt}`
@@ -850,7 +856,7 @@ export async function generateImageKie(
     const isPermissiveModel =
         model.startsWith('seedream/') ||
         model.startsWith('flux-2/') ||
-        model.startsWith('qwen/') ||
+        model.startsWith('qwen') ||
         model === 'z-image' ||
         model === 'wan/2-7-image' ||
         model.startsWith('grok-imagine/')

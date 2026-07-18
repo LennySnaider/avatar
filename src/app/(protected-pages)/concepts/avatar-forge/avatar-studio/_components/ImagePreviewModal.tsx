@@ -109,7 +109,7 @@ const ImagePreviewModal = ({
             m === 'gpt-image-2-text-to-image' ||
             m === 'nano-banana-pro' ||
             m.startsWith('flux-2/') ||
-            m.startsWith('qwen/') ||
+            m.startsWith('qwen') ||
             m.startsWith('seedream/') || // real i2i variants (4.5-edit / 5-lite i2i)
             m === 'wan/2-7-image' || // unified t2i+edit vía input_urls, NSFW real
             m.startsWith('grok-imagine/')

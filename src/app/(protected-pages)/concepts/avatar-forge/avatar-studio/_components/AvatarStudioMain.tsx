@@ -174,7 +174,7 @@ const isKieAsyncImageModel = (m: string): boolean =>
     KIE_ASYNC_MODELS.includes(m) ||
     m.startsWith('seedream/') ||
     m.startsWith('flux-2/') ||
-    m.startsWith('qwen/') ||
+    m.startsWith('qwen') ||
     m.startsWith('ideogram/') ||
     m === 'z-image' ||
     m.startsWith('nano-banana-2') ||

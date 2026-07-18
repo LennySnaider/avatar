@@ -173,7 +173,7 @@ export const DEFAULT_PROVIDERS: AIProvider[] = [
         id: 'kie-qwen-image',
         name: 'Qwen Image 2.0 · KIE',
         type: 'KIE' as ProviderType,
-        model: 'qwen/text-to-image',
+        model: 'qwen2/text-to-image',
         endpoint: 'https://api.kie.ai/api/v1',
         is_active: true,
         supports_image: true,
