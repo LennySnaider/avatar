@@ -125,6 +125,29 @@ export const THIGHS_LEVEL_PHRASE: Record<number, string> = {
     5: 'very thick heavy thighs with substantial volume, thighs touching (no thigh gap)',
 }
 
+// FORMA (ortogonal al tamaño). Glúteos: taxonomía por silueta del usuario;
+// mama: tipos por criterio médico. Se componen con el nivel en
+// buildCurvesEmphasis y comparten su gating permisivo.
+export const GLUTES_SHAPE_PHRASE: Record<string, string> = {
+    square: 'square-shaped glutes — straight vertical line from waist to glutes with little side curve',
+    'v-shape': 'V-shaped glutes — fuller at the top narrowing downward, slim hips with little lower fullness',
+    'a-shape': 'A-shaped pear glutes — narrow at the top and widest at the bottom, volume concentrated low on the glutes and hips',
+    round: 'perfectly round glutes — full and balanced in every direction, symmetric youthful shape',
+    heart: 'heart-shaped glutes — voluminous curvy lower part tapering up to a narrow waist, upside-down-heart silhouette with wide hips',
+}
+
+export const BUST_SHAPE_PHRASE: Record<string, string> = {
+    round: 'perfectly round breasts — even fullness in every direction with centered nipples, youthful round shape',
+    athletic: 'athletic breasts — round firm base with a toned muscular look and less tissue volume',
+    conical: 'conical breasts — rounded base tapering toward the nipple in a cone shape',
+    teardrop: 'teardrop pear-shaped breasts — slimmer flatter upper pole with fuller lower quadrants, natural sloped profile',
+    tuberous: 'tubular breasts — narrow constricted base, wide spacing between the breasts, prominent areolas',
+}
+
+// Listas para los chips de la UI (orden de despliegue)
+export const GLUTES_SHAPES = ['square', 'v-shape', 'a-shape', 'round', 'heart'] as const
+export const BUST_SHAPES = ['round', 'athletic', 'conical', 'teardrop', 'tuberous'] as const
+
 /**
  * COHERENCIA ANATÓMICA glúteos→muslos: busto y glúteos pueden ir
  * desproporcionados (cirugía), pero glúteos llenos sobre piernas delgadas no
@@ -151,8 +174,14 @@ export function buildCurvesEmphasis(m: PhysicalMeasurements): string {
     if (m.bustLevel && BUST_LEVEL_PHRASE[m.bustLevel]) {
         parts.push(BUST_LEVEL_PHRASE[m.bustLevel])
     }
+    if (m.bustShape && BUST_SHAPE_PHRASE[m.bustShape]) {
+        parts.push(BUST_SHAPE_PHRASE[m.bustShape])
+    }
     if (m.glutesLevel && GLUTES_LEVEL_PHRASE[m.glutesLevel]) {
         parts.push(GLUTES_LEVEL_PHRASE[m.glutesLevel])
+    }
+    if (m.glutesShape && GLUTES_SHAPE_PHRASE[m.glutesShape]) {
+        parts.push(GLUTES_SHAPE_PHRASE[m.glutesShape])
     }
     const thighs = effectiveThighsLevel(m)
     if (thighs && THIGHS_LEVEL_PHRASE[thighs]) {

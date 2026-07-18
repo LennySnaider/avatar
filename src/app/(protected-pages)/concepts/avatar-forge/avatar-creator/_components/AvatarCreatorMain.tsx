@@ -25,9 +25,13 @@ import {
     BUST_LEVEL_PHRASE,
     GLUTES_LEVEL_PHRASE,
     THIGHS_LEVEL_PHRASE,
+    BUST_SHAPES,
+    GLUTES_SHAPES,
+    BUST_SHAPE_PHRASE,
+    GLUTES_SHAPE_PHRASE,
     effectiveThighsLevel,
 } from '@/utils/bodyDescriptors'
-import type { CurveLevel } from '@/@types/supabase'
+import type { CurveLevel, BustShape, GlutesShape } from '@/@types/supabase'
 import HairColorPicker from '@/components/shared/HairColorPicker'
 import EyeColorPicker from '@/components/shared/EyeColorPicker'
 import {
@@ -798,6 +802,34 @@ const AvatarCreatorMain = ({ userId, existingAvatar }: AvatarCreatorMainProps) =
                                                         <p className="text-[10px] text-amber-500 mt-0.5">
                                                             auto ≥{effectiveThighsLevel(measurements)}/5 para hacer match con Glutes {measurements.glutesLevel}/5 (coherencia anatómica)
                                                         </p>
+                                                    ) : null}
+                                                    {key === 'bustLevel' || key === 'glutesLevel' ? (
+                                                        <div className="flex flex-wrap gap-1 mt-1.5">
+                                                            {[undefined, ...(key === 'bustLevel' ? BUST_SHAPES : GLUTES_SHAPES)].map((shape) => {
+                                                                const current = key === 'bustLevel' ? measurements.bustShape : measurements.glutesShape
+                                                                const phraseMap = key === 'bustLevel' ? BUST_SHAPE_PHRASE : GLUTES_SHAPE_PHRASE
+                                                                return (
+                                                                    <Tooltip key={shape ?? 'auto'} title={shape ? phraseMap[shape] : 'sin forma explícita — la decide el modelo'}>
+                                                                        <button
+                                                                            onClick={() =>
+                                                                                setMeasurements(
+                                                                                    key === 'bustLevel'
+                                                                                        ? { ...measurements, bustShape: shape as BustShape | undefined }
+                                                                                        : { ...measurements, glutesShape: shape as GlutesShape | undefined },
+                                                                                )
+                                                                            }
+                                                                            className={`px-1.5 py-0.5 text-[10px] rounded border transition-colors capitalize ${
+                                                                                (current ?? undefined) === shape
+                                                                                    ? 'bg-primary text-white border-primary'
+                                                                                    : 'bg-gray-50 dark:bg-gray-800 border-gray-200 dark:border-gray-700 hover:border-primary'
+                                                                            }`}
+                                                                        >
+                                                                            {shape ?? 'auto'}
+                                                                        </button>
+                                                                    </Tooltip>
+                                                                )
+                                                            })}
+                                                        </div>
                                                     ) : null}
                                                     </div>
                                                     {setRegionRef && (

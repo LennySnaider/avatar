@@ -408,6 +408,13 @@ export type LegType = 'slim' | 'toned' | 'athletic' | 'muscular-thighs' | 'long'
 // caller) — nunca entran al [BODY:] genérico.
 export type CurveLevel = 1 | 2 | 3 | 4 | 5
 
+// FORMA (ortogonal al tamaño): taxonomías del usuario — glúteos por
+// silueta (cuadrado/V/A-pera/redondo/corazón) y mama por criterio médico
+// (redonda/atlética/cónica/lágrima-pera/tuberosa). undefined = Auto.
+// Mismo gating permisivo que los niveles.
+export type GlutesShape = 'square' | 'v-shape' | 'a-shape' | 'round' | 'heart'
+export type BustShape = 'round' | 'athletic' | 'conical' | 'teardrop' | 'tuberous'
+
 // Hair texture/type. Optional — when unset the hair follows the face
 // description (auto-analyzed from the reference photos).
 export type HairStyle = 'straight' | 'wavy' | 'curly' | 'coily' | (string & {})
@@ -470,6 +477,9 @@ export interface PhysicalMeasurements {
     bustLevel?: CurveLevel
     glutesLevel?: CurveLevel
     thighsLevel?: CurveLevel
+    // Forma (ortogonal al tamaño; solo modelos permisivos)
+    bustShape?: BustShape
+    glutesShape?: GlutesShape
     skinTone?: SkinTone // 1=very fair/porcelain, 9=very dark/ebony
     hairColor?: HairColor
     /**
