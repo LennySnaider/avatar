@@ -49,6 +49,8 @@ const AvatarEditDrawer = ({ isOpen, onClose, onSaveAvatar }: AvatarEditDrawerPro
     const fileInputRef = useRef<HTMLInputElement>(null)
     const faceInputRef = useRef<HTMLInputElement>(null)
     const angleInputRef = useRef<HTMLInputElement>(null)
+    const bustInputRef = useRef<HTMLInputElement>(null)
+    const glutesInputRef = useRef<HTMLInputElement>(null)
 
     const [showSaveInput, setShowSaveInput] = useState(false)
     const [saveAvatarName, setSaveAvatarName] = useState('')
@@ -61,6 +63,10 @@ const AvatarEditDrawer = ({ isOpen, onClose, onSaveAvatar }: AvatarEditDrawerPro
     const [localGeneralRefs, setLocalGeneralRefs] = useState<ReferenceImage[]>([])
     const [localFaceRef, setLocalFaceRef] = useState<ReferenceImage | null>(null)
     const [localAngleRef, setLocalAngleRef] = useState<ReferenceImage | null>(null)
+    // Refs de REGIÓN (fijos por avatar, junto a su slider de Curves) — solo
+    // viajan a modelos permisivos.
+    const [localBustRef, setLocalBustRef] = useState<ReferenceImage | null>(null)
+    const [localGlutesRef, setLocalGlutesRef] = useState<ReferenceImage | null>(null)
     const [localIdentityWeight, setLocalIdentityWeight] = useState(85)
     const [localMeasurements, setLocalMeasurements] = useState<PhysicalMeasurements>({
         age: 25,
@@ -78,6 +84,8 @@ const AvatarEditDrawer = ({ isOpen, onClose, onSaveAvatar }: AvatarEditDrawerPro
         generalReferences,
         faceRef,
         angleRef,
+        bustRef,
+        glutesRef,
         identityWeight,
         measurements,
         faceDescription,
@@ -86,6 +94,8 @@ const AvatarEditDrawer = ({ isOpen, onClose, onSaveAvatar }: AvatarEditDrawerPro
         setGeneralReferences,
         setFaceRef,
         setAngleRef,
+        setBustRef,
+        setGlutesRef,
         setIdentityWeight,
         setMeasurements,
         setFaceDescription,
@@ -97,12 +107,14 @@ const AvatarEditDrawer = ({ isOpen, onClose, onSaveAvatar }: AvatarEditDrawerPro
             setLocalGeneralRefs([...generalReferences])
             setLocalFaceRef(faceRef)
             setLocalAngleRef(angleRef)
+            setLocalBustRef(bustRef)
+            setLocalGlutesRef(glutesRef)
             setLocalIdentityWeight(identityWeight)
             setLocalMeasurements({ ...measurements })
             setLocalFaceDescription(faceDescription)
             setSaveAvatarName(avatarName || '')
         }
-    }, [isOpen, generalReferences, faceRef, angleRef, identityWeight, measurements, faceDescription, avatarName])
+    }, [isOpen, generalReferences, faceRef, angleRef, bustRef, glutesRef, identityWeight, measurements, faceDescription, avatarName])
 
     // Preview handlers
     const handlePreviewClose = useCallback(() => {
@@ -129,7 +141,7 @@ const AvatarEditDrawer = ({ isOpen, onClose, onSaveAvatar }: AvatarEditDrawerPro
 
     // Process file upload
     const processFile = useCallback(
-        async (file: File, type: 'general' | 'face' | 'angle' | 'body') => {
+        async (file: File, type: 'general' | 'face' | 'angle' | 'body' | 'bust' | 'glutes') => {
             if (!['image/jpeg', 'image/png', 'image/webp', 'image/heic'].includes(file.type)) {
                 toast.push(
                     <Notification type="warning" title="Invalid File">
@@ -170,6 +182,12 @@ const AvatarEditDrawer = ({ isOpen, onClose, onSaveAvatar }: AvatarEditDrawerPro
                         case 'angle':
                             setLocalAngleRef(newImage)
                             break
+                        case 'bust':
+                            setLocalBustRef(newImage)
+                            break
+                        case 'glutes':
+                            setLocalGlutesRef(newImage)
+                            break
                         // Note: 'body' type is now handled as a session tool in BottomControlBar
                     }
                 }
@@ -180,7 +198,7 @@ const AvatarEditDrawer = ({ isOpen, onClose, onSaveAvatar }: AvatarEditDrawerPro
     )
 
     const handleFileChange = useCallback(
-        (event: React.ChangeEvent<HTMLInputElement>, type: 'general' | 'face' | 'angle' | 'body') => {
+        (event: React.ChangeEvent<HTMLInputElement>, type: 'general' | 'face' | 'angle' | 'body' | 'bust' | 'glutes') => {
             const files = event.target.files
             if (!files) return
             Array.from(files).forEach((file) => processFile(file, type))
@@ -194,7 +212,7 @@ const AvatarEditDrawer = ({ isOpen, onClose, onSaveAvatar }: AvatarEditDrawerPro
         e.stopPropagation()
     }
 
-    const handleDrop = (e: React.DragEvent, type: 'general' | 'face' | 'angle' | 'body') => {
+    const handleDrop = (e: React.DragEvent, type: 'general' | 'face' | 'angle' | 'body' | 'bust' | 'glutes') => {
         e.preventDefault()
         e.stopPropagation()
         const files = e.dataTransfer.files
@@ -212,6 +230,8 @@ const AvatarEditDrawer = ({ isOpen, onClose, onSaveAvatar }: AvatarEditDrawerPro
         setGeneralReferences(localGeneralRefs)
         setFaceRef(localFaceRef)
         setAngleRef(localAngleRef)
+        setBustRef(localBustRef)
+        setGlutesRef(localGlutesRef)
         setIdentityWeight(localIdentityWeight)
         setMeasurements(localMeasurements)
         setFaceDescription(localFaceDescription)
@@ -228,6 +248,8 @@ const AvatarEditDrawer = ({ isOpen, onClose, onSaveAvatar }: AvatarEditDrawerPro
         setGeneralReferences(localGeneralRefs)
         setFaceRef(localFaceRef)
         setAngleRef(localAngleRef)
+        setBustRef(localBustRef)
+        setGlutesRef(localGlutesRef)
         setIdentityWeight(localIdentityWeight)
         setMeasurements(localMeasurements)
         setFaceDescription(localFaceDescription)
@@ -624,8 +646,30 @@ const AvatarEditDrawer = ({ isOpen, onClose, onSaveAvatar }: AvatarEditDrawerPro
                                                     ['Glutes', 'glutesLevel', GLUTES_LEVEL_PHRASE],
                                                     ['Thighs', 'thighsLevel', THIGHS_LEVEL_PHRASE],
                                                 ] as const
-                                            ).map(([label, key, phrases]) => (
-                                                <div key={key}>
+                                            ).map(([label, key, phrases]) => {
+                                                // Ref de REGIÓN fijo por avatar junto a su slider
+                                                // (la IMAGEN ancla mejor que el texto del slider).
+                                                const regionRef =
+                                                    key === 'bustLevel'
+                                                        ? localBustRef
+                                                        : key === 'glutesLevel'
+                                                          ? localGlutesRef
+                                                          : null
+                                                const setRegionRef =
+                                                    key === 'bustLevel'
+                                                        ? setLocalBustRef
+                                                        : key === 'glutesLevel'
+                                                          ? setLocalGlutesRef
+                                                          : null
+                                                const regionInput =
+                                                    key === 'bustLevel'
+                                                        ? bustInputRef
+                                                        : key === 'glutesLevel'
+                                                          ? glutesInputRef
+                                                          : null
+                                                return (
+                                                <div key={key} className="flex items-start gap-2">
+                                                    <div className="flex-1 min-w-0">
                                                     <div className="flex items-center justify-between">
                                                         <span className="text-xs text-gray-500">{label}</span>
                                                         <span className="text-xs font-mono text-primary">
@@ -658,8 +702,53 @@ const AvatarEditDrawer = ({ isOpen, onClose, onSaveAvatar }: AvatarEditDrawerPro
                                                             auto ≥{effectiveThighsLevel(localMeasurements)}/5 para hacer match con Glutes {localMeasurements.glutesLevel}/5 (coherencia anatómica)
                                                         </p>
                                                     ) : null}
+                                                    </div>
+                                                    {setRegionRef && (
+                                                        <div className="shrink-0 pt-4">
+                                                            {regionRef ? (
+                                                                <div className="relative group">
+                                                                    <img
+                                                                        src={regionRef.thumbnailUrl || regionRef.url}
+                                                                        alt={`${label} ref`}
+                                                                        className="w-12 h-12 object-cover rounded-lg cursor-pointer"
+                                                                        onClick={() => regionInput?.current?.click()}
+                                                                    />
+                                                                    <button
+                                                                        onClick={() => setRegionRef(null)}
+                                                                        className="absolute -top-1 -right-1 p-0.5 bg-red-500 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
+                                                                    >
+                                                                        <HiOutlineX className="w-3 h-3" />
+                                                                    </button>
+                                                                </div>
+                                                            ) : (
+                                                                <Tooltip title={`${label} Ref — la imagen ancla la forma exacta (mejor que el slider); solo viaja a modelos permisivos`}>
+                                                                    <button
+                                                                        onClick={() => regionInput?.current?.click()}
+                                                                        className="w-12 h-12 rounded-lg border-2 border-dashed border-gray-300 dark:border-gray-600 hover:border-primary flex items-center justify-center text-gray-400 hover:text-primary transition-colors"
+                                                                    >
+                                                                        <HiOutlineUpload className="w-4 h-4" />
+                                                                    </button>
+                                                                </Tooltip>
+                                                            )}
+                                                        </div>
+                                                    )}
                                                 </div>
-                                            ))}
+                                                )
+                                            })}
+                                            <input
+                                                ref={bustInputRef}
+                                                type="file"
+                                                accept="image/*"
+                                                className="hidden"
+                                                onChange={(e) => handleFileChange(e, 'bust')}
+                                            />
+                                            <input
+                                                ref={glutesInputRef}
+                                                type="file"
+                                                accept="image/*"
+                                                className="hidden"
+                                                onChange={(e) => handleFileChange(e, 'glutes')}
+                                            />
                                         </div>
                                     </div>
 

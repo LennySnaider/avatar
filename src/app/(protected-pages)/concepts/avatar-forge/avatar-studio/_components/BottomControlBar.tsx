@@ -346,10 +346,6 @@ const BottomControlBar = ({
         setSceneImage,
         bodyRef,
         setBodyRef,
-        bustRef,
-        setBustRef,
-        glutesRef,
-        setGlutesRef,
         videoInputImage,
         setVideoInputImage,
         assetImages,
@@ -616,30 +612,6 @@ const BottomControlBar = ({
             mimeType,
             base64,
             type: 'body',
-        })
-    }
-
-    // Refs de REGIÓN (como Body Ref pero independientes) — persisten por
-    // avatar; solo viajan a modelos permisivos (gating en AvatarStudioMain).
-    const handleBustRefUpload = async (file: File) => {
-        const { base64, mimeType, url } = await processFileToBase64(file)
-        setBustRef({
-            id: crypto.randomUUID(),
-            url,
-            mimeType,
-            base64,
-            type: 'bust',
-        })
-    }
-
-    const handleGlutesRefUpload = async (file: File) => {
-        const { base64, mimeType, url } = await processFileToBase64(file)
-        setGlutesRef({
-            id: crypto.randomUUID(),
-            url,
-            mimeType,
-            base64,
-            type: 'glutes',
         })
     }
 
@@ -1128,66 +1100,6 @@ const BottomControlBar = ({
                                 />
                             )}
                             {bodyRef && <span className="text-[9px] text-gray-500">Body Ref</span>}
-                        </div>
-                    )}
-
-                    {/* Bust / Glutes Refs (IMAGE mode only) — región, solo permisivos */}
-                    {generationMode === 'IMAGE' && (
-                        <div className="flex flex-col items-center gap-0.5">
-                            {bustRef ? (
-                                <div className="relative group">
-                                    <img
-                                        src={bustRef.url}
-                                        alt="Bust"
-                                        className="w-11 h-11 object-cover rounded-lg"
-                                    />
-                                    <button
-                                        onClick={() => setBustRef(null)}
-                                        className="absolute -top-1 -right-1 p-0.5 bg-red-500 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
-                                    >
-                                        <HiOutlineX className="w-3 h-3" />
-                                    </button>
-                                </div>
-                            ) : (
-                                <ImageDropzone
-                                    image={null}
-                                    onUpload={handleBustRefUpload}
-                                    onRemove={() => {}}
-                                    label="Bust Ref"
-                                    icon={<HiOutlineUser className="w-4 h-4 text-rose-500" />}
-                                    dragOverClass="ring-rose-500"
-                                />
-                            )}
-                            {bustRef && <span className="text-[9px] text-gray-500">Bust Ref</span>}
-                        </div>
-                    )}
-                    {generationMode === 'IMAGE' && (
-                        <div className="flex flex-col items-center gap-0.5">
-                            {glutesRef ? (
-                                <div className="relative group">
-                                    <img
-                                        src={glutesRef.url}
-                                        alt="Glutes"
-                                        className="w-11 h-11 object-cover rounded-lg"
-                                    />
-                                    <button
-                                        onClick={() => setGlutesRef(null)}
-                                        className="absolute -top-1 -right-1 p-0.5 bg-red-500 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
-                                    >
-                                        <HiOutlineX className="w-3 h-3" />
-                                    </button>
-                                </div>
-                            ) : (
-                                <ImageDropzone
-                                    image={null}
-                                    onUpload={handleGlutesRefUpload}
-                                    onRemove={() => {}}
-                                    label="Glutes Ref"
-                                    icon={<HiOutlineUser className="w-4 h-4 text-fuchsia-500" />}
-                                    dragOverClass="ring-fuchsia-500"
-                                />
-                            )}
-                            {glutesRef && <span className="text-[9px] text-gray-500">Glutes Ref</span>}
                         </div>
                     )}
 

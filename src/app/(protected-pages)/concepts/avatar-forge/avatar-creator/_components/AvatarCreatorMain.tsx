@@ -52,6 +52,8 @@ const AvatarCreatorMain = ({ userId, existingAvatar }: AvatarCreatorMainProps) =
     const fileInputRef = useRef<HTMLInputElement>(null)
     const faceInputRef = useRef<HTMLInputElement>(null)
     const angleInputRef = useRef<HTMLInputElement>(null)
+    const bustInputRef = useRef<HTMLInputElement>(null)
+    const glutesInputRef = useRef<HTMLInputElement>(null)
     const [isGeneratingAngle, setIsGeneratingAngle] = useState(false)
     const [previewImage, setPreviewImage] = useState<ReferenceImage | null>(null)
     const [previewZoom, setPreviewZoom] = useState(1)
@@ -84,6 +86,8 @@ const AvatarCreatorMain = ({ userId, existingAvatar }: AvatarCreatorMainProps) =
         generalReferences,
         faceRef,
         angleRef,
+        bustRef,
+        glutesRef,
         identityWeight,
         measurements,
         faceDescription,
@@ -93,6 +97,8 @@ const AvatarCreatorMain = ({ userId, existingAvatar }: AvatarCreatorMainProps) =
         removeGeneralReference,
         setFaceRef,
         setAngleRef,
+        setBustRef,
+        setGlutesRef,
         setAvatarId,
         setAvatarName,
         setIdentityWeight,
@@ -114,7 +120,7 @@ const AvatarCreatorMain = ({ userId, existingAvatar }: AvatarCreatorMainProps) =
                 url: '', // Will be loaded from storage
                 mimeType: ref.mime_type,
                 base64: '',
-                type: ref.type as 'general' | 'face' | 'angle' | 'body',
+                type: ref.type as ReferenceImage['type'],
                 storagePath: ref.storage_path,
             }))
 
@@ -137,7 +143,7 @@ const AvatarCreatorMain = ({ userId, existingAvatar }: AvatarCreatorMainProps) =
     }, [existingAvatar, loadAvatar, reset])
 
     const processFile = useCallback(
-        (file: File, type: 'general' | 'face' | 'angle') => {
+        (file: File, type: 'general' | 'face' | 'angle' | 'bust' | 'glutes') => {
             if (!['image/jpeg', 'image/png', 'image/webp', 'image/heic'].includes(file.type)) {
                 toast.push(
                     <Notification type="warning" title="Invalid File">
@@ -170,17 +176,23 @@ const AvatarCreatorMain = ({ userId, existingAvatar }: AvatarCreatorMainProps) =
                         case 'angle':
                             setAngleRef(newImage)
                             break
+                        case 'bust':
+                            setBustRef(newImage)
+                            break
+                        case 'glutes':
+                            setGlutesRef(newImage)
+                            break
                     }
                 }
             }
             reader.readAsDataURL(file)
         },
-        [addGeneralReference, setFaceRef, setAngleRef]
+        [addGeneralReference, setFaceRef, setAngleRef, setBustRef, setGlutesRef]
     )
 
     const handleFileChange = (
         event: React.ChangeEvent<HTMLInputElement>,
-        type: 'general' | 'face' | 'angle'
+        type: 'general' | 'face' | 'angle' | 'bust' | 'glutes'
     ) => {
         const files = event.target.files
         if (!files) return
@@ -352,6 +364,8 @@ const AvatarCreatorMain = ({ userId, existingAvatar }: AvatarCreatorMainProps) =
                 ...generalReferences,
                 ...(faceRef ? [faceRef] : []),
                 ...(angleRef ? [angleRef] : []),
+                ...(bustRef ? [bustRef] : []),
+                ...(glutesRef ? [glutesRef] : []),
             ]
 
             for (const ref of allRefs) {
@@ -731,8 +745,28 @@ const AvatarCreatorMain = ({ userId, existingAvatar }: AvatarCreatorMainProps) =
                                                     ['Glutes', 'glutesLevel', GLUTES_LEVEL_PHRASE],
                                                     ['Thighs', 'thighsLevel', THIGHS_LEVEL_PHRASE],
                                                 ] as const
-                                            ).map(([label, key, phrases]) => (
-                                                <div key={key}>
+                                            ).map(([label, key, phrases]) => {
+                                                const regionRef =
+                                                    key === 'bustLevel'
+                                                        ? bustRef
+                                                        : key === 'glutesLevel'
+                                                          ? glutesRef
+                                                          : null
+                                                const setRegionRef =
+                                                    key === 'bustLevel'
+                                                        ? setBustRef
+                                                        : key === 'glutesLevel'
+                                                          ? setGlutesRef
+                                                          : null
+                                                const regionInput =
+                                                    key === 'bustLevel'
+                                                        ? bustInputRef
+                                                        : key === 'glutesLevel'
+                                                          ? glutesInputRef
+                                                          : null
+                                                return (
+                                                <div key={key} className="flex items-start gap-2">
+                                                    <div className="flex-1 min-w-0">
                                                     <div className="flex items-center justify-between">
                                                         <span className="text-xs text-gray-500">{label}</span>
                                                         <span className="text-xs font-mono text-primary">
@@ -765,8 +799,53 @@ const AvatarCreatorMain = ({ userId, existingAvatar }: AvatarCreatorMainProps) =
                                                             auto ≥{effectiveThighsLevel(measurements)}/5 para hacer match con Glutes {measurements.glutesLevel}/5 (coherencia anatómica)
                                                         </p>
                                                     ) : null}
+                                                    </div>
+                                                    {setRegionRef && (
+                                                        <div className="shrink-0 pt-4">
+                                                            {regionRef ? (
+                                                                <div className="relative group">
+                                                                    <img
+                                                                        src={regionRef.url || undefined}
+                                                                        alt={`${label} ref`}
+                                                                        className="w-12 h-12 object-cover rounded-lg cursor-pointer bg-gray-200 dark:bg-gray-700"
+                                                                        onClick={() => regionInput?.current?.click()}
+                                                                    />
+                                                                    <button
+                                                                        onClick={() => setRegionRef(null)}
+                                                                        className="absolute -top-1 -right-1 p-0.5 bg-red-500 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
+                                                                    >
+                                                                        <HiOutlineX className="w-3 h-3" />
+                                                                    </button>
+                                                                </div>
+                                                            ) : (
+                                                                <Tooltip title={`${label} Ref — la imagen ancla la forma exacta (mejor que el slider); solo viaja a modelos permisivos`}>
+                                                                    <button
+                                                                        onClick={() => regionInput?.current?.click()}
+                                                                        className="w-12 h-12 rounded-lg border-2 border-dashed border-gray-300 dark:border-gray-600 hover:border-primary flex items-center justify-center text-gray-400 hover:text-primary transition-colors"
+                                                                    >
+                                                                        <HiOutlineUpload className="w-4 h-4" />
+                                                                    </button>
+                                                                </Tooltip>
+                                                            )}
+                                                        </div>
+                                                    )}
                                                 </div>
-                                            ))}
+                                                )
+                                            })}
+                                            <input
+                                                ref={bustInputRef}
+                                                type="file"
+                                                accept="image/*"
+                                                className="hidden"
+                                                onChange={(e) => handleFileChange(e, 'bust')}
+                                            />
+                                            <input
+                                                ref={glutesInputRef}
+                                                type="file"
+                                                accept="image/*"
+                                                className="hidden"
+                                                onChange={(e) => handleFileChange(e, 'glutes')}
+                                            />
                                         </div>
                                     </div>
 
