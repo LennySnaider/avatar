@@ -1,11 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/auth'
 import { createServerSupabaseClient } from '@/lib/supabase'
+import { getOrgContextForUser } from '@/lib/tenant/getOrgContext'
 
 export async function DELETE(req: NextRequest) {
     const session = await auth()
     if (!session?.user?.id) {
         return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+
+    const ctx = await getOrgContextForUser(session.user.id)
+    if (!ctx) {
+        return NextResponse.json({ error: 'No organization membership' }, { status: 403 })
     }
 
     const { id } = await req.json()
@@ -17,7 +23,7 @@ export async function DELETE(req: NextRequest) {
         .from('cloned_voices')
         .delete()
         .eq('id', id)
-        .eq('user_id', session.user.id)
+        .eq('organization_id', ctx.organizationId)
 
     if (error) {
         return NextResponse.json({ error: error.message }, { status: 500 })

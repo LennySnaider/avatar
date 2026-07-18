@@ -4,6 +4,7 @@ import { createServerSupabaseClient } from '@/lib/supabase'
 import { textToSpeech } from '@/services/MiniMaxService'
 import { uploadBufferToGenerations } from '@/lib/mediaPersist'
 import type { VoiceTtsSettings } from '@/@types/voice'
+import { getOrgContextForUser } from '@/lib/tenant/getOrgContext'
 
 const PREVIEW_PHRASES: Record<string, { text: string; language: string }> = {
     es: { text: 'Hola, así suena mi voz clonada. ¿Qué te parece?', language: 'Spanish' },
@@ -24,6 +25,11 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
+    const ctx = await getOrgContextForUser(session.user.id)
+    if (!ctx) {
+        return NextResponse.json({ error: 'No organization membership' }, { status: 403 })
+    }
+
     const { voiceId, force } = await req.json()
     if (!voiceId) {
         return NextResponse.json({ error: 'voiceId is required' }, { status: 400 })
@@ -34,7 +40,7 @@ export async function POST(req: NextRequest) {
         .from('cloned_voices')
         .select('id, provider_voice_id, language, status, tts_settings, preview_audio_url')
         .eq('id', voiceId)
-        .eq('user_id', session.user.id)
+        .eq('organization_id', ctx.organizationId)
         .single()
 
     if (voiceError || !voice) {
@@ -65,7 +71,7 @@ export async function POST(req: NextRequest) {
             .from('cloned_voices')
             .update({ preview_audio_url: previewUrl })
             .eq('id', voice.id)
-            .eq('user_id', session.user.id)
+            .eq('organization_id', ctx.organizationId)
         if (updateError) {
             // El preview ya existe en Storage — devolverlo aunque no se cachee.
             console.error('[voice/preview] Failed to cache preview URL:', updateError.message)

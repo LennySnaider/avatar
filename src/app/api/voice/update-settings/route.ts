@@ -3,6 +3,7 @@ import { auth } from '@/auth'
 import { createServerSupabaseClient } from '@/lib/supabase'
 import type { VoiceTtsSettings } from '@/@types/voice'
 import type { Json } from '@/@types/supabase'
+import { getOrgContextForUser } from '@/lib/tenant/getOrgContext'
 
 const EMOTIONS = ['happy', 'sad', 'angry', 'fearful', 'disgusted', 'surprised', 'calm', 'neutral'] as const
 
@@ -11,6 +12,11 @@ export async function POST(req: NextRequest) {
     const session = await auth()
     if (!session?.user?.id) {
         return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+
+    const ctx = await getOrgContextForUser(session.user.id)
+    if (!ctx) {
+        return NextResponse.json({ error: 'No organization membership' }, { status: 403 })
     }
 
     const { voiceId, settings } = await req.json()
@@ -38,7 +44,7 @@ export async function POST(req: NextRequest) {
         .from('cloned_voices')
         .update({ tts_settings: clean as unknown as Json })
         .eq('id', voiceId)
-        .eq('user_id', session.user.id)
+        .eq('organization_id', ctx.organizationId)
         .select('id')
 
     if (error) {

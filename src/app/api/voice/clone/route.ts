@@ -2,11 +2,17 @@ import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/auth'
 import { createServerSupabaseClient } from '@/lib/supabase'
 import { uploadAudioForCloning, cloneVoice, generateVoiceId } from '@/services/MiniMaxService'
+import { getOrgContextForUser } from '@/lib/tenant/getOrgContext'
 
 export async function POST(req: NextRequest) {
     const session = await auth()
     if (!session?.user?.id) {
         return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+
+    const ctx = await getOrgContextForUser(session.user.id)
+    if (!ctx) {
+        return NextResponse.json({ error: 'No organization membership' }, { status: 403 })
     }
 
     const formData = await req.formData()
@@ -30,7 +36,7 @@ export async function POST(req: NextRequest) {
                 .from('avatars')
                 .select('id')
                 .eq('id', avatarId)
-                .eq('user_id', userId)
+                .eq('organization_id', ctx.organizationId)
                 .single()
 
             if (avatarLookupError || !ownedAvatar) {
@@ -66,6 +72,7 @@ export async function POST(req: NextRequest) {
             .from('cloned_voices')
             .insert({
                 user_id: userId,
+                organization_id: ctx.organizationId,
                 avatar_id: avatarId || null,
                 name,
                 provider: 'minimax',
@@ -86,7 +93,7 @@ export async function POST(req: NextRequest) {
                 .from('avatars')
                 .update({ default_voice_id: voice.id })
                 .eq('id', avatarId)
-                .eq('user_id', userId)
+                .eq('organization_id', ctx.organizationId)
                 .select('id')
             if (avatarError) {
                 console.error('[voice/clone] Failed to set default voice:', avatarError.message)

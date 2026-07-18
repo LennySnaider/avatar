@@ -1,12 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/auth'
 import { createServerSupabaseClient } from '@/lib/supabase'
+import { getOrgContextForUser } from '@/lib/tenant/getOrgContext'
 
 /** Marca una voz clonada como voz principal de su avatar vinculado. */
 export async function POST(req: NextRequest) {
     const session = await auth()
     if (!session?.user?.id) {
         return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+
+    const ctx = await getOrgContextForUser(session.user.id)
+    if (!ctx) {
+        return NextResponse.json({ error: 'No organization membership' }, { status: 403 })
     }
 
     const { voiceId } = await req.json()
@@ -19,7 +25,7 @@ export async function POST(req: NextRequest) {
         .from('cloned_voices')
         .select('id, avatar_id')
         .eq('id', voiceId)
-        .eq('user_id', session.user.id)
+        .eq('organization_id', ctx.organizationId)
         .single()
 
     if (voiceError || !voice) {
@@ -33,7 +39,7 @@ export async function POST(req: NextRequest) {
         .from('avatars')
         .update({ default_voice_id: voice.id })
         .eq('id', voice.avatar_id)
-        .eq('user_id', session.user.id)
+        .eq('organization_id', ctx.organizationId)
         .select('id')
 
     if (updateError) {

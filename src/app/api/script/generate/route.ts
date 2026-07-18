@@ -3,11 +3,17 @@ import { auth } from '@/auth'
 import { createServerSupabaseClient } from '@/lib/supabase'
 import { generateScript } from '@/services/ScriptService'
 import type { ScriptGenerateParams } from '@/@types/voice'
+import { getOrgContextForUser } from '@/lib/tenant/getOrgContext'
 
 export async function POST(req: NextRequest) {
     const session = await auth()
     if (!session?.user?.id) {
         return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+
+    const ctx = await getOrgContextForUser(session.user.id)
+    if (!ctx) {
+        return NextResponse.json({ error: 'No organization membership' }, { status: 403 })
     }
 
     const body: ScriptGenerateParams & { title?: string; save?: boolean } = await req.json()
@@ -37,6 +43,7 @@ export async function POST(req: NextRequest) {
                 .from('audio_scripts')
                 .insert({
                     user_id: session.user.id,
+                    organization_id: ctx.organizationId,
                     title: title || `${template} script`,
                     script_text: scriptText,
                     language,
