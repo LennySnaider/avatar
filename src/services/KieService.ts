@@ -519,9 +519,16 @@ export async function generateImageKie(
         // los caps (recortan por el final; Grok/Qwen ~1800 ni lo veían —
         // salían paradas ignorando la pose) o quedaba en la zona de menor
         // peso. Se reubica al INICIO como mandato ANTES de cualquier cap.
-        // Aplica a todo el flujo genérico: a los multi-ref (Seedream/Wan)
-        // además les llega la imagen de pose — texto al frente solo suma.
-        const poseTag = promptText.match(/\[POSE:\s*([^\]]+)\]/i)
+        // EXCEPTO la familia nano-banana-2: su cap es 19000 (el tag nunca
+        // muere) y su harness (buildAvatarPrompt) YA trae un bloque
+        // [POSE_REF] dedicado. Anteponer aquí un mandato de pose enorme hacía
+        // que el modelo chico (gemini-3.1-flash-lite) se aferrara a la IMAGEN
+        // del Pose Ref como fuente principal y arrastrara de ahí cara y cuerpo
+        // (reporte: antes de este prepend Lite SÍ conservaba la cara del
+        // avatar). El resto del flujo genérico (Seedream/Wan/Grok/Qwen/FLUX)
+        // sí lo necesita: a los multi-ref además les llega la imagen de pose.
+        const relocatePose = !model.startsWith('nano-banana-2')
+        const poseTag = relocatePose && promptText.match(/\[POSE:\s*([^\]]+)\]/i)
         if (poseTag) {
             promptText = `POSE (MANDATORY — her EXACT body position): ${poseTag[1].trim()}. ${promptText
                 .replace(/\[POSE:[^\]]*\]/gi, ' ')
