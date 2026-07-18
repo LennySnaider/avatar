@@ -824,6 +824,21 @@ export async function generateImageKie(
                     )
                     resolvedModel = 'qwen2/image-edit'
                     input.image_size = aspectRatio
+                    // DEEPFAKE en qwen: array [foto original (canvas), cara].
+                    // El primer slot es el canvas de edición; etiquetado
+                    // explícito anti-blend (sin él funde las imágenes).
+                    const qwenDeepfakeCanvas = deepfakeMode
+                        ? (referenceImages ?? []).find((r) => r.role === 'clone')
+                        : undefined
+                    if (qwenDeepfakeCanvas) {
+                        const canvasUrl = await uploadReferenceToSupabase(
+                            qwenDeepfakeCanvas.base64,
+                            qwenDeepfakeCanvas.mimeType,
+                        )
+                        input.image_url = [canvasUrl, refUrl]
+                        input.prompt = `REMOVE any overlaid stickers, watermarks, emojis or UI graphics pasted on the photo — the output must be a clean photograph. The FIRST image is the ORIGINAL photo — reproduce it EXACTLY: same body, build, outfit, pose, hands, framing, lighting, background and setting; do NOT blend the two images. The SECOND image shows the person whose FACE to use. The FACE SWAP is MANDATORY: replace the face in the first image with the face from the second image (exact features, freckles, likeness) — never keep the original face. Do NOT alter or remove any clothing. ${input.prompt}`
+                        console.log('[KIE] qwen2/image-edit DEEPFAKE (canvas + face)')
+                    } else {
                     const qwenAssets = (referenceImages ?? [])
                         .filter((r) => r.role === 'asset')
                         .slice(0, 2)
@@ -846,6 +861,7 @@ export async function generateImageKie(
                     } else {
                         input.image_url = refUrl
                         input.prompt = `Keep the EXACT face and likeness of the person in the reference image.${faceFidelityClause}${hairClause} Her eyes keep their exact natural color and iris texture from the reference photo — do NOT recolor, brighten or saturate them. ${input.prompt}`
+                    }
                     }
                 }
             } catch (e) {

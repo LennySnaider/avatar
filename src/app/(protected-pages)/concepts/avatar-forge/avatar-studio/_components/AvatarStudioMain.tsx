@@ -842,7 +842,10 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
             return
         }
         const fullPrompt = getFullPrompt()
-        if (!fullPrompt.trim()) {
+        // Deepfake: la foto es la instrucción; el prompt de texto es opcional.
+        const deepfakeWaiving =
+            generationMode === 'IMAGE' && Boolean(deepfakeImage?.base64)
+        if (!fullPrompt.trim() && !deepfakeWaiving) {
             toast.push(
                 <Notification type="warning" title="Missing Prompt">
                     Please enter a prompt
@@ -852,6 +855,28 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
         }
 
         const activeProvider = getActiveProvider()
+
+        // Deepfake requiere un modelo KIE multi-imagen con ancla calibrada —
+        // aviso ANTES de generar (con Gemini/Kling/MiniMax no viaja la foto).
+        if (generationMode === 'IMAGE' && deepfakeImage?.base64) {
+            const m = activeProvider?.model || ''
+            const dfCapable =
+                m.startsWith('seedream/') ||
+                m === 'wan/2-7-image' ||
+                m.startsWith('flux-2/') ||
+                m.startsWith('qwen') ||
+                m === 'nano-banana-pro' ||
+                m.startsWith('nano-banana-2') ||
+                m === 'gpt-image-2-text-to-image'
+            if (!dfCapable) {
+                toast.push(
+                    <Notification type="warning" title="Deepfake">
+                        {`${activeProvider?.name ?? 'Este modelo'} no soporta Deepfake. Usa Seedream, Wan, FLUX.2, Qwen, Nano Banana o GPT Image 2.`}
+                    </Notification>,
+                )
+                return
+            }
+        }
 
         setIsGenerating(true)
         setAppState(AppState.GENERATING)
@@ -1106,7 +1131,11 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                     const deepfakeCapable =
                         kieModel.startsWith('seedream/') ||
                         kieModel === 'wan/2-7-image' ||
-                        kieModel.startsWith('flux-2/')
+                        kieModel.startsWith('flux-2/') ||
+                        kieModel.startsWith('qwen') ||
+                        kieModel === 'nano-banana-pro' ||
+                        kieModel.startsWith('nano-banana-2') ||
+                        kieModel === 'gpt-image-2-text-to-image'
                     const deepfakeActive = Boolean(
                         optimizedDeepfakeRef &&
                             deepfakeCapable &&
@@ -1120,6 +1149,15 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                         kiePrompt =
                             prompt.trim() ||
                             'photorealistic, natural skin texture, realistic lighting, seamless face integration'
+                        // Los nanos NO pasan por planExtraRefs (su branch envía
+                        // los refs tal cual) → la instrucción de swap viaja en
+                        // el propio prompt.
+                        if (
+                            kieModel === 'nano-banana-pro' ||
+                            kieModel.startsWith('nano-banana-2')
+                        ) {
+                            kiePrompt = `The FIRST image is the person whose FACE to use. The LAST image is the ORIGINAL photo to reproduce EXACTLY — same body, build, outfit, pose, hands, framing, lighting, background and setting, everything unchanged. The FACE SWAP is MANDATORY: replace the face in the last image with the face from the first image (exact features, freckles, likeness) — never keep the original face. Do NOT alter or remove any clothing. REMOVE any overlaid stickers, watermarks, emojis or UI graphics pasted on the photo — output a clean photograph. ${kiePrompt}`
+                        }
                     } else if (optimizedDeepfakeRef && !deepfakeCapable) {
                         toast.push(
                             <Notification type="info" title="Deepfake">
@@ -1143,6 +1181,7 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                     // planExtraRefs con guard de maniquí (KieService) — antes solo
                     // recibían el texto [CLONE:] y re-imaginaban el outfit.
                     if (
+                        !deepfakeActive &&
                         (kieModel === 'nano-banana-pro' ||
                             kieModel.startsWith('nano-banana-2') ||
                             kieModel.startsWith('seedream/') ||
@@ -1171,8 +1210,9 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                         // diffusion preamble left the face unanchored — the
                         // output wasn't the avatar).
                         if (
-                            kieModel === 'nano-banana-pro' ||
-                            kieModel.startsWith('nano-banana-2')
+                            (kieModel === 'nano-banana-pro' ||
+                                kieModel.startsWith('nano-banana-2')) &&
+                            !deepfakeActive
                         ) {
                             const { systemPreamble, finalPrompt } =
                                 buildAvatarPrompt({
@@ -1186,6 +1226,27 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                                     refRoles,
                                 })
                             kiePrompt = `${systemPreamble}\n\n${finalPrompt}`
+                        } else if (
+                            kieModel === 'gpt-image-2-text-to-image' &&
+                            deepfakeActive &&
+                            optimizedDeepfakeRef
+                        ) {
+                            // Deepfake = exactamente su flujo face-swap probado:
+                            // canvas (la foto) + cara, prompt lean.
+                            const faceOnly = kieReferenceImages.filter(
+                                (r) => r.role === 'face',
+                            )
+                            kieRefsToSend = [
+                                { ...optimizedDeepfakeRef, role: 'scene' as const },
+                                ...(faceOnly.length > 0
+                                    ? faceOnly
+                                    : [kieReferenceImages[0]]),
+                            ]
+                            kiePrompt = buildLeanIdentityPrompt(
+                                stripHarnessForFaceSwap(kiePrompt),
+                                ['scene', 'face'],
+                                true,
+                            )
                         } else if (kieModel === 'gpt-image-2-text-to-image') {
                             // Face-swap EDIT, mirroring how ChatGPT processes it:
                             // Clone/original FIRST (the canvas to recreate exactly)

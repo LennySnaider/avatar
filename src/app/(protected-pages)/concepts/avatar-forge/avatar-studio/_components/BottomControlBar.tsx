@@ -674,6 +674,8 @@ const BottomControlBar = ({
         if (generationMode === 'VIDEO' && videoSubMode === 'SPEAK') {
             return !!videoDialogue.trim() || !!speakAudioUrl
         }
+        // Deepfake: la foto ES la instrucción — no requiere prompt de texto.
+        if (generationMode === 'IMAGE' && deepfakeImage) return true
         if (!prompt.trim()) return false
         if (generationMode === 'VIDEO' && videoSubMode === 'ANIMATE' && !videoInputImage) {
             return false
