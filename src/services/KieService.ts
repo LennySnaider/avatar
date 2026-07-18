@@ -555,10 +555,11 @@ export async function generateImageKie(
         }
         if (model.startsWith('seedream/')) {
             input.aspect_ratio = aspectRatio
-            // Lite en 'basic' degrada la CARA (reporte usuario: rasgos algo
-            // deformados vs Pro con las mismas refs). Medido live: en 5-lite
-            // 'high' cuesta LO MISMO (5.5cr) → gratis; en 5-pro 'high' cuesta
-            // el DOBLE (14cr vs 7cr) y su cara ya va bien en basic → se queda.
+            // Lite en 'high': mismo precio que basic (5.5cr) y mejor cara.
+            // PROBADO 2026-07-18: bajar a 'basic' NO aceleró nada (la lentitud
+            // de ese día era la COLA de KIE — tarea Wan 10+ min en "waiting",
+            // 0 créditos) y sí bajó la calidad → 'high' se queda. En 5-pro
+            // 'high' cuesta el DOBLE (14cr vs 7cr) → basic.
             input.quality = model.startsWith('seedream/5-lite') ? 'high' : 'basic'
             input.nsfw_checker = false
         } else if (model.startsWith('flux-2/')) {
