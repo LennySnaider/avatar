@@ -147,8 +147,16 @@ async function pollKieImageTask(
         if (!failMsg) {
             throw new Error('KIE tardó demasiado (>18 min). Intenta de nuevo.')
         }
-        if (!/internal error/i.test(failMsg) || attempt === 2) {
+        if (!/internal error/i.test(failMsg)) {
             throw new Error(failMsg)
+        }
+        if (attempt === 2) {
+            // 2 tasks seguidas con "internal error" = el MODELO está caído en
+            // KIE (verificado con Qwen: hasta el t2i trivial falla igual), no
+            // el prompt del usuario. Mensaje claro + sin pánico por créditos.
+            throw new Error(
+                'El modelo parece estar CAÍDO en KIE (2 intentos con "internal error"). No es tu prompt — prueba otro provider o reintenta más tarde. Las tareas fallidas NO cobran créditos.',
+            )
         }
         console.warn('[KIE] Task failed with transient internal error — resubmitting once')
     }
