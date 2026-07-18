@@ -675,7 +675,7 @@ FOCUS ON:
 - Lighting and atmosphere
 - Artistic style and color palette
 - Composition and framing
-- Hair STYLE (not color) - describe length, texture, styling
+- Hair STYLE SHAPE only (updo, bun, braid, ponytail, loose, half-up, side-swept) - the ARRANGEMENT, never the texture
 
 DO NOT DESCRIBE (CRITICAL - THESE ARE PROVIDED BY AVATAR SETTINGS):
 - Body pose or position (standing, sitting, arm positions, etc.)
@@ -683,6 +683,7 @@ DO NOT DESCRIBE (CRITICAL - THESE ARE PROVIDED BY AVATAR SETTINGS):
 - Gestures or movements
 - SKIN TONE / SKIN COLOR / COMPLEXION - do not mention fair, tan, dark, pale, olive, etc.
 - HAIR COLOR - do not mention blonde, brunette, black, red, brown, etc.
+- HAIR TEXTURE - never say straight, sleek, smooth, silky, wavy, curly, coily, frizzy, etc. The avatar has its OWN hair texture; describing the source model's texture overwrites it downstream. "Hair pulled into a high bun" is correct; "sleek straight hair in a bun" is wrong.
 - Face shape or facial features
 - Body type, measurements, or proportions
 - Age or ethnicity

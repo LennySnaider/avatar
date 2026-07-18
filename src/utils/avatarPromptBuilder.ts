@@ -438,6 +438,17 @@ ${eyebrowRule}
   the description. Do NOT keep the reference hair color.
 → Change ONLY the hair COLOR. Keep the exact face identity, bone structure,
   hairstyle, length and texture from the references.` : ''
+    // Guard de TEXTURA de pelo (siempre activo): los modelos obedece-
+    // instrucciones (Gemini/nano) pintan literal el peinado que venga en el
+    // texto de escena ("sleek bun" del img-to-prompt describiendo a OTRA
+    // modelo) y aplastan los rizos del face ref (reporte: Evelyn coily salió
+    // lacia en nano/Flash Lite con identityWeight 100). La textura es
+    // identidad: viene de la FOTO; el texto solo puede aportar la FORMA.
+    const hairTextureGuard = `
+→ HAIR TEXTURE: her natural hair texture from [FACE_ANCHOR] ALWAYS WINS. If the
+  scene text describes a hairstyle (bun, braid, updo, ponytail) adapt that SHAPE
+  to HER texture; if it mentions a different texture (sleek, straight, smooth,
+  silky), IGNORE the texture words — never straighten or re-texture her hair.`
     const selectedBodyType = (measurements.bodyType || 'average').toUpperCase()
     const heightLabel = (measurements.height || 165) < 160 ? 'PETITE/SHORT' : (measurements.height || 165) < 170 ? 'AVERAGE HEIGHT' : 'TALL'
 
@@ -544,6 +555,7 @@ ${hasClone ? '- Pose, outfit, held objects, framing and scene match [CLONE_REF] 
 ${hairColorSpecDesc ? `- Hair color is ${hairColorSpecDesc} (RECOLORED from the reference, NOT the reference's color)` : ''}
 ${hasBody ? '' : bodyProportionsOverride}
 ${hairColorOverride}
+${hairTextureGuard}
 ${eyeColorOverride}`
 
     return { systemPreamble, finalPrompt }
