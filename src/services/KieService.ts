@@ -515,6 +515,19 @@ export async function generateImageKie(
         // anchor below adds ~430 chars AFTER this cap, so 2400 + anchor ≈ 2830
         // stays under the limit while letting more body-spec text survive.
         const promptCap = model.startsWith('nano-banana-2') ? 19000 : model === 'z-image' ? 1500 : model.startsWith('seedream/') ? 2400 : 1800
+        // El [POSE: ...] que el Studio appendea al FINAL del prompt moría en
+        // los caps (recortan por el final; Grok/Qwen ~1800 ni lo veían —
+        // salían paradas ignorando la pose) o quedaba en la zona de menor
+        // peso. Se reubica al INICIO como mandato ANTES de cualquier cap.
+        // Aplica a todo el flujo genérico: a los multi-ref (Seedream/Wan)
+        // además les llega la imagen de pose — texto al frente solo suma.
+        const poseTag = promptText.match(/\[POSE:\s*([^\]]+)\]/i)
+        if (poseTag) {
+            promptText = `POSE (MANDATORY — her EXACT body position): ${poseTag[1].trim()}. ${promptText
+                .replace(/\[POSE:[^\]]*\]/gi, ' ')
+                .replace(/\s{2,}/g, ' ')
+                .trim()}`
+        }
         // Seedream/Wan i2i: la redundancia de identidad (preámbulo +
         // [BODY:]/[FACE:]) se quita ANTES del cap genérico — si se hiciera en
         // el branch, este cap ya habría comido la cola de la ESCENA (outfit/

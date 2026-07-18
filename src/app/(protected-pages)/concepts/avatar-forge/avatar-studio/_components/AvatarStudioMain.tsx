@@ -371,7 +371,6 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
         assetImages,
         sceneImage,
         poseImage,
-        poseDescription,
         cloneImage,
         deepfakeImage,
         placeImage,
@@ -1320,21 +1319,10 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                         }
                     }
 
-                    // POSE como TEXTO para los modelos que NO pueden recibir
-                    // la imagen de pose: Grok (su API acepta 1 sola imagen =
-                    // la cara) y Qwen (solo cara+assets; otros roles los funde
-                    // en collage). poseDescription ya se analizaba al subir el
-                    // Pose Ref pero solo era tooltip — nunca viajaba. Va al
-                    // INICIO del prompt: sus caps (~1800) cortan por el final.
-                    if (
-                        !deepfakeActive &&
-                        poseImage &&
-                        poseDescription.trim() &&
-                        (kieModel.startsWith('qwen') ||
-                            kieModel === 'grok-imagine/image-to-image')
-                    ) {
-                        kiePrompt = `POSE (MANDATORY — place her in this EXACT body position): ${poseDescription.trim()}. ${kiePrompt}`
-                    }
+                    // NOTA pose: el [POSE:] que BottomControlBar appendea al
+                    // final del prompt se reubica al INICIO en KieService
+                    // (antes del cap genérico) — ahí cubre también prompts
+                    // guardados y el path de edición, sin duplicarse aquí.
 
                     // Sliders de curvas (busto/glúteos/muslos 1-5): SOLO para
                     // providers con trait `permissive` — si el modelo no lo
@@ -2111,7 +2099,6 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
         bodyRef,
         angleRef,
         poseImage,
-        poseDescription,
         cloneImage,
         deepfakeImage,
         placeImage,
