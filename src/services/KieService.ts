@@ -751,21 +751,44 @@ export async function generateImageKie(
                     input.prompt = `The person in the FIRST attached image is the subject — keep her EXACT face, facial features and likeness from that image.${faceFidelityClause}${fluxBodyClause}${hairClause}${eyeClause}${fluxClauses} Follow the SCENE, POSE and ACTION described below EXACTLY. ${input.prompt}`
                     console.log(`[KIE] FLUX.2 i2i with ${urls.length} ref(s) (roles: face${fluxExtras.length > 0 ? ', ' + fluxExtras.map((r) => r.role).join(', ') : ''})`)
                 } else {
-                    // qwen2/image-edit: single image_url (face). image_size
-                    // (ratio) es OBLIGATORIO — sin él KIE devuelve "generate
-                    // failed" en 1s (verificado live probando variantes).
+                    // qwen2/image-edit. image_size (ratio) es OBLIGATORIO —
+                    // sin él KIE devuelve "generate failed" en 1s. `image_url`
+                    // acepta ARRAY (verificado live): cara + Assets. OJO: sin
+                    // etiquetado anti-blend explícito mezcla las imágenes como
+                    // collage/velo fantasma — el "it is ARTWORK, do NOT blend"
+                    // es lo que hace que imprima el logo en la ropa. Otros
+                    // roles (body/pose/scene) NO se envían: los funde en la
+                    // escena. SIN eyeClause: editor literal — los ojos ya
+                    // vienen correctos en la foto y la orden los sobre-pintaba.
                     const refUrl = await uploadReferenceToSupabase(
                         referenceImage.base64,
                         referenceImage.mimeType,
                     )
                     resolvedModel = 'qwen2/image-edit'
-                    input.image_url = refUrl
                     input.image_size = aspectRatio
-                    // Single-input: keep-face + fidelidad + pelo. SIN eyeClause:
-                    // qwen2/image-edit es un EDITOR literal — los ojos ya vienen
-                    // correctos en la foto y "eyes MUST be green" los pintaba
-                    // verde saturado tipo pupilentes (reporte del usuario).
-                    input.prompt = `Keep the EXACT face and likeness of the person in the reference image.${faceFidelityClause}${hairClause} ${input.prompt}`
+                    const qwenAssets = (referenceImages ?? [])
+                        .filter((r) => r.role === 'asset')
+                        .slice(0, 2)
+                    if (qwenAssets.length > 0) {
+                        const qwenUrls: string[] = [refUrl]
+                        for (const a of qwenAssets) {
+                            qwenUrls.push(
+                                await uploadReferenceToSupabase(a.base64, a.mimeType),
+                            )
+                        }
+                        input.image_url = qwenUrls
+                        const assetLines = qwenAssets
+                            .map(
+                                (_, i) =>
+                                    `Image ${i + 2} is a LOGO/BRAND GRAPHIC — it is ARTWORK, not a scene element: print this EXACT design on her clothing wherever the outfit shows a logo or graphic, reproducing its shapes and colors faithfully. Do NOT blend or overlay it onto the scene, and never write placeholder text such as "LOGO".`,
+                            )
+                            .join(' ')
+                        input.prompt = `The FIRST image is the person — keep her EXACT face and likeness.${faceFidelityClause}${hairClause} ${assetLines} ${input.prompt}`
+                        console.log(`[KIE] qwen2/image-edit with ${qwenUrls.length} imgs (face + ${qwenAssets.length} asset)`)
+                    } else {
+                        input.image_url = refUrl
+                        input.prompt = `Keep the EXACT face and likeness of the person in the reference image.${faceFidelityClause}${hairClause} ${input.prompt}`
+                    }
                 }
             } catch (e) {
                 console.warn('[KIE] ref upload failed, staying text-only:', e)
