@@ -301,6 +301,14 @@ export interface GenerateImageKieParams {
     // modelos imagen-pesados siguen el pelo del ref/escena. En el ancla
     // temprana funciona como override (igual que el HAIR OVERRIDE de Gemini).
     hairEmphasis?: string
+    // Color de ojos (getEyeColorDescription) — mismo patrón override que el
+    // pelo, para el harness condensado de los difusores genéricos.
+    eyeEmphasis?: string
+    // Slider de identidad del avatar (0-100). Escala la cláusula de fidelidad
+    // facial del ancla i2i — port condensado de las identity instructions de
+    // Gemini (deepfake >85 / high >50 / flexible ≤50). El harness COMPLETO de
+    // Gemini NO se porta: revienta los caps de prompt y ya rompió Wan 2.2.
+    identityWeight?: number
 }
 
 type KieRefWithRole = { base64: string; mimeType: string; role?: string }
@@ -350,7 +358,7 @@ function planExtraRefs(
                 break
             case 'place':
                 parts.push(
-                    `Image ${n} shows the LOCATION — place her inside THIS exact environment, keeping its architecture, furniture, background and lighting.`,
+                    `Image ${n} shows the LOCATION — place her inside THIS exact environment, keeping its architecture, furniture, background and lighting; IGNORE any person appearing in it.`,
                 )
                 break
             case 'clone':
@@ -384,12 +392,24 @@ export async function generateImageKie(
     | { success: true; url: string; fullApiPrompt: string }
     | { success: false; error: string }
 > {
-    const { model, aspectRatio = '1:1', referenceImage, referenceImages, bodyEmphasis, hairEmphasis } = params
+    const { model, aspectRatio = '1:1', referenceImage, referenceImages, bodyEmphasis, hairEmphasis, eyeEmphasis, identityWeight } = params
     // Override de pelo compartido por los anclas i2i (seedream/wan): recolorea
     // aunque el ref o la escena sugieran otro tono.
     const hairClause = hairEmphasis
         ? ` Her hair MUST be ${hairEmphasis} — if the hair in the reference photo or the scene suggests a different color, RECOLOR it to this exact color.`
         : ''
+    const eyeClause = eyeEmphasis ? ` Her eyes MUST be ${eyeEmphasis}.` : ''
+    // Fidelidad facial escalada por el slider de identidad (port condensado de
+    // las identity instructions de Gemini). ≤50 = flexible: solo el keep-face
+    // base de cada ancla.
+    const faceFidelityClause =
+        identityWeight === undefined
+            ? ''
+            : identityWeight > 85
+              ? ' FACE FIDELITY (critical): her face must match the reference image EXACTLY — same bone structure, nose shape, eye shape and spacing, lip shape, jawline and any freckles or moles; do NOT beautify, slim, rejuvenate or genericize the face.'
+              : identityWeight > 50
+                ? ' Keep her face strongly consistent with the reference — same key facial features, no drift.'
+                : ''
 
     // Route to the right adapter with a given (already-sanitized) prompt.
     const runWithPrompt = async (promptText: string): Promise<{ url: string; fullApiPrompt: string }> => {
@@ -529,10 +549,10 @@ export async function generateImageKie(
                         cropped.mimeType,
                     )
                     input.image_urls = [refUrl]
-                    // Single-input: lo único portable del kit Gemini es el
-                    // override de pelo (paridad con seedream/wan).
-                    if (hairClause) {
-                        input.prompt = `Keep the EXACT face and likeness of the person in the reference image.${hairClause} ${input.prompt}`
+                    // Single-input: paridad mínima — keep-face + fidelidad +
+                    // overrides de pelo/ojos.
+                    if (hairClause || eyeClause || faceFidelityClause) {
+                        input.prompt = `Keep the EXACT face and likeness of the person in the reference image.${faceFidelityClause}${hairClause}${eyeClause} ${input.prompt}`
                     }
                     console.log(`[KIE] Grok i2i with 1 identity ref (AR-cropped)${hairClause ? ' + hair override' : ''}`)
                 } else if (model.startsWith('seedream/')) {
@@ -583,7 +603,7 @@ export async function generateImageKie(
                                       ? ` Her real body is: ${bodyEmphasis}. Render THAT body, visibly fuller and curvier than the reference photo suggests.`
                                       : ' Her body proportions MUST follow the text description below exactly (bust, waist, hips and thighs as written).'
                               }`
-                    input.prompt = `The person in the FIRST attached reference image is the subject — keep her EXACT face, facial features and likeness from that image. ${bodyClause}${hairClause}${extraClauses} ${input.prompt}`
+                    input.prompt = `The person in the FIRST attached reference image is the subject — keep her EXACT face, facial features and likeness from that image.${faceFidelityClause} ${bodyClause}${hairClause}${eyeClause}${extraClauses} ${input.prompt}`
                     console.log(`[KIE] Seedream i2i (${resolvedModel}) with ${urls.length} ref(s) (roles: face${extras.length > 0 ? ', ' + extras.map((r) => r.role).join(', ') : ''}${hairClause ? ' + hair override' : ''})`)
                 } else if (model.startsWith('nano-banana-2')) {
                     // nano-banana-2 / -lite take image_input[] (URL array, up to
@@ -652,7 +672,7 @@ export async function generateImageKie(
                             : bodyEmphasis
                               ? ` Use the reference image ONLY for the face and identity — do NOT copy the body proportions from it: the person in the photo looks SLIMMER than the character really is. Her real body is: ${bodyEmphasis}. Her hips, glutes and thighs must be visibly FULLER and WIDER than in the reference photo — the narrow waist makes the hip curve obvious. Keep the bust true to the spec: do NOT inflate the chest or add overall body mass beyond it.`
                               : ''
-                    input.prompt = `The person in the FIRST attached reference image is the subject — keep her EXACT face, facial features and likeness from that image.${wanBodyClause}${hairClause}${wanExtraClauses} ${input.prompt}`
+                    input.prompt = `The person in the FIRST attached reference image is the subject — keep her EXACT face, facial features and likeness from that image.${faceFidelityClause}${wanBodyClause}${hairClause}${eyeClause}${wanExtraClauses} ${input.prompt}`
                     console.log(`[KIE] Wan 2.7 Image with ${wanUrls.length} ref(s) via input_urls (roles: face${wanExtras.length > 0 ? ', ' + wanExtras.map((r) => r.role).join(', ') : ''}${wanBodyClause && !wanHasBody ? ' + body-text anchor' : ''}${hairClause ? ' + hair override' : ''})`)
                 } else if (model.startsWith('flux-2/')) {
                     // FLUX.2 takes up to 8 refs → send the face (identity anchor) +
@@ -681,7 +701,7 @@ export async function generateImageKie(
                     const fluxBodyClause = fluxHasBody
                         ? ' The SECOND attached image shows her real BODY — replicate its exact body shape, proportions, curves and build; do NOT take the body from the first image.'
                         : ''
-                    input.prompt = `The person in the FIRST attached image is the subject — keep her EXACT face, facial features and likeness from that image.${fluxBodyClause}${hairClause}${fluxClauses} ${input.prompt}`
+                    input.prompt = `The person in the FIRST attached image is the subject — keep her EXACT face, facial features and likeness from that image.${faceFidelityClause}${fluxBodyClause}${hairClause}${eyeClause}${fluxClauses} ${input.prompt}`
                     console.log(`[KIE] FLUX.2 i2i with ${urls.length} ref(s) (roles: face${fluxExtras.length > 0 ? ', ' + fluxExtras.map((r) => r.role).join(', ') : ''})`)
                 } else {
                     // qwen/image-to-image: single image_url (face); size from the ref.
@@ -692,8 +712,9 @@ export async function generateImageKie(
                     resolvedModel = model.replace('text-to-image', 'image-to-image')
                     input.image_url = refUrl
                     delete input.image_size
-                    // Single-input: paridad mínima — keep-face + override de pelo.
-                    input.prompt = `Keep the EXACT face and likeness of the person in the reference image.${hairClause} ${input.prompt}`
+                    // Single-input: paridad mínima — keep-face + fidelidad +
+                    // overrides de pelo/ojos.
+                    input.prompt = `Keep the EXACT face and likeness of the person in the reference image.${faceFidelityClause}${hairClause}${eyeClause} ${input.prompt}`
                 }
             } catch (e) {
                 console.warn('[KIE] ref upload failed, staying text-only:', e)

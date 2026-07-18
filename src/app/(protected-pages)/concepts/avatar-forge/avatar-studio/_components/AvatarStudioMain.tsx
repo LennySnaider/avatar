@@ -85,7 +85,7 @@ import {
     stripHarnessForFaceSwap,
     type RefRole,
 } from '@/utils/avatarPromptBuilder'
-import { describeBody, getHairColorDescription, buildCurvesEmphasis } from '@/utils/bodyDescriptors'
+import { describeBody, getHairColorDescription, getEyeColorDescription, buildCurvesEmphasis } from '@/utils/bodyDescriptors'
 import { readDefaultProviderId } from '../../_shared/providerPrefs'
 import { PROVIDER_TRAITS } from '../../_shared/providerCatalog'
 import { createPortal } from 'react-dom'
@@ -1175,6 +1175,13 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                                 getHairColorDescription(
                                     measurements?.hairColor,
                                 ) || undefined,
+                            eyeEmphasis:
+                                getEyeColorDescription(
+                                    measurements?.eyeColor,
+                                ) || undefined,
+                            // Escala la cláusula de fidelidad facial del
+                            // ancla (port condensado del identity harness).
+                            identityWeight,
                         })
                         resultUrl = polled.url
                         apiPrompt = polled.fullApiPrompt
@@ -1220,6 +1227,7 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                         bodyRefImage: optimizedPayload.bodyRef,
                         angleRefImage: optimizedAngleRef,
                         poseRefImage: optimizedPoseRef,
+                        placeRefImage: optimizedPlaceRef,
                         aspectRatio,
                         cameraShot,
                         cameraAngle,

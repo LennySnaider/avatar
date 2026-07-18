@@ -1191,6 +1191,9 @@ export async function generateAvatar(params: {
     bodyRefImage: ImageData | null
     angleRefImage: ImageData | null
     poseRefImage: ImageData | null
+    // Place Ref IMAGE (opcional) — antes solo viajaba su texto [PLACE:];
+    // la foto del lugar ahora ancla el entorno exacto.
+    placeRefImage?: ImageData | null
     aspectRatio: AspectRatio
     cameraShot?: CameraShot // Framing (close-up, medium, full, etc.)
     cameraAngle?: CameraShot | null // Angle (low, high, dutch, etc.)
@@ -1213,6 +1216,7 @@ export async function generateAvatar(params: {
         bodyRefImage,
         angleRefImage,
         poseRefImage,
+        placeRefImage = null,
         aspectRatio,
         cameraShot = 'AUTO',
         cameraAngle = null,
@@ -1658,10 +1662,14 @@ ${hairColorSpecDesc ? `- EXACT HAIR COLOR: ${hairColorSpecDesc}` : ''}
         await appendImage(sceneReference, styleDirectives, styleLabel)
     }
 
+    if (placeRefImage) {
+        await appendImage(placeRefImage, 'LOCATION reference - place the subject inside THIS exact environment. Keep its architecture, furniture, background and lighting faithfully. IGNORE any person in it; the subject comes from [FACE_ANCHOR].', 'PLACE_REF')
+    }
+
     // Add remaining references (max 5 total)
     const remainingSlots = 5 - refIndex + 1
     for (const img of assetReferences.slice(0, remainingSlots)) {
-        await appendImage(img, 'Item to include', 'ASSET')
+        await appendImage(img, 'BRAND ASSET (logo/graphic/product) - print this EXACT design on the outfit/props wherever a logo or graphic appears; reproduce its shapes, colors and lettering faithfully. Never write placeholder text such as "LOGO".', 'ASSET')
     }
 
     // Build enhanced prompt with body description injected directly
