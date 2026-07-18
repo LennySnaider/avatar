@@ -613,6 +613,55 @@ const AvatarEditDrawer = ({ isOpen, onClose, onSaveAvatar }: AvatarEditDrawerPro
                                         </div>
                                     </div>
 
+                                    {/* Measurements */}
+                                    <div className="flex gap-2 flex-wrap">
+                                        <div className="w-20">
+                                            <label className="text-xs text-gray-500">Age</label>
+                                            <Input
+                                                size="sm"
+                                                type="number"
+                                                value={localMeasurements.age}
+                                                onChange={(e) => setLocalMeasurements({ ...localMeasurements, age: parseInt(e.target.value) || 25 })}
+                                            />
+                                        </div>
+                                        <div className="w-20">
+                                            <label className="text-xs text-gray-500">Height</label>
+                                            <Input
+                                                size="sm"
+                                                type="number"
+                                                value={localMeasurements.height}
+                                                onChange={(e) => setLocalMeasurements({ ...localMeasurements, height: parseInt(e.target.value) || 165 })}
+                                            />
+                                        </div>
+                                        <div className="w-20">
+                                            <label className="text-xs text-gray-500">Bust</label>
+                                            <Input
+                                                size="sm"
+                                                type="number"
+                                                value={localMeasurements.bust}
+                                                onChange={(e) => setLocalMeasurements({ ...localMeasurements, bust: parseInt(e.target.value) || 90 })}
+                                            />
+                                        </div>
+                                        <div className="w-20">
+                                            <label className="text-xs text-gray-500">Waist</label>
+                                            <Input
+                                                size="sm"
+                                                type="number"
+                                                value={localMeasurements.waist}
+                                                onChange={(e) => setLocalMeasurements({ ...localMeasurements, waist: parseInt(e.target.value) || 60 })}
+                                            />
+                                        </div>
+                                        <div className="w-20">
+                                            <label className="text-xs text-gray-500">Hips</label>
+                                            <Input
+                                                size="sm"
+                                                type="number"
+                                                value={localMeasurements.hips}
+                                                onChange={(e) => setLocalMeasurements({ ...localMeasurements, hips: parseInt(e.target.value) || 90 })}
+                                            />
+                                        </div>
+                                    </div>
+
                                     {/* Leg Type */}
                                     <div>
                                         <label className="text-xs text-gray-500 block mb-1">Leg Type</label>
@@ -895,54 +944,6 @@ const AvatarEditDrawer = ({ isOpen, onClose, onSaveAvatar }: AvatarEditDrawerPro
                                         onChange={(c) => setLocalMeasurements({ ...localMeasurements, eyeColor: c })}
                                     />
 
-                                    {/* Measurements */}
-                                    <div className="flex gap-2 flex-wrap">
-                                        <div className="w-20">
-                                            <label className="text-xs text-gray-500">Age</label>
-                                            <Input
-                                                size="sm"
-                                                type="number"
-                                                value={localMeasurements.age}
-                                                onChange={(e) => setLocalMeasurements({ ...localMeasurements, age: parseInt(e.target.value) || 25 })}
-                                            />
-                                        </div>
-                                        <div className="w-20">
-                                            <label className="text-xs text-gray-500">Height</label>
-                                            <Input
-                                                size="sm"
-                                                type="number"
-                                                value={localMeasurements.height}
-                                                onChange={(e) => setLocalMeasurements({ ...localMeasurements, height: parseInt(e.target.value) || 165 })}
-                                            />
-                                        </div>
-                                        <div className="w-20">
-                                            <label className="text-xs text-gray-500">Bust</label>
-                                            <Input
-                                                size="sm"
-                                                type="number"
-                                                value={localMeasurements.bust}
-                                                onChange={(e) => setLocalMeasurements({ ...localMeasurements, bust: parseInt(e.target.value) || 90 })}
-                                            />
-                                        </div>
-                                        <div className="w-20">
-                                            <label className="text-xs text-gray-500">Waist</label>
-                                            <Input
-                                                size="sm"
-                                                type="number"
-                                                value={localMeasurements.waist}
-                                                onChange={(e) => setLocalMeasurements({ ...localMeasurements, waist: parseInt(e.target.value) || 60 })}
-                                            />
-                                        </div>
-                                        <div className="w-20">
-                                            <label className="text-xs text-gray-500">Hips</label>
-                                            <Input
-                                                size="sm"
-                                                type="number"
-                                                value={localMeasurements.hips}
-                                                onChange={(e) => setLocalMeasurements({ ...localMeasurements, hips: parseInt(e.target.value) || 90 })}
-                                            />
-                                        </div>
-                                    </div>
                                 </div>
                             </Card>
 

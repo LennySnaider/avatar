@@ -712,6 +712,85 @@ const AvatarCreatorMain = ({ userId, existingAvatar }: AvatarCreatorMainProps) =
                                         </div>
                                     </div>
 
+                                    {/* Measurements */}
+                                    <div className="flex gap-2">
+                                        <div>
+                                            <label className="text-xs text-gray-500">Age</label>
+                                            <Input
+                                                size="sm"
+                                                type="number"
+                                                style={{ width: '70px' }}
+                                                value={measurements.age}
+                                                onChange={(e) =>
+                                                    setMeasurements({
+                                                        ...measurements,
+                                                        age: parseInt(e.target.value) || 25,
+                                                    })
+                                                }
+                                            />
+                                        </div>
+                                        <div>
+                                            <label className="text-xs text-gray-500">Height</label>
+                                            <Input
+                                                size="sm"
+                                                type="number"
+                                                style={{ width: '70px' }}
+                                                value={measurements.height}
+                                                onChange={(e) =>
+                                                    setMeasurements({
+                                                        ...measurements,
+                                                        height: parseInt(e.target.value) || 165,
+                                                    })
+                                                }
+                                            />
+                                        </div>
+                                        <div>
+                                            <label className="text-xs text-gray-500">Bust</label>
+                                            <Input
+                                                size="sm"
+                                                type="number"
+                                                style={{ width: '70px' }}
+                                                value={measurements.bust}
+                                                onChange={(e) =>
+                                                    setMeasurements({
+                                                        ...measurements,
+                                                        bust: parseInt(e.target.value) || 90,
+                                                    })
+                                                }
+                                            />
+                                        </div>
+                                        <div>
+                                            <label className="text-xs text-gray-500">Waist</label>
+                                            <Input
+                                                size="sm"
+                                                type="number"
+                                                style={{ width: '70px' }}
+                                                value={measurements.waist}
+                                                onChange={(e) =>
+                                                    setMeasurements({
+                                                        ...measurements,
+                                                        waist: parseInt(e.target.value) || 60,
+                                                    })
+                                                }
+                                            />
+                                        </div>
+                                        <div>
+                                            <label className="text-xs text-gray-500">Hips</label>
+                                            <Input
+                                                size="sm"
+                                                type="number"
+                                                style={{ width: '70px' }}
+                                                value={measurements.hips}
+                                                onChange={(e) =>
+                                                    setMeasurements({
+                                                        ...measurements,
+                                                        hips: parseInt(e.target.value) || 90,
+                                                    })
+                                                }
+                                            />
+                                        </div>
+                                    </div>
+
                                     {/* Leg Type (paridad con el Edit drawer) */}
                                     <div>
                                         <label className="text-xs text-gray-500 block mb-1">Leg Type</label>
@@ -982,84 +1061,6 @@ const AvatarCreatorMain = ({ userId, existingAvatar }: AvatarCreatorMainProps) =
                                         onChange={(c) => setMeasurements({ ...measurements, eyeColor: c })}
                                     />
 
-                                    {/* Measurements */}
-                                    <div className="flex gap-2">
-                                        <div>
-                                            <label className="text-xs text-gray-500">Age</label>
-                                            <Input
-                                                size="sm"
-                                                type="number"
-                                                style={{ width: '70px' }}
-                                                value={measurements.age}
-                                                onChange={(e) =>
-                                                    setMeasurements({
-                                                        ...measurements,
-                                                        age: parseInt(e.target.value) || 25,
-                                                    })
-                                                }
-                                            />
-                                        </div>
-                                        <div>
-                                            <label className="text-xs text-gray-500">Height</label>
-                                            <Input
-                                                size="sm"
-                                                type="number"
-                                                style={{ width: '70px' }}
-                                                value={measurements.height}
-                                                onChange={(e) =>
-                                                    setMeasurements({
-                                                        ...measurements,
-                                                        height: parseInt(e.target.value) || 165,
-                                                    })
-                                                }
-                                            />
-                                        </div>
-                                        <div>
-                                            <label className="text-xs text-gray-500">Bust</label>
-                                            <Input
-                                                size="sm"
-                                                type="number"
-                                                style={{ width: '70px' }}
-                                                value={measurements.bust}
-                                                onChange={(e) =>
-                                                    setMeasurements({
-                                                        ...measurements,
-                                                        bust: parseInt(e.target.value) || 90,
-                                                    })
-                                                }
-                                            />
-                                        </div>
-                                        <div>
-                                            <label className="text-xs text-gray-500">Waist</label>
-                                            <Input
-                                                size="sm"
-                                                type="number"
-                                                style={{ width: '70px' }}
-                                                value={measurements.waist}
-                                                onChange={(e) =>
-                                                    setMeasurements({
-                                                        ...measurements,
-                                                        waist: parseInt(e.target.value) || 60,
-                                                    })
-                                                }
-                                            />
-                                        </div>
-                                        <div>
-                                            <label className="text-xs text-gray-500">Hips</label>
-                                            <Input
-                                                size="sm"
-                                                type="number"
-                                                style={{ width: '70px' }}
-                                                value={measurements.hips}
-                                                onChange={(e) =>
-                                                    setMeasurements({
-                                                        ...measurements,
-                                                        hips: parseInt(e.target.value) || 90,
-                                                    })
-                                                }
-                                            />
-                                        </div>
-                                    </div>
                                 </div>
                             </Card>
                         </div>
