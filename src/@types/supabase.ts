@@ -401,6 +401,11 @@ export type BodyType = 'petite' | 'slim' | 'athletic' | 'average' | 'curvy' | 'h
 // Leg shape/type. Optional — when unset the legs follow the overall body type.
 export type LegType = 'slim' | 'toned' | 'athletic' | 'muscular-thighs' | 'long' | 'curvy' | 'thick'
 
+// Nivel 1-5 para los sliders de curvas (busto/glúteos/muslos). undefined =
+// Auto. SOLO se envían a providers con trait `permissive` (gating en el
+// caller) — nunca entran al [BODY:] genérico.
+export type CurveLevel = 1 | 2 | 3 | 4 | 5
+
 // Hair texture/type. Optional — when unset the hair follows the face
 // description (auto-analyzed from the reference photos).
 export type HairStyle = 'straight' | 'wavy' | 'curly' | 'coily' | (string & {})
@@ -459,6 +464,10 @@ export interface PhysicalMeasurements {
     waist: number
     hips: number
     legType?: LegType // optional leg shape; unset = follows the body type
+    // Sliders de curvas 1-5 (solo modelos permisivos; undefined = Auto)
+    bustLevel?: CurveLevel
+    glutesLevel?: CurveLevel
+    thighsLevel?: CurveLevel
     skinTone?: SkinTone // 1=very fair/porcelain, 9=very dark/ebony
     hairColor?: HairColor
     /**

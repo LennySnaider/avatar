@@ -79,10 +79,13 @@ const LEG_TYPE_PHRASE: Record<string, string> = {
     slim: 'slim slender legs',
     toned: 'toned smooth legs with soft definition',
     athletic: 'athletic muscular legs with defined calves',
-    // Músculo centrado en MUSLOS (athletic marca pantorrillas): cuádriceps/
-    // femorales esculpidos, piernas de gimnasio.
+    // Músculo centrado en MUSLOS (athletic marca pantorrillas). Calibrado a
+    // ESTÉTICO tras reporte del usuario: la 1ª versión ("powerful gym-built
+    // legs, strong quadriceps/hamstrings") producía piernas de culturista con
+    // venas Y dominaba tanto el prompt que la pose se ignoraba. "Trabajadas
+    // pero no súper fuertes" + guard anti-vascularidad.
     'muscular-thighs':
-        'muscular sculpted thighs with strong defined quadriceps and hamstrings, powerful gym-built legs',
+        'sculpted toned thighs with soft visible muscle definition, athletic yet feminine legs — natural smooth skin, NOT extreme bodybuilder muscle, no visible veins',
     long: 'long elongated legs',
     curvy: 'curvy shapely legs with full thighs',
     thick: 'thick full thighs with substantial leg volume, thighs touching (no thigh gap)',
@@ -91,6 +94,53 @@ const LEG_TYPE_PHRASE: Record<string, string> = {
 export function getLegDescriptor(legType?: string): string {
     if (!legType) return ''
     return LEG_TYPE_PHRASE[legType] || legType.replace(/-/g, ' ') + ' legs'
+}
+
+// ── Curvas con nivel 1-5 (busto / glúteos / muslos) ─────────────────────────
+// Control granular pedido por el usuario. SOLO viajan a modelos con trait
+// `permissive` (gating en AvatarStudioMain): se inyectan vía bodyEmphasis en
+// los anclas i2i de Seedream/Wan/FLUX.2 — NUNCA en el [BODY:] genérico que ven
+// Gemini/nano/MiniMax. Nivel undefined/0 = Auto (no se inyecta nada).
+export const BUST_LEVEL_PHRASE: Record<number, string> = {
+    1: 'small perky bust',
+    2: 'modest natural bust',
+    3: 'full rounded bust',
+    4: 'large heavy full bust, deep cleavage',
+    5: 'very large voluptuous heavy bust, dramatic deep cleavage',
+}
+
+export const GLUTES_LEVEL_PHRASE: Record<number, string> = {
+    1: 'subtle toned glutes',
+    2: 'rounded firm glutes',
+    3: 'full round lifted glutes',
+    4: 'large prominent round glutes, deep hip curve',
+    5: 'very large prominent bubble butt, dramatic glute projection',
+}
+
+export const THIGHS_LEVEL_PHRASE: Record<number, string> = {
+    1: 'slim light thighs',
+    2: 'toned smooth thighs with soft definition',
+    3: 'sculpted toned thighs, visible but soft muscle tone, athletic yet feminine',
+    4: 'full thick strong thighs, soft natural definition, thighs almost touching',
+    5: 'very thick heavy thighs with substantial volume, thighs touching (no thigh gap)',
+}
+
+/**
+ * Frase combinada de los sliders de curvas (1-5). Vacía si todo está en Auto.
+ * El caller decide si el provider la merece (trait permissive).
+ */
+export function buildCurvesEmphasis(m: PhysicalMeasurements): string {
+    const parts: string[] = []
+    if (m.bustLevel && BUST_LEVEL_PHRASE[m.bustLevel]) {
+        parts.push(BUST_LEVEL_PHRASE[m.bustLevel])
+    }
+    if (m.glutesLevel && GLUTES_LEVEL_PHRASE[m.glutesLevel]) {
+        parts.push(GLUTES_LEVEL_PHRASE[m.glutesLevel])
+    }
+    if (m.thighsLevel && THIGHS_LEVEL_PHRASE[m.thighsLevel]) {
+        parts.push(THIGHS_LEVEL_PHRASE[m.thighsLevel])
+    }
+    return parts.join(', ')
 }
 
 // Tooltips para los selectores de UI (creator + edit drawer): la frase EXACTA

@@ -19,7 +19,14 @@ import {
 } from '@/services/AvatarForgeService'
 import { analyzeFaceFromImages, generateAvatar } from '@/services/GeminiService'
 import { resizeBase64Image } from '@/utils/imageOptimization'
-import { BODY_TYPE_TOOLTIP, LEG_TYPE_TOOLTIP } from '@/utils/bodyDescriptors'
+import {
+    BODY_TYPE_TOOLTIP,
+    LEG_TYPE_TOOLTIP,
+    BUST_LEVEL_PHRASE,
+    GLUTES_LEVEL_PHRASE,
+    THIGHS_LEVEL_PHRASE,
+} from '@/utils/bodyDescriptors'
+import type { CurveLevel } from '@/@types/supabase'
 import HairColorPicker from '@/components/shared/HairColorPicker'
 import EyeColorPicker from '@/components/shared/EyeColorPicker'
 import {
@@ -703,6 +710,54 @@ const AvatarCreatorMain = ({ userId, existingAvatar }: AvatarCreatorMainProps) =
                                                         {leg ?? 'auto'}
                                                     </button>
                                                 </Tooltip>
+                                            ))}
+                                        </div>
+                                    </div>
+
+                                    {/* Curvas 1-5 — SOLO viajan a modelos con
+                                        trait permissive (gating en el caller) */}
+                                    <div>
+                                        <label className="text-xs text-gray-500 block mb-2">
+                                            Curves{' '}
+                                            <span className="text-[10px] text-amber-500">
+                                                (permissive models only)
+                                            </span>
+                                        </label>
+                                        <div className="space-y-3">
+                                            {(
+                                                [
+                                                    ['Bust', 'bustLevel', BUST_LEVEL_PHRASE],
+                                                    ['Glutes', 'glutesLevel', GLUTES_LEVEL_PHRASE],
+                                                    ['Thighs', 'thighsLevel', THIGHS_LEVEL_PHRASE],
+                                                ] as const
+                                            ).map(([label, key, phrases]) => (
+                                                <div key={key}>
+                                                    <div className="flex items-center justify-between">
+                                                        <span className="text-xs text-gray-500">{label}</span>
+                                                        <span className="text-xs font-mono text-primary">
+                                                            {measurements[key] ? `${measurements[key]}/5` : 'Auto'}
+                                                        </span>
+                                                    </div>
+                                                    <Slider
+                                                        value={measurements[key] ?? 0}
+                                                        onChange={(val) =>
+                                                            setMeasurements({
+                                                                ...measurements,
+                                                                [key]:
+                                                                    (val as number) === 0
+                                                                        ? undefined
+                                                                        : ((val as number) as CurveLevel),
+                                                            })
+                                                        }
+                                                        min={0}
+                                                        max={5}
+                                                    />
+                                                    {measurements[key] ? (
+                                                        <p className="text-[10px] text-gray-400 mt-0.5">
+                                                            {phrases[measurements[key]!]}
+                                                        </p>
+                                                    ) : null}
+                                                </div>
                                             ))}
                                         </div>
                                     </div>

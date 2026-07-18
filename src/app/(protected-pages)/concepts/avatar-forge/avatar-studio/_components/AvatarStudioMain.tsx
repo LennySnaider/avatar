@@ -85,8 +85,9 @@ import {
     stripHarnessForFaceSwap,
     type RefRole,
 } from '@/utils/avatarPromptBuilder'
-import { describeBody, getHairColorDescription } from '@/utils/bodyDescriptors'
+import { describeBody, getHairColorDescription, buildCurvesEmphasis } from '@/utils/bodyDescriptors'
 import { readDefaultProviderId } from '../../_shared/providerPrefs'
+import { PROVIDER_TRAITS } from '../../_shared/providerCatalog'
 import { createPortal } from 'react-dom'
 import { useStudioHeaderSlot } from './StudioHeaderSlotContext'
 import {
@@ -1135,6 +1136,20 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                         }
                     }
 
+                    // Sliders de curvas (busto/glúteos/muslos 1-5): SOLO para
+                    // providers con trait `permissive` — si el modelo no lo
+                    // es, la frase NO viaja (petición explícita del usuario).
+                    // Canal: bodyEmphasis → anclas i2i Seedream/Wan/FLUX.2;
+                    // nunca entra al [BODY:] genérico que ven Gemini/nano.
+                    const curvesEmphasis = PROVIDER_TRAITS[
+                        activeProvider?.id ?? ''
+                    ]?.permissive
+                        ? buildCurvesEmphasis(measurements)
+                        : ''
+                    const baseBodyEmphasis = measurements?.waist
+                        ? `${describeBody(measurements)} (bust ${measurements.bust}cm, waist ${measurements.waist}cm, hips ${measurements.hips}cm — hip-to-waist ratio ${(measurements.hips / measurements.waist).toFixed(2)})`
+                        : describeBody(measurements)
+
                     if (isKieAsyncImageModel(kieModel)) {
                         // ASYNC submit + browser poll (see pollKieImageTask).
                         const polled = await pollKieImageTask({
@@ -1148,9 +1163,9 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                             // the anchor's early tokens (kept rendering her
                             // slim). Los cm + ratio explícitos anclan mejor que
                             // solo adjetivos (Ana 90/60/100 salía slim en Wan).
-                            bodyEmphasis: measurements?.waist
-                                ? `${describeBody(measurements)} (bust ${measurements.bust}cm, waist ${measurements.waist}cm, hips ${measurements.hips}cm — hip-to-waist ratio ${(measurements.hips / measurements.waist).toFixed(2)})`
-                                : describeBody(measurements),
+                            bodyEmphasis: curvesEmphasis
+                                ? `${baseBodyEmphasis}; emphasized curves: ${curvesEmphasis}`
+                                : baseBodyEmphasis,
                             // Color de pelo DENTRO del ancla i2i: como "brown
                             // hair" en el [BODY:] tardío, Seedream/Wan seguían
                             // el tono del ref/escena (reporte: MiaUltra salía
