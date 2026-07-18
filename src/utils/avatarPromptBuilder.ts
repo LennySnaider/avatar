@@ -504,8 +504,9 @@ ${identityInstructions}`
         ? `╔═══════════════════════════════════════════════════════════════╗
 ║ POSE REFERENCE: [POSE_REF] — BODY POSITION ONLY                ║
 ╚═══════════════════════════════════════════════════════════════╝
-[POSE_REF] is a FACELESS MANNEQUIN. Copy ONLY its body position, limb positions, posture and gesture.
-🚨 FORBIDDEN: do NOT copy the face, facial features, skin tone or proportions from [POSE_REF] — use [FACE_ANCHOR] for the face.`
+[POSE_REF] is a FACELESS MANNEQUIN wearing IRRELEVANT clothes. Copy ONLY its body position, limb positions, posture and gesture.
+🚨 FORBIDDEN: do NOT copy the face, facial features, skin tone or proportions from [POSE_REF] — use [FACE_ANCHOR] for the face.
+🚨 FORBIDDEN: do NOT copy the CLOTHING/outfit, background, scene or lighting from [POSE_REF] — her outfit and the scene come ONLY from ${hasClone ? 'the [CLONE_REF] photo and the text description' : 'the text description'}.`
         : ''
 
     const cloneBlock = hasClone
@@ -538,12 +539,12 @@ ${cameraInstructions}
 RENDERING ORDER (FOLLOW STRICTLY):
 1. BODY FIRST: ${hasBody ? 'Clone the body from [BODY_SHAPE] image' : inlineBody}
 2. FACE SECOND: Apply face from [FACE_ANCHOR]${faceDescription.trim() ? `: ${faceDescription.trim()}` : ''}
-${hasPose ? '3. POSE: Apply EXACT pose from [POSE_REF] (position only, not the face)' : ''}
+${hasPose ? '3. POSE: Apply EXACT pose from [POSE_REF] (position ONLY — not its face, NOT its clothing, NOT its background)' : ''}
 ${hasClone ? `${hasPose ? '4' : '3'}. CLONE: Replicate the EXACT pose, outfit, hands, held objects, framing, lighting and scene from [CLONE_REF] — keep everything except the face identical to [CLONE_REF]` : ''}
 
 ⛔ FAILURE CONDITIONS (ABSOLUTELY FORBIDDEN):
 - Using a face that is NOT from [FACE_ANCHOR] → CRITICAL FAILURE
-${hasPose ? '- Copying the face from [POSE_REF] → CRITICAL FAILURE' : ''}
+${hasPose ? '- Copying the face from [POSE_REF] → CRITICAL FAILURE\n- Wearing the clothing/outfit or copying the background from [POSE_REF] → FAILURE (outfit comes from the text description)' : ''}
 ${hasClone ? '- Copying the face from [CLONE_REF] (it is a faceless mannequin) → CRITICAL FAILURE\n- Substituting a generic pose instead of the EXACT pose/scene in [CLONE_REF] → FAILURE' : ''}
 - Average/slim body when curvy is specified, or ignoring the body proportions → WRONG
 
