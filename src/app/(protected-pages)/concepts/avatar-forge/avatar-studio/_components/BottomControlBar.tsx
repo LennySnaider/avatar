@@ -17,6 +17,7 @@ import {
     HiOutlinePencil,
     HiOutlineSparkles,
     HiOutlinePhotograph,
+    HiOutlineSwitchHorizontal,
     HiOutlineVideoCamera,
     HiOutlineFilm,
     HiOutlineUpload,
@@ -124,6 +125,7 @@ const ImageDropzone = ({
     icon,
     accept = 'image/*',
     dragOverClass = 'ring-primary',
+    tooltip,
 }: {
     image: { url: string } | null
     onUpload: (file: File) => void
@@ -132,6 +134,7 @@ const ImageDropzone = ({
     icon?: React.ReactNode
     accept?: string
     dragOverClass?: string
+    tooltip?: string
 }) => {
     const inputRef = useRef<HTMLInputElement>(null)
     const [isDragOver, setIsDragOver] = useState(false)
@@ -151,7 +154,7 @@ const ImageDropzone = ({
         e.target.value = ''
     }
 
-    return (
+    const body = (
         <div className="flex flex-col items-center gap-0.5">
             {image ? (
                 <div className="relative group">
@@ -193,6 +196,7 @@ const ImageDropzone = ({
             />
         </div>
     )
+    return tooltip ? <Tooltip title={tooltip}>{body}</Tooltip> : body
 }
 
 const BottomControlBar = ({
@@ -332,6 +336,8 @@ const BottomControlBar = ({
         setNoBackgroundEffects,
         cloneImage,
         setCloneImage,
+        deepfakeImage,
+        setDeepfakeImage,
         cloneDescription,
         setCloneDescription,
         poseImage,
@@ -612,6 +618,18 @@ const BottomControlBar = ({
             mimeType,
             base64,
             type: 'body',
+        })
+    }
+
+    // Deepfake Ref: face-swap puro (la imagen queda intacta, solo cambia la cara)
+    const handleDeepfakeUpload = async (file: File) => {
+        const { base64, mimeType, url } = await processFileToBase64(file)
+        setDeepfakeImage({
+            id: crypto.randomUUID(),
+            url,
+            mimeType,
+            base64,
+            type: 'general',
         })
     }
 
@@ -960,6 +978,7 @@ const BottomControlBar = ({
                                 onUpload={handleImageToPrompt}
                                 onRemove={() => {}}
                                 label="Img→Prompt"
+                                    tooltip="Analiza la imagen y genera un PROMPT de texto — la imagen NO viaja al modelo"
                                 icon={<HiOutlinePhotograph className="w-4 h-4 text-blue-500" />}
                                 dragOverClass="ring-blue-500"
                             />
@@ -1016,12 +1035,26 @@ const BottomControlBar = ({
                                     onUpload={handleCloneRefUpload}
                                     onRemove={() => {}}
                                     label="Clone Ref"
+                                    tooltip="Clona outfit, pose y escena de esta imagen, con la CARA y atributos físicos del avatar"
                                     icon={<HiOutlinePhotograph className="w-4 h-4 text-purple-500" />}
                                     dragOverClass="ring-purple-500"
                                 />
                             )}
                             {cloneImage && <span className="text-[9px] text-gray-500">{isAnalyzingClone ? 'Analyzing...' : 'Clone Ref'}</span>}
                         </div>
+                    )}
+
+                    {/* Deepfake Dropzone (IMAGE mode only) — face-swap puro */}
+                    {generationMode === 'IMAGE' && (
+                        <ImageDropzone
+                            image={deepfakeImage}
+                            onUpload={handleDeepfakeUpload}
+                            onRemove={() => setDeepfakeImage(null)}
+                            label="Deepfake"
+                            icon={<HiOutlineSwitchHorizontal className="w-4 h-4 text-red-500" />}
+                            dragOverClass="ring-red-500"
+                            tooltip="Face-swap PURO: reproduce esta imagen EXACTA (cuerpo, outfit, pose y escena intactos) y SOLO cambia la cara por la del avatar. Modelos permisivos (Seedream/Wan/FLUX.2)."
+                        />
                     )}
 
                     {/* Pose Reference Dropzone (IMAGE mode only) */}
@@ -1064,6 +1097,7 @@ const BottomControlBar = ({
                                     onUpload={handlePoseRefUpload}
                                     onRemove={() => {}}
                                     label="Pose Ref"
+                                    tooltip="Copia SOLO la postura corporal de esta imagen (no cara, ni ropa, ni escena)"
                                     icon={<HiOutlineUser className="w-4 h-4 text-cyan-500" />}
                                     dragOverClass="ring-cyan-500"
                                 />
@@ -1095,6 +1129,7 @@ const BottomControlBar = ({
                                     onUpload={handleBodyRefUpload}
                                     onRemove={() => {}}
                                     label="Body Ref"
+                                    tooltip="Cuerpo real del avatar: el modelo replica su silueta exacta (se guarda con Save)"
                                     icon={<HiOutlineUser className="w-4 h-4 text-orange-500" />}
                                     dragOverClass="ring-orange-500"
                                 />
@@ -1164,6 +1199,7 @@ const BottomControlBar = ({
                                     onUpload={handleAssetUpload}
                                     onRemove={() => {}}
                                     label="Assets"
+                                    tooltip="Logo/producto: se imprime EXACTO en la ropa o props (máx 3)"
                                     icon={<HiOutlineUpload className="w-4 h-4 text-green-500" />}
                                     dragOverClass="ring-green-500"
                                 />
@@ -1223,6 +1259,7 @@ const BottomControlBar = ({
                                     onUpload={handlePlaceRefUpload}
                                     onRemove={() => {}}
                                     label="Place Ref"
+                                    tooltip="Lugar/entorno exacto donde se coloca al avatar (ignora personas en la foto)"
                                     icon={<HiOutlinePhotograph className="w-4 h-4 text-teal-500" />}
                                     dragOverClass="ring-teal-500"
                                 />
@@ -1259,6 +1296,7 @@ const BottomControlBar = ({
                                     onUpload={handleSceneUpload}
                                     onRemove={() => {}}
                                     label="Scene"
+                                    tooltip="Set/composición: usa la imagen como escena y coloca al avatar dentro"
                                     icon={<HiOutlinePhotograph className="w-4 h-4 text-rose-500" />}
                                     dragOverClass="ring-rose-500"
                                 />

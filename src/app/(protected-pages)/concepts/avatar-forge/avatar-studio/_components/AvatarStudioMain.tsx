@@ -368,6 +368,7 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
         sceneImage,
         poseImage,
         cloneImage,
+        deepfakeImage,
         placeImage,
         bustRef,
         glutesRef,
@@ -903,6 +904,15 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                   })
                 : null
 
+            // Deepfake Ref — face-swap puro. Solo se optimiza si el provider
+            // lo soporta (seedream/wan/flux2 vía cláusula de clone variante).
+            const optimizedDeepfakeRef = deepfakeImage?.base64
+                ? await optimizeImage({
+                      base64: deepfakeImage.base64,
+                      mimeType: deepfakeImage.mimeType,
+                  })
+                : null
+
             // Place Ref IMAGE — antes SOLO viajaba su texto [PLACE:] (ningún
             // path recibía la foto del lugar). Va a los modelos KIE multi-ref
             // con rol 'place'; el path Gemini queda intocado (benchmark).
@@ -1089,6 +1099,34 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                     // only reaches the diffusion models that actually benefit from it.
                     let kiePrompt = `${buildDiffusionBodyPreamble(measurements, { cameraShot, cameraAngle })} ${fullPrompt}`
                     let kieRefsToSend = kieReferenceImages
+                    // DEEPFAKE puro: cara del avatar + la foto original como
+                    // 'clone'. Sin preamble de cuerpo ni curvas — la imagen 2
+                    // manda en TODO menos la cara. Solo modelos con ancla
+                    // multi-imagen calibrada.
+                    const deepfakeCapable =
+                        kieModel.startsWith('seedream/') ||
+                        kieModel === 'wan/2-7-image' ||
+                        kieModel.startsWith('flux-2/')
+                    const deepfakeActive = Boolean(
+                        optimizedDeepfakeRef &&
+                            deepfakeCapable &&
+                            kieReferenceImages.some((r) => r.role === 'face'),
+                    )
+                    if (deepfakeActive && optimizedDeepfakeRef) {
+                        kieRefsToSend = [
+                            ...kieReferenceImages.filter((r) => r.role === 'face'),
+                            { ...optimizedDeepfakeRef, role: 'clone' },
+                        ]
+                        kiePrompt =
+                            prompt.trim() ||
+                            'photorealistic, natural skin texture, realistic lighting, seamless face integration'
+                    } else if (optimizedDeepfakeRef && !deepfakeCapable) {
+                        toast.push(
+                            <Notification type="info" title="Deepfake">
+                                {`${activeProvider?.name ?? 'Este modelo'} no soporta el modo Deepfake — usa Seedream, Wan o FLUX.2.`}
+                            </Notification>,
+                        )
+                    }
                     // The single ref passed to the sync adapters (flux-kontext /
                     // gpt-4o / generic). Defaults to the face; flux-kontext edit
                     // mode overrides it to the Clone (the canvas to edit).
@@ -1234,22 +1272,27 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                             // the anchor's early tokens (kept rendering her
                             // slim). Los cm + ratio explícitos anclan mejor que
                             // solo adjetivos (Ana 90/60/100 salía slim en Wan).
-                            bodyEmphasis: curvesEmphasis
-                                ? `${baseBodyEmphasis}; emphasized curves: ${curvesEmphasis}`
-                                : baseBodyEmphasis,
+                            bodyEmphasis: deepfakeActive
+                                ? undefined
+                                : curvesEmphasis
+                                  ? `${baseBodyEmphasis}; emphasized curves: ${curvesEmphasis}`
+                                  : baseBodyEmphasis,
+                            deepfakeMode: deepfakeActive,
                             // Color de pelo DENTRO del ancla i2i: como "brown
                             // hair" en el [BODY:] tardío, Seedream/Wan seguían
                             // el tono del ref/escena (reporte: MiaUltra salía
                             // más clara en playa). Solo generación — en EDIT el
                             // usuario puede estar recoloreando a propósito.
-                            hairEmphasis:
-                                getHairColorDescription(
-                                    measurements?.hairColor,
-                                ) || undefined,
-                            eyeEmphasis:
-                                getEyeColorDescription(
-                                    measurements?.eyeColor,
-                                ) || undefined,
+                            hairEmphasis: deepfakeActive
+                                ? undefined
+                                : getHairColorDescription(
+                                      measurements?.hairColor,
+                                  ) || undefined,
+                            eyeEmphasis: deepfakeActive
+                                ? undefined
+                                : getEyeColorDescription(
+                                      measurements?.eyeColor,
+                                  ) || undefined,
                             // Escala la cláusula de fidelidad facial del
                             // ancla (port condensado del identity harness).
                             identityWeight,
@@ -1950,6 +1993,7 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
         angleRef,
         poseImage,
         cloneImage,
+        deepfakeImage,
         placeImage,
         bustRef,
         glutesRef,

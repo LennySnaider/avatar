@@ -309,6 +309,10 @@ export interface GenerateImageKieParams {
     // Gemini (deepfake >85 / high >50 / flexible ≤50). El harness COMPLETO de
     // Gemini NO se porta: revienta los caps de prompt y ya rompió Wan 2.2.
     identityWeight?: number
+    // DEEPFAKE puro (dropzone Deepfake): reproduce la imagen 2 EXACTA (cuerpo,
+    // outfit, pose, escena intactos) y SOLO cambia la cara por la del avatar.
+    // Apaga bodyClause/curvas; la cláusula de clone cambia a face-swap total.
+    deepfakeMode?: boolean
 }
 
 type KieRefWithRole = { base64: string; mimeType: string; role?: string }
@@ -326,7 +330,8 @@ type KieRefWithRole = { base64: string; mimeType: string; role?: string }
 function planExtraRefs(
     referenceImages: KieRefWithRole[] | undefined,
     maxExtras: number,
-): { extras: KieRefWithRole[]; clauses: string; hasBody: boolean } {
+    deepfakeMode = false,
+): { extras: KieRefWithRole[]; clauses: string; hasBody: boolean; hasClone: boolean } {
     const byRole = (role: string) =>
         (referenceImages ?? []).filter((r) => r.role === role)
     const ordered = [
@@ -340,6 +345,14 @@ function planExtraRefs(
         ...byRole('clone').slice(0, 1),
     ].slice(0, maxExtras)
     const parts: string[] = []
+    // Con CLONE presente, el OUTFIT viene del clone — las cláusulas de región
+    // decían "outfit ONLY from the text" y contradecían al clone ("EXACT
+    // outfit"): por esa grieta el énfasis de curvas DESVISTIÓ a la modelo
+    // (leggings del clone → glúteos descubiertos, reporte del usuario).
+    const hasClone = ordered.some((r) => r.role === 'clone')
+    const outfitSrc = hasClone
+        ? 'the CLONE image and the text description'
+        : 'the text description'
     ordered.forEach((r, i) => {
         const n = i + 2
         switch (r.role) {
@@ -349,12 +362,12 @@ function planExtraRefs(
             // de la foto de glúteos o directamente desnuda).
             case 'bust':
                 parts.push(
-                    `Image ${n} shows her real BUST — copy ONLY its exact size, shape and fullness onto the generated body. IGNORE that image's clothing or nudity, pose, scene, lighting and background COMPLETELY; her outfit, pose and the scene come ONLY from the text description.`,
+                    `Image ${n} shows her real BUST — copy ONLY its exact size, shape and fullness onto the generated body. IGNORE that image's clothing or nudity, pose, scene, lighting and background COMPLETELY; her outfit, pose and the scene come ONLY from ${outfitSrc}.`,
                 )
                 break
             case 'glutes':
                 parts.push(
-                    `Image ${n} shows her real GLUTES and hips — copy ONLY their exact size, shape, fullness and projection onto the generated body, thighs proportionally full to match. IGNORE that image's clothing or nudity, pose, scene, lighting and background COMPLETELY; her outfit, pose and the scene come ONLY from the text description.`,
+                    `Image ${n} shows her real GLUTES and hips — copy ONLY their exact size, shape, fullness and projection onto the generated body, thighs proportionally full to match. IGNORE that image's clothing or nudity, pose, scene, lighting and background COMPLETELY; her outfit, pose and the scene come ONLY from ${outfitSrc}.`,
                 )
                 break
             case 'asset':
@@ -379,7 +392,9 @@ function planExtraRefs(
                 break
             case 'clone':
                 parts.push(
-                    `Image ${n} is the CLONE source — recreate its EXACT pose, body position, outfit, hands, any object held, framing, camera angle, lighting and setting. The person in image ${n} is a FACELESS MANNEQUIN: IGNORE their face and identity completely; the face comes ONLY from the FIRST image.`,
+                    deepfakeMode
+                        ? `Image ${n} is the ORIGINAL photo to reproduce — recreate it EXACTLY: same body, build, proportions, outfit, pose, hands, framing, camera angle, lighting, background and setting, EVERYTHING unchanged. ONLY swap the person's FACE for the face from the FIRST image (exact features, freckles, likeness). The person in image ${n} is a FACELESS MANNEQUIN for the face only. Do NOT alter or remove any clothing.`
+                        : `Image ${n} is the CLONE source — recreate its EXACT pose, body position, outfit, hands, any object held, framing, camera angle, lighting and setting. The person in image ${n} is a FACELESS MANNEQUIN: IGNORE their face and identity completely; the face comes ONLY from the FIRST image. Keep her FULLY dressed exactly as shown in the clone image — do NOT remove, open, shorten or reduce any clothing.`,
                 )
                 break
         }
@@ -388,6 +403,7 @@ function planExtraRefs(
         extras: ordered,
         clauses: parts.length > 0 ? ` ${parts.join(' ')}` : '',
         hasBody: ordered.some((r) => r.role === 'body'),
+        hasClone,
     }
 }
 
@@ -408,7 +424,7 @@ export async function generateImageKie(
     | { success: true; url: string; fullApiPrompt: string }
     | { success: false; error: string }
 > {
-    const { model, aspectRatio = '1:1', referenceImage, referenceImages, bodyEmphasis, hairEmphasis, eyeEmphasis, identityWeight } = params
+    const { model, aspectRatio = '1:1', referenceImage, referenceImages, bodyEmphasis, hairEmphasis, eyeEmphasis, identityWeight, deepfakeMode } = params
     // Override de pelo compartido por los anclas i2i (seedream/wan): recolorea
     // aunque el ref o la escena sugieran otro tono.
     const hairClause = hairEmphasis
@@ -595,8 +611,8 @@ export async function generateImageKie(
                     // Refs extra en orden canónico (body/asset/pose/scene/
                     // place/clone) + cláusulas indexadas — Seedream 5 acepta
                     // hasta 10 imágenes.
-                    const { extras, clauses: extraClauses, hasBody } =
-                        planExtraRefs(referenceImages, 9)
+                    const { extras, clauses: extraClauses, hasBody, hasClone } =
+                        planExtraRefs(referenceImages, 9, deepfakeMode)
                     const urls: string[] = [
                         await uploadReferenceToSupabase(
                             referenceImage.base64,
@@ -623,9 +639,10 @@ export async function generateImageKie(
                     // Body Ref exists; otherwise the CONCRETE descriptors
                     // (bodyEmphasis) are repeated inside the anchor's early
                     // tokens — not just a "follow the text below" pointer.
-                    const bodyClause =
-                        hasBody
-                            ? `The SECOND attached image shows her real BODY — replicate its exact body shape, proportions, curves and build; do NOT take the body from the first image. IGNORE the second image's clothing, pose, scene, lighting and background — her outfit, pose and the scene come ONLY from the text description.`
+                    const bodyClause = deepfakeMode
+                        ? ''
+                        : hasBody
+                            ? `The SECOND attached image shows her real BODY — replicate its exact body shape, proportions, curves and build; do NOT take the body from the first image. IGNORE the second image's clothing, pose, scene, lighting and background — her outfit, pose and the scene come ONLY from ${hasClone ? 'the CLONE image and the text description' : 'the text description'}.`
                             : `Use the reference image ONLY for the face and identity: do NOT copy the body, build, weight or proportions from it — the person in the photo may look slimmer than she really is.${
                                   bodyEmphasis
                                       ? ` Her real body is: ${bodyEmphasis}. Render THAT body, visibly fuller and curvier than the reference photo suggests.`
@@ -642,8 +659,21 @@ export async function generateImageKie(
                     // límite duro de KIE (~3000) y el retry de longitud
                     // recortaba TODO a 900 — decapitando la escena/pose. Se
                     // recorta AQUÍ la escena (nunca el ancla) para caber.
-                    const sceneRoom = Math.max(600, 2900 - seedreamAnchor.length)
+                    // 2750 (no 2900): la variante 5-LITE i2i rechazó 3190
+                    // chars ("text length") y el shrink de emergencia decapitó
+                    // el prompt a 900 → salía el clone sin cambios. 2845 pasó
+                    // verificado; 2750 da margen. Piso 400 (no 600) para que
+                    // un ancla grande no haga rebasar el total.
+                    const sceneRoom = Math.max(400, 2750 - seedreamAnchor.length)
                     let sceneText = String(input.prompt)
+                    // Con el clone como IMAGEN, su texto [CLONE:] es redundante
+                    // (~600 chars) y pelea con la cláusula de la imagen.
+                    if (hasClone) {
+                        sceneText = sceneText
+                            .replace(/\[CLONE:[^\]]*\]/gi, ' ')
+                            .replace(/\s{2,}/g, ' ')
+                            .trim()
+                    }
                     if (sceneText.length > sceneRoom) {
                         sceneText = sceneText.slice(0, sceneRoom)
                         const sp = sceneText.lastIndexOf(' ')
@@ -695,7 +725,8 @@ export async function generateImageKie(
                         extras: wanExtras,
                         clauses: wanExtraClauses,
                         hasBody: wanHasBody,
-                    } = planExtraRefs(referenceImages, 8)
+                        hasClone: wanHasClone,
+                    } = planExtraRefs(referenceImages, 8, deepfakeMode)
                     const wanUrls: string[] = [
                         await uploadReferenceToSupabase(
                             referenceImage.base64,
@@ -713,13 +744,31 @@ export async function generateImageKie(
                     // slim). El sesgo de Wan es copiar el build del face ref en
                     // la CADERA/muslos → amplificar SOLO lower body, con guard
                     // explícito de busto/masa.
-                    const wanBodyClause =
-                        wanHasBody
-                            ? ` The SECOND attached image shows her real BODY — replicate its exact body shape, proportions, curves and build; do NOT take the body from the first image. IGNORE the second image's clothing, pose, scene, lighting and background — her outfit, pose and the scene come ONLY from the text description.`
+                    const wanBodyClause = deepfakeMode
+                        ? ''
+                        : wanHasBody
+                            ? ` The SECOND attached image shows her real BODY — replicate its exact body shape, proportions, curves and build; do NOT take the body from the first image. IGNORE the second image's clothing, pose, scene, lighting and background — her outfit, pose and the scene come ONLY from ${wanHasClone ? 'the CLONE image and the text description' : 'the text description'}.`
                             : bodyEmphasis
                               ? ` Use the reference image ONLY for the face and identity — do NOT copy the body proportions from it: the person in the photo looks SLIMMER than the character really is. Her real body is: ${bodyEmphasis}. Her hips, glutes and thighs must be visibly FULLER and WIDER than in the reference photo — the narrow waist makes the hip curve obvious. Keep the bust true to the spec: do NOT inflate the chest or add overall body mass beyond it.`
                               : ''
-                    input.prompt = `The person in the FIRST attached reference image is the subject — keep her EXACT face, facial features and likeness from that image.${faceFidelityClause}${wanBodyClause}${hairClause}${eyeClause}${wanExtraClauses} Follow the SCENE, POSE and ACTION described below EXACTLY. ${input.prompt}`
+                    // Mismo presupuesto anchor-aware que Seedream — antes Wan
+                    // iba SIN cap (4531 chars reales) y la adherencia se diluía.
+                    const wanAnchor = `The person in the FIRST attached reference image is the subject — keep her EXACT face, facial features and likeness from that image.${faceFidelityClause}${wanBodyClause}${hairClause}${eyeClause}${wanExtraClauses} Follow the SCENE, POSE and ACTION described below EXACTLY.`
+                    const wanSceneRoom = Math.max(400, 2750 - wanAnchor.length)
+                    let wanSceneText = String(input.prompt)
+                    if (wanHasClone) {
+                        wanSceneText = wanSceneText
+                            .replace(/\[CLONE:[^\]]*\]/gi, ' ')
+                            .replace(/\s{2,}/g, ' ')
+                            .trim()
+                    }
+                    if (wanSceneText.length > wanSceneRoom) {
+                        wanSceneText = wanSceneText.slice(0, wanSceneRoom)
+                        const wsp = wanSceneText.lastIndexOf(' ')
+                        if (wsp > wanSceneRoom * 0.85) wanSceneText = wanSceneText.slice(0, wsp)
+                        console.warn(`[KIE] Wan scene re-capped to ${wanSceneText.length} chars (anchor ${wanAnchor.length})`)
+                    }
+                    input.prompt = `${wanAnchor} ${wanSceneText}`
                     console.log(`[KIE] Wan 2.7 Image with ${wanUrls.length} ref(s) via input_urls (roles: face${wanExtras.length > 0 ? ', ' + wanExtras.map((r) => r.role).join(', ') : ''}${wanBodyClause && !wanHasBody ? ' + body-text anchor' : ''}${hairClause ? ' + hair override' : ''})`)
                 } else if (model.startsWith('flux-2/')) {
                     // FLUX.2 takes up to 8 refs → send the face (identity anchor) +
@@ -733,7 +782,8 @@ export async function generateImageKie(
                         extras: fluxExtras,
                         clauses: fluxClauses,
                         hasBody: fluxHasBody,
-                    } = planExtraRefs(referenceImages, 7)
+                        hasClone: fluxHasClone,
+                    } = planExtraRefs(referenceImages, 7, deepfakeMode)
                     const urls: string[] = [
                         await uploadReferenceToSupabase(
                             referenceImage.base64,
@@ -745,9 +795,17 @@ export async function generateImageKie(
                     }
                     resolvedModel = model.replace('text-to-image', 'image-to-image')
                     input.input_urls = urls
-                    const fluxBodyClause = fluxHasBody
-                        ? ` The SECOND attached image shows her real BODY — replicate its exact body shape, proportions, curves and build; do NOT take the body from the first image. IGNORE the second image's clothing, pose, scene, lighting and background — her outfit, pose and the scene come ONLY from the text description.`
+                    const fluxBodyClause = deepfakeMode
+                        ? ''
+                        : fluxHasBody
+                        ? ` The SECOND attached image shows her real BODY — replicate its exact body shape, proportions, curves and build; do NOT take the body from the first image. IGNORE the second image's clothing, pose, scene, lighting and background — her outfit, pose and the scene come ONLY from ${fluxHasClone ? 'the CLONE image and the text description' : 'the text description'}.`
                         : ''
+                    if (fluxHasClone) {
+                        input.prompt = String(input.prompt)
+                            .replace(/\[CLONE:[^\]]*\]/gi, ' ')
+                            .replace(/\s{2,}/g, ' ')
+                            .trim()
+                    }
                     input.prompt = `The person in the FIRST attached image is the subject — keep her EXACT face, facial features and likeness from that image.${faceFidelityClause}${fluxBodyClause}${hairClause}${eyeClause}${fluxClauses} Follow the SCENE, POSE and ACTION described below EXACTLY. ${input.prompt}`
                     console.log(`[KIE] FLUX.2 i2i with ${urls.length} ref(s) (roles: face${fluxExtras.length > 0 ? ', ' + fluxExtras.map((r) => r.role).join(', ') : ''})`)
                 } else {
@@ -783,11 +841,11 @@ export async function generateImageKie(
                                     `Image ${i + 2} is a LOGO/BRAND GRAPHIC — it is ARTWORK, not a scene element: print this EXACT design on her clothing wherever the outfit shows a logo or graphic, reproducing its shapes and colors faithfully. Do NOT blend or overlay it onto the scene, and never write placeholder text such as "LOGO".`,
                             )
                             .join(' ')
-                        input.prompt = `The FIRST image is the person — keep her EXACT face and likeness.${faceFidelityClause}${hairClause} ${assetLines} ${input.prompt}`
+                        input.prompt = `The FIRST image is the person — keep her EXACT face and likeness.${faceFidelityClause}${hairClause} Her eyes keep their exact natural color and iris texture from the reference photo — do NOT recolor, brighten or saturate them. ${assetLines} ${input.prompt}`
                         console.log(`[KIE] qwen2/image-edit with ${qwenUrls.length} imgs (face + ${qwenAssets.length} asset)`)
                     } else {
                         input.image_url = refUrl
-                        input.prompt = `Keep the EXACT face and likeness of the person in the reference image.${faceFidelityClause}${hairClause} ${input.prompt}`
+                        input.prompt = `Keep the EXACT face and likeness of the person in the reference image.${faceFidelityClause}${hairClause} Her eyes keep their exact natural color and iris texture from the reference photo — do NOT recolor, brighten or saturate them. ${input.prompt}`
                     }
                 }
             } catch (e) {
@@ -816,9 +874,13 @@ export async function generateImageKie(
                 const isTooLong = /text length|maximum limit/i.test(msg)
                 if (!isTransient && !isTooLong) throw err
                 if (isTooLong) {
-                    const hard = String(input.prompt ?? '').slice(0, 900)
+                    // 80% del largo actual, piso 900: el slice fijo a 900
+                    // decapitaba clauses + escena (el clone salía sin cambios).
+                    const cur = String(input.prompt ?? '')
+                    const target = Math.max(900, Math.floor(cur.length * 0.8))
+                    const hard = cur.slice(0, target)
                     const cut = hard.lastIndexOf(' ')
-                    input.prompt = cut > 700 ? hard.slice(0, cut) : hard
+                    input.prompt = cut > target * 0.8 ? hard.slice(0, cut) : hard
                     console.warn(
                         `[KIE] ${resolvedModel} rejected the prompt length — retrying submit at ${String(input.prompt).length} chars`,
                     )

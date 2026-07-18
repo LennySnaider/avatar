@@ -69,6 +69,9 @@ interface AvatarStudioState {
     assetImages: ReferenceImage[]
     cloneImage: ReferenceImage | null // Clone Ref - clones everything except face and body type
     cloneDescription: string // Text description of clone (analyzed from image)
+    // Deepfake Ref — face-swap PURO: reproduce la imagen exacta (cuerpo,
+    // outfit, pose, escena) y SOLO cambia la cara por la del avatar.
+    deepfakeImage: ReferenceImage | null
     poseImage: ReferenceImage | null
     poseDescription: string // Text description of pose (analyzed from image)
     placeImage: ReferenceImage | null // Place Ref - sets the scene/location
@@ -209,6 +212,7 @@ interface AvatarStudioState {
     removeAssetImage: (id: string) => void
     setCloneImage: (image: ReferenceImage | null) => void
     setCloneDescription: (description: string) => void
+    setDeepfakeImage: (image: ReferenceImage | null) => void
     setPoseImage: (image: ReferenceImage | null) => void
     setPoseDescription: (description: string) => void
     setPlaceImage: (image: ReferenceImage | null) => void
@@ -371,6 +375,7 @@ const initialState = {
     assetImages: [],
     cloneImage: null,
     cloneDescription: '',
+    deepfakeImage: null,
     poseImage: null,
     poseDescription: '',
     placeImage: null,
@@ -508,6 +513,7 @@ export const useAvatarStudioStore = create<AvatarStudioState>()(
             assetImages: state.assetImages.filter((i) => i.id !== id),
         })),
     setCloneImage: (image) => set({ cloneImage: image, cloneDescription: image ? get().cloneDescription : '' }),
+    setDeepfakeImage: (image) => set({ deepfakeImage: image }),
     setCloneDescription: (description) => set({ cloneDescription: description }),
     setPoseImage: (image) => set({ poseImage: image, poseDescription: image ? get().poseDescription : '' }),
     setPoseDescription: (description) => set({ poseDescription: description }),
@@ -541,6 +547,7 @@ export const useAvatarStudioStore = create<AvatarStudioState>()(
             assetImages: [],
             cloneImage: null,
             cloneDescription: '',
+            deepfakeImage: null,
             poseImage: null,
             poseDescription: '',
             placeImage: null,
