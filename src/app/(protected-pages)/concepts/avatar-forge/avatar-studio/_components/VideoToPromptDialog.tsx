@@ -5,7 +5,7 @@ import Dialog from '@/components/ui/Dialog'
 import Button from '@/components/ui/Button'
 import Input from '@/components/ui/Input'
 import { useAvatarStudioStore } from '../_store/avatarStudioStore'
-import { supabase } from '@/lib/supabase'
+import { uploadToSignedStorageUrl } from '@/lib/storageUpload'
 import { createMotionVideoUploadUrl } from '@/services/KieService'
 import { analyzeVideoForPrompt } from '@/services/GeminiService'
 import {
@@ -70,12 +70,7 @@ const VideoToPromptDialog = ({ isOpen, onClose }: VideoToPromptDialogProps) => {
         setIsUploading(true)
         try {
             const ticket = await createMotionVideoUploadUrl(file.type)
-            const { error: upErr } = await supabase.storage
-                .from('generations')
-                .uploadToSignedUrl(ticket.path, ticket.token, file, {
-                    contentType: file.type,
-                })
-            if (upErr) throw new Error(upErr.message)
+            await uploadToSignedStorageUrl('generations', ticket.path, ticket.token, file, file.type)
             setVideoUrl(ticket.publicUrl)
         } catch (err) {
             setError(`Upload failed: ${err instanceof Error ? err.message : String(err)}`)

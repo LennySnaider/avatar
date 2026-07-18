@@ -15,7 +15,7 @@ import Notification from '@/components/ui/Notification'
 import toast from '@/components/ui/toast'
 import { useAvatarStudioStore } from '../_store/avatarStudioStore'
 import { apiGetAvatars, apiSetGenerationAvatar } from '@/services/AvatarForgeService'
-import { getStoragePublicUrl } from '@/lib/supabase'
+import { getStoragePublicUrl } from '@/lib/storagePaths'
 import AvatarGridPicker, { type AvatarGridItem } from '../../_shared/AvatarGridPicker'
 import type { GeneratedMedia } from '../types'
 

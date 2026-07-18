@@ -4,34 +4,9 @@ import type { Database } from '@/@types/supabase'
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 
-/**
- * Get the public URL for a file in Supabase Storage
- */
-export function getStoragePublicUrl(bucket: string, path: string): string {
-    return `${supabaseUrl}/storage/v1/object/public/${bucket}/${path}`
-}
-
-/**
- * Get an optimized/transformed image URL from Supabase Storage
- * Uses Supabase's image transformation API for on-the-fly resizing
- */
-export function getStorageThumbnailUrl(
-    bucket: string,
-    path: string,
-    options: { width?: number; height?: number; quality?: number; resize?: 'cover' | 'contain' | 'fill' } = {}
-): string {
-    const { width = 200, height = 200, quality = 75, resize = 'cover' } = options
-
-    // Supabase storage render/transform URL format
-    const params = new URLSearchParams({
-        width: width.toString(),
-        height: height.toString(),
-        quality: quality.toString(),
-        resize,
-    })
-
-    return `${supabaseUrl}/storage/v1/render/image/public/${bucket}/${path}?${params.toString()}`
-}
+// Helpers de URL puros movidos a '@/lib/storagePaths' (client-safe, F4.2.b);
+// se re-exportan aquí por compatibilidad con el código server existente.
+export { getStoragePublicUrl, getStorageThumbnailUrl } from '@/lib/storagePaths'
 
 // Cliente para uso en el navegador (client-side)
 export const supabase = createClient<Database>(supabaseUrl, supabaseAnonKey)

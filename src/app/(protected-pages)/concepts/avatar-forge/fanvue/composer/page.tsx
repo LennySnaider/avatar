@@ -4,7 +4,9 @@ import Link from 'next/link'
 import Container from '@/components/shared/Container'
 import Card from '@/components/ui/Card'
 import FanvueComposer from './_components/FanvueComposer'
-import { createServerSupabaseClient, getStoragePublicUrl } from '@/lib/supabase'
+import { getStoragePublicUrl } from '@/lib/storagePaths'
+import { getOrgContext } from '@/lib/tenant/getOrgContext'
+import { orgTable } from '@/lib/org/orgTable'
 import {
     getFanvueConnection,
     listFanvueCreators,
@@ -24,7 +26,7 @@ export default async function Page({ searchParams }: PageProps) {
     if (!session?.user?.id) {
         redirect('/sign-in')
     }
-    const userId = session.user.id
+    const ctx = await getOrgContext()
 
     const params = await searchParams
     const generationId =
@@ -36,14 +38,11 @@ export default async function Page({ searchParams }: PageProps) {
         getFanvueConnection(),
         listFanvueCreators(),
         (async (): Promise<ComposerGeneration[]> => {
-            const supabase = createServerSupabaseClient()
-            const { data } = await supabase
-                .from('generations')
+            const { data } = await orgTable(ctx, 'generations')
                 .select('id, media_type, storage_path, prompt')
-                .eq('user_id', userId)
                 .order('created_at', { ascending: false })
                 .limit(24)
-            return (data ?? []).map((g) => ({
+            return ((data ?? []) as { id: string; media_type: MediaType; storage_path: string; prompt: string }[]).map((g) => ({
                 id: g.id,
                 mediaType: g.media_type,
                 publicUrl: getStoragePublicUrl('generations', g.storage_path),

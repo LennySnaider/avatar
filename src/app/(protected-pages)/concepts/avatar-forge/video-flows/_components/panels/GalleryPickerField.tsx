@@ -5,7 +5,7 @@ import Dialog from '@/components/ui/Dialog'
 import Spinner from '@/components/ui/Spinner'
 import { HiOutlineCollection, HiOutlineCheck, HiOutlineFilm } from 'react-icons/hi'
 import { apiGetGenerations } from '@/services/AvatarForgeService'
-import { getStoragePublicUrl } from '@/lib/supabase'
+import { getStoragePublicUrl } from '@/lib/storagePaths'
 import type { Generation } from '@/@types/supabase'
 
 interface GalleryPickerValue {

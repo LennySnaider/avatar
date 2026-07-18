@@ -4,7 +4,9 @@ import Link from 'next/link'
 import Container from '@/components/shared/Container'
 import Card from '@/components/ui/Card'
 import SocialComposer from './_components/SocialComposer'
-import { createServerSupabaseClient, getStoragePublicUrl } from '@/lib/supabase'
+import { getStoragePublicUrl } from '@/lib/storagePaths'
+import { getOrgContext } from '@/lib/tenant/getOrgContext'
+import { orgTable } from '@/lib/org/orgTable'
 import { listAvatarSocialAccounts } from '@/services/SocialService'
 import type { PageProps } from '@/@types/common'
 import type { MediaType } from '@/@types/supabase'
@@ -28,7 +30,7 @@ export default async function Page({ searchParams }: PageProps) {
     if (!session?.user?.id) {
         redirect('/sign-in')
     }
-    const userId = session.user.id
+    const ctx = await getOrgContext()
 
     const params = await searchParams
     const generationId = typeof params.generationId === 'string' ? params.generationId : undefined
@@ -37,12 +39,9 @@ export default async function Page({ searchParams }: PageProps) {
         listAvatarSocialAccounts(),
         (async (): Promise<GenerationMedia | null> => {
             if (!generationId) return null
-            const supabase = createServerSupabaseClient()
-            const { data: gen } = await supabase
-                .from('generations')
+            const { data: gen } = await orgTable(ctx, 'generations')
                 .select('id, media_type, storage_path, prompt, avatar_id')
                 .eq('id', generationId)
-                .eq('user_id', userId)
                 .maybeSingle()
             if (!gen) return null
             return {
@@ -57,15 +56,12 @@ export default async function Page({ searchParams }: PageProps) {
         // the selected avatar client-side — cross-avatar carousels are
         // rejected by the server).
         (async (): Promise<{ id: string; publicUrl: string; avatarId: string | null }[]> => {
-            const supabase = createServerSupabaseClient()
-            const { data } = await supabase
-                .from('generations')
+            const { data } = await orgTable(ctx, 'generations')
                 .select('id, storage_path, avatar_id')
-                .eq('user_id', userId)
                 .eq('media_type', 'IMAGE')
                 .order('created_at', { ascending: false })
                 .limit(24)
-            return (data ?? []).map((g) => ({
+            return ((data ?? []) as { id: string; storage_path: string; avatar_id: string | null }[]).map((g) => ({
                 id: g.id,
                 publicUrl: getStoragePublicUrl('generations', g.storage_path),
                 avatarId: g.avatar_id,

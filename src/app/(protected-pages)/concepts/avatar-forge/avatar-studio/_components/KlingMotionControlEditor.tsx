@@ -2,7 +2,7 @@
 
 import { useRef, useState } from 'react'
 import { useAvatarStudioStore } from '../_store/avatarStudioStore'
-import { supabase } from '@/lib/supabase'
+import { uploadToSignedStorageUrl } from '@/lib/storageUpload'
 import { createMotionVideoUploadUrl } from '@/services/KieService'
 import Checkbox from '@/components/ui/Checkbox'
 import Card from '@/components/ui/Card'
@@ -78,12 +78,7 @@ const KlingMotionControlEditor = ({ disabled = false, allowPresets = true }: Kli
         setIsUploadingVideo(true)
         try {
             const ticket = await createMotionVideoUploadUrl(file.type)
-            const { error } = await supabase.storage
-                .from('generations')
-                .uploadToSignedUrl(ticket.path, ticket.token, file, {
-                    contentType: file.type,
-                })
-            if (error) throw new Error(error.message)
+            await uploadToSignedStorageUrl('generations', ticket.path, ticket.token, file, file.type)
 
             setKlingMotionVideoUrl(ticket.publicUrl)
             setKlingMotionVideoBase64(null)

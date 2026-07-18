@@ -47,7 +47,8 @@ import {
     apiGetGenerations,
     apiGetAvatars,
 } from '@/services/AvatarForgeService'
-import { supabase, getStoragePublicUrl } from '@/lib/supabase'
+import { getStoragePublicUrl } from '@/lib/storagePaths'
+import { uploadToSignedStorageUrl } from '@/lib/storageUpload'
 import {
     generateAvatar,
     generateVideoSafe as generateVideoGeminiSafe,
@@ -301,10 +302,7 @@ async function uploadGenerationWithRetry(
         try {
             const { path, token } =
                 await apiCreateGenerationUploadUrl(mediaType)
-            const { error: uploadError } = await supabase.storage
-                .from('generations')
-                .uploadToSignedUrl(path, token, blob, { contentType })
-            if (uploadError) throw new Error(uploadError.message)
+            await uploadToSignedStorageUrl('generations', path, token, blob, contentType)
             return path
         } catch (e) {
             lastError = e

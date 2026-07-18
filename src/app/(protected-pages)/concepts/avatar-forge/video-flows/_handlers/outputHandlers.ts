@@ -1,6 +1,7 @@
 import type { VideoNodeHandler, MediaBundle, AvatarBundle } from '../_engine/types'
 import type { MediaType } from '@/@types/supabase'
-import { supabase, getStoragePublicUrl } from '@/lib/supabase'
+import { getStoragePublicUrl } from '@/lib/storagePaths'
+import { uploadToSignedStorageUrl } from '@/lib/storageUpload'
 import {
     apiCreateGenerationUploadUrl,
     apiSaveGeneration,
@@ -39,12 +40,7 @@ export const saveToGallery: VideoNodeHandler = async (node, inputs) => {
         blob.type || (mediaType === 'VIDEO' ? 'video/mp4' : 'image/jpeg')
 
     const { path, token } = await apiCreateGenerationUploadUrl(mediaType)
-    const { error: uploadError } = await supabase.storage
-        .from('generations')
-        .uploadToSignedUrl(path, token, blob, { contentType })
-    if (uploadError) {
-        throw new Error(`Failed to upload media: ${uploadError.message}`)
-    }
+    await uploadToSignedStorageUrl('generations', path, token, blob, contentType)
 
     // user_id is re-derived from the session inside apiSaveGeneration.
     const row = await apiSaveGeneration({
