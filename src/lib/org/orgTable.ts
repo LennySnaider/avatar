@@ -59,18 +59,17 @@ export function orgSupabase(): Db {
  * inserts).
  */
 export function orgTable<T extends TenantTable>(ctx: OrgContext, table: T) {
-    const supabase = orgSupabase()
+    // Internamente el builder se maneja sin genéricos (supabase-js no resuelve
+    // .eq sobre uniones de tablas); los tipos estrictos viven en los VALORES
+    // (Insert/Update) y en el caller.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const from = () => orgSupabase().from(table) as any
     return {
         select: (columns = '*') =>
-            supabase.from(table).select(columns).eq('organization_id', ctx.organizationId),
+            from().select(columns).eq('organization_id', ctx.organizationId),
         update: (values: Database['public']['Tables'][T]['Update']) =>
-            supabase
-                .from(table)
-                // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                .update(values as any)
-                .eq('organization_id', ctx.organizationId),
-        delete: () =>
-            supabase.from(table).delete().eq('organization_id', ctx.organizationId),
+            from().update(values).eq('organization_id', ctx.organizationId),
+        delete: () => from().delete().eq('organization_id', ctx.organizationId),
     }
 }
 

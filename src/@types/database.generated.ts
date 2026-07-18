@@ -217,6 +217,8 @@ export type Database = {
       }
       ai_providers: {
         Row: {
+          organization_id: string | null
+          api_key: string | null
           api_key_env_var: string | null
           created_at: string | null
           endpoint: string | null
@@ -230,6 +232,8 @@ export type Database = {
           type: string
         }
         Insert: {
+          organization_id?: string | null
+          api_key?: string | null
           api_key_env_var?: string | null
           created_at?: string | null
           endpoint?: string | null
@@ -243,6 +247,8 @@ export type Database = {
           type: string
         }
         Update: {
+          organization_id?: string | null
+          api_key?: string | null
           api_key_env_var?: string | null
           created_at?: string | null
           endpoint?: string | null
@@ -259,6 +265,7 @@ export type Database = {
       }
       audio_scripts: {
         Row: {
+          organization_id: string
           context: Json
           created_at: string
           duration_target_seconds: number
@@ -272,6 +279,7 @@ export type Database = {
           user_id: string
         }
         Insert: {
+          organization_id?: string
           context?: Json
           created_at?: string
           duration_target_seconds?: number
@@ -285,6 +293,7 @@ export type Database = {
           user_id: string
         }
         Update: {
+          organization_id?: string
           context?: Json
           created_at?: string
           duration_target_seconds?: number
@@ -510,6 +519,7 @@ export type Database = {
       }
       avatar_references: {
         Row: {
+          organization_id: string
           avatar_id: string | null
           created_at: string | null
           id: string
@@ -518,6 +528,7 @@ export type Database = {
           type: string
         }
         Insert: {
+          organization_id?: string
           avatar_id?: string | null
           created_at?: string | null
           id?: string
@@ -526,6 +537,7 @@ export type Database = {
           type: string
         }
         Update: {
+          organization_id?: string
           avatar_id?: string | null
           created_at?: string | null
           id?: string
@@ -545,6 +557,7 @@ export type Database = {
       }
       avatars: {
         Row: {
+          organization_id: string
           created_at: string | null
           default_voice_id: string | null
           face_description: string | null
@@ -557,6 +570,7 @@ export type Database = {
           user_id: string | null
         }
         Insert: {
+          organization_id?: string
           created_at?: string | null
           default_voice_id?: string | null
           face_description?: string | null
@@ -569,6 +583,7 @@ export type Database = {
           user_id?: string | null
         }
         Update: {
+          organization_id?: string
           created_at?: string | null
           default_voice_id?: string | null
           face_description?: string | null
@@ -592,6 +607,7 @@ export type Database = {
       }
       cloned_voices: {
         Row: {
+          organization_id: string
           avatar_id: string | null
           created_at: string
           id: string
@@ -607,6 +623,7 @@ export type Database = {
           user_id: string
         }
         Insert: {
+          organization_id?: string
           avatar_id?: string | null
           created_at?: string
           id?: string
@@ -622,6 +639,7 @@ export type Database = {
           user_id: string
         }
         Update: {
+          organization_id?: string
           avatar_id?: string | null
           created_at?: string
           id?: string
@@ -648,6 +666,7 @@ export type Database = {
       }
       fanvue_connections: {
         Row: {
+          organization_id: string
           access_token: string | null
           created_at: string
           fanvue_account_uuid: string | null
@@ -659,6 +678,7 @@ export type Database = {
           user_id: string
         }
         Insert: {
+          organization_id?: string
           access_token?: string | null
           created_at?: string
           fanvue_account_uuid?: string | null
@@ -670,6 +690,7 @@ export type Database = {
           user_id: string
         }
         Update: {
+          organization_id?: string
           access_token?: string | null
           created_at?: string
           fanvue_account_uuid?: string | null
@@ -684,6 +705,7 @@ export type Database = {
       }
       fanvue_creators: {
         Row: {
+          organization_id: string
           avatar_url: string | null
           connection_id: string
           creator_user_uuid: string
@@ -693,6 +715,7 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          organization_id?: string
           avatar_url?: string | null
           connection_id: string
           creator_user_uuid: string
@@ -702,6 +725,7 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          organization_id?: string
           avatar_url?: string | null
           connection_id?: string
           creator_user_uuid?: string
@@ -722,6 +746,7 @@ export type Database = {
       }
       fanvue_posts: {
         Row: {
+          organization_id: string
           audience: string | null
           caption: string | null
           created_at: string
@@ -739,6 +764,7 @@ export type Database = {
           user_id: string | null
         }
         Insert: {
+          organization_id?: string
           audience?: string | null
           caption?: string | null
           created_at?: string
@@ -756,6 +782,7 @@ export type Database = {
           user_id?: string | null
         }
         Update: {
+          organization_id?: string
           audience?: string | null
           caption?: string | null
           created_at?: string
@@ -776,6 +803,7 @@ export type Database = {
       }
       generations: {
         Row: {
+          organization_id: string
           aspect_ratio: string | null
           avatar_id: string | null
           created_at: string | null
@@ -787,6 +815,7 @@ export type Database = {
           user_id: string | null
         }
         Insert: {
+          organization_id?: string
           aspect_ratio?: string | null
           avatar_id?: string | null
           created_at?: string | null
@@ -798,6 +827,7 @@ export type Database = {
           user_id?: string | null
         }
         Update: {
+          organization_id?: string
           aspect_ratio?: string | null
           avatar_id?: string | null
           created_at?: string | null
@@ -876,6 +906,7 @@ export type Database = {
       }
       prompts: {
         Row: {
+          organization_id: string
           category: string | null
           created_at: string | null
           id: string
@@ -886,6 +917,7 @@ export type Database = {
           user_id: string | null
         }
         Insert: {
+          organization_id?: string
           category?: string | null
           created_at?: string | null
           id?: string
@@ -896,6 +928,7 @@ export type Database = {
           user_id?: string | null
         }
         Update: {
+          organization_id?: string
           category?: string | null
           created_at?: string | null
           id?: string
@@ -909,6 +942,7 @@ export type Database = {
       }
       social_posts: {
         Row: {
+          organization_id: string
           caption: string
           content_type: string
           created_at: string
@@ -929,6 +963,7 @@ export type Database = {
           user_id: string | null
         }
         Insert: {
+          organization_id?: string
           caption?: string
           content_type: string
           created_at?: string
@@ -949,6 +984,7 @@ export type Database = {
           user_id?: string | null
         }
         Update: {
+          organization_id?: string
           caption?: string
           content_type?: string
           created_at?: string
@@ -987,6 +1023,7 @@ export type Database = {
       }
       social_profiles: {
         Row: {
+          organization_id: string
           api_key: string | null
           avatar_id: string | null
           connected_platforms: Json
@@ -998,6 +1035,7 @@ export type Database = {
           upload_post_username: string
         }
         Insert: {
+          organization_id?: string
           api_key?: string | null
           avatar_id?: string | null
           connected_platforms?: Json
@@ -1009,6 +1047,7 @@ export type Database = {
           upload_post_username: string
         }
         Update: {
+          organization_id?: string
           api_key?: string | null
           avatar_id?: string | null
           connected_platforms?: Json
@@ -1127,6 +1166,7 @@ export type Database = {
       }
       video_flows: {
         Row: {
+          organization_id: string
           created_at: string | null
           description: string | null
           edges: Json
@@ -1139,6 +1179,7 @@ export type Database = {
           user_id: string
         }
         Insert: {
+          organization_id?: string
           created_at?: string | null
           description?: string | null
           edges?: Json
@@ -1151,6 +1192,7 @@ export type Database = {
           user_id: string
         }
         Update: {
+          organization_id?: string
           created_at?: string | null
           description?: string | null
           edges?: Json
