@@ -632,6 +632,42 @@ const AvatarEditDrawer = ({ isOpen, onClose, onSaveAvatar }: AvatarEditDrawerPro
                                                 </Tooltip>
                                             ))}
                                         </div>
+                                        <div className="mt-2">
+                                            <div className="flex items-center justify-between">
+                                                <span className="text-xs text-gray-500">
+                                                    Thighs volume{' '}
+                                                    <span className="text-[10px] text-amber-500">(permissive models only)</span>
+                                                </span>
+                                                <span className="text-xs font-mono text-primary">
+                                                    {localMeasurements.thighsLevel ? `${localMeasurements.thighsLevel}/5` : 'Auto'}
+                                                </span>
+                                            </div>
+                                            <Slider
+                                                value={localMeasurements.thighsLevel ?? 0}
+                                                onChange={(val) =>
+                                                    setLocalMeasurements({
+                                                        ...localMeasurements,
+                                                        thighsLevel:
+                                                            (val as number) === 0
+                                                                ? undefined
+                                                                : ((val as number) as CurveLevel),
+                                                    })
+                                                }
+                                                min={0}
+                                                max={5}
+                                            />
+                                            {localMeasurements.thighsLevel ? (
+                                                <p className="text-[10px] text-gray-400 mt-0.5">
+                                                    {THIGHS_LEVEL_PHRASE[localMeasurements.thighsLevel]}
+                                                </p>
+                                            ) : null}
+                                            {(effectiveThighsLevel(localMeasurements) ?? 0) >
+                                            (localMeasurements.thighsLevel ?? 0) ? (
+                                                <p className="text-[10px] text-amber-500 mt-0.5">
+                                                    auto ≥{effectiveThighsLevel(localMeasurements)}/5 para hacer match con Glutes {localMeasurements.glutesLevel}/5 (coherencia anatómica)
+                                                </p>
+                                            ) : null}
+                                        </div>
                                     </div>
 
                                     {/* Curvas 1-5 — SOLO viajan a modelos con
@@ -648,7 +684,6 @@ const AvatarEditDrawer = ({ isOpen, onClose, onSaveAvatar }: AvatarEditDrawerPro
                                                 [
                                                     ['Bust', 'bustLevel', BUST_LEVEL_PHRASE],
                                                     ['Glutes', 'glutesLevel', GLUTES_LEVEL_PHRASE],
-                                                    ['Thighs', 'thighsLevel', THIGHS_LEVEL_PHRASE],
                                                 ] as const
                                             ).map(([label, key, phrases]) => {
                                                 // Ref de REGIÓN fijo por avatar junto a su slider
@@ -699,13 +734,6 @@ const AvatarEditDrawer = ({ isOpen, onClose, onSaveAvatar }: AvatarEditDrawerPro
                                                             {phrases[localMeasurements[key]!]}
                                                         </p>
                                                     ) : null}
-                                                    {key === 'thighsLevel' &&
-                                                    (effectiveThighsLevel(localMeasurements) ?? 0) >
-                                                        (localMeasurements.thighsLevel ?? 0) ? (
-                                                        <p className="text-[10px] text-amber-500 mt-0.5">
-                                                            auto ≥{effectiveThighsLevel(localMeasurements)}/5 para hacer match con Glutes {localMeasurements.glutesLevel}/5 (coherencia anatómica)
-                                                        </p>
-                                                    ) : null}
                                                     {key === 'bustLevel' || key === 'glutesLevel' ? (
                                                         <div className="flex flex-wrap gap-1 mt-1.5">
                                                             {[undefined, ...(key === 'bustLevel' ? BUST_SHAPES : GLUTES_SHAPES)].map((shape) => {
@@ -738,7 +766,11 @@ const AvatarEditDrawer = ({ isOpen, onClose, onSaveAvatar }: AvatarEditDrawerPro
                                                     {setRegionRef && (
                                                         <div className="shrink-0 pt-4">
                                                             {regionRef ? (
-                                                                <div className="relative group">
+                                                                <div
+                                                                    className="relative group"
+                                                                    onDragOver={handleDragOver}
+                                                                    onDrop={(e) => handleDrop(e, key === 'bustLevel' ? 'bust' : 'glutes')}
+                                                                >
                                                                     <img
                                                                         src={regionRef.thumbnailUrl || regionRef.url}
                                                                         alt={`${label} ref`}
@@ -756,6 +788,8 @@ const AvatarEditDrawer = ({ isOpen, onClose, onSaveAvatar }: AvatarEditDrawerPro
                                                                 <Tooltip title={`${label} Ref — la imagen ancla la forma exacta (mejor que el slider); solo viaja a modelos permisivos`}>
                                                                     <button
                                                                         onClick={() => regionInput?.current?.click()}
+                                                                        onDragOver={handleDragOver}
+                                                                        onDrop={(e) => handleDrop(e, key === 'bustLevel' ? 'bust' : 'glutes')}
                                                                         className="w-12 h-12 rounded-lg border-2 border-dashed border-gray-300 dark:border-gray-600 hover:border-primary flex items-center justify-center text-gray-400 hover:text-primary transition-colors"
                                                                     >
                                                                         <HiOutlineUpload className="w-4 h-4" />
