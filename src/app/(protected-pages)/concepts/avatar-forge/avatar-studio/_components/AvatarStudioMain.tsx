@@ -1208,6 +1208,27 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                         refRoles = kieRefsToSend.map((r) => r.role as RefRole)
                     }
 
+                    // FLASH-LITE (gemini-3.1-flash-lite) — el modelo más débil
+                    // de la familia — MEZCLA la cara del avatar con la de
+                    // cualquier foto de referencia que traiga OTRA persona
+                    // (Pose/Scene/Clone). Resultado: cara genérica aunque el
+                    // face ref sea imagen 1 e identityWeight=100. Prueba que lo
+                    // confirma: Grok/Qwen (que NO reciben la imagen de pose,
+                    // solo su TEXTO) SÍ conservan la cara de Evelyn. Solución:
+                    // a Lite se le quitan las imágenes con rostro rival y esos
+                    // roles viajan como TEXTO ([POSE:]/[SCENE:] ya en el
+                    // prompt, la pose se reubica al frente en KieService). Se
+                    // conservan face/body/bust/glutes/asset: son de la propia
+                    // avatar o grafismos, sin rostro que mezclar. Full/Pro NO
+                    // se tocan — sí saben separar múltiples rostros.
+                    if (kieModel === 'nano-banana-2-lite') {
+                        const rivalFaceRoles = new Set(['pose', 'scene', 'clone'])
+                        kieRefsToSend = kieRefsToSend.filter(
+                            (r) => !rivalFaceRoles.has(r.role as string),
+                        )
+                        refRoles = kieRefsToSend.map((r) => r.role as RefRole)
+                    }
+
                     if (
                         kieRefsToSend.length > 0 ||
                         (kieModel.startsWith('flux-kontext') &&
