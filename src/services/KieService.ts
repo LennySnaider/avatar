@@ -406,9 +406,9 @@ export async function generateImageKie(
         identityWeight === undefined
             ? ''
             : identityWeight > 85
-              ? ' FACE FIDELITY (critical): her face must match the reference image EXACTLY — same bone structure, nose shape, eye shape and spacing, lip shape, jawline and any freckles or moles; do NOT beautify, slim, rejuvenate or genericize the face.'
+              ? ' FACE FIDELITY: match the reference face EXACTLY — same bone structure, nose, eye shape and spacing, lips, jawline, freckles/moles; do NOT beautify or genericize it.'
               : identityWeight > 50
-                ? ' Keep her face strongly consistent with the reference — same key facial features, no drift.'
+                ? ' Keep her face strongly consistent with the reference — no drift.'
                 : ''
 
     // Route to the right adapter with a given (already-sanitized) prompt.
@@ -603,7 +603,26 @@ export async function generateImageKie(
                                       ? ` Her real body is: ${bodyEmphasis}. Render THAT body, visibly fuller and curvier than the reference photo suggests.`
                                       : ' Her body proportions MUST follow the text description below exactly (bust, waist, hips and thighs as written).'
                               }`
-                    input.prompt = `The person in the FIRST attached reference image is the subject — keep her EXACT face, facial features and likeness from that image.${faceFidelityClause} ${bodyClause}${hairClause}${eyeClause}${extraClauses} ${input.prompt}`
+                    // Puntero final: sube la saliencia de la escena/pose que
+                    // viene DESPUÉS del ancla — en 5-lite (modelo chico) un
+                    // ancla larga diluía la pose (reporte: Lite la perdió,
+                    // Pro no).
+                    const seedreamAnchor = `The person in the FIRST attached reference image is the subject — keep her EXACT face, facial features and likeness from that image.${faceFidelityClause} ${bodyClause}${hairClause}${eyeClause}${extraClauses} Follow the SCENE, POSE and ACTION described below EXACTLY.`
+                    // Presupuesto ANCHOR-AWARE: el cap estático de 2400 asumía
+                    // un ancla de ~430 chars. Con el ancla crecida (fidelity +
+                    // curvas + cláusulas de refs) el total podía rebasar el
+                    // límite duro de KIE (~3000) y el retry de longitud
+                    // recortaba TODO a 900 — decapitando la escena/pose. Se
+                    // recorta AQUÍ la escena (nunca el ancla) para caber.
+                    const sceneRoom = Math.max(600, 2900 - seedreamAnchor.length)
+                    let sceneText = String(input.prompt)
+                    if (sceneText.length > sceneRoom) {
+                        sceneText = sceneText.slice(0, sceneRoom)
+                        const sp = sceneText.lastIndexOf(' ')
+                        if (sp > sceneRoom * 0.85) sceneText = sceneText.slice(0, sp)
+                        console.warn(`[KIE] Seedream scene re-capped to ${sceneText.length} chars (anchor ${seedreamAnchor.length})`)
+                    }
+                    input.prompt = `${seedreamAnchor} ${sceneText}`
                     console.log(`[KIE] Seedream i2i (${resolvedModel}) with ${urls.length} ref(s) (roles: face${extras.length > 0 ? ', ' + extras.map((r) => r.role).join(', ') : ''}${hairClause ? ' + hair override' : ''})`)
                 } else if (model.startsWith('nano-banana-2')) {
                     // nano-banana-2 / -lite take image_input[] (URL array, up to
@@ -672,7 +691,7 @@ export async function generateImageKie(
                             : bodyEmphasis
                               ? ` Use the reference image ONLY for the face and identity — do NOT copy the body proportions from it: the person in the photo looks SLIMMER than the character really is. Her real body is: ${bodyEmphasis}. Her hips, glutes and thighs must be visibly FULLER and WIDER than in the reference photo — the narrow waist makes the hip curve obvious. Keep the bust true to the spec: do NOT inflate the chest or add overall body mass beyond it.`
                               : ''
-                    input.prompt = `The person in the FIRST attached reference image is the subject — keep her EXACT face, facial features and likeness from that image.${faceFidelityClause}${wanBodyClause}${hairClause}${eyeClause}${wanExtraClauses} ${input.prompt}`
+                    input.prompt = `The person in the FIRST attached reference image is the subject — keep her EXACT face, facial features and likeness from that image.${faceFidelityClause}${wanBodyClause}${hairClause}${eyeClause}${wanExtraClauses} Follow the SCENE, POSE and ACTION described below EXACTLY. ${input.prompt}`
                     console.log(`[KIE] Wan 2.7 Image with ${wanUrls.length} ref(s) via input_urls (roles: face${wanExtras.length > 0 ? ', ' + wanExtras.map((r) => r.role).join(', ') : ''}${wanBodyClause && !wanHasBody ? ' + body-text anchor' : ''}${hairClause ? ' + hair override' : ''})`)
                 } else if (model.startsWith('flux-2/')) {
                     // FLUX.2 takes up to 8 refs → send the face (identity anchor) +
@@ -701,7 +720,7 @@ export async function generateImageKie(
                     const fluxBodyClause = fluxHasBody
                         ? ' The SECOND attached image shows her real BODY — replicate its exact body shape, proportions, curves and build; do NOT take the body from the first image.'
                         : ''
-                    input.prompt = `The person in the FIRST attached image is the subject — keep her EXACT face, facial features and likeness from that image.${faceFidelityClause}${fluxBodyClause}${hairClause}${eyeClause}${fluxClauses} ${input.prompt}`
+                    input.prompt = `The person in the FIRST attached image is the subject — keep her EXACT face, facial features and likeness from that image.${faceFidelityClause}${fluxBodyClause}${hairClause}${eyeClause}${fluxClauses} Follow the SCENE, POSE and ACTION described below EXACTLY. ${input.prompt}`
                     console.log(`[KIE] FLUX.2 i2i with ${urls.length} ref(s) (roles: face${fluxExtras.length > 0 ? ', ' + fluxExtras.map((r) => r.role).join(', ') : ''})`)
                 } else {
                     // qwen/image-to-image: single image_url (face); size from the ref.
