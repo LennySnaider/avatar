@@ -1946,7 +1946,17 @@ ${hairColorSpecDesc ? `- EXACT HAIR COLOR: ${hairColorSpecDesc}` : ''}
 
         if (candidate.finishReason && candidate.finishReason !== 'STOP') {
             const reason = candidate.finishReason
-            if (reason === 'SAFETY' || reason === 'IMAGE_SAFETY') {
+            // IMAGE_OTHER = filtro de Gemini a nivel IMAGEN (bloquea el render
+            // aunque el prompt pase; visto con outfits tipo corset + curvas).
+            // Tratarlo como bloqueo de contenido mete el intento a la escalera
+            // de rescate (sanitización agresiva → fallback) en vez de reventar
+            // con "Generation stopped: IMAGE_OTHER" crudo al usuario.
+            if (
+                reason === 'SAFETY' ||
+                reason === 'IMAGE_SAFETY' ||
+                reason === 'IMAGE_OTHER' ||
+                reason === 'PROHIBITED_CONTENT'
+            ) {
                 return 'SAFETY_BLOCKED'
             }
             throw new Error(`Generation stopped: ${reason}`)
