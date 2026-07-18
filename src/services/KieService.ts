@@ -362,39 +362,39 @@ function planExtraRefs(
             // de la foto de glúteos o directamente desnuda).
             case 'bust':
                 parts.push(
-                    `Image ${n} shows her real BUST — copy ONLY its exact size, shape and fullness onto the generated body. IGNORE that image's clothing or nudity, pose, scene, lighting and background COMPLETELY; her outfit, pose and the scene come ONLY from ${outfitSrc}.`,
+                    `Image ${n} = her real BUST: copy ONLY its size, shape and fullness. IGNORE that image's clothing/nudity, pose, scene and lighting — outfit, pose and scene come from ${outfitSrc}.`,
                 )
                 break
             case 'glutes':
                 parts.push(
-                    `Image ${n} shows her real GLUTES and hips — copy ONLY their exact size, shape, fullness and projection onto the generated body, thighs proportionally full to match. IGNORE that image's clothing or nudity, pose, scene, lighting and background COMPLETELY; her outfit, pose and the scene come ONLY from ${outfitSrc}.`,
+                    `Image ${n} = her real GLUTES and hips: copy ONLY their size, shape, fullness and projection (thighs proportionally full). IGNORE that image's clothing/nudity, pose, scene and lighting — outfit, pose and scene come from ${outfitSrc}.`,
                 )
                 break
             case 'asset':
                 parts.push(
-                    `Image ${n} is a brand asset (logo/graphic/product) — print this EXACT design on her clothing or props wherever the outfit shows a logo or graphic, reproducing its shapes, colors and lettering faithfully; never write placeholder text such as "LOGO".`,
+                    `Image ${n} = brand asset (logo/graphic): print this EXACT design on her clothing/props where a logo appears, faithful shapes and colors; never write placeholder text like "LOGO".`,
                 )
                 break
             case 'pose':
                 parts.push(
-                    `Image ${n} is a POSE reference — copy ONLY the body position and pose from it; do NOT copy its face, identity, body proportions or clothing.`,
+                    `Image ${n} = POSE reference: copy ONLY the body position — not its face, proportions or clothing.`,
                 )
                 break
             case 'scene':
                 parts.push(
-                    `Image ${n} is a STYLE/SCENE reference — use it for the setting, lighting and composition; REPLACE its subject with her.`,
+                    `Image ${n} = STYLE/SCENE reference: use for setting, lighting and composition; REPLACE its subject with her.`,
                 )
                 break
             case 'place':
                 parts.push(
-                    `Image ${n} shows the LOCATION — place her inside THIS exact environment, keeping its architecture, furniture, background and lighting; IGNORE any person appearing in it.`,
+                    `Image ${n} = the LOCATION: place her in THIS exact environment (architecture, furniture, lighting); IGNORE any person in it.`,
                 )
                 break
             case 'clone':
                 parts.push(
                     deepfakeMode
-                        ? `Image ${n} is the ORIGINAL photo to reproduce — recreate it EXACTLY: same body, build, proportions, outfit, pose, hands, framing, camera angle, lighting, background and setting. The FACE SWAP is MANDATORY: the output face MUST be recognizably the person from the FIRST image (exact features, freckles, likeness) — never keep the original face. The person in image ${n} is a FACELESS MANNEQUIN for the face only. Do NOT alter or remove any clothing. REMOVE any overlaid stickers, watermarks, emojis, logos or UI graphics pasted on the photo — output a clean photograph.`
-                        : `Image ${n} is the CLONE source — recreate its EXACT pose, body position, outfit, hands, any object held, framing, camera angle, lighting and setting. The person in image ${n} is a FACELESS MANNEQUIN: IGNORE their face and identity completely; the face comes ONLY from the FIRST image. Keep her FULLY dressed exactly as shown in the clone image — do NOT remove, open, shorten or reduce any clothing. REMOVE any overlaid stickers, watermarks, emojis or UI graphics pasted on the photo — output a clean photograph.`,
+                        ? `Image ${n} = the ORIGINAL photo: reproduce it EXACTLY (body, outfit, pose, hands, framing, lighting, background). MANDATORY face swap: the output face MUST be the person from image 1 — never keep the original face. Do NOT alter clothing. REMOVE overlaid stickers/watermarks/emojis — output a clean photo.`
+                        : `Image ${n} = the CLONE source: recreate its EXACT pose, body position, outfit, hands, objects held, framing, camera angle, lighting and setting. Its person is a FACELESS MANNEQUIN — the face comes ONLY from image 1. Keep her FULLY dressed as shown; do NOT remove or reduce clothing. REMOVE overlaid stickers/watermarks/emojis — output a clean photo.`,
                 )
                 break
         }
@@ -664,7 +664,7 @@ export async function generateImageKie(
                     // el prompt a 900 → salía el clone sin cambios. 2845 pasó
                     // verificado; 2750 da margen. Piso 400 (no 600) para que
                     // un ancla grande no haga rebasar el total.
-                    const sceneRoom = Math.max(400, 2750 - seedreamAnchor.length)
+                    const sceneRoom = Math.max(250, 2750 - seedreamAnchor.length)
                     let sceneText = String(input.prompt)
                     // Con el clone como IMAGEN, su texto [CLONE:] es redundante
                     // (~600 chars) y pelea con la cláusula de la imagen.
@@ -679,6 +679,9 @@ export async function generateImageKie(
                         const sp = sceneText.lastIndexOf(' ')
                         if (sp > sceneRoom * 0.85) sceneText = sceneText.slice(0, sp)
                         console.warn(`[KIE] Seedream scene re-capped to ${sceneText.length} chars (anchor ${seedreamAnchor.length})`)
+                    }
+                    if (seedreamAnchor.length > 2400) {
+                        console.warn(`[KIE] Seedream anchor GRANDE (${seedreamAnchor.length} chars) — riesgo de rebasar el límite del modelo`)
                     }
                     input.prompt = `${seedreamAnchor} ${sceneText}`
                     console.log(`[KIE] Seedream i2i (${resolvedModel}) with ${urls.length} ref(s) (roles: face${extras.length > 0 ? ', ' + extras.map((r) => r.role).join(', ') : ''}${hairClause ? ' + hair override' : ''})`)
@@ -754,7 +757,7 @@ export async function generateImageKie(
                     // Mismo presupuesto anchor-aware que Seedream — antes Wan
                     // iba SIN cap (4531 chars reales) y la adherencia se diluía.
                     const wanAnchor = `The person in the FIRST attached reference image is the subject — keep her EXACT face, facial features and likeness from that image.${faceFidelityClause}${wanBodyClause}${hairClause}${eyeClause}${wanExtraClauses} Follow the SCENE, POSE and ACTION described below EXACTLY.`
-                    const wanSceneRoom = Math.max(400, 2750 - wanAnchor.length)
+                    const wanSceneRoom = Math.max(250, 2750 - wanAnchor.length)
                     let wanSceneText = String(input.prompt)
                     if (wanHasClone) {
                         wanSceneText = wanSceneText
