@@ -414,7 +414,13 @@ export async function generateImageKie(
     const hairClause = hairEmphasis
         ? ` Her hair MUST be ${hairEmphasis} — if the hair in the reference photo or the scene suggests a different color, RECOLOR it to this exact color.`
         : ''
-    const eyeClause = eyeEmphasis ? ` Her eyes MUST be ${eyeEmphasis}.` : ''
+    // "MUST be green eyes" hacía que los modelos PINTARAN el iris verde
+    // saturado tipo pupilentes (reporte con Qwen). Redacción natural + guard
+    // anti-saturación; y en los editores single-image (qwen/grok) NO se envía
+    // — la cara del ref ya trae los ojos correctos.
+    const eyeClause = eyeEmphasis
+        ? ` Her eyes are ${eyeEmphasis} — natural realistic iris with subtle color variation, NOT oversaturated, NOT glowing, no contact-lens look.`
+        : ''
     // Fidelidad facial escalada por el slider de identidad (port condensado de
     // las identity instructions de Gemini). ≤50 = flexible: solo el keep-face
     // base de cada ancla.
@@ -571,8 +577,10 @@ export async function generateImageKie(
                     input.image_urls = [refUrl]
                     // Single-input: paridad mínima — keep-face + fidelidad +
                     // overrides de pelo/ojos.
-                    if (hairClause || eyeClause || faceFidelityClause) {
-                        input.prompt = `Keep the EXACT face and likeness of the person in the reference image.${faceFidelityClause}${hairClause}${eyeClause} ${input.prompt}`
+                    // Sin eyeClause: es un EDITOR de imagen única — los ojos ya
+                    // vienen correctos en la foto y la orden los sobre-pintaba.
+                    if (hairClause || faceFidelityClause) {
+                        input.prompt = `Keep the EXACT face and likeness of the person in the reference image.${faceFidelityClause}${hairClause} ${input.prompt}`
                     }
                     console.log(`[KIE] Grok i2i with 1 identity ref (AR-cropped)${hairClause ? ' + hair override' : ''}`)
                 } else if (model.startsWith('seedream/')) {
@@ -753,9 +761,11 @@ export async function generateImageKie(
                     resolvedModel = 'qwen2/image-edit'
                     input.image_url = refUrl
                     input.image_size = aspectRatio
-                    // Single-input: paridad mínima — keep-face + fidelidad +
-                    // overrides de pelo/ojos.
-                    input.prompt = `Keep the EXACT face and likeness of the person in the reference image.${faceFidelityClause}${hairClause}${eyeClause} ${input.prompt}`
+                    // Single-input: keep-face + fidelidad + pelo. SIN eyeClause:
+                    // qwen2/image-edit es un EDITOR literal — los ojos ya vienen
+                    // correctos en la foto y "eyes MUST be green" los pintaba
+                    // verde saturado tipo pupilentes (reporte del usuario).
+                    input.prompt = `Keep the EXACT face and likeness of the person in the reference image.${faceFidelityClause}${hairClause} ${input.prompt}`
                 }
             } catch (e) {
                 console.warn('[KIE] ref upload failed, staying text-only:', e)
