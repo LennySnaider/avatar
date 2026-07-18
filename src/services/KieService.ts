@@ -343,14 +343,18 @@ function planExtraRefs(
     ordered.forEach((r, i) => {
         const n = i + 2
         switch (r.role) {
+            // GUARD crítico en refs de región (aprendido en vivo: sin el
+            // IGNORE, Seedream clonaba la ROPA/ESCENA/desnudez de la foto de
+            // referencia y tiraba el [CLONE:] del texto — outputs en la playa
+            // de la foto de glúteos o directamente desnuda).
             case 'bust':
                 parts.push(
-                    `Image ${n} shows her real BUST — replicate its exact size, shape, fullness and proportions on the generated body; do NOT take the chest from the face reference or invent a different size.`,
+                    `Image ${n} shows her real BUST — copy ONLY its exact size, shape and fullness onto the generated body. IGNORE that image's clothing or nudity, pose, scene, lighting and background COMPLETELY; her outfit, pose and the scene come ONLY from the text description.`,
                 )
                 break
             case 'glutes':
                 parts.push(
-                    `Image ${n} shows her real GLUTES and hips — replicate their exact size, shape, fullness and projection on the generated body, with thighs proportionally full to match; do NOT take the lower body from the face reference.`,
+                    `Image ${n} shows her real GLUTES and hips — copy ONLY their exact size, shape, fullness and projection onto the generated body, thighs proportionally full to match. IGNORE that image's clothing or nudity, pose, scene, lighting and background COMPLETELY; her outfit, pose and the scene come ONLY from the text description.`,
                 )
                 break
             case 'asset':
@@ -609,7 +613,7 @@ export async function generateImageKie(
                     // tokens — not just a "follow the text below" pointer.
                     const bodyClause =
                         hasBody
-                            ? 'The SECOND attached image shows her real BODY — replicate its exact body shape, proportions, curves and build; do NOT take the body from the first image.'
+                            ? `The SECOND attached image shows her real BODY — replicate its exact body shape, proportions, curves and build; do NOT take the body from the first image. IGNORE the second image's clothing, pose, scene, lighting and background — her outfit, pose and the scene come ONLY from the text description.`
                             : `Use the reference image ONLY for the face and identity: do NOT copy the body, build, weight or proportions from it — the person in the photo may look slimmer than she really is.${
                                   bodyEmphasis
                                       ? ` Her real body is: ${bodyEmphasis}. Render THAT body, visibly fuller and curvier than the reference photo suggests.`
@@ -699,7 +703,7 @@ export async function generateImageKie(
                     // explícito de busto/masa.
                     const wanBodyClause =
                         wanHasBody
-                            ? ' The SECOND attached image shows her real BODY — replicate its exact body shape, proportions, curves and build; do NOT take the body from the first image.'
+                            ? ` The SECOND attached image shows her real BODY — replicate its exact body shape, proportions, curves and build; do NOT take the body from the first image. IGNORE the second image's clothing, pose, scene, lighting and background — her outfit, pose and the scene come ONLY from the text description.`
                             : bodyEmphasis
                               ? ` Use the reference image ONLY for the face and identity — do NOT copy the body proportions from it: the person in the photo looks SLIMMER than the character really is. Her real body is: ${bodyEmphasis}. Her hips, glutes and thighs must be visibly FULLER and WIDER than in the reference photo — the narrow waist makes the hip curve obvious. Keep the bust true to the spec: do NOT inflate the chest or add overall body mass beyond it.`
                               : ''
@@ -730,7 +734,7 @@ export async function generateImageKie(
                     resolvedModel = model.replace('text-to-image', 'image-to-image')
                     input.input_urls = urls
                     const fluxBodyClause = fluxHasBody
-                        ? ' The SECOND attached image shows her real BODY — replicate its exact body shape, proportions, curves and build; do NOT take the body from the first image.'
+                        ? ` The SECOND attached image shows her real BODY — replicate its exact body shape, proportions, curves and build; do NOT take the body from the first image. IGNORE the second image's clothing, pose, scene, lighting and background — her outfit, pose and the scene come ONLY from the text description.`
                         : ''
                     input.prompt = `The person in the FIRST attached image is the subject — keep her EXACT face, facial features and likeness from that image.${faceFidelityClause}${fluxBodyClause}${hairClause}${eyeClause}${fluxClauses} Follow the SCENE, POSE and ACTION described below EXACTLY. ${input.prompt}`
                     console.log(`[KIE] FLUX.2 i2i with ${urls.length} ref(s) (roles: face${fluxExtras.length > 0 ? ', ' + fluxExtras.map((r) => r.role).join(', ') : ''})`)

@@ -40,6 +40,8 @@ import {
     apiCreateAvatar,
     apiUpdateAvatar,
     apiUploadReference,
+    apiGetAvatarReferences,
+    apiDeleteAvatarReference,
     apiCreateGenerationUploadUrl,
     apiSaveGeneration,
     apiGetGenerations,
@@ -102,7 +104,7 @@ import {
 import { getPostedGenerationMap } from '@/services/SocialService'
 import { AppState } from '../types'
 import type { GeneratedMedia, ReferenceImage } from '../types'
-import type { AspectRatio, Avatar } from '@/@types/supabase'
+import type { AspectRatio, Avatar, ReferenceType } from '@/@types/supabase'
 import { useImageOptimization } from '../_hooks/useImageOptimization'
 
 interface AvatarStudioMainProps {
@@ -640,8 +642,38 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                             : []),
                     ]
 
+                    // Tipos SINGLETON: al re-guardar con una imagen nueva se
+                    // BORRA la fila previa del mismo tipo — sin esto cada Save
+                    // acumulaba filas (MiaUltra llegó a tener 2 'body' y el
+                    // loader tomaba una arbitraria).
+                    const SINGLETON_REF_TYPES = new Set([
+                        'face',
+                        'angle',
+                        'body',
+                        'bust',
+                        'glutes',
+                    ])
                     for (const ref of allRefs) {
                         if (!ref.storagePath) {
+                            if (SINGLETON_REF_TYPES.has(ref.type)) {
+                                try {
+                                    const existing =
+                                        await apiGetAvatarReferences(
+                                            savedAvatarId,
+                                            ref.type as ReferenceType,
+                                        )
+                                    for (const old of existing) {
+                                        await apiDeleteAvatarReference(old.id)
+                                    }
+                                } catch (e) {
+                                    console.warn(
+                                        '[save] dedupe of previous',
+                                        ref.type,
+                                        'ref failed:',
+                                        e,
+                                    )
+                                }
+                            }
                             // Upload new reference
                             const blob = await fetch(ref.url).then((r) =>
                                 r.blob(),
