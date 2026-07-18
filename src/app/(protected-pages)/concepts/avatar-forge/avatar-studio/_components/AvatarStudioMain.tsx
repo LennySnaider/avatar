@@ -867,6 +867,13 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                     ...optimizedPayload.bodyRef,
                     role: 'body',
                 },
+                // Assets (logo/producto) antes solo llegaban al path Gemini
+                // (assetReferences) — en KIE el clone decía "hoodie with logo"
+                // y Seedream pintaba la palabra literal "LOGO" en la prenda.
+                ...(optimizedPayload.assetImages ?? []).map((a) => ({
+                    ...a,
+                    role: 'asset',
+                })),
                 optimizedPoseRef && { ...optimizedPoseRef, role: 'pose' },
                 optimizedPayload.sceneImage && {
                     ...optimizedPayload.sceneImage,

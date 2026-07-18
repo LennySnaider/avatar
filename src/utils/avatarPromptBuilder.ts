@@ -372,7 +372,7 @@ const ROLE_DESC: Record<RefRole, string> = {
     pose: 'POSE ONLY REFERENCE — copy ONLY the body position/pose, NOT the face or proportions',
     scene: 'STYLE/SCENE reference — use for setting/composition, REPLACE the subject with [FACE_ANCHOR]',
     clone: 'CLONE SOURCE — copy the EXACT pose, body position, outfit, hands, any object held (e.g. a phone), framing, camera angle, lighting and setting from this image. The person shown is a FACELESS MANNEQUIN — IGNORE their face/identity. Take the face ONLY from [FACE_ANCHOR].',
-    asset: 'Item to include',
+    asset: 'BRAND ASSET (logo/graphic/product) — print this EXACT design on the outfit/props wherever a logo or graphic appears; reproduce its shapes, colors and lettering faithfully. Never write placeholder text such as "LOGO".',
 }
 
 /**
