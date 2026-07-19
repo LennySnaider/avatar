@@ -14,6 +14,7 @@ import type { ImageRoute, ImageRouteContext, KieImageRequest } from '../context'
 import {
     relocatePoseTag,
     capAtWordBoundary,
+    stripIdentityRedundancy,
     hairClause as buildHairClause,
     faceFidelityClause as buildFaceFidelityClause,
 } from '../shared'
@@ -22,8 +23,17 @@ async function build(ctx: ImageRouteContext): Promise<KieImageRequest> {
     const hairClause = buildHairClause(ctx.hairEmphasis)
     const faceFidelityClause = buildFaceFidelityClause(ctx.identityWeight)
 
-    // Grok NO es nano-banana-2 → reubica la pose; cap genérico 1800; sin strip.
-    const promptText = relocatePoseTag(ctx.prompt)
+    // Grok NO es nano-banana-2 → reubica la pose; cap genérico 1800.
+    let promptText = relocatePoseTag(ctx.prompt)
+    // FIX (Fase 6, verificado A/B live): Grok es i2i — la identidad va en la
+    // IMAGEN, así que el [FACE:] de texto (~320 chars) es redundante y comía el
+    // presupuesto del cap 1800, DECAPITANDO el [CLONE:] (escena/outfit) → Grok
+    // inventaba el fondo (reporte: parking → recámara; medido: prompt 1962 >
+    // 1800). Se quita SOLO [FACE:] (bodyInAnchor=false → conserva [BODY:] para
+    // el cuerpo) para que el [CLONE:] completo quepa. Aislado: no toca otras rutas.
+    if (ctx.referenceImage) {
+        promptText = stripIdentityRedundancy(promptText, false)
+    }
     const capped = capAtWordBoundary(promptText, 1800, ctx.model)
     const input: Record<string, unknown> = {
         prompt: capped,

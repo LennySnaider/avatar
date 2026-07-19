@@ -169,6 +169,11 @@ async function main() {
     console.log = () => {}
     const warn = console.warn
     console.warn = () => {}
+    // Modelos con FIX INTENCIONAL de Fase 6: divergen de legacy a propósito.
+    // Para ellos solo exigimos que su build() corra sin crash (no deepEqual).
+    // El resto queda CONGELADO: deepEqual == legacy es obligatorio.
+    const DIVERGED = ['grok-imagine']
+    const isDiverged = (m: string) => DIVERGED.some((d) => m.startsWith(d))
     let fail = 0
     let checked = 0
     const pass: string[] = []
@@ -178,6 +183,18 @@ async function main() {
         for (const fx of fixturesFor(model)) {
             const key = `${model} :: ${fx.name}`
             checked++
+            if (isDiverged(model)) {
+                try {
+                    await route.build(fx.ctx)
+                    pass.push(
+                        `~ ${route.label} ${key} (fix Fase 6, diverge OK)`,
+                    )
+                } catch (e) {
+                    fail++
+                    pass.push(`❌ CRASH ${route.label} ${key}: ${e}`)
+                }
+                continue
+            }
             try {
                 deepStrictEqual(await route.build(fx.ctx), golden[key])
                 pass.push(`✅ ${route.label} ${key}`)
@@ -196,8 +213,9 @@ async function main() {
         )
         process.exit(1)
     }
+    const frozen = checked - pass.filter((l) => l.startsWith('~')).length
     console.log(
-        `\n✅ ${checked} fixtures: todas las rutas registradas == legacy.`,
+        `\n✅ ${frozen} fixtures CONGELADOS == legacy · ${checked - frozen} divergen por fix de Fase 6 (build OK).`,
     )
 }
 
