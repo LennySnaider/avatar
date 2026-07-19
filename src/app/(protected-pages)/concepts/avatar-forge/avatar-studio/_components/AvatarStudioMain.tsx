@@ -1244,9 +1244,15 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                         kieModel === 'nano-banana-2-lite' ||
                         kieModel.startsWith('seedream/5-lite')
                     if (isLiteTier) {
-                        const rivalFaceRoles = new Set(['pose', 'scene', 'clone'])
+                        // pose/scene/clone traen rostro RIVAL. 'angle' es la
+                        // MISMA persona pero como collage 3x3 de 9 caras — un
+                        // modelo chico lo funde en un rostro genérico en vez de
+                        // usar la cara nítida de la imagen 1. Se quitan todos:
+                        // a los lite les basta el face ref único (verificado
+                        // live: face-only → cara EXACTA del avatar).
+                        const dropForLite = new Set(['pose', 'scene', 'clone', 'angle'])
                         kieRefsToSend = kieRefsToSend.filter(
-                            (r) => !rivalFaceRoles.has(r.role as string),
+                            (r) => !dropForLite.has(r.role as string),
                         )
                         refRoles = kieRefsToSend.map((r) => r.role as RefRole)
                     }
