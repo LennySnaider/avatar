@@ -62,10 +62,41 @@ async function build(ctx: ImageRouteContext): Promise<KieImageRequest> {
                 input.prompt = `REMOVE any overlaid stickers, watermarks, emojis or UI graphics pasted on the photo — the output must be a clean photograph. The FIRST image is the ORIGINAL photo — reproduce it EXACTLY: same body, build, outfit, pose, hands, framing, lighting, background and setting; do NOT blend the two images. The SECOND image shows the person whose FACE to use. The FACE SWAP is MANDATORY: replace the face in the first image with the face from the second image (exact features, freckles, likeness) — never keep the original face. Do NOT alter or remove any clothing. ${input.prompt}`
                 console.log('[KIE] qwen2/image-edit DEEPFAKE (canvas + face)')
             } else {
+                const qwenClone = (ctx.referenceImages ?? []).find(
+                    (r) => r.role === 'clone',
+                )
                 const qwenAssets = (ctx.referenceImages ?? [])
                     .filter((r) => r.role === 'asset')
                     .slice(0, 2)
-                if (qwenAssets.length > 0) {
+                if (qwenClone) {
+                    // Qwen recibe la IMAGEN del clone como 2ª imagen (image_url
+                    // acepta array): clona outfit/pose/escena FIEL y el peso del
+                    // clon escala la cláusula por tramo. Guard de maniquí: la
+                    // cara SOLO de la imagen 1 (Qwen es débil mezclando rostros).
+                    const cloneUrl = await ctx.uploadRef(
+                        qwenClone.base64,
+                        qwenClone.mimeType,
+                    )
+                    input.image_url = [refUrl, cloneUrl]
+                    const cw = ctx.cloneWeight ?? 100
+                    const cloneClause =
+                        cw >= 75
+                            ? `The SECOND image is the CLONE source — recreate its EXACT outfit, pose, hands, framing, lighting and setting. Its person is a FACELESS MANNEQUIN: use ONLY the face from the FIRST image, NEVER the second image's face. Keep her FULLY dressed; do NOT merge the two faces.`
+                            : cw >= 50
+                              ? `The SECOND image is a STRONG reference — follow its outfit, pose, framing and setting closely, allowing natural variation. FACELESS MANNEQUIN: the face comes ONLY from the first image, never the second's.`
+                              : cw >= 25
+                                ? `The SECOND image is a MODERATE reference — keep its outfit style, general pose and setting but freely reinterpret the details and framing. FACELESS MANNEQUIN: the face comes ONLY from the first image.`
+                                : `The SECOND image is a LOOSE style reference — take only its general vibe and outfit style; freely reinterpret the pose, framing and setting. FACELESS MANNEQUIN: the face comes ONLY from the first image.`
+                    // El texto [CLONE:] es redundante con la imagen → se quita.
+                    const scene = String(input.prompt)
+                        .replace(/\[CLONE:[^\]]*\]/gi, ' ')
+                        .replace(/\s{2,}/g, ' ')
+                        .trim()
+                    input.prompt = `The FIRST image is the person — keep her EXACT face and likeness.${faceFidelityClause}${hairClause} Her eyes keep their exact natural color and iris texture from the reference photo — do NOT recolor, brighten or saturate them. ${cloneClause} ${scene}`
+                    console.log(
+                        `[KIE] qwen2/image-edit CLONE (face + clone image, weight ${cw})`,
+                    )
+                } else if (qwenAssets.length > 0) {
                     const qwenUrls: string[] = [refUrl]
                     for (const a of qwenAssets) {
                         qwenUrls.push(await ctx.uploadRef(a.base64, a.mimeType))
@@ -91,6 +122,10 @@ async function build(ctx: ImageRouteContext): Promise<KieImageRequest> {
         }
     }
 
+    // Qwen impone prompt ≤ 800 chars (API qwen2/image-edit). El ancla (cara +
+    // cláusula de clone) va al FRENTE, así que un recorte cae en la cola de
+    // escena, nunca en la identidad.
+    input.prompt = capAtWordBoundary(String(input.prompt), 800, resolvedModel)
     return { model: resolvedModel, input, fullApiPrompt: promptText }
 }
 

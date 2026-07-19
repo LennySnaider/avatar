@@ -1278,7 +1278,11 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                                 kieModel.startsWith('nano-banana-2') ||
                                 kieModel.startsWith('seedream/') ||
                                 kieModel === 'wan/2-7-image' ||
-                                kieModel.startsWith('flux-2/')) &&
+                                kieModel.startsWith('flux-2/') ||
+                                // Qwen es editor de imagen (image_url acepta
+                                // array): recibe [cara, clone] con guard de
+                                // maniquí → clona fiel + el peso pesa la imagen.
+                                kieModel.startsWith('qwen')) &&
                             optimizedCloneRef &&
                             kieReferenceImages.length > 0
                         ) {
