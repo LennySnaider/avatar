@@ -503,7 +503,15 @@ export async function generateImageKie(
         // take an http-URL ARRAY (input_urls/image_urls), not our base64 ref, so
         // we skip the reference (avatar-locked i2i for them is a follow-up). The
         // last `else` keeps the legacy shape for Grok/others (incl. base64 i2i).
-        let resolvedModel = model
+        // 'nano-banana-2-lite' es un ALIAS INTERNO de tier (lo usamos para
+        // forzar resolution=1K = el precio "Lite"), pero NO existe como modelo
+        // en KIE: su Image API solo expone 'nano-banana-2'. Enviarlo hacía que
+        // KIE IGNORARA por completo el image_input y generara text-to-image
+        // (verificado live: misma cara de referencia → salía una mujer random
+        // distinta; con 'nano-banana-2' a 1K → la MISMA persona). El resto del
+        // código sigue ramificando por el alias (resolución/branches); solo el
+        // id que viaja a KIE se traduce al real.
+        let resolvedModel = model === 'nano-banana-2-lite' ? 'nano-banana-2' : model
         // These models CAP prompt length (Seedream 3000, FLUX/Qwen/Ideogram 5000,
         // Nano Banana 2 20000). Our full avatar prompt (body + face + scene +
         // clone) can blow past it → KIE 500 "text length cannot exceed the
@@ -519,14 +527,12 @@ export async function generateImageKie(
         // los caps (recortan por el final; Grok/Qwen ~1800 ni lo veían —
         // salían paradas ignorando la pose) o quedaba en la zona de menor
         // peso. Se reubica al INICIO como mandato ANTES de cualquier cap.
-        // EXCEPTO nano-banana-2 FULL: conserva la IMAGEN de pose + el bloque
+        // EXCEPTO la familia nano-banana-2 (full y el alias -lite, que ES el
+        // mismo modelo a 1K): conservan la IMAGEN de pose + el bloque
         // [POSE_REF] del harness, así que el texto al frente sobra y compite.
-        // nano-banana-2-LITE SÍ reubica: al modelo chico se le QUITA la imagen
-        // de pose (mezclaba su rostro rival con el del avatar — ver filtro en
-        // AvatarStudioMain), por lo que el TEXTO reubicado al frente es su
-        // única fuente de pose. El resto del flujo genérico (Seedream/Wan/
-        // Grok/Qwen/FLUX) también lo necesita.
-        const relocatePose = model !== 'nano-banana-2'
+        // El resto del flujo genérico (Seedream/Wan/Grok/Qwen/FLUX) sí lo
+        // necesita: sus caps recortan por el final y el tag moría ahí.
+        const relocatePose = !model.startsWith('nano-banana-2')
         const poseTag = relocatePose && promptText.match(/\[POSE:\s*([^\]]+)\]/i)
         if (poseTag) {
             promptText = `POSE (MANDATORY — her EXACT body position): ${poseTag[1].trim()}. ${promptText
