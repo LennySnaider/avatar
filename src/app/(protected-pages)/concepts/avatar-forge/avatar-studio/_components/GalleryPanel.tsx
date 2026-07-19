@@ -469,32 +469,38 @@ const GalleryPanel = ({
                 </div>
             )}
 
-            <ScrollBar ref={scrollBarRef} className="flex-1 h-full" autoHide={false}>
+            <ScrollBar
+                ref={scrollBarRef}
+                className="flex-1 h-full"
+                autoHide={false}
+            >
                 <div className="p-4 pt-1">
                     {/* Empty State */}
                     {gallery.length === 0 &&
                         !isGenerating &&
                         pendingGenerations.length === 0 && (
-                        <div className="flex flex-col items-center justify-center h-64 text-gray-400">
-                            <div className="w-16 h-16 rounded-full border-2 border-gray-300 flex items-center justify-center mb-4">
-                                <HiOutlinePhotograph className="w-8 h-8" />
+                            <div className="flex flex-col items-center justify-center h-64 text-gray-400">
+                                <div className="w-16 h-16 rounded-full border-2 border-gray-300 flex items-center justify-center mb-4">
+                                    <HiOutlinePhotograph className="w-8 h-8" />
+                                </div>
+                                <p className="text-lg font-medium">
+                                    Ready to Generate
+                                </p>
+                                <p className="text-sm mb-4">
+                                    Describe a scene and click Generate
+                                </p>
+                                <Button
+                                    size="sm"
+                                    variant="solid"
+                                    onClick={() =>
+                                        uploadInputRef.current?.click()
+                                    }
+                                    icon={<HiOutlineUpload />}
+                                >
+                                    Or Upload Videos/Images
+                                </Button>
                             </div>
-                            <p className="text-lg font-medium">
-                                Ready to Generate
-                            </p>
-                            <p className="text-sm mb-4">
-                                Describe a scene and click Generate
-                            </p>
-                            <Button
-                                size="sm"
-                                variant="solid"
-                                onClick={() => uploadInputRef.current?.click()}
-                                icon={<HiOutlineUpload />}
-                            >
-                                Or Upload Videos/Images
-                            </Button>
-                        </div>
-                    )}
+                        )}
 
                     {/* No Matches State */}
                     {gallery.length > 0 &&
@@ -544,7 +550,10 @@ const GalleryPanel = ({
                                 <div className="flex flex-col items-center px-4 text-center">
                                     <Spinner size={28} />
                                     <span className="text-xs font-semibold text-amber-600 dark:text-amber-400 mt-2">
-                                        En espera · {p.mediaType === 'VIDEO' ? 'Video' : 'Imagen'}
+                                        En espera ·{' '}
+                                        {p.mediaType === 'VIDEO'
+                                            ? 'Video'
+                                            : 'Imagen'}
                                     </span>
                                     <span className="text-[11px] text-gray-500 mt-1 font-mono">
                                         {p.label}
@@ -701,6 +710,39 @@ const GalleryPanel = ({
                                                     {ownerName}
                                                 </span>
                                             ) : null
+                                        })()}
+                                        {/* Modo con que se generó: Clone %·tramo o
+                                            Deepfake. Ausente en cards previos. */}
+                                        {(() => {
+                                            const gt =
+                                                media.metadata?.generation_type
+                                            if (gt === 'deepfake')
+                                                return (
+                                                    <span className="px-2 py-1 text-[10px] font-medium rounded bg-red-500/80 text-white inline-block">
+                                                        Deepfake
+                                                    </span>
+                                                )
+                                            if (gt === 'clone') {
+                                                const w =
+                                                    typeof media.metadata
+                                                        ?.clone_weight ===
+                                                    'number'
+                                                        ? media.metadata
+                                                              .clone_weight
+                                                        : 100
+                                                const tier =
+                                                    w >= 75
+                                                        ? 'EXACT'
+                                                        : w >= 40
+                                                          ? 'STRONG'
+                                                          : 'LOOSE'
+                                                return (
+                                                    <span className="px-2 py-1 text-[10px] font-medium rounded bg-purple-500/80 text-white inline-block">
+                                                        {`Clone ${w}% · ${tier}`}
+                                                    </span>
+                                                )
+                                            }
+                                            return null
                                         })()}
                                     </div>
 

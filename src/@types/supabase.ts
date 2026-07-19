@@ -393,15 +393,44 @@ export type Database = {
 // Custom types
 // bust/glutes: refs de región (como Body Ref pero independientes) — solo
 // viajan a modelos con trait `permissive`.
-export type ReferenceType = 'general' | 'face' | 'angle' | 'body' | 'bust' | 'glutes'
+export type ReferenceType =
+    | 'general'
+    | 'face'
+    | 'angle'
+    | 'body'
+    | 'bust'
+    | 'glutes'
 export type MediaType = 'IMAGE' | 'VIDEO'
-export type ProviderType = 'GOOGLE' | 'KLING' | 'OPENAI' | 'RUNWAY' | 'QWEN' | 'MINIMAX' | 'KIE' | 'GATEWAY' | 'CUSTOM'
+export type ProviderType =
+    | 'GOOGLE'
+    | 'KLING'
+    | 'OPENAI'
+    | 'RUNWAY'
+    | 'QWEN'
+    | 'MINIMAX'
+    | 'KIE'
+    | 'GATEWAY'
+    | 'CUSTOM'
 export type AspectRatio = '1:1' | '16:9' | '9:16' | '4:3' | '3:4'
 
-export type BodyType = 'petite' | 'slim' | 'athletic' | 'average' | 'curvy' | 'hourglass' | 'plus-size'
+export type BodyType =
+    | 'petite'
+    | 'slim'
+    | 'athletic'
+    | 'average'
+    | 'curvy'
+    | 'hourglass'
+    | 'plus-size'
 
 // Leg shape/type. Optional — when unset the legs follow the overall body type.
-export type LegType = 'slim' | 'toned' | 'athletic' | 'muscular-thighs' | 'long' | 'curvy' | 'thick'
+export type LegType =
+    | 'slim'
+    | 'toned'
+    | 'athletic'
+    | 'muscular-thighs'
+    | 'long'
+    | 'curvy'
+    | 'thick'
 
 // Nivel 1-5 para los sliders de curvas (busto/glúteos/muslos). undefined =
 // Auto. SOLO se envían a providers con trait `permissive` (gating en el
@@ -413,7 +442,12 @@ export type CurveLevel = 1 | 2 | 3 | 4 | 5
 // (redonda/atlética/cónica/lágrima-pera/tuberosa). undefined = Auto.
 // Mismo gating permisivo que los niveles.
 export type GlutesShape = 'square' | 'v-shape' | 'a-shape' | 'round' | 'heart'
-export type BustShape = 'round' | 'athletic' | 'conical' | 'teardrop' | 'tuberous'
+export type BustShape =
+    | 'round'
+    | 'athletic'
+    | 'conical'
+    | 'teardrop'
+    | 'tuberous'
 
 // Hair texture/type. Optional — when unset the hair follows the face
 // description (auto-analyzed from the reference photos).
@@ -501,6 +535,11 @@ export interface GenerationMetadata {
     style_weight?: number
     camera_motion?: string
     subject_action?: string
+    // Modo efectivo con que se generó (para el badge del card). 'clone' guarda
+    // además clone_weight (0-100). 'deepfake' = face-swap de la foto original.
+    // Ausente en generaciones previas al feature → el card no muestra chip.
+    generation_type?: 'clone' | 'deepfake' | 'plain'
+    clone_weight?: number
     [key: string]: unknown
 }
 
@@ -509,11 +548,14 @@ export type Avatar = Database['public']['Tables']['avatars']['Row']
 export type AvatarInsert = Database['public']['Tables']['avatars']['Insert']
 export type AvatarUpdate = Database['public']['Tables']['avatars']['Update']
 
-export type AvatarReference = Database['public']['Tables']['avatar_references']['Row']
-export type AvatarReferenceInsert = Database['public']['Tables']['avatar_references']['Insert']
+export type AvatarReference =
+    Database['public']['Tables']['avatar_references']['Row']
+export type AvatarReferenceInsert =
+    Database['public']['Tables']['avatar_references']['Insert']
 
 export type Generation = Database['public']['Tables']['generations']['Row']
-export type GenerationInsert = Database['public']['Tables']['generations']['Insert']
+export type GenerationInsert =
+    Database['public']['Tables']['generations']['Insert']
 
 export type Prompt = Database['public']['Tables']['prompts']['Row']
 export type PromptInsert = Database['public']['Tables']['prompts']['Insert']

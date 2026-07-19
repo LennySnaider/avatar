@@ -118,6 +118,7 @@ import type {
     Avatar,
     ReferenceType,
     AIProvider,
+    GenerationMetadata,
 } from '@/@types/supabase'
 import { useImageOptimization } from '../_hooks/useImageOptimization'
 
@@ -965,6 +966,10 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
 
             try {
                 let resultUrl: string
+                // Badge del card: modo efectivo con que se generó. Se asigna en
+                // la rama KIE cuando los refs ya están finalizados (post-filtros);
+                // undefined en el resto (Gemini/Gateway/video) → sin chip.
+                let generationMeta: GenerationMetadata | undefined
 
                 // Optimize images before sending to API (resize to 1024px max)
                 const optimizedPayload = await prepareAvatarPayload({
@@ -1466,6 +1471,28 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                             hwRatio >= 1.5 && measurements?.waist
                                 ? `Her figure is a DRAMATIC HOURGLASS: her hips are MUCH WIDER than her very narrow waist (hips ${measurements.hips}cm vs cinched waist ${measurements.waist}cm, ratio ${hwRatio.toFixed(1)}) — render WIDE, FULL, rounded hips and glutes with full thighs and a tiny cinched waist, visibly curvier and fuller than the reference photo suggests.`
                                 : ''
+
+                        // Badge: el modo REAL con que salió esta imagen. El clone
+                        // cuenta solo si su IMAGEN llegó al payload — se detecta por
+                        // base64, NO por rol, porque algunos modelos la reetiquetan
+                        // ('scene' en GPT Image 2) o la mandan por kieSingleRef
+                        // (Flux Kontext), y seedream-5-lite la descarta (→ sin chip).
+                        // Deepfake corta antes e ignora el peso.
+                        const cloneB64 = deepfakeActive
+                            ? undefined
+                            : optimizedCloneRef?.base64
+                        const cloneImageSent =
+                            !!cloneB64 &&
+                            (kieRefsToSend.some((r) => r.base64 === cloneB64) ||
+                                kieSingleRef?.base64 === cloneB64)
+                        generationMeta = deepfakeActive
+                            ? { generation_type: 'deepfake' }
+                            : cloneImageSent
+                              ? {
+                                    generation_type: 'clone',
+                                    clone_weight: cloneWeight,
+                                }
+                              : undefined
 
                         if (isKieAsyncImageModel(kieModel)) {
                             // ASYNC submit + browser poll (see pollKieImageTask).
@@ -2195,6 +2222,9 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                     },
                     fullApiPrompt: apiPrompt ?? fullPrompt,
                     providerName: activeProvider?.name,
+                    // Modo efectivo (clone %/deepfake) para el badge del card.
+                    // Persiste vía persistGeneration (spread de media.metadata).
+                    metadata: generationMeta,
                 }
 
                 addToGallery(newMedia)
