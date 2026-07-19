@@ -1472,22 +1472,15 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                                 ? `Her figure is a DRAMATIC HOURGLASS: her hips are MUCH WIDER than her very narrow waist (hips ${measurements.hips}cm vs cinched waist ${measurements.waist}cm, ratio ${hwRatio.toFixed(1)}) — render WIDE, FULL, rounded hips and glutes with full thighs and a tiny cinched waist, visibly curvier and fuller than the reference photo suggests.`
                                 : ''
 
-                        // Badge: el modo REAL con que salió esta imagen. El clone
-                        // cuenta solo si su IMAGEN llegó al payload — se detecta por
-                        // base64, NO por rol, porque algunos modelos la reetiquetan
-                        // ('scene' en GPT Image 2) o la mandan por kieSingleRef
-                        // (Flux Kontext), y seedream-5-lite la descarta (→ sin chip).
-                        // Deepfake corta antes e ignora el peso.
-                        const cloneB64 = deepfakeActive
-                            ? undefined
-                            : optimizedCloneRef?.base64
-                        const cloneImageSent =
-                            !!cloneB64 &&
-                            (kieRefsToSend.some((r) => r.base64 === cloneB64) ||
-                                kieSingleRef?.base64 === cloneB64)
+                        // Badge: refleja lo que el USUARIO usó, no el detalle
+                        // interno de cada modelo. Si cargó un Clone Ref (y no es
+                        // deepfake), TODOS los modelos KIE muestran "Clone NN%",
+                        // aunque algunos lo consuman solo por texto [CLONE:] y no
+                        // como imagen (Qwen/Grok) o lo filtren de las refs
+                        // (seedream-5-lite) — el peso es el que el usuario fijó.
                         generationMeta = deepfakeActive
                             ? { generation_type: 'deepfake' }
-                            : cloneImageSent
+                            : optimizedCloneRef
                               ? {
                                     generation_type: 'clone',
                                     clone_weight: cloneWeight,
