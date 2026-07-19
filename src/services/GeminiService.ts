@@ -960,11 +960,13 @@ export async function analyzeImageForClone(image: { base64: string; mimeType: st
 
 Cover: outfit/clothing/accessories/footwear/hairstyle, pose and body orientation, setting and background, lighting quality and direction, camera angle and shot type, and overall artistic style.
 
+CLOTHING IS THE TOP PRIORITY — describe every garment in HIGH DETAIL so it can be reproduced faithfully: exact garment type and cut (crop/full length, neckline shape, sleeve style, waistline, hem), the fabric and its texture (ribbed, knit, satin, denim, cotton), how it fits (tight/loose/draped), closures and details (drawstrings, straps, ties, zippers, buttons, cutouts, ruching), the precise color/shade, and any print or pattern. Spend most of the description on the clothing.
+
 CRITICAL OUTPUT FORMAT:
 - Write ONE flowing paragraph of natural prose, separated by commas
 - NO headers, NO numbered sections, NO bullet points, NO markdown (no **bold**, no asterisks)
 - NO labels like "Outfit:", "Pose:", "Setting:". Just natural description
-- Keep under 500 characters total
+- Keep under 750 characters total
 - It must read like a standard image-generation prompt, not a spec sheet
 
 DO NOT describe: facial features, body measurements or body type (thin/curvy/muscular), age, skin tone/complexion, hair color, or ethnicity.
@@ -977,7 +979,7 @@ VOCABULARY RESTRICTIONS (these trigger downstream safety filters, never use them
 - "bustier" → "structured bodice"
 - "corset" → "structured waist garment"
 
-Example output (format to match): "a woman wearing a floral halter swim top and striped high-cut swim bottom with a delicate gold chain necklace, leaning forward on white pool coping with hands resting on the edge, bright outdoor swimming pool with clear blue water, soft overhead daylight with gentle shadows, medium three-quarter shot from slightly low angle, casual lifestyle photography with vibrant natural color grading"`,
+Example output (match this format AND this level of garment detail): "a woman wearing a fitted grey ribbed-knit sleeveless crop tank top with a scooped neckline and thin shoulder straps ending just above the navel, paired with a matching grey ribbed drawstring mini skirt sitting high on the waist with a loose tie-bow drawstring at the front and a short body-hugging hem, a delicate silver cross pendant necklace and small gold hoop earrings, sunglasses perched on the head, holding a phone up for a mirror selfie with the free arm relaxed at the side, indoor changing room with light wood panel walls, soft even diffused daylight, medium three-quarter shot from a slight angle, casual candid lifestyle photography"`,
                     },
                 ],
             },

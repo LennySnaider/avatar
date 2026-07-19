@@ -378,7 +378,7 @@ const ROLE_DESC: Record<RefRole, string> = {
     scene: 'STYLE/SCENE reference — use for setting/composition, REPLACE the subject with [FACE_ANCHOR]',
     place: 'LOCATION reference — place the subject inside THIS exact environment; keep its architecture, furniture, background and lighting faithfully',
     clone: 'CLONE SOURCE — copy the EXACT pose, body position, outfit, hands, any object held (e.g. a phone), framing, camera angle, lighting and setting from this image. The person shown is a FACELESS MANNEQUIN — IGNORE their face/identity. Take the face ONLY from [FACE_ANCHOR].',
-    asset: 'BRAND ASSET (logo/graphic/product) — print this EXACT design on the outfit/props wherever a logo or graphic appears; reproduce its shapes, colors and lettering faithfully. Never write placeholder text such as "LOGO".',
+    asset: 'PRODUCT ASSET. If it is a GARMENT or accessory (top, dress, skirt, shoes, bag, hat, jewelry): dress the subject in THIS EXACT item — replicate its precise cut, silhouette, fabric, texture, seams, straps, drawstrings, color and any print faithfully, as if she is literally wearing this piece. If it is a LOGO/graphic: print this EXACT design on her clothing/props where a logo appears (faithful shapes, colors, lettering). Never write placeholder text such as "LOGO".',
 }
 
 /**
