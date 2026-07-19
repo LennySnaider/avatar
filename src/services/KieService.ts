@@ -313,6 +313,11 @@ export interface GenerateImageKieParams {
     // outfit, pose, escena intactos) y SOLO cambia la cara por la del avatar.
     // Apaga bodyClause/curvas; la cláusula de clone cambia a face-swap total.
     deepfakeMode?: boolean
+    // Refuerzo de curvas EXCLUSIVO de Seedream (Pro aplana el hourglass cuando
+    // describeBody describe la cadera por cm absolutos en vez de por ratio).
+    // Solo la rama seedream/ lo inyecta; los demás modelos lo ignoran. Vacío
+    // salvo hourglass marcado por ratio (≥1.5).
+    curveBoost?: string
 }
 
 type KieRefWithRole = { base64: string; mimeType: string; role?: string }
@@ -457,7 +462,7 @@ export async function generateImageKie(
     | { success: true; url: string; fullApiPrompt: string }
     | { success: false; error: string }
 > {
-    const { model, aspectRatio = '1:1', referenceImage, referenceImages, bodyEmphasis, hairEmphasis, eyeEmphasis, identityWeight, deepfakeMode } = params
+    const { model, aspectRatio = '1:1', referenceImage, referenceImages, bodyEmphasis, hairEmphasis, eyeEmphasis, identityWeight, deepfakeMode, curveBoost } = params
     // Override de pelo compartido por los anclas i2i (seedream/wan): recolorea
     // aunque el ref o la escena sugieran otro tono.
     const hairClause = hairEmphasis
@@ -713,11 +718,18 @@ export async function generateImageKie(
                     // Body Ref exists; otherwise the CONCRETE descriptors
                     // (bodyEmphasis) are repeated inside the anchor's early
                     // tokens — not just a "follow the text below" pointer.
+                    // curveBoost: refuerzo por-RATIO exclusivo de Seedream (Pro
+                    // aplana el hourglass cuando describeBody describe la cadera
+                    // por cm absolutos — 97cm cae en "proportionate"). Se antepone
+                    // dentro del bodyClause SIN body ref, en los tokens tempranos
+                    // que es lo único que Pro atiende. A/B verificado live.
                     const bodyClause = deepfakeMode
                         ? ''
                         : hasBody
                             ? `The SECOND attached image shows her real BODY — replicate its exact body shape, proportions, curves and build; do NOT take the body from the first image. IGNORE the second image's clothing, pose, scene, lighting and background — her outfit, pose and the scene come ONLY from ${hasClone ? 'the CLONE image and the text description' : 'the text description'}.`
                             : `Use the reference image ONLY for the face and identity: do NOT copy the body, build, weight or proportions from it — the person in the photo may look slimmer than she really is.${
+                                  curveBoost ? ` ${curveBoost}` : ''
+                              }${
                                   bodyEmphasis
                                       ? ` Her real body is: ${bodyEmphasis}. Render THAT body, visibly fuller and curvier than the reference photo suggests.`
                                       : ' Her body proportions MUST follow the text description below exactly (bust, waist, hips and thighs as written).'

@@ -1356,6 +1356,23 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                     const baseBodyEmphasis = measurements?.waist
                         ? `${describeBody(measurements)} (bust ${measurements.bust}cm, waist ${measurements.waist}cm, hips ${measurements.hips}cm — hip-to-waist ratio ${(measurements.hips / measurements.waist).toFixed(2)})`
                         : describeBody(measurements)
+                    // Refuerzo de curvas SOLO-SEEDREAM (lo consume su rama en
+                    // KieService; Wan/FLUX/otros NO leen curveBoost → intactos).
+                    // describeBody describe la cadera por cm ABSOLUTOS (umbral
+                    // "wide" en hips≥100), así que un hourglass marcado por
+                    // RATIO (p.ej. Emily 97/50 = 1.94) cae en "proportionate
+                    // hips" y Seedream Pro —que pesa la imagen sobre el texto—
+                    // la aplana. Cuando el ratio implica hourglass real,
+                    // forzamos el contraste cintura-cadera (A/B verificado live:
+                    // mismo face → texto débil = flaca, texto por-ratio = curvy).
+                    const hwRatio =
+                        measurements?.waist && measurements?.hips
+                            ? measurements.hips / measurements.waist
+                            : 0
+                    const seedreamCurveBoost =
+                        hwRatio >= 1.5 && measurements?.waist
+                            ? `Her figure is a DRAMATIC HOURGLASS: her hips are MUCH WIDER than her very narrow waist (hips ${measurements.hips}cm vs cinched waist ${measurements.waist}cm, ratio ${hwRatio.toFixed(1)}) — render WIDE, FULL, rounded hips and glutes with full thighs and a tiny cinched waist, visibly curvier and fuller than the reference photo suggests.`
+                            : ''
 
                     if (isKieAsyncImageModel(kieModel)) {
                         // ASYNC submit + browser poll (see pollKieImageTask).
@@ -1375,6 +1392,10 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                                 : curvesEmphasis
                                   ? `${baseBodyEmphasis}; emphasized curves: ${curvesEmphasis}`
                                   : baseBodyEmphasis,
+                            // Solo la rama Seedream de KieService lo lee.
+                            curveBoost: deepfakeActive
+                                ? undefined
+                                : seedreamCurveBoost || undefined,
                             deepfakeMode: deepfakeActive,
                             // Color de pelo DENTRO del ancla i2i: como "brown
                             // hair" en el [BODY:] tardío, Seedream/Wan seguían
