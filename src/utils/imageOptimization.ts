@@ -7,15 +7,18 @@
  * - Storage URLs with transforms
  */
 
-// Size presets
+// Size presets. `minSide` (opcional) fuerza un tamaño MÍNIMO por lado
+// upscalando imágenes chicas: KIE rechaza refs <240x240 ("resolution must be
+// at least 240x240"). 256 da margen. Solo los presets de API lo llevan — los
+// thumbnails deben quedarse chicos.
 export const IMAGE_SIZES = {
     THUMBNAIL: { maxWidth: 200, maxHeight: 200, quality: 0.8 },
     PREVIEW: { maxWidth: 400, maxHeight: 400, quality: 0.85 },
-    API: { maxWidth: 1024, maxHeight: 1024, quality: 0.9 },
-    API_HIGH: { maxWidth: 1536, maxHeight: 1536, quality: 0.9 },
+    API: { maxWidth: 1024, maxHeight: 1024, quality: 0.9, minSide: 256 },
+    API_HIGH: { maxWidth: 1536, maxHeight: 1536, quality: 0.9, minSide: 256 },
     // Video first-frames: the frame drives the whole clip's quality, so keep
     // full 720p/1080p resolution (1080x1920 portrait fits) and near-lossless.
-    API_FULL: { maxWidth: 1920, maxHeight: 1920, quality: 0.95 },
+    API_FULL: { maxWidth: 1920, maxHeight: 1920, quality: 0.95, minSide: 256 },
 }
 
 type ImageSizePreset = keyof typeof IMAGE_SIZES
@@ -25,6 +28,9 @@ interface ResizeOptions {
     maxHeight: number
     quality?: number
     format?: 'jpeg' | 'png' | 'webp'
+    /** Lado mínimo: si la imagen es más chica, se upscalea para cumplir el
+     * mínimo de la API (KIE ≥240x240). Se aplica después del downscale. */
+    minSide?: number
 }
 
 /**
@@ -37,7 +43,7 @@ export async function resizeBase64Image(
 ): Promise<string> {
     const preset = typeof options === 'string' ? IMAGE_SIZES[options] : null
     const opts = preset ? { ...preset, format: 'jpeg' as const } : (options as ResizeOptions)
-    const { maxWidth, maxHeight, quality = 0.9, format = 'jpeg' } = opts
+    const { maxWidth, maxHeight, quality = 0.9, format = 'jpeg', minSide } = opts as ResizeOptions
 
     return new Promise((resolve, reject) => {
         const img = new Image()
@@ -50,6 +56,15 @@ export async function resizeBase64Image(
                 const ratio = Math.min(maxWidth / width, maxHeight / height)
                 width = Math.round(width * ratio)
                 height = Math.round(height * ratio)
+            }
+
+            // Upscale imágenes chicas hasta el lado mínimo (KIE rechaza refs
+            // <240x240; p.ej. un asset de 218x175). Preserva el aspect ratio;
+            // el suavizado de alta calidad reduce el pixelado del upscale.
+            if (minSide && Math.min(width, height) < minSide) {
+                const up = minSide / Math.min(width, height)
+                width = Math.round(width * up)
+                height = Math.round(height * up)
             }
 
             // Create canvas and draw resized image
