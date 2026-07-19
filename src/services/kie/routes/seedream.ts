@@ -85,8 +85,36 @@ async function build(ctx: ImageRouteContext): Promise<KieImageRequest> {
                             ? ` Her real body is: ${ctx.bodyEmphasis}. Render THAT body, visibly fuller and curvier than the reference photo suggests.`
                             : ' Her body proportions MUST follow the text description below exactly (bust, waist, hips and thighs as written).'
                     }`
-            const seedreamAnchor = `The person in the FIRST attached reference image is the subject — keep her EXACT face, facial features and likeness from that image.${faceFidelityClause} ${bodyClause}${hairClause}${eyeClause}${extraClauses} Follow the SCENE, POSE and ACTION described below EXACTLY.`
-            const sceneRoom = Math.max(250, 2750 - seedreamAnchor.length)
+            // FASE 6 — el FONDO/lugar viven al FINAL de la escena y se
+            // decapitaban: el ancla crecía (bodyClause = base + curveBoost +
+            // bodyEmphasis largo + hair/eye) y se comía el presupuesto, así que
+            // la escena se cortaba justo tras el outfit, ANTES del fondo (medido
+            // live: prompt 2648 → escena cortada en "...sunglasses with", sin
+            // "panelled wall / silver-toned fixture" → Lite/Pro salían en
+            // estudio). El clone lo tapaba porque la IMAGEN lleva la escena;
+            // sin clone, el texto del fondo debe sobrevivir. Fix: reservar un
+            // PISO duro para la escena y, si el ancla no cabe en el resto,
+            // recortar el bodyClause (la parte redundante — la identidad física
+            // ya viaja en la imagen 1 + curveBoost), NUNCA la escena. Sin
+            // recorte el ancla es byte-idéntica a antes.
+            const SEEDREAM_BUDGET = 2750
+            const SCENE_FLOOR = 1300
+            const anchorHead = `The person in the FIRST attached reference image is the subject — keep her EXACT face, facial features and likeness from that image.${faceFidelityClause} `
+            const anchorTail = `${hairClause}${eyeClause}${extraClauses} Follow the SCENE, POSE and ACTION described below EXACTLY.`
+            const bodyClauseMax =
+                SEEDREAM_BUDGET -
+                SCENE_FLOOR -
+                anchorHead.length -
+                anchorTail.length
+            const fitBodyClause =
+                bodyClauseMax > 0 && bodyClause.length > bodyClauseMax
+                    ? capAtWordBoundary(bodyClause, bodyClauseMax, model)
+                    : bodyClause
+            const seedreamAnchor = `${anchorHead}${fitBodyClause}${anchorTail}`
+            const sceneRoom = Math.max(
+                SCENE_FLOOR,
+                SEEDREAM_BUDGET - seedreamAnchor.length,
+            )
             let sceneText = String(input.prompt)
             if (hasClone) {
                 sceneText = sceneText
