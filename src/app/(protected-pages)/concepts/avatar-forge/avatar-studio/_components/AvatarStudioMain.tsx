@@ -32,6 +32,7 @@ import ProviderManagerDrawer, {
     DEFAULT_PROVIDERS,
 } from './ProviderManagerDrawer'
 import Button from '@/components/ui/Button'
+import Dialog from '@/components/ui/Dialog'
 import Dropdown from '@/components/ui/Dropdown'
 import Spinner from '@/components/ui/Spinner'
 import Notification from '@/components/ui/Notification'
@@ -112,7 +113,12 @@ import {
 import { getPostedGenerationMap } from '@/services/SocialService'
 import { AppState } from '../types'
 import type { GeneratedMedia, ReferenceImage } from '../types'
-import type { AspectRatio, Avatar, ReferenceType } from '@/@types/supabase'
+import type {
+    AspectRatio,
+    Avatar,
+    ReferenceType,
+    AIProvider,
+} from '@/@types/supabase'
 import { useImageOptimization } from '../_hooks/useImageOptimization'
 
 interface AvatarStudioMainProps {
@@ -334,6 +340,9 @@ async function uploadGenerationWithRetry(
 
 const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
     const [isAvatarSelectorOpen, setIsAvatarSelectorOpen] = useState(false)
+    // BATCH: dialog de selección de hasta 3 modelos para el mismo prompt.
+    const [batchOpen, setBatchOpen] = useState(false)
+    const [batchSelected, setBatchSelected] = useState<string[]>([])
     const [isAvatarEditOpen, setIsAvatarEditOpen] = useState(false)
     // Item queued for the unified Post modal (social + Fanvue). Only saved
     // items can be posted — the Post buttons stay disabled until saveState === 'saved'.
@@ -871,931 +880,1137 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
     )
 
     // Generate Handler
-    const handleGenerate = useCallback(async () => {
-        if (isGenerating) return
-        if (isLoadingReferences) {
-            toast.push(
-                <Notification type="warning" title="Please Wait">
-                    Avatar references are still loading...
-                </Notification>,
-            )
-            return
-        }
-        const fullPrompt = getFullPrompt()
-        // Deepfake: la foto es la instrucción; el prompt de texto es opcional.
-        const deepfakeWaiving =
-            generationMode === 'IMAGE' && Boolean(deepfakeImage?.base64)
-        if (!fullPrompt.trim() && !deepfakeWaiving) {
-            toast.push(
-                <Notification type="warning" title="Missing Prompt">
-                    Please enter a prompt
-                </Notification>,
-            )
-            return
-        }
-
-        const activeProvider = getActiveProvider()
-
-        // Deepfake requiere un modelo KIE multi-imagen con ancla calibrada —
-        // aviso ANTES de generar (con Gemini/Kling/MiniMax no viaja la foto).
-        if (generationMode === 'IMAGE' && deepfakeImage?.base64) {
-            const m = activeProvider?.model || ''
-            const dfCapable =
-                m.startsWith('seedream/') ||
-                m === 'wan/2-7-image' ||
-                m.startsWith('flux-2/') ||
-                m.startsWith('qwen') ||
-                m === 'nano-banana-pro' ||
-                m.startsWith('nano-banana-2') ||
-                m === 'gpt-image-2-text-to-image'
-            if (!dfCapable) {
+    const handleGenerate = useCallback(
+        async (opts?: {
+            // BATCH: genera con un proveedor distinto al activo, en 2º plano (card
+            // "En espera") sin bloquear la UI ni pisar el estado foreground.
+            providerOverride?: AIProvider | null
+            background?: boolean
+        }) => {
+            if (!opts?.background && isGenerating) return
+            if (isLoadingReferences) {
                 toast.push(
-                    <Notification type="warning" title="Deepfake">
-                        {`${activeProvider?.name ?? 'Este modelo'} no soporta Deepfake. Usa Seedream, Wan, FLUX.2, Qwen, Nano Banana o GPT Image 2.`}
+                    <Notification type="warning" title="Please Wait">
+                        Avatar references are still loading...
                     </Notification>,
                 )
                 return
             }
-        }
+            const fullPrompt = getFullPrompt()
+            // Deepfake: la foto es la instrucción; el prompt de texto es opcional.
+            const deepfakeWaiving =
+                generationMode === 'IMAGE' && Boolean(deepfakeImage?.base64)
+            if (!fullPrompt.trim() && !deepfakeWaiving) {
+                toast.push(
+                    <Notification type="warning" title="Missing Prompt">
+                        Please enter a prompt
+                    </Notification>,
+                )
+                return
+            }
 
-        // Identidad de ESTE run — si el usuario lo manda "a espera", el run
-        // deja de ser foreground y sus setters de estado global se saltan.
-        const runId = crypto.randomUUID()
-        foregroundRunIdRef.current = runId
+            const activeProvider = opts?.providerOverride ?? getActiveProvider()
 
-        setIsGenerating(true)
-        setAppState(AppState.GENERATING)
-        setErrorMsg(null)
+            // Deepfake requiere un modelo KIE multi-imagen con ancla calibrada —
+            // aviso ANTES de generar (con Gemini/Kling/MiniMax no viaja la foto).
+            if (generationMode === 'IMAGE' && deepfakeImage?.base64) {
+                const m = activeProvider?.model || ''
+                const dfCapable =
+                    m.startsWith('seedream/') ||
+                    m === 'wan/2-7-image' ||
+                    m.startsWith('flux-2/') ||
+                    m.startsWith('qwen') ||
+                    m === 'nano-banana-pro' ||
+                    m.startsWith('nano-banana-2') ||
+                    m === 'gpt-image-2-text-to-image'
+                if (!dfCapable) {
+                    toast.push(
+                        <Notification type="warning" title="Deepfake">
+                            {`${activeProvider?.name ?? 'Este modelo'} no soporta Deepfake. Usa Seedream, Wan, FLUX.2, Qwen, Nano Banana o GPT Image 2.`}
+                        </Notification>,
+                    )
+                    return
+                }
+            }
 
-        // Filter out references without valid base64
-        const validGeneralRefs = generalReferences.filter(
-            (r) => r.base64 && r.base64.length > 0,
-        )
-        const validAssetRefs = assetImages.filter(
-            (r) => r.base64 && r.base64.length > 0,
-        )
+            // Identidad de ESTE run — si el usuario lo manda "a espera" (o es un
+            // run de BATCH), deja de ser foreground y sus setters de estado global
+            // se saltan.
+            const runId = crypto.randomUUID()
+            if (opts?.background) {
+                // Batch: nace en 2º plano — card "En espera", sin tocar
+                // isGenerating/appState (no bloquea la UI ni al run foreground).
+                backgroundedRunsRef.current.add(runId)
+                addPendingGeneration({
+                    id: runId,
+                    label: activeProvider?.name ?? 'KIE',
+                    mediaType: generationMode,
+                    avatarName: avatarName || undefined,
+                    startedAt: Date.now(),
+                })
+            } else {
+                foregroundRunIdRef.current = runId
+                setIsGenerating(true)
+                setAppState(AppState.GENERATING)
+                setErrorMsg(null)
+            }
 
-        try {
-            let resultUrl: string
-
-            // Optimize images before sending to API (resize to 1024px max)
-            const optimizedPayload = await prepareAvatarPayload({
-                generalRefs: validGeneralRefs,
-                assetImages: validAssetRefs,
-                faceRef,
-                bodyRef,
-                sceneImage: sceneImage, // Scene Composite - literally places avatar in this scene
-            })
-
-            // Optimize angle ref separately if needed
-            const optimizedAngleRef = angleRef?.base64
-                ? await optimizeImage({
-                      base64: angleRef.base64,
-                      mimeType: angleRef.mimeType,
-                  })
-                : null
-
-            // Optimize pose ref (session tool) — drives body position. Gemini
-            // already handles poseRefImage; we also forward it to KIE multi-ref.
-            const optimizedPoseRef = poseImage?.base64
-                ? await optimizeImage({
-                      base64: poseImage.base64,
-                      mimeType: poseImage.mimeType,
-                  })
-                : null
-
-            // Optimize the Clone Ref IMAGE (the original to replicate). Image
-            // models like GPT Image 2 can't clone body/outfit/pose from text —
-            // they need the actual image (as you did in ChatGPT: face + scene).
-            const optimizedCloneRef = cloneImage?.base64
-                ? await optimizeImage({
-                      base64: cloneImage.base64,
-                      mimeType: cloneImage.mimeType,
-                  })
-                : null
-
-            // Deepfake Ref — face-swap puro. Solo se optimiza si el provider
-            // lo soporta (seedream/wan/flux2 vía cláusula de clone variante).
-            const optimizedDeepfakeRef = deepfakeImage?.base64
-                ? await optimizeImage({
-                      base64: deepfakeImage.base64,
-                      mimeType: deepfakeImage.mimeType,
-                  })
-                : null
-
-            // Place Ref IMAGE — antes SOLO viajaba su texto [PLACE:] (ningún
-            // path recibía la foto del lugar). Va a los modelos KIE multi-ref
-            // con rol 'place'; el path Gemini queda intocado (benchmark).
-            const optimizedPlaceRef = placeImage?.base64
-                ? await optimizeImage({
-                      base64: placeImage.base64,
-                      mimeType: placeImage.mimeType,
-                  })
-                : null
-
-            // Refs de REGIÓN (Bust/Glutes) — como Body Ref pero
-            // independientes. SOLO viajan a providers con trait permissive:
-            // con un modelo no permisivo ni siquiera entran al array.
-            const isPermissiveProvider =
-                PROVIDER_TRAITS[activeProvider?.id ?? '']?.permissive === true
-            const optimizedBustRef =
-                isPermissiveProvider && bustRef?.base64
-                    ? await optimizeImage({
-                          base64: bustRef.base64,
-                          mimeType: bustRef.mimeType,
-                      })
-                    : null
-            const optimizedGlutesRef =
-                isPermissiveProvider && glutesRef?.base64
-                    ? await optimizeImage({
-                          base64: glutesRef.base64,
-                          mimeType: glutesRef.mimeType,
-                      })
-                    : null
-
-            // All reference images for providers that accept multiple inputs
-            // (Nano Banana Pro / GPT Image 2 via KIE). Each carries a `role` so
-            // KieService can label it in the prompt ("Image 1 is the face…") —
-            // without labels the model blends them and loses identity.
-            const kieReferenceImages = [
-                optimizedPayload.faceRef && {
-                    ...optimizedPayload.faceRef,
-                    role: 'face',
-                },
-                optimizedAngleRef && { ...optimizedAngleRef, role: 'angle' },
-                optimizedPayload.bodyRef && {
-                    ...optimizedPayload.bodyRef,
-                    role: 'body',
-                },
-                optimizedBustRef && { ...optimizedBustRef, role: 'bust' },
-                optimizedGlutesRef && {
-                    ...optimizedGlutesRef,
-                    role: 'glutes',
-                },
-                // Assets (logo/producto) antes solo llegaban al path Gemini
-                // (assetReferences) — en KIE el clone decía "hoodie with logo"
-                // y Seedream pintaba la palabra literal "LOGO" en la prenda.
-                ...(optimizedPayload.assetImages ?? []).map((a) => ({
-                    ...a,
-                    role: 'asset',
-                })),
-                optimizedPoseRef && { ...optimizedPoseRef, role: 'pose' },
-                optimizedPayload.sceneImage && {
-                    ...optimizedPayload.sceneImage,
-                    role: 'scene',
-                },
-                optimizedPlaceRef && { ...optimizedPlaceRef, role: 'place' },
-            ].filter(
-                (r): r is { base64: string; mimeType: string; role: string } =>
-                    Boolean(r && r.base64),
+            // Filter out references without valid base64
+            const validGeneralRefs = generalReferences.filter(
+                (r) => r.base64 && r.base64.length > 0,
+            )
+            const validAssetRefs = assetImages.filter(
+                (r) => r.base64 && r.base64.length > 0,
             )
 
-            let apiPrompt: string | undefined
+            try {
+                let resultUrl: string
 
-            if (generationMode === 'IMAGE') {
-                const isMiniMaxProvider = activeProvider?.type === 'MINIMAX'
-                const isKlingProvider = activeProvider?.type === 'KLING'
+                // Optimize images before sending to API (resize to 1024px max)
+                const optimizedPayload = await prepareAvatarPayload({
+                    generalRefs: validGeneralRefs,
+                    assetImages: validAssetRefs,
+                    faceRef,
+                    bodyRef,
+                    sceneImage: sceneImage, // Scene Composite - literally places avatar in this scene
+                })
 
-                if (isMiniMaxProvider) {
-                    // MiniMax image-01 — direct generation with subject_reference for facial consistency
-                    const subjectRef =
-                        optimizedPayload.faceRef ??
-                        optimizedPayload.generalRefs[0] ??
-                        null
-                    const faceReferenceUrl = subjectRef
-                        ? `data:${subjectRef.mimeType};base64,${subjectRef.base64}`
-                        : undefined
+                // Optimize angle ref separately if needed
+                const optimizedAngleRef = angleRef?.base64
+                    ? await optimizeImage({
+                          base64: angleRef.base64,
+                          mimeType: angleRef.mimeType,
+                      })
+                    : null
 
-                    // MiniMax hard-caps the prompt at 1500 chars. Budget it so the
-                    // things that MUST survive actually do, in this order:
-                    //   1. Gemini body brain preamble (measurements = source of truth)
-                    //   2. the user's SCENE/POSE text (this got truncated away when
-                    //      preamble + [BODY:] + a long [FACE:] ate the cap — MiniMax
-                    //      then ignored the pose entirely)
-                    //   3. [FACE:] only if room remains — it's redundant here, the
-                    //      face already rides on subject_reference (the image).
-                    // The [BODY:]/[FACE:] tags are stripped from fullPrompt: the
-                    // preamble carries the same measurements in richer form.
-                    const MINIMAX_CAP = 1500
-                    const sceneText = fullPrompt
-                        .replace(/\[BODY:[^\]]*\]/gi, '')
-                        .replace(/\[FACE:[^\]]*\]/gi, '')
-                        .replace(/\s{2,}/g, ' ')
-                        .trim()
-                    let miniMaxPrompt = `${buildDiffusionBodyPreamble(measurements, { cameraShot, cameraAngle })} ${sceneText}`
-                    const faceRoom = MINIMAX_CAP - miniMaxPrompt.length - 12
-                    if (faceDescription?.trim() && faceRoom > 80) {
-                        miniMaxPrompt += ` [FACE: ${faceDescription.trim().slice(0, faceRoom)}]`
-                    }
+                // Optimize pose ref (session tool) — drives body position. Gemini
+                // already handles poseRefImage; we also forward it to KIE multi-ref.
+                const optimizedPoseRef = poseImage?.base64
+                    ? await optimizeImage({
+                          base64: poseImage.base64,
+                          mimeType: poseImage.mimeType,
+                      })
+                    : null
 
-                    const result = await generateImageMiniMax({
-                        prompt: miniMaxPrompt,
-                        aspectRatio,
-                        faceReferenceUrl,
-                    })
+                // Optimize the Clone Ref IMAGE (the original to replicate). Image
+                // models like GPT Image 2 can't clone body/outfit/pose from text —
+                // they need the actual image (as you did in ChatGPT: face + scene).
+                const optimizedCloneRef = cloneImage?.base64
+                    ? await optimizeImage({
+                          base64: cloneImage.base64,
+                          mimeType: cloneImage.mimeType,
+                      })
+                    : null
 
-                    if (!result.success) {
-                        throw new Error(result.error)
-                    }
+                // Deepfake Ref — face-swap puro. Solo se optimiza si el provider
+                // lo soporta (seedream/wan/flux2 vía cláusula de clone variante).
+                const optimizedDeepfakeRef = deepfakeImage?.base64
+                    ? await optimizeImage({
+                          base64: deepfakeImage.base64,
+                          mimeType: deepfakeImage.mimeType,
+                      })
+                    : null
 
-                    resultUrl = result.url
-                    apiPrompt = result.fullApiPrompt
-                } else if (isKlingProvider) {
-                    // Kling — single reference image (face > body > first general).
-                    // Base/KOLORS models clone the scene only via the [CLONE:] text
-                    // in fullPrompt (1 image slot, used for the face).
-                    const referenceImage =
-                        optimizedPayload.faceRef ??
-                        optimizedPayload.bodyRef ??
-                        optimizedPayload.generalRefs[0] ??
-                        null
+                // Place Ref IMAGE — antes SOLO viajaba su texto [PLACE:] (ningún
+                // path recibía la foto del lugar). Va a los modelos KIE multi-ref
+                // con rol 'place'; el path Gemini queda intocado (benchmark).
+                const optimizedPlaceRef = placeImage?.base64
+                    ? await optimizeImage({
+                          base64: placeImage.base64,
+                          mimeType: placeImage.mimeType,
+                      })
+                    : null
 
-                    // Fold faceDescription into prompt since Kling image API doesn't
-                    // accept separate identity hints like Gemini does.
-                    const klingPrompt = faceDescription?.trim()
-                        ? `[FACE: ${faceDescription.trim()}] ${fullPrompt}`
-                        : fullPrompt
+                // Refs de REGIÓN (Bust/Glutes) — como Body Ref pero
+                // independientes. SOLO viajan a providers con trait permissive:
+                // con un modelo no permisivo ni siquiera entran al array.
+                const isPermissiveProvider =
+                    PROVIDER_TRAITS[activeProvider?.id ?? '']?.permissive ===
+                    true
+                const optimizedBustRef =
+                    isPermissiveProvider && bustRef?.base64
+                        ? await optimizeImage({
+                              base64: bustRef.base64,
+                              mimeType: bustRef.mimeType,
+                          })
+                        : null
+                const optimizedGlutesRef =
+                    isPermissiveProvider && glutesRef?.base64
+                        ? await optimizeImage({
+                              base64: glutesRef.base64,
+                              mimeType: glutesRef.mimeType,
+                          })
+                        : null
 
-                    // Kling v3 Omni takes a multi-image list — feed the avatar face
-                    // (identity, slot 1) + the Clone (pose/outfit/scene, slot 2) so it
-                    // clones from the IMAGE like nano-banana. Other Kling models are
-                    // single-ref, so the clone rides only on the [CLONE:] text.
-                    const klingModel = activeProvider?.model || 'kling-v2-1'
-                    const klingRefImages =
-                        klingModel === 'kling-v3-omni' &&
-                        optimizedCloneRef &&
-                        referenceImage
-                            ? [referenceImage, optimizedCloneRef]
+                // All reference images for providers that accept multiple inputs
+                // (Nano Banana Pro / GPT Image 2 via KIE). Each carries a `role` so
+                // KieService can label it in the prompt ("Image 1 is the face…") —
+                // without labels the model blends them and loses identity.
+                const kieReferenceImages = [
+                    optimizedPayload.faceRef && {
+                        ...optimizedPayload.faceRef,
+                        role: 'face',
+                    },
+                    optimizedAngleRef && {
+                        ...optimizedAngleRef,
+                        role: 'angle',
+                    },
+                    optimizedPayload.bodyRef && {
+                        ...optimizedPayload.bodyRef,
+                        role: 'body',
+                    },
+                    optimizedBustRef && { ...optimizedBustRef, role: 'bust' },
+                    optimizedGlutesRef && {
+                        ...optimizedGlutesRef,
+                        role: 'glutes',
+                    },
+                    // Assets (logo/producto) antes solo llegaban al path Gemini
+                    // (assetReferences) — en KIE el clone decía "hoodie with logo"
+                    // y Seedream pintaba la palabra literal "LOGO" en la prenda.
+                    ...(optimizedPayload.assetImages ?? []).map((a) => ({
+                        ...a,
+                        role: 'asset',
+                    })),
+                    optimizedPoseRef && { ...optimizedPoseRef, role: 'pose' },
+                    optimizedPayload.sceneImage && {
+                        ...optimizedPayload.sceneImage,
+                        role: 'scene',
+                    },
+                    optimizedPlaceRef && {
+                        ...optimizedPlaceRef,
+                        role: 'place',
+                    },
+                ].filter(
+                    (
+                        r,
+                    ): r is {
+                        base64: string
+                        mimeType: string
+                        role: string
+                    } => Boolean(r && r.base64),
+                )
+
+                let apiPrompt: string | undefined
+
+                if (generationMode === 'IMAGE') {
+                    const isMiniMaxProvider = activeProvider?.type === 'MINIMAX'
+                    const isKlingProvider = activeProvider?.type === 'KLING'
+
+                    if (isMiniMaxProvider) {
+                        // MiniMax image-01 — direct generation with subject_reference for facial consistency
+                        const subjectRef =
+                            optimizedPayload.faceRef ??
+                            optimizedPayload.generalRefs[0] ??
+                            null
+                        const faceReferenceUrl = subjectRef
+                            ? `data:${subjectRef.mimeType};base64,${subjectRef.base64}`
                             : undefined
 
-                    const result = await generateImageKling({
-                        prompt: klingPrompt,
-                        referenceImage,
-                        referenceImages: klingRefImages,
-                        aspectRatio,
-                        modelName: klingModel,
-                    })
-
-                    if (!result.success) {
-                        throw new Error(result.error)
-                    }
-
-                    resultUrl = result.url
-                    apiPrompt = result.fullApiPrompt
-                } else if (activeProvider?.type === 'KIE') {
-                    // KIE aggregator — single reference image (face > body > first general).
-                    const referenceImage =
-                        optimizedPayload.faceRef ??
-                        optimizedPayload.bodyRef ??
-                        optimizedPayload.generalRefs[0] ??
-                        null
-
-                    // Per-model prompt strategy:
-                    // - Nano Banana Pro (= same model as direct Gemini): the FULL
-                    //   Gemini harness — it loves the verbose, structured prompt.
-                    // - GPT Image 2 (OpenAI): a LEAN, natural prompt. The harness's
-                    //   "DEEPFAKE/FACE SWAP" language trips OpenAI moderation and its
-                    //   size causes timeouts; OpenAI clones identity from clean
-                    //   prompts + the reference images (as in ChatGPT itself).
-                    const kieModel = activeProvider.model || ''
-                    let refRoles = kieReferenceImages.map(
-                        (r) => r.role as RefRole,
-                    )
-                    // Default for the permissive/generic diffusion models (Seedream,
-                    // FLUX.2, Z-Image, Qwen, Ideogram, Nano Banana 2, Grok): port the
-                    // Gemini body brain as a leading natural-language sentence. The
-                    // instruction-following models below (Nano Banana Pro / GPT Image 2
-                    // / Flux Kontext) replace kiePrompt with their own harness, so this
-                    // only reaches the diffusion models that actually benefit from it.
-                    let kiePrompt = `${buildDiffusionBodyPreamble(measurements, { cameraShot, cameraAngle })} ${fullPrompt}`
-                    let kieRefsToSend = kieReferenceImages
-                    // DEEPFAKE puro: cara del avatar + la foto original como
-                    // 'clone'. Sin preamble de cuerpo ni curvas — la imagen 2
-                    // manda en TODO menos la cara. Solo modelos con ancla
-                    // multi-imagen calibrada.
-                    const deepfakeCapable =
-                        kieModel.startsWith('seedream/') ||
-                        kieModel === 'wan/2-7-image' ||
-                        kieModel.startsWith('flux-2/') ||
-                        kieModel.startsWith('qwen') ||
-                        kieModel === 'nano-banana-pro' ||
-                        kieModel.startsWith('nano-banana-2') ||
-                        kieModel === 'gpt-image-2-text-to-image'
-                    const deepfakeActive = Boolean(
-                        optimizedDeepfakeRef &&
-                        deepfakeCapable &&
-                        kieReferenceImages.some((r) => r.role === 'face'),
-                    )
-                    if (deepfakeActive && optimizedDeepfakeRef) {
-                        kieRefsToSend = [
-                            ...kieReferenceImages.filter(
-                                (r) => r.role === 'face',
-                            ),
-                            { ...optimizedDeepfakeRef, role: 'clone' },
-                        ]
-                        kiePrompt =
-                            prompt.trim() ||
-                            'photorealistic, natural skin texture, realistic lighting, seamless face integration'
-                        // Los nanos NO pasan por planExtraRefs (su branch envía
-                        // los refs tal cual) → la instrucción de swap viaja en
-                        // el propio prompt.
-                        if (
-                            kieModel === 'nano-banana-pro' ||
-                            kieModel.startsWith('nano-banana-2')
-                        ) {
-                            kiePrompt = `The FIRST image is the person whose FACE to use. The LAST image is the ORIGINAL photo to reproduce EXACTLY — same body, build, outfit, pose, hands, framing, lighting, background and setting, everything unchanged. The FACE SWAP is MANDATORY: replace the face in the last image with the face from the first image (exact features, freckles, likeness) — never keep the original face. Do NOT alter or remove any clothing. REMOVE any overlaid stickers, watermarks, emojis or UI graphics pasted on the photo — output a clean photograph. ${kiePrompt}`
+                        // MiniMax hard-caps the prompt at 1500 chars. Budget it so the
+                        // things that MUST survive actually do, in this order:
+                        //   1. Gemini body brain preamble (measurements = source of truth)
+                        //   2. the user's SCENE/POSE text (this got truncated away when
+                        //      preamble + [BODY:] + a long [FACE:] ate the cap — MiniMax
+                        //      then ignored the pose entirely)
+                        //   3. [FACE:] only if room remains — it's redundant here, the
+                        //      face already rides on subject_reference (the image).
+                        // The [BODY:]/[FACE:] tags are stripped from fullPrompt: the
+                        // preamble carries the same measurements in richer form.
+                        const MINIMAX_CAP = 1500
+                        const sceneText = fullPrompt
+                            .replace(/\[BODY:[^\]]*\]/gi, '')
+                            .replace(/\[FACE:[^\]]*\]/gi, '')
+                            .replace(/\s{2,}/g, ' ')
+                            .trim()
+                        let miniMaxPrompt = `${buildDiffusionBodyPreamble(measurements, { cameraShot, cameraAngle })} ${sceneText}`
+                        const faceRoom = MINIMAX_CAP - miniMaxPrompt.length - 12
+                        if (faceDescription?.trim() && faceRoom > 80) {
+                            miniMaxPrompt += ` [FACE: ${faceDescription.trim().slice(0, faceRoom)}]`
                         }
-                    } else if (optimizedDeepfakeRef && !deepfakeCapable) {
-                        toast.push(
-                            <Notification type="info" title="Deepfake">
-                                {`${activeProvider?.name ?? 'Este modelo'} no soporta el modo Deepfake — usa Seedream, Wan o FLUX.2.`}
-                            </Notification>,
-                        )
-                    }
-                    // The single ref passed to the sync adapters (flux-kontext /
-                    // gpt-4o / generic). Defaults to the face; flux-kontext edit
-                    // mode overrides it to the Clone (the canvas to edit).
-                    let kieSingleRef = referenceImage
 
-                    // Feed the Clone Ref IMAGE (not just the [CLONE:] text) so the
-                    // model clones the EXACT pose/outfit/framing/scene — same lever
-                    // that fixed GPT Image 2. Appended LAST so FACE_ANCHOR stays
-                    // slot 1 (high-fidelity identity) and the image order == refRoles
-                    // order for the prompt's mapping. Guarded on
-                    // kieReferenceImages.length so we never send a lone clone with
-                    // no face image behind the keep-face anchor. Además de los nano
-                    // (harness propio), Seedream/Wan/FLUX.2 lo consumen vía
-                    // planExtraRefs con guard de maniquí (KieService) — antes solo
-                    // recibían el texto [CLONE:] y re-imaginaban el outfit.
-                    if (
-                        !deepfakeActive &&
-                        (kieModel === 'nano-banana-pro' ||
-                            kieModel.startsWith('nano-banana-2') ||
-                            kieModel.startsWith('seedream/') ||
-                            kieModel === 'wan/2-7-image' ||
-                            kieModel.startsWith('flux-2/')) &&
-                        optimizedCloneRef &&
-                        kieReferenceImages.length > 0
-                    ) {
-                        kieRefsToSend = [
-                            ...kieReferenceImages,
-                            { ...optimizedCloneRef, role: 'clone' as const },
-                        ]
-                        refRoles = kieRefsToSend.map((r) => r.role as RefRole)
-                    }
-
-                    // SEEDREAM 5 LITE — modelo genuinamente más débil que 5-Pro
-                    // (no es solo resolución) — MEZCLA el rostro del avatar con
-                    // el de cualquier foto de referencia con OTRA persona
-                    // (Pose/Scene/Clone): con esas fotos la cara del ref GANA.
-                    // Se filtran; face/body/bust/glutes/asset se conservan.
-                    // NOTA: nano-banana-2-lite NO entra aquí — es el MISMO modelo
-                    // que nano-banana-2 full a 1K, así que va idéntico al full
-                    // (harness + angle sheet + todos los refs). Filtrarlo/caparlo
-                    // le quitaba el cuerpo del harness y lo hacía alucinar
-                    // (duplicaba personas). Verificado live: nano-banana-2 @1K
-                    // con harness + angle sheet = cara y cuerpo iguales al full.
-                    if (kieModel.startsWith('seedream/5-lite')) {
-                        const rivalFaceRoles = new Set([
-                            'pose',
-                            'scene',
-                            'clone',
-                        ])
-                        kieRefsToSend = kieRefsToSend.filter(
-                            (r) => !rivalFaceRoles.has(r.role as string),
-                        )
-                        refRoles = kieRefsToSend.map((r) => r.role as RefRole)
-                    }
-
-                    if (
-                        kieRefsToSend.length > 0 ||
-                        (kieModel.startsWith('flux-kontext') &&
-                            optimizedCloneRef)
-                    ) {
-                        // Flux is single-input (edit on the Clone canvas) so it can run
-                        // with ONLY a clone and no avatar ref images; the others need
-                        // their ref array, hence the length>0 path above.
-                        // Toda la familia nano-banana (Pro, 2 full y 2-lite) usa
-                        // el harness verboso. nano-banana-2-lite ES el mismo
-                        // modelo que el full a 1K, así que va idéntico: harness +
-                        // angle sheet + todos los refs. (Antes lo cambié a lean +
-                        // sin angle sheet, pero eso le quitaba el cuerpo del
-                        // harness y lo hacía alucinar/duplicar — verificado live
-                        // que a 1K con harness+angle queda igual al full.)
-                        if (
-                            (kieModel === 'nano-banana-pro' ||
-                                kieModel.startsWith('nano-banana-2')) &&
-                            !deepfakeActive
-                        ) {
-                            const { systemPreamble, finalPrompt } =
-                                buildAvatarPrompt({
-                                    prompt: fullPrompt,
-                                    aspectRatio,
-                                    measurements,
-                                    faceDescription,
-                                    identityWeight,
-                                    cameraShot,
-                                    cameraAngle,
-                                    refRoles,
-                                })
-                            kiePrompt = `${systemPreamble}\n\n${finalPrompt}`
-                        } else if (
-                            kieModel === 'gpt-image-2-text-to-image' &&
-                            deepfakeActive &&
-                            optimizedDeepfakeRef
-                        ) {
-                            // Deepfake = exactamente su flujo face-swap probado:
-                            // canvas (la foto) + cara, prompt lean.
-                            const faceOnly = kieReferenceImages.filter(
-                                (r) => r.role === 'face',
-                            )
-                            kieRefsToSend = [
-                                {
-                                    ...optimizedDeepfakeRef,
-                                    role: 'scene' as const,
-                                },
-                                ...(faceOnly.length > 0
-                                    ? faceOnly
-                                    : [kieReferenceImages[0]]),
-                            ]
-                            kiePrompt = buildLeanIdentityPrompt(
-                                stripHarnessForFaceSwap(kiePrompt),
-                                ['scene', 'face'],
-                                true,
-                            )
-                        } else if (kieModel === 'gpt-image-2-text-to-image') {
-                            // Face-swap EDIT, mirroring how ChatGPT processes it:
-                            // Clone/original FIRST (the canvas to recreate exactly)
-                            // + face SECOND (swap in the avatar's face). 2 refs,
-                            // light enough to avoid the KIE 500. No angle-sheet.
-                            const faceOnly = kieReferenceImages.filter(
-                                (r) => r.role === 'face',
-                            )
-                            const faceRefs =
-                                faceOnly.length > 0
-                                    ? faceOnly
-                                    : [kieReferenceImages[0]]
-                            if (optimizedCloneRef) {
-                                kieRefsToSend = [
-                                    {
-                                        ...optimizedCloneRef,
-                                        role: 'scene' as const,
-                                    },
-                                    ...faceRefs,
-                                ]
-                                // Face-swap i2i: strip the Gemini harness ([BODY:]
-                                // measurements + the incomplete/contradictory auto
-                                // [CLONE:] scene re-description) so the IMAGE — not
-                                // text — drives body/pose/scene. Keeps [FACE:] +
-                                // user text + a generic preserve list. faceIsImage
-                                // = true: the avatar face IS a real 2nd image here.
-                                kiePrompt = buildLeanIdentityPrompt(
-                                    stripHarnessForFaceSwap(fullPrompt),
-                                    ['scene', 'face'],
-                                    true,
-                                )
-                            } else {
-                                kieRefsToSend = faceRefs
-                                kiePrompt = buildLeanIdentityPrompt(
-                                    fullPrompt,
-                                    ['face'],
-                                )
-                            }
-                        } else if (
-                            kieModel.startsWith('flux-kontext') &&
-                            optimizedCloneRef
-                        ) {
-                            // Flux Kontext = instruction EDIT model. Feed the Clone as
-                            // the single canvas image (generateImageFluxKontext puts the
-                            // referenceImage into body.inputImage) and let the avatar
-                            // face ride on the [FACE:] text + relight/preserve-skin
-                            // clause — Flux is single-input, so there is no second face
-                            // image. Same lean strategy as GPT Image 2; strip the Gemini
-                            // harness ([BODY:]/[CLONE:]) that fights an edit canvas.
-                            kieSingleRef = optimizedCloneRef
-                            // faceIsImage = false: Flux is single-input (only the
-                            // clone is sent), so identity rides on the [FACE:] text,
-                            // not a non-existent "Image 2".
-                            kiePrompt = buildLeanIdentityPrompt(
-                                stripHarnessForFaceSwap(fullPrompt),
-                                ['scene', 'face'],
-                                false,
-                            )
-                        }
-                    }
-
-                    // NOTA pose: el [POSE:] que BottomControlBar appendea al
-                    // final del prompt se reubica al INICIO en KieService
-                    // (antes del cap genérico) — ahí cubre también prompts
-                    // guardados y el path de edición, sin duplicarse aquí.
-
-                    // Sliders de curvas (busto/glúteos/muslos 1-5): SOLO para
-                    // providers con trait `permissive` — si el modelo no lo
-                    // es, la frase NO viaja (petición explícita del usuario).
-                    // Canal: bodyEmphasis → anclas i2i Seedream/Wan/FLUX.2;
-                    // nunca entra al [BODY:] genérico que ven Gemini/nano.
-                    const curvesEmphasis = isPermissiveProvider
-                        ? buildCurvesEmphasis(measurements)
-                        : ''
-                    const baseBodyEmphasis = measurements?.waist
-                        ? `${describeBody(measurements)} (bust ${measurements.bust}cm, waist ${measurements.waist}cm, hips ${measurements.hips}cm — hip-to-waist ratio ${(measurements.hips / measurements.waist).toFixed(2)})`
-                        : describeBody(measurements)
-                    // Refuerzo de curvas SOLO-SEEDREAM (lo consume su rama en
-                    // KieService; Wan/FLUX/otros NO leen curveBoost → intactos).
-                    // describeBody describe la cadera por cm ABSOLUTOS (umbral
-                    // "wide" en hips≥100), así que un hourglass marcado por
-                    // RATIO (p.ej. Emily 97/50 = 1.94) cae en "proportionate
-                    // hips" y Seedream Pro —que pesa la imagen sobre el texto—
-                    // la aplana. Cuando el ratio implica hourglass real,
-                    // forzamos el contraste cintura-cadera (A/B verificado live:
-                    // mismo face → texto débil = flaca, texto por-ratio = curvy).
-                    const hwRatio =
-                        measurements?.waist && measurements?.hips
-                            ? measurements.hips / measurements.waist
-                            : 0
-                    const seedreamCurveBoost =
-                        hwRatio >= 1.5 && measurements?.waist
-                            ? `Her figure is a DRAMATIC HOURGLASS: her hips are MUCH WIDER than her very narrow waist (hips ${measurements.hips}cm vs cinched waist ${measurements.waist}cm, ratio ${hwRatio.toFixed(1)}) — render WIDE, FULL, rounded hips and glutes with full thighs and a tiny cinched waist, visibly curvier and fuller than the reference photo suggests.`
-                            : ''
-
-                    if (isKieAsyncImageModel(kieModel)) {
-                        // ASYNC submit + browser poll (see pollKieImageTask).
-                        const polled = await pollKieImageTask({
-                            prompt: kiePrompt,
-                            referenceImage: kieSingleRef,
-                            referenceImages: kieRefsToSend,
+                        const result = await generateImageMiniMax({
+                            prompt: miniMaxPrompt,
                             aspectRatio,
-                            model: kieModel,
-                            // Concrete body descriptors for the Seedream/Wan
-                            // i2i anchor — Pro ignores body text that isn't in
-                            // the anchor's early tokens (kept rendering her
-                            // slim). Los cm + ratio explícitos anclan mejor que
-                            // solo adjetivos (Ana 90/60/100 salía slim en Wan).
-                            bodyEmphasis: deepfakeActive
-                                ? undefined
-                                : curvesEmphasis
-                                  ? `${baseBodyEmphasis}; emphasized curves: ${curvesEmphasis}`
-                                  : baseBodyEmphasis,
-                            // Solo la rama Seedream de KieService lo lee.
-                            curveBoost: deepfakeActive
-                                ? undefined
-                                : seedreamCurveBoost || undefined,
-                            // Peso del Clone Ref (slider): escala la fuerza del
-                            // clone clause en las rutas i2i. Deepfake ignora.
-                            cloneWeight: deepfakeActive
-                                ? undefined
-                                : cloneWeight,
-                            deepfakeMode: deepfakeActive,
-                            // Color de pelo DENTRO del ancla i2i: como "brown
-                            // hair" en el [BODY:] tardío, Seedream/Wan seguían
-                            // el tono del ref/escena (reporte: MiaUltra salía
-                            // más clara en playa). Solo generación — en EDIT el
-                            // usuario puede estar recoloreando a propósito.
-                            hairEmphasis: deepfakeActive
-                                ? undefined
-                                : getHairColorDescription(
-                                      measurements?.hairColor,
-                                  ) || undefined,
-                            eyeEmphasis: deepfakeActive
-                                ? undefined
-                                : getEyeColorDescription(
-                                      measurements?.eyeColor,
-                                  ) || undefined,
-                            // Escala la cláusula de fidelidad facial del
-                            // ancla (port condensado del identity harness).
-                            identityWeight,
+                            faceReferenceUrl,
                         })
-                        resultUrl = polled.url
-                        apiPrompt = polled.fullApiPrompt
-                    } else {
-                        const result = await generateImageKie({
-                            prompt: kiePrompt,
-                            referenceImage: kieSingleRef,
-                            referenceImages: kieRefsToSend,
-                            aspectRatio,
-                            model:
-                                activeProvider.model ||
-                                'flux-kontext/text-to-image',
-                        })
+
                         if (!result.success) {
                             throw new Error(result.error)
                         }
+
+                        resultUrl = result.url
+                        apiPrompt = result.fullApiPrompt
+                    } else if (isKlingProvider) {
+                        // Kling — single reference image (face > body > first general).
+                        // Base/KOLORS models clone the scene only via the [CLONE:] text
+                        // in fullPrompt (1 image slot, used for the face).
+                        const referenceImage =
+                            optimizedPayload.faceRef ??
+                            optimizedPayload.bodyRef ??
+                            optimizedPayload.generalRefs[0] ??
+                            null
+
+                        // Fold faceDescription into prompt since Kling image API doesn't
+                        // accept separate identity hints like Gemini does.
+                        const klingPrompt = faceDescription?.trim()
+                            ? `[FACE: ${faceDescription.trim()}] ${fullPrompt}`
+                            : fullPrompt
+
+                        // Kling v3 Omni takes a multi-image list — feed the avatar face
+                        // (identity, slot 1) + the Clone (pose/outfit/scene, slot 2) so it
+                        // clones from the IMAGE like nano-banana. Other Kling models are
+                        // single-ref, so the clone rides only on the [CLONE:] text.
+                        const klingModel = activeProvider?.model || 'kling-v2-1'
+                        const klingRefImages =
+                            klingModel === 'kling-v3-omni' &&
+                            optimizedCloneRef &&
+                            referenceImage
+                                ? [referenceImage, optimizedCloneRef]
+                                : undefined
+
+                        const result = await generateImageKling({
+                            prompt: klingPrompt,
+                            referenceImage,
+                            referenceImages: klingRefImages,
+                            aspectRatio,
+                            modelName: klingModel,
+                        })
+
+                        if (!result.success) {
+                            throw new Error(result.error)
+                        }
+
+                        resultUrl = result.url
+                        apiPrompt = result.fullApiPrompt
+                    } else if (activeProvider?.type === 'KIE') {
+                        // KIE aggregator — single reference image (face > body > first general).
+                        const referenceImage =
+                            optimizedPayload.faceRef ??
+                            optimizedPayload.bodyRef ??
+                            optimizedPayload.generalRefs[0] ??
+                            null
+
+                        // Per-model prompt strategy:
+                        // - Nano Banana Pro (= same model as direct Gemini): the FULL
+                        //   Gemini harness — it loves the verbose, structured prompt.
+                        // - GPT Image 2 (OpenAI): a LEAN, natural prompt. The harness's
+                        //   "DEEPFAKE/FACE SWAP" language trips OpenAI moderation and its
+                        //   size causes timeouts; OpenAI clones identity from clean
+                        //   prompts + the reference images (as in ChatGPT itself).
+                        const kieModel = activeProvider.model || ''
+                        let refRoles = kieReferenceImages.map(
+                            (r) => r.role as RefRole,
+                        )
+                        // Default for the permissive/generic diffusion models (Seedream,
+                        // FLUX.2, Z-Image, Qwen, Ideogram, Nano Banana 2, Grok): port the
+                        // Gemini body brain as a leading natural-language sentence. The
+                        // instruction-following models below (Nano Banana Pro / GPT Image 2
+                        // / Flux Kontext) replace kiePrompt with their own harness, so this
+                        // only reaches the diffusion models that actually benefit from it.
+                        let kiePrompt = `${buildDiffusionBodyPreamble(measurements, { cameraShot, cameraAngle })} ${fullPrompt}`
+                        let kieRefsToSend = kieReferenceImages
+                        // DEEPFAKE puro: cara del avatar + la foto original como
+                        // 'clone'. Sin preamble de cuerpo ni curvas — la imagen 2
+                        // manda en TODO menos la cara. Solo modelos con ancla
+                        // multi-imagen calibrada.
+                        const deepfakeCapable =
+                            kieModel.startsWith('seedream/') ||
+                            kieModel === 'wan/2-7-image' ||
+                            kieModel.startsWith('flux-2/') ||
+                            kieModel.startsWith('qwen') ||
+                            kieModel === 'nano-banana-pro' ||
+                            kieModel.startsWith('nano-banana-2') ||
+                            kieModel === 'gpt-image-2-text-to-image'
+                        const deepfakeActive = Boolean(
+                            optimizedDeepfakeRef &&
+                            deepfakeCapable &&
+                            kieReferenceImages.some((r) => r.role === 'face'),
+                        )
+                        if (deepfakeActive && optimizedDeepfakeRef) {
+                            kieRefsToSend = [
+                                ...kieReferenceImages.filter(
+                                    (r) => r.role === 'face',
+                                ),
+                                { ...optimizedDeepfakeRef, role: 'clone' },
+                            ]
+                            kiePrompt =
+                                prompt.trim() ||
+                                'photorealistic, natural skin texture, realistic lighting, seamless face integration'
+                            // Los nanos NO pasan por planExtraRefs (su branch envía
+                            // los refs tal cual) → la instrucción de swap viaja en
+                            // el propio prompt.
+                            if (
+                                kieModel === 'nano-banana-pro' ||
+                                kieModel.startsWith('nano-banana-2')
+                            ) {
+                                kiePrompt = `The FIRST image is the person whose FACE to use. The LAST image is the ORIGINAL photo to reproduce EXACTLY — same body, build, outfit, pose, hands, framing, lighting, background and setting, everything unchanged. The FACE SWAP is MANDATORY: replace the face in the last image with the face from the first image (exact features, freckles, likeness) — never keep the original face. Do NOT alter or remove any clothing. REMOVE any overlaid stickers, watermarks, emojis or UI graphics pasted on the photo — output a clean photograph. ${kiePrompt}`
+                            }
+                        } else if (optimizedDeepfakeRef && !deepfakeCapable) {
+                            toast.push(
+                                <Notification type="info" title="Deepfake">
+                                    {`${activeProvider?.name ?? 'Este modelo'} no soporta el modo Deepfake — usa Seedream, Wan o FLUX.2.`}
+                                </Notification>,
+                            )
+                        }
+                        // The single ref passed to the sync adapters (flux-kontext /
+                        // gpt-4o / generic). Defaults to the face; flux-kontext edit
+                        // mode overrides it to the Clone (the canvas to edit).
+                        let kieSingleRef = referenceImage
+
+                        // Feed the Clone Ref IMAGE (not just the [CLONE:] text) so the
+                        // model clones the EXACT pose/outfit/framing/scene — same lever
+                        // that fixed GPT Image 2. Appended LAST so FACE_ANCHOR stays
+                        // slot 1 (high-fidelity identity) and the image order == refRoles
+                        // order for the prompt's mapping. Guarded on
+                        // kieReferenceImages.length so we never send a lone clone with
+                        // no face image behind the keep-face anchor. Además de los nano
+                        // (harness propio), Seedream/Wan/FLUX.2 lo consumen vía
+                        // planExtraRefs con guard de maniquí (KieService) — antes solo
+                        // recibían el texto [CLONE:] y re-imaginaban el outfit.
+                        if (
+                            !deepfakeActive &&
+                            (kieModel === 'nano-banana-pro' ||
+                                kieModel.startsWith('nano-banana-2') ||
+                                kieModel.startsWith('seedream/') ||
+                                kieModel === 'wan/2-7-image' ||
+                                kieModel.startsWith('flux-2/')) &&
+                            optimizedCloneRef &&
+                            kieReferenceImages.length > 0
+                        ) {
+                            kieRefsToSend = [
+                                ...kieReferenceImages,
+                                {
+                                    ...optimizedCloneRef,
+                                    role: 'clone' as const,
+                                },
+                            ]
+                            refRoles = kieRefsToSend.map(
+                                (r) => r.role as RefRole,
+                            )
+                        }
+
+                        // SEEDREAM 5 LITE — modelo genuinamente más débil que 5-Pro
+                        // (no es solo resolución) — MEZCLA el rostro del avatar con
+                        // el de cualquier foto de referencia con OTRA persona
+                        // (Pose/Scene/Clone): con esas fotos la cara del ref GANA.
+                        // Se filtran; face/body/bust/glutes/asset se conservan.
+                        // NOTA: nano-banana-2-lite NO entra aquí — es el MISMO modelo
+                        // que nano-banana-2 full a 1K, así que va idéntico al full
+                        // (harness + angle sheet + todos los refs). Filtrarlo/caparlo
+                        // le quitaba el cuerpo del harness y lo hacía alucinar
+                        // (duplicaba personas). Verificado live: nano-banana-2 @1K
+                        // con harness + angle sheet = cara y cuerpo iguales al full.
+                        if (kieModel.startsWith('seedream/5-lite')) {
+                            const rivalFaceRoles = new Set([
+                                'pose',
+                                'scene',
+                                'clone',
+                            ])
+                            kieRefsToSend = kieRefsToSend.filter(
+                                (r) => !rivalFaceRoles.has(r.role as string),
+                            )
+                            refRoles = kieRefsToSend.map(
+                                (r) => r.role as RefRole,
+                            )
+                        }
+
+                        if (
+                            kieRefsToSend.length > 0 ||
+                            (kieModel.startsWith('flux-kontext') &&
+                                optimizedCloneRef)
+                        ) {
+                            // Flux is single-input (edit on the Clone canvas) so it can run
+                            // with ONLY a clone and no avatar ref images; the others need
+                            // their ref array, hence the length>0 path above.
+                            // Toda la familia nano-banana (Pro, 2 full y 2-lite) usa
+                            // el harness verboso. nano-banana-2-lite ES el mismo
+                            // modelo que el full a 1K, así que va idéntico: harness +
+                            // angle sheet + todos los refs. (Antes lo cambié a lean +
+                            // sin angle sheet, pero eso le quitaba el cuerpo del
+                            // harness y lo hacía alucinar/duplicar — verificado live
+                            // que a 1K con harness+angle queda igual al full.)
+                            if (
+                                (kieModel === 'nano-banana-pro' ||
+                                    kieModel.startsWith('nano-banana-2')) &&
+                                !deepfakeActive
+                            ) {
+                                const { systemPreamble, finalPrompt } =
+                                    buildAvatarPrompt({
+                                        prompt: fullPrompt,
+                                        aspectRatio,
+                                        measurements,
+                                        faceDescription,
+                                        identityWeight,
+                                        cameraShot,
+                                        cameraAngle,
+                                        refRoles,
+                                    })
+                                kiePrompt = `${systemPreamble}\n\n${finalPrompt}`
+                            } else if (
+                                kieModel === 'gpt-image-2-text-to-image' &&
+                                deepfakeActive &&
+                                optimizedDeepfakeRef
+                            ) {
+                                // Deepfake = exactamente su flujo face-swap probado:
+                                // canvas (la foto) + cara, prompt lean.
+                                const faceOnly = kieReferenceImages.filter(
+                                    (r) => r.role === 'face',
+                                )
+                                kieRefsToSend = [
+                                    {
+                                        ...optimizedDeepfakeRef,
+                                        role: 'scene' as const,
+                                    },
+                                    ...(faceOnly.length > 0
+                                        ? faceOnly
+                                        : [kieReferenceImages[0]]),
+                                ]
+                                kiePrompt = buildLeanIdentityPrompt(
+                                    stripHarnessForFaceSwap(kiePrompt),
+                                    ['scene', 'face'],
+                                    true,
+                                )
+                            } else if (
+                                kieModel === 'gpt-image-2-text-to-image'
+                            ) {
+                                // Face-swap EDIT, mirroring how ChatGPT processes it:
+                                // Clone/original FIRST (the canvas to recreate exactly)
+                                // + face SECOND (swap in the avatar's face). 2 refs,
+                                // light enough to avoid the KIE 500. No angle-sheet.
+                                const faceOnly = kieReferenceImages.filter(
+                                    (r) => r.role === 'face',
+                                )
+                                const faceRefs =
+                                    faceOnly.length > 0
+                                        ? faceOnly
+                                        : [kieReferenceImages[0]]
+                                if (optimizedCloneRef) {
+                                    kieRefsToSend = [
+                                        {
+                                            ...optimizedCloneRef,
+                                            role: 'scene' as const,
+                                        },
+                                        ...faceRefs,
+                                    ]
+                                    // Face-swap i2i: strip the Gemini harness ([BODY:]
+                                    // measurements + the incomplete/contradictory auto
+                                    // [CLONE:] scene re-description) so the IMAGE — not
+                                    // text — drives body/pose/scene. Keeps [FACE:] +
+                                    // user text + a generic preserve list. faceIsImage
+                                    // = true: the avatar face IS a real 2nd image here.
+                                    kiePrompt = buildLeanIdentityPrompt(
+                                        stripHarnessForFaceSwap(fullPrompt),
+                                        ['scene', 'face'],
+                                        true,
+                                    )
+                                } else {
+                                    kieRefsToSend = faceRefs
+                                    kiePrompt = buildLeanIdentityPrompt(
+                                        fullPrompt,
+                                        ['face'],
+                                    )
+                                }
+                            } else if (
+                                kieModel.startsWith('flux-kontext') &&
+                                optimizedCloneRef
+                            ) {
+                                // Flux Kontext = instruction EDIT model. Feed the Clone as
+                                // the single canvas image (generateImageFluxKontext puts the
+                                // referenceImage into body.inputImage) and let the avatar
+                                // face ride on the [FACE:] text + relight/preserve-skin
+                                // clause — Flux is single-input, so there is no second face
+                                // image. Same lean strategy as GPT Image 2; strip the Gemini
+                                // harness ([BODY:]/[CLONE:]) that fights an edit canvas.
+                                kieSingleRef = optimizedCloneRef
+                                // faceIsImage = false: Flux is single-input (only the
+                                // clone is sent), so identity rides on the [FACE:] text,
+                                // not a non-existent "Image 2".
+                                kiePrompt = buildLeanIdentityPrompt(
+                                    stripHarnessForFaceSwap(fullPrompt),
+                                    ['scene', 'face'],
+                                    false,
+                                )
+                            }
+                        }
+
+                        // NOTA pose: el [POSE:] que BottomControlBar appendea al
+                        // final del prompt se reubica al INICIO en KieService
+                        // (antes del cap genérico) — ahí cubre también prompts
+                        // guardados y el path de edición, sin duplicarse aquí.
+
+                        // Sliders de curvas (busto/glúteos/muslos 1-5): SOLO para
+                        // providers con trait `permissive` — si el modelo no lo
+                        // es, la frase NO viaja (petición explícita del usuario).
+                        // Canal: bodyEmphasis → anclas i2i Seedream/Wan/FLUX.2;
+                        // nunca entra al [BODY:] genérico que ven Gemini/nano.
+                        const curvesEmphasis = isPermissiveProvider
+                            ? buildCurvesEmphasis(measurements)
+                            : ''
+                        const baseBodyEmphasis = measurements?.waist
+                            ? `${describeBody(measurements)} (bust ${measurements.bust}cm, waist ${measurements.waist}cm, hips ${measurements.hips}cm — hip-to-waist ratio ${(measurements.hips / measurements.waist).toFixed(2)})`
+                            : describeBody(measurements)
+                        // Refuerzo de curvas SOLO-SEEDREAM (lo consume su rama en
+                        // KieService; Wan/FLUX/otros NO leen curveBoost → intactos).
+                        // describeBody describe la cadera por cm ABSOLUTOS (umbral
+                        // "wide" en hips≥100), así que un hourglass marcado por
+                        // RATIO (p.ej. Emily 97/50 = 1.94) cae en "proportionate
+                        // hips" y Seedream Pro —que pesa la imagen sobre el texto—
+                        // la aplana. Cuando el ratio implica hourglass real,
+                        // forzamos el contraste cintura-cadera (A/B verificado live:
+                        // mismo face → texto débil = flaca, texto por-ratio = curvy).
+                        const hwRatio =
+                            measurements?.waist && measurements?.hips
+                                ? measurements.hips / measurements.waist
+                                : 0
+                        const seedreamCurveBoost =
+                            hwRatio >= 1.5 && measurements?.waist
+                                ? `Her figure is a DRAMATIC HOURGLASS: her hips are MUCH WIDER than her very narrow waist (hips ${measurements.hips}cm vs cinched waist ${measurements.waist}cm, ratio ${hwRatio.toFixed(1)}) — render WIDE, FULL, rounded hips and glutes with full thighs and a tiny cinched waist, visibly curvier and fuller than the reference photo suggests.`
+                                : ''
+
+                        if (isKieAsyncImageModel(kieModel)) {
+                            // ASYNC submit + browser poll (see pollKieImageTask).
+                            const polled = await pollKieImageTask({
+                                prompt: kiePrompt,
+                                referenceImage: kieSingleRef,
+                                referenceImages: kieRefsToSend,
+                                aspectRatio,
+                                model: kieModel,
+                                // Concrete body descriptors for the Seedream/Wan
+                                // i2i anchor — Pro ignores body text that isn't in
+                                // the anchor's early tokens (kept rendering her
+                                // slim). Los cm + ratio explícitos anclan mejor que
+                                // solo adjetivos (Ana 90/60/100 salía slim en Wan).
+                                bodyEmphasis: deepfakeActive
+                                    ? undefined
+                                    : curvesEmphasis
+                                      ? `${baseBodyEmphasis}; emphasized curves: ${curvesEmphasis}`
+                                      : baseBodyEmphasis,
+                                // Solo la rama Seedream de KieService lo lee.
+                                curveBoost: deepfakeActive
+                                    ? undefined
+                                    : seedreamCurveBoost || undefined,
+                                // Peso del Clone Ref (slider): escala la fuerza del
+                                // clone clause en las rutas i2i. Deepfake ignora.
+                                cloneWeight: deepfakeActive
+                                    ? undefined
+                                    : cloneWeight,
+                                deepfakeMode: deepfakeActive,
+                                // Color de pelo DENTRO del ancla i2i: como "brown
+                                // hair" en el [BODY:] tardío, Seedream/Wan seguían
+                                // el tono del ref/escena (reporte: MiaUltra salía
+                                // más clara en playa). Solo generación — en EDIT el
+                                // usuario puede estar recoloreando a propósito.
+                                hairEmphasis: deepfakeActive
+                                    ? undefined
+                                    : getHairColorDescription(
+                                          measurements?.hairColor,
+                                      ) || undefined,
+                                eyeEmphasis: deepfakeActive
+                                    ? undefined
+                                    : getEyeColorDescription(
+                                          measurements?.eyeColor,
+                                      ) || undefined,
+                                // Escala la cláusula de fidelidad facial del
+                                // ancla (port condensado del identity harness).
+                                identityWeight,
+                            })
+                            resultUrl = polled.url
+                            apiPrompt = polled.fullApiPrompt
+                        } else {
+                            const result = await generateImageKie({
+                                prompt: kiePrompt,
+                                referenceImage: kieSingleRef,
+                                referenceImages: kieRefsToSend,
+                                aspectRatio,
+                                model:
+                                    activeProvider.model ||
+                                    'flux-kontext/text-to-image',
+                            })
+                            if (!result.success) {
+                                throw new Error(result.error)
+                            }
+                            resultUrl = result.url
+                            apiPrompt = result.fullApiPrompt
+                        }
+                    } else if (activeProvider?.type === 'GATEWAY') {
+                        // Vercel AI Gateway — unified hub. fullPrompt already carries
+                        // [BODY:]/[FACE:] descriptors (identity via text in this spike).
+                        const result = await generateImageViaGateway({
+                            prompt: fullPrompt,
+                            aspectRatio,
+                            modelName: activeProvider.model,
+                        })
+
+                        if (!result.success) {
+                            throw new Error(result.error)
+                        }
+
+                        resultUrl = result.url
+                        apiPrompt = result.fullApiPrompt
+                    } else {
+                        // Gemini — with auto-retry and optional MiniMax fallback on safety block
+                        const result = await generateAvatar({
+                            prompt: fullPrompt,
+                            avatarReferences: optimizedPayload.generalRefs,
+                            assetReferences: optimizedPayload.assetImages,
+                            sceneReference: optimizedPayload.sceneImage,
+                            faceRefImage: optimizedPayload.faceRef,
+                            bodyRefImage: optimizedPayload.bodyRef,
+                            angleRefImage: optimizedAngleRef,
+                            poseRefImage: optimizedPoseRef,
+                            placeRefImage: optimizedPlaceRef,
+                            aspectRatio,
+                            cameraShot,
+                            cameraAngle,
+                            cinemaLens,
+                            cinemaFocalLength,
+                            cinemaAperture,
+                            identityWeight,
+                            styleWeight: 50,
+                            measurements,
+                            faceDescription,
+                            modelName: activeProvider?.model,
+                            allowFallback: geminiAutoFallback,
+                        })
+
+                        if (!result.success) {
+                            throw new Error(result.error)
+                        }
+
                         resultUrl = result.url
                         apiPrompt = result.fullApiPrompt
                     }
-                } else if (activeProvider?.type === 'GATEWAY') {
-                    // Vercel AI Gateway — unified hub. fullPrompt already carries
-                    // [BODY:]/[FACE:] descriptors (identity via text in this spike).
-                    const result = await generateImageViaGateway({
-                        prompt: fullPrompt,
-                        aspectRatio,
-                        modelName: activeProvider.model,
-                    })
-
-                    if (!result.success) {
-                        throw new Error(result.error)
-                    }
-
-                    resultUrl = result.url
-                    apiPrompt = result.fullApiPrompt
                 } else {
-                    // Gemini — with auto-retry and optional MiniMax fallback on safety block
-                    const result = await generateAvatar({
-                        prompt: fullPrompt,
-                        avatarReferences: optimizedPayload.generalRefs,
-                        assetReferences: optimizedPayload.assetImages,
-                        sceneReference: optimizedPayload.sceneImage,
-                        faceRefImage: optimizedPayload.faceRef,
-                        bodyRefImage: optimizedPayload.bodyRef,
-                        angleRefImage: optimizedAngleRef,
-                        poseRefImage: optimizedPoseRef,
-                        placeRefImage: optimizedPlaceRef,
-                        aspectRatio,
-                        cameraShot,
-                        cameraAngle,
-                        cinemaLens,
-                        cinemaFocalLength,
-                        cinemaAperture,
-                        identityWeight,
-                        styleWeight: 50,
-                        measurements,
-                        faceDescription,
-                        modelName: activeProvider?.model,
-                        allowFallback: geminiAutoFallback,
-                    })
+                    // VIDEO mode - check provider type
+                    const isKlingProvider = activeProvider?.type === 'KLING'
+                    const isMinimaxProvider = activeProvider?.type === 'MINIMAX'
 
-                    if (!result.success) {
-                        throw new Error(result.error)
-                    }
+                    // Debug logging
+                    console.log(
+                        '[AvatarStudio] Active Provider:',
+                        activeProvider,
+                    )
+                    console.log(
+                        '[AvatarStudio] Provider Type:',
+                        activeProvider?.type,
+                    )
+                    console.log(
+                        '[AvatarStudio] Is Kling Provider:',
+                        isKlingProvider,
+                    )
+                    console.log(
+                        '[AvatarStudio] Is MiniMax Provider:',
+                        isMinimaxProvider,
+                    )
 
-                    resultUrl = result.url
-                    apiPrompt = result.fullApiPrompt
-                }
-            } else {
-                // VIDEO mode - check provider type
-                const isKlingProvider = activeProvider?.type === 'KLING'
-                const isMinimaxProvider = activeProvider?.type === 'MINIMAX'
+                    if (videoSubMode === 'SPEAK') {
+                        // Talking-head: audio ya generado (Voice Studio) O texto → TTS
+                        // con la voz clonada del avatar; luego el motor elegido.
+                        const presetAudioUrl =
+                            useAvatarStudioStore.getState().speakAudioUrl
+                        // El guion vive en videoDialogue (diálogo del botón 🎤), NO en el
+                        // prompt principal — así Img→Prompt no puede sobreescribirlo. El
+                        // prompt principal queda como descripción visual opcional.
+                        const script = useAvatarStudioStore
+                            .getState()
+                            .videoDialogue.trim()
+                        if (!presetAudioUrl && !avatarDefaultVoice) {
+                            throw new Error(
+                                'This avatar has no main voice. Clone one in Voice Studio and set it as main.',
+                            )
+                        }
+                        if (!presetAudioUrl && !script) {
+                            throw new Error(
+                                'Add a script first — click the 🎤 microphone button next to the prompt box',
+                            )
+                        }
+                        const visualPrompt = useAvatarStudioStore
+                            .getState()
+                            .prompt.trim()
 
-                // Debug logging
-                console.log('[AvatarStudio] Active Provider:', activeProvider)
-                console.log(
-                    '[AvatarStudio] Provider Type:',
-                    activeProvider?.type,
-                )
-                console.log(
-                    '[AvatarStudio] Is Kling Provider:',
-                    isKlingProvider,
-                )
-                console.log(
-                    '[AvatarStudio] Is MiniMax Provider:',
-                    isMinimaxProvider,
-                )
+                        // La imagen que habla: si hay una imagen cargada en el dropzone
+                        // (galería/upload) gana sobre las refs del avatar — permite el
+                        // flujo "imagen + guion → talking video". Sin imagen cargada,
+                        // se usa la face ref del avatar.
+                        let speakImage =
+                            optimizedPayload.faceRef ||
+                            optimizedPayload.generalRefs[0]
+                        if (videoInputImage?.base64) {
+                            const optimizedSpeakInput = await optimizeImage(
+                                {
+                                    base64: videoInputImage.base64,
+                                    mimeType: videoInputImage.mimeType,
+                                },
+                                'API_FULL',
+                            )
+                            if (optimizedSpeakInput)
+                                speakImage = optimizedSpeakInput
+                        }
+                        if (!speakImage) {
+                            throw new Error(
+                                'Add avatar references (a face photo) or load an image before generating a talking video',
+                            )
+                        }
 
-                if (videoSubMode === 'SPEAK') {
-                    // Talking-head: audio ya generado (Voice Studio) O texto → TTS
-                    // con la voz clonada del avatar; luego el motor elegido.
-                    const presetAudioUrl =
-                        useAvatarStudioStore.getState().speakAudioUrl
-                    // El guion vive en videoDialogue (diálogo del botón 🎤), NO en el
-                    // prompt principal — así Img→Prompt no puede sobreescribirlo. El
-                    // prompt principal queda como descripción visual opcional.
-                    const script = useAvatarStudioStore
-                        .getState()
-                        .videoDialogue.trim()
-                    if (!presetAudioUrl && !avatarDefaultVoice) {
-                        throw new Error(
-                            'This avatar has no main voice. Clone one in Voice Studio and set it as main.',
-                        )
-                    }
-                    if (!presetAudioUrl && !script) {
-                        throw new Error(
-                            'Add a script first — click the 🎤 microphone button next to the prompt box',
-                        )
-                    }
-                    const visualPrompt = useAvatarStudioStore
-                        .getState()
-                        .prompt.trim()
+                        // 1. Audio: reusar el ya generado en Voice Studio (salta el TTS)
+                        // o sintetizar al vuelo con la voz principal del avatar.
+                        let audioUrl: string
+                        let durationMs: number | undefined
+                        if (presetAudioUrl) {
+                            audioUrl = presetAudioUrl
+                            // Duración real del mp3 (dimensiona el video de Kling).
+                            durationMs = await new Promise<number | undefined>(
+                                (resolve) => {
+                                    const probe = new Audio(presetAudioUrl)
+                                    probe.onloadedmetadata = () =>
+                                        resolve(
+                                            Number.isFinite(probe.duration)
+                                                ? probe.duration * 1000
+                                                : undefined,
+                                        )
+                                    probe.onerror = () => resolve(undefined)
+                                },
+                            )
+                        } else {
+                            const langMap: Record<string, string> = {
+                                es: 'Spanish',
+                                en: 'English',
+                                pt: 'Portuguese',
+                                fr: 'French',
+                            }
+                            // Entrega guardada de la voz (speed/pitch/emotion/acento,
+                            // ajustada en Voice Studio → Audio Preview). El guard de
+                            // arriba garantiza que hay voz cuando no hay preset audio.
+                            const voice = avatarDefaultVoice!
+                            const voiceSettings = voice.tts_settings ?? {}
+                            const ttsRes = await fetch('/api/voice/tts-file', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({
+                                    text: script,
+                                    voiceId: voice.provider_voice_id,
+                                    // 'auto' deja mandar el acento de la muestra clonada.
+                                    language: voiceSettings.useAutoAccent
+                                        ? 'auto'
+                                        : (langMap[voice.language] ??
+                                          voice.language),
+                                    ...voiceSettings,
+                                }),
+                            })
+                            if (!ttsRes.ok) {
+                                const { error: ttsError } = await ttsRes.json()
+                                throw new Error(
+                                    ttsError || 'Voice generation (TTS) failed',
+                                )
+                            }
+                            const ttsJson = await ttsRes.json()
+                            audioUrl = ttsJson.audioUrl
+                            durationMs = ttsJson.durationMs
+                        }
 
-                    // La imagen que habla: si hay una imagen cargada en el dropzone
-                    // (galería/upload) gana sobre las refs del avatar — permite el
-                    // flujo "imagen + guion → talking video". Sin imagen cargada,
-                    // se usa la face ref del avatar.
-                    let speakImage =
-                        optimizedPayload.faceRef ||
-                        optimizedPayload.generalRefs[0]
-                    if (videoInputImage?.base64) {
-                        const optimizedSpeakInput = await optimizeImage(
+                        // 2. Talking-head con el motor elegido (InfiniteTalk / OmniHuman /
+                        // Kling 3.0 con audio element) — submit async + poll desde el
+                        // navegador, los jobs tardan 10-20 min.
+                        // Kling necesita 2-4 imágenes del personaje para su element —
+                        // pero SOLO del personaje que habla: si hay imagen cargada en
+                        // el dropzone, ella es la única identidad (mezclar las refs
+                        // del avatar mete una segunda persona al video); sin imagen
+                        // cargada, el personaje es el avatar y sus refs aplican.
+                        const speakElementImages = videoInputImage?.base64
+                            ? []
+                            : [
+                                  optimizedPayload.faceRef,
+                                  ...optimizedPayload.generalRefs,
+                              ].filter(
+                                  (
+                                      r,
+                                  ): r is {
+                                      base64: string
+                                      mimeType: string
+                                  } => !!r,
+                              )
+
+                        try {
+                            const speakModel =
+                                useAvatarStudioStore.getState().speakModel
+                            resultUrl = await pollKieTalkingVideoTask({
+                                image: speakImage,
+                                audioUrl,
+                                prompt: visualPrompt || undefined,
+                                resolution: '720p',
+                                model: speakModel,
+                                elementImages: speakElementImages,
+                                durationSec: durationMs
+                                    ? durationMs / 1000
+                                    : undefined,
+                            })
+
+                            // Kling genera gran video pero IGNORA el audio del element
+                            // (verificado: la pista sale casi en silencio). Paso 2:
+                            // re-sincronizar labios con el mismo TTS vía Volcengine.
+                            if (speakModel === 'kling') {
+                                const lipsyncSub =
+                                    await submitLipsyncVideoKieTask({
+                                        videoUrl: resultUrl,
+                                        audioUrl,
+                                    })
+                                if (!lipsyncSub.success) {
+                                    throw new Error(
+                                        `Lipsync step failed to start: ${lipsyncSub.error}. Silent Kling video was generated: ${resultUrl}`,
+                                    )
+                                }
+                                const lipsyncDeadline =
+                                    Date.now() + 30 * 60 * 1000
+                                let lipsyncedUrl: string | null = null
+                                while (Date.now() < lipsyncDeadline) {
+                                    await new Promise((r) =>
+                                        setTimeout(r, 5000),
+                                    )
+                                    const st = await checkKieVideoTask(
+                                        lipsyncSub.taskId,
+                                    )
+                                    if (st.status === 'done') {
+                                        lipsyncedUrl = st.url
+                                        break
+                                    }
+                                    if (st.status === 'failed') {
+                                        throw new Error(
+                                            `Lipsync step failed: ${st.error}. Silent Kling video was generated: ${resultUrl}`,
+                                        )
+                                    }
+                                }
+                                if (!lipsyncedUrl) {
+                                    throw new Error(
+                                        `Lipsync step timed out (>30 min). Silent Kling video was generated: ${resultUrl}`,
+                                    )
+                                }
+                                resultUrl = lipsyncedUrl
+                            }
+                        } catch (speakErr) {
+                            // El audio ya quedó generado y persistido; que el error lo diga
+                            // para no perder ese contexto (sin fallbacks silenciosos).
+                            const msg =
+                                speakErr instanceof Error
+                                    ? speakErr.message
+                                    : String(speakErr)
+                            throw new Error(
+                                `Talking video failed: ${msg}. The audio was generated: ${audioUrl}`,
+                            )
+                        }
+                    } else if (videoSubMode === 'ANIMATE') {
+                        if (!videoInputImage || !videoInputImage.base64) {
+                            throw new Error('Please upload an image to animate')
+                        }
+                        // First frame drives the whole clip's quality — keep full
+                        // resolution (API_FULL) instead of the 1024px API preset,
+                        // otherwise continued videos come out visibly softer.
+                        const optimizedVideoInput = await optimizeImage(
                             {
                                 base64: videoInputImage.base64,
                                 mimeType: videoInputImage.mimeType,
                             },
                             'API_FULL',
                         )
-                        if (optimizedSpeakInput)
-                            speakImage = optimizedSpeakInput
-                    }
-                    if (!speakImage) {
-                        throw new Error(
-                            'Add avatar references (a face photo) or load an image before generating a talking video',
-                        )
-                    }
 
-                    // 1. Audio: reusar el ya generado en Voice Studio (salta el TTS)
-                    // o sintetizar al vuelo con la voz principal del avatar.
-                    let audioUrl: string
-                    let durationMs: number | undefined
-                    if (presetAudioUrl) {
-                        audioUrl = presetAudioUrl
-                        // Duración real del mp3 (dimensiona el video de Kling).
-                        durationMs = await new Promise<number | undefined>(
-                            (resolve) => {
-                                const probe = new Audio(presetAudioUrl)
-                                probe.onloadedmetadata = () =>
-                                    resolve(
-                                        Number.isFinite(probe.duration)
-                                            ? probe.duration * 1000
-                                            : undefined,
-                                    )
-                                probe.onerror = () => resolve(undefined)
-                            },
-                        )
-                    } else {
-                        const langMap: Record<string, string> = {
-                            es: 'Spanish',
-                            en: 'English',
-                            pt: 'Portuguese',
-                            fr: 'French',
-                        }
-                        // Entrega guardada de la voz (speed/pitch/emotion/acento,
-                        // ajustada en Voice Studio → Audio Preview). El guard de
-                        // arriba garantiza que hay voz cuando no hay preset audio.
-                        const voice = avatarDefaultVoice!
-                        const voiceSettings = voice.tts_settings ?? {}
-                        const ttsRes = await fetch('/api/voice/tts-file', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({
-                                text: script,
-                                voiceId: voice.provider_voice_id,
-                                // 'auto' deja mandar el acento de la muestra clonada.
-                                language: voiceSettings.useAutoAccent
-                                    ? 'auto'
-                                    : (langMap[voice.language] ??
-                                      voice.language),
-                                ...voiceSettings,
-                            }),
-                        })
-                        if (!ttsRes.ok) {
-                            const { error: ttsError } = await ttsRes.json()
+                        if (!optimizedVideoInput) {
                             throw new Error(
-                                ttsError || 'Voice generation (TTS) failed',
+                                'Failed to optimize video input image',
                             )
                         }
-                        const ttsJson = await ttsRes.json()
-                        audioUrl = ttsJson.audioUrl
-                        durationMs = ttsJson.durationMs
-                    }
 
-                    // 2. Talking-head con el motor elegido (InfiniteTalk / OmniHuman /
-                    // Kling 3.0 con audio element) — submit async + poll desde el
-                    // navegador, los jobs tardan 10-20 min.
-                    // Kling necesita 2-4 imágenes del personaje para su element —
-                    // pero SOLO del personaje que habla: si hay imagen cargada en
-                    // el dropzone, ella es la única identidad (mezclar las refs
-                    // del avatar mete una segunda persona al video); sin imagen
-                    // cargada, el personaje es el avatar y sus refs aplican.
-                    const speakElementImages = videoInputImage?.base64
-                        ? []
-                        : [
-                              optimizedPayload.faceRef,
-                              ...optimizedPayload.generalRefs,
-                          ].filter(
-                              (r): r is { base64: string; mimeType: string } =>
-                                  !!r,
-                          )
+                        // Continue Video with avatar identity → Veo 3.1, Kling
+                        // Omni or Seedance. The user picks via the model
+                        // selector inside the Continue dialog. Whichever
+                        // upstream provider the user had selected up top is
+                        // overridden because most models in our integration
+                        // don't support first_frame + multi-image refs at once.
+                        if (continueUseAvatarIdentity) {
+                            const identityRefs = [
+                                optimizedPayload.faceRef,
+                                ...optimizedPayload.generalRefs,
+                            ].filter(
+                                (
+                                    r,
+                                ): r is { base64: string; mimeType: string } =>
+                                    !!r,
+                            )
 
-                    try {
-                        const speakModel =
-                            useAvatarStudioStore.getState().speakModel
-                        resultUrl = await pollKieTalkingVideoTask({
-                            image: speakImage,
-                            audioUrl,
-                            prompt: visualPrompt || undefined,
-                            resolution: '720p',
-                            model: speakModel,
-                            elementImages: speakElementImages,
-                            durationSec: durationMs
-                                ? durationMs / 1000
-                                : undefined,
-                        })
+                            if (identityRefs.length === 0) {
+                                throw new Error(
+                                    'No avatar references available for identity-preserving continue',
+                                )
+                            }
 
-                        // Kling genera gran video pero IGNORA el audio del element
-                        // (verificado: la pista sale casi en silencio). Paso 2:
-                        // re-sincronizar labios con el mismo TTS vía Volcengine.
-                        if (speakModel === 'kling') {
-                            const lipsyncSub = await submitLipsyncVideoKieTask({
-                                videoUrl: resultUrl,
-                                audioUrl,
+                            console.log(
+                                '[AvatarStudio] Continue with identity',
+                                {
+                                    model: continueIdentityModel,
+                                    refCount: identityRefs.length,
+                                    originalProvider: activeProvider?.type,
+                                },
+                            )
+
+                            if (continueIdentityModel === 'veo-3-1') {
+                                // Veo on the Gemini Developer API CANNOT combine a
+                                // first frame with `referenceImages` (asset/identity
+                                // refs) — that returns 400 "Unsupported video
+                                // generation request" (the combined mode is Vertex
+                                // AI-only). For "Continue Video" the first frame is
+                                // inherently present, so we do NOT send identity
+                                // refs here: the first frame is the continuity +
+                                // appearance anchor. Identity lock is therefore
+                                // approximate on Veo. For STRONG identity
+                                // preservation the user should pick kling-omni or
+                                // seedance below, which support first_frame +
+                                // multi-ref via non-Gemini APIs.
+                                resultUrl = await genVideoGemini({
+                                    prompt: fullPrompt,
+                                    imageInput: optimizedVideoInput,
+                                    aspectRatio,
+                                    resolution: videoResolution,
+                                    cameraMotion,
+                                    subjectAction,
+                                    dialogue: videoDialogue,
+                                    voiceStyle,
+                                    noMusic,
+                                    noBackgroundEffects,
+                                    modelName: 'veo-3.1-generate-preview',
+                                })
+                            } else if (continueIdentityModel === 'kling-omni') {
+                                resultUrl = await generateVideoOmniKling({
+                                    prompt: fullPrompt,
+                                    firstFrameImage: optimizedVideoInput,
+                                    referenceImages: identityRefs,
+                                    aspectRatio,
+                                    duration: String(videoDuration) as
+                                        | '5'
+                                        | '10',
+                                    modelName: 'kling-v3-omni',
+                                })
+                            } else {
+                                resultUrl = await genVideoKie({
+                                    prompt: fullPrompt,
+                                    firstFrameImage: optimizedVideoInput,
+                                    referenceImages: identityRefs,
+                                    model: 'bytedance/seedance-2',
+                                    aspectRatio,
+                                    duration: videoDuration,
+                                    resolution: videoResolution,
+                                })
+                            }
+                        } else if (isKlingProvider) {
+                            // Check if Motion Control is enabled (v2.6+ only)
+                            if (
+                                klingMotionControlEnabled &&
+                                (klingMotionVideoBase64 ||
+                                    klingMotionVideoUrl ||
+                                    klingPresetMotion)
+                            ) {
+                                console.log(
+                                    '[AvatarStudio] Using Motion Control generation',
+                                )
+                                console.log(
+                                    '[AvatarStudio] Preset:',
+                                    klingPresetMotion,
+                                )
+                                console.log(
+                                    '[AvatarStudio] Has uploaded video:',
+                                    !!klingMotionVideoBase64,
+                                )
+                                console.log(
+                                    '[AvatarStudio] Has URL video:',
+                                    !!klingMotionVideoUrl,
+                                )
+
+                                resultUrl = await generateMotionControlKling({
+                                    characterImage: optimizedVideoInput,
+                                    motionVideo: klingMotionVideoBase64
+                                        ? {
+                                              base64: klingMotionVideoBase64,
+                                              mimeType: 'video/mp4',
+                                          }
+                                        : undefined,
+                                    motionVideoUrl:
+                                        klingMotionVideoUrl || undefined,
+                                    presetMotion:
+                                        klingPresetMotion || undefined,
+                                    motionOrientation: klingMotionOrientation,
+                                    keepOriginalSound: klingKeepOriginalSound,
+                                    duration: klingMotionDuration,
+                                    prompt: fullPrompt,
+                                    mode: 'std',
+                                    modelName:
+                                        (activeProvider?.model as 'kling-v2-6') ||
+                                        'kling-v2-6',
+                                })
+                            } else {
+                                // Standard Kling video generation
+                                resultUrl = await generateVideoKling({
+                                    prompt: fullPrompt,
+                                    imageInput: optimizedVideoInput,
+                                    aspectRatio,
+                                    duration: String(videoDuration) as
+                                        | '5'
+                                        | '10',
+                                    modelName:
+                                        activeProvider?.model || 'kling-v1-6',
+                                })
+                            }
+                        } else if (isMinimaxProvider) {
+                            // MiniMax Hailuo image-to-video. Identity preservation
+                            // is handled upstream by the Seedance-2 branch, so
+                            // this path stays focused on the literal first-frame
+                            // case.
+                            resultUrl = await generateVideoMiniMax({
+                                mode: 'image',
+                                prompt: fullPrompt,
+                                firstFrameImage: optimizedVideoInput,
+                                model:
+                                    (activeProvider?.model as MiniMaxVideoModel) ||
+                                    'MiniMax-Hailuo-2.3',
+                                resolution: videoResolution,
                             })
-                            if (!lipsyncSub.success) {
-                                throw new Error(
-                                    `Lipsync step failed to start: ${lipsyncSub.error}. Silent Kling video was generated: ${resultUrl}`,
-                                )
-                            }
-                            const lipsyncDeadline = Date.now() + 30 * 60 * 1000
-                            let lipsyncedUrl: string | null = null
-                            while (Date.now() < lipsyncDeadline) {
-                                await new Promise((r) => setTimeout(r, 5000))
-                                const st = await checkKieVideoTask(
-                                    lipsyncSub.taskId,
-                                )
-                                if (st.status === 'done') {
-                                    lipsyncedUrl = st.url
-                                    break
-                                }
-                                if (st.status === 'failed') {
-                                    throw new Error(
-                                        `Lipsync step failed: ${st.error}. Silent Kling video was generated: ${resultUrl}`,
-                                    )
-                                }
-                            }
-                            if (!lipsyncedUrl) {
-                                throw new Error(
-                                    `Lipsync step timed out (>30 min). Silent Kling video was generated: ${resultUrl}`,
-                                )
-                            }
-                            resultUrl = lipsyncedUrl
-                        }
-                    } catch (speakErr) {
-                        // El audio ya quedó generado y persistido; que el error lo diga
-                        // para no perder ese contexto (sin fallbacks silenciosos).
-                        const msg =
-                            speakErr instanceof Error
-                                ? speakErr.message
-                                : String(speakErr)
-                        throw new Error(
-                            `Talking video failed: ${msg}. The audio was generated: ${audioUrl}`,
-                        )
-                    }
-                } else if (videoSubMode === 'ANIMATE') {
-                    if (!videoInputImage || !videoInputImage.base64) {
-                        throw new Error('Please upload an image to animate')
-                    }
-                    // First frame drives the whole clip's quality — keep full
-                    // resolution (API_FULL) instead of the 1024px API preset,
-                    // otherwise continued videos come out visibly softer.
-                    const optimizedVideoInput = await optimizeImage(
-                        {
-                            base64: videoInputImage.base64,
-                            mimeType: videoInputImage.mimeType,
-                        },
-                        'API_FULL',
-                    )
-
-                    if (!optimizedVideoInput) {
-                        throw new Error('Failed to optimize video input image')
-                    }
-
-                    // Continue Video with avatar identity → Veo 3.1, Kling
-                    // Omni or Seedance. The user picks via the model
-                    // selector inside the Continue dialog. Whichever
-                    // upstream provider the user had selected up top is
-                    // overridden because most models in our integration
-                    // don't support first_frame + multi-image refs at once.
-                    if (continueUseAvatarIdentity) {
-                        const identityRefs = [
-                            optimizedPayload.faceRef,
-                            ...optimizedPayload.generalRefs,
-                        ].filter(
-                            (r): r is { base64: string; mimeType: string } =>
-                                !!r,
-                        )
-
-                        if (identityRefs.length === 0) {
-                            throw new Error(
-                                'No avatar references available for identity-preserving continue',
+                        } else if (activeProvider?.type === 'KIE') {
+                            const isKieKling =
+                                activeProvider.model === 'kling-3.0/video'
+                            const hasMotionVideo = !!(
+                                klingMotionVideoBase64 || klingMotionVideoUrl
                             )
-                        }
-
-                        console.log('[AvatarStudio] Continue with identity', {
-                            model: continueIdentityModel,
-                            refCount: identityRefs.length,
-                            originalProvider: activeProvider?.type,
-                        })
-
-                        if (continueIdentityModel === 'veo-3-1') {
-                            // Veo on the Gemini Developer API CANNOT combine a
-                            // first frame with `referenceImages` (asset/identity
-                            // refs) — that returns 400 "Unsupported video
-                            // generation request" (the combined mode is Vertex
-                            // AI-only). For "Continue Video" the first frame is
-                            // inherently present, so we do NOT send identity
-                            // refs here: the first frame is the continuity +
-                            // appearance anchor. Identity lock is therefore
-                            // approximate on Veo. For STRONG identity
-                            // preservation the user should pick kling-omni or
-                            // seedance below, which support first_frame +
-                            // multi-ref via non-Gemini APIs.
+                            if (
+                                isKieKling &&
+                                klingMotionControlEnabled &&
+                                hasMotionVideo
+                            ) {
+                                // KIE Kling 3.0 motion-control (v2v)
+                                resultUrl = await genMotionControlKie({
+                                    characterImage: optimizedVideoInput,
+                                    motionVideoUrl:
+                                        klingMotionVideoUrl || undefined,
+                                    motionVideoBase64:
+                                        klingMotionVideoBase64 || undefined,
+                                    prompt: fullPrompt,
+                                    resolution: videoResolution,
+                                    characterOrientation:
+                                        klingMotionOrientation,
+                                })
+                            } else {
+                                // KIE aggregator — plain video (Kling 3.0 / Seedance / Wan / Veo)
+                                resultUrl = await genVideoKie({
+                                    prompt: fullPrompt,
+                                    firstFrameImage: optimizedVideoInput,
+                                    model:
+                                        activeProvider.model ||
+                                        'veo-3.1/text-to-video',
+                                    aspectRatio,
+                                    duration: videoDuration,
+                                    resolution: videoResolution,
+                                    sound: isKieKling
+                                        ? klingNativeAudioEnabled
+                                        : undefined,
+                                })
+                            }
+                        } else {
+                            // Use Gemini Service (default)
                             resultUrl = await genVideoGemini({
                                 prompt: fullPrompt,
                                 imageInput: optimizedVideoInput,
@@ -1807,443 +2022,331 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                                 voiceStyle,
                                 noMusic,
                                 noBackgroundEffects,
-                                modelName: 'veo-3.1-generate-preview',
-                            })
-                        } else if (continueIdentityModel === 'kling-omni') {
-                            resultUrl = await generateVideoOmniKling({
-                                prompt: fullPrompt,
-                                firstFrameImage: optimizedVideoInput,
-                                referenceImages: identityRefs,
-                                aspectRatio,
-                                duration: String(videoDuration) as '5' | '10',
-                                modelName: 'kling-v3-omni',
-                            })
-                        } else {
-                            resultUrl = await genVideoKie({
-                                prompt: fullPrompt,
-                                firstFrameImage: optimizedVideoInput,
-                                referenceImages: identityRefs,
-                                model: 'bytedance/seedance-2',
-                                aspectRatio,
-                                duration: videoDuration,
-                                resolution: videoResolution,
-                            })
-                        }
-                    } else if (isKlingProvider) {
-                        // Check if Motion Control is enabled (v2.6+ only)
-                        if (
-                            klingMotionControlEnabled &&
-                            (klingMotionVideoBase64 ||
-                                klingMotionVideoUrl ||
-                                klingPresetMotion)
-                        ) {
-                            console.log(
-                                '[AvatarStudio] Using Motion Control generation',
-                            )
-                            console.log(
-                                '[AvatarStudio] Preset:',
-                                klingPresetMotion,
-                            )
-                            console.log(
-                                '[AvatarStudio] Has uploaded video:',
-                                !!klingMotionVideoBase64,
-                            )
-                            console.log(
-                                '[AvatarStudio] Has URL video:',
-                                !!klingMotionVideoUrl,
-                            )
-
-                            resultUrl = await generateMotionControlKling({
-                                characterImage: optimizedVideoInput,
-                                motionVideo: klingMotionVideoBase64
-                                    ? {
-                                          base64: klingMotionVideoBase64,
-                                          mimeType: 'video/mp4',
-                                      }
-                                    : undefined,
-                                motionVideoUrl:
-                                    klingMotionVideoUrl || undefined,
-                                presetMotion: klingPresetMotion || undefined,
-                                motionOrientation: klingMotionOrientation,
-                                keepOriginalSound: klingKeepOriginalSound,
-                                duration: klingMotionDuration,
-                                prompt: fullPrompt,
-                                mode: 'std',
-                                modelName:
-                                    (activeProvider?.model as 'kling-v2-6') ||
-                                    'kling-v2-6',
-                            })
-                        } else {
-                            // Standard Kling video generation
-                            resultUrl = await generateVideoKling({
-                                prompt: fullPrompt,
-                                imageInput: optimizedVideoInput,
-                                aspectRatio,
-                                duration: String(videoDuration) as '5' | '10',
-                                modelName:
-                                    activeProvider?.model || 'kling-v1-6',
-                            })
-                        }
-                    } else if (isMinimaxProvider) {
-                        // MiniMax Hailuo image-to-video. Identity preservation
-                        // is handled upstream by the Seedance-2 branch, so
-                        // this path stays focused on the literal first-frame
-                        // case.
-                        resultUrl = await generateVideoMiniMax({
-                            mode: 'image',
-                            prompt: fullPrompt,
-                            firstFrameImage: optimizedVideoInput,
-                            model:
-                                (activeProvider?.model as MiniMaxVideoModel) ||
-                                'MiniMax-Hailuo-2.3',
-                            resolution: videoResolution,
-                        })
-                    } else if (activeProvider?.type === 'KIE') {
-                        const isKieKling =
-                            activeProvider.model === 'kling-3.0/video'
-                        const hasMotionVideo = !!(
-                            klingMotionVideoBase64 || klingMotionVideoUrl
-                        )
-                        if (
-                            isKieKling &&
-                            klingMotionControlEnabled &&
-                            hasMotionVideo
-                        ) {
-                            // KIE Kling 3.0 motion-control (v2v)
-                            resultUrl = await genMotionControlKie({
-                                characterImage: optimizedVideoInput,
-                                motionVideoUrl:
-                                    klingMotionVideoUrl || undefined,
-                                motionVideoBase64:
-                                    klingMotionVideoBase64 || undefined,
-                                prompt: fullPrompt,
-                                resolution: videoResolution,
-                                characterOrientation: klingMotionOrientation,
-                            })
-                        } else {
-                            // KIE aggregator — plain video (Kling 3.0 / Seedance / Wan / Veo)
-                            resultUrl = await genVideoKie({
-                                prompt: fullPrompt,
-                                firstFrameImage: optimizedVideoInput,
-                                model:
-                                    activeProvider.model ||
-                                    'veo-3.1/text-to-video',
-                                aspectRatio,
-                                duration: videoDuration,
-                                resolution: videoResolution,
-                                sound: isKieKling
-                                    ? klingNativeAudioEnabled
-                                    : undefined,
+                                modelName: activeProvider?.model,
                             })
                         }
                     } else {
-                        // Use Gemini Service (default)
-                        resultUrl = await genVideoGemini({
-                            prompt: fullPrompt,
-                            imageInput: optimizedVideoInput,
-                            aspectRatio,
-                            resolution: videoResolution,
-                            cameraMotion,
-                            subjectAction,
-                            dialogue: videoDialogue,
-                            voiceStyle,
-                            noMusic,
-                            noBackgroundEffects,
-                            modelName: activeProvider?.model,
-                        })
-                    }
-                } else {
-                    // AVATAR mode - use already optimized references
-                    if (isKlingProvider) {
-                        // For Kling AVATAR mode, use face ref or first general ref as input
-                        const avatarInput =
-                            optimizedPayload.faceRef ||
-                            optimizedPayload.generalRefs[0]
-                        if (!avatarInput) {
-                            throw new Error(
-                                'Please add avatar references for Kling video generation',
+                        // AVATAR mode - use already optimized references
+                        if (isKlingProvider) {
+                            // For Kling AVATAR mode, use face ref or first general ref as input
+                            const avatarInput =
+                                optimizedPayload.faceRef ||
+                                optimizedPayload.generalRefs[0]
+                            if (!avatarInput) {
+                                throw new Error(
+                                    'Please add avatar references for Kling video generation',
+                                )
+                            }
+
+                            // Check if Motion Control is enabled (v2.6+ only)
+                            if (
+                                klingMotionControlEnabled &&
+                                (klingMotionVideoBase64 ||
+                                    klingMotionVideoUrl ||
+                                    klingPresetMotion)
+                            ) {
+                                console.log(
+                                    '[AvatarStudio] AVATAR mode: Using Motion Control generation',
+                                )
+                                resultUrl = await generateMotionControlKling({
+                                    characterImage: avatarInput,
+                                    motionVideo: klingMotionVideoBase64
+                                        ? {
+                                              base64: klingMotionVideoBase64,
+                                              mimeType: 'video/mp4',
+                                          }
+                                        : undefined,
+                                    motionVideoUrl:
+                                        klingMotionVideoUrl || undefined,
+                                    presetMotion:
+                                        klingPresetMotion || undefined,
+                                    motionOrientation: klingMotionOrientation,
+                                    keepOriginalSound: klingKeepOriginalSound,
+                                    duration: klingMotionDuration,
+                                    prompt: fullPrompt,
+                                    mode: 'std',
+                                    modelName:
+                                        (activeProvider?.model as 'kling-v2-6') ||
+                                        'kling-v2-6',
+                                })
+                            } else {
+                                // Standard Kling avatar video generation
+                                resultUrl = await generateAvatarVideoKling({
+                                    prompt: fullPrompt,
+                                    avatarImage: avatarInput,
+                                    aspectRatio,
+                                    duration: String(videoDuration) as
+                                        | '5'
+                                        | '10',
+                                    modelName:
+                                        activeProvider?.model || 'kling-v1-6',
+                                })
+                            }
+                        } else if (isMinimaxProvider) {
+                            // MiniMax Hailuo with subject_reference (avatar lock)
+                            const refs = [
+                                optimizedPayload.faceRef,
+                                optimizedPayload.bodyRef,
+                                ...optimizedPayload.generalRefs,
+                            ].filter(
+                                (
+                                    r,
+                                ): r is { base64: string; mimeType: string } =>
+                                    !!r,
                             )
-                        }
 
-                        // Check if Motion Control is enabled (v2.6+ only)
-                        if (
-                            klingMotionControlEnabled &&
-                            (klingMotionVideoBase64 ||
-                                klingMotionVideoUrl ||
-                                klingPresetMotion)
-                        ) {
-                            console.log(
-                                '[AvatarStudio] AVATAR mode: Using Motion Control generation',
-                            )
-                            resultUrl = await generateMotionControlKling({
-                                characterImage: avatarInput,
-                                motionVideo: klingMotionVideoBase64
-                                    ? {
-                                          base64: klingMotionVideoBase64,
-                                          mimeType: 'video/mp4',
-                                      }
-                                    : undefined,
-                                motionVideoUrl:
-                                    klingMotionVideoUrl || undefined,
-                                presetMotion: klingPresetMotion || undefined,
-                                motionOrientation: klingMotionOrientation,
-                                keepOriginalSound: klingKeepOriginalSound,
-                                duration: klingMotionDuration,
-                                prompt: fullPrompt,
-                                mode: 'std',
-                                modelName:
-                                    (activeProvider?.model as 'kling-v2-6') ||
-                                    'kling-v2-6',
-                            })
-                        } else {
-                            // Standard Kling avatar video generation
-                            resultUrl = await generateAvatarVideoKling({
-                                prompt: fullPrompt,
-                                avatarImage: avatarInput,
-                                aspectRatio,
-                                duration: String(videoDuration) as '5' | '10',
-                                modelName:
-                                    activeProvider?.model || 'kling-v1-6',
-                            })
-                        }
-                    } else if (isMinimaxProvider) {
-                        // MiniMax Hailuo with subject_reference (avatar lock)
-                        const refs = [
-                            optimizedPayload.faceRef,
-                            optimizedPayload.bodyRef,
-                            ...optimizedPayload.generalRefs,
-                        ].filter(
-                            (r): r is { base64: string; mimeType: string } =>
-                                !!r,
-                        )
+                            if (refs.length === 0) {
+                                throw new Error(
+                                    'Please add avatar references for MiniMax video generation',
+                                )
+                            }
 
-                        if (refs.length === 0) {
-                            throw new Error(
-                                'Please add avatar references for MiniMax video generation',
-                            )
-                        }
-
-                        resultUrl = await generateVideoMiniMax({
-                            mode: 'subject',
-                            prompt: fullPrompt,
-                            characterImages: refs,
-                            model:
-                                (activeProvider?.model as MiniMaxVideoModel) ||
-                                'MiniMax-Hailuo-2.3',
-                            resolution: videoResolution,
-                        })
-                    } else if (activeProvider?.type === 'KIE') {
-                        // KIE aggregator — single reference image as first frame (no native subject_reference)
-                        const firstRef =
-                            optimizedPayload.faceRef ??
-                            optimizedPayload.bodyRef ??
-                            optimizedPayload.generalRefs[0] ??
-                            null
-                        const isKieKling =
-                            activeProvider.model === 'kling-3.0/video'
-                        const hasMotionVideo = !!(
-                            klingMotionVideoBase64 || klingMotionVideoUrl
-                        )
-
-                        if (
-                            isKieKling &&
-                            klingMotionControlEnabled &&
-                            hasMotionVideo &&
-                            firstRef
-                        ) {
-                            // KIE Kling 3.0 motion-control (v2v)
-                            resultUrl = await genMotionControlKie({
-                                characterImage: firstRef,
-                                motionVideoUrl:
-                                    klingMotionVideoUrl || undefined,
-                                motionVideoBase64:
-                                    klingMotionVideoBase64 || undefined,
+                            resultUrl = await generateVideoMiniMax({
+                                mode: 'subject',
                                 prompt: fullPrompt,
-                                resolution: videoResolution,
-                                characterOrientation: klingMotionOrientation,
-                            })
-                        } else {
-                            resultUrl = await genVideoKie({
-                                prompt: fullPrompt,
-                                firstFrameImage: firstRef,
+                                characterImages: refs,
                                 model:
-                                    activeProvider.model ||
-                                    'veo-3.1/text-to-video',
-                                aspectRatio,
-                                duration: videoDuration,
+                                    (activeProvider?.model as MiniMaxVideoModel) ||
+                                    'MiniMax-Hailuo-2.3',
                                 resolution: videoResolution,
-                                sound: isKieKling
-                                    ? klingNativeAudioEnabled
-                                    : undefined,
+                            })
+                        } else if (activeProvider?.type === 'KIE') {
+                            // KIE aggregator — single reference image as first frame (no native subject_reference)
+                            const firstRef =
+                                optimizedPayload.faceRef ??
+                                optimizedPayload.bodyRef ??
+                                optimizedPayload.generalRefs[0] ??
+                                null
+                            const isKieKling =
+                                activeProvider.model === 'kling-3.0/video'
+                            const hasMotionVideo = !!(
+                                klingMotionVideoBase64 || klingMotionVideoUrl
+                            )
+
+                            if (
+                                isKieKling &&
+                                klingMotionControlEnabled &&
+                                hasMotionVideo &&
+                                firstRef
+                            ) {
+                                // KIE Kling 3.0 motion-control (v2v)
+                                resultUrl = await genMotionControlKie({
+                                    characterImage: firstRef,
+                                    motionVideoUrl:
+                                        klingMotionVideoUrl || undefined,
+                                    motionVideoBase64:
+                                        klingMotionVideoBase64 || undefined,
+                                    prompt: fullPrompt,
+                                    resolution: videoResolution,
+                                    characterOrientation:
+                                        klingMotionOrientation,
+                                })
+                            } else {
+                                resultUrl = await genVideoKie({
+                                    prompt: fullPrompt,
+                                    firstFrameImage: firstRef,
+                                    model:
+                                        activeProvider.model ||
+                                        'veo-3.1/text-to-video',
+                                    aspectRatio,
+                                    duration: videoDuration,
+                                    resolution: videoResolution,
+                                    sound: isKieKling
+                                        ? klingNativeAudioEnabled
+                                        : undefined,
+                                })
+                            }
+                        } else {
+                            // Use Gemini Service (default)
+                            resultUrl = await genVideoGemini({
+                                prompt: fullPrompt,
+                                imageInput: null,
+                                avatarReferences: optimizedPayload.generalRefs,
+                                faceRefImage: optimizedPayload.faceRef,
+                                bodyRefImage: optimizedPayload.bodyRef,
+                                sceneReference: optimizedPayload.sceneImage,
+                                aspectRatio,
+                                resolution: videoResolution,
+                                cameraMotion,
+                                subjectAction,
+                                dialogue: videoDialogue,
+                                voiceStyle,
+                                noMusic,
+                                noBackgroundEffects,
+                                modelName: activeProvider?.model,
                             })
                         }
-                    } else {
-                        // Use Gemini Service (default)
-                        resultUrl = await genVideoGemini({
-                            prompt: fullPrompt,
-                            imageInput: null,
-                            avatarReferences: optimizedPayload.generalRefs,
-                            faceRefImage: optimizedPayload.faceRef,
-                            bodyRefImage: optimizedPayload.bodyRef,
-                            sceneReference: optimizedPayload.sceneImage,
-                            aspectRatio,
-                            resolution: videoResolution,
-                            cameraMotion,
-                            subjectAction,
-                            dialogue: videoDialogue,
-                            voiceStyle,
-                            noMusic,
-                            noBackgroundEffects,
-                            modelName: activeProvider?.model,
-                        })
                     }
                 }
-            }
 
-            const newMedia: GeneratedMedia = {
-                id: crypto.randomUUID(),
-                url: resultUrl,
-                // Store the raw user prompt so Re-use restores the editable text.
-                // The fully-tagged prompt goes in fullApiPrompt for debugging.
-                prompt: prompt.trim() || fullPrompt,
-                aspectRatio,
-                timestamp: Date.now(),
-                mediaType: generationMode,
-                avatarId: avatarId ?? null,
-                avatarInfo: {
-                    name: avatarName || 'Unnamed',
-                    thumbnailUrl: faceRef?.url || generalReferences[0]?.url,
-                },
-                fullApiPrompt: apiPrompt ?? fullPrompt,
-                providerName: activeProvider?.name,
-            }
+                const newMedia: GeneratedMedia = {
+                    id: crypto.randomUUID(),
+                    url: resultUrl,
+                    // Store the raw user prompt so Re-use restores the editable text.
+                    // The fully-tagged prompt goes in fullApiPrompt for debugging.
+                    prompt: prompt.trim() || fullPrompt,
+                    aspectRatio,
+                    timestamp: Date.now(),
+                    mediaType: generationMode,
+                    avatarId: avatarId ?? null,
+                    avatarInfo: {
+                        name: avatarName || 'Unnamed',
+                        thumbnailUrl: faceRef?.url || generalReferences[0]?.url,
+                    },
+                    fullApiPrompt: apiPrompt ?? fullPrompt,
+                    providerName: activeProvider?.name,
+                }
 
-            addToGallery(newMedia)
-            // Fire-and-forget: persist to the gallery in the background so the
-            // inline gallery IS the history and the item becomes postable.
-            void persistGeneration(newMedia)
-            if (backgroundedRunsRef.current.has(runId)) {
-                // Run "en espera": no toca el appState del run actual — solo
-                // retira su card pendiente y avisa que ya está en la galería.
-                backgroundedRunsRef.current.delete(runId)
-                removePendingGeneration(runId)
-                toast.push(
-                    <Notification
-                        type="success"
-                        title="Generación en espera lista"
-                    >
-                        {`${activeProvider?.name ?? 'La tarea'} terminó — el resultado ya está en la galería.`}
-                    </Notification>,
-                )
-            } else {
-                setAppState(AppState.SUCCESS)
+                addToGallery(newMedia)
+                // Fire-and-forget: persist to the gallery in the background so the
+                // inline gallery IS the history and the item becomes postable.
+                void persistGeneration(newMedia)
+                if (backgroundedRunsRef.current.has(runId)) {
+                    // Run "en espera": no toca el appState del run actual — solo
+                    // retira su card pendiente y avisa que ya está en la galería.
+                    backgroundedRunsRef.current.delete(runId)
+                    removePendingGeneration(runId)
+                    toast.push(
+                        <Notification
+                            type="success"
+                            title="Generación en espera lista"
+                        >
+                            {`${activeProvider?.name ?? 'La tarea'} terminó — el resultado ya está en la galería.`}
+                        </Notification>,
+                    )
+                } else {
+                    setAppState(AppState.SUCCESS)
+                }
+            } catch (error: unknown) {
+                // warn, NOT error: this failure is fully handled below (banner +
+                // toast). console.error pops the Next dev overlay, which pushed the
+                // user to hard-reload the page — wiping gallery search/session state.
+                console.warn('Generation failed:', error)
+                const errorMessage =
+                    error instanceof Error ? error.message : 'Generation failed'
+                if (backgroundedRunsRef.current.has(runId)) {
+                    // Run "en espera" falló: toast informativo sin ensuciar el
+                    // banner de error del run que el usuario tenga en curso.
+                    backgroundedRunsRef.current.delete(runId)
+                    removePendingGeneration(runId)
+                    toast.push(
+                        <Notification
+                            type="danger"
+                            title="Generación en espera falló"
+                        >
+                            {errorMessage}
+                        </Notification>,
+                    )
+                } else {
+                    setAppState(AppState.ERROR)
+                    setErrorMsg(errorMessage)
+                    toast.push(
+                        <Notification type="danger" title="Generation Failed">
+                            {errorMessage}
+                        </Notification>,
+                    )
+                }
+            } finally {
+                // Solo el run que sigue en PRIMER plano puede liberar la UI — un
+                // run backgroundeado que termina tarde no debe pisar el
+                // isGenerating/flags del run nuevo.
+                if (foregroundRunIdRef.current === runId) {
+                    foregroundRunIdRef.current = null
+                    setIsGenerating(false)
+                    // Always clear the Continue-with-Identity flags so a follow-up
+                    // standalone Animate doesn't accidentally inherit them.
+                    setContinueUseAvatarIdentity(false)
+                    setContinueIdentityModel('veo-3-1')
+                }
             }
-        } catch (error: unknown) {
-            // warn, NOT error: this failure is fully handled below (banner +
-            // toast). console.error pops the Next dev overlay, which pushed the
-            // user to hard-reload the page — wiping gallery search/session state.
-            console.warn('Generation failed:', error)
-            const errorMessage =
-                error instanceof Error ? error.message : 'Generation failed'
-            if (backgroundedRunsRef.current.has(runId)) {
-                // Run "en espera" falló: toast informativo sin ensuciar el
-                // banner de error del run que el usuario tenga en curso.
-                backgroundedRunsRef.current.delete(runId)
-                removePendingGeneration(runId)
-                toast.push(
-                    <Notification
-                        type="danger"
-                        title="Generación en espera falló"
-                    >
-                        {errorMessage}
-                    </Notification>,
-                )
-            } else {
-                setAppState(AppState.ERROR)
-                setErrorMsg(errorMessage)
-                toast.push(
-                    <Notification type="danger" title="Generation Failed">
-                        {errorMessage}
-                    </Notification>,
-                )
+        },
+        [
+            isGenerating,
+            isLoadingReferences,
+            avatarId,
+            avatarName,
+            prompt,
+            generationMode,
+            videoSubMode,
+            avatarDefaultVoice,
+            generalReferences,
+            assetImages,
+            sceneImage,
+            faceRef,
+            bodyRef,
+            angleRef,
+            poseImage,
+            cloneImage,
+            cloneWeight,
+            deepfakeImage,
+            placeImage,
+            bustRef,
+            glutesRef,
+            videoInputImage,
+            aspectRatio,
+            videoDuration,
+            cameraShot,
+            cameraAngle,
+            cinemaLens,
+            cinemaFocalLength,
+            cinemaAperture,
+            identityWeight,
+            measurements,
+            faceDescription,
+            videoResolution,
+            cameraMotion,
+            subjectAction,
+            videoDialogue,
+            voiceStyle,
+            noMusic,
+            noBackgroundEffects,
+            klingMotionControlEnabled,
+            klingMotionVideoBase64,
+            klingMotionVideoUrl,
+            klingPresetMotion,
+            klingMotionOrientation,
+            klingKeepOriginalSound,
+            klingMotionDuration,
+            klingNativeAudioEnabled,
+            geminiAutoFallback,
+            getActiveProvider,
+            getFullPrompt,
+            addToGallery,
+            persistGeneration,
+            removePendingGeneration,
+            setAppState,
+            setErrorMsg,
+            setIsGenerating,
+            prepareAvatarPayload,
+            optimizeImage,
+            continueUseAvatarIdentity,
+            continueIdentityModel,
+            setContinueUseAvatarIdentity,
+            setContinueIdentityModel,
+            addPendingGeneration,
+        ],
+    )
+
+    // BATCH: mismo prompt → hasta 3 modelos en paralelo. Cada uno se dispara en
+    // 2º plano (card "En espera") con su proveedor por override; como no tocan
+    // el estado foreground, corren sin interferir entre sí ni con la UI. Con
+    // las rutas aisladas del servidor, 3 modelos distintos = 0 riesgo cruzado.
+    const handleBatchGenerate = useCallback(
+        (providerIds: string[]) => {
+            const chosen = providerIds
+                .map((id) => providers.find((p) => p.id === id))
+                .filter((p): p is AIProvider => Boolean(p))
+                .slice(0, 3)
+            if (chosen.length === 0) return
+            for (const provider of chosen) {
+                void handleGenerate({
+                    providerOverride: provider,
+                    background: true,
+                })
             }
-        } finally {
-            // Solo el run que sigue en PRIMER plano puede liberar la UI — un
-            // run backgroundeado que termina tarde no debe pisar el
-            // isGenerating/flags del run nuevo.
-            if (foregroundRunIdRef.current === runId) {
-                foregroundRunIdRef.current = null
-                setIsGenerating(false)
-                // Always clear the Continue-with-Identity flags so a follow-up
-                // standalone Animate doesn't accidentally inherit them.
-                setContinueUseAvatarIdentity(false)
-                setContinueIdentityModel('veo-3-1')
-            }
-        }
-    }, [
-        isGenerating,
-        isLoadingReferences,
-        avatarId,
-        avatarName,
-        prompt,
-        generationMode,
-        videoSubMode,
-        avatarDefaultVoice,
-        generalReferences,
-        assetImages,
-        sceneImage,
-        faceRef,
-        bodyRef,
-        angleRef,
-        poseImage,
-        cloneImage,
-        cloneWeight,
-        deepfakeImage,
-        placeImage,
-        bustRef,
-        glutesRef,
-        videoInputImage,
-        aspectRatio,
-        videoDuration,
-        cameraShot,
-        cameraAngle,
-        cinemaLens,
-        cinemaFocalLength,
-        cinemaAperture,
-        identityWeight,
-        measurements,
-        faceDescription,
-        videoResolution,
-        cameraMotion,
-        subjectAction,
-        videoDialogue,
-        voiceStyle,
-        noMusic,
-        noBackgroundEffects,
-        klingMotionControlEnabled,
-        klingMotionVideoBase64,
-        klingMotionVideoUrl,
-        klingPresetMotion,
-        klingMotionOrientation,
-        klingKeepOriginalSound,
-        klingMotionDuration,
-        klingNativeAudioEnabled,
-        geminiAutoFallback,
-        getActiveProvider,
-        getFullPrompt,
-        addToGallery,
-        persistGeneration,
-        removePendingGeneration,
-        setAppState,
-        setErrorMsg,
-        setIsGenerating,
-        prepareAvatarPayload,
-        optimizeImage,
-        continueUseAvatarIdentity,
-        continueIdentityModel,
-        setContinueUseAvatarIdentity,
-        setContinueIdentityModel,
-    ])
+        },
+        [providers, handleGenerate],
+    )
 
     // "Dejar en espera": manda el run en curso a segundo plano y libera la UI
     // para generar otra cosa. La tarea en KIE NO se cancela (su API no lo
@@ -3050,7 +3153,13 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                     }
                 >
                     <BottomControlBar
-                        onGenerate={handleGenerate}
+                        onGenerate={() => handleGenerate()}
+                        onOpenBatch={() => {
+                            setBatchSelected(
+                                activeProviderId ? [activeProviderId] : [],
+                            )
+                            setBatchOpen(true)
+                        }}
                         onChangeAvatar={() => setIsAvatarSelectorOpen(true)}
                         onDeselectAvatar={() => {
                             setAvatarId(null)
@@ -3148,6 +3257,85 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
             >
                 {activeTool === 'downloader' && <ReelDownloaderTool />}
             </ToolModal>
+
+            {/* BATCH: elegir hasta 3 modelos para el mismo prompt */}
+            <Dialog
+                isOpen={batchOpen}
+                onClose={() => setBatchOpen(false)}
+                onRequestClose={() => setBatchOpen(false)}
+                width={420}
+            >
+                <h5 className="mb-1">Batch — un prompt, varios modelos</h5>
+                <p className="mb-3 text-sm text-gray-500">
+                    Elige hasta 3 modelos. El mismo prompt se genera en cada uno
+                    en paralelo; cada resultado cae como su propio card.
+                </p>
+                <div className="flex max-h-72 flex-col gap-1.5 overflow-y-auto">
+                    {providers
+                        .filter((p) => p.supports_image)
+                        .map((p) => {
+                            const checked = batchSelected.includes(p.id)
+                            const atMax = batchSelected.length >= 3 && !checked
+                            return (
+                                <button
+                                    key={p.id}
+                                    type="button"
+                                    disabled={atMax}
+                                    onClick={() =>
+                                        setBatchSelected((prev) =>
+                                            prev.includes(p.id)
+                                                ? prev.filter((x) => x !== p.id)
+                                                : [...prev, p.id],
+                                        )
+                                    }
+                                    className={`flex items-center justify-between rounded-lg border px-3 py-2 text-sm transition-colors ${
+                                        checked
+                                            ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20'
+                                            : atMax
+                                              ? 'border-gray-200 opacity-40 dark:border-gray-700'
+                                              : 'border-gray-200 hover:bg-gray-50 dark:border-gray-700 dark:hover:bg-gray-800'
+                                    }`}
+                                >
+                                    <span className="font-medium">
+                                        {p.name}
+                                    </span>
+                                    <span
+                                        className={`flex h-4 w-4 items-center justify-center rounded border ${
+                                            checked
+                                                ? 'border-blue-500 bg-blue-500 text-white'
+                                                : 'border-gray-300 dark:border-gray-600'
+                                        }`}
+                                    >
+                                        {checked && '✓'}
+                                    </span>
+                                </button>
+                            )
+                        })}
+                </div>
+                <div className="mt-4 flex justify-end gap-2">
+                    <Button size="sm" onClick={() => setBatchOpen(false)}>
+                        Cancelar
+                    </Button>
+                    <Button
+                        size="sm"
+                        variant="solid"
+                        color="blue"
+                        disabled={
+                            batchSelected.length === 0 ||
+                            isLoadingReferences ||
+                            (!getFullPrompt().trim() && !deepfakeImage?.base64)
+                        }
+                        onClick={() => {
+                            setBatchOpen(false)
+                            handleBatchGenerate(batchSelected)
+                        }}
+                    >
+                        {`Generar en ${batchSelected.length || 0} modelo${
+                            batchSelected.length === 1 ? '' : 's'
+                        }`}
+                    </Button>
+                </div>
+            </Dialog>
 
             {/* Avatar Selector Modal */}
             {userId && (

@@ -40,6 +40,7 @@ import {
     HiOutlineSave,
 } from 'react-icons/hi'
 import { PiLightningFill } from 'react-icons/pi'
+import { TbStack2 } from 'react-icons/tb'
 import { MODEL_ACTION_PRESETS } from '../_constants/modelActionPresets'
 import {
     ASPECT_RATIOS,
@@ -125,6 +126,7 @@ const VIDEO_RESOLUTIONS: { value: VideoResolution; label: string }[] = [
 
 interface BottomControlBarProps {
     onGenerate: () => void
+    onOpenBatch: () => void
     onChangeAvatar: () => void
     onDeselectAvatar: () => void
     onEditAvatar: () => void
@@ -231,6 +233,7 @@ const ImageDropzone = ({
 
 const BottomControlBar = ({
     onGenerate,
+    onOpenBatch,
     onChangeAvatar,
     onDeselectAvatar,
     onEditAvatar,
@@ -1626,17 +1629,31 @@ const BottomControlBar = ({
                     </div>
                 </div>
 
-                {/* Generate Button (móvil: CTA a ancho completo) */}
-                <Button
-                    variant="solid"
-                    color={generationMode === 'VIDEO' ? 'purple' : 'blue'}
-                    onClick={onGenerate}
-                    loading={isGenerating}
-                    disabled={!canGenerate()}
-                    className="shrink-0 h-11 w-full md:w-auto order-5 md:order-0"
-                >
-                    {isGenerating ? 'Generating...' : 'Generate'}
-                </Button>
+                {/* Generate + Batch (móvil: CTA a ancho completo) */}
+                <div className="flex shrink-0 flex-col gap-1 w-full md:w-auto order-5 md:order-0">
+                    <Button
+                        variant="solid"
+                        color={generationMode === 'VIDEO' ? 'purple' : 'blue'}
+                        onClick={onGenerate}
+                        loading={isGenerating}
+                        disabled={!canGenerate()}
+                        className="h-11 w-full md:w-auto"
+                    >
+                        {isGenerating ? 'Generating...' : 'Generate'}
+                    </Button>
+                    {generationMode === 'IMAGE' && (
+                        <button
+                            type="button"
+                            onClick={onOpenBatch}
+                            disabled={!canGenerate()}
+                            className="flex h-7 items-center justify-center gap-1 rounded-lg border border-dashed border-gray-300 text-xs font-medium text-gray-500 transition-colors hover:border-blue-400 hover:text-blue-500 disabled:cursor-not-allowed disabled:opacity-40 dark:border-gray-600 dark:text-gray-400"
+                            title="Manda el mismo prompt a varios modelos a la vez"
+                        >
+                            <TbStack2 className="text-sm" />
+                            Batch
+                        </button>
+                    )}
+                </div>
             </div>
 
             {/* Row 2: Contextual Controls - Only render after mount to prevent hydration mismatch */}
