@@ -1228,31 +1228,21 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                         refRoles = kieRefsToSend.map((r) => r.role as RefRole)
                     }
 
-                    // TIERS "LITE" (nano-banana-2-lite Y seedream/5-lite) — los
-                    // modelos chicos — MEZCLAN el rostro del avatar con el de
-                    // cualquier imagen de referencia que traiga OTRA persona
-                    // (Pose/Scene/Clone): con esas fotos la cara del ref GANA
-                    // (reporte: Flash Lite y Seedream Lite "no cambian la cara").
-                    // Los tiers FULL/PRO sí separan múltiples rostros y aprovechan
-                    // la imagen de clone (Seedream Pro mejoró con ella) → NO se
-                    // tocan. Fix verificado live: con SOLO la cara del avatar +
-                    // el texto [CLONE:]/[POSE:], el modelo conserva la cara Y
-                    // aplica outfit+pose (igual que Grok/Qwen, por texto). Se
-                    // filtran las imágenes con rostro rival; face/body/bust/
-                    // glutes/asset se conservan (avatar propia o grafismos).
-                    const isLiteTier =
-                        kieModel === 'nano-banana-2-lite' ||
-                        kieModel.startsWith('seedream/5-lite')
-                    if (isLiteTier) {
-                        // pose/scene/clone traen rostro RIVAL. 'angle' es la
-                        // MISMA persona pero como collage 3x3 de 9 caras — un
-                        // modelo chico lo funde en un rostro genérico en vez de
-                        // usar la cara nítida de la imagen 1. Se quitan todos:
-                        // a los lite les basta el face ref único (verificado
-                        // live: face-only → cara EXACTA del avatar).
-                        const dropForLite = new Set(['pose', 'scene', 'clone', 'angle'])
+                    // SEEDREAM 5 LITE — modelo genuinamente más débil que 5-Pro
+                    // (no es solo resolución) — MEZCLA el rostro del avatar con
+                    // el de cualquier foto de referencia con OTRA persona
+                    // (Pose/Scene/Clone): con esas fotos la cara del ref GANA.
+                    // Se filtran; face/body/bust/glutes/asset se conservan.
+                    // NOTA: nano-banana-2-lite NO entra aquí — es el MISMO modelo
+                    // que nano-banana-2 full a 1K, así que va idéntico al full
+                    // (harness + angle sheet + todos los refs). Filtrarlo/caparlo
+                    // le quitaba el cuerpo del harness y lo hacía alucinar
+                    // (duplicaba personas). Verificado live: nano-banana-2 @1K
+                    // con harness + angle sheet = cara y cuerpo iguales al full.
+                    if (kieModel.startsWith('seedream/5-lite')) {
+                        const rivalFaceRoles = new Set(['pose', 'scene', 'clone'])
                         kieRefsToSend = kieRefsToSend.filter(
-                            (r) => !dropForLite.has(r.role as string),
+                            (r) => !rivalFaceRoles.has(r.role as string),
                         )
                         refRoles = kieRefsToSend.map((r) => r.role as RefRole)
                     }
@@ -1265,20 +1255,16 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                         // Flux is single-input (edit on the Clone canvas) so it can run
                         // with ONLY a clone and no avatar ref images; the others need
                         // their ref array, hence the length>0 path above.
-                        // nano-banana-2 FULL y Pro usan el harness verboso (lo
-                        // aprovechan). nano-banana-2-LITE (Gemini 3.1 Flash Lite)
-                        // NO: el modelo chico se AHOGA en el harness (cajas
-                        // ASCII + descriptores de cuerpo/piel) y descarta la cara
-                        // del avatar → sale un rostro genérico moreno (reporte:
-                        // "no cambia la cara" con Jessy). Verificado live: mismo
-                        // face a 1K con prompt LEAN = cara EXACTA; con harness =
-                        // otra persona. Lite cae al kiePrompt lean por defecto
-                        // (buildDiffusionBodyPreamble + fullPrompt) + el ancla
-                        // keep-face que ya antepone la rama nano de KieService.
+                        // Toda la familia nano-banana (Pro, 2 full y 2-lite) usa
+                        // el harness verboso. nano-banana-2-lite ES el mismo
+                        // modelo que el full a 1K, así que va idéntico: harness +
+                        // angle sheet + todos los refs. (Antes lo cambié a lean +
+                        // sin angle sheet, pero eso le quitaba el cuerpo del
+                        // harness y lo hacía alucinar/duplicar — verificado live
+                        // que a 1K con harness+angle queda igual al full.)
                         if (
                             (kieModel === 'nano-banana-pro' ||
-                                (kieModel.startsWith('nano-banana-2') &&
-                                    kieModel !== 'nano-banana-2-lite')) &&
+                                kieModel.startsWith('nano-banana-2')) &&
                             !deepfakeActive
                         ) {
                             const { systemPreamble, finalPrompt } =
