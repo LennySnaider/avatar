@@ -44,6 +44,7 @@ import {
     apiDeleteAvatarReference,
     apiCreateGenerationUploadUrl,
     apiSaveGeneration,
+    apiDeleteGeneration,
     apiGetGenerations,
     apiGetAvatars,
 } from '@/services/AvatarForgeService'
@@ -803,6 +804,17 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                     contentType,
                 )
 
+                // Carrera borrado-vs-guardado: si el usuario BORRÓ el item
+                // mientras subía (aún sin generationId → su delete no tocó la
+                // BD), NO insertes la fila: sería huérfana y reaparecería al
+                // recargar. La subida es la parte lenta, así que este chequeo
+                // cierra casi toda la ventana.
+                const stillPresent = () =>
+                    useAvatarStudioStore
+                        .getState()
+                        .gallery.some((m) => m.id === media.id)
+                if (!stillPresent()) return
+
                 const row = await apiSaveGeneration({
                     user_id: userId,
                     // Inherit the media's own avatar when present (edited/cropped
@@ -821,6 +833,14 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                             : {}),
                     } as typeof media.metadata,
                 })
+
+                // Se borró DURANTE el insert (ventana mínima entre el chequeo
+                // de arriba y que la fila exista): limpia la fila recién creada
+                // en vez de dejar un huérfano que revive al recargar.
+                if (!stillPresent()) {
+                    await apiDeleteGeneration(row.id).catch(() => {})
+                    return
+                }
 
                 updateGalleryItem(media.id, {
                     saveState: 'saved',
