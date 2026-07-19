@@ -1306,11 +1306,17 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                         // (duplicaba personas). Verificado live: nano-banana-2 @1K
                         // con harness + angle sheet = cara y cuerpo iguales al full.
                         if (kieModel.startsWith('seedream/5-lite')) {
-                            const rivalFaceRoles = new Set([
-                                'pose',
-                                'scene',
-                                'clone',
-                            ])
+                            // CLONE ya NO se filtra en Lite (2026-07-19): el usuario
+                            // reportó que Lite no igualaba a Pro en encuadre/pose/
+                            // cuerpo y que el % de clon no hacía diferencia — ambos
+                            // porque Lite trabajaba SOLO con el texto del clone (Pro
+                            // lee la IMAGEN → fiel). Ahora Lite recibe la imagen del
+                            // clone como Pro; el guard de maniquí (planExtraRefs:
+                            // "FACELESS MANNEQUIN — face ONLY from image 1") protege
+                            // la identidad. Pose/Scene SIGUEN filtrados (Lite sí les
+                            // roba la cara y no traen guard de maniquí). Si la cara
+                            // se daña con el clone, re-añadir 'clone' aquí.
+                            const rivalFaceRoles = new Set(['pose', 'scene'])
                             kieRefsToSend = kieRefsToSend.filter(
                                 (r) => !rivalFaceRoles.has(r.role as string),
                             )
