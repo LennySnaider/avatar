@@ -43,7 +43,6 @@ const AvatarSelector = ({ userId, isOpen, onClose }: AvatarSelectorProps) => {
         addGeneralReference,
         setFaceRef,
         setAngleRef,
-        setBodyRef,
         setBustRef,
         setGlutesRef,
         setIdentityWeight,
@@ -168,8 +167,13 @@ const AvatarSelector = ({ userId, isOpen, onClose }: AvatarSelectorProps) => {
                     case 'angle':
                         setAngleRef(refImage)
                         break
+                    // Body Ref NO se auto-carga: el cuerpo lo definen las MEDIDAS
+                    // (sliders/cm). El Body Ref es un OVERRIDE manual y por-
+                    // generación — debe venir vacío y solo pesar si el usuario
+                    // sube una foto en ese slot (reporte: Ana/Valeria/MiaUltra
+                    // arrastraban un body ref viejo guardado en la BD). El ref
+                    // sigue en la BD; solo dejamos de precargarlo.
                     case 'body':
-                        setBodyRef(refImage)
                         break
                     case 'bust':
                         setBustRef(refImage)
