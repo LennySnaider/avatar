@@ -1154,7 +1154,7 @@ const BottomControlBar = ({
                                         }
                                         placement="top"
                                     >
-                                        <div className="relative group">
+                                        <div className="relative group w-11 h-11">
                                             <img
                                                 src={cloneImage.url}
                                                 alt="Clone"
@@ -1166,10 +1166,117 @@ const BottomControlBar = ({
                                                     <Spinner size={16} />
                                                 </div>
                                             )}
+                                            {/* PESO del Clone como OVERLAY sobre la
+                                                miniatura: relleno morado de abajo
+                                                hacia arriba hasta cloneWeight% + el %
+                                                centrado. Arrastrar vertical (arriba =
+                                                más peso) lo cambia sin sacar el knob
+                                                ni empujar la cuadrícula. */}
+                                            {!isAnalyzingClone && (
+                                                <div
+                                                    role="slider"
+                                                    aria-label="Peso del Clone Ref"
+                                                    aria-valuemin={0}
+                                                    aria-valuemax={100}
+                                                    aria-valuenow={cloneWeight}
+                                                    tabIndex={0}
+                                                    title={`Peso del Clone: ${cloneWeight}% — arrastra ↑/↓ (100 recrea la foto exacta, bajo = inspirado)`}
+                                                    onPointerDown={(e) => {
+                                                        e.currentTarget.setPointerCapture(
+                                                            e.pointerId,
+                                                        )
+                                                        const r =
+                                                            e.currentTarget.getBoundingClientRect()
+                                                        setCloneWeight(
+                                                            Math.round(
+                                                                Math.max(
+                                                                    0,
+                                                                    Math.min(
+                                                                        1,
+                                                                        1 -
+                                                                            (e.clientY -
+                                                                                r.top) /
+                                                                                r.height,
+                                                                    ),
+                                                                ) * 20,
+                                                            ) * 5,
+                                                        )
+                                                    }}
+                                                    onPointerMove={(e) => {
+                                                        if (
+                                                            !e.currentTarget.hasPointerCapture(
+                                                                e.pointerId,
+                                                            )
+                                                        )
+                                                            return
+                                                        const r =
+                                                            e.currentTarget.getBoundingClientRect()
+                                                        setCloneWeight(
+                                                            Math.round(
+                                                                Math.max(
+                                                                    0,
+                                                                    Math.min(
+                                                                        1,
+                                                                        1 -
+                                                                            (e.clientY -
+                                                                                r.top) /
+                                                                                r.height,
+                                                                    ),
+                                                                ) * 20,
+                                                            ) * 5,
+                                                        )
+                                                    }}
+                                                    onKeyDown={(e) => {
+                                                        if (
+                                                            e.key ===
+                                                                'ArrowUp' ||
+                                                            e.key ===
+                                                                'ArrowRight'
+                                                        ) {
+                                                            e.preventDefault()
+                                                            setCloneWeight(
+                                                                Math.min(
+                                                                    100,
+                                                                    cloneWeight +
+                                                                        5,
+                                                                ),
+                                                            )
+                                                        } else if (
+                                                            e.key ===
+                                                                'ArrowDown' ||
+                                                            e.key ===
+                                                                'ArrowLeft'
+                                                        ) {
+                                                            e.preventDefault()
+                                                            setCloneWeight(
+                                                                Math.max(
+                                                                    0,
+                                                                    cloneWeight -
+                                                                        5,
+                                                                ),
+                                                            )
+                                                        }
+                                                    }}
+                                                    className="absolute inset-0 overflow-hidden rounded-lg cursor-ns-resize touch-none select-none"
+                                                >
+                                                    <div className="absolute inset-0 bg-black/45" />
+                                                    <div
+                                                        className="absolute inset-x-0 bottom-0 bg-purple-500/55"
+                                                        style={{
+                                                            height: `${cloneWeight}%`,
+                                                        }}
+                                                    />
+                                                    <div className="absolute inset-0 flex items-center justify-center">
+                                                        <span className="text-[10px] font-bold text-white drop-shadow-[0_1px_1px_rgba(0,0,0,0.9)]">
+                                                            {cloneWeight}%
+                                                        </span>
+                                                    </div>
+                                                </div>
+                                            )}
                                             {/* Success indicator */}
                                             {!isAnalyzingClone &&
                                                 cloneDescription && (
-                                                    <div className="absolute -bottom-1 -right-1 p-0.5 bg-green-500 text-white rounded-full">
+                                                    <div className="absolute -bottom-1 -right-1 z-10 p-0.5 bg-green-500 text-white rounded-full">
                                                         <HiOutlineCheck className="w-2.5 h-2.5" />
                                                     </div>
                                                 )}
@@ -1179,7 +1286,7 @@ const BottomControlBar = ({
                                                     setCloneDescription('')
                                                     setIsAnalyzingClone(false)
                                                 }}
-                                                className={`absolute -top-1 -right-1 p-0.5 bg-red-500 text-white rounded-full transition-opacity ${
+                                                className={`absolute -top-1 -right-1 z-10 p-0.5 bg-red-500 text-white rounded-full transition-opacity ${
                                                     isAnalyzingClone
                                                         ? 'opacity-100'
                                                         : 'opacity-0 group-hover:opacity-100'
@@ -1207,35 +1314,6 @@ const BottomControlBar = ({
                                         dragOverClass="ring-purple-500"
                                     />
                                 )}
-                                {cloneImage &&
-                                    (isAnalyzingClone ? (
-                                        <span className="text-[9px] text-gray-500">
-                                            Analyzing...
-                                        </span>
-                                    ) : (
-                                        // Slider de PESO del Clone: 100 = recrea
-                                        // exacto; más bajo = referencia suelta /
-                                        // "inspirado en". Cada ruta i2i lo traduce.
-                                        <div className="flex w-16 flex-col items-center gap-0.5">
-                                            <span className="text-[9px] font-medium text-purple-500">
-                                                Clone {cloneWeight}%
-                                            </span>
-                                            <input
-                                                type="range"
-                                                min={0}
-                                                max={100}
-                                                step={5}
-                                                value={cloneWeight}
-                                                onChange={(e) =>
-                                                    setCloneWeight(
-                                                        Number(e.target.value),
-                                                    )
-                                                }
-                                                title={`Peso del Clone: ${cloneWeight}% — 100 recrea la foto exacta, bajo = inspirado`}
-                                                className="h-1 w-full cursor-pointer accent-purple-500"
-                                            />
-                                        </div>
-                                    ))}
                             </div>
                         )}
 
