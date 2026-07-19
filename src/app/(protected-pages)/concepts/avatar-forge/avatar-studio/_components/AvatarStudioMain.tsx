@@ -1228,6 +1228,24 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                         refRoles = kieRefsToSend.map((r) => r.role as RefRole)
                     }
 
+                    // FLASH-LITE (nano-banana-2-lite) — el tier chico — MEZCLA
+                    // el rostro/cuerpo del avatar con el de cualquier imagen de
+                    // referencia que traiga OTRA persona (Pose/Scene/Clone):
+                    // con esas fotos, la cara del ref GANA; sin ellas no aplica
+                    // ropa/pose. Fix verificado live: con SOLO la cara del
+                    // avatar + el texto [CLONE:]/[POSE:] detallado, nano-banana-2
+                    // a 1K conserva la cara Y aplica outfit+pose (Grok/Qwen ya
+                    // funcionan así, por texto). Se filtran las imágenes con
+                    // rostro rival; face/body/bust/glutes/asset se conservan (son
+                    // de la propia avatar o grafismos). Full/Pro NO se tocan: sí
+                    // separan múltiples rostros y aprovechan la imagen de clone.
+                    if (kieModel === 'nano-banana-2-lite') {
+                        const rivalFaceRoles = new Set(['pose', 'scene', 'clone'])
+                        kieRefsToSend = kieRefsToSend.filter(
+                            (r) => !rivalFaceRoles.has(r.role as string),
+                        )
+                        refRoles = kieRefsToSend.map((r) => r.role as RefRole)
+                    }
 
                     if (
                         kieRefsToSend.length > 0 ||
