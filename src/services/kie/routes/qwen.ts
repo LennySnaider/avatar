@@ -12,6 +12,7 @@ import type { ImageRoute, ImageRouteContext, KieImageRequest } from '../context'
 import {
     relocatePoseTag,
     capAtWordBoundary,
+    stripIdentityRedundancy,
     hairClause as buildHairClause,
     faceFidelityClause as buildFaceFidelityClause,
 } from '../shared'
@@ -20,8 +21,18 @@ async function build(ctx: ImageRouteContext): Promise<KieImageRequest> {
     const hairClause = buildHairClause(ctx.hairEmphasis)
     const faceFidelityClause = buildFaceFidelityClause(ctx.identityWeight)
 
-    // Qwen NO es nano → reubica la pose; cap genérico 1800; sin strip.
-    const promptText = relocatePoseTag(ctx.prompt)
+    // Qwen NO es nano → reubica la pose; cap 1800.
+    let promptText = relocatePoseTag(ctx.prompt)
+    // FIX (Fase 6, verificado A/B live): qwen2/image-edit es un EDITOR LITERAL
+    // — el preámbulo + [BODY:] + [FACE:] de texto (identidad ya en la imagen) lo
+    // SATURAN y lo descarrilan → ignoraba el [CLONE:] y sacaba un cuerpo/outfit/
+    // fondo genéricos (reporte: bodysuit negro en estudio). Se quita TODA la
+    // redundancia (bodyInAnchor=true) para que el [CLONE:] domine — con el
+    // prompt limpio Qwen clava outfit+escena (verificado: Valeia outfit blanco
+    // en baño). Aislado: no toca otras rutas.
+    if (ctx.referenceImage) {
+        promptText = stripIdentityRedundancy(promptText, true)
+    }
     const capped = capAtWordBoundary(promptText, 1800, ctx.model)
     let resolvedModel = ctx.model
     const input: Record<string, unknown> = {
