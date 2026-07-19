@@ -733,9 +733,11 @@ const GalleryPanel = ({
                                                 const tier =
                                                     w >= 75
                                                         ? 'EXACT'
-                                                        : w >= 40
+                                                        : w >= 50
                                                           ? 'STRONG'
-                                                          : 'LOOSE'
+                                                          : w >= 25
+                                                            ? 'MODERATE'
+                                                            : 'LOOSE'
                                                 return (
                                                     <span className="px-2 py-1 text-[10px] font-medium rounded bg-purple-500/80 text-white inline-block">
                                                         {`Clone ${w}% · ${tier}`}

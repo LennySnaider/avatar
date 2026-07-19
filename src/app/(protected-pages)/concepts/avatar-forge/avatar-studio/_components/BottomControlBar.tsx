@@ -1266,9 +1266,23 @@ const BottomControlBar = ({
                                                             height: `${cloneWeight}%`,
                                                         }}
                                                     />
-                                                    <div className="absolute inset-0 flex items-center justify-center">
-                                                        <span className="text-[10px] font-bold text-white drop-shadow-[0_1px_1px_rgba(0,0,0,0.9)]">
+                                                    <div className="absolute inset-0 flex flex-col items-center justify-center leading-none drop-shadow-[0_1px_1px_rgba(0,0,0,0.9)]">
+                                                        <span className="text-[10px] font-bold text-white">
                                                             {cloneWeight}%
+                                                        </span>
+                                                        {/* Tramo activo (4 niveles):
+                                                            solo cambia el output al
+                                                            CRUZAR umbral, no dentro. */}
+                                                        <span className="mt-0.5 text-[6px] font-semibold uppercase tracking-wide text-purple-100">
+                                                            {cloneWeight >= 75
+                                                                ? 'EXACT'
+                                                                : cloneWeight >=
+                                                                    50
+                                                                  ? 'STRONG'
+                                                                  : cloneWeight >=
+                                                                      25
+                                                                    ? 'MOD'
+                                                                    : 'LOOSE'}
                                                         </span>
                                                     </div>
                                                 </div>
