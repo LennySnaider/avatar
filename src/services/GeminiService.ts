@@ -1,6 +1,11 @@
 'use server'
 
-import { GoogleGenAI, Type, HarmCategory, HarmBlockThreshold } from '@google/genai'
+import {
+    GoogleGenAI,
+    Type,
+    HarmCategory,
+    HarmBlockThreshold,
+} from '@google/genai'
 
 // Análisis de imágenes de referencia (Clone/Pose/Place/video-prompt): es
 // ENTENDIMIENTO de imagen, no generación. Sin esto, Gemini devuelve respuesta
@@ -9,10 +14,22 @@ import { GoogleGenAI, Type, HarmCategory, HarmBlockThreshold } from '@google/gen
 // respuesta para el análisis; si el modelo aun así se rehúsa (explícito duro),
 // los callers conservan su fallback + aviso.
 const ANALYSIS_SAFETY_SETTINGS = [
-    { category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT, threshold: HarmBlockThreshold.BLOCK_NONE },
-    { category: HarmCategory.HARM_CATEGORY_HARASSMENT, threshold: HarmBlockThreshold.BLOCK_NONE },
-    { category: HarmCategory.HARM_CATEGORY_HATE_SPEECH, threshold: HarmBlockThreshold.BLOCK_NONE },
-    { category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT, threshold: HarmBlockThreshold.BLOCK_NONE },
+    {
+        category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT,
+        threshold: HarmBlockThreshold.BLOCK_NONE,
+    },
+    {
+        category: HarmCategory.HARM_CATEGORY_HARASSMENT,
+        threshold: HarmBlockThreshold.BLOCK_NONE,
+    },
+    {
+        category: HarmCategory.HARM_CATEGORY_HATE_SPEECH,
+        threshold: HarmBlockThreshold.BLOCK_NONE,
+    },
+    {
+        category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT,
+        threshold: HarmBlockThreshold.BLOCK_NONE,
+    },
 ]
 
 /**
@@ -54,10 +71,28 @@ async function retryAnalysisNeutral(
 }
 import type { PhysicalMeasurements, AspectRatio } from '@/@types/supabase'
 import { filterKnownSafeCorrections } from '@/app/(protected-pages)/concepts/avatar-forge/avatar-studio/_constants/knownSafeWords'
-import { sanitizePromptForGeneration, aggressiveSanitize } from '@/utils/promptSanitizer'
-import { getBodyDescriptors, getLegDescriptor, getSkinToneDescription, getHairColorDescription, getEyeColorDescription, isFashionHairColor } from '@/utils/bodyDescriptors'
-import type { CinemaLens, CinemaFocalLength, CinemaAperture } from '@/app/(protected-pages)/concepts/avatar-forge/avatar-studio/types'
-import { CINEMA_LENSES, CINEMA_FOCAL_LENGTHS, CINEMA_APERTURES } from '@/app/(protected-pages)/concepts/avatar-forge/avatar-studio/_constants/cinemaPresets'
+import {
+    sanitizePromptForGeneration,
+    aggressiveSanitize,
+} from '@/utils/promptSanitizer'
+import {
+    getBodyDescriptors,
+    getLegDescriptor,
+    getSkinToneDescription,
+    getHairColorDescription,
+    getEyeColorDescription,
+    isFashionHairColor,
+} from '@/utils/bodyDescriptors'
+import type {
+    CinemaLens,
+    CinemaFocalLength,
+    CinemaAperture,
+} from '@/app/(protected-pages)/concepts/avatar-forge/avatar-studio/types'
+import {
+    CINEMA_LENSES,
+    CINEMA_FOCAL_LENGTHS,
+    CINEMA_APERTURES,
+} from '@/app/(protected-pages)/concepts/avatar-forge/avatar-studio/_constants/cinemaPresets'
 import { generateImage as generateImageWithMiniMax } from '@/services/MiniMaxService'
 
 // Types for the service
@@ -79,17 +114,52 @@ export interface PromptAnalysisResult {
 }
 
 export type VideoResolution = '480p' | '720p' | '1080p'
-export type CameraMotion = 'NONE' | 'PUSH_IN' | 'PULL_OUT' | 'PAN_LEFT' | 'PAN_RIGHT' | 'TILT_UP' | 'TILT_DOWN' | 'ORBIT_LEFT' | 'ORBIT_RIGHT'
-export type SubjectAction = 'NONE' | 'WALKING' | 'RUNNING' | 'DANCING' | 'TALKING' | 'GESTURING' | 'SITTING' | 'STANDING'
+export type CameraMotion =
+    | 'NONE'
+    | 'PUSH_IN'
+    | 'PULL_OUT'
+    | 'PAN_LEFT'
+    | 'PAN_RIGHT'
+    | 'TILT_UP'
+    | 'TILT_DOWN'
+    | 'ORBIT_LEFT'
+    | 'ORBIT_RIGHT'
+export type SubjectAction =
+    | 'NONE'
+    | 'WALKING'
+    | 'RUNNING'
+    | 'DANCING'
+    | 'TALKING'
+    | 'GESTURING'
+    | 'SITTING'
+    | 'STANDING'
 export type CameraShot =
-    | 'AUTO' | 'EXTREME_CLOSE_UP' | 'CLOSE_UP' | 'MEDIUM_CLOSE_UP' | 'MEDIUM_SHOT' | 'MEDIUM_FULL' | 'FULL_SHOT' | 'WIDE_SHOT' | 'EXTREME_WIDE'
-    | 'LOW_ANGLE' | 'HIGH_ANGLE' | 'DUTCH_ANGLE' | 'BIRDS_EYE' | 'WORMS_EYE' | 'OVER_SHOULDER' | 'POV' | 'PROFILE' | 'THREE_QUARTER'
+    | 'AUTO'
+    | 'EXTREME_CLOSE_UP'
+    | 'CLOSE_UP'
+    | 'MEDIUM_CLOSE_UP'
+    | 'MEDIUM_SHOT'
+    | 'MEDIUM_FULL'
+    | 'FULL_SHOT'
+    | 'WIDE_SHOT'
+    | 'EXTREME_WIDE'
+    | 'LOW_ANGLE'
+    | 'HIGH_ANGLE'
+    | 'DUTCH_ANGLE'
+    | 'BIRDS_EYE'
+    | 'WORMS_EYE'
+    | 'OVER_SHOULDER'
+    | 'POV'
+    | 'PROFILE'
+    | 'THREE_QUARTER'
 
 // Get API Key from environment
 const getApiKey = (): string => {
     const apiKey = process.env.GEMINI_API_KEY
     if (!apiKey) {
-        throw new Error('GEMINI_API_KEY is not configured in environment variables')
+        throw new Error(
+            'GEMINI_API_KEY is not configured in environment variables',
+        )
     }
     return apiKey
 }
@@ -104,7 +174,9 @@ const getApiKey = (): string => {
 const cleanBase64Data = (base64: string): string => {
     // Check if base64 is provided
     if (!base64) {
-        throw new Error('Invalid base64 image data: base64 string is null or undefined. Make sure the image was loaded correctly.')
+        throw new Error(
+            'Invalid base64 image data: base64 string is null or undefined. Make sure the image was loaded correctly.',
+        )
     }
 
     // Remove data URI prefix if present (e.g., "data:image/jpeg;base64,")
@@ -112,7 +184,9 @@ const cleanBase64Data = (base64: string): string => {
 
     // Validate that the remaining string is not empty
     if (!cleanBase64 || cleanBase64.trim() === '') {
-        throw new Error('Invalid base64 image data: empty after cleaning. The image may not have been loaded from storage.')
+        throw new Error(
+            'Invalid base64 image data: empty after cleaning. The image may not have been loaded from storage.',
+        )
     }
 
     return cleanBase64
@@ -142,7 +216,7 @@ const getMimeTypeFromBase64 = (base64: string): string => {
 // Convert unsupported image formats (like AVIF) to JPEG using canvas
 const convertToSupportedFormat = async (
     base64: string,
-    targetFormat: 'image/jpeg' | 'image/png' = 'image/jpeg'
+    targetFormat: 'image/jpeg' | 'image/png' = 'image/jpeg',
 ): Promise<{ data: string; mimeType: string }> => {
     const mimeType = getMimeTypeFromBase64(base64)
 
@@ -183,11 +257,17 @@ const convertToSupportedFormat = async (
         }
 
         img.onerror = () => {
-            reject(new Error(`Failed to load image for conversion from ${mimeType}`))
+            reject(
+                new Error(
+                    `Failed to load image for conversion from ${mimeType}`,
+                ),
+            )
         }
 
         // Set source - ensure it has data URI prefix
-        img.src = base64.startsWith('data:') ? base64 : `data:${mimeType};base64,${base64}`
+        img.src = base64.startsWith('data:')
+            ? base64
+            : `data:${mimeType};base64,${base64}`
     })
 }
 
@@ -202,7 +282,7 @@ const resizeBase64Image = async (base64: string): Promise<string> => {
 
 export async function enhancePrompt(
     currentPrompt: string,
-    contextImage: ImageData | null = null
+    contextImage: ImageData | null = null,
 ): Promise<string> {
     const apiKey = getApiKey()
     const ai = new GoogleGenAI({ apiKey })
@@ -252,6 +332,58 @@ export async function enhancePrompt(
     } catch (e) {
         console.error('Magic Prompt Failed', e)
         return currentPrompt
+    }
+}
+
+/**
+ * Genera un prompt VARIANTE a partir de una imagen ya generada + su prompt.
+ * A diferencia de `enhancePrompt` (que solo enriquece el MISMO prompt), aquí se
+ * ANALIZA la imagen y se produce una variación COHERENTE: el MISMO sujeto,
+ * outfit y estética general, pero con una nueva pose, ángulo de cámara,
+ * encuadre y/o escenario — una toma alternativa "del mismo shoot" que tiene
+ * sentido, no una copia idéntica ni un concepto distinto. Alimenta el botón
+ * Variant del Studio (antes solo re-generaba con el mismo prompt = sin variar).
+ */
+export async function generateImageVariantPrompt(
+    image: { base64: string; mimeType: string },
+    originalPrompt: string,
+): Promise<string> {
+    const apiKey = getApiKey()
+    const ai = new GoogleGenAI({ apiKey })
+    const instructions = `You are a fashion/portrait art director creating a VARIATION of an existing photo of the SAME model.
+
+You are given the ORIGINAL photo and the prompt that produced it. Produce ONE new prompt for an ALTERNATE SHOT of the same person in the same general style.
+
+KEEP unchanged: the subject's identity, the outfit/clothing, the overall aesthetic, color palette and mood.
+CHANGE to make it a genuine variation: the POSE and body position, the CAMERA ANGLE and framing (e.g. from a mirror selfie to a candid three-quarter shot, or a tighter/wider crop), and OPTIONALLY the exact spot and lighting within a plausibly similar setting. It must read as "another photo from the same shoot", NOT a copy and NOT a different concept.
+
+Do NOT describe facial features, skin tone, hair color, body measurements or age (those come from the avatar settings). Describe only: pose, camera angle/framing, setting/background, lighting and mood — keeping the outfit consistent with the original.
+
+VOCABULARY RESTRICTIONS (these trigger downstream safety filters — NEVER use them): "bikini" → "swim set", "strapless" → "off-shoulder", "lingerie" → "loungewear", "bralette" → "fitted top", "corset" → "structured waist garment".
+
+Original prompt: "${originalPrompt}"
+
+Output ONLY the new variation prompt as one flowing paragraph, 2-4 sentences. No intro, no quotes, no labels.`
+    try {
+        const response = await ai.models.generateContent({
+            model: 'gemini-2.5-flash',
+            config: { safetySettings: ANALYSIS_SAFETY_SETTINGS },
+            contents: {
+                parts: [
+                    {
+                        inlineData: {
+                            mimeType: image.mimeType,
+                            data: cleanBase64Data(image.base64),
+                        },
+                    },
+                    { text: instructions },
+                ],
+            },
+        })
+        return response.text?.trim() || originalPrompt
+    } catch (e) {
+        console.error('[GeminiService] generateImageVariantPrompt failed', e)
+        return originalPrompt
     }
 }
 
@@ -355,7 +487,10 @@ export async function analyzeVideoForPrompt(
     try {
         const res = await fetch(videoUrl)
         if (!res.ok) {
-            return { success: false, error: `Could not fetch video from URL (HTTP ${res.status})` }
+            return {
+                success: false,
+                error: `Could not fetch video from URL (HTTP ${res.status})`,
+            }
         }
         const buffer = Buffer.from(await res.arrayBuffer())
         if (buffer.byteLength > MAX_ANALYZE_VIDEO_BYTES) {
@@ -364,9 +499,13 @@ export async function analyzeVideoForPrompt(
                 error: `Video too large to analyze (${Math.round(buffer.byteLength / 1024 / 1024)}MB, max 20MB) — trim or compress it`,
             }
         }
-        const mimeType = res.headers.get('content-type')?.split(';')[0] || 'video/mp4'
+        const mimeType =
+            res.headers.get('content-type')?.split(';')[0] || 'video/mp4'
         if (!mimeType.startsWith('video/')) {
-            return { success: false, error: `URL did not return a video (got ${mimeType})` }
+            return {
+                success: false,
+                error: `URL did not return a video (got ${mimeType})`,
+            }
         }
 
         const apiKey = getApiKey()
@@ -394,7 +533,12 @@ Also report the video's approximate duration in seconds.
             model: 'gemini-2.5-flash',
             contents: {
                 parts: [
-                    { inlineData: { mimeType, data: buffer.toString('base64') } },
+                    {
+                        inlineData: {
+                            mimeType,
+                            data: buffer.toString('base64'),
+                        },
+                    },
                     { text: instructions },
                 ],
             },
@@ -412,8 +556,15 @@ Also report the video's approximate duration in seconds.
         })
 
         const raw = response.text
-        if (!raw) return { success: false, error: 'Gemini returned an empty analysis' }
-        const parsed = JSON.parse(raw) as { prompt: string; durationSeconds?: number }
+        if (!raw)
+            return {
+                success: false,
+                error: 'Gemini returned an empty analysis',
+            }
+        const parsed = JSON.parse(raw) as {
+            prompt: string
+            durationSeconds?: number
+        }
         if (!parsed.prompt?.trim()) {
             return { success: false, error: 'Gemini returned an empty prompt' }
         }
@@ -424,7 +575,10 @@ Also report the video's approximate duration in seconds.
         }
     } catch (e) {
         console.error('[GeminiService] analyzeVideoForPrompt failed', e)
-        return { success: false, error: e instanceof Error ? e.message : String(e) }
+        return {
+            success: false,
+            error: e instanceof Error ? e.message : String(e),
+        }
     }
 }
 
@@ -460,11 +614,17 @@ export async function generateSocialCaption(input: {
         }
         const res = await fetch(input.mediaUrl)
         if (!res.ok) {
-            return { success: false, error: `Could not fetch media (HTTP ${res.status})` }
+            return {
+                success: false,
+                error: `Could not fetch media (HTTP ${res.status})`,
+            }
         }
         const buffer = Buffer.from(await res.arrayBuffer())
         if (buffer.byteLength > MAX_ANALYZE_VIDEO_BYTES) {
-            return { success: false, error: 'Media too large to analyze (max 20MB)' }
+            return {
+                success: false,
+                error: 'Media too large to analyze (max 20MB)',
+            }
         }
         const mimeType =
             res.headers.get('content-type')?.split(';')[0] ||
@@ -492,7 +652,12 @@ HASHTAGS:
             model: 'gemini-2.5-flash',
             contents: {
                 parts: [
-                    { inlineData: { mimeType, data: buffer.toString('base64') } },
+                    {
+                        inlineData: {
+                            mimeType,
+                            data: buffer.toString('base64'),
+                        },
+                    },
                     { text: instructions },
                 ],
             },
@@ -502,7 +667,10 @@ HASHTAGS:
                     type: Type.OBJECT,
                     properties: {
                         caption: { type: Type.STRING },
-                        hashtags: { type: Type.ARRAY, items: { type: Type.STRING } },
+                        hashtags: {
+                            type: Type.ARRAY,
+                            items: { type: Type.STRING },
+                        },
                     },
                     required: ['caption', 'hashtags'],
                 },
@@ -510,19 +678,28 @@ HASHTAGS:
         })
 
         const raw = response.text
-        if (!raw) return { success: false, error: 'Gemini returned an empty result' }
-        const parsed = JSON.parse(raw) as { caption: string; hashtags: string[] }
+        if (!raw)
+            return { success: false, error: 'Gemini returned an empty result' }
+        const parsed = JSON.parse(raw) as {
+            caption: string
+            hashtags: string[]
+        }
         if (!parsed.caption?.trim()) {
             return { success: false, error: 'Gemini returned an empty caption' }
         }
         return {
             success: true,
             caption: parsed.caption.trim(),
-            hashtags: (parsed.hashtags ?? []).map((h) => h.replace(/^#/, '').trim()).filter(Boolean),
+            hashtags: (parsed.hashtags ?? [])
+                .map((h) => h.replace(/^#/, '').trim())
+                .filter(Boolean),
         }
     } catch (e) {
         console.error('[GeminiService] generateSocialCaption failed', e)
-        return { success: false, error: e instanceof Error ? e.message : String(e) }
+        return {
+            success: false,
+            error: e instanceof Error ? e.message : String(e),
+        }
     }
 }
 
@@ -566,18 +743,27 @@ RULES:
             config: { safetySettings: ANALYSIS_SAFETY_SETTINGS },
             contents: {
                 parts: [
-                    { inlineData: { mimeType: input.mimeType, data: cleanBase64Data(input.base64) } },
+                    {
+                        inlineData: {
+                            mimeType: input.mimeType,
+                            data: cleanBase64Data(input.base64),
+                        },
+                    },
                     { text: instructions },
                 ],
             },
         })
 
         const text = response.text?.trim()
-        if (!text) return { success: false, error: 'Gemini returned an empty prompt' }
+        if (!text)
+            return { success: false, error: 'Gemini returned an empty prompt' }
         return { success: true, prompt: text }
     } catch (e) {
         console.error('[GeminiService] generateVideoPromptFromImage failed', e)
-        return { success: false, error: e instanceof Error ? e.message : String(e) }
+        return {
+            success: false,
+            error: e instanceof Error ? e.message : String(e),
+        }
     }
 }
 
@@ -622,7 +808,10 @@ Rules:
                     type: Type.OBJECT,
                     properties: {
                         caption: { type: Type.STRING },
-                        hashtags: { type: Type.ARRAY, items: { type: Type.STRING } },
+                        hashtags: {
+                            type: Type.ARRAY,
+                            items: { type: Type.STRING },
+                        },
                     },
                     required: ['caption', 'hashtags'],
                 },
@@ -630,19 +819,31 @@ Rules:
         })
 
         const raw = response.text
-        if (!raw) return { success: false, error: 'Gemini returned an empty translation' }
-        const parsed = JSON.parse(raw) as { caption: string; hashtags: string[] }
+        if (!raw)
+            return {
+                success: false,
+                error: 'Gemini returned an empty translation',
+            }
+        const parsed = JSON.parse(raw) as {
+            caption: string
+            hashtags: string[]
+        }
         if (!parsed.caption?.trim()) {
             return { success: false, error: 'Gemini returned an empty caption' }
         }
         return {
             success: true,
             caption: parsed.caption.trim(),
-            hashtags: (parsed.hashtags ?? []).map((h) => h.replace(/^#/, '').trim()).filter(Boolean),
+            hashtags: (parsed.hashtags ?? [])
+                .map((h) => h.replace(/^#/, '').trim())
+                .filter(Boolean),
         }
     } catch (e) {
         console.error('[GeminiService] translateSocialCaption failed', e)
-        return { success: false, error: e instanceof Error ? e.message : String(e) }
+        return {
+            success: false,
+            error: e instanceof Error ? e.message : String(e),
+        }
     }
 }
 
@@ -650,7 +851,9 @@ Rules:
 // IMAGE DESCRIPTION
 // =============================================
 
-export async function describeImageForPrompt(image: ReferenceImage): Promise<string> {
+export async function describeImageForPrompt(
+    image: ReferenceImage,
+): Promise<string> {
     const apiKey = getApiKey()
     const ai = new GoogleGenAI({ apiKey })
 
@@ -711,7 +914,11 @@ Keep it concise, descriptive, and high-quality. Output only the description, no 
         // Clone. Si también vuelve vacío (bloqueo duro de entrada), '' — el
         // caller muestra el aviso.
         console.warn('[Img→Prompt] empty — clinical neutral retry')
-        return retryAnalysisNeutral(ai, image, 'the outfit or "implied nude styling", accessories, setting and background, lighting and atmosphere, artistic style and color palette, composition and framing, and hair style (length/texture, NOT color) — never pose, skin tone, hair color, facial features, body type, age or ethnicity')
+        return retryAnalysisNeutral(
+            ai,
+            image,
+            'the outfit or "implied nude styling", accessories, setting and background, lighting and atmosphere, artistic style and color palette, composition and framing, and hair style (length/texture, NOT color) — never pose, skin tone, hair color, facial features, body type, age or ethnicity',
+        )
     } catch (e) {
         console.error('Image Description Failed', e)
         throw new Error('Failed to describe image.')
@@ -722,7 +929,9 @@ Keep it concise, descriptive, and high-quality. Output only the description, no 
 // SAFETY ANALYSIS
 // =============================================
 
-export async function analyzePromptSafety(userPrompt: string): Promise<PromptAnalysisResult> {
+export async function analyzePromptSafety(
+    userPrompt: string,
+): Promise<PromptAnalysisResult> {
     const apiKey = getApiKey()
     const ai = new GoogleGenAI({ apiKey })
 
@@ -772,7 +981,10 @@ BE CONSERVATIVE - it's better to flag something safe than miss something risky.
                                 type: Type.OBJECT,
                                 properties: {
                                     term: { type: Type.STRING },
-                                    alternatives: { type: Type.ARRAY, items: { type: Type.STRING } },
+                                    alternatives: {
+                                        type: Type.ARRAY,
+                                        items: { type: Type.STRING },
+                                    },
                                 },
                             },
                         },
@@ -789,7 +1001,9 @@ BE CONSERVATIVE - it's better to flag something safe than miss something risky.
         const result = JSON.parse(text) as PromptAnalysisResult
 
         // Filter out known safe words from corrections
-        const filteredCorrections = filterKnownSafeCorrections(result.corrections)
+        const filteredCorrections = filterKnownSafeCorrections(
+            result.corrections,
+        )
 
         return {
             ...result,
@@ -812,7 +1026,9 @@ BE CONSERVATIVE - it's better to flag something safe than miss something risky.
 // FACE ANALYSIS
 // =============================================
 
-export async function analyzeFaceFromImages(images: { base64: string; mimeType: string }[]): Promise<string> {
+export async function analyzeFaceFromImages(
+    images: { base64: string; mimeType: string }[],
+): Promise<string> {
     const apiKey = getApiKey()
     if (images.length === 0) return ''
 
@@ -869,7 +1085,10 @@ export async function analyzeFaceFromImages(images: { base64: string; mimeType: 
 // POSE ANALYSIS
 // =============================================
 
-export async function analyzePoseFromImage(image: { base64: string; mimeType: string }): Promise<string> {
+export async function analyzePoseFromImage(image: {
+    base64: string
+    mimeType: string
+}): Promise<string> {
     const apiKey = getApiKey()
     const ai = new GoogleGenAI({ apiKey })
 
@@ -917,7 +1136,9 @@ Example: "standing pose, weight on left leg, right hand on hip, left arm relaxed
             // back to a generic pose instruction (same non-blocking approach as
             // the Clone/Body Ref analysis). The pose image, when supported, still
             // rides along as an image reference.
-            console.warn('[Gemini] pose analysis blocked/empty — using fallback')
+            console.warn(
+                '[Gemini] pose analysis blocked/empty — using fallback',
+            )
             return POSE_FALLBACK
         }
 
@@ -939,7 +1160,10 @@ const POSE_FALLBACK =
  * Analyzes an image to extract everything EXCEPT face and body type
  * (those come from the avatar). Used for "Clone Ref" feature.
  */
-export async function analyzeImageForClone(image: { base64: string; mimeType: string }): Promise<string> {
+export async function analyzeImageForClone(image: {
+    base64: string
+    mimeType: string
+}): Promise<string> {
     const apiKey = getApiKey()
     const ai = new GoogleGenAI({ apiKey })
 
@@ -988,12 +1212,18 @@ Example output (format to match): "a woman wearing a floral halter swim top and 
             // Rechazo de salida pese a BLOCK_NONE → reintento clínico con
             // instrucción de lenguaje neutro no-explícito.
             console.warn('[Clone Analysis] empty — clinical neutral retry')
-            const retry = await retryAnalysisNeutral(ai, image, 'any clothing items actually worn (or "implied nude styling"), accessories, hairstyle, pose and body orientation, setting and background, lighting quality and direction, camera angle and shot type, and overall artistic style — never facial features, body measurements or body type, skin tone, hair color, age or ethnicity')
+            const retry = await retryAnalysisNeutral(
+                ai,
+                image,
+                'any clothing items actually worn (or "implied nude styling"), accessories, hairstyle, pose and body orientation, setting and background, lighting quality and direction, camera angle and shot type, and overall artistic style — never facial features, body measurements or body type, skin tone, hair color, age or ethnicity',
+            )
             if (retry) return sanitizeCloneDescription(retry)
             // Bloqueo duro de entrada: no hay descripción posible con Gemini.
             // No hard-fail: para el clon por imagen la REF viaja al modelo, así
             // que la instrucción neutra mantiene el flujo (el caller avisa).
-            console.warn('[Clone Analysis] still empty (hard input block) — neutral fallback')
+            console.warn(
+                '[Clone Analysis] still empty (hard input block) — neutral fallback',
+            )
             return CLONE_FALLBACK
         }
         return sanitizeCloneDescription(text)
@@ -1013,29 +1243,37 @@ const CLONE_FALLBACK =
  * into producing spec-sheet infographics instead of actual imagery.
  */
 function sanitizeCloneDescription(text: string): string {
-    return text
-        // Strip numbered section headers like "1. CLOTHING" or "**1. CLOTHING**"
-        .replace(/^\s*\**\s*\d+\.\s*[A-Z][A-Z\s&]+\**\s*$/gm, '')
-        // Strip bold markdown labels like "**Outfit:**"
-        .replace(/\*\*([^*]+)\*\*/g, '$1')
-        // Strip leading bullet markers ("- ", "* ", "• ")
-        .replace(/^\s*[-*•]\s+/gm, '')
-        // Collapse "Label: value" to just "value" for common label patterns
-        .replace(/^(Outfit|Accessories|Footwear|Hair\s*style|Pose|Setting|Lighting|Composition|Style|Background|Mood)[^:]*:\s*/gim, '')
-        // Flatten newlines into commas
-        .replace(/\n+/g, ', ')
-        // Collapse repeated spaces and commas
-        .replace(/\s+/g, ' ')
-        .replace(/,\s*,+/g, ',')
-        .replace(/\s+,/g, ',')
-        .trim()
+    return (
+        text
+            // Strip numbered section headers like "1. CLOTHING" or "**1. CLOTHING**"
+            .replace(/^\s*\**\s*\d+\.\s*[A-Z][A-Z\s&]+\**\s*$/gm, '')
+            // Strip bold markdown labels like "**Outfit:**"
+            .replace(/\*\*([^*]+)\*\*/g, '$1')
+            // Strip leading bullet markers ("- ", "* ", "• ")
+            .replace(/^\s*[-*•]\s+/gm, '')
+            // Collapse "Label: value" to just "value" for common label patterns
+            .replace(
+                /^(Outfit|Accessories|Footwear|Hair\s*style|Pose|Setting|Lighting|Composition|Style|Background|Mood)[^:]*:\s*/gim,
+                '',
+            )
+            // Flatten newlines into commas
+            .replace(/\n+/g, ', ')
+            // Collapse repeated spaces and commas
+            .replace(/\s+/g, ' ')
+            .replace(/,\s*,+/g, ',')
+            .replace(/\s+,/g, ',')
+            .trim()
+    )
 }
 
 /**
  * Analyzes an image to extract place/scene/location description
  * This is used for Place Ref to set the environment where the avatar will be placed
  */
-export async function analyzeImageForPlace(image: { base64: string; mimeType: string }): Promise<string> {
+export async function analyzeImageForPlace(image: {
+    base64: string
+    mimeType: string
+}): Promise<string> {
     const apiKey = getApiKey()
     const ai = new GoogleGenAI({ apiKey })
 
@@ -1207,7 +1445,14 @@ export async function generateAvatar(params: {
     faceDescription?: string
     modelName?: string
     allowFallback?: boolean
-}): Promise<{ success: true; url: string; fullApiPrompt: string } | { success: false; error: string; errorType: 'SAFETY_BLOCKED' | 'GENERATION_ERROR' }> {
+}): Promise<
+    | { success: true; url: string; fullApiPrompt: string }
+    | {
+          success: false
+          error: string
+          errorType: 'SAFETY_BLOCKED' | 'GENERATION_ERROR'
+      }
+> {
     const {
         prompt,
         avatarReferences,
@@ -1226,7 +1471,14 @@ export async function generateAvatar(params: {
         cinemaAperture = 'AUTO',
         identityWeight = 85,
         styleWeight = 50,
-        measurements = { age: 25, height: 165, bodyType: 'average' as const, bust: 90, waist: 60, hips: 90 },
+        measurements = {
+            age: 25,
+            height: 165,
+            bodyType: 'average' as const,
+            bust: 90,
+            waist: 60,
+            hips: 90,
+        },
         faceDescription = '',
         modelName = 'gemini-3-pro-image-preview',
         allowFallback = false,
@@ -1237,10 +1489,16 @@ export async function generateAvatar(params: {
 
     // Auto-generate face description if not provided
     let activeFaceDescription = faceDescription
-    if (!activeFaceDescription && (faceRefImage || avatarReferences.length > 0)) {
+    if (
+        !activeFaceDescription &&
+        (faceRefImage || avatarReferences.length > 0)
+    ) {
         try {
-            const sourceForAnalysis = faceRefImage ? [faceRefImage] : [avatarReferences[0]]
-            activeFaceDescription = await analyzeFaceFromImages(sourceForAnalysis)
+            const sourceForAnalysis = faceRefImage
+                ? [faceRefImage]
+                : [avatarReferences[0]]
+            activeFaceDescription =
+                await analyzeFaceFromImages(sourceForAnalysis)
         } catch {
             console.warn('Auto-face analysis failed')
         }
@@ -1264,14 +1522,18 @@ export async function generateAvatar(params: {
     - The face MUST be 100% recognizable as the same person in [FACE_ANCHOR]
     - This is like replacing a face in a photo - the face comes ONLY from [FACE_ANCHOR]
 
-    ${hasPoseOrStyle ? `
+    ${
+        hasPoseOrStyle
+            ? `
     ⛔⛔⛔ CRITICAL WARNING - OTHER IMAGES PRESENT ⛔⛔⛔
     - [POSE_REF] and [STYLE_REF] are ONLY for pose/style - IGNORE their faces completely
     - If you see a face in [POSE_REF] or [STYLE_REF], DELETE it mentally
     - Think of [POSE_REF]/[STYLE_REF] as faceless mannequins - they have NO identity
     - The ONLY face that exists for this task is [FACE_ANCHOR]
     - Even if [STYLE_REF] has a beautiful face, DO NOT USE IT - use [FACE_ANCHOR]
-    ` : ''}
+    `
+            : ''
+    }
 
     ⛔ BODY EXCLUSION (critical): the deepfake applies to the FACE ONLY.
     - Do NOT copy the body, build, weight or proportions visible in
@@ -1299,11 +1561,15 @@ export async function generateAvatar(params: {
     - The character must be clearly recognizable as the person in [FACE_ANCHOR]
     - ⛔ Do NOT copy the body/build from [FACE_ANCHOR] — the body follows the
       BODY SPECIFICATIONS sections, not the reference photos.
-    ${hasPoseOrStyle ? `
+    ${
+        hasPoseOrStyle
+            ? `
     ⛔ WARNING: [POSE_REF] and [STYLE_REF] contain OTHER people's faces
     - Do NOT copy faces from [POSE_REF] or [STYLE_REF]
     - Those images are for pose/style ONLY, their faces are irrelevant
-    ` : ''}
+    `
+            : ''
+    }
     `
     }
 
@@ -1312,14 +1578,38 @@ export async function generateAvatar(params: {
     const hipWaistRatio = measurements.hips / measurements.waist
 
     // Body type descriptions for explicit selector
-    const bodyTypeDescriptions: Record<string, { desc: string; proportion: string }> = {
-        'petite': { desc: 'petite, delicate frame', proportion: 'small-boned, compact proportions' },
-        'slim': { desc: 'slim, slender figure', proportion: 'lean, elongated proportions' },
-        'athletic': { desc: 'athletic, toned physique', proportion: 'muscular definition, sporty build' },
-        'average': { desc: 'average, balanced figure', proportion: 'proportionate, natural build' },
-        'curvy': { desc: 'curvy, voluptuous figure', proportion: 'fuller proportions with defined curves' },
-        'hourglass': { desc: 'classic hourglass figure, pin-up proportions', proportion: 'narrow waist with fuller bust and hips' },
-        'plus-size': { desc: 'plus-size, full-figured', proportion: 'generous proportions throughout' },
+    const bodyTypeDescriptions: Record<
+        string,
+        { desc: string; proportion: string }
+    > = {
+        petite: {
+            desc: 'petite, delicate frame',
+            proportion: 'small-boned, compact proportions',
+        },
+        slim: {
+            desc: 'slim, slender figure',
+            proportion: 'lean, elongated proportions',
+        },
+        athletic: {
+            desc: 'athletic, toned physique',
+            proportion: 'muscular definition, sporty build',
+        },
+        average: {
+            desc: 'average, balanced figure',
+            proportion: 'proportionate, natural build',
+        },
+        curvy: {
+            desc: 'curvy, voluptuous figure',
+            proportion: 'fuller proportions with defined curves',
+        },
+        hourglass: {
+            desc: 'classic hourglass figure, pin-up proportions',
+            proportion: 'narrow waist with fuller bust and hips',
+        },
+        'plus-size': {
+            desc: 'plus-size, full-figured',
+            proportion: 'generous proportions throughout',
+        },
     }
 
     // Height descriptions
@@ -1348,18 +1638,18 @@ export async function generateAvatar(params: {
         }
         // Fallback to calculated ratios
         else if (hipWaistRatio >= 1.6 && bustWaistRatio >= 1.5) {
-            bodyTypeDesc = 'glamour model physique, dramatic hourglass silhouette'
-            proportionDesc = 'extremely cinched waist creating dramatic curves, very full figure on top and bottom'
-        }
-        else if (hipWaistRatio >= 1.45 || bustWaistRatio >= 1.45) {
+            bodyTypeDesc =
+                'glamour model physique, dramatic hourglass silhouette'
+            proportionDesc =
+                'extremely cinched waist creating dramatic curves, very full figure on top and bottom'
+        } else if (hipWaistRatio >= 1.45 || bustWaistRatio >= 1.45) {
             bodyTypeDesc = 'classic hourglass figure, pin-up model proportions'
-            proportionDesc = 'noticeably narrow waist with fuller proportions above and below'
-        }
-        else if (hipWaistRatio >= 1.3) {
+            proportionDesc =
+                'noticeably narrow waist with fuller proportions above and below'
+        } else if (hipWaistRatio >= 1.3) {
             bodyTypeDesc = 'soft hourglass body type'
             proportionDesc = 'defined waist with balanced proportions'
-        }
-        else {
+        } else {
             bodyTypeDesc = 'athletic straight silhouette'
             proportionDesc = 'lean athletic build'
         }
@@ -1368,25 +1658,43 @@ export async function generateAvatar(params: {
         // floor for "full" so a full bust/hips isn't downgraded to "moderate/
         // proportionate" and lost to a dominant tiny-waist cue (which made the
         // model render skinny bodies). Keep in sync with avatarPromptBuilder.
-        const upperDesc = measurements.bust >= 100 ? 'very full, voluminous chest' :
-                         measurements.bust >= 95 ? 'full, ample chest' :
-                         measurements.bust >= 90 ? 'full, shapely feminine chest' :
-                         measurements.bust >= 84 ? 'moderate chest' : 'petite chest'
+        const upperDesc =
+            measurements.bust >= 100
+                ? 'very full, voluminous chest'
+                : measurements.bust >= 95
+                  ? 'full, ample chest'
+                  : measurements.bust >= 90
+                    ? 'full, shapely feminine chest'
+                    : measurements.bust >= 84
+                      ? 'moderate chest'
+                      : 'petite chest'
 
-        const waistDesc = measurements.waist <= 58 ? 'tiny cinched waist' :
-                         measurements.waist <= 62 ? 'very slim, cinched waist' :
-                         measurements.waist <= 68 ? 'slim defined waist' : 'natural waist'
+        const waistDesc =
+            measurements.waist <= 58
+                ? 'tiny cinched waist'
+                : measurements.waist <= 62
+                  ? 'very slim, cinched waist'
+                  : measurements.waist <= 68
+                    ? 'slim defined waist'
+                    : 'natural waist'
 
-        const hipDesc = measurements.hips >= 100 ? 'very wide, full hips and thighs' :
-                       measurements.hips >= 95 ? 'wide, shapely hips with full glutes' :
-                       measurements.hips >= 90 ? 'full, curvy rounded hips' :
-                       measurements.hips >= 84 ? 'proportionate hips' : 'slim hips'
+        const hipDesc =
+            measurements.hips >= 100
+                ? 'very wide, full hips and thighs'
+                : measurements.hips >= 95
+                  ? 'wide, shapely hips with full glutes'
+                  : measurements.hips >= 90
+                    ? 'full, curvy rounded hips'
+                    : measurements.hips >= 84
+                      ? 'proportionate hips'
+                      : 'slim hips'
 
         const legDesc = getLegDescriptor(measurements.legType)
 
         // Anti-skinny anchor — see avatarPromptBuilder for rationale.
         const wantsFuller =
-            measurements.bust >= 90 || measurements.hips >= 90 ||
+            measurements.bust >= 90 ||
+            measurements.hips >= 90 ||
             ['curvy', 'hourglass', 'plus-size'].includes(selectedBodyType)
         const massAnchor = wantsFuller
             ? ', at a healthy natural body weight with soft feminine flesh and natural body fat (NOT skinny, NOT underweight, NOT an emaciated fashion-model body)'
@@ -1408,7 +1716,9 @@ export async function generateAvatar(params: {
 
         // Add hair color
         if (hairColorDesc) {
-            fullDesc += skinToneDesc ? ` and ${hairColorDesc}` : ` with ${hairColorDesc}`
+            fullDesc += skinToneDesc
+                ? ` and ${hairColorDesc}`
+                : ` with ${hairColorDesc}`
         }
 
         // Add eye color
@@ -1426,42 +1736,49 @@ export async function generateAvatar(params: {
 
     // Get selected body type description
     const selectedBodyType = measurements.bodyType || 'average'
-    const bodyTypeLabel = bodyTypeDescriptions[selectedBodyType]?.desc.toUpperCase() || 'AVERAGE BUILD'
+    const bodyTypeLabel =
+        bodyTypeDescriptions[selectedBodyType]?.desc.toUpperCase() ||
+        'AVERAGE BUILD'
     const height = measurements.height || 165
-    const heightLabel = height < 160 ? 'PETITE/SHORT' : height < 170 ? 'AVERAGE HEIGHT' : 'TALL'
+    const heightLabel =
+        height < 160 ? 'PETITE/SHORT' : height < 170 ? 'AVERAGE HEIGHT' : 'TALL'
 
     // Build strong body specification for the prompt
     // Explicit descriptors based on measurements
-    const bustDesc = measurements.bust >= 100
-        ? 'VERY LARGE, FULL BUST - visibly voluminous, ample cleavage area, prominent chest'
-        : measurements.bust >= 95
-            ? 'LARGE, FULL BUST - noticeably full, generous chest proportions'
-            : measurements.bust >= 90
+    const bustDesc =
+        measurements.bust >= 100
+            ? 'VERY LARGE, FULL BUST - visibly voluminous, ample cleavage area, prominent chest'
+            : measurements.bust >= 95
+              ? 'LARGE, FULL BUST - noticeably full, generous chest proportions'
+              : measurements.bust >= 90
                 ? 'MEDIUM-FULL BUST - balanced, feminine chest'
                 : 'proportionate chest'
 
-    const waistDesc = measurements.waist <= 58
-        ? 'EXTREMELY NARROW WAIST - dramatically cinched, corset-like appearance, very slim midsection'
-        : measurements.waist <= 62
-            ? 'VERY NARROW WAIST - visibly slim, well-defined midsection'
-            : measurements.waist <= 68
+    const waistDesc =
+        measurements.waist <= 58
+            ? 'EXTREMELY NARROW WAIST - dramatically cinched, corset-like appearance, very slim midsection'
+            : measurements.waist <= 62
+              ? 'VERY NARROW WAIST - visibly slim, well-defined midsection'
+              : measurements.waist <= 68
                 ? 'NARROW WAIST - tapered, defined'
                 : 'defined waist'
 
-    const hipsDesc = measurements.hips >= 100
-        ? 'VERY WIDE HIPS & FULL LOWER CURVES - prominent lower body, rounded silhouette'
-        : measurements.hips >= 95
-            ? 'WIDE HIPS & FULL LOWER CURVES - curvy lower body, rounded shape, feminine hips'
-            : measurements.hips >= 90
+    const hipsDesc =
+        measurements.hips >= 100
+            ? 'VERY WIDE HIPS & FULL LOWER CURVES - prominent lower body, rounded silhouette'
+            : measurements.hips >= 95
+              ? 'WIDE HIPS & FULL LOWER CURVES - curvy lower body, rounded shape, feminine hips'
+              : measurements.hips >= 90
                 ? 'CURVY HIPS - balanced, feminine lower body'
                 : 'proportionate lower body'
 
     // Thighs/Legs descriptor - based on hips (curvy hips = thick thighs)
-    const thighsDesc = measurements.hips >= 100
-        ? 'THICK, FULL THIGHS - meaty upper legs, substantial leg volume, no thigh gap, legs touch'
-        : measurements.hips >= 95
-            ? 'FULL, CURVY THIGHS - thick upper legs, feminine leg volume, soft inner thighs'
-            : measurements.hips >= 90
+    const thighsDesc =
+        measurements.hips >= 100
+            ? 'THICK, FULL THIGHS - meaty upper legs, substantial leg volume, no thigh gap, legs touch'
+            : measurements.hips >= 95
+              ? 'FULL, CURVY THIGHS - thick upper legs, feminine leg volume, soft inner thighs'
+              : measurements.hips >= 90
                 ? 'SOFT, FEMININE THIGHS - some thickness, natural curves'
                 : 'proportionate legs'
 
@@ -1472,7 +1789,8 @@ export async function generateAvatar(params: {
 
     // Same image-beats-text problem as hair: the face_description states an eye
     // color that wins by default. Recolor the iris, keep everything else.
-    const eyeColorOverride = eyeColorSpecDesc ? `
+    const eyeColorOverride = eyeColorSpecDesc
+        ? `
     ╔═══════════════════════════════════════════════════════════════╗
     ║  👁 EYE COLOR OVERRIDE — HIGHEST PRIORITY (READ LAST)          ║
     ╚═══════════════════════════════════════════════════════════════╝
@@ -1480,7 +1798,8 @@ export async function generateAvatar(params: {
     show a DIFFERENT eye color. That is intentional.
     → The character's IRIS color MUST be: ${eyeColorSpecDesc.toUpperCase()}
     → This OVERRIDES any eye color in the reference images or the description.
-    → Recolor ONLY the iris. Keep the exact eye shape and face identity.` : ''
+    → Recolor ONLY the iris. Keep the exact eye shape and face identity.`
+        : ''
 
     // When the user sets a hair color, the reference images and the stored
     // face_description often show the ORIGINAL color — with no arbiter, the
@@ -1491,7 +1810,8 @@ export async function generateAvatar(params: {
     const eyebrowRule = isFashionHairColor(measurements.hairColor)
         ? '→ EYEBROWS: keep them a natural neutral tone (soft brown/dark to suit the face). Do NOT dye the eyebrows this color — colored eyebrows look unnatural.'
         : '→ Eyebrows follow the hair color naturally.'
-    const hairColorOverride = hairColorSpecDesc ? `
+    const hairColorOverride = hairColorSpecDesc
+        ? `
     ╔═══════════════════════════════════════════════════════════════╗
     ║  🎨 HAIR COLOR OVERRIDE — HIGHEST PRIORITY (READ LAST)         ║
     ╚═══════════════════════════════════════════════════════════════╝
@@ -1503,7 +1823,8 @@ export async function generateAvatar(params: {
     → This OVERRIDES any hair color visible in the reference images or written
       in the description above. Do NOT keep the reference hair color.
     → Change ONLY the hair COLOR. Keep the exact face identity, bone structure,
-      hairstyle, length and texture from the references.` : ''
+      hairstyle, length and texture from the references.`
+        : ''
 
     // A UI-set body must beat the apparent build in the FACE/ANGLE references
     // (which are identity-only). Only when there's no dedicated body image —
@@ -1529,7 +1850,7 @@ export async function generateAvatar(params: {
 ║  🚨 MANDATORY BODY SPECIFICATIONS - READ CAREFULLY 🚨                          ║
 ╚═══════════════════════════════════════════════════════════════════════════════╝
 
-HEIGHT: ${heightLabel} (${height}cm / ${Math.floor(height/30.48)}'${Math.round((height/2.54) % 12)}")
+HEIGHT: ${heightLabel} (${height}cm / ${Math.floor(height / 30.48)}'${Math.round((height / 2.54) % 12)}")
 BODY TYPE: ${bodyTypeLabel}
 ${skinToneSpecDesc ? `\n▓▓▓ SKIN TONE ▓▓▓\n${skinToneSpecDesc.toUpperCase()}\nThis is the EXACT skin complexion the character MUST have.` : ''}
 ${hairColorSpecDesc ? `\n▓▓▓ HAIR COLOR ▓▓▓\n${hairColorSpecDesc.toUpperCase()}\nThe character's HEAD HAIR MUST be this color. ${isFashionHairColor(measurements.hairColor) ? 'Keep eyebrows a natural neutral tone (not dyed this color).' : 'Eyebrows follow the hair color naturally.'}` : ''}
@@ -1611,7 +1932,8 @@ ${hairColorSpecDesc ? `- EXACT HAIR COLOR: ${hairColorSpecDesc}` : ''}
             styleDirectives = 'Use lighting and angle. REPLACE the subject.'
         } else {
             styleLabel = 'VISUAL_CLONE_SOURCE'
-            styleDirectives = 'STRICT_VISUAL_CLONE - Copy outfit, pose, background.'
+            styleDirectives =
+                'STRICT_VISUAL_CLONE - Copy outfit, pose, background.'
         }
     }
 
@@ -1625,7 +1947,9 @@ ${hairColorSpecDesc ? `- EXACT HAIR COLOR: ${hairColorSpecDesc}` : ''}
         refMappingText += `- Image ${refIndex} [${label}]: ${desc}\n`
         refIndex++
         const optimizedBase64 = await resizeBase64Image(img.base64)
-        parts.push({ inlineData: { mimeType: 'image/jpeg', data: optimizedBase64 } })
+        parts.push({
+            inlineData: { mimeType: 'image/jpeg', data: optimizedBase64 },
+        })
     }
 
     // System preamble
@@ -1642,7 +1966,11 @@ ${hairColorSpecDesc ? `- EXACT HAIR COLOR: ${hairColorSpecDesc}` : ''}
 
     // Add reference images
     if (faceRefImage) {
-        await appendImage(faceRefImage, 'IDENTITY SOURCE (FRONT)', 'FACE_ANCHOR')
+        await appendImage(
+            faceRefImage,
+            'IDENTITY SOURCE (FRONT)',
+            'FACE_ANCHOR',
+        )
     } else if (avatarReferences.length > 0) {
         await appendImage(avatarReferences[0], 'IDENTITY SOURCE', 'FACE_ANCHOR')
     }
@@ -1652,11 +1980,19 @@ ${hairColorSpecDesc ? `- EXACT HAIR COLOR: ${hairColorSpecDesc}` : ''}
     }
 
     if (bodyRefImage) {
-        await appendImage(bodyRefImage, 'CRITICAL BODY REFERENCE - COPY THIS EXACT SILHOUETTE. Match waist narrowness, hip width, chest proportions, overall curves EXACTLY. This body shape is MANDATORY.', 'BODY_SHAPE')
+        await appendImage(
+            bodyRefImage,
+            'CRITICAL BODY REFERENCE - COPY THIS EXACT SILHOUETTE. Match waist narrowness, hip width, chest proportions, overall curves EXACTLY. This body shape is MANDATORY.',
+            'BODY_SHAPE',
+        )
     }
 
     if (poseRefImage) {
-        await appendImage(poseRefImage, 'POSE ONLY REFERENCE - Copy ONLY the body position/pose from this image. DO NOT copy the face or body proportions. Use [FACE_ANCHOR] for face and body specifications for proportions.', 'POSE_REF')
+        await appendImage(
+            poseRefImage,
+            'POSE ONLY REFERENCE - Copy ONLY the body position/pose from this image. DO NOT copy the face or body proportions. Use [FACE_ANCHOR] for face and body specifications for proportions.',
+            'POSE_REF',
+        )
     }
 
     if (sceneReference) {
@@ -1664,13 +2000,21 @@ ${hairColorSpecDesc ? `- EXACT HAIR COLOR: ${hairColorSpecDesc}` : ''}
     }
 
     if (placeRefImage) {
-        await appendImage(placeRefImage, 'LOCATION reference - place the subject inside THIS exact environment. Keep its architecture, furniture, background and lighting faithfully. IGNORE any person in it; the subject comes from [FACE_ANCHOR].', 'PLACE_REF')
+        await appendImage(
+            placeRefImage,
+            'LOCATION reference - place the subject inside THIS exact environment. Keep its architecture, furniture, background and lighting faithfully. IGNORE any person in it; the subject comes from [FACE_ANCHOR].',
+            'PLACE_REF',
+        )
     }
 
     // Add remaining references (max 5 total)
     const remainingSlots = 5 - refIndex + 1
     for (const img of assetReferences.slice(0, remainingSlots)) {
-        await appendImage(img, 'BRAND ASSET (logo/graphic/product) - print this EXACT design on the outfit/props wherever a logo or graphic appears; reproduce its shapes, colors and lettering faithfully. Never write placeholder text such as "LOGO".', 'ASSET')
+        await appendImage(
+            img,
+            'BRAND ASSET (logo/graphic/product) - print this EXACT design on the outfit/props wherever a logo or graphic appears; reproduce its shapes, colors and lettering faithfully. Never write placeholder text such as "LOGO".',
+            'ASSET',
+        )
     }
 
     // Build enhanced prompt with body description injected directly
@@ -1690,27 +2034,43 @@ ${hairColorSpecDesc ? `- EXACT HAIR COLOR: ${hairColorSpecDesc}` : ''}
         if (!hasFraming && !hasAngle) return ''
 
         const framingDescriptions: Record<string, string> = {
-            'AUTO': '',
-            'EXTREME_CLOSE_UP': 'EXTREME CLOSE-UP: Frame only the face, eyes and facial details. Maximum detail on facial features.',
-            'CLOSE_UP': 'CLOSE-UP: Frame head and shoulders. Face is the main focus. Show some neck and upper shoulders.',
-            'MEDIUM_CLOSE_UP': 'MEDIUM CLOSE-UP: Frame from chest up. Upper body visible, face clearly visible.',
-            'MEDIUM_SHOT': 'MEDIUM SHOT: Frame from waist up. Upper body and arms visible. Good for portraits.',
-            'MEDIUM_FULL': 'MEDIUM FULL SHOT: Frame from knees up. Most of the body visible except lower legs.',
-            'FULL_SHOT': 'FULL SHOT: Frame entire body from head to feet. Full body must be visible in the frame.',
-            'WIDE_SHOT': 'WIDE SHOT: Full body with significant environment visible. Subject takes about 1/3 to 1/2 of frame.',
-            'EXTREME_WIDE': 'EXTREME WIDE SHOT: Landscape with subject. Environment dominates, subject is smaller in frame.',
+            AUTO: '',
+            EXTREME_CLOSE_UP:
+                'EXTREME CLOSE-UP: Frame only the face, eyes and facial details. Maximum detail on facial features.',
+            CLOSE_UP:
+                'CLOSE-UP: Frame head and shoulders. Face is the main focus. Show some neck and upper shoulders.',
+            MEDIUM_CLOSE_UP:
+                'MEDIUM CLOSE-UP: Frame from chest up. Upper body visible, face clearly visible.',
+            MEDIUM_SHOT:
+                'MEDIUM SHOT: Frame from waist up. Upper body and arms visible. Good for portraits.',
+            MEDIUM_FULL:
+                'MEDIUM FULL SHOT: Frame from knees up. Most of the body visible except lower legs.',
+            FULL_SHOT:
+                'FULL SHOT: Frame entire body from head to feet. Full body must be visible in the frame.',
+            WIDE_SHOT:
+                'WIDE SHOT: Full body with significant environment visible. Subject takes about 1/3 to 1/2 of frame.',
+            EXTREME_WIDE:
+                'EXTREME WIDE SHOT: Landscape with subject. Environment dominates, subject is smaller in frame.',
         }
 
         const angleDescriptions: Record<string, string> = {
-            'LOW_ANGLE': 'LOW ANGLE: Camera positioned below subject, looking UP. Makes subject appear powerful, dominant, heroic.',
-            'HIGH_ANGLE': 'HIGH ANGLE: Camera positioned above subject, looking DOWN. Makes subject appear smaller, vulnerable, or submissive.',
-            'DUTCH_ANGLE': 'DUTCH ANGLE: Camera tilted diagonally (10-45 degrees). Creates tension, unease, or dynamic energy.',
-            'BIRDS_EYE': "BIRD'S EYE VIEW: Camera directly above, looking straight down. Overhead perspective, subject seen from top.",
-            'WORMS_EYE': "WORM'S EYE VIEW: Camera at ground level, looking straight up. Extreme low angle, dramatic perspective.",
-            'OVER_SHOULDER': 'OVER THE SHOULDER: Camera behind one person, looking at subject. Creates intimacy and context.',
-            'POV': 'POV (Point of View): First-person perspective. Camera shows what the subject would see.',
-            'PROFILE': 'PROFILE SHOT: Side view of face at 90 degrees. Shows silhouette and profile features.',
-            'THREE_QUARTER': '3/4 VIEW: Face turned 45 degrees from camera. Classic portrait angle showing depth.',
+            LOW_ANGLE:
+                'LOW ANGLE: Camera positioned below subject, looking UP. Makes subject appear powerful, dominant, heroic.',
+            HIGH_ANGLE:
+                'HIGH ANGLE: Camera positioned above subject, looking DOWN. Makes subject appear smaller, vulnerable, or submissive.',
+            DUTCH_ANGLE:
+                'DUTCH ANGLE: Camera tilted diagonally (10-45 degrees). Creates tension, unease, or dynamic energy.',
+            BIRDS_EYE:
+                "BIRD'S EYE VIEW: Camera directly above, looking straight down. Overhead perspective, subject seen from top.",
+            WORMS_EYE:
+                "WORM'S EYE VIEW: Camera at ground level, looking straight up. Extreme low angle, dramatic perspective.",
+            OVER_SHOULDER:
+                'OVER THE SHOULDER: Camera behind one person, looking at subject. Creates intimacy and context.',
+            POV: 'POV (Point of View): First-person perspective. Camera shows what the subject would see.',
+            PROFILE:
+                'PROFILE SHOT: Side view of face at 90 degrees. Shows silhouette and profile features.',
+            THREE_QUARTER:
+                '3/4 VIEW: Face turned 45 degrees from camera. Classic portrait angle showing depth.',
         }
 
         let instructions = `
@@ -1739,18 +2099,26 @@ ${hairColorSpecDesc ? `- EXACT HAIR COLOR: ${hairColorSpecDesc}` : ''}
 
     // Build cinema lens/focal/aperture instructions
     const buildCinemaInstructions = (): string => {
-        const lensModifier = CINEMA_LENSES.find(l => l.value === cinemaLens)?.promptModifier || ''
-        const focalModifier = CINEMA_FOCAL_LENGTHS.find(f => f.value === cinemaFocalLength)?.promptModifier || ''
-        const apertureModifier = CINEMA_APERTURES.find(a => a.value === cinemaAperture)?.promptModifier || ''
+        const lensModifier =
+            CINEMA_LENSES.find((l) => l.value === cinemaLens)?.promptModifier ||
+            ''
+        const focalModifier =
+            CINEMA_FOCAL_LENGTHS.find((f) => f.value === cinemaFocalLength)
+                ?.promptModifier || ''
+        const apertureModifier =
+            CINEMA_APERTURES.find((a) => a.value === cinemaAperture)
+                ?.promptModifier || ''
 
-        const parts = [lensModifier, focalModifier, apertureModifier].filter(Boolean)
+        const parts = [lensModifier, focalModifier, apertureModifier].filter(
+            Boolean,
+        )
         if (parts.length === 0) return ''
 
         return `
     ═══════════════════════════════════════════════════════════════
     CINEMA & LENS SPECIFICATIONS:
     ═══════════════════════════════════════════════════════════════
-    ${parts.map(p => `- ${p}`).join('\n    ')}
+    ${parts.map((p) => `- ${p}`).join('\n    ')}
 
     Apply these camera/lens characteristics to the final image.
     `
@@ -1835,7 +2203,9 @@ ${hairColorSpecDesc ? `- EXACT HAIR COLOR: ${hairColorSpecDesc}` : ''}
     ⚠️⚠️⚠️ FIRST PRIORITY: BODY SHAPE SPECIFICATIONS ⚠️⚠️⚠️
     ═══════════════════════════════════════════════════════════════
 
-    ${hasBodyRef ? `
+    ${
+        hasBodyRef
+            ? `
     [BODY_SHAPE] IMAGE IS PROVIDED - THIS IS YOUR PRIMARY VISUAL REFERENCE:
     - COPY the EXACT body proportions from [BODY_SHAPE] image
     - Match the silhouette, curves, waist definition, hip width, bust size, lower body fullness EXACTLY
@@ -1847,10 +2217,12 @@ ${hairColorSpecDesc ? `- EXACT HAIR COLOR: ${hairColorSpecDesc}` : ''}
     • Hips: ${measurements.hips}cm (${measurements.hips >= 95 ? 'WIDE, FULL CURVES' : 'proportionate'})
     • Thighs: ${measurements.hips >= 95 ? 'THICK, FULL - meaty legs matching curvy hips' : 'proportionate to hips'}
     ⚠️ Legs must NOT be thin/skinny - they must have volume matching the hip width!
-    ` : `
+    `
+            : `
     ⚠️ NO BODY IMAGE REFERENCE - FOLLOW THESE TEXT SPECIFICATIONS EXACTLY:
     ${bodySpecification}
-    `}
+    `
+    }
 
     ═══════════════════════════════════════════════════════════════
     TASK: Generate a photorealistic image of this EXACT character:
@@ -1860,7 +2232,9 @@ ${hairColorSpecDesc ? `- EXACT HAIR COLOR: ${hairColorSpecDesc}` : ''}
 
     REFERENCE MAPPING:
     ${refMappingText}
-    ${hasPoseRef ? `
+    ${
+        hasPoseRef
+            ? `
     ╔═══════════════════════════════════════════════════════════════╗
     ║ POSE REFERENCE: [POSE_REF] - BODY POSITION ONLY              ║
     ╚═══════════════════════════════════════════════════════════════╝
@@ -1882,7 +2256,9 @@ ${hairColorSpecDesc ? `- EXACT HAIR COLOR: ${hairColorSpecDesc}` : ''}
     - [POSE_REF] = A poseable mannequin with NO FACE
     - [FACE_ANCHOR] = The ONLY face for this image
     - You are putting [FACE_ANCHOR]'s face on the mannequin's position
-    ` : ''}
+    `
+            : ''
+    }
     ${buildCameraShotInstructions()}
     ${buildCinemaInstructions()}
     ${buildStyleInstructions()}
@@ -1891,8 +2267,8 @@ ${hairColorSpecDesc ? `- EXACT HAIR COLOR: ${hairColorSpecDesc}` : ''}
     1. BODY FIRST: ${hasBodyRef ? 'Clone the body from [BODY_SHAPE] image' : inlineBodyDescription}
     2. FACE SECOND: Apply face from [FACE_ANCHOR]${activeFaceDescription ? `: ${activeFaceDescription}` : ''}
     ${hasPoseRef ? '3. POSE: Apply EXACT pose from [POSE_REF]' : ''}
-    ${(cameraShot !== 'AUTO' || cameraAngle !== null) ? `${hasPoseRef ? '4' : '3'}. CAMERA: ${cameraShot !== 'AUTO' ? `Frame as ${cameraShot.replace(/_/g, ' ')}` : ''}${cameraShot !== 'AUTO' && cameraAngle !== null ? ' with ' : ''}${cameraAngle !== null ? `${cameraAngle.replace(/_/g, ' ')} angle` : ''}` : ''}
-    ${hasStyleRef ? `${hasPoseRef ? '5' : (cameraShot !== 'AUTO' || cameraAngle !== null) ? '4' : '3'}. STYLE: Apply style from [${styleLabel}] at ${styleWeight}% influence` : `${hasPoseRef ? '5' : (cameraShot !== 'AUTO' || cameraAngle !== null) ? '4' : '3'}. SCENE: Generate from prompt description`}
+    ${cameraShot !== 'AUTO' || cameraAngle !== null ? `${hasPoseRef ? '4' : '3'}. CAMERA: ${cameraShot !== 'AUTO' ? `Frame as ${cameraShot.replace(/_/g, ' ')}` : ''}${cameraShot !== 'AUTO' && cameraAngle !== null ? ' with ' : ''}${cameraAngle !== null ? `${cameraAngle.replace(/_/g, ' ')} angle` : ''}` : ''}
+    ${hasStyleRef ? `${hasPoseRef ? '5' : cameraShot !== 'AUTO' || cameraAngle !== null ? '4' : '3'}. STYLE: Apply style from [${styleLabel}] at ${styleWeight}% influence` : `${hasPoseRef ? '5' : cameraShot !== 'AUTO' || cameraAngle !== null ? '4' : '3'}. SCENE: Generate from prompt description`}
 
     ⛔ FAILURE CONDITIONS (ABSOLUTELY FORBIDDEN):
     - Using a face that is NOT from [FACE_ANCHOR] → CRITICAL FAILURE
@@ -1920,13 +2296,18 @@ ${hairColorSpecDesc ? `- EXACT HAIR COLOR: ${hairColorSpecDesc}` : ''}
   `
 
     // Sanitize prompt to replace words that trigger image generation safety filters
-    const { sanitized: sanitizedPrompt, replacements: sanitizedReplacements } = sanitizePromptForGeneration(finalPrompt)
+    const { sanitized: sanitizedPrompt, replacements: sanitizedReplacements } =
+        sanitizePromptForGeneration(finalPrompt)
     if (sanitizedReplacements.length > 0) {
-        console.log(`[generateAvatar] Prompt sanitized: ${sanitizedReplacements.length} replacement(s) applied`)
+        console.log(
+            `[generateAvatar] Prompt sanitized: ${sanitizedReplacements.length} replacement(s) applied`,
+        )
     }
 
     // Helper to attempt generation with a given prompt text
-    const attemptGeneration = async (promptText: string): Promise<{ url: string; fullApiPrompt: string } | 'SAFETY_BLOCKED'> => {
+    const attemptGeneration = async (
+        promptText: string,
+    ): Promise<{ url: string; fullApiPrompt: string } | 'SAFETY_BLOCKED'> => {
         const attemptParts = [...parts, { text: promptText }]
 
         const response = await ai.models.generateContent({
@@ -1965,7 +2346,8 @@ ${hairColorSpecDesc ? `- EXACT HAIR COLOR: ${hairColorSpecDesc}` : ''}
 
         for (const part of candidate.content?.parts || []) {
             if ((part as { inlineData?: { data: string } }).inlineData) {
-                const inlineData = (part as { inlineData: { data: string } }).inlineData
+                const inlineData = (part as { inlineData: { data: string } })
+                    .inlineData
                 return {
                     url: `data:image/jpeg;base64,${inlineData.data}`,
                     fullApiPrompt: promptText,
@@ -1980,21 +2362,28 @@ ${hairColorSpecDesc ? `- EXACT HAIR COLOR: ${hairColorSpecDesc}` : ''}
         // Attempt 1: Standard sanitized prompt
         console.log('[generateAvatar] Attempt 1: standard sanitized prompt')
         const result1 = await attemptGeneration(sanitizedPrompt)
-        if (result1 !== 'SAFETY_BLOCKED') return { success: true as const, ...result1 }
+        if (result1 !== 'SAFETY_BLOCKED')
+            return { success: true as const, ...result1 }
 
         // Attempt 2: Aggressive sanitization (strip suggestive terms)
-        console.log('[generateAvatar] Attempt 1 BLOCKED — retrying with aggressive sanitization...')
+        console.log(
+            '[generateAvatar] Attempt 1 BLOCKED — retrying with aggressive sanitization...',
+        )
         const { sanitized: aggressivePrompt } = aggressiveSanitize(finalPrompt)
         const result2 = await attemptGeneration(aggressivePrompt)
         if (result2 !== 'SAFETY_BLOCKED') {
-            console.log('[generateAvatar] Attempt 2 succeeded with aggressive sanitization')
+            console.log(
+                '[generateAvatar] Attempt 2 succeeded with aggressive sanitization',
+            )
             return { success: true as const, ...result2 }
         }
 
         // Both Gemini attempts blocked. If auto-fallback is disabled, surface
         // the safety block directly so the user can switch provider manually.
         if (!allowFallback) {
-            console.warn('[generateAvatar] Both Gemini attempts blocked (auto-fallback disabled).')
+            console.warn(
+                '[generateAvatar] Both Gemini attempts blocked (auto-fallback disabled).',
+            )
             return {
                 success: false as const,
                 error: 'Gemini bloqueó la generación por filtros de contenido. Cambia de provider (MiniMax o Kling) y reintenta.',
@@ -2003,7 +2392,9 @@ ${hairColorSpecDesc ? `- EXACT HAIR COLOR: ${hairColorSpecDesc}` : ''}
         }
 
         // Both Gemini attempts blocked — try MiniMax image-01 as fallback
-        console.warn('[generateAvatar] Both Gemini attempts blocked — trying MiniMax fallback...')
+        console.warn(
+            '[generateAvatar] Both Gemini attempts blocked — trying MiniMax fallback...',
+        )
 
         // MiniMax is architecturally different from Gemini: it accepts only
         // plain text + ONE subject_reference image. Reusing Gemini's
@@ -2022,8 +2413,8 @@ ${hairColorSpecDesc ? `- EXACT HAIR COLOR: ${hairColorSpecDesc}` : ''}
         const faceReferenceUrl = faceRefImage
             ? `data:${faceRefImage.mimeType};base64,${faceRefImage.base64}`
             : avatarReferences[0]
-                ? `data:${avatarReferences[0].mimeType};base64,${avatarReferences[0].base64}`
-                : undefined
+              ? `data:${avatarReferences[0].mimeType};base64,${avatarReferences[0].base64}`
+              : undefined
 
         const framingText = cameraShotToNaturalLanguage(cameraShot, cameraAngle)
         const userPromptHasBodyTag = /\[BODY:/i.test(prompt)
@@ -2080,7 +2471,10 @@ ${hairColorSpecDesc ? `- EXACT HAIR COLOR: ${hairColorSpecDesc}` : ''}
             }
         }
 
-        console.warn('[generateAvatar] MiniMax fallback also failed:', miniMaxResult.error)
+        console.warn(
+            '[generateAvatar] MiniMax fallback also failed:',
+            miniMaxResult.error,
+        )
         return {
             success: false as const,
             error: `Gemini bloqueó la generación por filtros de contenido. MiniMax fallback también falló: ${miniMaxResult.error}`,
@@ -2088,7 +2482,10 @@ ${hairColorSpecDesc ? `- EXACT HAIR COLOR: ${hairColorSpecDesc}` : ''}
         }
     } catch (error) {
         console.error('Gemini Generation Error:', error)
-        const message = error instanceof Error ? error.message : 'Error desconocido en generación de imagen'
+        const message =
+            error instanceof Error
+                ? error.message
+                : 'Error desconocido en generación de imagen'
         return {
             success: false as const,
             error: message,
@@ -2139,11 +2536,16 @@ export async function generateVideo(params: {
     const apiKey = getApiKey()
     const ai = new GoogleGenAI({ apiKey })
 
-    const hasRefs = avatarReferences.length > 0 || faceRefImage || bodyRefImage || sceneReference
+    const hasRefs =
+        avatarReferences.length > 0 ||
+        faceRefImage ||
+        bodyRefImage ||
+        sceneReference
 
     // Enforce constraints for character references
     let targetAspectRatio = aspectRatio === '16:9' ? '16:9' : '9:16'
-    if (aspectRatio === '1:1' || aspectRatio === '4:3') targetAspectRatio = '16:9'
+    if (aspectRatio === '1:1' || aspectRatio === '4:3')
+        targetAspectRatio = '16:9'
     if (aspectRatio === '3:4') targetAspectRatio = '9:16'
 
     let targetResolution = resolution
@@ -2198,7 +2600,10 @@ export async function generateVideo(params: {
             })
         }
 
-        for (const ref of avatarReferences.slice(0, 3 - referenceImagesPayload.length)) {
+        for (const ref of avatarReferences.slice(
+            0,
+            3 - referenceImagesPayload.length,
+        )) {
             const resized = await resizeBase64Image(ref.base64)
             referenceImagesPayload.push({
                 image: { imageBytes: resized, mimeType: 'image/jpeg' },
@@ -2231,13 +2636,19 @@ export async function generateVideo(params: {
     // Subject action - with detailed motion instructions to avoid glitches
     const actionTextMap: Record<SubjectAction, string> = {
         NONE: '',
-        WALKING: 'Subject is walking at a natural, steady pace. IMPORTANT: Each step must be complete and distinct - left foot, then right foot, in a smooth continuous motion. NO stuttering, NO double-steps, NO foot sliding or glitching. The walking cycle must be fluid and realistic like a real human walking.',
-        RUNNING: 'Subject is running with dynamic motion. Each stride must be complete and fluid, no stuttering or repeated frames.',
-        DANCING: 'Subject is dancing with fluid, continuous movements. No jerky or repeated motions.',
-        TALKING: 'Subject is looking at camera, lips moving naturally as if speaking.',
-        GESTURING: 'Subject is gesturing expressively with their hands in fluid motions.',
+        WALKING:
+            'Subject is walking at a natural, steady pace. IMPORTANT: Each step must be complete and distinct - left foot, then right foot, in a smooth continuous motion. NO stuttering, NO double-steps, NO foot sliding or glitching. The walking cycle must be fluid and realistic like a real human walking.',
+        RUNNING:
+            'Subject is running with dynamic motion. Each stride must be complete and fluid, no stuttering or repeated frames.',
+        DANCING:
+            'Subject is dancing with fluid, continuous movements. No jerky or repeated motions.',
+        TALKING:
+            'Subject is looking at camera, lips moving naturally as if speaking.',
+        GESTURING:
+            'Subject is gesturing expressively with their hands in fluid motions.',
         SITTING: 'Subject is sitting comfortably with natural micro-movements.',
-        STANDING: 'Subject is standing still, breathing naturally with subtle body movement.',
+        STANDING:
+            'Subject is standing still, breathing naturally with subtle body movement.',
     }
 
     const cameraText = cameraTextMap[cameraMotion]
@@ -2254,15 +2665,18 @@ export async function generateVideo(params: {
     }
 
     if (noMusic) {
-        finalPrompt += ' [AUDIO CONSTRAINT - STRICTLY ENFORCE]: ABSOLUTELY NO background music. NO musical score. NO soundtrack. NO melodic sounds whatsoever. The audio track must contain ZERO music - only dialogue and realistic ambient sounds if any.'
+        finalPrompt +=
+            ' [AUDIO CONSTRAINT - STRICTLY ENFORCE]: ABSOLUTELY NO background music. NO musical score. NO soundtrack. NO melodic sounds whatsoever. The audio track must contain ZERO music - only dialogue and realistic ambient sounds if any.'
     }
 
     if (noBackgroundEffects) {
-        finalPrompt += ' [AUDIO CONSTRAINT - MAXIMUM SILENCE]: NO background effects, NO ambient sounds, NO wind, NO environmental audio, NO foley sounds. Complete audio silence except for dialogue speech if specified. The video must have a clean, silent audio track.'
+        finalPrompt +=
+            ' [AUDIO CONSTRAINT - MAXIMUM SILENCE]: NO background effects, NO ambient sounds, NO wind, NO environmental audio, NO foley sounds. Complete audio silence except for dialogue speech if specified. The video must have a clean, silent audio track.'
     }
 
     if (hasRefs && !imageInput) {
-        finalPrompt += ' The character must resemble the provided reference assets.'
+        finalPrompt +=
+            ' The character must resemble the provided reference assets.'
     }
 
     // Execute video generation. Generate + poll + download for a given prompt
@@ -2316,14 +2730,18 @@ export async function generateVideo(params: {
         // Poll for completion
         while (!operation.done) {
             await new Promise((resolve) => setTimeout(resolve, 10000))
-            const newOp = await ai.operations.getVideosOperation({ operation: operation })
+            const newOp = await ai.operations.getVideosOperation({
+                operation: operation,
+            })
             operation = newOp
         }
 
         if (operation.error) {
-            const errMsg = typeof operation.error === 'object' && 'message' in operation.error
-                ? String((operation.error as { message?: string }).message)
-                : JSON.stringify(operation.error)
+            const errMsg =
+                typeof operation.error === 'object' &&
+                'message' in operation.error
+                    ? String((operation.error as { message?: string }).message)
+                    : JSON.stringify(operation.error)
             throw new Error(errMsg || 'Video generation failed')
         }
 
@@ -2333,7 +2751,9 @@ export async function generateVideo(params: {
         }
 
         if (response?.raiMediaFilteredReasons?.length) {
-            throw new Error(`RAI_FILTERED: ${response.raiMediaFilteredReasons.join(', ')}`)
+            throw new Error(
+                `RAI_FILTERED: ${response.raiMediaFilteredReasons.join(', ')}`,
+            )
         }
 
         const videoResult = response?.generatedVideos?.[0]
@@ -2361,7 +2781,8 @@ export async function generateVideo(params: {
     // etc.). On a RAI/safety block, retry once with aggressive sanitization
     // (strips revealing/suggestive terms entirely). The first frame carries the
     // visual, so stripping prompt text is low-cost for a continuation video.
-    const isRaiBlock = (m: string) => /RAI_FILTERED|safety|sensitive|polic/i.test(m)
+    const isRaiBlock = (m: string) =>
+        /RAI_FILTERED|safety|sensitive|polic/i.test(m)
     const { sanitized: lightPrompt } = sanitizePromptForGeneration(finalPrompt)
     try {
         return await runWithPrompt(lightPrompt)
@@ -2371,7 +2792,9 @@ export async function generateVideo(params: {
             console.error('Video Generation Error:', error)
             throw error
         }
-        console.warn('[Gemini/Video] RAI/safety block — retrying with aggressive sanitization')
+        console.warn(
+            '[Gemini/Video] RAI/safety block — retrying with aggressive sanitization',
+        )
         const { sanitized: aggressivePrompt } = aggressiveSanitize(finalPrompt)
         return await runWithPrompt(aggressivePrompt)
     }
@@ -2407,7 +2830,7 @@ export async function editImage(
     editPrompt: string,
     maskBase64: string | null = null,
     aspectRatio: AspectRatio = '1:1',
-    referenceAssets?: Array<{ base64: string; mimeType: string }>
+    referenceAssets?: Array<{ base64: string; mimeType: string }>,
 ): Promise<string> {
     const apiKey = getApiKey()
     const ai = new GoogleGenAI({ apiKey })
@@ -2417,7 +2840,8 @@ export async function editImage(
     const parts: any[] = []
 
     // Original image - convert if needed (handles AVIF and other unsupported formats)
-    const convertedOriginal = await convertToSupportedFormat(originalImageBase64)
+    const convertedOriginal =
+        await convertToSupportedFormat(originalImageBase64)
     parts.push({
         inlineData: {
             mimeType: convertedOriginal.mimeType,
@@ -2476,12 +2900,25 @@ export async function editImage(
             const reason = candidate.finishReason
             if (reason === 'SAFETY' || reason === 'IMAGE_SAFETY') {
                 // Try to get more details from safety ratings
-                const safetyDetails = (candidate as { safetyRatings?: Array<{ category: string; probability: string }> })
-                    .safetyRatings?.filter(r => r.probability !== 'NEGLIGIBLE' && r.probability !== 'LOW')
-                    .map(r => r.category.replace('HARM_CATEGORY_', ''))
+                const safetyDetails = (
+                    candidate as {
+                        safetyRatings?: Array<{
+                            category: string
+                            probability: string
+                        }>
+                    }
+                ).safetyRatings
+                    ?.filter(
+                        (r) =>
+                            r.probability !== 'NEGLIGIBLE' &&
+                            r.probability !== 'LOW',
+                    )
+                    .map((r) => r.category.replace('HARM_CATEGORY_', ''))
                     .join(', ')
                 const details = safetyDetails ? ` (${safetyDetails})` : ''
-                throw new Error(`Edit blocked by safety filters${details}. Try a different image or edit prompt.`)
+                throw new Error(
+                    `Edit blocked by safety filters${details}. Try a different image or edit prompt.`,
+                )
             }
             throw new Error(`Edit stopped: ${reason}`)
         }
@@ -2489,7 +2926,8 @@ export async function editImage(
         // Check for image data
         for (const part of candidate.content?.parts || []) {
             if ((part as { inlineData?: { data: string } }).inlineData) {
-                const inlineData = (part as { inlineData: { data: string } }).inlineData
+                const inlineData = (part as { inlineData: { data: string } })
+                    .inlineData
                 return `data:image/jpeg;base64,${inlineData.data}`
             }
         }
@@ -2506,7 +2944,9 @@ export async function editImage(
             throw new Error(`Model refused to edit: ${textParts.slice(0, 200)}`)
         }
 
-        throw new Error('No image returned from edit operation. The model may not support this edit.')
+        throw new Error(
+            'No image returned from edit operation. The model may not support this edit.',
+        )
     } catch (error) {
         console.error('Edit Image Failed:', error)
         throw error
@@ -2531,7 +2971,8 @@ function cameraShotToNaturalLanguage(
         MEDIUM_FULL: 'medium full shot (knees up)',
         FULL_SHOT: 'full body shot showing head to feet',
         WIDE_SHOT: 'wide shot with the subject inside the environment',
-        EXTREME_WIDE: 'extreme wide landscape shot with the subject in the scene',
+        EXTREME_WIDE:
+            'extreme wide landscape shot with the subject in the scene',
     }
     const angleMap: Partial<Record<CameraShot, string>> = {
         LOW_ANGLE: 'low angle looking up at the subject',
@@ -2546,7 +2987,8 @@ function cameraShotToNaturalLanguage(
     }
 
     const parts: string[] = []
-    if (shot !== 'AUTO' && framingMap[shot]) parts.push(framingMap[shot] as string)
+    if (shot !== 'AUTO' && framingMap[shot])
+        parts.push(framingMap[shot] as string)
     if (angle && angleMap[angle]) parts.push(angleMap[angle] as string)
     return parts.join(', ')
 }

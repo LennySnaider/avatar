@@ -54,6 +54,7 @@ import {
     generateAvatar,
     generateVideoSafe as generateVideoGeminiSafe,
     enhancePrompt,
+    generateImageVariantPrompt,
     analyzeFaceFromImages,
     editImage,
     describeImageForPrompt,
@@ -89,7 +90,12 @@ import {
     stripHarnessForFaceSwap,
     type RefRole,
 } from '@/utils/avatarPromptBuilder'
-import { describeBody, getHairColorDescription, getEyeColorDescription, buildCurvesEmphasis } from '@/utils/bodyDescriptors'
+import {
+    describeBody,
+    getHairColorDescription,
+    getEyeColorDescription,
+    buildCurvesEmphasis,
+} from '@/utils/bodyDescriptors'
 import { readDefaultProviderId } from '../../_shared/providerPrefs'
 import { PROVIDER_TRAITS } from '../../_shared/providerCatalog'
 import { createPortal } from 'react-dom'
@@ -160,7 +166,9 @@ async function pollKieImageTask(
                 'El modelo parece estar CAÍDO en KIE (2 intentos con "internal error"). No es tu prompt — prueba otro provider o reintenta más tarde. Las tareas fallidas NO cobran créditos.',
             )
         }
-        console.warn('[KIE] Task failed with transient internal error — resubmitting once')
+        console.warn(
+            '[KIE] Task failed with transient internal error — resubmitting once',
+        )
     }
     throw new Error('KIE image task failed')
 }
@@ -271,7 +279,9 @@ async function genVideoKie(
         if (!/internal error/i.test(failMsg) || attempt === 2) {
             throw new Error(failMsg)
         }
-        console.warn('[KIE] Video task failed with transient internal error — resubmitting once')
+        console.warn(
+            '[KIE] Video task failed with transient internal error — resubmitting once',
+        )
     }
     throw new Error('KIE video task failed')
 }
@@ -303,7 +313,13 @@ async function uploadGenerationWithRetry(
         try {
             const { path, token } =
                 await apiCreateGenerationUploadUrl(mediaType)
-            await uploadToSignedStorageUrl('generations', path, token, blob, contentType)
+            await uploadToSignedStorageUrl(
+                'generations',
+                path,
+                token,
+                blob,
+                contentType,
+            )
             return path
         } catch (e) {
             lastError = e
@@ -495,9 +511,7 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
             const availableProviders =
                 providers.length > 0 ? providers : DEFAULT_PROVIDERS
             const isForMode = (p: (typeof availableProviders)[number]) =>
-                generationMode === 'IMAGE'
-                    ? p.supports_image
-                    : p.supports_video
+                generationMode === 'IMAGE' ? p.supports_image : p.supports_video
             // El pin (📌 del Provider Manager) manda: sin él, este efecto
             // caía SIEMPRE al primero del catálogo (Gemini 3 Pro) e ignoraba
             // el default guardado del modo.
@@ -550,32 +564,31 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                         gen.storage_path,
                     )
                     return {
-                            id: crypto.randomUUID(),
-                            url,
-                            prompt: gen.prompt,
-                            aspectRatio:
-                                (gen.aspect_ratio as AspectRatio) || '1:1',
-                            timestamp: gen.created_at
-                                ? new Date(gen.created_at).getTime()
-                                : Date.now(),
-                            mediaType: gen.media_type,
-                            metadata: gen.metadata ?? undefined,
-                            providerName: (
-                                gen.metadata as { providerName?: string } | null
-                            )?.providerName,
-                            favorite:
-                                (gen.metadata as { favorite?: boolean } | null)
-                                    ?.favorite ?? false,
-                            archived:
-                                (gen.metadata as { archived?: boolean } | null)
-                                    ?.archived ?? false,
-                            generationId: gen.id,
-                            avatarId: gen.avatar_id,
-                            postedPlatforms: postedMap[gen.id],
-                            saveState: 'saved',
-                            publicUrl: url,
-                        }
-                    })
+                        id: crypto.randomUUID(),
+                        url,
+                        prompt: gen.prompt,
+                        aspectRatio: (gen.aspect_ratio as AspectRatio) || '1:1',
+                        timestamp: gen.created_at
+                            ? new Date(gen.created_at).getTime()
+                            : Date.now(),
+                        mediaType: gen.media_type,
+                        metadata: gen.metadata ?? undefined,
+                        providerName: (
+                            gen.metadata as { providerName?: string } | null
+                        )?.providerName,
+                        favorite:
+                            (gen.metadata as { favorite?: boolean } | null)
+                                ?.favorite ?? false,
+                        archived:
+                            (gen.metadata as { archived?: boolean } | null)
+                                ?.archived ?? false,
+                        generationId: gen.id,
+                        avatarId: gen.avatar_id,
+                        postedPlatforms: postedMap[gen.id],
+                        saveState: 'saved',
+                        publicUrl: url,
+                    }
+                })
                 if (!cancelled) loadPersistedGallery(items)
             } catch (error) {
                 console.error('Failed to load persisted gallery:', error)
@@ -1169,12 +1182,14 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                         kieModel === 'gpt-image-2-text-to-image'
                     const deepfakeActive = Boolean(
                         optimizedDeepfakeRef &&
-                            deepfakeCapable &&
-                            kieReferenceImages.some((r) => r.role === 'face'),
+                        deepfakeCapable &&
+                        kieReferenceImages.some((r) => r.role === 'face'),
                     )
                     if (deepfakeActive && optimizedDeepfakeRef) {
                         kieRefsToSend = [
-                            ...kieReferenceImages.filter((r) => r.role === 'face'),
+                            ...kieReferenceImages.filter(
+                                (r) => r.role === 'face',
+                            ),
                             { ...optimizedDeepfakeRef, role: 'clone' },
                         ]
                         kiePrompt =
@@ -1240,7 +1255,11 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                     // (duplicaba personas). Verificado live: nano-banana-2 @1K
                     // con harness + angle sheet = cara y cuerpo iguales al full.
                     if (kieModel.startsWith('seedream/5-lite')) {
-                        const rivalFaceRoles = new Set(['pose', 'scene', 'clone'])
+                        const rivalFaceRoles = new Set([
+                            'pose',
+                            'scene',
+                            'clone',
+                        ])
                         kieRefsToSend = kieRefsToSend.filter(
                             (r) => !rivalFaceRoles.has(r.role as string),
                         )
@@ -1290,7 +1309,10 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                                 (r) => r.role === 'face',
                             )
                             kieRefsToSend = [
-                                { ...optimizedDeepfakeRef, role: 'scene' as const },
+                                {
+                                    ...optimizedDeepfakeRef,
+                                    role: 'scene' as const,
+                                },
                                 ...(faceOnly.length > 0
                                     ? faceOnly
                                     : [kieReferenceImages[0]]),
@@ -2100,7 +2122,10 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                 backgroundedRunsRef.current.delete(runId)
                 removePendingGeneration(runId)
                 toast.push(
-                    <Notification type="success" title="Generación en espera lista">
+                    <Notification
+                        type="success"
+                        title="Generación en espera lista"
+                    >
                         {`${activeProvider?.name ?? 'La tarea'} terminó — el resultado ya está en la galería.`}
                     </Notification>,
                 )
@@ -2120,7 +2145,10 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                 backgroundedRunsRef.current.delete(runId)
                 removePendingGeneration(runId)
                 toast.push(
-                    <Notification type="danger" title="Generación en espera falló">
+                    <Notification
+                        type="danger"
+                        title="Generación en espera falló"
+                    >
                         {errorMessage}
                     </Notification>,
                 )
@@ -2326,7 +2354,10 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                     // esto no hacía NADA en silencio.
                     toast.push(
                         <Notification type="warning" title="Sin descripción">
-                            Gemini no pudo describir esta imagen (contenido explícito — su bloqueo duro no es configurable). Escribe el prompt a mano o usa la imagen como Clone Ref (viaja tal cual a los modelos i2i).
+                            Gemini no pudo describir esta imagen (contenido
+                            explícito — su bloqueo duro no es configurable).
+                            Escribe el prompt a mano o usa la imagen como Clone
+                            Ref (viaja tal cual a los modelos i2i).
                         </Notification>,
                     )
                 }
@@ -2581,32 +2612,46 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
     )
 
     // Create Variant Handler
+    // Variant REDISEÑADO: antes solo re-metía la imagen como Clone y reusaba el
+    // MISMO prompt → "variación" = solo el ruido del modelo (no variaba nada).
+    // Ahora ANALIZA la imagen + su prompt y genera una VARIACIÓN COHERENTE
+    // (mismo avatar/outfit/estética, nueva pose/ángulo/escena) vía Gemini, y
+    // regenera con el avatar actual (identidad por face ref, sin forzar clone).
     const handleCreateVariant = useCallback(
         async (media: GeneratedMedia) => {
-            const response = await fetch(media.url)
-            const blob = await response.blob()
-            const reader = new FileReader()
-
-            reader.onload = (e) => {
-                const result = e.target?.result as string
-                const matches = result.match(/^data:(.+);base64,(.+)$/)
-                if (matches) {
-                    const refImg: ReferenceImage = {
-                        id: `variant-${media.id}`,
-                        url: result,
-                        mimeType: matches[1],
-                        base64: matches[2],
-                        type: 'general',
-                    }
-                    useAvatarStudioStore.getState().setCloneImage(refImg)
-                    setPrompt(media.prompt)
-                    // Trigger generation with clone image for variance
-                    handleGenerate()
-                }
+            try {
+                setIsEnhancingPrompt(true)
+                const response = await fetch(media.url)
+                const blob = await response.blob()
+                const dataUrl: string = await new Promise((resolve, reject) => {
+                    const reader = new FileReader()
+                    reader.onload = () => resolve(reader.result as string)
+                    reader.onerror = reject
+                    reader.readAsDataURL(blob)
+                })
+                const matches = dataUrl.match(/^data:(.+);base64,(.+)$/)
+                if (!matches) throw new Error('No se pudo leer la imagen')
+                const variedPrompt = await generateImageVariantPrompt(
+                    { mimeType: matches[1], base64: matches[2] },
+                    media.prompt || media.fullApiPrompt || '',
+                )
+                setPrompt(variedPrompt)
+                setIsEnhancingPrompt(false)
+                // Genera con el avatar/proveedor actuales + el prompt variado.
+                handleGenerate()
+            } catch (err) {
+                setIsEnhancingPrompt(false)
+                console.warn('Variant failed:', err)
+                toast.push(
+                    <Notification type="danger" title="Variant">
+                        {err instanceof Error
+                            ? err.message
+                            : 'No se pudo crear la variación'}
+                    </Notification>,
+                )
             }
-            reader.readAsDataURL(blob)
         },
-        [setPrompt, handleGenerate],
+        [setPrompt, handleGenerate, setIsEnhancingPrompt],
     )
 
     // Save to Gallery Handler
@@ -2888,7 +2933,9 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                                     variant="plain"
                                     icon={<HiOutlineCog />}
                                 >
-                                    <span className="hidden sm:inline">Tools</span>
+                                    <span className="hidden sm:inline">
+                                        Tools
+                                    </span>
                                 </Button>
                             }
                         >
