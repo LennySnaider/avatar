@@ -124,6 +124,25 @@ const VIDEO_RESOLUTIONS: { value: VideoResolution; label: string }[] = [
     { value: '1080p', label: '1080p' },
 ]
 
+// Peso del Clone en 4 POSICIONES (snap): mover dentro de un tramo NO cambia el
+// prompt (75-100 EXACT, 50-74 STRONG, 25-49 MODERATE, 0-24 LOOSE), así que el
+// slider salta entre 4 valores canónicos — uno bien centrado en cada tramo.
+const CLONE_STOPS = [15, 40, 65, 100]
+const cloneWeightFromRatio = (ratio: number): number => {
+    const r = Math.max(0, Math.min(1, ratio))
+    return r >= 0.75 ? 100 : r >= 0.5 ? 65 : r >= 0.25 ? 40 : 15
+}
+const nextCloneStop = (current: number, dir: 1 | -1): number => {
+    const idx = CLONE_STOPS.reduce(
+        (best, v, i) =>
+            Math.abs(v - current) < Math.abs(CLONE_STOPS[best] - current)
+                ? i
+                : best,
+        0,
+    )
+    return CLONE_STOPS[Math.max(0, Math.min(CLONE_STOPS.length - 1, idx + dir))]
+}
+
 interface BottomControlBarProps {
     onGenerate: () => void
     onOpenBatch: () => void
@@ -1188,18 +1207,12 @@ const BottomControlBar = ({
                                                         const r =
                                                             e.currentTarget.getBoundingClientRect()
                                                         setCloneWeight(
-                                                            Math.round(
-                                                                Math.max(
-                                                                    0,
-                                                                    Math.min(
-                                                                        1,
-                                                                        1 -
-                                                                            (e.clientY -
-                                                                                r.top) /
-                                                                                r.height,
-                                                                    ),
-                                                                ) * 20,
-                                                            ) * 5,
+                                                            cloneWeightFromRatio(
+                                                                1 -
+                                                                    (e.clientY -
+                                                                        r.top) /
+                                                                        r.height,
+                                                            ),
                                                         )
                                                     }}
                                                     onPointerMove={(e) => {
@@ -1212,18 +1225,12 @@ const BottomControlBar = ({
                                                         const r =
                                                             e.currentTarget.getBoundingClientRect()
                                                         setCloneWeight(
-                                                            Math.round(
-                                                                Math.max(
-                                                                    0,
-                                                                    Math.min(
-                                                                        1,
-                                                                        1 -
-                                                                            (e.clientY -
-                                                                                r.top) /
-                                                                                r.height,
-                                                                    ),
-                                                                ) * 20,
-                                                            ) * 5,
+                                                            cloneWeightFromRatio(
+                                                                1 -
+                                                                    (e.clientY -
+                                                                        r.top) /
+                                                                        r.height,
+                                                            ),
                                                         )
                                                     }}
                                                     onKeyDown={(e) => {
@@ -1235,10 +1242,9 @@ const BottomControlBar = ({
                                                         ) {
                                                             e.preventDefault()
                                                             setCloneWeight(
-                                                                Math.min(
-                                                                    100,
-                                                                    cloneWeight +
-                                                                        5,
+                                                                nextCloneStop(
+                                                                    cloneWeight,
+                                                                    1,
                                                                 ),
                                                             )
                                                         } else if (
@@ -1249,10 +1255,9 @@ const BottomControlBar = ({
                                                         ) {
                                                             e.preventDefault()
                                                             setCloneWeight(
-                                                                Math.max(
-                                                                    0,
-                                                                    cloneWeight -
-                                                                        5,
+                                                                nextCloneStop(
+                                                                    cloneWeight,
+                                                                    -1,
                                                                 ),
                                                             )
                                                         }
