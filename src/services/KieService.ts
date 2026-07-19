@@ -1,8 +1,16 @@
 'use server'
 
 import { createServerSupabaseClient } from '@/lib/supabase'
-import { centerCropToAspect, uploadBufferToGenerations } from '@/lib/mediaPersist'
-import { sanitizePromptForGeneration, aggressiveSanitize, stripNegatedTattoos } from '@/utils/promptSanitizer'
+import {
+    centerCropToAspect,
+    uploadBufferToGenerations,
+} from '@/lib/mediaPersist'
+import {
+    sanitizePromptForGeneration,
+    aggressiveSanitize,
+    stripNegatedTattoos,
+} from '@/utils/promptSanitizer'
+import { buildImageRequest } from './kie/dispatch'
 import type {
     KieCreateTaskRequest,
     KieCreateTaskResponse,
@@ -28,10 +36,19 @@ function authHeaders(): Record<string, string> {
 
 function withTimeout<T>(p: Promise<T>, ms: number, label: string): Promise<T> {
     return new Promise<T>((resolve, reject) => {
-        const t = setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms`)), ms)
+        const t = setTimeout(
+            () => reject(new Error(`${label} timed out after ${ms}ms`)),
+            ms,
+        )
         p.then(
-            (v) => { clearTimeout(t); resolve(v) },
-            (e) => { clearTimeout(t); reject(e) },
+            (v) => {
+                clearTimeout(t)
+                resolve(v)
+            },
+            (e) => {
+                clearTimeout(t)
+                reject(e)
+            },
         )
     })
 }
@@ -68,7 +85,9 @@ async function submitTask(body: KieCreateTaskRequest): Promise<string> {
     }
     const json: KieCreateTaskResponse = await res.json()
     if (json.code !== 200 || !json.data?.taskId) {
-        throw new Error(`KIE createTask error: code=${json.code} msg=${json.msg}`)
+        throw new Error(
+            `KIE createTask error: code=${json.code} msg=${json.msg}`,
+        )
     }
     return json.data.taskId
 }
@@ -91,8 +110,10 @@ async function pollTask(
             )
         } catch (e) {
             if (isAbortError(e)) {
-                console.warn(`[KIE] recordInfo fetch aborted (>${POLL_FETCH_TIMEOUT_MS}ms), retrying`)
-                await new Promise(resolve => setTimeout(resolve, intervalMs))
+                console.warn(
+                    `[KIE] recordInfo fetch aborted (>${POLL_FETCH_TIMEOUT_MS}ms), retrying`,
+                )
+                await new Promise((resolve) => setTimeout(resolve, intervalMs))
                 continue
             }
             throw e
@@ -119,7 +140,7 @@ async function pollTask(
                 `KIE task failed: ${json.data.failCode || ''} ${json.data.failMsg || 'Unknown error'}`,
             )
         }
-        await new Promise(resolve => setTimeout(resolve, intervalMs))
+        await new Promise((resolve) => setTimeout(resolve, intervalMs))
     }
     throw new Error(`KIE task timed out after ${budgetMs / 1000}s`)
 }
@@ -132,7 +153,11 @@ async function pollTask(
  */
 async function checkTaskOnce(
     taskId: string,
-): Promise<{ state: 'running' } | { state: 'success'; urls: string[] } | { state: 'fail'; error: string }> {
+): Promise<
+    | { state: 'running' }
+    | { state: 'success'; urls: string[] }
+    | { state: 'fail'; error: string }
+> {
     let res: Response
     try {
         res = await fetchWithAbort(
@@ -151,7 +176,9 @@ async function checkTaskOnce(
         // poll calls, so a single transient 5xx must not abandon a running task.
         // 4xx stays terminal (a 400/404 is a real misconfigured request).
         if (res.status >= 500) {
-            console.warn(`[KIE] recordInfo transient ${res.status}; still polling`)
+            console.warn(
+                `[KIE] recordInfo transient ${res.status}; still polling`,
+            )
             return { state: 'running' }
         }
         throw new Error(`KIE recordInfo failed (${res.status}): ${text}`)
@@ -159,13 +186,22 @@ async function checkTaskOnce(
     const json: KieRecordInfoResponse = await res.json()
     const state = json.data?.state
     if (state === 'success') {
-        const parsed: KieResultJsonShape = json.data.resultJson ? JSON.parse(json.data.resultJson) : {}
+        const parsed: KieResultJsonShape = json.data.resultJson
+            ? JSON.parse(json.data.resultJson)
+            : {}
         const urls = parsed.resultUrls ?? []
-        if (urls.length === 0) return { state: 'fail', error: 'KIE task succeeded but returned no resultUrls' }
+        if (urls.length === 0)
+            return {
+                state: 'fail',
+                error: 'KIE task succeeded but returned no resultUrls',
+            }
         return { state: 'success', urls }
     }
     if (state === 'fail') {
-        return { state: 'fail', error: `${json.data.failCode || ''} ${json.data.failMsg || 'Unknown error'}`.trim() }
+        return {
+            state: 'fail',
+            error: `${json.data.failCode || ''} ${json.data.failMsg || 'Unknown error'}`.trim(),
+        }
     }
     return { state: 'running' }
 }
@@ -180,12 +216,19 @@ async function uploadReferenceToSupabase(
     mimeType: string,
 ): Promise<string> {
     const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL
-    if (!SUPABASE_URL) throw new Error('NEXT_PUBLIC_SUPABASE_URL is not defined')
+    if (!SUPABASE_URL)
+        throw new Error('NEXT_PUBLIC_SUPABASE_URL is not defined')
 
     const cleanBase64 = base64.includes(',') ? base64.split(',')[1] : base64
     const buffer = Buffer.from(cleanBase64, 'base64')
 
-    const ext = mimeType.includes('mp4') ? 'mp4' : mimeType.includes('png') ? 'png' : mimeType.includes('webp') ? 'webp' : 'jpg'
+    const ext = mimeType.includes('mp4')
+        ? 'mp4'
+        : mimeType.includes('png')
+          ? 'png'
+          : mimeType.includes('webp')
+            ? 'webp'
+            : 'jpg'
     const fileName = `kie-refs/${Date.now()}-${Math.random().toString(36).substr(2, 9)}.${ext}`
 
     const supabase = createServerSupabaseClient()
@@ -196,7 +239,8 @@ async function uploadReferenceToSupabase(
             cacheControl: '300',
             upsert: false,
         })
-    if (error) throw new Error(`Failed to upload KIE reference: ${error.message}`)
+    if (error)
+        throw new Error(`Failed to upload KIE reference: ${error.message}`)
 
     return `${SUPABASE_URL}/storage/v1/object/public/generations/${fileName}`
 }
@@ -262,7 +306,8 @@ async function persistToSupabase(
     cropToAspect?: string,
 ): Promise<string> {
     const res = await fetch(sourceUrl)
-    if (!res.ok) throw new Error(`Failed to download KIE result (${res.status})`)
+    if (!res.ok)
+        throw new Error(`Failed to download KIE result (${res.status})`)
     let buffer: Buffer = Buffer.from(await res.arrayBuffer())
 
     // Normalize image proportions when a provider can't honor the requested
@@ -271,11 +316,17 @@ async function persistToSupabase(
         try {
             buffer = await centerCropToAspect(buffer, cropToAspect)
         } catch (err) {
-            console.warn(`[KIE] center-crop to ${cropToAspect} failed, keeping original:`, err)
+            console.warn(
+                `[KIE] center-crop to ${cropToAspect} failed, keeping original:`,
+                err,
+            )
         }
     }
 
-    const contentType = extension === 'mp4' ? 'video/mp4' : `image/${extension === 'jpg' ? 'jpeg' : 'png'}`
+    const contentType =
+        extension === 'mp4'
+            ? 'video/mp4'
+            : `image/${extension === 'jpg' ? 'jpeg' : 'png'}`
     const fileName = `${subfolder}/${Date.now()}-${Math.random().toString(36).substr(2, 9)}.${extension}`
 
     return uploadBufferToGenerations(buffer, fileName, contentType)
@@ -320,131 +371,6 @@ export interface GenerateImageKieParams {
     curveBoost?: string
 }
 
-type KieRefWithRole = { base64: string; mimeType: string; role?: string }
-
-/**
- * Selección + orden CANÓNICO de los refs que acompañan a la cara en los
- * branches i2i multi-imagen (Seedream/Wan/FLUX.2), con su cláusula indexada
- * por imagen ("Image 3 is…" — la cara siempre es la imagen 1). Antes esos
- * branches solo leían body/asset y descartaban en silencio pose/scene/clone/
- * place aunque ya viajaban en referenceImages (mismo bug que los Assets:
- * "hoodie with logo" pintaba la palabra literal "LOGO"). Orden: body primero
- * (las cláusulas de cuerpo calibradas dicen "SECOND attached image"), clone
- * AL FINAL (igual que nano-banana-pro, el patrón que arregló GPT Image 2).
- */
-function planExtraRefs(
-    referenceImages: KieRefWithRole[] | undefined,
-    maxExtras: number,
-    deepfakeMode = false,
-): { extras: KieRefWithRole[]; clauses: string; hasBody: boolean; hasClone: boolean } {
-    const byRole = (role: string) =>
-        (referenceImages ?? []).filter((r) => r.role === role)
-    const ordered = [
-        ...byRole('body').slice(0, 3),
-        ...byRole('bust').slice(0, 1),
-        ...byRole('glutes').slice(0, 1),
-        ...byRole('asset').slice(0, 3),
-        ...byRole('pose').slice(0, 1),
-        ...byRole('scene').slice(0, 1),
-        ...byRole('place').slice(0, 1),
-        ...byRole('clone').slice(0, 1),
-    ].slice(0, maxExtras)
-    const parts: string[] = []
-    // Con CLONE presente, el OUTFIT viene del clone — las cláusulas de región
-    // decían "outfit ONLY from the text" y contradecían al clone ("EXACT
-    // outfit"): por esa grieta el énfasis de curvas DESVISTIÓ a la modelo
-    // (leggings del clone → glúteos descubiertos, reporte del usuario).
-    const hasClone = ordered.some((r) => r.role === 'clone')
-    const outfitSrc = hasClone
-        ? 'the CLONE image and the text description'
-        : 'the text description'
-    ordered.forEach((r, i) => {
-        const n = i + 2
-        switch (r.role) {
-            // GUARD crítico en refs de región (aprendido en vivo: sin el
-            // IGNORE, Seedream clonaba la ROPA/ESCENA/desnudez de la foto de
-            // referencia y tiraba el [CLONE:] del texto — outputs en la playa
-            // de la foto de glúteos o directamente desnuda).
-            case 'bust':
-                parts.push(
-                    `Image ${n} = her real BUST: copy ONLY its size, shape and fullness. IGNORE that image's clothing/nudity, pose, scene and lighting — outfit, pose and scene come from ${outfitSrc}.`,
-                )
-                break
-            case 'glutes':
-                parts.push(
-                    `Image ${n} = her real GLUTES and hips: copy ONLY their size, shape, fullness and projection (thighs proportionally full). IGNORE that image's clothing/nudity, pose, scene and lighting — outfit, pose and scene come from ${outfitSrc}.`,
-                )
-                break
-            // La cláusula vieja ("print this EXACT design on her clothing")
-            // era una orden imperativa SIN ámbito: con la escena decapitada el
-            // modelo estampaba logos/texto-marca alucinado en la camiseta
-            // (reporte: "LOXEANG" en Wan). Además el slot se usa también para
-            // PRENDAS, no solo logos — la orden de "imprimir" convertía la
-            // prenda en estampado forzado.
-            case 'asset':
-                parts.push(
-                    `Image ${n} = product ASSET. If it is a garment/accessory: dress her in this EXACT item (same cut, fabric, colors and prints). If it is a logo/graphic: print it with faithful shapes and colors ONLY where the scene text places it — nowhere else. NEVER add any other logos, brand names or invented text on clothing or props; never write placeholder text like "LOGO".`,
-                )
-                break
-            case 'pose':
-                parts.push(
-                    `Image ${n} = POSE reference: copy ONLY the body position — not its face, proportions or clothing.`,
-                )
-                break
-            case 'scene':
-                parts.push(
-                    `Image ${n} = STYLE/SCENE reference: use for setting, lighting and composition; REPLACE its subject with her.`,
-                )
-                break
-            case 'place':
-                parts.push(
-                    `Image ${n} = the LOCATION: place her in THIS exact environment (architecture, furniture, lighting); IGNORE any person in it.`,
-                )
-                break
-            case 'clone':
-                parts.push(
-                    deepfakeMode
-                        ? `Image ${n} = the ORIGINAL photo: reproduce it EXACTLY (body, outfit, pose, hands, framing, lighting, background). MANDATORY face swap: the output face MUST be the person from image 1 — never keep the original face. Do NOT alter clothing. REMOVE overlaid stickers/watermarks/emojis — output a clean photo.`
-                        : `Image ${n} = the CLONE source: recreate its EXACT pose, body position, outfit, hands, objects held, framing, camera angle, lighting and setting. Its person is a FACELESS MANNEQUIN — the face comes ONLY from image 1. Keep her FULLY dressed as shown; do NOT remove or reduce clothing. REMOVE overlaid stickers/watermarks/emojis — output a clean photo.`,
-                )
-                break
-        }
-    })
-    return {
-        extras: ordered,
-        clauses: parts.length > 0 ? ` ${parts.join(' ')}` : '',
-        hasBody: ordered.some((r) => r.role === 'body'),
-        hasClone,
-    }
-}
-
-/**
- * En los branches i2i de Seedream/Wan la identidad física YA viaja en el ANCLA
- * (imagen 1 + bodyEmphasis/hair/eye), pero el prompt que llega del Studio trae
- * además el preámbulo de difusión ("A 21 year old woman…") y los bloques
- * [BODY:]/[FACE:] — ~1,300 chars duplicados. Con el presupuesto duro de ~2,750
- * y el recorte por el FINAL, la redundancia sobrevivía y la ESCENA del usuario
- * (outfit/pose/lugar/luz) se decapitaba — medido live en 5-lite: solo 155
- * chars de escena llegaron al modelo, cortados justo antes de la ropa (por eso
- * "hacía lo que quería": nunca leyó el prompt). Se quita AQUÍ la redundancia
- * para que la escena completa quepa en el presupuesto.
- * `bodyInAnchor` = el ancla ya carga el cuerpo (bodyEmphasis / Body Ref /
- * deepfake): solo entonces es seguro tirar el texto de cuerpo; [FACE:] siempre
- * sobra — la cara va en la imagen 1 y el texto solo pelea con la foto.
- */
-function stripIdentityRedundancy(text: string, bodyInAnchor: boolean): string {
-    let out = text
-    if (bodyInAnchor) {
-        out = out
-            .replace(/\bA \d+ year old woman\b[^]*?(?=\[(?:BODY|FACE):)/i, '')
-            .replace(/\[BODY:[^\]]*\]/gi, ' ')
-    }
-    return out
-        .replace(/\[FACE:[^\]]*\]/gi, ' ')
-        .replace(/\s{2,}/g, ' ')
-        .trim()
-}
-
 /**
  * Generate an image via KIE AI. Routes to the right endpoint based on the
  * model family — KIE has dedicated endpoints per family, not a single unified
@@ -462,507 +388,82 @@ export async function generateImageKie(
     | { success: true; url: string; fullApiPrompt: string }
     | { success: false; error: string }
 > {
-    const { model, aspectRatio = '1:1', referenceImage, referenceImages, bodyEmphasis, hairEmphasis, eyeEmphasis, identityWeight, deepfakeMode, curveBoost } = params
-    // Override de pelo compartido por los anclas i2i (seedream/wan): recolorea
-    // aunque el ref o la escena sugieran otro tono.
-    const hairClause = hairEmphasis
-        ? ` Her hair MUST be ${hairEmphasis} — if the hair in the reference photo or the scene suggests a different color, RECOLOR it to this exact color.`
-        : ''
-    // "MUST be green eyes" hacía que los modelos PINTARAN el iris verde
-    // saturado tipo pupilentes (reporte con Qwen). Redacción natural + guard
-    // anti-saturación; y en los editores single-image (qwen/grok) NO se envía
-    // — la cara del ref ya trae los ojos correctos.
-    const eyeClause = eyeEmphasis
-        ? ` Her eyes are ${eyeEmphasis} — natural realistic iris with subtle color variation, NOT oversaturated, NOT glowing, no contact-lens look.`
-        : ''
-    // Fidelidad facial escalada por el slider de identidad (port condensado de
-    // las identity instructions de Gemini). ≤50 = flexible: solo el keep-face
-    // base de cada ancla.
-    const faceFidelityClause =
-        identityWeight === undefined
-            ? ''
-            : identityWeight > 85
-              ? ' FACE FIDELITY: match the reference face EXACTLY — same bone structure, nose, eye shape and spacing, lips, jawline, freckles/moles; do NOT beautify or genericize it.'
-              : identityWeight > 50
-                ? ' Keep her face strongly consistent with the reference — no drift.'
-                : ''
-
+    const {
+        model,
+        aspectRatio = '1:1',
+        referenceImage,
+        referenceImages,
+        bodyEmphasis,
+        hairEmphasis,
+        eyeEmphasis,
+        identityWeight,
+        deepfakeMode,
+        curveBoost,
+    } = params
     // Route to the right adapter with a given (already-sanitized) prompt.
-    const runWithPrompt = async (promptText: string): Promise<{ url: string; fullApiPrompt: string }> => {
+    const runWithPrompt = async (
+        promptText: string,
+    ): Promise<{ url: string; fullApiPrompt: string }> => {
         if (model.startsWith('flux-kontext')) {
-            return generateImageFluxKontext({ prompt: promptText, model, aspectRatio, referenceImage })
+            return generateImageFluxKontext({
+                prompt: promptText,
+                model,
+                aspectRatio,
+                referenceImage,
+            })
         }
         if (model === 'gpt-4o-image') {
-            return generateImageGpt4o({ prompt: promptText, model, aspectRatio, referenceImage })
+            return generateImageGpt4o({
+                prompt: promptText,
+                model,
+                aspectRatio,
+                referenceImage,
+            })
         }
         if (model === 'nano-banana-pro') {
-            return generateImageNanoBananaPro({ prompt: promptText, model, aspectRatio, referenceImage, referenceImages })
+            return generateImageNanoBananaPro({
+                prompt: promptText,
+                model,
+                aspectRatio,
+                referenceImage,
+                referenceImages,
+            })
         }
         if (model === 'gpt-image-2-text-to-image') {
-            return generateImageGptImage2({ prompt: promptText, model, aspectRatio, referenceImage, referenceImages })
+            return generateImageGptImage2({
+                prompt: promptText,
+                model,
+                aspectRatio,
+                referenceImage,
+                referenceImages,
+            })
         }
-        // Fallback to generic createTask flow. Each model family takes its own
-        // size param + permissive flags (nsfw_checker=false disables KIE's
-        // content filter — the whole point, Gemini/OpenAI block fashion/sensual).
-        // These are wired for TEXT→IMAGE only: their image-to-image endpoints
-        // take an http-URL ARRAY (input_urls/image_urls), not our base64 ref, so
-        // we skip the reference (avatar-locked i2i for them is a follow-up). The
-        // last `else` keeps the legacy shape for Grok/others (incl. base64 i2i).
-        // 'nano-banana-2-lite' es un ALIAS INTERNO de tier (lo usamos para
-        // forzar resolution=1K = el precio "Lite"), pero NO existe como modelo
-        // en KIE: su Image API solo expone 'nano-banana-2'. Enviarlo hacía que
-        // KIE IGNORARA por completo el image_input y generara text-to-image
-        // (verificado live: misma cara de referencia → salía una mujer random
-        // distinta; con 'nano-banana-2' a 1K → la MISMA persona). El resto del
-        // código sigue ramificando por el alias (resolución/branches); solo el
-        // id que viaja a KIE se traduce al real.
-        let resolvedModel = model === 'nano-banana-2-lite' ? 'nano-banana-2' : model
-        // These models CAP prompt length (Seedream 3000, FLUX/Qwen/Ideogram 5000,
-        // Nano Banana 2 20000). Our full avatar prompt (body + face + scene +
-        // clone) can blow past it → KIE 500 "text length cannot exceed the
-        // maximum". Cap at a word boundary, a bit under the limit for margin.
-        // Kept well under each model's documented max — KIE's enforced limit is
-        // stricter than the docs (4900 still 500'd on FLUX.2), and for i2i the
-        // identity rides on the images so the text can be short anyway.
-        // Seedream gets extra budget (documented cap 3000): the i2i face/body
-        // anchor below adds ~430 chars AFTER this cap, so 2400 + anchor ≈ 2830
-        // stays under the limit while letting more body-spec text survive.
-        const promptCap = model.startsWith('nano-banana-2') ? 19000 : model === 'z-image' ? 1500 : model.startsWith('seedream/') ? 2400 : 1800
-        // El [POSE: ...] que el Studio appendea al FINAL del prompt moría en
-        // los caps (recortan por el final; Grok/Qwen ~1800 ni lo veían —
-        // salían paradas ignorando la pose) o quedaba en la zona de menor
-        // peso. Se reubica al INICIO como mandato ANTES de cualquier cap.
-        // EXCEPTO la familia nano-banana-2 (full y el alias -lite, que ES el
-        // mismo modelo a 1K): conservan la IMAGEN de pose + el bloque
-        // [POSE_REF] del harness, así que el texto al frente sobra y compite.
-        // El resto del flujo genérico (Seedream/Wan/Grok/Qwen/FLUX) sí lo
-        // necesita: sus caps recortan por el final y el tag moría ahí.
-        const relocatePose = !model.startsWith('nano-banana-2')
-        const poseTag = relocatePose && promptText.match(/\[POSE:\s*([^\]]+)\]/i)
-        if (poseTag) {
-            promptText = `POSE (MANDATORY — her EXACT body position): ${poseTag[1].trim()}. ${promptText
-                .replace(/\[POSE:[^\]]*\]/gi, ' ')
-                .replace(/\s{2,}/g, ' ')
-                .trim()}`
-        }
-        // Seedream/Wan i2i: la redundancia de identidad (preámbulo +
-        // [BODY:]/[FACE:]) se quita ANTES del cap genérico — si se hiciera en
-        // el branch, este cap ya habría comido la cola de la ESCENA (outfit/
-        // luz) mientras conservaba el duplicado.
-        if (
-            referenceImage &&
-            (model.startsWith('seedream/') || model === 'wan/2-7-image')
-        ) {
-            promptText = stripIdentityRedundancy(
-                promptText,
-                Boolean(deepfakeMode) ||
-                    Boolean(bodyEmphasis) ||
-                    (referenceImages ?? []).some((r) => r.role === 'body'),
-            )
-        }
-        let capped = promptText
-        if (capped.length > promptCap) {
-            capped = capped.slice(0, promptCap)
-            const lastSpace = capped.lastIndexOf(' ')
-            if (lastSpace > promptCap * 0.85) capped = capped.slice(0, lastSpace)
-            console.warn(`[KIE] Prompt capped ${promptText.length}→${capped.length} for ${model}`)
-        }
-        const input: Record<string, unknown> = { prompt: capped }
-        // Studio aspect ratio → the `image_size` enum some models want instead.
-        const asImageSize = () => {
-            switch (aspectRatio) {
-                case '16:9':
-                    return 'landscape_16_9'
-                case '9:16':
-                    return 'portrait_16_9'
-                case '4:3':
-                    return 'landscape_4_3'
-                case '3:4':
-                    return 'portrait_4_3'
-                default:
-                    return 'square_hd'
-            }
-        }
-        if (model.startsWith('seedream/')) {
-            input.aspect_ratio = aspectRatio
-            // Lite en 'high': mismo precio que basic (5.5cr) y mejor cara.
-            // PROBADO 2026-07-18: bajar a 'basic' NO aceleró nada (la lentitud
-            // de ese día era la COLA de KIE — tarea Wan 10+ min en "waiting",
-            // 0 créditos) y sí bajó la calidad → 'high' se queda. En 5-pro
-            // 'high' cuesta el DOBLE (14cr vs 7cr) → basic.
-            input.quality = model.startsWith('seedream/5-lite') ? 'high' : 'basic'
-            input.nsfw_checker = false
-        } else if (model.startsWith('flux-2/')) {
-            input.aspect_ratio = aspectRatio
-            input.resolution = '2K'
-            input.nsfw_checker = false
-        } else if (model === 'z-image') {
-            input.aspect_ratio = aspectRatio
-            input.nsfw_checker = false
-        } else if (model.startsWith('qwen')) {
-            // Qwen Image 2.0 migró en KIE a la familia `qwen2/*` (los ids
-            // viejos `qwen/*` quedaron dando 500 "internal error" SIEMPRE,
-            // verificado live 2026-07-18). image_size ahora acepta el RATIO
-            // directo ("9:16"), no el enum viejo (square_hd → 500).
-            input.image_size = aspectRatio
-            input.enable_safety_checker = false
-            input.nsfw_checker = false
-        } else if (model === 'wan/2-7-image') {
-            // Wan 2.7 Image (Alibaba) — unified t2i + edit on the SAME id.
-            // Precio plano 4.8cr (~$0.024) POR IMAGEN en 1K y 2K (medido
-            // live) → 2K. n=1 OBLIGATORIO: sin él KIE genera 4 imágenes y
-            // cobra 4× (19.2cr, verificado live). Sin moderación upstream
-            // (edit NSFW verificado → success), a diferencia de
-            // Qwen/FLUX.2/Grok que bloquean en SU lado.
-            input.aspect_ratio = aspectRatio
-            input.resolution = '2K'
-            input.n = 1
-            input.nsfw_checker = false
-        } else if (model.startsWith('ideogram/')) {
-            input.image_size = asImageSize()
-            input.rendering_speed = 'QUALITY'
-        } else if (model.startsWith('nano-banana-2')) {
-            input.aspect_ratio = aspectRatio
-            // Lite (gemini-3.1-flash-lite) is the speed/price point (~$0.034 @1K,
-            // ~4s) — 2K would double its cost. Full nano-banana-2 stays at 2K.
-            input.resolution = model === 'nano-banana-2-lite' ? '1K' : '2K'
-        } else if (model === 'grok-imagine/image-to-image') {
-            // Grok Imagine (xAI) — i2i ONLY + permissive (nsfw_checker off; xAI
-            // barely censors, the reason we're adding it). No aspect_ratio /
-            // image_size in its schema. Identity rides on the face ref, uploaded
-            // → http URL into image_urls[] in the i2i lock block below.
-            input.nsfw_checker = false
-        } else {
-            // Legacy generic: aspect_ratio + optional base64 i2i.
-            input.aspect_ratio = aspectRatio
-            if (referenceImage) {
-                resolvedModel = model.replace('/text-to-image', '/image-to-image')
-                input.image_url = `data:${referenceImage.mimeType};base64,${referenceImage.base64}`
-            }
-        }
-        // i2i IDENTITY LOCK (experiment): FLUX.2 / Qwen can keep the avatar's
-        // face from a reference — but their image-to-image endpoints need an HTTP
-        // URL (FLUX.2: input_urls[]; Qwen: image_url), NOT base64. Upload the face
-        // → public URL → switch to the i2i model. Falls back to text-only if the
-        // upload fails so a generation never hard-errors on this.
-        if (
-            referenceImage &&
-            (model.startsWith('flux-2/') ||
-                model.startsWith('qwen') ||
-                model.startsWith('seedream/') ||
-                model.startsWith('nano-banana-2') ||
-                model === 'wan/2-7-image' ||
-                model === 'grok-imagine/image-to-image')
-        ) {
-            try {
-                if (model === 'grok-imagine/image-to-image') {
-                    // Grok i2i takes up to 1 URL → send the face (identity
-                    // anchor). It MIRRORS the ref's aspect ratio (no size params,
-                    // verified live), so crop the ref to the requested ratio
-                    // first or the output stays stuck at the ref's shape.
-                    const cropped = await cropBase64ToAspect(
-                        referenceImage.base64,
-                        referenceImage.mimeType,
-                        aspectRatio,
-                    )
-                    const refUrl = await uploadReferenceToSupabase(
-                        cropped.base64,
-                        cropped.mimeType,
-                    )
-                    input.image_urls = [refUrl]
-                    // Single-input: paridad mínima — keep-face + fidelidad +
-                    // overrides de pelo/ojos.
-                    // Sin eyeClause: es un EDITOR de imagen única — los ojos ya
-                    // vienen correctos en la foto y la orden los sobre-pintaba.
-                    if (hairClause || faceFidelityClause) {
-                        input.prompt = `Keep the EXACT face and likeness of the person in the reference image.${faceFidelityClause}${hairClause} ${input.prompt}`
-                    }
-                    console.log(`[KIE] Grok i2i with 1 identity ref (AR-cropped)${hairClause ? ' + hair override' : ''}`)
-                } else if (model.startsWith('seedream/')) {
-                    // Seedream has real i2i variants that keep identity AND honor
-                    // aspect_ratio/quality at the same credits as t2i (verified
-                    // live: 4.5-edit + 5-lite-image-to-image, 9:16 out, same
-                    // woman). Face ref → image_urls + swap to the i2i model id.
-                    // Seedream 5 supports MULTI-image i2i (up to 10) → when a
-                    // Body Ref exists, send it as image 2: 5.0 Pro weighs
-                    // images far harder than text, so the body must be an
-                    // IMAGE to win against the face ref's slim build.
-                    // Refs extra en orden canónico (body/asset/pose/scene/
-                    // place/clone) + cláusulas indexadas — Seedream 5 acepta
-                    // hasta 10 imágenes.
-                    const { extras, clauses: extraClauses, hasBody, hasClone } =
-                        planExtraRefs(referenceImages, 9, deepfakeMode)
-                    const urls: string[] = [
-                        await uploadReferenceToSupabase(
-                            referenceImage.base64,
-                            referenceImage.mimeType,
-                        ),
-                    ]
-                    for (const r of extras) {
-                        urls.push(
-                            await uploadReferenceToSupabase(r.base64, r.mimeType),
-                        )
-                    }
-                    resolvedModel =
-                        model === 'seedream/4.5-text-to-image'
-                            ? 'seedream/4.5-edit'
-                            : model.replace('text-to-image', 'image-to-image')
-                    input.image_urls = urls
-                    // Two-way anchor. (1) Face rides on IMAGE 1: without an
-                    // explicit keep-face instruction the identity drifts toward
-                    // the written description (verified with a headshot ref +
-                    // conflicting text). (2) Body: 5.0 Pro copies the face
-                    // ref's slim build and ignores body text that appears
-                    // later in the prompt (verified live: same prompt → Pro
-                    // slim, Lite curvy). So the body rides on IMAGE 2 when a
-                    // Body Ref exists; otherwise the CONCRETE descriptors
-                    // (bodyEmphasis) are repeated inside the anchor's early
-                    // tokens — not just a "follow the text below" pointer.
-                    // curveBoost: refuerzo por-RATIO exclusivo de Seedream (Pro
-                    // aplana el hourglass cuando describeBody describe la cadera
-                    // por cm absolutos — 97cm cae en "proportionate"). Se antepone
-                    // dentro del bodyClause SIN body ref, en los tokens tempranos
-                    // que es lo único que Pro atiende. A/B verificado live.
-                    const bodyClause = deepfakeMode
-                        ? ''
-                        : hasBody
-                            ? `The SECOND attached image shows her real BODY — replicate its exact body shape, proportions, curves and build; do NOT take the body from the first image. IGNORE the second image's clothing, pose, scene, lighting and background — her outfit, pose and the scene come ONLY from ${hasClone ? 'the CLONE image and the text description' : 'the text description'}.`
-                            : `Use the reference image ONLY for the face and identity: do NOT copy the body, build, weight or proportions from it — the person in the photo may look slimmer than she really is.${
-                                  curveBoost ? ` ${curveBoost}` : ''
-                              }${
-                                  bodyEmphasis
-                                      ? ` Her real body is: ${bodyEmphasis}. Render THAT body, visibly fuller and curvier than the reference photo suggests.`
-                                      : ' Her body proportions MUST follow the text description below exactly (bust, waist, hips and thighs as written).'
-                              }`
-                    // Puntero final: sube la saliencia de la escena/pose que
-                    // viene DESPUÉS del ancla — en 5-lite (modelo chico) un
-                    // ancla larga diluía la pose (reporte: Lite la perdió,
-                    // Pro no).
-                    const seedreamAnchor = `The person in the FIRST attached reference image is the subject — keep her EXACT face, facial features and likeness from that image.${faceFidelityClause} ${bodyClause}${hairClause}${eyeClause}${extraClauses} Follow the SCENE, POSE and ACTION described below EXACTLY.`
-                    // Presupuesto ANCHOR-AWARE: el cap estático de 2400 asumía
-                    // un ancla de ~430 chars. Con el ancla crecida (fidelity +
-                    // curvas + cláusulas de refs) el total podía rebasar el
-                    // límite duro de KIE (~3000) y el retry de longitud
-                    // recortaba TODO a 900 — decapitando la escena/pose. Se
-                    // recorta AQUÍ la escena (nunca el ancla) para caber.
-                    // 2750 (no 2900): la variante 5-LITE i2i rechazó 3190
-                    // chars ("text length") y el shrink de emergencia decapitó
-                    // el prompt a 900 → salía el clone sin cambios. 2845 pasó
-                    // verificado; 2750 da margen. Piso 400 (no 600) para que
-                    // un ancla grande no haga rebasar el total.
-                    const sceneRoom = Math.max(250, 2750 - seedreamAnchor.length)
-                    // input.prompt ya llega SIN preámbulo/[BODY:]/[FACE:] —
-                    // stripIdentityRedundancy corre antes del cap genérico.
-                    let sceneText = String(input.prompt)
-                    // Con el clone como IMAGEN, su texto [CLONE:] es redundante
-                    // (~600 chars) y pelea con la cláusula de la imagen.
-                    if (hasClone) {
-                        sceneText = sceneText
-                            .replace(/\[CLONE:[^\]]*\]/gi, ' ')
-                            .replace(/\s{2,}/g, ' ')
-                            .trim()
-                    }
-                    if (sceneText.length > sceneRoom) {
-                        sceneText = sceneText.slice(0, sceneRoom)
-                        const sp = sceneText.lastIndexOf(' ')
-                        if (sp > sceneRoom * 0.85) sceneText = sceneText.slice(0, sp)
-                        console.warn(`[KIE] Seedream scene re-capped to ${sceneText.length} chars (anchor ${seedreamAnchor.length})`)
-                    }
-                    if (seedreamAnchor.length > 2400) {
-                        console.warn(`[KIE] Seedream anchor GRANDE (${seedreamAnchor.length} chars) — riesgo de rebasar el límite del modelo`)
-                    }
-                    input.prompt = `${seedreamAnchor} ${sceneText}`
-                    console.log(`[KIE] Seedream i2i (${resolvedModel}) with ${urls.length} ref(s) (roles: face${extras.length > 0 ? ', ' + extras.map((r) => r.role).join(', ') : ''}${hairClause ? ' + hair override' : ''})`)
-                } else if (model.startsWith('nano-banana-2')) {
-                    // nano-banana-2 / -lite take image_input[] (URL array, up to
-                    // 14) on the SAME model id — no i2i variant swap needed.
-                    // Mirrors the nano-banana-pro wiring (verified live with
-                    // image_input on the same endpoint family). Face + optional
-                    // Body Ref; Gemini models follow the keep-face note well.
-                    // TODOS los refs en el ORDEN original (como nano-banana-
-                    // pro): el REFERENCE MAPPING del harness (buildAvatarPrompt
-                    // en el caller) etiqueta Image 1..N por ese orden — antes
-                    // este branch re-armaba la lista (solo face+body+asset) y
-                    // las etiquetas de pose/scene/clone mentían o se perdían.
-                    const nbRefs = (
-                        referenceImages && referenceImages.length > 0
-                            ? referenceImages
-                            : [referenceImage]
-                    ).slice(0, 14)
-                    const nbUrls: string[] = []
-                    for (const r of nbRefs) {
-                        nbUrls.push(await uploadReferenceToSupabase(r.base64, r.mimeType))
-                    }
-                    input.image_input = nbUrls
-                    input.prompt = `The person in the first attached reference image is the subject — keep her EXACT face, facial features and likeness.${hairClause} ${input.prompt}`
-                    console.log(`[KIE] ${model} with ${nbUrls.length} ref(s) via image_input (roles: ${nbRefs.map((r) => ('role' in r && r.role) || 'face').join(', ')})`)
-                } else if (model === 'wan/2-7-image') {
-                    // Wan 2.7 edita/genera con refs en el MISMO id: input_urls
-                    // (hasta 9). Cara primero + Body Ref opcional; conserva el
-                    // aspect_ratio/resolution ya seteados en el branch t2i.
-                    // Igual que Seedream 5 Pro, pesa MÁS las imágenes que el
-                    // texto: sin ancla de cuerpo copia el build delgado del
-                    // face ref e ignora las medidas [BODY:] que van después
-                    // (reporte del usuario: misma generación → Gemini con las
-                    // medidas, Wan plano). Mismo two-way anchor que Seedream:
-                    // cuerpo por IMAGEN 2 si hay Body Ref; si no, los
-                    // descriptores concretos (bodyEmphasis) dentro del ancla.
-                    // En EDICIÓN (sin bodyEmphasis ni Body Ref) se conserva el
-                    // keep-face simple verificado — el cuerpo ya viene en la
-                    // foto fuente y no hay que "engordarlo".
-                    // Refs extra en orden canónico + cláusulas indexadas —
-                    // Wan acepta hasta 9 input_urls (cara + 8 extras).
-                    const {
-                        extras: wanExtras,
-                        clauses: wanExtraClauses,
-                        hasBody: wanHasBody,
-                        hasClone: wanHasClone,
-                    } = planExtraRefs(referenceImages, 8, deepfakeMode)
-                    const wanUrls: string[] = [
-                        await uploadReferenceToSupabase(
-                            referenceImage.base64,
-                            referenceImage.mimeType,
-                        ),
-                    ]
-                    for (const r of wanExtras) {
-                        wanUrls.push(await uploadReferenceToSupabase(r.base64, r.mimeType))
-                    }
-                    input.input_urls = wanUrls
-                    // Calibración POR REGIÓN (2ª ronda, verificada con casos
-                    // reales): la amplificación global de Seedream hacía que
-                    // Wan SE PASARA en busto/torso (Evelyn), pero la precisión
-                    // pura lo dejaba CORTO en caderas (Ana 90/60/100 salía
-                    // slim). El sesgo de Wan es copiar el build del face ref en
-                    // la CADERA/muslos → amplificar SOLO lower body, con guard
-                    // explícito de busto/masa.
-                    const wanBodyClause = deepfakeMode
-                        ? ''
-                        : wanHasBody
-                            ? ` The SECOND attached image shows her real BODY — replicate its exact body shape, proportions, curves and build; do NOT take the body from the first image. IGNORE the second image's clothing, pose, scene, lighting and background — her outfit, pose and the scene come ONLY from ${wanHasClone ? 'the CLONE image and the text description' : 'the text description'}.`
-                            : bodyEmphasis
-                              ? ` Use the reference image ONLY for the face and identity — do NOT copy the body proportions from it: the person in the photo looks SLIMMER than the character really is. Her real body is: ${bodyEmphasis}. Her hips, glutes and thighs must be visibly FULLER and WIDER than in the reference photo — the narrow waist makes the hip curve obvious. Keep the bust true to the spec: do NOT inflate the chest or add overall body mass beyond it.`
-                              : ''
-                    // Mismo presupuesto anchor-aware que Seedream — antes Wan
-                    // iba SIN cap (4531 chars reales) y la adherencia se diluía.
-                    const wanAnchor = `The person in the FIRST attached reference image is the subject — keep her EXACT face, facial features and likeness from that image.${faceFidelityClause}${wanBodyClause}${hairClause}${eyeClause}${wanExtraClauses} Follow the SCENE, POSE and ACTION described below EXACTLY.`
-                    const wanSceneRoom = Math.max(250, 2750 - wanAnchor.length)
-                    // input.prompt ya llega SIN preámbulo/[BODY:]/[FACE:] —
-                    // stripIdentityRedundancy corre antes del cap genérico.
-                    let wanSceneText = String(input.prompt)
-                    if (wanHasClone) {
-                        wanSceneText = wanSceneText
-                            .replace(/\[CLONE:[^\]]*\]/gi, ' ')
-                            .replace(/\s{2,}/g, ' ')
-                            .trim()
-                    }
-                    if (wanSceneText.length > wanSceneRoom) {
-                        wanSceneText = wanSceneText.slice(0, wanSceneRoom)
-                        const wsp = wanSceneText.lastIndexOf(' ')
-                        if (wsp > wanSceneRoom * 0.85) wanSceneText = wanSceneText.slice(0, wsp)
-                        console.warn(`[KIE] Wan scene re-capped to ${wanSceneText.length} chars (anchor ${wanAnchor.length})`)
-                    }
-                    input.prompt = `${wanAnchor} ${wanSceneText}`
-                    console.log(`[KIE] Wan 2.7 Image with ${wanUrls.length} ref(s) via input_urls (roles: face${wanExtras.length > 0 ? ', ' + wanExtras.map((r) => r.role).join(', ') : ''}${wanBodyClause && !wanHasBody ? ' + body-text anchor' : ''}${hairClause ? ' + hair override' : ''})`)
-                } else if (model.startsWith('flux-2/')) {
-                    // FLUX.2 takes up to 8 refs → send the face (identity anchor) +
-                    // a Body Ref (imitate the body) so BOTH are locked from images,
-                    // not just the face. Measurements text stays the default when
-                    // there's no Body Ref.
-                    // Mismo plan de refs extra que Seedream/Wan (≤8 URLs
-                    // total) + ancla keep-face con override de pelo — antes
-                    // FLUX.2 no llevaba ancla y descartaba assets/pose/scene.
-                    const {
-                        extras: fluxExtras,
-                        clauses: fluxClauses,
-                        hasBody: fluxHasBody,
-                        hasClone: fluxHasClone,
-                    } = planExtraRefs(referenceImages, 7, deepfakeMode)
-                    const urls: string[] = [
-                        await uploadReferenceToSupabase(
-                            referenceImage.base64,
-                            referenceImage.mimeType,
-                        ),
-                    ]
-                    for (const r of fluxExtras) {
-                        urls.push(await uploadReferenceToSupabase(r.base64, r.mimeType))
-                    }
-                    resolvedModel = model.replace('text-to-image', 'image-to-image')
-                    input.input_urls = urls
-                    const fluxBodyClause = deepfakeMode
-                        ? ''
-                        : fluxHasBody
-                        ? ` The SECOND attached image shows her real BODY — replicate its exact body shape, proportions, curves and build; do NOT take the body from the first image. IGNORE the second image's clothing, pose, scene, lighting and background — her outfit, pose and the scene come ONLY from ${fluxHasClone ? 'the CLONE image and the text description' : 'the text description'}.`
-                        : ''
-                    if (fluxHasClone) {
-                        input.prompt = String(input.prompt)
-                            .replace(/\[CLONE:[^\]]*\]/gi, ' ')
-                            .replace(/\s{2,}/g, ' ')
-                            .trim()
-                    }
-                    input.prompt = `The person in the FIRST attached image is the subject — keep her EXACT face, facial features and likeness from that image.${faceFidelityClause}${fluxBodyClause}${hairClause}${eyeClause}${fluxClauses} Follow the SCENE, POSE and ACTION described below EXACTLY. ${input.prompt}`
-                    console.log(`[KIE] FLUX.2 i2i with ${urls.length} ref(s) (roles: face${fluxExtras.length > 0 ? ', ' + fluxExtras.map((r) => r.role).join(', ') : ''})`)
-                } else {
-                    // qwen2/image-edit. image_size (ratio) es OBLIGATORIO —
-                    // sin él KIE devuelve "generate failed" en 1s. `image_url`
-                    // acepta ARRAY (verificado live): cara + Assets. OJO: sin
-                    // etiquetado anti-blend explícito mezcla las imágenes como
-                    // collage/velo fantasma — el "it is ARTWORK, do NOT blend"
-                    // es lo que hace que imprima el logo en la ropa. Otros
-                    // roles (body/pose/scene) NO se envían: los funde en la
-                    // escena. SIN eyeClause: editor literal — los ojos ya
-                    // vienen correctos en la foto y la orden los sobre-pintaba.
-                    const refUrl = await uploadReferenceToSupabase(
-                        referenceImage.base64,
-                        referenceImage.mimeType,
-                    )
-                    resolvedModel = 'qwen2/image-edit'
-                    input.image_size = aspectRatio
-                    // DEEPFAKE en qwen: array [foto original (canvas), cara].
-                    // El primer slot es el canvas de edición; etiquetado
-                    // explícito anti-blend (sin él funde las imágenes).
-                    const qwenDeepfakeCanvas = deepfakeMode
-                        ? (referenceImages ?? []).find((r) => r.role === 'clone')
-                        : undefined
-                    if (qwenDeepfakeCanvas) {
-                        const canvasUrl = await uploadReferenceToSupabase(
-                            qwenDeepfakeCanvas.base64,
-                            qwenDeepfakeCanvas.mimeType,
-                        )
-                        input.image_url = [canvasUrl, refUrl]
-                        input.prompt = `REMOVE any overlaid stickers, watermarks, emojis or UI graphics pasted on the photo — the output must be a clean photograph. The FIRST image is the ORIGINAL photo — reproduce it EXACTLY: same body, build, outfit, pose, hands, framing, lighting, background and setting; do NOT blend the two images. The SECOND image shows the person whose FACE to use. The FACE SWAP is MANDATORY: replace the face in the first image with the face from the second image (exact features, freckles, likeness) — never keep the original face. Do NOT alter or remove any clothing. ${input.prompt}`
-                        console.log('[KIE] qwen2/image-edit DEEPFAKE (canvas + face)')
-                    } else {
-                    const qwenAssets = (referenceImages ?? [])
-                        .filter((r) => r.role === 'asset')
-                        .slice(0, 2)
-                    if (qwenAssets.length > 0) {
-                        const qwenUrls: string[] = [refUrl]
-                        for (const a of qwenAssets) {
-                            qwenUrls.push(
-                                await uploadReferenceToSupabase(a.base64, a.mimeType),
-                            )
-                        }
-                        input.image_url = qwenUrls
-                        const assetLines = qwenAssets
-                            .map(
-                                (_, i) =>
-                                    `Image ${i + 2} is a LOGO/BRAND GRAPHIC — it is ARTWORK, not a scene element: print this EXACT design on her clothing wherever the outfit shows a logo or graphic, reproducing its shapes and colors faithfully. Do NOT blend or overlay it onto the scene, and never write placeholder text such as "LOGO".`,
-                            )
-                            .join(' ')
-                        input.prompt = `The FIRST image is the person — keep her EXACT face and likeness.${faceFidelityClause}${hairClause} Her eyes keep their exact natural color and iris texture from the reference photo — do NOT recolor, brighten or saturate them. ${assetLines} ${input.prompt}`
-                        console.log(`[KIE] qwen2/image-edit with ${qwenUrls.length} imgs (face + ${qwenAssets.length} asset)`)
-                    } else {
-                        input.image_url = refUrl
-                        input.prompt = `Keep the EXACT face and likeness of the person in the reference image.${faceFidelityClause}${hairClause} Her eyes keep their exact natural color and iris texture from the reference photo — do NOT recolor, brighten or saturate them. ${input.prompt}`
-                    }
-                    }
-                }
-            } catch (e) {
-                console.warn('[KIE] ref upload failed, staying text-only:', e)
-            }
-        }
+        // Ruta genérica: el DESPACHADOR (src/services/kie/) construye el
+        // {model, input} de KIE — una ruta por modelo, aislada. Aquí solo se
+        // inyectan las dependencias con efecto (subir/recortar refs) y se
+        // conserva abajo el submit + la escalera de moderación.
+        const built = await buildImageRequest({
+            model,
+            aspectRatio,
+            prompt: promptText,
+            referenceImage,
+            referenceImages,
+            bodyEmphasis,
+            hairEmphasis,
+            eyeEmphasis,
+            identityWeight,
+            deepfakeMode,
+            curveBoost,
+            uploadRef: uploadReferenceToSupabase,
+            cropToAspect: cropBase64ToAspect,
+        })
+        const resolvedModel = built.model
+        const input = built.input
+        promptText = built.fullApiPrompt
 
-        console.log(`[KIE] Submitting generic image task: model=${resolvedModel}`)
+        console.log(
+            `[KIE] Submitting generic image task: model=${resolvedModel}`,
+        )
         // Submit-only (browser-polled) path: hand back the taskId, skip the poll.
         // Keeps the sync path's self-healing SUBMIT retries — createTask rejects
         // both failures synchronously, so they belong here too:
@@ -989,12 +490,15 @@ export async function generateImageKie(
                     const target = Math.max(900, Math.floor(cur.length * 0.8))
                     const hard = cur.slice(0, target)
                     const cut = hard.lastIndexOf(' ')
-                    input.prompt = cut > target * 0.8 ? hard.slice(0, cut) : hard
+                    input.prompt =
+                        cut > target * 0.8 ? hard.slice(0, cut) : hard
                     console.warn(
                         `[KIE] ${resolvedModel} rejected the prompt length — retrying submit at ${String(input.prompt).length} chars`,
                     )
                 } else {
-                    console.warn('[KIE] Transient internal error — resubmitting once')
+                    console.warn(
+                        '[KIE] Transient internal error — resubmitting once',
+                    )
                     await new Promise((r) => setTimeout(r, 2000))
                 }
                 submitSink.taskId = await withTimeout(
@@ -1015,8 +519,15 @@ export async function generateImageKie(
         //   (body preamble + [FACE:]) leads the prompt, so it's what survives.
         let urls: string[]
         try {
-            const taskId = await withTimeout(submitTask({ model: resolvedModel, input }), 30_000, 'KIE image submit')
-            urls = await pollTask(taskId, { budgetMs: 600_000, intervalMs: 3000 })
+            const taskId = await withTimeout(
+                submitTask({ model: resolvedModel, input }),
+                30_000,
+                'KIE image submit',
+            )
+            urls = await pollTask(taskId, {
+                budgetMs: 600_000,
+                intervalMs: 3000,
+            })
         } catch (err) {
             const msg = err instanceof Error ? err.message : String(err)
             const isTransient = /internal error/i.test(msg)
@@ -1030,13 +541,26 @@ export async function generateImageKie(
                     `[KIE] ${resolvedModel} rejected the prompt length — retrying at ${String(input.prompt).length} chars`,
                 )
             } else {
-                console.warn('[KIE] Transient internal error — resubmitting once')
+                console.warn(
+                    '[KIE] Transient internal error — resubmitting once',
+                )
                 await new Promise((r) => setTimeout(r, 2000))
             }
-            const retryId = await withTimeout(submitTask({ model: resolvedModel, input }), 30_000, 'KIE image submit (retry)')
-            urls = await pollTask(retryId, { budgetMs: 600_000, intervalMs: 3000 })
+            const retryId = await withTimeout(
+                submitTask({ model: resolvedModel, input }),
+                30_000,
+                'KIE image submit (retry)',
+            )
+            urls = await pollTask(retryId, {
+                budgetMs: 600_000,
+                intervalMs: 3000,
+            })
         }
-        const persistedUrl = await persistToSupabase(urls[0], 'png', 'kie-images')
+        const persistedUrl = await persistToSupabase(
+            urls[0],
+            'png',
+            'kie-images',
+        )
         return { url: persistedUrl, fullApiPrompt: promptText }
     }
 
@@ -1046,7 +570,9 @@ export async function generateImageKie(
     // el del proveedor del modelo. Sin este término la escalera de sanitización
     // nunca se disparaba para FLUX.2.
     const isSensitiveBlock = (m: string) =>
-        /flagged as sensitive|sensitive|safety|content policy|moderat|violat|nsfw/i.test(m)
+        /flagged as sensitive|sensitive|safety|content policy|moderat|violat|nsfw/i.test(
+            m,
+        )
 
     // Honor "no tattoos / sin tatuajes" by removing tattoo mentions up front.
     const promptIn = stripNegatedTattoos(params.prompt)
@@ -1109,9 +635,12 @@ export async function generateImageKie(
             // Si la sanitización ligera no cambió NADA (p.ej. "topless" no está
             // en sus reglas), reintentar sería repetir la misma petición
             // bloqueada — salta directo a la agresiva.
-            if (retryPrompt === first) retryPrompt = aggressiveSanitize(promptIn).sanitized
+            if (retryPrompt === first)
+                retryPrompt = aggressiveSanitize(promptIn).sanitized
             if (!retryPrompt.trim()) throw upstreamBlocked(msg)
-            console.warn('[KIE] Sensitive-content block — retrying with sanitized prompt')
+            console.warn(
+                '[KIE] Sensitive-content block — retrying with sanitized prompt',
+            )
             try {
                 return { success: true, ...(await runWithPrompt(retryPrompt)) }
             } catch (err2) {
@@ -1122,7 +651,9 @@ export async function generateImageKie(
                 if (!aggressive.trim()) throw upstreamBlocked(msg2)
                 // Ya se intentó exactamente esto en el intento 2 — no repetir.
                 if (aggressive === retryPrompt) throw err2
-                console.warn('[KIE] Still blocked — retrying with aggressive sanitization')
+                console.warn(
+                    '[KIE] Still blocked — retrying with aggressive sanitization',
+                )
                 return { success: true, ...(await runWithPrompt(aggressive)) }
             }
         }
@@ -1145,27 +676,63 @@ export async function generateImageKie(
  */
 export async function submitKieImageTask(
     params: GenerateImageKieParams,
-): Promise<{ success: true; taskId: string; fullApiPrompt: string } | { success: false; error: string }> {
-    const { model, aspectRatio = '1:1', referenceImage, referenceImages } = params
-    const { sanitized: prompt } = sanitizePromptForGeneration(stripNegatedTattoos(params.prompt))
+): Promise<
+    | { success: true; taskId: string; fullApiPrompt: string }
+    | { success: false; error: string }
+> {
+    const {
+        model,
+        aspectRatio = '1:1',
+        referenceImage,
+        referenceImages,
+    } = params
+    const { sanitized: prompt } = sanitizePromptForGeneration(
+        stripNegatedTattoos(params.prompt),
+    )
     try {
         if (model === 'nano-banana-pro') {
-            const refs = referenceImages && referenceImages.length > 0
-                ? referenceImages.slice(0, 8)
-                : referenceImage ? [referenceImage] : []
-            const input: Record<string, unknown> = { prompt, aspect_ratio: aspectRatio, resolution: '2K', output_format: 'png' }
+            const refs =
+                referenceImages && referenceImages.length > 0
+                    ? referenceImages.slice(0, 8)
+                    : referenceImage
+                      ? [referenceImage]
+                      : []
+            const input: Record<string, unknown> = {
+                prompt,
+                aspect_ratio: aspectRatio,
+                resolution: '2K',
+                output_format: 'png',
+            }
             if (refs.length > 0) input.image_input = await uploadRefs(refs)
-            const taskId = await withTimeout(submitTask({ model: 'nano-banana-pro', input }), 30_000, 'KIE Nano Banana Pro submit')
+            const taskId = await withTimeout(
+                submitTask({ model: 'nano-banana-pro', input }),
+                30_000,
+                'KIE Nano Banana Pro submit',
+            )
             return { success: true, taskId, fullApiPrompt: prompt }
         }
         if (model === 'gpt-image-2-text-to-image') {
-            const refs = referenceImages && referenceImages.length > 0
-                ? referenceImages.slice(0, 16)
-                : referenceImage ? [referenceImage] : []
-            const input: Record<string, unknown> = { prompt, aspect_ratio: aspectRatio, resolution: '1K' }
+            const refs =
+                referenceImages && referenceImages.length > 0
+                    ? referenceImages.slice(0, 16)
+                    : referenceImage
+                      ? [referenceImage]
+                      : []
+            const input: Record<string, unknown> = {
+                prompt,
+                aspect_ratio: aspectRatio,
+                resolution: '1K',
+            }
             let kieModel = 'gpt-image-2-text-to-image'
-            if (refs.length > 0) { input.input_urls = await uploadRefs(refs); kieModel = 'gpt-image-2-image-to-image' }
-            const taskId = await withTimeout(submitTask({ model: kieModel, input }), 30_000, 'KIE GPT Image 2 submit')
+            if (refs.length > 0) {
+                input.input_urls = await uploadRefs(refs)
+                kieModel = 'gpt-image-2-image-to-image'
+            }
+            const taskId = await withTimeout(
+                submitTask({ model: kieModel, input }),
+                30_000,
+                'KIE GPT Image 2 submit',
+            )
             return { success: true, taskId, fullApiPrompt: prompt }
         }
         // Generic permissive/diffusion models (seedream, flux-2, qwen, ideogram,
@@ -1178,7 +745,11 @@ export async function submitKieImageTask(
         if (!sink.taskId) {
             return { success: false, error: 'KIE no devolvió taskId (submit)' }
         }
-        return { success: true, taskId: sink.taskId, fullApiPrompt: r.fullApiPrompt }
+        return {
+            success: true,
+            taskId: sink.taskId,
+            fullApiPrompt: r.fullApiPrompt,
+        }
     } catch (err) {
         const message = err instanceof Error ? err.message : String(err)
         console.error('[KIE] submit failed:', message)
@@ -1192,7 +763,11 @@ export async function submitKieImageTask(
  */
 export async function checkKieImageTask(
     taskId: string,
-): Promise<{ status: 'running' } | { status: 'done'; url: string } | { status: 'failed'; error: string }> {
+): Promise<
+    | { status: 'running' }
+    | { status: 'done'; url: string }
+    | { status: 'failed'; error: string }
+> {
     try {
         const r = await checkTaskOnce(taskId)
         if (r.state === 'running') return { status: 'running' }
@@ -1212,7 +787,9 @@ export async function checkKieImageTask(
  * resultJson). It supports text-to-image and image-to-image in the same
  * endpoint — pass `inputImage` to enable edit mode.
  */
-async function generateImageFluxKontext(params: GenerateImageKieParams): Promise<{ url: string; fullApiPrompt: string }> {
+async function generateImageFluxKontext(
+    params: GenerateImageKieParams,
+): Promise<{ url: string; fullApiPrompt: string }> {
     const { prompt, model, aspectRatio = '1:1', referenceImage } = params
 
     // KIE Flux Kontext hard-caps the prompt at 3000 chars (422 otherwise). The
@@ -1220,9 +797,14 @@ async function generateImageFluxKontext(params: GenerateImageKieParams): Promise
     // still push over — trim as a safety net (the leading instruction is the
     // most important; the tail [FACE:]/preserve text is least critical to cut).
     const FLUX_PROMPT_MAX = 3000
-    const safePrompt = prompt.length > FLUX_PROMPT_MAX ? prompt.slice(0, FLUX_PROMPT_MAX) : prompt
+    const safePrompt =
+        prompt.length > FLUX_PROMPT_MAX
+            ? prompt.slice(0, FLUX_PROMPT_MAX)
+            : prompt
     if (safePrompt.length < prompt.length) {
-        console.warn(`[KIE/Flux] prompt ${prompt.length} chars > ${FLUX_PROMPT_MAX}; truncated`)
+        console.warn(
+            `[KIE/Flux] prompt ${prompt.length} chars > ${FLUX_PROMPT_MAX}; truncated`,
+        )
     }
 
     const body: Record<string, unknown> = {
@@ -1242,7 +824,9 @@ async function generateImageFluxKontext(params: GenerateImageKieParams): Promise
         body.inputImage = uploadedUrl
     }
 
-    console.log(`[KIE/Flux] Submitting: model=${model}, hasReference=${!!referenceImage}`)
+    console.log(
+        `[KIE/Flux] Submitting: model=${model}, hasReference=${!!referenceImage}`,
+    )
     const submitRes = await withTimeout(
         fetch(`${KIE_API_BASE}/flux/kontext/generate`, {
             method: 'POST',
@@ -1254,11 +838,15 @@ async function generateImageFluxKontext(params: GenerateImageKieParams): Promise
     )
     if (!submitRes.ok) {
         const text = await submitRes.text()
-        throw new Error(`KIE Flux Kontext submit failed (${submitRes.status}): ${text}`)
+        throw new Error(
+            `KIE Flux Kontext submit failed (${submitRes.status}): ${text}`,
+        )
     }
     const submitJson: KieCreateTaskResponse = await submitRes.json()
     if (submitJson.code !== 200 || !submitJson.data?.taskId) {
-        throw new Error(`KIE Flux Kontext submit error: code=${submitJson.code} msg=${submitJson.msg}`)
+        throw new Error(
+            `KIE Flux Kontext submit error: code=${submitJson.code} msg=${submitJson.msg}`,
+        )
     }
     const taskId = submitJson.data.taskId
     console.log(`[KIE/Flux] Task submitted: ${taskId}`)
@@ -1282,36 +870,48 @@ async function generateImageFluxKontext(params: GenerateImageKieParams): Promise
             )
         } catch (e) {
             if (isAbortError(e)) {
-                console.warn(`[KIE/Flux] poll fetch aborted (>${POLL_FETCH_TIMEOUT_MS}ms), retrying`)
-                await new Promise(resolve => setTimeout(resolve, intervalMs))
+                console.warn(
+                    `[KIE/Flux] poll fetch aborted (>${POLL_FETCH_TIMEOUT_MS}ms), retrying`,
+                )
+                await new Promise((resolve) => setTimeout(resolve, intervalMs))
                 continue
             }
             throw e
         }
         if (!res.ok) {
             const text = await res.text()
-            throw new Error(`KIE Flux Kontext poll failed (${res.status}): ${text}`)
+            throw new Error(
+                `KIE Flux Kontext poll failed (${res.status}): ${text}`,
+            )
         }
         const json: KieFluxKontextRecordInfoResponse = await res.json()
-        const data = json.data as (typeof json.data & { resultImageUrl?: string }) | undefined
+        const data = json.data as
+            | (typeof json.data & { resultImageUrl?: string })
+            | undefined
         const flag = data?.successFlag
         // KIE docs put resultImageUrl under data.response, but some fixtures
         // have shown it at the top level — accept both rather than miss it.
         const url = data?.response?.resultImageUrl ?? data?.resultImageUrl
 
         if (pollNum === 1) {
-            console.log(`[KIE/Flux] first poll data: ${JSON.stringify(data).slice(0, 500)}`)
+            console.log(
+                `[KIE/Flux] first poll data: ${JSON.stringify(data).slice(0, 500)}`,
+            )
         }
-        console.log(`[KIE/Flux] poll #${pollNum}: flag=${flag}, hasUrl=${!!url}`)
+        console.log(
+            `[KIE/Flux] poll #${pollNum}: flag=${flag}, hasUrl=${!!url}`,
+        )
 
         if (flag === 1 && url) {
             resultUrl = url
             break
         }
         if (flag === 2 || flag === 3) {
-            throw new Error(`KIE Flux Kontext failed (flag=${flag}): ${data?.errorMessage || data?.errorCode || 'Unknown'}`)
+            throw new Error(
+                `KIE Flux Kontext failed (flag=${flag}): ${data?.errorMessage || data?.errorCode || 'Unknown'}`,
+            )
         }
-        await new Promise(resolve => setTimeout(resolve, intervalMs))
+        await new Promise((resolve) => setTimeout(resolve, intervalMs))
     }
     if (!resultUrl) {
         throw new Error(`KIE Flux Kontext timed out after ${budgetMs / 1000}s`)
@@ -1360,7 +960,12 @@ export interface GenerateVideoKieParams {
 function aspectRatioToGptSize(aspectRatio: string): '1:1' | '3:2' | '2:3' {
     if (aspectRatio === '1:1') return '1:1'
     // Landscape variants → 3:2
-    if (aspectRatio === '16:9' || aspectRatio === '4:3' || aspectRatio === '3:2') return '3:2'
+    if (
+        aspectRatio === '16:9' ||
+        aspectRatio === '4:3' ||
+        aspectRatio === '3:2'
+    )
+        return '3:2'
     // Portrait variants → 2:3
     return '2:3'
 }
@@ -1370,7 +975,9 @@ function aspectRatioToGptSize(aspectRatio: string): '1:1' | '3:2' | '2:3' {
  * needs reference images uploaded to a public URL first — `filesUrl` is an
  * array of URLs, NOT base64. Async pattern via taskId + recordInfo polling.
  */
-async function generateImageGpt4o(params: GenerateImageKieParams): Promise<{ url: string; fullApiPrompt: string }> {
+async function generateImageGpt4o(
+    params: GenerateImageKieParams,
+): Promise<{ url: string; fullApiPrompt: string }> {
     const { prompt, aspectRatio = '1:1', referenceImage } = params
 
     const body: Record<string, unknown> = {
@@ -1401,11 +1008,15 @@ async function generateImageGpt4o(params: GenerateImageKieParams): Promise<{ url
     )
     if (!submitRes.ok) {
         const text = await submitRes.text()
-        throw new Error(`KIE GPT4o submit failed (${submitRes.status}): ${text}`)
+        throw new Error(
+            `KIE GPT4o submit failed (${submitRes.status}): ${text}`,
+        )
     }
     const submitJson: KieCreateTaskResponse = await submitRes.json()
     if (submitJson.code !== 200 || !submitJson.data?.taskId) {
-        throw new Error(`KIE GPT4o submit error: code=${submitJson.code} msg=${submitJson.msg}`)
+        throw new Error(
+            `KIE GPT4o submit error: code=${submitJson.code} msg=${submitJson.msg}`,
+        )
     }
     const taskId = submitJson.data.taskId
     console.log(`[KIE/GPT4o] Task submitted: ${taskId}`)
@@ -1430,8 +1041,10 @@ async function generateImageGpt4o(params: GenerateImageKieParams): Promise<{ url
             )
         } catch (e) {
             if (isAbortError(e)) {
-                console.warn(`[KIE/GPT4o] poll fetch aborted (>${POLL_FETCH_TIMEOUT_MS}ms), retrying`)
-                await new Promise(resolve => setTimeout(resolve, intervalMs))
+                console.warn(
+                    `[KIE/GPT4o] poll fetch aborted (>${POLL_FETCH_TIMEOUT_MS}ms), retrying`,
+                )
+                await new Promise((resolve) => setTimeout(resolve, intervalMs))
                 continue
             }
             throw e
@@ -1440,7 +1053,7 @@ async function generateImageGpt4o(params: GenerateImageKieParams): Promise<{ url
             const text = await res.text()
             throw new Error(`KIE GPT4o poll failed (${res.status}): ${text}`)
         }
-        const json = await res.json() as {
+        const json = (await res.json()) as {
             code: number
             data: {
                 taskId: string
@@ -1455,9 +1068,13 @@ async function generateImageGpt4o(params: GenerateImageKieParams): Promise<{ url
         const urls = json.data?.response?.resultUrls
 
         if (pollNum === 1) {
-            console.log(`[KIE/GPT4o] first poll data: ${JSON.stringify(json.data).slice(0, 500)}`)
+            console.log(
+                `[KIE/GPT4o] first poll data: ${JSON.stringify(json.data).slice(0, 500)}`,
+            )
         }
-        console.log(`[KIE/GPT4o] poll #${pollNum}: flag=${flag}, hasUrl=${!!(urls && urls.length)}`)
+        console.log(
+            `[KIE/GPT4o] poll #${pollNum}: flag=${flag}, hasUrl=${!!(urls && urls.length)}`,
+        )
 
         if (flag === 1 && urls && urls.length > 0) {
             resultUrl = urls[0]
@@ -1475,9 +1092,11 @@ async function generateImageGpt4o(params: GenerateImageKieParams): Promise<{ url
             const hint = looksLikeModeration
                 ? ' (likely OpenAI content policy — try Flux Kontext for outfit/swimwear edits)'
                 : ''
-            throw new Error(`KIE GPT4o failed (flag=${flag}, code=${code || 'n/a'}): ${message}${hint}`)
+            throw new Error(
+                `KIE GPT4o failed (flag=${flag}, code=${code || 'n/a'}): ${message}${hint}`,
+            )
         }
-        await new Promise(resolve => setTimeout(resolve, intervalMs))
+        await new Promise((resolve) => setTimeout(resolve, intervalMs))
     }
     if (!resultUrl) {
         throw new Error(`KIE GPT4o timed out after ${budgetMs / 1000}s`)
@@ -1487,7 +1106,12 @@ async function generateImageGpt4o(params: GenerateImageKieParams): Promise<{ url
     // GPT-4o Image only renders 1:1 / 3:2 / 2:3, so a requested 9:16 (etc.)
     // comes back shorter than Gemini's. Crop to the requested ratio so output
     // proportions match across providers. No-ops when the ratio already matches.
-    const persistedUrl = await persistToSupabase(resultUrl, 'png', 'kie-images', aspectRatio)
+    const persistedUrl = await persistToSupabase(
+        resultUrl,
+        'png',
+        'kie-images',
+        aspectRatio,
+    )
     return { url: persistedUrl, fullApiPrompt: prompt }
 }
 
@@ -1499,7 +1123,9 @@ async function generateImageGpt4o(params: GenerateImageKieParams): Promise<{ url
 async function uploadRefs(
     refs: Array<{ base64: string; mimeType: string }>,
 ): Promise<string[]> {
-    return Promise.all(refs.map((r) => uploadReferenceToSupabase(r.base64, r.mimeType)))
+    return Promise.all(
+        refs.map((r) => uploadReferenceToSupabase(r.base64, r.mimeType)),
+    )
 }
 
 /**
@@ -1516,16 +1142,22 @@ async function uploadRefs(
 async function generateImageNanoBananaPro(
     params: GenerateImageKieParams,
 ): Promise<{ url: string; fullApiPrompt: string }> {
-    const { prompt, aspectRatio = '1:1', referenceImage, referenceImages } = params
+    const {
+        prompt,
+        aspectRatio = '1:1',
+        referenceImage,
+        referenceImages,
+    } = params
 
     // Nano Banana Pro accepts up to 8 reference images. Send the full set
     // (face + angle + body + pose + scene); the prompt already carries the
     // REFERENCE MAPPING describing each. Fall back to the single face ref.
-    const refs = (referenceImages && referenceImages.length > 0)
-        ? referenceImages.slice(0, 8)
-        : referenceImage
-            ? [referenceImage]
-            : []
+    const refs =
+        referenceImages && referenceImages.length > 0
+            ? referenceImages.slice(0, 8)
+            : referenceImage
+              ? [referenceImage]
+              : []
 
     const input: Record<string, unknown> = {
         prompt,
@@ -1537,7 +1169,9 @@ async function generateImageNanoBananaPro(
         input.image_input = await uploadRefs(refs)
     }
 
-    console.log(`[KIE/NanoBananaPro] Submitting: refs=${refs.length}, ratio=${aspectRatio}`)
+    console.log(
+        `[KIE/NanoBananaPro] Submitting: refs=${refs.length}, ratio=${aspectRatio}`,
+    )
     const taskId = await withTimeout(
         submitTask({ model: 'nano-banana-pro', input }),
         30_000,
@@ -1564,13 +1198,19 @@ async function generateImageNanoBananaPro(
 async function generateImageGptImage2(
     params: GenerateImageKieParams,
 ): Promise<{ url: string; fullApiPrompt: string }> {
-    const { prompt, aspectRatio = '1:1', referenceImage, referenceImages } = params
+    const {
+        prompt,
+        aspectRatio = '1:1',
+        referenceImage,
+        referenceImages,
+    } = params
 
-    const refs = (referenceImages && referenceImages.length > 0)
-        ? referenceImages.slice(0, 16)
-        : referenceImage
-            ? [referenceImage]
-            : []
+    const refs =
+        referenceImages && referenceImages.length > 0
+            ? referenceImages.slice(0, 16)
+            : referenceImage
+              ? [referenceImage]
+              : []
 
     const input: Record<string, unknown> = {
         prompt,
@@ -1584,7 +1224,9 @@ async function generateImageGptImage2(
     if (refs.length > 0) {
         input.input_urls = await uploadRefs(refs)
         kieModel = 'gpt-image-2-image-to-image'
-        console.log(`[KIE/GptImage2] Image-to-image with ${refs.length} reference(s)`)
+        console.log(
+            `[KIE/GptImage2] Image-to-image with ${refs.length} reference(s)`,
+        )
     }
 
     // Healthy gpt-image-2 i2i tasks vary widely (≈213s … 355s, sometimes more);
@@ -1592,7 +1234,9 @@ async function generateImageGptImage2(
     // but-healthy tasks complete; the rare hang fails at the budget and the user
     // just regenerates. (No short-budget auto-retry: it would abandon legit slow
     // tasks, and two long attempts can't fit under Vercel's 800s maxDuration.)
-    console.log(`[KIE/GptImage2] Submitting: model=${kieModel}, ratio=${aspectRatio}`)
+    console.log(
+        `[KIE/GptImage2] Submitting: model=${kieModel}, ratio=${aspectRatio}`,
+    )
     const taskId = await withTimeout(
         submitTask({ model: kieModel, input }),
         30_000,
@@ -1609,7 +1253,8 @@ async function generateImageGptImage2(
  * supported one rather than letting the API 400.
  */
 function clampKlingAspect(aspect: string): '16:9' | '9:16' | '1:1' {
-    if (aspect === '16:9' || aspect === '9:16' || aspect === '1:1') return aspect
+    if (aspect === '16:9' || aspect === '9:16' || aspect === '1:1')
+        return aspect
     if (aspect === '4:3') return '16:9'
     if (aspect === '3:4') return '9:16'
     return '9:16' // avatar default is vertical
@@ -1622,7 +1267,9 @@ function clampKlingAspect(aspect: string): '16:9' | '9:16' | '1:1' {
  * be a public HTTP URL (uploaded to Supabase first) → image-to-video; absent
  * → text-to-video.
  */
-async function submitVideoKling3(params: GenerateVideoKieParams): Promise<string> {
+async function submitVideoKling3(
+    params: GenerateVideoKieParams,
+): Promise<string> {
     const {
         prompt,
         firstFrameImage,
@@ -1653,7 +1300,9 @@ async function submitVideoKling3(params: GenerateVideoKieParams): Promise<string
         input.image_urls = [url]
     }
 
-    console.log(`[KIE/Kling3] Submitting: duration=${duration}s, mode=${input.mode}, aspect=${input.aspect_ratio}, sound=${sound}, i2v=${!!firstFrameImage}`)
+    console.log(
+        `[KIE/Kling3] Submitting: duration=${duration}s, mode=${input.mode}, aspect=${input.aspect_ratio}, sound=${sound}, i2v=${!!firstFrameImage}`,
+    )
     const taskId = await withTimeout(
         submitTask({ model: 'kling-3.0/video', input }),
         30_000,
@@ -1679,7 +1328,8 @@ export async function createMotionVideoUploadUrl(
     mimeType: string,
 ): Promise<MotionVideoUploadTicket> {
     const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL
-    if (!SUPABASE_URL) throw new Error('NEXT_PUBLIC_SUPABASE_URL is not defined')
+    if (!SUPABASE_URL)
+        throw new Error('NEXT_PUBLIC_SUPABASE_URL is not defined')
 
     const ext = mimeType.includes('quicktime') ? 'mov' : 'mp4'
     const path = `kie-refs/motion-${Date.now()}-${Math.random().toString(36).slice(2, 11)}.${ext}`
@@ -1689,7 +1339,9 @@ export async function createMotionVideoUploadUrl(
         .from('generations')
         .createSignedUploadUrl(path)
     if (error || !data) {
-        throw new Error(`Failed to create motion video upload URL: ${error?.message ?? 'no data'}`)
+        throw new Error(
+            `Failed to create motion video upload URL: ${error?.message ?? 'no data'}`,
+        )
     }
 
     return {
@@ -1746,7 +1398,10 @@ export async function generateMotionControlKie(
 
     let videoUrl: string | null = motionVideoUrl || null // '' → null
     if (!videoUrl && motionVideoBase64) {
-        videoUrl = await uploadReferenceToSupabase(motionVideoBase64, 'video/mp4')
+        videoUrl = await uploadReferenceToSupabase(
+            motionVideoBase64,
+            'video/mp4',
+        )
     }
     if (!videoUrl) {
         throw new Error(
@@ -1763,7 +1418,9 @@ export async function generateMotionControlKie(
     }
     if (prompt) input.prompt = prompt
 
-    console.log(`[KIE/Kling3-MC] Submitting motion-control: mode=${input.mode}, orientation=${characterOrientation}`)
+    console.log(
+        `[KIE/Kling3-MC] Submitting motion-control: mode=${input.mode}, orientation=${characterOrientation}`,
+    )
     const taskId = await withTimeout(
         submitTask({ model: 'kling-3.0/motion-control', input }),
         30_000,
@@ -1798,7 +1455,10 @@ export async function generateVideoKieSafe(
         const url = await generateVideoKie(params)
         return { success: true, url }
     } catch (e) {
-        return { success: false, error: e instanceof Error ? e.message : String(e) }
+        return {
+            success: false,
+            error: e instanceof Error ? e.message : String(e),
+        }
     }
 }
 
@@ -1809,7 +1469,10 @@ export async function generateMotionControlKieSafe(
         const url = await generateMotionControlKie(params)
         return { success: true, url }
     } catch (e) {
-        return { success: false, error: e instanceof Error ? e.message : String(e) }
+        return {
+            success: false,
+            error: e instanceof Error ? e.message : String(e),
+        }
     }
 }
 
@@ -1863,7 +1526,9 @@ async function submitVideoKieTaskId(
         input.image_url = `data:${firstFrameImage.mimeType};base64,${firstFrameImage.base64}`
     }
 
-    console.log(`[KIE] Submitting video task: model=${resolvedModel}, duration=${duration}s`)
+    console.log(
+        `[KIE] Submitting video task: model=${resolvedModel}, duration=${duration}s`,
+    )
     const taskId = await withTimeout(
         submitTask({ model: resolvedModel, input }),
         30_000,
@@ -1893,11 +1558,16 @@ export async function generateVideoKie(
  */
 export async function submitVideoKieTask(
     params: GenerateVideoKieParams,
-): Promise<{ success: true; taskId: string } | { success: false; error: string }> {
+): Promise<
+    { success: true; taskId: string } | { success: false; error: string }
+> {
     try {
         return { success: true, taskId: await submitVideoKieTaskId(params) }
     } catch (e) {
-        return { success: false, error: e instanceof Error ? e.message : String(e) }
+        return {
+            success: false,
+            error: e instanceof Error ? e.message : String(e),
+        }
     }
 }
 
@@ -1906,7 +1576,9 @@ export async function submitVideoKieTask(
  * /jobs/recordInfo. Reference image must be a public HTTP URL (we upload
  * to Supabase first), and duration must be an integer (not stringified).
  */
-async function submitVideoSeedance(params: GenerateVideoKieParams): Promise<string> {
+async function submitVideoSeedance(
+    params: GenerateVideoKieParams,
+): Promise<string> {
     const {
         prompt,
         firstFrameImage,
@@ -1947,13 +1619,15 @@ async function submitVideoSeedance(params: GenerateVideoKieParams): Promise<stri
         allRefs.push(...referenceImages)
 
         const refUrls = await Promise.all(
-            allRefs.slice(0, 9).map((ref) =>
-                uploadReferenceToSupabase(ref.base64, ref.mimeType),
-            ),
+            allRefs
+                .slice(0, 9)
+                .map((ref) =>
+                    uploadReferenceToSupabase(ref.base64, ref.mimeType),
+                ),
         )
         console.log(
             `[KIE/Seedance] Reference-to-Video mode: ${refUrls.length} refs ` +
-            `(frame=${firstFrameImage ? '1' : '0'}, avatar=${referenceImages.length})`,
+                `(frame=${firstFrameImage ? '1' : '0'}, avatar=${referenceImages.length})`,
         )
         input.reference_image_urls = refUrls
     } else if (firstFrameImage) {
@@ -1965,7 +1639,9 @@ async function submitVideoSeedance(params: GenerateVideoKieParams): Promise<stri
         input.first_frame_url = url
     }
 
-    console.log(`[KIE/Seedance] Submitting: duration=${duration}s, resolution=${resolution}, aspect=${aspectRatio}, hasFirstFrame=${!!firstFrameImage}, refsCount=${referenceImages?.length ?? 0}`)
+    console.log(
+        `[KIE/Seedance] Submitting: duration=${duration}s, resolution=${resolution}, aspect=${aspectRatio}, hasFirstFrame=${!!firstFrameImage}, refsCount=${referenceImages?.length ?? 0}`,
+    )
     const taskId = await withTimeout(
         submitTask({ model: 'bytedance/seedance-2', input }),
         30_000,
@@ -1979,7 +1655,9 @@ async function submitVideoSeedance(params: GenerateVideoKieParams): Promise<stri
  * Wan 2.7 image-to-video. Requires a first frame; aspect ratio is inferred
  * from the reference image rather than being a separate parameter.
  */
-async function submitVideoWan27(params: GenerateVideoKieParams): Promise<string> {
+async function submitVideoWan27(
+    params: GenerateVideoKieParams,
+): Promise<string> {
     const {
         prompt,
         firstFrameImage,
@@ -1988,7 +1666,9 @@ async function submitVideoWan27(params: GenerateVideoKieParams): Promise<string>
     } = params
 
     if (!firstFrameImage) {
-        throw new Error('Wan 2.7 requires a reference image (first frame). Add a face or general reference and try again.')
+        throw new Error(
+            'Wan 2.7 requires a reference image (first frame). Add a face or general reference and try again.',
+        )
     }
 
     const url = await uploadReferenceToSupabase(
@@ -2004,7 +1684,9 @@ async function submitVideoWan27(params: GenerateVideoKieParams): Promise<string>
         resolution,
     }
 
-    console.log(`[KIE/Wan2.7] Submitting: duration=${duration}s, resolution=${resolution}`)
+    console.log(
+        `[KIE/Wan2.7] Submitting: duration=${duration}s, resolution=${resolution}`,
+    )
     const taskId = await withTimeout(
         submitTask({ model: 'wan/2-7-image-to-video', input }),
         30_000,
@@ -2022,11 +1704,15 @@ async function submitVideoWan27(params: GenerateVideoKieParams): Promise<string>
  * viaja en la imagen (first frame). Sin parámetros de duración/aspect —
  * el output hereda el ratio de la imagen; resolución 480p/720p.
  */
-async function submitVideoWan22(params: GenerateVideoKieParams): Promise<string> {
+async function submitVideoWan22(
+    params: GenerateVideoKieParams,
+): Promise<string> {
     const { prompt, firstFrameImage, resolution = '720p' } = params
 
     if (!firstFrameImage) {
-        throw new Error('Wan 2.2 requiere una imagen de referencia (first frame). Agrega una face/general ref o usa Animate sobre una imagen.')
+        throw new Error(
+            'Wan 2.2 requiere una imagen de referencia (first frame). Agrega una face/general ref o usa Animate sobre una imagen.',
+        )
     }
 
     const url = await uploadReferenceToSupabase(
@@ -2056,7 +1742,9 @@ async function submitVideoWan22(params: GenerateVideoKieParams): Promise<string>
         nsfw_checker: false,
     }
     if (motionPrompt.length !== prompt.trim().length) {
-        console.log(`[KIE/Wan2.2] Prompt stripped for turbo: ${prompt.length}→${String(input.prompt).length} chars`)
+        console.log(
+            `[KIE/Wan2.2] Prompt stripped for turbo: ${prompt.length}→${String(input.prompt).length} chars`,
+        )
     }
 
     console.log(`[KIE/Wan2.2] Submitting: resolution=${input.resolution}`)
@@ -2108,9 +1796,14 @@ const DEFAULT_TALKING_PROMPT =
  */
 export async function submitTalkingVideoKieTask(
     params: GenerateTalkingVideoKieParams,
-): Promise<{ success: true; taskId: string } | { success: false; error: string }> {
+): Promise<
+    { success: true; taskId: string } | { success: false; error: string }
+> {
     try {
-        const imageUrl = await uploadReferenceToSupabase(params.image.base64, params.image.mimeType)
+        const imageUrl = await uploadReferenceToSupabase(
+            params.image.base64,
+            params.image.mimeType,
+        )
 
         // Kling 3.0: genera SOLO el video (mudo) — la voz la pone el paso 2
         // (Volcengine lipsync). `sound: false` porque la tarifa con audio es
@@ -2120,13 +1813,21 @@ export async function submitTalkingVideoKieTask(
             const elementUrls = [imageUrl]
             for (const extra of params.elementImages ?? []) {
                 if (elementUrls.length >= 4) break
-                elementUrls.push(await uploadReferenceToSupabase(extra.base64, extra.mimeType))
+                elementUrls.push(
+                    await uploadReferenceToSupabase(
+                        extra.base64,
+                        extra.mimeType,
+                    ),
+                )
             }
             // El element exige mínimo 2 URLs — duplicar la principal si falta.
             if (elementUrls.length < 2) elementUrls.push(imageUrl)
 
             // Video 3-15s: audio + 1s de margen, acotado al rango válido.
-            const videoDuration = Math.min(15, Math.max(3, Math.ceil(params.durationSec ?? 10) + 1))
+            const videoDuration = Math.min(
+                15,
+                Math.max(3, Math.ceil(params.durationSec ?? 10) + 1),
+            )
 
             const input: Record<string, unknown> = {
                 prompt: `${(params.prompt || DEFAULT_TALKING_PROMPT).slice(0, 2000)} @avatar_speaker`,
@@ -2138,13 +1839,16 @@ export async function submitTalkingVideoKieTask(
                 kling_elements: [
                     {
                         name: 'avatar_speaker',
-                        description: 'the avatar character speaking naturally to the camera, lips moving as if talking',
+                        description:
+                            'the avatar character speaking naturally to the camera, lips moving as if talking',
                         element_input_urls: elementUrls,
                     },
                 ],
             }
 
-            console.log('[KIE] Submitting talking-head task (kling-3.0/video + audio element)')
+            console.log(
+                '[KIE] Submitting talking-head task (kling-3.0/video + audio element)',
+            )
             const taskId = await withTimeout(
                 submitTask({ model: 'kling-3.0/video', input }),
                 30_000,
@@ -2162,14 +1866,20 @@ export async function submitTalkingVideoKieTask(
                   audio_url: params.audioUrl,
                   // La doc dice "máx 1000, 300 recomendado" pero el API rechaza
                   // >300 con 422 "prompt must be <= 300 characters".
-                  prompt: (params.prompt || DEFAULT_TALKING_PROMPT).slice(0, 300),
+                  prompt: (params.prompt || DEFAULT_TALKING_PROMPT).slice(
+                      0,
+                      300,
+                  ),
                   // '720' | '1080' — 720 mantiene el costo a raya para clips cortos.
                   output_resolution: '720',
               }
             : {
                   image_url: imageUrl,
                   audio_url: params.audioUrl,
-                  prompt: (params.prompt || DEFAULT_TALKING_PROMPT).slice(0, 5000),
+                  prompt: (params.prompt || DEFAULT_TALKING_PROMPT).slice(
+                      0,
+                      5000,
+                  ),
                   resolution: params.resolution ?? '720p',
               }
 
@@ -2204,7 +1914,9 @@ export interface LipsyncVideoKieParams {
  */
 export async function submitLipsyncVideoKieTask(
     params: LipsyncVideoKieParams,
-): Promise<{ success: true; taskId: string } | { success: false; error: string }> {
+): Promise<
+    { success: true; taskId: string } | { success: false; error: string }
+> {
     try {
         const input: Record<string, unknown> = {
             mode: params.mode ?? 'lite',
@@ -2235,7 +1947,11 @@ export async function submitLipsyncVideoKieTask(
  */
 export async function checkKieVideoTask(
     taskId: string,
-): Promise<{ status: 'running' } | { status: 'done'; url: string } | { status: 'failed'; error: string }> {
+): Promise<
+    | { status: 'running' }
+    | { status: 'done'; url: string }
+    | { status: 'failed'; error: string }
+> {
     try {
         const r = await checkTaskOnce(taskId)
         if (r.state === 'running') return { status: 'running' }
