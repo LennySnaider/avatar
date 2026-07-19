@@ -108,9 +108,6 @@ const VIDEO_RESOLUTIONS: { value: VideoResolution; label: string }[] = [
 
 interface BottomControlBarProps {
     onGenerate: () => void
-    // "Dejar en espera": manda la generación en curso a segundo plano (card
-    // pendiente en la galería) y libera el botón Generate.
-    onSendToBackground: () => void
     onChangeAvatar: () => void
     onDeselectAvatar: () => void
     onEditAvatar: () => void
@@ -204,7 +201,6 @@ const ImageDropzone = ({
 
 const BottomControlBar = ({
     onGenerate,
-    onSendToBackground,
     onChangeAvatar,
     onDeselectAvatar,
     onEditAvatar,
@@ -1362,20 +1358,6 @@ const BottomControlBar = ({
                 >
                     {isGenerating ? 'Generating...' : 'Generate'}
                 </Button>
-                {/* Dejar en espera: la tarea sigue en KIE (no hay cancel en su
-                    API) — esto solo libera la UI para lanzar otra generación;
-                    el resultado cae a la galería cuando termine. */}
-                {isGenerating && (
-                    <Tooltip title="Deja esta generación corriendo en segundo plano y libera el botón Generate. El resultado llegará solo a la galería.">
-                        <Button
-                            variant="default"
-                            onClick={onSendToBackground}
-                            className="shrink-0 h-11 w-full md:w-auto order-6 md:order-0"
-                        >
-                            ⏳ En espera
-                        </Button>
-                    </Tooltip>
-                )}
             </div>
 
             {/* Row 2: Contextual Controls - Only render after mount to prevent hydration mismatch */}

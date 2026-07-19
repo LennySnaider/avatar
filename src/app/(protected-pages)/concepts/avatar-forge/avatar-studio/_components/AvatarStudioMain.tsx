@@ -2890,6 +2890,7 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                     onSaveToGallery={handleSaveToGallery}
                     onPost={(m: GeneratedMedia) => setPostMedia(m)}
                     onUploaded={persistGeneration}
+                    onSendToBackground={handleSendToBackground}
                 />
             </div>
 
@@ -2934,7 +2935,6 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                 >
                     <BottomControlBar
                         onGenerate={handleGenerate}
-                        onSendToBackground={handleSendToBackground}
                         onChangeAvatar={() => setIsAvatarSelectorOpen(true)}
                         onDeselectAvatar={() => {
                             setAvatarId(null)

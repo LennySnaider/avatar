@@ -50,6 +50,10 @@ interface GalleryPanelProps {
     /** Optional external ref so a parent (the studio header) can open the file
      * picker — the "Upload" button now lives up there. */
     uploadInputRef?: RefObject<HTMLInputElement | null>
+    /** Manda la generación en curso a segundo plano (card "En espera") y
+     * libera el botón Generate. El botón vive DENTRO del placeholder de
+     * Generating, junto a lo que controla. */
+    onSendToBackground?: () => void
 }
 
 interface AvatarOption {
@@ -63,6 +67,7 @@ const GalleryPanel = ({
     onUploaded,
     userId,
     uploadInputRef: externalUploadRef,
+    onSendToBackground,
 }: GalleryPanelProps) => {
     const {
         gallery,
@@ -505,14 +510,25 @@ const GalleryPanel = ({
 
                     {/* Gallery Grid */}
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                        {/* Generating Placeholder */}
+                        {/* Generating Placeholder — el botón "En espera" vive
+                            aquí, debajo del texto: manda esta generación a
+                            segundo plano y libera el Generate. */}
                         {isGenerating && (
-                            <Card className="h-64 flex items-center justify-center bg-gray-100 dark:bg-gray-800 animate-pulse">
-                                <div className="flex flex-col items-center">
+                            <Card className="h-64 flex items-center justify-center bg-gray-100 dark:bg-gray-800">
+                                <div className="flex flex-col items-center px-4">
                                     <Spinner size={32} />
-                                    <span className="text-xs text-primary mt-2 font-mono">
+                                    <span className="text-xs text-primary mt-2 font-mono animate-pulse">
                                         Generating...
                                     </span>
+                                    {onSendToBackground && (
+                                        <button
+                                            type="button"
+                                            onClick={onSendToBackground}
+                                            className="mt-4 px-3 py-1.5 text-xs font-medium rounded-lg border border-amber-300 dark:border-amber-700 text-amber-600 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-900/20 transition-colors"
+                                        >
+                                            ⏳ Dejar en espera
+                                        </button>
+                                    )}
                                 </div>
                             </Card>
                         )}
