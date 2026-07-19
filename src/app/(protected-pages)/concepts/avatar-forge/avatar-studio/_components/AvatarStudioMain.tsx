@@ -1259,13 +1259,20 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                         // Flux is single-input (edit on the Clone canvas) so it can run
                         // with ONLY a clone and no avatar ref images; the others need
                         // their ref array, hence the length>0 path above.
-                        // nano-banana-2 / -lite are Gemini-family too: same
-                        // instruction harness as nano-banana-pro (the plain
-                        // diffusion preamble left the face unanchored — the
-                        // output wasn't the avatar).
+                        // nano-banana-2 FULL y Pro usan el harness verboso (lo
+                        // aprovechan). nano-banana-2-LITE (Gemini 3.1 Flash Lite)
+                        // NO: el modelo chico se AHOGA en el harness (cajas
+                        // ASCII + descriptores de cuerpo/piel) y descarta la cara
+                        // del avatar → sale un rostro genérico moreno (reporte:
+                        // "no cambia la cara" con Jessy). Verificado live: mismo
+                        // face a 1K con prompt LEAN = cara EXACTA; con harness =
+                        // otra persona. Lite cae al kiePrompt lean por defecto
+                        // (buildDiffusionBodyPreamble + fullPrompt) + el ancla
+                        // keep-face que ya antepone la rama nano de KieService.
                         if (
                             (kieModel === 'nano-banana-pro' ||
-                                kieModel.startsWith('nano-banana-2')) &&
+                                (kieModel.startsWith('nano-banana-2') &&
+                                    kieModel !== 'nano-banana-2-lite')) &&
                             !deepfakeActive
                         ) {
                             const { systemPreamble, finalPrompt } =
