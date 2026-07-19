@@ -369,6 +369,8 @@ export interface GenerateImageKieParams {
     // Solo la rama seedream/ lo inyecta; los demás modelos lo ignoran. Vacío
     // salvo hourglass marcado por ratio (≥1.5).
     curveBoost?: string
+    // Peso del Clone Ref (0-100). 100=recrear exacto (default); bajo=inspirado.
+    cloneWeight?: number
 }
 
 /**
@@ -399,6 +401,7 @@ export async function generateImageKie(
         identityWeight,
         deepfakeMode,
         curveBoost,
+        cloneWeight,
     } = params
     // Route to the right adapter with a given (already-sanitized) prompt.
     const runWithPrompt = async (
@@ -454,6 +457,7 @@ export async function generateImageKie(
             identityWeight,
             deepfakeMode,
             curveBoost,
+            cloneWeight,
             uploadRef: uploadReferenceToSupabase,
             cropToAspect: cropBase64ToAspect,
         })

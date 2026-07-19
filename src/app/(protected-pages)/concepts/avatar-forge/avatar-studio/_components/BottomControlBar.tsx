@@ -2,7 +2,12 @@
 
 import { useRef, useState, useCallback, useEffect } from 'react'
 import { useAvatarStudioStore } from '../_store/avatarStudioStore'
-import { analyzePoseFromImage, analyzeImageForClone, analyzeImageForPlace, generateVideoPromptFromImage } from '@/services/GeminiService'
+import {
+    analyzePoseFromImage,
+    analyzeImageForClone,
+    analyzeImageForPlace,
+    generateVideoPromptFromImage,
+} from '@/services/GeminiService'
 import { apiCreatePrompt } from '@/services/AvatarForgeService'
 import { resizeBase64Image } from '@/utils/imageOptimization'
 import Button from '@/components/ui/Button'
@@ -44,7 +49,13 @@ import {
     QUICK_STYLES,
     STYLE_CATEGORIES,
 } from '../types'
-import type { AspectRatio, CameraMotion, CameraShot, SubjectAction, VideoResolution } from '../types'
+import type {
+    AspectRatio,
+    CameraMotion,
+    CameraShot,
+    SubjectAction,
+    VideoResolution,
+} from '../types'
 import {
     getDurationOptionsForProvider,
     clampDurationForProvider,
@@ -81,7 +92,13 @@ function writeDefaultAspectRatio(ratio: AspectRatio) {
 }
 
 // Aspect Ratio Icon Component - renders visual representation of each ratio
-const AspectRatioIcon = ({ ratio, isSelected }: { ratio: string; isSelected: boolean }) => {
+const AspectRatioIcon = ({
+    ratio,
+    isSelected,
+}: {
+    ratio: string
+    isSelected: boolean
+}) => {
     const baseClass = `border-2 rounded-sm ${isSelected ? 'border-primary bg-primary/20' : 'border-gray-400 dark:border-gray-500'}`
 
     switch (ratio) {
@@ -139,14 +156,17 @@ const ImageDropzone = ({
     const inputRef = useRef<HTMLInputElement>(null)
     const [isDragOver, setIsDragOver] = useState(false)
 
-    const handleDrop = useCallback((e: React.DragEvent) => {
-        e.preventDefault()
-        setIsDragOver(false)
-        const file = e.dataTransfer.files[0]
-        if (file && file.type.startsWith('image/')) {
-            onUpload(file)
-        }
-    }, [onUpload])
+    const handleDrop = useCallback(
+        (e: React.DragEvent) => {
+            e.preventDefault()
+            setIsDragOver(false)
+            const file = e.dataTransfer.files[0]
+            if (file && file.type.startsWith('image/')) {
+                onUpload(file)
+            }
+        },
+        [onUpload],
+    )
 
     const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0]
@@ -165,7 +185,10 @@ const ImageDropzone = ({
                         onClick={() => inputRef.current?.click()}
                     />
                     <button
-                        onClick={(e) => { e.stopPropagation(); onRemove() }}
+                        onClick={(e) => {
+                            e.stopPropagation()
+                            onRemove()
+                        }}
                         className="absolute -top-1 -right-1 p-0.5 bg-red-500 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
                     >
                         <HiOutlineX className="w-3 h-3" />
@@ -173,7 +196,10 @@ const ImageDropzone = ({
                 </div>
             ) : (
                 <div
-                    onDragOver={(e) => { e.preventDefault(); setIsDragOver(true) }}
+                    onDragOver={(e) => {
+                        e.preventDefault()
+                        setIsDragOver(true)
+                    }}
                     onDragLeave={() => setIsDragOver(false)}
                     onDrop={handleDrop}
                     onClick={() => inputRef.current?.click()}
@@ -183,10 +209,14 @@ const ImageDropzone = ({
                             : 'border-gray-300 dark:border-gray-600 hover:border-primary hover:text-primary'
                     }`}
                 >
-                    {icon || <HiOutlineUpload className="w-4 h-4 text-gray-400" />}
+                    {icon || (
+                        <HiOutlineUpload className="w-4 h-4 text-gray-400" />
+                    )}
                 </div>
             )}
-            <span className="text-[9px] text-gray-500 whitespace-nowrap">{label}</span>
+            <span className="text-[9px] text-gray-500 whitespace-nowrap">
+                {label}
+            </span>
             <input
                 ref={inputRef}
                 type="file"
@@ -214,7 +244,9 @@ const BottomControlBar = ({
     const [isAnalyzingPose, setIsAnalyzingPose] = useState(false)
     const [isAnalyzingClone, setIsAnalyzingClone] = useState(false)
     const [isAnalyzingPlace, setIsAnalyzingPlace] = useState(false)
-    const [describeInputImage, setDescribeInputImage] = useState<string | null>(null) // URL for visual preview
+    const [describeInputImage, setDescribeInputImage] = useState<string | null>(
+        null,
+    ) // URL for visual preview
     const [isVideoToPromptOpen, setIsVideoToPromptOpen] = useState(false)
 
     // Save-to-library de un tap: nombre auto (primeras palabras del prompt).
@@ -226,7 +258,9 @@ const BottomControlBar = ({
         try {
             const head = text.slice(0, 48)
             const cut = head.lastIndexOf(' ')
-            const name = (cut > 24 ? head.slice(0, cut) : head) + (text.length > 48 ? '…' : '')
+            const name =
+                (cut > 24 ? head.slice(0, cut) : head) +
+                (text.length > 48 ? '…' : '')
             await apiCreatePrompt({
                 name,
                 text,
@@ -248,7 +282,8 @@ const BottomControlBar = ({
             setIsSavingPromptLib(false)
         }
     }
-    const [isGeneratingVideoPrompt, setIsGeneratingVideoPrompt] = useState(false)
+    const [isGeneratingVideoPrompt, setIsGeneratingVideoPrompt] =
+        useState(false)
 
     // AI looks at the video Input image and writes an i2v motion/camera prompt.
     const handleGenerateVideoPrompt = async () => {
@@ -256,14 +291,20 @@ const BottomControlBar = ({
         setIsGeneratingVideoPrompt(true)
         try {
             // Resize before sending — full-res base64 blows Vercel's ~4.5MB cap (413).
-            const apiBase64 = await resizeBase64Image(videoInputImage.base64, 'API')
+            const apiBase64 = await resizeBase64Image(
+                videoInputImage.base64,
+                'API',
+            )
             const result = await generateVideoPromptFromImage({
                 base64: apiBase64,
                 mimeType: 'image/jpeg',
             })
             if (!result.success || !result.prompt) {
                 toast.push(
-                    <Notification type="danger" title="Prompt generation failed">
+                    <Notification
+                        type="danger"
+                        title="Prompt generation failed"
+                    >
                         {result.error ?? 'Could not analyze the Input image'}
                     </Notification>,
                 )
@@ -290,7 +331,8 @@ const BottomControlBar = ({
     // Default de aspect ratio: al montar, si hay uno guardado y el store sigue
     // en su valor inicial ('1:1' = nadie lo tocó aún esta sesión), aplícalo.
     // La condición evita pisar una elección hecha antes de un remount.
-    const [defaultAspectRatio, setDefaultAspectRatio] = useState<AspectRatio | null>(null)
+    const [defaultAspectRatio, setDefaultAspectRatio] =
+        useState<AspectRatio | null>(null)
     useEffect(() => {
         const saved = readDefaultAspectRatio()
         setDefaultAspectRatio(saved)
@@ -336,6 +378,8 @@ const BottomControlBar = ({
         setNoBackgroundEffects,
         cloneImage,
         setCloneImage,
+        cloneWeight,
+        setCloneWeight,
         deepfakeImage,
         setDeepfakeImage,
         cloneDescription,
@@ -370,8 +414,11 @@ const BottomControlBar = ({
     } = useAvatarStudioStore()
 
     // Get avatar thumbnail
-    const thumbnail = faceRef?.thumbnailUrl || faceRef?.url ||
-        generalReferences[0]?.thumbnailUrl || generalReferences[0]?.url
+    const thumbnail =
+        faceRef?.thumbnailUrl ||
+        faceRef?.url ||
+        generalReferences[0]?.thumbnailUrl ||
+        generalReferences[0]?.url
 
     // Check if current provider is Kling
     const activeProvider = getActiveProvider()
@@ -388,11 +435,18 @@ const BottomControlBar = ({
     // Snap stale store values when the active provider changes so we never
     // submit a duration / resolution the model rejects.
     useEffect(() => {
-        const clampedDuration = clampDurationForProvider(activeProvider, videoDuration)
+        const clampedDuration = clampDurationForProvider(
+            activeProvider,
+            videoDuration,
+        )
         if (clampedDuration !== videoDuration) setVideoDuration(clampedDuration)
-        const clampedResolution = clampResolutionForProvider(activeProvider, videoResolution)
-        if (clampedResolution !== videoResolution) setVideoResolution(clampedResolution)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+        const clampedResolution = clampResolutionForProvider(
+            activeProvider,
+            videoResolution,
+        )
+        if (clampedResolution !== videoResolution)
+            setVideoResolution(clampedResolution)
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [activeProvider?.id])
 
     // Calculate refs count
@@ -401,7 +455,7 @@ const BottomControlBar = ({
 
     // Handle quick style click - uses label + description for better prompts
     const handleQuickStyle = (styleValue: string) => {
-        const style = QUICK_STYLES.find(s => s.value === styleValue)
+        const style = QUICK_STYLES.find((s) => s.value === styleValue)
         if (style) {
             const styleText = `${style.label} style (${style.description})`
             const newPrompt = prompt ? `${prompt}, ${styleText}` : styleText
@@ -419,14 +473,20 @@ const BottomControlBar = ({
     }
 
     // Process image file to base64
-    const processFileToBase64 = (file: File): Promise<{ base64: string; mimeType: string; url: string }> => {
+    const processFileToBase64 = (
+        file: File,
+    ): Promise<{ base64: string; mimeType: string; url: string }> => {
         return new Promise((resolve) => {
             const reader = new FileReader()
             reader.onload = (e) => {
                 const result = e.target?.result as string
                 const matches = result.match(/^data:(.+);base64,(.+)$/)
                 if (matches) {
-                    resolve({ base64: matches[2], mimeType: matches[1], url: result })
+                    resolve({
+                        base64: matches[2],
+                        mimeType: matches[1],
+                        url: result,
+                    })
                 }
             }
             reader.readAsDataURL(file)
@@ -479,10 +539,16 @@ const BottomControlBar = ({
             const apiBase64 = await resizeBase64Image(base64, 'API')
             const ANALYZE_TIMEOUT_MS = 60_000
             const description = await Promise.race([
-                analyzeImageForClone({ base64: apiBase64, mimeType: 'image/jpeg' }),
+                analyzeImageForClone({
+                    base64: apiBase64,
+                    mimeType: 'image/jpeg',
+                }),
                 new Promise<never>((_, reject) =>
                     setTimeout(
-                        () => reject(new Error('Clone analysis timed out after 60s')),
+                        () =>
+                            reject(
+                                new Error('Clone analysis timed out after 60s'),
+                            ),
                         ANALYZE_TIMEOUT_MS,
                     ),
                 ),
@@ -498,16 +564,26 @@ const BottomControlBar = ({
             if (description) {
                 const currentPrompt = useAvatarStudioStore.getState().prompt
                 const cloneText = `[CLONE: ${description}]`
-                setPrompt(currentPrompt ? `${currentPrompt} ${cloneText}` : cloneText)
+                setPrompt(
+                    currentPrompt ? `${currentPrompt} ${cloneText}` : cloneText,
+                )
                 // El analizador devuelve este fallback neutro cuando Gemini se
                 // rehúsa a describir la imagen (contenido explícito duro, aun
                 // con safetySettings relajados). Antes esto era un "Done!"
                 // silencioso sin descripción real — avisa para que el usuario
                 // sepa que puede añadir los detalles a mano.
-                if (description.includes('replicate the subject exactly as in the reference image')) {
+                if (
+                    description.includes(
+                        'replicate the subject exactly as in the reference image',
+                    )
+                ) {
                     toast.push(
                         <Notification type="info" title="Clone sin descripción">
-                            Gemini no pudo describir esta imagen (contenido explícito). El clon usará la IMAGEN tal cual — los modelos con soporte de imagen (Gemini, Nano, GPT) la replican igual; para los de solo-texto añade los detalles al prompt a mano.
+                            Gemini no pudo describir esta imagen (contenido
+                            explícito). El clon usará la IMAGEN tal cual — los
+                            modelos con soporte de imagen (Gemini, Nano, GPT) la
+                            replican igual; para los de solo-texto añade los
+                            detalles al prompt a mano.
                         </Notification>,
                     )
                 }
@@ -517,7 +593,9 @@ const BottomControlBar = ({
             setCloneDescription('')
             toast.push(
                 <Notification type="warning" title="Clone analysis failed">
-                    {error instanceof Error ? error.message : 'Could not analyze the image'}
+                    {error instanceof Error
+                        ? error.message
+                        : 'Could not analyze the image'}
                 </Notification>,
             )
         } finally {
@@ -543,7 +621,10 @@ const BottomControlBar = ({
         try {
             // Resize before sending (avoids Vercel's ~4.5MB 413 on full-res photos)
             const apiBase64 = await resizeBase64Image(base64, 'API')
-            const description = await analyzePoseFromImage({ base64: apiBase64, mimeType: 'image/jpeg' })
+            const description = await analyzePoseFromImage({
+                base64: apiBase64,
+                mimeType: 'image/jpeg',
+            })
             setPoseDescription(description)
 
             // Add pose description to prompt so user can edit it
@@ -551,7 +632,9 @@ const BottomControlBar = ({
             if (description) {
                 const currentPrompt = useAvatarStudioStore.getState().prompt
                 const poseText = `[POSE: ${description}]`
-                setPrompt(currentPrompt ? `${currentPrompt} ${poseText}` : poseText)
+                setPrompt(
+                    currentPrompt ? `${currentPrompt} ${poseText}` : poseText,
+                )
             }
         } catch (error) {
             console.error('Failed to analyze pose:', error)
@@ -580,14 +663,19 @@ const BottomControlBar = ({
         try {
             // Resize before sending (avoids Vercel's ~4.5MB 413 on full-res photos)
             const apiBase64 = await resizeBase64Image(base64, 'API')
-            const description = await analyzeImageForPlace({ base64: apiBase64, mimeType: 'image/jpeg' })
+            const description = await analyzeImageForPlace({
+                base64: apiBase64,
+                mimeType: 'image/jpeg',
+            })
             setPlaceDescription(description)
 
             // Add place description to prompt so user can edit it
             if (description) {
                 const currentPrompt = useAvatarStudioStore.getState().prompt
                 const placeText = `[PLACE: ${description}]`
-                setPrompt(currentPrompt ? `${currentPrompt} ${placeText}` : placeText)
+                setPrompt(
+                    currentPrompt ? `${currentPrompt} ${placeText}` : placeText,
+                )
             }
         } catch (error) {
             console.error('Failed to analyze place:', error)
@@ -646,7 +734,9 @@ const BottomControlBar = ({
     }
 
     // Video input image upload
-    const handleVideoInputUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const handleVideoInputUpload = (
+        event: React.ChangeEvent<HTMLInputElement>,
+    ) => {
         const files = event.target.files
         if (!files || files.length === 0) return
         const file = files[0]
@@ -677,7 +767,11 @@ const BottomControlBar = ({
         // Deepfake: la foto ES la instrucción — no requiere prompt de texto.
         if (generationMode === 'IMAGE' && deepfakeImage) return true
         if (!prompt.trim()) return false
-        if (generationMode === 'VIDEO' && videoSubMode === 'ANIMATE' && !videoInputImage) {
+        if (
+            generationMode === 'VIDEO' &&
+            videoSubMode === 'ANIMATE' &&
+            !videoInputImage
+        ) {
             return false
         }
         return true
@@ -697,117 +791,137 @@ const BottomControlBar = ({
                     el textarea gane ancho horizontal; en móvil van en una fila
                     que envuelve como antes. */}
                 <div className="flex flex-wrap items-center gap-2 shrink-0 md:flex-col-reverse md:items-stretch">
-                {/* Avatar + Modo (una sola fila dentro del cluster) */}
-                <div className="flex items-center gap-2">
-                {/* Avatar Section */}
-                <div className="flex items-center gap-2 shrink-0">
-                    {hasAvatar ? (
-                        <div className="flex items-center gap-2">
-                            <div className="relative group">
-                            <div
-                                className="w-11 h-11 rounded-lg overflow-hidden bg-gray-100 dark:bg-gray-700 cursor-pointer hover:ring-2 hover:ring-primary transition-all"
-                                onClick={onChangeAvatar}
-                            >
-                                {thumbnail ? (
-                                    <img src={thumbnail} alt={avatarName || 'Avatar'} className="w-full h-full object-cover" />
-                                ) : (
-                                    <div className="w-full h-full flex items-center justify-center">
-                                        <HiOutlineUser className="w-5 h-5 text-gray-400" />
+                    {/* Avatar + Modo (una sola fila dentro del cluster) */}
+                    <div className="flex items-center gap-2">
+                        {/* Avatar Section */}
+                        <div className="flex items-center gap-2 shrink-0">
+                            {hasAvatar ? (
+                                <div className="flex items-center gap-2">
+                                    <div className="relative group">
+                                        <div
+                                            className="w-11 h-11 rounded-lg overflow-hidden bg-gray-100 dark:bg-gray-700 cursor-pointer hover:ring-2 hover:ring-primary transition-all"
+                                            onClick={onChangeAvatar}
+                                        >
+                                            {thumbnail ? (
+                                                <img
+                                                    src={thumbnail}
+                                                    alt={avatarName || 'Avatar'}
+                                                    className="w-full h-full object-cover"
+                                                />
+                                            ) : (
+                                                <div className="w-full h-full flex items-center justify-center">
+                                                    <HiOutlineUser className="w-5 h-5 text-gray-400" />
+                                                </div>
+                                            )}
+                                        </div>
+                                        <button
+                                            onClick={(e) => {
+                                                e.stopPropagation()
+                                                onDeselectAvatar()
+                                            }}
+                                            className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-gray-500/80 hover:bg-red-500 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                                            title="Deselect avatar"
+                                        >
+                                            <HiOutlineX className="w-2.5 h-2.5" />
+                                        </button>
                                     </div>
-                                )}
-                            </div>
-                            <button
-                                onClick={(e) => { e.stopPropagation(); onDeselectAvatar() }}
-                                className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-gray-500/80 hover:bg-red-500 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
-                                title="Deselect avatar"
-                            >
-                                <HiOutlineX className="w-2.5 h-2.5" />
-                            </button>
-                            </div>
-                            <div className="hidden sm:block">
-                                <p className="text-xs font-medium truncate max-w-[80px]">{avatarName || 'Avatar'}</p>
-                                <div className="flex items-center gap-1 text-[10px] text-gray-500">
-                                    <span>{refsCount} refs</span>
-                                    <span className="text-primary">{identityWeight}%</span>
+                                    <div className="hidden sm:block">
+                                        <p className="text-xs font-medium truncate max-w-[80px]">
+                                            {avatarName || 'Avatar'}
+                                        </p>
+                                        <div className="flex items-center gap-1 text-[10px] text-gray-500">
+                                            <span>{refsCount} refs</span>
+                                            <span className="text-primary">
+                                                {identityWeight}%
+                                            </span>
+                                        </div>
+                                        <button
+                                            onClick={onEditAvatar}
+                                            className="text-[10px] text-primary hover:underline flex items-center gap-0.5"
+                                        >
+                                            <HiOutlinePencil className="w-2.5 h-2.5" />
+                                            Edit
+                                        </button>
+                                    </div>
                                 </div>
+                            ) : (
                                 <button
-                                    onClick={onEditAvatar}
-                                    className="text-[10px] text-primary hover:underline flex items-center gap-0.5"
+                                    onClick={onChangeAvatar}
+                                    className="w-11 h-11 rounded-lg border-2 border-dashed border-gray-300 dark:border-gray-600 flex items-center justify-center hover:border-primary hover:text-primary transition-colors"
                                 >
-                                    <HiOutlinePencil className="w-2.5 h-2.5" />
-                                    Edit
+                                    <HiOutlineUser className="w-5 h-5" />
                                 </button>
-                            </div>
+                            )}
                         </div>
+
+                        {/* Mode Toggle */}
+                        <div className="flex flex-col bg-gray-100 dark:bg-gray-700 rounded-lg p-0.5 shrink-0">
+                            <button
+                                onClick={() => setGenerationMode('IMAGE')}
+                                className={`px-2.5 py-1.5 text-xs font-medium rounded-md flex items-center gap-1 transition-colors ${
+                                    generationMode === 'IMAGE'
+                                        ? 'bg-white dark:bg-gray-600 text-primary shadow-sm'
+                                        : 'text-gray-500 hover:text-gray-700'
+                                }`}
+                            >
+                                <HiOutlinePhotograph className="w-3.5 h-3.5" />
+                                <span className="hidden sm:inline">Image</span>
+                            </button>
+                            <button
+                                onClick={() => setGenerationMode('VIDEO')}
+                                className={`px-2.5 py-1.5 text-xs font-medium rounded-md flex items-center gap-1 transition-colors ${
+                                    generationMode === 'VIDEO'
+                                        ? 'bg-white dark:bg-gray-600 text-purple-500 shadow-sm'
+                                        : 'text-gray-500 hover:text-gray-700'
+                                }`}
+                            >
+                                <HiOutlineVideoCamera className="w-3.5 h-3.5" />
+                                <span className="hidden sm:inline">Video</span>
+                            </button>
+                        </div>
+                    </div>
+                    {/* /Avatar + Modo */}
+
+                    {/* Provider selector — en DESKTOP queda arriba del bloque
+                    avatar+modo (md:flex-col-reverse del cluster); en móvil, en
+                    la misma fila. En Speak muestra el motor real + salida (×). */}
+                    {generationMode === 'VIDEO' && videoSubMode === 'SPEAK' ? (
+                        <span className="shrink-0 flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-lg border-2 border-dashed border-purple-400/60">
+                            <span className="w-1.5 h-1.5 rounded-full bg-purple-500 shrink-0" />
+                            <span className="text-[10px] font-medium text-purple-500 truncate max-w-24">
+                                Speak ·{' '}
+                                {speakModel === 'omnihuman'
+                                    ? 'OmniHuman 1.5'
+                                    : speakModel === 'kling'
+                                      ? 'Kling 3.0'
+                                      : 'InfiniteTalk'}
+                            </span>
+                            <button
+                                type="button"
+                                onClick={() => setVideoSubMode('ANIMATE')}
+                                title="Exit Speak mode — back to video providers"
+                                className="p-0.5 rounded-full text-purple-400 hover:text-white hover:bg-purple-500 transition-colors shrink-0"
+                            >
+                                <HiOutlineX className="w-3 h-3" />
+                            </button>
+                        </span>
                     ) : (
                         <button
-                            onClick={onChangeAvatar}
-                            className="w-11 h-11 rounded-lg border-2 border-dashed border-gray-300 dark:border-gray-600 flex items-center justify-center hover:border-primary hover:text-primary transition-colors"
+                            onClick={() => setShowProviderManager(true)}
+                            title="Change AI provider"
+                            className="shrink-0 flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-lg border-2 border-dashed border-gray-300 dark:border-gray-600 hover:border-primary hover:text-primary transition-colors"
                         >
-                            <HiOutlineUser className="w-5 h-5" />
+                            <span
+                                className={`w-1.5 h-1.5 rounded-full shrink-0 ${activeProvider ? 'bg-green-500' : 'bg-gray-400'}`}
+                            />
+                            <span className="text-[10px] font-medium truncate max-w-28">
+                                {activeProvider?.name ?? 'Default Provider'}
+                            </span>
+                            <HiOutlineCog className="w-3 h-3 shrink-0 text-gray-400" />
                         </button>
                     )}
                 </div>
-
-                {/* Mode Toggle */}
-                <div className="flex flex-col bg-gray-100 dark:bg-gray-700 rounded-lg p-0.5 shrink-0">
-                    <button
-                        onClick={() => setGenerationMode('IMAGE')}
-                        className={`px-2.5 py-1.5 text-xs font-medium rounded-md flex items-center gap-1 transition-colors ${
-                            generationMode === 'IMAGE'
-                                ? 'bg-white dark:bg-gray-600 text-primary shadow-sm'
-                                : 'text-gray-500 hover:text-gray-700'
-                        }`}
-                    >
-                        <HiOutlinePhotograph className="w-3.5 h-3.5" />
-                        <span className="hidden sm:inline">Image</span>
-                    </button>
-                    <button
-                        onClick={() => setGenerationMode('VIDEO')}
-                        className={`px-2.5 py-1.5 text-xs font-medium rounded-md flex items-center gap-1 transition-colors ${
-                            generationMode === 'VIDEO'
-                                ? 'bg-white dark:bg-gray-600 text-purple-500 shadow-sm'
-                                : 'text-gray-500 hover:text-gray-700'
-                        }`}
-                    >
-                        <HiOutlineVideoCamera className="w-3.5 h-3.5" />
-                        <span className="hidden sm:inline">Video</span>
-                    </button>
-                </div>
-                </div>{/* /Avatar + Modo */}
-
-                {/* Provider selector — en DESKTOP queda arriba del bloque
-                    avatar+modo (md:flex-col-reverse del cluster); en móvil, en
-                    la misma fila. En Speak muestra el motor real + salida (×). */}
-                {generationMode === 'VIDEO' && videoSubMode === 'SPEAK' ? (
-                    <span className="shrink-0 flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-lg border-2 border-dashed border-purple-400/60">
-                        <span className="w-1.5 h-1.5 rounded-full bg-purple-500 shrink-0" />
-                        <span className="text-[10px] font-medium text-purple-500 truncate max-w-24">
-                            Speak · {speakModel === 'omnihuman' ? 'OmniHuman 1.5' : speakModel === 'kling' ? 'Kling 3.0' : 'InfiniteTalk'}
-                        </span>
-                        <button
-                            type="button"
-                            onClick={() => setVideoSubMode('ANIMATE')}
-                            title="Exit Speak mode — back to video providers"
-                            className="p-0.5 rounded-full text-purple-400 hover:text-white hover:bg-purple-500 transition-colors shrink-0"
-                        >
-                            <HiOutlineX className="w-3 h-3" />
-                        </button>
-                    </span>
-                ) : (
-                    <button
-                        onClick={() => setShowProviderManager(true)}
-                        title="Change AI provider"
-                        className="shrink-0 flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-lg border-2 border-dashed border-gray-300 dark:border-gray-600 hover:border-primary hover:text-primary transition-colors"
-                    >
-                        <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${activeProvider ? 'bg-green-500' : 'bg-gray-400'}`} />
-                        <span className="text-[10px] font-medium truncate max-w-28">
-                            {activeProvider?.name ?? 'Default Provider'}
-                        </span>
-                        <HiOutlineCog className="w-3 h-3 shrink-0 text-gray-400" />
-                    </button>
-                )}
-                </div>{/* /Cluster izquierdo */}
+                {/* /Cluster izquierdo */}
 
                 {/* Prompt Input with Integrated Tags */}
                 <div className="flex-1 min-w-0 basis-full md:basis-auto order-3 md:order-0">
@@ -815,7 +929,11 @@ const BottomControlBar = ({
                         value={prompt}
                         onChange={setPrompt}
                         onKeyDown={(e) => {
-                            if (e.key === 'Enter' && !e.shiftKey && canGenerate()) {
+                            if (
+                                e.key === 'Enter' &&
+                                !e.shiftKey &&
+                                canGenerate()
+                            ) {
                                 e.preventDefault()
                                 onGenerate()
                             }
@@ -832,7 +950,9 @@ const BottomControlBar = ({
                             <div className="grid grid-cols-2 gap-1">
                                 <Tooltip title="Prompt Library">
                                     <button
-                                        onClick={() => setIsPromptLibraryOpen(true)}
+                                        onClick={() =>
+                                            setIsPromptLibraryOpen(true)
+                                        }
                                         className="p-1.5 text-gray-400 hover:text-primary transition-colors border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800"
                                     >
                                         <HiOutlineBookOpen className="w-4 h-4" />
@@ -841,7 +961,9 @@ const BottomControlBar = ({
                                 <Tooltip title="Save to Prompt Library">
                                     <button
                                         onClick={handleSavePromptToLibrary}
-                                        disabled={!prompt.trim() || isSavingPromptLib}
+                                        disabled={
+                                            !prompt.trim() || isSavingPromptLib
+                                        }
                                         className="p-1.5 text-gray-400 hover:text-emerald-500 transition-colors disabled:opacity-50 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800"
                                     >
                                         {isSavingPromptLib ? (
@@ -856,14 +978,16 @@ const BottomControlBar = ({
                                         onClick={onSafetyCheck}
                                         disabled={!prompt.trim() || isAnalyzing}
                                         className={`p-1.5 transition-colors disabled:opacity-50 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 ${
-                                            safetyAnalysis && !safetyAnalysis.isSafe
+                                            safetyAnalysis &&
+                                            !safetyAnalysis.isSafe
                                                 ? 'text-amber-500'
                                                 : 'text-gray-400 hover:text-green-500'
                                         }`}
                                     >
                                         {isAnalyzing ? (
                                             <Spinner size={16} />
-                                        ) : safetyAnalysis && !safetyAnalysis.isSafe ? (
+                                        ) : safetyAnalysis &&
+                                          !safetyAnalysis.isSafe ? (
                                             <HiOutlineExclamation className="w-4 h-4" />
                                         ) : (
                                             <HiOutlineShieldCheck className="w-4 h-4" />
@@ -873,7 +997,9 @@ const BottomControlBar = ({
                                 <Tooltip title="Enhance prompt with AI">
                                     <button
                                         onClick={onEnhancePrompt}
-                                        disabled={!prompt.trim() || isEnhancingPrompt}
+                                        disabled={
+                                            !prompt.trim() || isEnhancingPrompt
+                                        }
                                         className="p-1.5 text-gray-400 hover:text-primary transition-colors disabled:opacity-50 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800"
                                     >
                                         {isEnhancingPrompt ? (
@@ -885,17 +1011,28 @@ const BottomControlBar = ({
                                 </Tooltip>
                                 <Tooltip title="Prompt from video">
                                     <button
-                                        onClick={() => setIsVideoToPromptOpen(true)}
+                                        onClick={() =>
+                                            setIsVideoToPromptOpen(true)
+                                        }
                                         className="p-1.5 text-gray-400 hover:text-purple-500 transition-colors border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800"
                                     >
                                         <HiOutlineFilm className="w-4 h-4" />
                                     </button>
                                 </Tooltip>
                                 {generationMode === 'VIDEO' && (
-                                    <Tooltip title={videoInputImage ? 'Generate video prompt from the Input image' : 'Load an Input image first'}>
+                                    <Tooltip
+                                        title={
+                                            videoInputImage
+                                                ? 'Generate video prompt from the Input image'
+                                                : 'Load an Input image first'
+                                        }
+                                    >
                                         <button
                                             onClick={handleGenerateVideoPrompt}
-                                            disabled={!videoInputImage || isGeneratingVideoPrompt}
+                                            disabled={
+                                                !videoInputImage ||
+                                                isGeneratingVideoPrompt
+                                            }
                                             className="p-1.5 text-gray-400 hover:text-purple-500 transition-colors disabled:opacity-50 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800"
                                         >
                                             {isGeneratingVideoPrompt ? (
@@ -922,7 +1059,9 @@ const BottomControlBar = ({
                                 {generationMode === 'VIDEO' && (
                                     <Tooltip title="Speak — script for talking avatar">
                                         <button
-                                            onClick={() => setIsSpeakDialogOpen(true)}
+                                            onClick={() =>
+                                                setIsSpeakDialogOpen(true)
+                                            }
                                             className={`relative p-1.5 transition-colors border rounded bg-white dark:bg-gray-800 ${
                                                 videoSubMode === 'SPEAK'
                                                     ? 'text-purple-500 border-purple-500'
@@ -930,7 +1069,8 @@ const BottomControlBar = ({
                                             }`}
                                         >
                                             <HiOutlineMicrophone className="w-4 h-4" />
-                                            {(videoDialogue.trim() || speakAudioUrl) && (
+                                            {(videoDialogue.trim() ||
+                                                speakAudioUrl) && (
                                                 <span className="absolute -top-1 -right-1 w-2 h-2 rounded-full bg-purple-500" />
                                             )}
                                         </button>
@@ -944,407 +1084,546 @@ const BottomControlBar = ({
                 {/* Dropzones column (el selector de provider se movió arriba,
                     junto al toggle Image/Video, para ahorrar una fila). */}
                 <div className="flex flex-col gap-1.5 shrink-0 basis-full md:basis-auto order-4 md:order-0 items-center md:items-stretch">
-                {/* Dropzones - Tools Grid 2x3 (móvil: fila envolvente centrada) */}
-                <div className="flex flex-wrap justify-center gap-1.5 shrink-0 md:grid md:grid-cols-3">
-                    {/* Image to Prompt Dropzone */}
-                    <div className="flex flex-col items-center gap-0.5">
-                        {describeInputImage ? (
-                            <div className="relative group">
-                                <img
-                                    src={describeInputImage}
-                                    alt="Analyzing"
-                                    className={`w-11 h-11 object-cover rounded-lg ${isDescribing ? 'opacity-50' : ''}`}
-                                />
-                                {/* Loading overlay */}
-                                {isDescribing && (
-                                    <div className="absolute inset-0 flex items-center justify-center bg-black/20 rounded-lg">
-                                        <Spinner size={16} />
-                                    </div>
-                                )}
-                                {/* Success indicator */}
-                                {!isDescribing && (
-                                    <div className="absolute -bottom-1 -right-1 p-0.5 bg-green-500 text-white rounded-full">
-                                        <HiOutlineCheck className="w-2.5 h-2.5" />
-                                    </div>
-                                )}
-                                <button
-                                    onClick={() => setDescribeInputImage(null)}
-                                    className="absolute -top-1 -right-1 p-0.5 bg-red-500 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
-                                >
-                                    <HiOutlineX className="w-3 h-3" />
-                                </button>
-                            </div>
-                        ) : (
-                            <ImageDropzone
-                                image={null}
-                                onUpload={handleImageToPrompt}
-                                onRemove={() => {}}
-                                label="Img→Prompt"
+                    {/* Dropzones - Tools Grid 2x3 (móvil: fila envolvente centrada) */}
+                    <div className="flex flex-wrap justify-center gap-1.5 shrink-0 md:grid md:grid-cols-3">
+                        {/* Image to Prompt Dropzone */}
+                        <div className="flex flex-col items-center gap-0.5">
+                            {describeInputImage ? (
+                                <div className="relative group">
+                                    <img
+                                        src={describeInputImage}
+                                        alt="Analyzing"
+                                        className={`w-11 h-11 object-cover rounded-lg ${isDescribing ? 'opacity-50' : ''}`}
+                                    />
+                                    {/* Loading overlay */}
+                                    {isDescribing && (
+                                        <div className="absolute inset-0 flex items-center justify-center bg-black/20 rounded-lg">
+                                            <Spinner size={16} />
+                                        </div>
+                                    )}
+                                    {/* Success indicator */}
+                                    {!isDescribing && (
+                                        <div className="absolute -bottom-1 -right-1 p-0.5 bg-green-500 text-white rounded-full">
+                                            <HiOutlineCheck className="w-2.5 h-2.5" />
+                                        </div>
+                                    )}
+                                    <button
+                                        onClick={() =>
+                                            setDescribeInputImage(null)
+                                        }
+                                        className="absolute -top-1 -right-1 p-0.5 bg-red-500 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
+                                    >
+                                        <HiOutlineX className="w-3 h-3" />
+                                    </button>
+                                </div>
+                            ) : (
+                                <ImageDropzone
+                                    image={null}
+                                    onUpload={handleImageToPrompt}
+                                    onRemove={() => {}}
+                                    label="Img→Prompt"
                                     tooltip="Analiza la imagen y genera un PROMPT de texto — la imagen NO viaja al modelo"
-                                icon={<HiOutlinePhotograph className="w-4 h-4 text-blue-500" />}
-                                dragOverClass="ring-blue-500"
+                                    icon={
+                                        <HiOutlinePhotograph className="w-4 h-4 text-blue-500" />
+                                    }
+                                    dragOverClass="ring-blue-500"
+                                />
+                            )}
+                            {describeInputImage && (
+                                <span className="text-[9px] text-gray-500">
+                                    {isDescribing ? 'Analyzing...' : 'Done!'}
+                                </span>
+                            )}
+                        </div>
+
+                        {/* Clone Reference Dropzone (IMAGE mode only) */}
+                        {generationMode === 'IMAGE' && (
+                            <div className="flex flex-col items-center gap-0.5">
+                                {cloneImage ? (
+                                    <Tooltip
+                                        title={
+                                            cloneDescription
+                                                ? cloneDescription.slice(
+                                                      0,
+                                                      200,
+                                                  ) + '...'
+                                                : 'Analyzing...'
+                                        }
+                                        placement="top"
+                                    >
+                                        <div className="relative group">
+                                            <img
+                                                src={cloneImage.url}
+                                                alt="Clone"
+                                                className={`w-11 h-11 object-cover rounded-lg ${isAnalyzingClone ? 'opacity-50' : ''}`}
+                                            />
+                                            {/* Loading overlay */}
+                                            {isAnalyzingClone && (
+                                                <div className="absolute inset-0 flex items-center justify-center bg-black/20 rounded-lg">
+                                                    <Spinner size={16} />
+                                                </div>
+                                            )}
+                                            {/* Success indicator */}
+                                            {!isAnalyzingClone &&
+                                                cloneDescription && (
+                                                    <div className="absolute -bottom-1 -right-1 p-0.5 bg-green-500 text-white rounded-full">
+                                                        <HiOutlineCheck className="w-2.5 h-2.5" />
+                                                    </div>
+                                                )}
+                                            <button
+                                                onClick={() => {
+                                                    setCloneImage(null)
+                                                    setCloneDescription('')
+                                                    setIsAnalyzingClone(false)
+                                                }}
+                                                className={`absolute -top-1 -right-1 p-0.5 bg-red-500 text-white rounded-full transition-opacity ${
+                                                    isAnalyzingClone
+                                                        ? 'opacity-100'
+                                                        : 'opacity-0 group-hover:opacity-100'
+                                                }`}
+                                                title={
+                                                    isAnalyzingClone
+                                                        ? 'Cancel analysis'
+                                                        : 'Remove'
+                                                }
+                                            >
+                                                <HiOutlineX className="w-3 h-3" />
+                                            </button>
+                                        </div>
+                                    </Tooltip>
+                                ) : (
+                                    <ImageDropzone
+                                        image={null}
+                                        onUpload={handleCloneRefUpload}
+                                        onRemove={() => {}}
+                                        label="Clone Ref"
+                                        tooltip="Clona outfit, pose y escena de esta imagen, con la CARA y atributos físicos del avatar"
+                                        icon={
+                                            <HiOutlinePhotograph className="w-4 h-4 text-purple-500" />
+                                        }
+                                        dragOverClass="ring-purple-500"
+                                    />
+                                )}
+                                {cloneImage &&
+                                    (isAnalyzingClone ? (
+                                        <span className="text-[9px] text-gray-500">
+                                            Analyzing...
+                                        </span>
+                                    ) : (
+                                        // Slider de PESO del Clone: 100 = recrea
+                                        // exacto; más bajo = referencia suelta /
+                                        // "inspirado en". Cada ruta i2i lo traduce.
+                                        <div className="flex w-16 flex-col items-center gap-0.5">
+                                            <span className="text-[9px] font-medium text-purple-500">
+                                                Clone {cloneWeight}%
+                                            </span>
+                                            <input
+                                                type="range"
+                                                min={0}
+                                                max={100}
+                                                step={5}
+                                                value={cloneWeight}
+                                                onChange={(e) =>
+                                                    setCloneWeight(
+                                                        Number(e.target.value),
+                                                    )
+                                                }
+                                                title={`Peso del Clone: ${cloneWeight}% — 100 recrea la foto exacta, bajo = inspirado`}
+                                                className="h-1 w-full cursor-pointer accent-purple-500"
+                                            />
+                                        </div>
+                                    ))}
+                            </div>
+                        )}
+
+                        {/* Deepfake Dropzone (IMAGE mode only) — face-swap puro */}
+                        {generationMode === 'IMAGE' && (
+                            <ImageDropzone
+                                image={deepfakeImage}
+                                onUpload={handleDeepfakeUpload}
+                                onRemove={() => setDeepfakeImage(null)}
+                                label="Deepfake"
+                                icon={
+                                    <HiOutlineSwitchHorizontal className="w-4 h-4 text-red-500" />
+                                }
+                                dragOverClass="ring-red-500"
+                                tooltip="Face-swap PURO: reproduce esta imagen EXACTA (cuerpo, outfit, pose y escena intactos) y SOLO cambia la cara por la del avatar. Modelos permisivos (Seedream/Wan/FLUX.2)."
                             />
                         )}
-                        {describeInputImage && <span className="text-[9px] text-gray-500">{isDescribing ? 'Analyzing...' : 'Done!'}</span>}
-                    </div>
 
-                    {/* Clone Reference Dropzone (IMAGE mode only) */}
-                    {generationMode === 'IMAGE' && (
-                        <div className="flex flex-col items-center gap-0.5">
-                            {cloneImage ? (
-                                <Tooltip
-                                    title={cloneDescription ? cloneDescription.slice(0, 200) + '...' : 'Analyzing...'}
-                                    placement="top"
-                                >
-                                    <div className="relative group">
-                                        <img
-                                            src={cloneImage.url}
-                                            alt="Clone"
-                                            className={`w-11 h-11 object-cover rounded-lg ${isAnalyzingClone ? 'opacity-50' : ''}`}
-                                        />
-                                        {/* Loading overlay */}
-                                        {isAnalyzingClone && (
-                                            <div className="absolute inset-0 flex items-center justify-center bg-black/20 rounded-lg">
-                                                <Spinner size={16} />
-                                            </div>
-                                        )}
-                                        {/* Success indicator */}
-                                        {!isAnalyzingClone && cloneDescription && (
-                                            <div className="absolute -bottom-1 -right-1 p-0.5 bg-green-500 text-white rounded-full">
-                                                <HiOutlineCheck className="w-2.5 h-2.5" />
-                                            </div>
-                                        )}
-                                        <button
-                                            onClick={() => {
-                                                setCloneImage(null)
-                                                setCloneDescription('')
-                                                setIsAnalyzingClone(false)
-                                            }}
-                                            className={`absolute -top-1 -right-1 p-0.5 bg-red-500 text-white rounded-full transition-opacity ${
-                                                isAnalyzingClone
-                                                    ? 'opacity-100'
-                                                    : 'opacity-0 group-hover:opacity-100'
-                                            }`}
-                                            title={isAnalyzingClone ? 'Cancel analysis' : 'Remove'}
-                                        >
-                                            <HiOutlineX className="w-3 h-3" />
-                                        </button>
-                                    </div>
-                                </Tooltip>
-                            ) : (
-                                <ImageDropzone
-                                    image={null}
-                                    onUpload={handleCloneRefUpload}
-                                    onRemove={() => {}}
-                                    label="Clone Ref"
-                                    tooltip="Clona outfit, pose y escena de esta imagen, con la CARA y atributos físicos del avatar"
-                                    icon={<HiOutlinePhotograph className="w-4 h-4 text-purple-500" />}
-                                    dragOverClass="ring-purple-500"
-                                />
-                            )}
-                            {cloneImage && <span className="text-[9px] text-gray-500">{isAnalyzingClone ? 'Analyzing...' : 'Clone Ref'}</span>}
-                        </div>
-                    )}
-
-                    {/* Deepfake Dropzone (IMAGE mode only) — face-swap puro */}
-                    {generationMode === 'IMAGE' && (
-                        <ImageDropzone
-                            image={deepfakeImage}
-                            onUpload={handleDeepfakeUpload}
-                            onRemove={() => setDeepfakeImage(null)}
-                            label="Deepfake"
-                            icon={<HiOutlineSwitchHorizontal className="w-4 h-4 text-red-500" />}
-                            dragOverClass="ring-red-500"
-                            tooltip="Face-swap PURO: reproduce esta imagen EXACTA (cuerpo, outfit, pose y escena intactos) y SOLO cambia la cara por la del avatar. Modelos permisivos (Seedream/Wan/FLUX.2)."
-                        />
-                    )}
-
-                    {/* Pose Reference Dropzone (IMAGE mode only) */}
-                    {generationMode === 'IMAGE' && (
-                        <div className="flex flex-col items-center gap-0.5">
-                            {poseImage ? (
-                                <Tooltip
-                                    title={poseDescription || 'Analyzing pose...'}
-                                    placement="top"
-                                >
-                                    <div className="relative group">
-                                        <img
-                                            src={poseImage.url}
-                                            alt="Pose"
-                                            className={`w-11 h-11 object-cover rounded-lg ${isAnalyzingPose ? 'opacity-50' : ''}`}
-                                        />
-                                        {/* Loading overlay */}
-                                        {isAnalyzingPose && (
-                                            <div className="absolute inset-0 flex items-center justify-center bg-black/20 rounded-lg">
-                                                <Spinner size={16} />
-                                            </div>
-                                        )}
-                                        {/* Success indicator */}
-                                        {!isAnalyzingPose && poseDescription && (
-                                            <div className="absolute -bottom-1 -right-1 p-0.5 bg-green-500 text-white rounded-full">
-                                                <HiOutlineCheck className="w-2.5 h-2.5" />
-                                            </div>
-                                        )}
-                                        <button
-                                            onClick={() => setPoseImage(null)}
-                                            className="absolute -top-1 -right-1 p-0.5 bg-red-500 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
-                                        >
-                                            <HiOutlineX className="w-3 h-3" />
-                                        </button>
-                                    </div>
-                                </Tooltip>
-                            ) : (
-                                <ImageDropzone
-                                    image={null}
-                                    onUpload={handlePoseRefUpload}
-                                    onRemove={() => {}}
-                                    label="Pose Ref"
-                                    tooltip="Copia SOLO la postura corporal de esta imagen (no cara, ni ropa, ni escena)"
-                                    icon={<HiOutlineUser className="w-4 h-4 text-cyan-500" />}
-                                    dragOverClass="ring-cyan-500"
-                                />
-                            )}
-                            {poseImage && <span className="text-[9px] text-gray-500">{isAnalyzingPose ? 'Analyzing...' : 'Pose Ref'}</span>}
-                        </div>
-                    )}
-
-                    {/* Body Reference Dropzone (IMAGE mode only) */}
-                    {generationMode === 'IMAGE' && (
-                        <div className="flex flex-col items-center gap-0.5">
-                            {bodyRef ? (
-                                <div className="relative group">
-                                    <img
-                                        src={bodyRef.url}
-                                        alt="Body"
-                                        className="w-11 h-11 object-cover rounded-lg"
-                                    />
-                                    <button
-                                        onClick={() => setBodyRef(null)}
-                                        className="absolute -top-1 -right-1 p-0.5 bg-red-500 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
+                        {/* Pose Reference Dropzone (IMAGE mode only) */}
+                        {generationMode === 'IMAGE' && (
+                            <div className="flex flex-col items-center gap-0.5">
+                                {poseImage ? (
+                                    <Tooltip
+                                        title={
+                                            poseDescription ||
+                                            'Analyzing pose...'
+                                        }
+                                        placement="top"
                                     >
-                                        <HiOutlineX className="w-3 h-3" />
-                                    </button>
-                                </div>
-                            ) : (
-                                <ImageDropzone
-                                    image={null}
-                                    onUpload={handleBodyRefUpload}
-                                    onRemove={() => {}}
-                                    label="Body Ref"
-                                    tooltip="Cuerpo real del avatar: el modelo replica su silueta exacta (se guarda con Save)"
-                                    icon={<HiOutlineUser className="w-4 h-4 text-orange-500" />}
-                                    dragOverClass="ring-orange-500"
-                                />
-                            )}
-                            {bodyRef && <span className="text-[9px] text-gray-500">Body Ref</span>}
-                        </div>
-                    )}
-
-                    {/* Assets Dropzone (IMAGE mode only) - max 3 */}
-                    {generationMode === 'IMAGE' && (
-                        <div className="flex flex-col items-center gap-0.5">
-                            {assetImages.length > 0 ? (
-                                <Tooltip title={`${assetImages.length}/3 assets - Drag or click to add more`} placement="top">
-                                    <div
-                                        className="relative group cursor-pointer"
-                                        onClick={() => assetImages.length < 3 && document.getElementById('asset-input')?.click()}
-                                        onDragOver={(e) => { e.preventDefault(); e.stopPropagation() }}
-                                        onDragEnter={(e) => { e.preventDefault(); e.stopPropagation() }}
-                                        onDrop={(e) => {
-                                            e.preventDefault()
-                                            e.stopPropagation()
-                                            if (assetImages.length >= 3) return
-                                            const file = e.dataTransfer.files[0]
-                                            if (file && file.type.startsWith('image/')) {
-                                                handleAssetUpload(file)
-                                            }
-                                        }}
-                                    >
-                                        {assetImages.length === 1 ? (
+                                        <div className="relative group">
                                             <img
-                                                src={assetImages[0].url}
-                                                alt="Asset"
-                                                className="w-11 h-11 rounded-lg object-cover"
+                                                src={poseImage.url}
+                                                alt="Pose"
+                                                className={`w-11 h-11 object-cover rounded-lg ${isAnalyzingPose ? 'opacity-50' : ''}`}
                                             />
-                                        ) : (
-                                            <div className="w-11 h-11 relative">
-                                                {assetImages.slice(0, 2).map((asset, i) => (
-                                                    <img
-                                                        key={asset.id}
-                                                        src={asset.url}
-                                                        alt="Asset"
-                                                        className="w-8 h-8 rounded-lg object-cover border-2 border-white dark:border-gray-800 absolute"
-                                                        style={{
-                                                            zIndex: 2 - i,
-                                                            top: i * 6,
-                                                            left: i * 6,
-                                                        }}
-                                                    />
-                                                ))}
-                                            </div>
-                                        )}
-                                        {/* Counter badge */}
-                                        <span className="absolute -bottom-1 -right-1 text-[8px] bg-green-600 text-white px-1 rounded font-medium">
-                                            {assetImages.length}/3
-                                        </span>
-                                        <button
-                                            onClick={(e) => { e.stopPropagation(); assetImages.forEach(a => removeAssetImage(a.id)) }}
-                                            className="absolute -top-1 -right-1 p-0.5 bg-red-500 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
-                                        >
-                                            <HiOutlineX className="w-2.5 h-2.5" />
-                                        </button>
-                                    </div>
-                                </Tooltip>
-                            ) : (
-                                <ImageDropzone
-                                    image={null}
-                                    onUpload={handleAssetUpload}
-                                    onRemove={() => {}}
-                                    label="Assets"
-                                    tooltip="Logo/producto: se imprime EXACTO en la ropa o props (máx 3)"
-                                    icon={<HiOutlineUpload className="w-4 h-4 text-green-500" />}
-                                    dragOverClass="ring-green-500"
-                                />
-                            )}
-                            <input
-                                id="asset-input"
-                                type="file"
-                                accept="image/*"
-                                className="hidden"
-                                onChange={(e) => {
-                                    const file = e.target.files?.[0]
-                                    if (file) handleAssetUpload(file)
-                                    e.target.value = ''
-                                }}
-                            />
-                            {assetImages.length > 0 && <span className="text-[9px] text-gray-500">Assets</span>}
-                        </div>
-                    )}
-
-                    {/* Place Reference Dropzone (IMAGE mode only) */}
-                    {generationMode === 'IMAGE' && (
-                        <div className="flex flex-col items-center gap-0.5">
-                            {placeImage ? (
-                                <Tooltip
-                                    title={placeDescription || 'Analyzing place...'}
-                                    placement="top"
-                                >
-                                    <div className="relative group">
-                                        <img
-                                            src={placeImage.url}
-                                            alt="Place"
-                                            className={`w-11 h-11 object-cover rounded-lg ${isAnalyzingPlace ? 'opacity-50' : ''}`}
-                                        />
-                                        {/* Loading overlay */}
-                                        {isAnalyzingPlace && (
-                                            <div className="absolute inset-0 flex items-center justify-center bg-black/20 rounded-lg">
-                                                <Spinner size={16} />
-                                            </div>
-                                        )}
-                                        {/* Success indicator */}
-                                        {!isAnalyzingPlace && placeDescription && (
-                                            <div className="absolute -bottom-1 -right-1 p-0.5 bg-green-500 text-white rounded-full">
-                                                <HiOutlineCheck className="w-2.5 h-2.5" />
-                                            </div>
-                                        )}
-                                        <button
-                                            onClick={() => setPlaceImage(null)}
-                                            className="absolute -top-1 -right-1 p-0.5 bg-red-500 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
-                                        >
-                                            <HiOutlineX className="w-3 h-3" />
-                                        </button>
-                                    </div>
-                                </Tooltip>
-                            ) : (
-                                <ImageDropzone
-                                    image={null}
-                                    onUpload={handlePlaceRefUpload}
-                                    onRemove={() => {}}
-                                    label="Place Ref"
-                                    tooltip="Lugar/entorno exacto donde se coloca al avatar (ignora personas en la foto)"
-                                    icon={<HiOutlinePhotograph className="w-4 h-4 text-teal-500" />}
-                                    dragOverClass="ring-teal-500"
-                                />
-                            )}
-                            {placeImage && <span className="text-[9px] text-gray-500">{isAnalyzingPlace ? 'Analyzing...' : 'Place Ref'}</span>}
-                        </div>
-                    )}
-
-                    {/* Scene Composite Dropzone (IMAGE mode only) - literally places avatar in this scene */}
-                    {generationMode === 'IMAGE' && (
-                        <div className="flex flex-col items-center gap-0.5">
-                            {sceneImage ? (
-                                <Tooltip
-                                    title="Avatar will be composited into this scene"
-                                    placement="top"
-                                >
-                                    <div className="relative group">
-                                        <img
-                                            src={sceneImage.url}
-                                            alt="Scene"
-                                            className="w-11 h-11 object-cover rounded-lg ring-2 ring-rose-500"
-                                        />
-                                        <button
-                                            onClick={() => setSceneImage(null)}
-                                            className="absolute -top-1 -right-1 p-0.5 bg-red-500 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
-                                        >
-                                            <HiOutlineX className="w-3 h-3" />
-                                        </button>
-                                    </div>
-                                </Tooltip>
-                            ) : (
-                                <ImageDropzone
-                                    image={null}
-                                    onUpload={handleSceneUpload}
-                                    onRemove={() => {}}
-                                    label="Scene"
-                                    tooltip="Set/composición: usa la imagen como escena y coloca al avatar dentro"
-                                    icon={<HiOutlinePhotograph className="w-4 h-4 text-rose-500" />}
-                                    dragOverClass="ring-rose-500"
-                                />
-                            )}
-                            {sceneImage && <span className="text-[9px] text-rose-500 font-medium">Scene</span>}
-                        </div>
-                    )}
-
-                    {/* Video Input Image (VIDEO ANIMATE + SPEAK modes; optional in SPEAK — falls back to the avatar's face ref) */}
-                    {generationMode === 'VIDEO' && (videoSubMode === 'ANIMATE' || videoSubMode === 'SPEAK') && (
-                        <div className="flex flex-col items-center gap-0.5">
-                            {videoInputImage ? (
-                                <div className="relative group">
-                                    <img
-                                        src={videoInputImage.url}
-                                        alt="Input"
-                                        className="w-11 h-11 rounded-lg object-cover ring-2 ring-purple-500"
+                                            {/* Loading overlay */}
+                                            {isAnalyzingPose && (
+                                                <div className="absolute inset-0 flex items-center justify-center bg-black/20 rounded-lg">
+                                                    <Spinner size={16} />
+                                                </div>
+                                            )}
+                                            {/* Success indicator */}
+                                            {!isAnalyzingPose &&
+                                                poseDescription && (
+                                                    <div className="absolute -bottom-1 -right-1 p-0.5 bg-green-500 text-white rounded-full">
+                                                        <HiOutlineCheck className="w-2.5 h-2.5" />
+                                                    </div>
+                                                )}
+                                            <button
+                                                onClick={() =>
+                                                    setPoseImage(null)
+                                                }
+                                                className="absolute -top-1 -right-1 p-0.5 bg-red-500 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
+                                            >
+                                                <HiOutlineX className="w-3 h-3" />
+                                            </button>
+                                        </div>
+                                    </Tooltip>
+                                ) : (
+                                    <ImageDropzone
+                                        image={null}
+                                        onUpload={handlePoseRefUpload}
+                                        onRemove={() => {}}
+                                        label="Pose Ref"
+                                        tooltip="Copia SOLO la postura corporal de esta imagen (no cara, ni ropa, ni escena)"
+                                        icon={
+                                            <HiOutlineUser className="w-4 h-4 text-cyan-500" />
+                                        }
+                                        dragOverClass="ring-cyan-500"
                                     />
-                                    <button
-                                        onClick={() => setVideoInputImage(null)}
-                                        className="absolute -top-1 -right-1 p-0.5 bg-red-500 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
+                                )}
+                                {poseImage && (
+                                    <span className="text-[9px] text-gray-500">
+                                        {isAnalyzingPose
+                                            ? 'Analyzing...'
+                                            : 'Pose Ref'}
+                                    </span>
+                                )}
+                            </div>
+                        )}
+
+                        {/* Body Reference Dropzone (IMAGE mode only) */}
+                        {generationMode === 'IMAGE' && (
+                            <div className="flex flex-col items-center gap-0.5">
+                                {bodyRef ? (
+                                    <div className="relative group">
+                                        <img
+                                            src={bodyRef.url}
+                                            alt="Body"
+                                            className="w-11 h-11 object-cover rounded-lg"
+                                        />
+                                        <button
+                                            onClick={() => setBodyRef(null)}
+                                            className="absolute -top-1 -right-1 p-0.5 bg-red-500 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
+                                        >
+                                            <HiOutlineX className="w-3 h-3" />
+                                        </button>
+                                    </div>
+                                ) : (
+                                    <ImageDropzone
+                                        image={null}
+                                        onUpload={handleBodyRefUpload}
+                                        onRemove={() => {}}
+                                        label="Body Ref"
+                                        tooltip="Cuerpo real del avatar: el modelo replica su silueta exacta (se guarda con Save)"
+                                        icon={
+                                            <HiOutlineUser className="w-4 h-4 text-orange-500" />
+                                        }
+                                        dragOverClass="ring-orange-500"
+                                    />
+                                )}
+                                {bodyRef && (
+                                    <span className="text-[9px] text-gray-500">
+                                        Body Ref
+                                    </span>
+                                )}
+                            </div>
+                        )}
+
+                        {/* Assets Dropzone (IMAGE mode only) - max 3 */}
+                        {generationMode === 'IMAGE' && (
+                            <div className="flex flex-col items-center gap-0.5">
+                                {assetImages.length > 0 ? (
+                                    <Tooltip
+                                        title={`${assetImages.length}/3 assets - Drag or click to add more`}
+                                        placement="top"
                                     >
-                                        <HiOutlineX className="w-3 h-3" />
-                                    </button>
-                                </div>
-                            ) : (
-                                <div
-                                    onClick={() => videoInputRef.current?.click()}
-                                    className="w-11 h-11 border-2 border-dashed border-purple-400 rounded-lg flex items-center justify-center cursor-pointer hover:bg-purple-50 dark:hover:bg-purple-900/20 transition-all"
-                                >
-                                    <HiOutlineVideoCamera className="w-4 h-4 text-purple-500" />
+                                        <div
+                                            className="relative group cursor-pointer"
+                                            onClick={() =>
+                                                assetImages.length < 3 &&
+                                                document
+                                                    .getElementById(
+                                                        'asset-input',
+                                                    )
+                                                    ?.click()
+                                            }
+                                            onDragOver={(e) => {
+                                                e.preventDefault()
+                                                e.stopPropagation()
+                                            }}
+                                            onDragEnter={(e) => {
+                                                e.preventDefault()
+                                                e.stopPropagation()
+                                            }}
+                                            onDrop={(e) => {
+                                                e.preventDefault()
+                                                e.stopPropagation()
+                                                if (assetImages.length >= 3)
+                                                    return
+                                                const file =
+                                                    e.dataTransfer.files[0]
+                                                if (
+                                                    file &&
+                                                    file.type.startsWith(
+                                                        'image/',
+                                                    )
+                                                ) {
+                                                    handleAssetUpload(file)
+                                                }
+                                            }}
+                                        >
+                                            {assetImages.length === 1 ? (
+                                                <img
+                                                    src={assetImages[0].url}
+                                                    alt="Asset"
+                                                    className="w-11 h-11 rounded-lg object-cover"
+                                                />
+                                            ) : (
+                                                <div className="w-11 h-11 relative">
+                                                    {assetImages
+                                                        .slice(0, 2)
+                                                        .map((asset, i) => (
+                                                            <img
+                                                                key={asset.id}
+                                                                src={asset.url}
+                                                                alt="Asset"
+                                                                className="w-8 h-8 rounded-lg object-cover border-2 border-white dark:border-gray-800 absolute"
+                                                                style={{
+                                                                    zIndex:
+                                                                        2 - i,
+                                                                    top: i * 6,
+                                                                    left: i * 6,
+                                                                }}
+                                                            />
+                                                        ))}
+                                                </div>
+                                            )}
+                                            {/* Counter badge */}
+                                            <span className="absolute -bottom-1 -right-1 text-[8px] bg-green-600 text-white px-1 rounded font-medium">
+                                                {assetImages.length}/3
+                                            </span>
+                                            <button
+                                                onClick={(e) => {
+                                                    e.stopPropagation()
+                                                    assetImages.forEach((a) =>
+                                                        removeAssetImage(a.id),
+                                                    )
+                                                }}
+                                                className="absolute -top-1 -right-1 p-0.5 bg-red-500 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
+                                            >
+                                                <HiOutlineX className="w-2.5 h-2.5" />
+                                            </button>
+                                        </div>
+                                    </Tooltip>
+                                ) : (
+                                    <ImageDropzone
+                                        image={null}
+                                        onUpload={handleAssetUpload}
+                                        onRemove={() => {}}
+                                        label="Assets"
+                                        tooltip="Logo/producto: se imprime EXACTO en la ropa o props (máx 3)"
+                                        icon={
+                                            <HiOutlineUpload className="w-4 h-4 text-green-500" />
+                                        }
+                                        dragOverClass="ring-green-500"
+                                    />
+                                )}
+                                <input
+                                    id="asset-input"
+                                    type="file"
+                                    accept="image/*"
+                                    className="hidden"
+                                    onChange={(e) => {
+                                        const file = e.target.files?.[0]
+                                        if (file) handleAssetUpload(file)
+                                        e.target.value = ''
+                                    }}
+                                />
+                                {assetImages.length > 0 && (
+                                    <span className="text-[9px] text-gray-500">
+                                        Assets
+                                    </span>
+                                )}
+                            </div>
+                        )}
+
+                        {/* Place Reference Dropzone (IMAGE mode only) */}
+                        {generationMode === 'IMAGE' && (
+                            <div className="flex flex-col items-center gap-0.5">
+                                {placeImage ? (
+                                    <Tooltip
+                                        title={
+                                            placeDescription ||
+                                            'Analyzing place...'
+                                        }
+                                        placement="top"
+                                    >
+                                        <div className="relative group">
+                                            <img
+                                                src={placeImage.url}
+                                                alt="Place"
+                                                className={`w-11 h-11 object-cover rounded-lg ${isAnalyzingPlace ? 'opacity-50' : ''}`}
+                                            />
+                                            {/* Loading overlay */}
+                                            {isAnalyzingPlace && (
+                                                <div className="absolute inset-0 flex items-center justify-center bg-black/20 rounded-lg">
+                                                    <Spinner size={16} />
+                                                </div>
+                                            )}
+                                            {/* Success indicator */}
+                                            {!isAnalyzingPlace &&
+                                                placeDescription && (
+                                                    <div className="absolute -bottom-1 -right-1 p-0.5 bg-green-500 text-white rounded-full">
+                                                        <HiOutlineCheck className="w-2.5 h-2.5" />
+                                                    </div>
+                                                )}
+                                            <button
+                                                onClick={() =>
+                                                    setPlaceImage(null)
+                                                }
+                                                className="absolute -top-1 -right-1 p-0.5 bg-red-500 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
+                                            >
+                                                <HiOutlineX className="w-3 h-3" />
+                                            </button>
+                                        </div>
+                                    </Tooltip>
+                                ) : (
+                                    <ImageDropzone
+                                        image={null}
+                                        onUpload={handlePlaceRefUpload}
+                                        onRemove={() => {}}
+                                        label="Place Ref"
+                                        tooltip="Lugar/entorno exacto donde se coloca al avatar (ignora personas en la foto)"
+                                        icon={
+                                            <HiOutlinePhotograph className="w-4 h-4 text-teal-500" />
+                                        }
+                                        dragOverClass="ring-teal-500"
+                                    />
+                                )}
+                                {placeImage && (
+                                    <span className="text-[9px] text-gray-500">
+                                        {isAnalyzingPlace
+                                            ? 'Analyzing...'
+                                            : 'Place Ref'}
+                                    </span>
+                                )}
+                            </div>
+                        )}
+
+                        {/* Scene Composite Dropzone (IMAGE mode only) - literally places avatar in this scene */}
+                        {generationMode === 'IMAGE' && (
+                            <div className="flex flex-col items-center gap-0.5">
+                                {sceneImage ? (
+                                    <Tooltip
+                                        title="Avatar will be composited into this scene"
+                                        placement="top"
+                                    >
+                                        <div className="relative group">
+                                            <img
+                                                src={sceneImage.url}
+                                                alt="Scene"
+                                                className="w-11 h-11 object-cover rounded-lg ring-2 ring-rose-500"
+                                            />
+                                            <button
+                                                onClick={() =>
+                                                    setSceneImage(null)
+                                                }
+                                                className="absolute -top-1 -right-1 p-0.5 bg-red-500 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
+                                            >
+                                                <HiOutlineX className="w-3 h-3" />
+                                            </button>
+                                        </div>
+                                    </Tooltip>
+                                ) : (
+                                    <ImageDropzone
+                                        image={null}
+                                        onUpload={handleSceneUpload}
+                                        onRemove={() => {}}
+                                        label="Scene"
+                                        tooltip="Set/composición: usa la imagen como escena y coloca al avatar dentro"
+                                        icon={
+                                            <HiOutlinePhotograph className="w-4 h-4 text-rose-500" />
+                                        }
+                                        dragOverClass="ring-rose-500"
+                                    />
+                                )}
+                                {sceneImage && (
+                                    <span className="text-[9px] text-rose-500 font-medium">
+                                        Scene
+                                    </span>
+                                )}
+                            </div>
+                        )}
+
+                        {/* Video Input Image (VIDEO ANIMATE + SPEAK modes; optional in SPEAK — falls back to the avatar's face ref) */}
+                        {generationMode === 'VIDEO' &&
+                            (videoSubMode === 'ANIMATE' ||
+                                videoSubMode === 'SPEAK') && (
+                                <div className="flex flex-col items-center gap-0.5">
+                                    {videoInputImage ? (
+                                        <div className="relative group">
+                                            <img
+                                                src={videoInputImage.url}
+                                                alt="Input"
+                                                className="w-11 h-11 rounded-lg object-cover ring-2 ring-purple-500"
+                                            />
+                                            <button
+                                                onClick={() =>
+                                                    setVideoInputImage(null)
+                                                }
+                                                className="absolute -top-1 -right-1 p-0.5 bg-red-500 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
+                                            >
+                                                <HiOutlineX className="w-3 h-3" />
+                                            </button>
+                                        </div>
+                                    ) : (
+                                        <div
+                                            onClick={() =>
+                                                videoInputRef.current?.click()
+                                            }
+                                            className="w-11 h-11 border-2 border-dashed border-purple-400 rounded-lg flex items-center justify-center cursor-pointer hover:bg-purple-50 dark:hover:bg-purple-900/20 transition-all"
+                                        >
+                                            <HiOutlineVideoCamera className="w-4 h-4 text-purple-500" />
+                                        </div>
+                                    )}
+                                    <span className="text-[9px] text-purple-500 font-medium">
+                                        {videoSubMode === 'SPEAK'
+                                            ? 'Input'
+                                            : 'Input*'}
+                                    </span>
+                                    <input
+                                        ref={videoInputRef}
+                                        type="file"
+                                        accept="image/*"
+                                        className="hidden"
+                                        onChange={handleVideoInputUpload}
+                                    />
                                 </div>
                             )}
-                            <span className="text-[9px] text-purple-500 font-medium">
-                                {videoSubMode === 'SPEAK' ? 'Input' : 'Input*'}
-                            </span>
-                            <input
-                                ref={videoInputRef}
-                                type="file"
-                                accept="image/*"
-                                className="hidden"
-                                onChange={handleVideoInputUpload}
-                            />
-                        </div>
-                    )}
-                </div>
+                    </div>
                 </div>
 
                 {/* Generate Button (móvil: CTA a ancho completo) */}
@@ -1362,512 +1641,704 @@ const BottomControlBar = ({
 
             {/* Row 2: Contextual Controls - Only render after mount to prevent hydration mismatch */}
             {hasMounted && (
-            <div className="flex items-center gap-2 px-4 pb-3 overflow-x-auto">
-                {/* Aspect Ratio */}
-                <Dropdown
-                    placement="top-start"
-                    renderTitle={
-                        <button className="px-2.5 py-1.5 text-xs bg-gray-100 dark:bg-gray-700 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors flex items-center gap-2 border border-gray-200 dark:border-gray-600">
-                            <AspectRatioIcon ratio={aspectRatio} isSelected={true} />
-                            <span className="font-medium">
-                                {ASPECT_RATIOS.find(r => r.value === aspectRatio)?.label || aspectRatio}
-                            </span>
-                        </button>
-                    }
-                >
-                    {ASPECT_RATIOS.map((r) => (
-                        <Dropdown.Item
-                            key={r.value}
-                            eventKey={r.value}
-                            onClick={() => setAspectRatio(r.value as AspectRatio)}
-                            className="flex items-center gap-2.5"
-                        >
-                            <AspectRatioIcon ratio={r.value} isSelected={aspectRatio === r.value} />
-                            <span className={aspectRatio === r.value ? 'text-primary font-medium' : ''}>
-                                {r.label}
-                            </span>
-                            {/* ★ fija este ratio como default de arranque */}
-                            <button
-                                type="button"
-                                title={
-                                    defaultAspectRatio === r.value
-                                        ? 'Default de arranque'
-                                        : 'Hacer default de arranque'
+                <div className="flex items-center gap-2 px-4 pb-3 overflow-x-auto">
+                    {/* Aspect Ratio */}
+                    <Dropdown
+                        placement="top-start"
+                        renderTitle={
+                            <button className="px-2.5 py-1.5 text-xs bg-gray-100 dark:bg-gray-700 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors flex items-center gap-2 border border-gray-200 dark:border-gray-600">
+                                <AspectRatioIcon
+                                    ratio={aspectRatio}
+                                    isSelected={true}
+                                />
+                                <span className="font-medium">
+                                    {ASPECT_RATIOS.find(
+                                        (r) => r.value === aspectRatio,
+                                    )?.label || aspectRatio}
+                                </span>
+                            </button>
+                        }
+                    >
+                        {ASPECT_RATIOS.map((r) => (
+                            <Dropdown.Item
+                                key={r.value}
+                                eventKey={r.value}
+                                onClick={() =>
+                                    setAspectRatio(r.value as AspectRatio)
                                 }
-                                onClick={(e) => {
-                                    e.stopPropagation()
-                                    writeDefaultAspectRatio(r.value as AspectRatio)
-                                    setDefaultAspectRatio(r.value as AspectRatio)
-                                }}
-                                className="ml-auto p-0.5 rounded hover:bg-gray-200 dark:hover:bg-gray-600"
+                                className="flex items-center gap-2.5"
                             >
-                                {defaultAspectRatio === r.value ? (
-                                    <HiStar className="w-4 h-4 text-amber-400" />
-                                ) : (
-                                    <HiOutlineStar className="w-4 h-4 text-gray-400" />
-                                )}
-                            </button>
-                        </Dropdown.Item>
-                    ))}
-                </Dropdown>
-
-                {/* Framing (IMAGE mode only) */}
-                {generationMode === 'IMAGE' && (
-                    <Dropdown
-                        placement="top-start"
-                        renderTitle={
-                            <button className="px-2 py-1 text-xs bg-gray-100 dark:bg-gray-700 rounded hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors flex items-center gap-1">
-                                <span className="text-gray-500">Framing:</span>
-                                <span>{CAMERA_SHOTS.find(s => s.value === cameraShot)?.label || 'Auto'}</span>
-                            </button>
-                        }
-                    >
-                        {CAMERA_SHOTS.filter(s => s.category === 'framing').map((shot) => (
-                            <Dropdown.Item
-                                key={shot.value}
-                                eventKey={shot.value}
-                                onClick={() => setCameraShot(shot.value as CameraShot)}
-                                className={`flex flex-col items-start ${cameraShot === shot.value ? 'bg-primary/10' : ''}`}
-                            >
-                                <span className={cameraShot === shot.value ? 'text-primary font-medium' : ''}>
-                                    {shot.label}
-                                </span>
-                                <span className="text-[10px] text-gray-400">{shot.description}</span>
-                            </Dropdown.Item>
-                        ))}
-                    </Dropdown>
-                )}
-
-                {/* Camera Angle (IMAGE mode only) */}
-                {generationMode === 'IMAGE' && (
-                    <Dropdown
-                        placement="top-start"
-                        renderTitle={
-                            <button className="px-2 py-1 text-xs bg-gray-100 dark:bg-gray-700 rounded hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors flex items-center gap-1">
-                                <span className="text-gray-500">Angle:</span>
-                                <span>{cameraAngle ? CAMERA_SHOTS.find(s => s.value === cameraAngle)?.label : 'Auto'}</span>
-                            </button>
-                        }
-                    >
-                        <Dropdown.Item
-                            eventKey="auto"
-                            onClick={() => setCameraAngle(null)}
-                            className={`flex flex-col items-start ${cameraAngle === null ? 'bg-primary/10' : ''}`}
-                        >
-                            <span className={cameraAngle === null ? 'text-primary font-medium' : ''}>
-                                Auto
-                            </span>
-                            <span className="text-[10px] text-gray-400">AI decides best angle</span>
-                        </Dropdown.Item>
-                        {CAMERA_SHOTS.filter(s => s.category === 'angle').map((shot) => (
-                            <Dropdown.Item
-                                key={shot.value}
-                                eventKey={shot.value}
-                                onClick={() => setCameraAngle(shot.value as CameraShot)}
-                                className={`flex flex-col items-start ${cameraAngle === shot.value ? 'bg-primary/10' : ''}`}
-                            >
-                                <span className={cameraAngle === shot.value ? 'text-primary font-medium' : ''}>
-                                    {shot.label}
-                                </span>
-                                <span className="text-[10px] text-gray-400">{shot.description}</span>
-                            </Dropdown.Item>
-                        ))}
-                    </Dropdown>
-                )}
-
-                {/* VIDEO MODE CONTROLS */}
-                {generationMode === 'VIDEO' && (
-                    <>
-                        {/* Video Sub-Mode */}
-                        <div className="flex bg-gray-100 dark:bg-gray-700 rounded p-0.5">
-                            <button
-                                onClick={() => setVideoSubMode('ANIMATE')}
-                                className={`px-2 py-0.5 text-[10px] font-medium rounded transition-colors ${
-                                    videoSubMode === 'ANIMATE'
-                                        ? 'bg-purple-500 text-white'
-                                        : 'text-gray-500'
-                                }`}
-                            >
-                                Animate
-                            </button>
-                            <button
-                                onClick={() => setVideoSubMode('AVATAR')}
-                                className={`px-2 py-0.5 text-[10px] font-medium rounded transition-colors ${
-                                    videoSubMode === 'AVATAR'
-                                        ? 'bg-purple-500 text-white'
-                                        : 'text-gray-500'
-                                }`}
-                            >
-                                Avatar
-                            </button>
-                            <button
-                                onClick={() => setVideoSubMode('SPEAK')}
-                                className={`px-2 py-0.5 text-[10px] font-medium rounded transition-colors ${
-                                    videoSubMode === 'SPEAK'
-                                        ? 'bg-purple-500 text-white'
-                                        : 'text-gray-500'
-                                }`}
-                            >
-                                Speak
-                            </button>
-                        </div>
-
-                        {videoSubMode === 'SPEAK' && (
-                            avatarDefaultVoice ? (
-                                <span className="px-2 py-1 text-[10px] rounded bg-purple-500/10 text-purple-400 flex items-center gap-1">
-                                    🎤 {avatarDefaultVoice.name}
-                                </span>
-                            ) : (
-                                <a
-                                    href="/concepts/avatar-forge/voice-studio"
-                                    className="px-2 py-1 text-[10px] rounded bg-amber-500/10 text-amber-500 underline"
+                                <AspectRatioIcon
+                                    ratio={r.value}
+                                    isSelected={aspectRatio === r.value}
+                                />
+                                <span
+                                    className={
+                                        aspectRatio === r.value
+                                            ? 'text-primary font-medium'
+                                            : ''
+                                    }
                                 >
-                                    No voice — clone one in Voice Studio
-                                </a>
-                            )
-                        )}
+                                    {r.label}
+                                </span>
+                                {/* ★ fija este ratio como default de arranque */}
+                                <button
+                                    type="button"
+                                    title={
+                                        defaultAspectRatio === r.value
+                                            ? 'Default de arranque'
+                                            : 'Hacer default de arranque'
+                                    }
+                                    onClick={(e) => {
+                                        e.stopPropagation()
+                                        writeDefaultAspectRatio(
+                                            r.value as AspectRatio,
+                                        )
+                                        setDefaultAspectRatio(
+                                            r.value as AspectRatio,
+                                        )
+                                    }}
+                                    className="ml-auto p-0.5 rounded hover:bg-gray-200 dark:hover:bg-gray-600"
+                                >
+                                    {defaultAspectRatio === r.value ? (
+                                        <HiStar className="w-4 h-4 text-amber-400" />
+                                    ) : (
+                                        <HiOutlineStar className="w-4 h-4 text-gray-400" />
+                                    )}
+                                </button>
+                            </Dropdown.Item>
+                        ))}
+                    </Dropdown>
 
-                        {/* Resolution — only shown for providers that take a pixel resolution. */}
-                        {resolutionOptions && (
-                            <Dropdown
-                                placement="top-start"
-                                renderTitle={
-                                    <button className="px-2 py-1 text-xs bg-gray-100 dark:bg-gray-700 rounded hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors">
-                                        {videoResolution}
-                                    </button>
-                                }
-                            >
-                                {VIDEO_RESOLUTIONS.filter((r) => resolutionOptions.includes(r.value)).map((r) => (
-                                    <Dropdown.Item
-                                        key={r.value}
-                                        eventKey={r.value}
-                                        onClick={() => setVideoResolution(r.value)}
-                                        className={videoResolution === r.value ? 'bg-primary/10 text-primary' : ''}
-                                    >
-                                        {r.label}
-                                    </Dropdown.Item>
-                                ))}
-                            </Dropdown>
-                        )}
-
-                        {/* Duration — options adapt to the selected model. Dictated by the audio in Speak mode. */}
-                        {videoSubMode !== 'SPEAK' && (
-                            <Dropdown
-                                placement="top-start"
-                                renderTitle={
-                                    <button className="px-2 py-1 text-xs bg-gray-100 dark:bg-gray-700 rounded hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors flex items-center gap-1">
-                                        <span className="text-gray-500">Dur:</span>
-                                        <span>{videoDuration}s</span>
-                                    </button>
-                                }
-                            >
-                                {durationOptions.map((d) => (
-                                    <Dropdown.Item
-                                        key={d}
-                                        eventKey={String(d)}
-                                        onClick={() => setVideoDuration(d)}
-                                        className={videoDuration === d ? 'bg-primary/10 text-primary' : ''}
-                                    >
-                                        {d}s
-                                    </Dropdown.Item>
-                                ))}
-                            </Dropdown>
-                        )}
-
-                        {/* Camera Motion — not used in Speak mode (talking-head only). */}
-                        {videoSubMode !== 'SPEAK' && (
-                            <Dropdown
-                                placement="top-start"
-                                renderTitle={
-                                    <button className="px-2 py-1 text-xs bg-gray-100 dark:bg-gray-700 rounded hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors flex items-center gap-1">
-                                        <span className="text-gray-500">Cam:</span>
-                                        <span>{cameraMotion || 'None'}</span>
-                                    </button>
-                                }
-                            >
-                                {CAMERA_MOTIONS.map((m) => (
-                                    <Dropdown.Item
-                                        key={m.value}
-                                        eventKey={m.value}
-                                        onClick={() => setCameraMotion(m.value as CameraMotion)}
-                                        className={cameraMotion === m.value ? 'bg-primary/10 text-primary' : ''}
-                                    >
-                                        {m.label}
-                                    </Dropdown.Item>
-                                ))}
-                            </Dropdown>
-                        )}
-
-                        {/* Subject Action */}
+                    {/* Framing (IMAGE mode only) */}
+                    {generationMode === 'IMAGE' && (
                         <Dropdown
                             placement="top-start"
                             renderTitle={
                                 <button className="px-2 py-1 text-xs bg-gray-100 dark:bg-gray-700 rounded hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors flex items-center gap-1">
-                                    <span className="text-gray-500">Action:</span>
-                                    <span>{subjectAction || 'None'}</span>
+                                    <span className="text-gray-500">
+                                        Framing:
+                                    </span>
+                                    <span>
+                                        {CAMERA_SHOTS.find(
+                                            (s) => s.value === cameraShot,
+                                        )?.label || 'Auto'}
+                                    </span>
                                 </button>
                             }
                         >
-                            {SUBJECT_ACTIONS.map((a) => (
+                            {CAMERA_SHOTS.filter(
+                                (s) => s.category === 'framing',
+                            ).map((shot) => (
                                 <Dropdown.Item
-                                    key={a.value}
-                                    eventKey={a.value}
-                                    onClick={() => setSubjectAction(a.value as SubjectAction)}
-                                    className={subjectAction === a.value ? 'bg-primary/10 text-primary' : ''}
+                                    key={shot.value}
+                                    eventKey={shot.value}
+                                    onClick={() =>
+                                        setCameraShot(shot.value as CameraShot)
+                                    }
+                                    className={`flex flex-col items-start ${cameraShot === shot.value ? 'bg-primary/10' : ''}`}
                                 >
-                                    {a.label}
+                                    <span
+                                        className={
+                                            cameraShot === shot.value
+                                                ? 'text-primary font-medium'
+                                                : ''
+                                        }
+                                    >
+                                        {shot.label}
+                                    </span>
+                                    <span className="text-[10px] text-gray-400">
+                                        {shot.description}
+                                    </span>
                                 </Dropdown.Item>
                             ))}
                         </Dropdown>
+                    )}
 
-                        {/* More Video Options */}
+                    {/* Camera Angle (IMAGE mode only) */}
+                    {generationMode === 'IMAGE' && (
                         <Dropdown
                             placement="top-start"
                             renderTitle={
                                 <button className="px-2 py-1 text-xs bg-gray-100 dark:bg-gray-700 rounded hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors flex items-center gap-1">
-                                    <HiOutlineCog className="w-3 h-3" />
-                                    <span>More</span>
+                                    <span className="text-gray-500">
+                                        Angle:
+                                    </span>
+                                    <span>
+                                        {cameraAngle
+                                            ? CAMERA_SHOTS.find(
+                                                  (s) =>
+                                                      s.value === cameraAngle,
+                                              )?.label
+                                            : 'Auto'}
+                                    </span>
                                 </button>
                             }
                         >
-                            <div className="p-3 min-w-[200px]">
-                                {/* El diálogo/guion se edita SOLO en el diálogo 🎤 (SpeakScriptDialog)
-                                    — tener un segundo input aquí para el mismo campo confundía. */}
-                                <div className="space-y-2">
-                                    <Checkbox
-                                        checked={noMusic}
-                                        onChange={(val) => setNoMusic(val)}
+                            <Dropdown.Item
+                                eventKey="auto"
+                                onClick={() => setCameraAngle(null)}
+                                className={`flex flex-col items-start ${cameraAngle === null ? 'bg-primary/10' : ''}`}
+                            >
+                                <span
+                                    className={
+                                        cameraAngle === null
+                                            ? 'text-primary font-medium'
+                                            : ''
+                                    }
+                                >
+                                    Auto
+                                </span>
+                                <span className="text-[10px] text-gray-400">
+                                    AI decides best angle
+                                </span>
+                            </Dropdown.Item>
+                            {CAMERA_SHOTS.filter(
+                                (s) => s.category === 'angle',
+                            ).map((shot) => (
+                                <Dropdown.Item
+                                    key={shot.value}
+                                    eventKey={shot.value}
+                                    onClick={() =>
+                                        setCameraAngle(shot.value as CameraShot)
+                                    }
+                                    className={`flex flex-col items-start ${cameraAngle === shot.value ? 'bg-primary/10' : ''}`}
+                                >
+                                    <span
+                                        className={
+                                            cameraAngle === shot.value
+                                                ? 'text-primary font-medium'
+                                                : ''
+                                        }
                                     >
-                                        <span className="text-xs">No background music</span>
-                                    </Checkbox>
-                                    <Checkbox
-                                        checked={noBackgroundEffects}
-                                        onChange={(val) => setNoBackgroundEffects(val)}
-                                    >
-                                        <span className="text-xs">No background effects</span>
-                                    </Checkbox>
-                                </div>
-                            </div>
+                                        {shot.label}
+                                    </span>
+                                    <span className="text-[10px] text-gray-400">
+                                        {shot.description}
+                                    </span>
+                                </Dropdown.Item>
+                            ))}
                         </Dropdown>
+                    )}
 
-                        {/* Kling AI Controls - direct Kling provider OR Kling 3.0 via KIE */}
-                        {(isKlingProvider || isKieKling) && (
+                    {/* VIDEO MODE CONTROLS */}
+                    {generationMode === 'VIDEO' && (
+                        <>
+                            {/* Video Sub-Mode */}
+                            <div className="flex bg-gray-100 dark:bg-gray-700 rounded p-0.5">
+                                <button
+                                    onClick={() => setVideoSubMode('ANIMATE')}
+                                    className={`px-2 py-0.5 text-[10px] font-medium rounded transition-colors ${
+                                        videoSubMode === 'ANIMATE'
+                                            ? 'bg-purple-500 text-white'
+                                            : 'text-gray-500'
+                                    }`}
+                                >
+                                    Animate
+                                </button>
+                                <button
+                                    onClick={() => setVideoSubMode('AVATAR')}
+                                    className={`px-2 py-0.5 text-[10px] font-medium rounded transition-colors ${
+                                        videoSubMode === 'AVATAR'
+                                            ? 'bg-purple-500 text-white'
+                                            : 'text-gray-500'
+                                    }`}
+                                >
+                                    Avatar
+                                </button>
+                                <button
+                                    onClick={() => setVideoSubMode('SPEAK')}
+                                    className={`px-2 py-0.5 text-[10px] font-medium rounded transition-colors ${
+                                        videoSubMode === 'SPEAK'
+                                            ? 'bg-purple-500 text-white'
+                                            : 'text-gray-500'
+                                    }`}
+                                >
+                                    Speak
+                                </button>
+                            </div>
+
+                            {videoSubMode === 'SPEAK' &&
+                                (avatarDefaultVoice ? (
+                                    <span className="px-2 py-1 text-[10px] rounded bg-purple-500/10 text-purple-400 flex items-center gap-1">
+                                        🎤 {avatarDefaultVoice.name}
+                                    </span>
+                                ) : (
+                                    <a
+                                        href="/concepts/avatar-forge/voice-studio"
+                                        className="px-2 py-1 text-[10px] rounded bg-amber-500/10 text-amber-500 underline"
+                                    >
+                                        No voice — clone one in Voice Studio
+                                    </a>
+                                ))}
+
+                            {/* Resolution — only shown for providers that take a pixel resolution. */}
+                            {resolutionOptions && (
+                                <Dropdown
+                                    placement="top-start"
+                                    renderTitle={
+                                        <button className="px-2 py-1 text-xs bg-gray-100 dark:bg-gray-700 rounded hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors">
+                                            {videoResolution}
+                                        </button>
+                                    }
+                                >
+                                    {VIDEO_RESOLUTIONS.filter((r) =>
+                                        resolutionOptions.includes(r.value),
+                                    ).map((r) => (
+                                        <Dropdown.Item
+                                            key={r.value}
+                                            eventKey={r.value}
+                                            onClick={() =>
+                                                setVideoResolution(r.value)
+                                            }
+                                            className={
+                                                videoResolution === r.value
+                                                    ? 'bg-primary/10 text-primary'
+                                                    : ''
+                                            }
+                                        >
+                                            {r.label}
+                                        </Dropdown.Item>
+                                    ))}
+                                </Dropdown>
+                            )}
+
+                            {/* Duration — options adapt to the selected model. Dictated by the audio in Speak mode. */}
+                            {videoSubMode !== 'SPEAK' && (
+                                <Dropdown
+                                    placement="top-start"
+                                    renderTitle={
+                                        <button className="px-2 py-1 text-xs bg-gray-100 dark:bg-gray-700 rounded hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors flex items-center gap-1">
+                                            <span className="text-gray-500">
+                                                Dur:
+                                            </span>
+                                            <span>{videoDuration}s</span>
+                                        </button>
+                                    }
+                                >
+                                    {durationOptions.map((d) => (
+                                        <Dropdown.Item
+                                            key={d}
+                                            eventKey={String(d)}
+                                            onClick={() => setVideoDuration(d)}
+                                            className={
+                                                videoDuration === d
+                                                    ? 'bg-primary/10 text-primary'
+                                                    : ''
+                                            }
+                                        >
+                                            {d}s
+                                        </Dropdown.Item>
+                                    ))}
+                                </Dropdown>
+                            )}
+
+                            {/* Camera Motion — not used in Speak mode (talking-head only). */}
+                            {videoSubMode !== 'SPEAK' && (
+                                <Dropdown
+                                    placement="top-start"
+                                    renderTitle={
+                                        <button className="px-2 py-1 text-xs bg-gray-100 dark:bg-gray-700 rounded hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors flex items-center gap-1">
+                                            <span className="text-gray-500">
+                                                Cam:
+                                            </span>
+                                            <span>
+                                                {cameraMotion || 'None'}
+                                            </span>
+                                        </button>
+                                    }
+                                >
+                                    {CAMERA_MOTIONS.map((m) => (
+                                        <Dropdown.Item
+                                            key={m.value}
+                                            eventKey={m.value}
+                                            onClick={() =>
+                                                setCameraMotion(
+                                                    m.value as CameraMotion,
+                                                )
+                                            }
+                                            className={
+                                                cameraMotion === m.value
+                                                    ? 'bg-primary/10 text-primary'
+                                                    : ''
+                                            }
+                                        >
+                                            {m.label}
+                                        </Dropdown.Item>
+                                    ))}
+                                </Dropdown>
+                            )}
+
+                            {/* Subject Action */}
                             <Dropdown
                                 placement="top-start"
                                 renderTitle={
-                                    <button className="px-2 py-1 text-xs bg-gradient-to-r from-cyan-600 to-purple-600 text-white rounded hover:from-cyan-500 hover:to-purple-500 transition-colors flex items-center gap-1">
-                                        <span className="font-medium">Kling AI</span>
-                                        {isKlingV26 && (
-                                            <span className="text-[8px] bg-white/20 px-1 rounded">v2.6</span>
-                                        )}
+                                    <button className="px-2 py-1 text-xs bg-gray-100 dark:bg-gray-700 rounded hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors flex items-center gap-1">
+                                        <span className="text-gray-500">
+                                            Action:
+                                        </span>
+                                        <span>{subjectAction || 'None'}</span>
                                     </button>
                                 }
                             >
-                                <div className="p-3 min-w-[320px] max-h-[400px] overflow-y-auto">
-                                    {/* Voice Controls - Only for v2.6+ */}
-                                    {isKlingV26 && (
-                                        <div className="mb-3">
-                                            <KlingVoiceControls disabled={isGenerating} />
-                                        </div>
-                                    )}
+                                {SUBJECT_ACTIONS.map((a) => (
+                                    <Dropdown.Item
+                                        key={a.value}
+                                        eventKey={a.value}
+                                        onClick={() =>
+                                            setSubjectAction(
+                                                a.value as SubjectAction,
+                                            )
+                                        }
+                                        className={
+                                            subjectAction === a.value
+                                                ? 'bg-primary/10 text-primary'
+                                                : ''
+                                        }
+                                    >
+                                        {a.label}
+                                    </Dropdown.Item>
+                                ))}
+                            </Dropdown>
 
-                                    {/* Motion Control - direct v2.6+ or Kling 3.0 via KIE */}
-                                    {(isKlingV26 || isKieKling) && (
-                                        <div className="mb-3">
-                                            <KlingMotionControlEditor disabled={isGenerating} allowPresets={!isKieKling} />
-                                        </div>
-                                    )}
-                                    {/* Native audio - KIE Kling 3.0 only */}
-                                    {isKieKling && (
-                                        <div className="mb-3">
-                                            <KlingNativeAudioToggle disabled={isGenerating} />
-                                        </div>
-                                    )}
-
-                                    {/* Camera Controls - direct Kling only (not exposed by KIE Kling API) */}
-                                    {isKlingProvider && (
-                                        <div className="mb-3">
-                                            <KlingCameraControls disabled={isGenerating} />
-                                        </div>
-                                    )}
-
-                                    {/* Motion Brush - Available for v1.6+ */}
-                                    {(activeProvider?.model === 'kling-v1-6' || isKlingV26) && (
-                                        <div>
-                                            <KlingMotionBrushEditor disabled={isGenerating} />
-                                        </div>
-                                    )}
+                            {/* More Video Options */}
+                            <Dropdown
+                                placement="top-start"
+                                renderTitle={
+                                    <button className="px-2 py-1 text-xs bg-gray-100 dark:bg-gray-700 rounded hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors flex items-center gap-1">
+                                        <HiOutlineCog className="w-3 h-3" />
+                                        <span>More</span>
+                                    </button>
+                                }
+                            >
+                                <div className="p-3 min-w-[200px]">
+                                    {/* El diálogo/guion se edita SOLO en el diálogo 🎤 (SpeakScriptDialog)
+                                    — tener un segundo input aquí para el mismo campo confundía. */}
+                                    <div className="space-y-2">
+                                        <Checkbox
+                                            checked={noMusic}
+                                            onChange={(val) => setNoMusic(val)}
+                                        >
+                                            <span className="text-xs">
+                                                No background music
+                                            </span>
+                                        </Checkbox>
+                                        <Checkbox
+                                            checked={noBackgroundEffects}
+                                            onChange={(val) =>
+                                                setNoBackgroundEffects(val)
+                                            }
+                                        >
+                                            <span className="text-xs">
+                                                No background effects
+                                            </span>
+                                        </Checkbox>
+                                    </div>
                                 </div>
                             </Dropdown>
-                        )}
-                    </>
-                )}
 
-                {/* Safety Analysis - Individual Term Buttons */}
-                {safetyAnalysis && !safetyAnalysis.isSafe && (
-                    <>
-                        {safetyAnalysis.corrections.map((correction, idx) => (
-                            <Dropdown
-                                key={idx}
-                                placement="top-start"
-                                renderTitle={
-                                    <button className="px-2 py-1 text-[10px] bg-amber-600/80 hover:bg-amber-600 text-white font-medium rounded-full flex items-center gap-1 transition-colors">
-                                        <HiOutlineExclamation className="w-3 h-3" />
-                                        {correction.term}
-                                    </button>
-                                }
-                            >
-                                <div className="px-3 py-2 text-xs font-semibold text-gray-400 uppercase">
-                                    Replace with:
-                                </div>
-                                {(correction.alternatives || []).map((alt, i) => (
-                                    <Dropdown.Item
-                                        key={i}
-                                        eventKey={alt}
+                            {/* Kling AI Controls - direct Kling provider OR Kling 3.0 via KIE */}
+                            {(isKlingProvider || isKieKling) && (
+                                <Dropdown
+                                    placement="top-start"
+                                    renderTitle={
+                                        <button className="px-2 py-1 text-xs bg-gradient-to-r from-cyan-600 to-purple-600 text-white rounded hover:from-cyan-500 hover:to-purple-500 transition-colors flex items-center gap-1">
+                                            <span className="font-medium">
+                                                Kling AI
+                                            </span>
+                                            {isKlingV26 && (
+                                                <span className="text-[8px] bg-white/20 px-1 rounded">
+                                                    v2.6
+                                                </span>
+                                            )}
+                                        </button>
+                                    }
+                                >
+                                    <div className="p-3 min-w-[320px] max-h-[400px] overflow-y-auto">
+                                        {/* Voice Controls - Only for v2.6+ */}
+                                        {isKlingV26 && (
+                                            <div className="mb-3">
+                                                <KlingVoiceControls
+                                                    disabled={isGenerating}
+                                                />
+                                            </div>
+                                        )}
+
+                                        {/* Motion Control - direct v2.6+ or Kling 3.0 via KIE */}
+                                        {(isKlingV26 || isKieKling) && (
+                                            <div className="mb-3">
+                                                <KlingMotionControlEditor
+                                                    disabled={isGenerating}
+                                                    allowPresets={!isKieKling}
+                                                />
+                                            </div>
+                                        )}
+                                        {/* Native audio - KIE Kling 3.0 only */}
+                                        {isKieKling && (
+                                            <div className="mb-3">
+                                                <KlingNativeAudioToggle
+                                                    disabled={isGenerating}
+                                                />
+                                            </div>
+                                        )}
+
+                                        {/* Camera Controls - direct Kling only (not exposed by KIE Kling API) */}
+                                        {isKlingProvider && (
+                                            <div className="mb-3">
+                                                <KlingCameraControls
+                                                    disabled={isGenerating}
+                                                />
+                                            </div>
+                                        )}
+
+                                        {/* Motion Brush - Available for v1.6+ */}
+                                        {(activeProvider?.model ===
+                                            'kling-v1-6' ||
+                                            isKlingV26) && (
+                                            <div>
+                                                <KlingMotionBrushEditor
+                                                    disabled={isGenerating}
+                                                />
+                                            </div>
+                                        )}
+                                    </div>
+                                </Dropdown>
+                            )}
+                        </>
+                    )}
+
+                    {/* Safety Analysis - Individual Term Buttons */}
+                    {safetyAnalysis && !safetyAnalysis.isSafe && (
+                        <>
+                            {safetyAnalysis.corrections.map(
+                                (correction, idx) => (
+                                    <Dropdown
+                                        key={idx}
+                                        placement="top-start"
+                                        renderTitle={
+                                            <button className="px-2 py-1 text-[10px] bg-amber-600/80 hover:bg-amber-600 text-white font-medium rounded-full flex items-center gap-1 transition-colors">
+                                                <HiOutlineExclamation className="w-3 h-3" />
+                                                {correction.term}
+                                            </button>
+                                        }
+                                    >
+                                        <div className="px-3 py-2 text-xs font-semibold text-gray-400 uppercase">
+                                            Replace with:
+                                        </div>
+                                        {(correction.alternatives || []).map(
+                                            (alt, i) => (
+                                                <Dropdown.Item
+                                                    key={i}
+                                                    eventKey={alt}
+                                                    onClick={() => {
+                                                        setPrompt(
+                                                            prompt.replace(
+                                                                new RegExp(
+                                                                    correction.term,
+                                                                    'gi',
+                                                                ),
+                                                                alt,
+                                                            ),
+                                                        )
+                                                        const remaining =
+                                                            safetyAnalysis.corrections.filter(
+                                                                (c) =>
+                                                                    c.term !==
+                                                                    correction.term,
+                                                            )
+                                                        if (
+                                                            remaining.length ===
+                                                            0
+                                                        ) {
+                                                            setSafetyAnalysis(
+                                                                null,
+                                                            )
+                                                        } else {
+                                                            setSafetyAnalysis({
+                                                                ...safetyAnalysis,
+                                                                corrections:
+                                                                    remaining,
+                                                            })
+                                                        }
+                                                    }}
+                                                >
+                                                    {alt}
+                                                </Dropdown.Item>
+                                            ),
+                                        )}
+                                        {(!correction.alternatives ||
+                                            correction.alternatives.length ===
+                                                0) && (
+                                            <Dropdown.Item
+                                                eventKey="remove"
+                                                onClick={() => {
+                                                    setPrompt(
+                                                        prompt.replace(
+                                                            new RegExp(
+                                                                correction.term,
+                                                                'gi',
+                                                            ),
+                                                            '',
+                                                        ),
+                                                    )
+                                                    const remaining =
+                                                        safetyAnalysis.corrections.filter(
+                                                            (c) =>
+                                                                c.term !==
+                                                                correction.term,
+                                                        )
+                                                    if (
+                                                        remaining.length === 0
+                                                    ) {
+                                                        setSafetyAnalysis(null)
+                                                    } else {
+                                                        setSafetyAnalysis({
+                                                            ...safetyAnalysis,
+                                                            corrections:
+                                                                remaining,
+                                                        })
+                                                    }
+                                                }}
+                                            >
+                                                <span className="text-red-500">
+                                                    Remove term
+                                                </span>
+                                            </Dropdown.Item>
+                                        )}
+                                    </Dropdown>
+                                ),
+                            )}
+                            {/* Use Safe Version Button - uses AI-rewritten prompt */}
+                            {safetyAnalysis.optimizedPrompt &&
+                                safetyAnalysis.optimizedPrompt !== prompt && (
+                                    <button
                                         onClick={() => {
                                             setPrompt(
-                                                prompt.replace(
-                                                    new RegExp(correction.term, 'gi'),
-                                                    alt
-                                                )
+                                                safetyAnalysis.optimizedPrompt,
                                             )
-                                            const remaining = safetyAnalysis.corrections.filter(
-                                                (c) => c.term !== correction.term
-                                            )
-                                            if (remaining.length === 0) {
-                                                setSafetyAnalysis(null)
-                                            } else {
-                                                setSafetyAnalysis({
-                                                    ...safetyAnalysis,
-                                                    corrections: remaining,
-                                                })
-                                            }
+                                            setSafetyAnalysis(null)
                                         }}
+                                        className="px-2 py-1 text-[10px] bg-green-600 text-white font-medium rounded hover:bg-green-700 transition-colors"
                                     >
-                                        {alt}
-                                    </Dropdown.Item>
-                                ))}
-                                {(!correction.alternatives || correction.alternatives.length === 0) && (
-                                    <Dropdown.Item
-                                        eventKey="remove"
-                                        onClick={() => {
-                                            setPrompt(prompt.replace(new RegExp(correction.term, 'gi'), ''))
-                                            const remaining = safetyAnalysis.corrections.filter(
-                                                (c) => c.term !== correction.term
-                                            )
-                                            if (remaining.length === 0) {
-                                                setSafetyAnalysis(null)
-                                            } else {
-                                                setSafetyAnalysis({
-                                                    ...safetyAnalysis,
-                                                    corrections: remaining,
-                                                })
-                                            }
-                                        }}
-                                    >
-                                        <span className="text-red-500">Remove term</span>
-                                    </Dropdown.Item>
+                                        Use Safe Version
+                                    </button>
                                 )}
-                            </Dropdown>
-                        ))}
-                        {/* Use Safe Version Button - uses AI-rewritten prompt */}
-                        {safetyAnalysis.optimizedPrompt && safetyAnalysis.optimizedPrompt !== prompt && (
+                            {/* Auto-Fix All Button */}
                             <button
                                 onClick={() => {
-                                    setPrompt(safetyAnalysis.optimizedPrompt)
+                                    let newPrompt = prompt
+                                    safetyAnalysis.corrections.forEach((c) => {
+                                        if (
+                                            c.alternatives &&
+                                            c.alternatives.length > 0
+                                        ) {
+                                            newPrompt = newPrompt.replace(
+                                                new RegExp(c.term, 'gi'),
+                                                c.alternatives[0],
+                                            )
+                                        } else {
+                                            // Remove the term if no alternatives
+                                            newPrompt = newPrompt.replace(
+                                                new RegExp(c.term, 'gi'),
+                                                '',
+                                            )
+                                        }
+                                    })
+                                    // Clean up double spaces
+                                    newPrompt = newPrompt
+                                        .replace(/\s+/g, ' ')
+                                        .trim()
+                                    setPrompt(newPrompt)
                                     setSafetyAnalysis(null)
                                 }}
-                                className="px-2 py-1 text-[10px] bg-green-600 text-white font-medium rounded hover:bg-green-700 transition-colors"
+                                className="px-2 py-1 text-[10px] bg-amber-600 text-white font-medium rounded hover:bg-amber-700 transition-colors"
                             >
-                                Use Safe Version
+                                Auto-Fix All
                             </button>
-                        )}
-                        {/* Auto-Fix All Button */}
-                        <button
-                            onClick={() => {
-                                let newPrompt = prompt
-                                safetyAnalysis.corrections.forEach((c) => {
-                                    if (c.alternatives && c.alternatives.length > 0) {
-                                        newPrompt = newPrompt.replace(
-                                            new RegExp(c.term, 'gi'),
-                                            c.alternatives[0]
-                                        )
-                                    } else {
-                                        // Remove the term if no alternatives
-                                        newPrompt = newPrompt.replace(new RegExp(c.term, 'gi'), '')
-                                    }
-                                })
-                                // Clean up double spaces
-                                newPrompt = newPrompt.replace(/\s+/g, ' ').trim()
-                                setPrompt(newPrompt)
-                                setSafetyAnalysis(null)
-                            }}
-                            className="px-2 py-1 text-[10px] bg-amber-600 text-white font-medium rounded hover:bg-amber-700 transition-colors"
-                        >
-                            Auto-Fix All
-                        </button>
-                    </>
-                )}
+                        </>
+                    )}
 
-                {/* Divider */}
-                <div className="w-px h-5 bg-gray-200 dark:bg-gray-600 shrink-0" />
+                    {/* Divider */}
+                    <div className="w-px h-5 bg-gray-200 dark:bg-gray-600 shrink-0" />
 
-                {/* Pinned Quick Actions */}
-                {pinnedActionIds.length > 0 && (
-                    <div className="flex items-center gap-1 shrink-0">
-                        <PiLightningFill className="w-3 h-3 text-amber-500" />
-                        {pinnedActionIds.slice(0, 3).map((actionId) => {
-                            const preset = MODEL_ACTION_PRESETS.find((p) => p.id === actionId)
-                            if (!preset) return null
-                            return (
-                                <button
-                                    key={actionId}
-                                    onClick={() => handleQuickAction(actionId)}
-                                    className="px-2 py-0.5 text-[10px] bg-amber-500/10 text-amber-700 dark:text-amber-300 border border-amber-500/30 rounded hover:bg-amber-500/20 transition-colors whitespace-nowrap"
-                                >
-                                    {preset.name}
-                                </button>
-                            )
-                        })}
-                    </div>
-                )}
-
-                {/* Style Category Dropdowns - Individual buttons for each category */}
-                {STYLE_CATEGORIES.map((category) => (
-                    <Dropdown
-                        key={category.value}
-                        placement="top-start"
-                        renderTitle={
-                            <button className="px-2 py-1 text-xs bg-gray-100 dark:bg-gray-700 rounded hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors flex items-center gap-1">
-                                <HiOutlineSparkles className={`w-3 h-3 ${
-                                    category.value === 'lighting' ? 'text-yellow-500' :
-                                    category.value === 'mood' ? 'text-purple-500' :
-                                    category.value === 'film' ? 'text-amber-500' :
-                                    category.value === 'quality' ? 'text-blue-500' :
-                                    category.value === 'art' ? 'text-pink-500' :
-                                    category.value === 'makeup' ? 'text-rose-500' :
-                                    'text-green-500'
-                                }`} />
-                                <span>{category.label}</span>
-                            </button>
-                        }
-                    >
-                        <div className="max-h-80 overflow-y-auto">
-                            {QUICK_STYLES.filter(s => s.category === category.value).map((style) => (
-                                <Dropdown.Item
-                                    key={style.value}
-                                    eventKey={style.value}
-                                    onClick={() => handleQuickStyle(style.value)}
-                                    className="flex flex-col items-start"
-                                >
-                                    <span className="font-medium">{style.label}</span>
-                                    <span className="text-[10px] text-gray-400">{style.description}</span>
-                                </Dropdown.Item>
-                            ))}
+                    {/* Pinned Quick Actions */}
+                    {pinnedActionIds.length > 0 && (
+                        <div className="flex items-center gap-1 shrink-0">
+                            <PiLightningFill className="w-3 h-3 text-amber-500" />
+                            {pinnedActionIds.slice(0, 3).map((actionId) => {
+                                const preset = MODEL_ACTION_PRESETS.find(
+                                    (p) => p.id === actionId,
+                                )
+                                if (!preset) return null
+                                return (
+                                    <button
+                                        key={actionId}
+                                        onClick={() =>
+                                            handleQuickAction(actionId)
+                                        }
+                                        className="px-2 py-0.5 text-[10px] bg-amber-500/10 text-amber-700 dark:text-amber-300 border border-amber-500/30 rounded hover:bg-amber-500/20 transition-colors whitespace-nowrap"
+                                    >
+                                        {preset.name}
+                                    </button>
+                                )
+                            })}
                         </div>
-                    </Dropdown>
-                ))}
-            </div>
+                    )}
+
+                    {/* Style Category Dropdowns - Individual buttons for each category */}
+                    {STYLE_CATEGORIES.map((category) => (
+                        <Dropdown
+                            key={category.value}
+                            placement="top-start"
+                            renderTitle={
+                                <button className="px-2 py-1 text-xs bg-gray-100 dark:bg-gray-700 rounded hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors flex items-center gap-1">
+                                    <HiOutlineSparkles
+                                        className={`w-3 h-3 ${
+                                            category.value === 'lighting'
+                                                ? 'text-yellow-500'
+                                                : category.value === 'mood'
+                                                  ? 'text-purple-500'
+                                                  : category.value === 'film'
+                                                    ? 'text-amber-500'
+                                                    : category.value ===
+                                                        'quality'
+                                                      ? 'text-blue-500'
+                                                      : category.value === 'art'
+                                                        ? 'text-pink-500'
+                                                        : category.value ===
+                                                            'makeup'
+                                                          ? 'text-rose-500'
+                                                          : 'text-green-500'
+                                        }`}
+                                    />
+                                    <span>{category.label}</span>
+                                </button>
+                            }
+                        >
+                            <div className="max-h-80 overflow-y-auto">
+                                {QUICK_STYLES.filter(
+                                    (s) => s.category === category.value,
+                                ).map((style) => (
+                                    <Dropdown.Item
+                                        key={style.value}
+                                        eventKey={style.value}
+                                        onClick={() =>
+                                            handleQuickStyle(style.value)
+                                        }
+                                        className="flex flex-col items-start"
+                                    >
+                                        <span className="font-medium">
+                                            {style.label}
+                                        </span>
+                                        <span className="text-[10px] text-gray-400">
+                                            {style.description}
+                                        </span>
+                                    </Dropdown.Item>
+                                ))}
+                            </div>
+                        </Dropdown>
+                    ))}
+                </div>
             )}
 
             <VideoToPromptDialog

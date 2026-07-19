@@ -79,6 +79,7 @@ interface AvatarStudioState {
     assetImages: ReferenceImage[]
     cloneImage: ReferenceImage | null // Clone Ref - clones everything except face and body type
     cloneDescription: string // Text description of clone (analyzed from image)
+    cloneWeight: number // 0-100: peso del Clone Ref (100=recrea exacto, bajo=inspirado)
     // Deepfake Ref — face-swap PURO: reproduce la imagen exacta (cuerpo,
     // outfit, pose, escena) y SOLO cambia la cara por la del avatar.
     deepfakeImage: ReferenceImage | null
@@ -96,7 +97,7 @@ interface AvatarStudioState {
 
     // Generation Settings
     prompt: string
-    detectedTerms: DetectedTerm[]  // Contaminating terms detected in prompt
+    detectedTerms: DetectedTerm[] // Contaminating terms detected in prompt
     generationMode: MediaType
     videoSubMode: VideoSubMode
     avatarDefaultVoice: ClonedVoice | null
@@ -228,6 +229,7 @@ interface AvatarStudioState {
     removeAssetImage: (id: string) => void
     setCloneImage: (image: ReferenceImage | null) => void
     setCloneDescription: (description: string) => void
+    setCloneWeight: (weight: number) => void
     setDeepfakeImage: (image: ReferenceImage | null) => void
     setPoseImage: (image: ReferenceImage | null) => void
     setPoseDescription: (description: string) => void
@@ -245,9 +247,9 @@ interface AvatarStudioState {
 
     // Actions - Generation Settings
     setPrompt: (prompt: string) => void
-    setPromptAndAnalyze: (prompt: string) => void  // Sets prompt and analyzes for contaminants
-    removeDetectedTerm: (id: string) => void       // Removes a detected term from prompt
-    clearDetectedTerms: () => void                 // Clears all detected terms
+    setPromptAndAnalyze: (prompt: string) => void // Sets prompt and analyzes for contaminants
+    removeDetectedTerm: (id: string) => void // Removes a detected term from prompt
+    clearDetectedTerms: () => void // Clears all detected terms
     getFullPrompt: () => string
     setGenerationMode: (mode: MediaType) => void
     setVideoSubMode: (mode: VideoSubMode) => void
@@ -308,7 +310,10 @@ interface AvatarStudioState {
     // Actions - Gallery
     addToGallery: (media: GeneratedMedia) => void
     removeFromGallery: (id: string) => void
-    setPreviewMedia: (media: GeneratedMedia | null, startInEdit?: boolean) => void
+    setPreviewMedia: (
+        media: GeneratedMedia | null,
+        startInEdit?: boolean,
+    ) => void
     clearGallery: () => void
     loadPersistedGallery: (items: GeneratedMedia[]) => void
     updateGalleryItem: (id: string, patch: Partial<GeneratedMedia>) => void
@@ -331,7 +336,9 @@ interface AvatarStudioState {
     setIsDescribingImage: (describing: boolean) => void
 
     setContinueUseAvatarIdentity: (value: boolean) => void
-    setContinueIdentityModel: (value: 'seedance' | 'kling-omni' | 'veo-3-1') => void
+    setContinueIdentityModel: (
+        value: 'seedance' | 'kling-omni' | 'veo-3-1',
+    ) => void
 
     // Actions - Style Popover
     setShowStylePopover: (show: boolean) => void
@@ -393,6 +400,7 @@ const initialState = {
     assetImages: [],
     cloneImage: null,
     cloneDescription: '',
+    cloneWeight: 100,
     deepfakeImage: null,
     poseImage: null,
     poseDescription: '',
@@ -497,408 +505,504 @@ const initialState = {
 export const useAvatarStudioStore = create<AvatarStudioState>()(
     persist(
         (set, get) => ({
-    ...initialState,
+            ...initialState,
 
-    // Actions - Avatar
-    setCurrentAvatar: (avatar) => set({ currentAvatar: avatar }),
-    setAvatarId: (id) => set({ avatarId: id }),
-    setAvatarName: (name) => set({ avatarName: name }),
+            // Actions - Avatar
+            setCurrentAvatar: (avatar) => set({ currentAvatar: avatar }),
+            setAvatarId: (id) => set({ avatarId: id }),
+            setAvatarName: (name) => set({ avatarName: name }),
 
-    // Actions - References
-    setGeneralReferences: (refs) => set({ generalReferences: refs }),
-    addGeneralReference: (ref) =>
-        set((state) => ({
-            generalReferences: [...state.generalReferences, ref],
-        })),
-    removeGeneralReference: (id) =>
-        set((state) => ({
-            generalReferences: state.generalReferences.filter((r) => r.id !== id),
-        })),
-    setFaceRef: (ref) => set({ faceRef: ref }),
-    setAngleRef: (ref) => set({ angleRef: ref }),
-    setBodyRef: (ref) => set({ bodyRef: ref }),
-    setBustRef: (ref) => set({ bustRef: ref }),
-    setGlutesRef: (ref) => set({ glutesRef: ref }),
-    setAssetImages: (images) => set({ assetImages: images }),
-    addAssetImage: (image) =>
-        set((state) => ({
-            // Limit to 3 assets max
-            assetImages: state.assetImages.length < 3
-                ? [...state.assetImages, image]
-                : state.assetImages,
-        })),
-    removeAssetImage: (id) =>
-        set((state) => ({
-            assetImages: state.assetImages.filter((i) => i.id !== id),
-        })),
-    setCloneImage: (image) => set({ cloneImage: image, cloneDescription: image ? get().cloneDescription : '' }),
-    setDeepfakeImage: (image) => set({ deepfakeImage: image }),
-    setCloneDescription: (description) => set({ cloneDescription: description }),
-    setPoseImage: (image) => set({ poseImage: image, poseDescription: image ? get().poseDescription : '' }),
-    setPoseDescription: (description) => set({ poseDescription: description }),
-    setPlaceImage: (image) =>
-        set({
-            placeImage: image,
-            placeDescription: image ? get().placeDescription : '', // Clear description when image is removed
+            // Actions - References
+            setGeneralReferences: (refs) => set({ generalReferences: refs }),
+            addGeneralReference: (ref) =>
+                set((state) => ({
+                    generalReferences: [...state.generalReferences, ref],
+                })),
+            removeGeneralReference: (id) =>
+                set((state) => ({
+                    generalReferences: state.generalReferences.filter(
+                        (r) => r.id !== id,
+                    ),
+                })),
+            setFaceRef: (ref) => set({ faceRef: ref }),
+            setAngleRef: (ref) => set({ angleRef: ref }),
+            setBodyRef: (ref) => set({ bodyRef: ref }),
+            setBustRef: (ref) => set({ bustRef: ref }),
+            setGlutesRef: (ref) => set({ glutesRef: ref }),
+            setAssetImages: (images) => set({ assetImages: images }),
+            addAssetImage: (image) =>
+                set((state) => ({
+                    // Limit to 3 assets max
+                    assetImages:
+                        state.assetImages.length < 3
+                            ? [...state.assetImages, image]
+                            : state.assetImages,
+                })),
+            removeAssetImage: (id) =>
+                set((state) => ({
+                    assetImages: state.assetImages.filter((i) => i.id !== id),
+                })),
+            setCloneImage: (image) =>
+                set({
+                    cloneImage: image,
+                    cloneDescription: image ? get().cloneDescription : '',
+                }),
+            setDeepfakeImage: (image) => set({ deepfakeImage: image }),
+            setCloneDescription: (description) =>
+                set({ cloneDescription: description }),
+            setCloneWeight: (weight) => set({ cloneWeight: weight }),
+            setPoseImage: (image) =>
+                set({
+                    poseImage: image,
+                    poseDescription: image ? get().poseDescription : '',
+                }),
+            setPoseDescription: (description) =>
+                set({ poseDescription: description }),
+            setPlaceImage: (image) =>
+                set({
+                    placeImage: image,
+                    placeDescription: image ? get().placeDescription : '', // Clear description when image is removed
+                }),
+            setPlaceDescription: (description) =>
+                set({ placeDescription: description }),
+            setSceneImage: (image) => set({ sceneImage: image }),
+            setVideoInputImage: (image) => set({ videoInputImage: image }),
+            // Only clears avatar-specific references (when switching avatars)
+            clearAvatarReferences: () =>
+                set({
+                    generalReferences: [],
+                    faceRef: null,
+                    angleRef: null,
+                    bodyRef: null,
+                    bustRef: null,
+                    glutesRef: null,
+                }),
+            // Clears everything including session tools (full reset)
+            clearAllReferences: () =>
+                set({
+                    generalReferences: [],
+                    faceRef: null,
+                    angleRef: null,
+                    bodyRef: null,
+                    bustRef: null,
+                    glutesRef: null,
+                    assetImages: [],
+                    cloneImage: null,
+                    cloneDescription: '',
+                    cloneWeight: 100,
+                    deepfakeImage: null,
+                    poseImage: null,
+                    poseDescription: '',
+                    placeImage: null,
+                    placeDescription: '',
+                    sceneImage: null,
+                    videoInputImage: null,
+                }),
+
+            // Actions - Avatar Settings
+            setIdentityWeight: (weight) => set({ identityWeight: weight }),
+            setMeasurements: (measurements) => set({ measurements }),
+            setFaceDescription: (description) =>
+                set({ faceDescription: description }),
+
+            // Actions - Generation Settings
+            setPrompt: (prompt) => set({ prompt }),
+            setPromptAndAnalyze: (prompt) =>
+                set(() => {
+                    // Analyze prompt for contaminating terms
+                    const detected = analyzePromptForContaminants(prompt)
+                    return {
+                        prompt,
+                        detectedTerms: detected,
+                    }
+                }),
+            removeDetectedTerm: (id) =>
+                set((state) => {
+                    const term = state.detectedTerms.find((t) => t.id === id)
+                    if (!term) return state
+                    // Remove the term from the prompt
+                    const newPrompt = removeTermFromPrompt(state.prompt, term)
+                    // Re-analyze the cleaned prompt
+                    const newDetected = analyzePromptForContaminants(newPrompt)
+                    return {
+                        prompt: newPrompt,
+                        detectedTerms: newDetected,
+                    }
+                }),
+            clearDetectedTerms: () => set({ detectedTerms: [] }),
+            getFullPrompt: () => {
+                const state = get()
+                const {
+                    prompt: rawPrompt,
+                    measurements,
+                    faceDescription,
+                } = state
+
+                // If there's no prompt, return empty
+                if (!rawPrompt.trim()) return ''
+
+                // Flatten any structured markdown inside a [CLONE: ...] tag so the
+                // image model doesn't read headers/bullets as "generate a spec sheet".
+                const prompt = sanitizeCloneTags(rawPrompt)
+
+                // Build body measurements string to reinforce avatar's body type.
+                // PRIORITY: Body goes FIRST in the prompt for maximum weight.
+                // Lead with DESCRIPTIVE terms (what image models actually follow) and
+                // append the exact cm at the end (precision, in case a provider uses it).
+                // Image models largely ignore raw cm — describeBody() translates the
+                // avatar's own measurements into fashion descriptors. Same brain the
+                // direct Gemini path uses, now shared with KIE/Gateway/Flux.
+                const bodyParts: string[] = []
+
+                const bodyPhrase = describeBody(measurements)
+                if (bodyPhrase) {
+                    bodyParts.push(bodyPhrase)
+                }
+                if (measurements.age) {
+                    bodyParts.push(`${measurements.age} years old`)
+                }
+                if (measurements.height) {
+                    bodyParts.push(`${measurements.height}cm tall`)
+                }
+                // Skin tone + hair color also live in the UI but were previously dropped
+                // before reaching the model. Both are optional on PhysicalMeasurements.
+                if (measurements.skinTone) {
+                    bodyParts.push(
+                        `${skinToneToWords(measurements.skinTone)} skin`,
+                    )
+                }
+                if (measurements.hairColor) {
+                    // Texto curado ("brown" → "brown hair, medium brunette hair") en
+                    // vez del replace crudo: los compuestos del selector de estilo
+                    // ("wavy brown") caen al fallback free-text y seguían diciendo el
+                    // color, pero los valores canónicos perdían la redundancia que sí
+                    // pesa en modelos de difusión.
+                    bodyParts.push(
+                        getHairColorDescription(measurements.hairColor),
+                    )
+                }
+                // Exact measurements kept as a parenthetical suffix — no info lost.
+                const cmParts: string[] = []
+                if (measurements.bust)
+                    cmParts.push(`bust ${measurements.bust}cm`)
+                if (measurements.waist)
+                    cmParts.push(`waist ${measurements.waist}cm`)
+                if (measurements.hips)
+                    cmParts.push(`hips ${measurements.hips}cm`)
+                if (cmParts.length > 0) {
+                    bodyParts.push(`(${cmParts.join(', ')})`)
+                }
+
+                // Assemble the leading tags. Order: [BODY:] then [FACE:] then the
+                // user prompt. KlingService.formatPromptForKling already translates
+                // both tags into prose; other providers read them as semantic text.
+                const tags: string[] = []
+                if (bodyParts.length > 0) {
+                    tags.push(`[BODY: ${bodyParts.join(', ')}]`)
+                }
+                // The dense Auto-Analyze face descriptor was never sent to the model.
+                // Injecting it as [FACE: ...] is the single highest-impact change for
+                // likeness/consistency.
+                if (faceDescription.trim()) {
+                    tags.push(`[FACE: ${faceDescription.trim()}]`)
+                }
+
+                // Honor "no tattoos / sin tatuajes" for ALL providers: remove tattoo
+                // mentions (incl. the one the Clone auto-analysis injects) so image
+                // models — which draw mentioned nouns and ignore "no X" — don't render it.
+                const assembled =
+                    tags.length > 0 ? `${tags.join(' ')} ${prompt}` : prompt
+                return stripNegatedTattoos(assembled)
+            },
+            setGenerationMode: (mode) =>
+                set((state) => ({
+                    generationMode: mode,
+                    // Clear detected terms when switching to VIDEO (only relevant for IMAGE mode)
+                    detectedTerms: mode === 'VIDEO' ? [] : state.detectedTerms,
+                })),
+            setVideoSubMode: (mode) => set({ videoSubMode: mode }),
+            setAvatarDefaultVoice: (voice) =>
+                set({ avatarDefaultVoice: voice }),
+            setSpeakModel: (model) => set({ speakModel: model }),
+            setSpeakAudioUrl: (url) => set({ speakAudioUrl: url }),
+            setAspectRatio: (ratio) => set({ aspectRatio: ratio }),
+            setVideoResolution: (resolution) =>
+                set({ videoResolution: resolution }),
+            setCameraMotion: (motion) => set({ cameraMotion: motion }),
+            setCameraShot: (shot) => set({ cameraShot: shot }),
+            setCameraAngle: (angle) => set({ cameraAngle: angle }),
+            setCinemaLens: (lens) => set({ cinemaLens: lens }),
+            setCinemaFocalLength: (focal) => set({ cinemaFocalLength: focal }),
+            setCinemaAperture: (aperture) => set({ cinemaAperture: aperture }),
+            setSubjectAction: (action) => set({ subjectAction: action }),
+            setVideoDialogue: (dialogue) => set({ videoDialogue: dialogue }),
+            setVoiceStyle: (style) => set({ voiceStyle: style }),
+            setNoMusic: (noMusic) => set({ noMusic }),
+            setNoBackgroundEffects: (noEffects) =>
+                set({ noBackgroundEffects: noEffects }),
+
+            // Actions - Kling Settings
+            setKlingVoiceEnabled: (enabled) =>
+                set({ klingVoiceEnabled: enabled }),
+            setKlingVoiceId: (voiceId) => set({ klingVoiceId: voiceId }),
+            setKlingDialogue: (dialogue) => set({ klingDialogue: dialogue }),
+            setKlingMotionBrushEnabled: (enabled) =>
+                set({ klingMotionBrushEnabled: enabled }),
+            setKlingStaticMask: (mask) => set({ klingStaticMask: mask }),
+            addKlingDynamicMask: (mask) =>
+                set((state) => ({
+                    klingDynamicMasks:
+                        state.klingDynamicMasks.length < 6
+                            ? [...state.klingDynamicMasks, mask]
+                            : state.klingDynamicMasks,
+                })),
+            removeKlingDynamicMask: (index) =>
+                set((state) => ({
+                    klingDynamicMasks: state.klingDynamicMasks.filter(
+                        (_, i) => i !== index,
+                    ),
+                })),
+            clearKlingDynamicMasks: () => set({ klingDynamicMasks: [] }),
+            setKlingCameraControlType: (type) =>
+                set({ klingCameraControlType: type }),
+            setKlingCameraConfig: (config) =>
+                set({ klingCameraConfig: config }),
+            setKlingModel: (model) => set({ klingModel: model }),
+            resetKlingSettings: () =>
+                set({
+                    klingVoiceEnabled: false,
+                    klingVoiceId: '',
+                    klingDialogue: '',
+                    klingMotionBrushEnabled: false,
+                    klingStaticMask: null,
+                    klingDynamicMasks: [],
+                    klingCameraControlType: null,
+                    klingCameraConfig: null,
+                    klingModel: 'kling-v1-6',
+                    // Motion Control reset
+                    klingMotionControlEnabled: false,
+                    klingMotionVideoBase64: null,
+                    klingMotionVideoUrl: null,
+                    klingPresetMotion: null,
+                    klingMotionOrientation: 'video',
+                    klingKeepOriginalSound: false,
+                    klingMotionDuration: '5',
+                    klingNativeAudioEnabled: false,
+                }),
+
+            // Actions - Kling Motion Control
+            setKlingMotionControlEnabled: (enabled) =>
+                set({ klingMotionControlEnabled: enabled }),
+            setKlingMotionVideoBase64: (base64) =>
+                set({
+                    klingMotionVideoBase64: base64,
+                    klingMotionVideoUrl: base64
+                        ? null
+                        : get().klingMotionVideoUrl,
+                }),
+            setKlingMotionVideoUrl: (url) =>
+                set({
+                    klingMotionVideoUrl: url,
+                    klingMotionVideoBase64: url
+                        ? null
+                        : get().klingMotionVideoBase64,
+                }),
+            setKlingPresetMotion: (preset) =>
+                set({ klingPresetMotion: preset }),
+            setKlingMotionOrientation: (orientation) =>
+                set({ klingMotionOrientation: orientation }),
+            setKlingKeepOriginalSound: (keep) =>
+                set({ klingKeepOriginalSound: keep }),
+            setKlingMotionDuration: (duration) =>
+                set({ klingMotionDuration: duration }),
+            setKlingNativeAudioEnabled: (enabled) =>
+                set({ klingNativeAudioEnabled: enabled }),
+            setVideoDuration: (seconds) => set({ videoDuration: seconds }),
+
+            // Actions - Provider
+            setProviders: (providers) => set({ providers }),
+            setActiveProviderId: (id) => set({ activeProviderId: id }),
+            setShowProviderManager: (show) =>
+                set({ showProviderManager: show }),
+            setGeminiAutoFallback: (enabled) =>
+                set({ geminiAutoFallback: enabled }),
+
+            // Actions - App State
+            setAppState: (state) => set({ appState: state }),
+            lockAvatar: () =>
+                set({
+                    isAvatarLocked: true,
+                    appState: AppState.AVATAR_DEFINED,
+                }),
+            unlockAvatar: () =>
+                set({ isAvatarLocked: false, appState: AppState.IDLE }),
+            setErrorMsg: (msg) => set({ errorMsg: msg }),
+
+            // Actions - Gallery
+            addToGallery: (media) =>
+                set((state) => ({
+                    gallery: [media, ...state.gallery],
+                })),
+            removeFromGallery: (id) =>
+                set((state) => ({
+                    gallery: state.gallery.filter((m) => m.id !== id),
+                    previewMedia:
+                        state.previewMedia?.id === id
+                            ? null
+                            : state.previewMedia,
+                })),
+            setPreviewMedia: (media, startInEdit = false) =>
+                set({
+                    previewMedia: media,
+                    previewStartInEdit: media ? startInEdit : false,
+                }),
+            clearGallery: () => set({ gallery: [], previewMedia: null }),
+            setGallerySearchQuery: (q) => set({ gallerySearchQuery: q }),
+            setGalleryMediaTypeFilter: (f) =>
+                set({ galleryMediaTypeFilter: f }),
+            setGalleryAvatarFilter: (f) => set({ galleryAvatarFilter: f }),
+            setGalleryView: (v) => set({ galleryView: v }),
+            setGalleryBarOpen: (open) => set({ galleryBarOpen: open }),
+            // Seed the gallery with persisted history from the `generations` table.
+            // Dedupe by generationId (persisted rows win), keep any session items not
+            // yet persisted, newest first (by timestamp).
+            loadPersistedGallery: (items) =>
+                set((state) => {
+                    const persistedIds = new Set(
+                        items
+                            .map((i) => i.generationId)
+                            .filter(Boolean) as string[],
+                    )
+                    const sessionOnly = state.gallery.filter(
+                        (m) =>
+                            !m.generationId ||
+                            !persistedIds.has(m.generationId),
+                    )
+                    const merged = [...sessionOnly, ...items].sort(
+                        (a, b) => b.timestamp - a.timestamp,
+                    )
+                    return { gallery: merged }
+                }),
+            // Patch a gallery item (and the preview, if it's the same item) by client id.
+            updateGalleryItem: (id, patch) =>
+                set((state) => ({
+                    gallery: state.gallery.map((m) =>
+                        m.id === id ? { ...m, ...patch } : m,
+                    ),
+                    previewMedia:
+                        state.previewMedia?.id === id
+                            ? { ...state.previewMedia, ...patch }
+                            : state.previewMedia,
+                })),
+
+            // Actions - Safety
+            setIsAnalyzing: (analyzing) => set({ isAnalyzing: analyzing }),
+            setSafetyAnalysis: (analysis) => set({ safetyAnalysis: analysis }),
+            setSelectedRiskTerm: (term) => set({ selectedRiskTerm: term }),
+
+            // Actions - Enhancement
+            setIsEnhancingPrompt: (enhancing) =>
+                set({ isEnhancingPrompt: enhancing }),
+            setIsDescribingImage: (describing) =>
+                set({ isDescribingImage: describing }),
+
+            setContinueUseAvatarIdentity: (value) =>
+                set({ continueUseAvatarIdentity: value }),
+            setContinueIdentityModel: (value) =>
+                set({ continueIdentityModel: value }),
+
+            // Actions - Style Popover
+            setShowStylePopover: (show) => set({ showStylePopover: show }),
+
+            // Actions - Prompt Library
+            setPromptPresets: (presets) => set({ promptPresets: presets }),
+            setIsPromptLibraryOpen: (open) =>
+                set({ isPromptLibraryOpen: open }),
+            setShowSavePromptInput: (show) =>
+                set({ showSavePromptInput: show }),
+            setNewPromptName: (name) => set({ newPromptName: name }),
+            togglePinnedAction: (actionId) =>
+                set((state) => ({
+                    pinnedActionIds: state.pinnedActionIds.includes(actionId)
+                        ? state.pinnedActionIds.filter((id) => id !== actionId)
+                        : [...state.pinnedActionIds, actionId],
+                })),
+            setPinnedActionIds: (ids) => set({ pinnedActionIds: ids }),
+
+            // Actions - Loading
+            setIsGenerating: (generating) => set({ isGenerating: generating }),
+            addPendingGeneration: (p) =>
+                set((state) => ({
+                    pendingGenerations: [...state.pendingGenerations, p],
+                })),
+            removePendingGeneration: (id) =>
+                set((state) => ({
+                    pendingGenerations: state.pendingGenerations.filter(
+                        (p) => p.id !== id,
+                    ),
+                })),
+            setIsSavingAvatar: (saving) => set({ isSavingAvatar: saving }),
+            setIsLoadingReferences: (loading) =>
+                set({ isLoadingReferences: loading }),
+
+            // Computed helpers
+            hasAvatarRefs: () => {
+                const state = get()
+                return (
+                    state.generalReferences.length > 0 ||
+                    state.faceRef !== null ||
+                    state.bodyRef !== null ||
+                    state.angleRef !== null
+                )
+            },
+            getActiveProvider: () => {
+                const state = get()
+                if (!state.activeProviderId) return null
+                return (
+                    state.providers.find(
+                        (p) => p.id === state.activeProviderId,
+                    ) || null
+                )
+            },
+
+            // Reset
+            resetStore: () => set(initialState),
+            loadAvatarData: (
+                avatar,
+                references,
+                faceRef,
+                angleRef,
+                bodyRef,
+                bustRef = null,
+                glutesRef = null,
+            ) =>
+                set({
+                    currentAvatar: avatar,
+                    avatarId: avatar.id,
+                    avatarName: avatar.name,
+                    generalReferences: references.filter(
+                        (r) => r.type === 'general',
+                    ),
+                    faceRef,
+                    angleRef,
+                    bodyRef,
+                    bustRef,
+                    glutesRef,
+                    identityWeight: avatar.identity_weight || 85,
+                    measurements: avatar.measurements || initialMeasurements,
+                    faceDescription: avatar.face_description || '',
+                    isAvatarLocked: true,
+                    appState: AppState.AVATAR_DEFINED,
+                }),
         }),
-    setPlaceDescription: (description) => set({ placeDescription: description }),
-    setSceneImage: (image) => set({ sceneImage: image }),
-    setVideoInputImage: (image) => set({ videoInputImage: image }),
-    // Only clears avatar-specific references (when switching avatars)
-    clearAvatarReferences: () =>
-        set({
-            generalReferences: [],
-            faceRef: null,
-            angleRef: null,
-            bodyRef: null,
-            bustRef: null,
-            glutesRef: null,
-        }),
-    // Clears everything including session tools (full reset)
-    clearAllReferences: () =>
-        set({
-            generalReferences: [],
-            faceRef: null,
-            angleRef: null,
-            bodyRef: null,
-            bustRef: null,
-            glutesRef: null,
-            assetImages: [],
-            cloneImage: null,
-            cloneDescription: '',
-            deepfakeImage: null,
-            poseImage: null,
-            poseDescription: '',
-            placeImage: null,
-            placeDescription: '',
-            sceneImage: null,
-            videoInputImage: null,
-        }),
-
-    // Actions - Avatar Settings
-    setIdentityWeight: (weight) => set({ identityWeight: weight }),
-    setMeasurements: (measurements) => set({ measurements }),
-    setFaceDescription: (description) => set({ faceDescription: description }),
-
-    // Actions - Generation Settings
-    setPrompt: (prompt) => set({ prompt }),
-    setPromptAndAnalyze: (prompt) =>
-        set(() => {
-            // Analyze prompt for contaminating terms
-            const detected = analyzePromptForContaminants(prompt)
-            return {
-                prompt,
-                detectedTerms: detected,
-            }
-        }),
-    removeDetectedTerm: (id) =>
-        set((state) => {
-            const term = state.detectedTerms.find((t) => t.id === id)
-            if (!term) return state
-            // Remove the term from the prompt
-            const newPrompt = removeTermFromPrompt(state.prompt, term)
-            // Re-analyze the cleaned prompt
-            const newDetected = analyzePromptForContaminants(newPrompt)
-            return {
-                prompt: newPrompt,
-                detectedTerms: newDetected,
-            }
-        }),
-    clearDetectedTerms: () => set({ detectedTerms: [] }),
-    getFullPrompt: () => {
-        const state = get()
-        const { prompt: rawPrompt, measurements, faceDescription } = state
-
-        // If there's no prompt, return empty
-        if (!rawPrompt.trim()) return ''
-
-        // Flatten any structured markdown inside a [CLONE: ...] tag so the
-        // image model doesn't read headers/bullets as "generate a spec sheet".
-        const prompt = sanitizeCloneTags(rawPrompt)
-
-        // Build body measurements string to reinforce avatar's body type.
-        // PRIORITY: Body goes FIRST in the prompt for maximum weight.
-        // Lead with DESCRIPTIVE terms (what image models actually follow) and
-        // append the exact cm at the end (precision, in case a provider uses it).
-        // Image models largely ignore raw cm — describeBody() translates the
-        // avatar's own measurements into fashion descriptors. Same brain the
-        // direct Gemini path uses, now shared with KIE/Gateway/Flux.
-        const bodyParts: string[] = []
-
-        const bodyPhrase = describeBody(measurements)
-        if (bodyPhrase) {
-            bodyParts.push(bodyPhrase)
-        }
-        if (measurements.age) {
-            bodyParts.push(`${measurements.age} years old`)
-        }
-        if (measurements.height) {
-            bodyParts.push(`${measurements.height}cm tall`)
-        }
-        // Skin tone + hair color also live in the UI but were previously dropped
-        // before reaching the model. Both are optional on PhysicalMeasurements.
-        if (measurements.skinTone) {
-            bodyParts.push(`${skinToneToWords(measurements.skinTone)} skin`)
-        }
-        if (measurements.hairColor) {
-            // Texto curado ("brown" → "brown hair, medium brunette hair") en
-            // vez del replace crudo: los compuestos del selector de estilo
-            // ("wavy brown") caen al fallback free-text y seguían diciendo el
-            // color, pero los valores canónicos perdían la redundancia que sí
-            // pesa en modelos de difusión.
-            bodyParts.push(getHairColorDescription(measurements.hairColor))
-        }
-        // Exact measurements kept as a parenthetical suffix — no info lost.
-        const cmParts: string[] = []
-        if (measurements.bust) cmParts.push(`bust ${measurements.bust}cm`)
-        if (measurements.waist) cmParts.push(`waist ${measurements.waist}cm`)
-        if (measurements.hips) cmParts.push(`hips ${measurements.hips}cm`)
-        if (cmParts.length > 0) {
-            bodyParts.push(`(${cmParts.join(', ')})`)
-        }
-
-        // Assemble the leading tags. Order: [BODY:] then [FACE:] then the
-        // user prompt. KlingService.formatPromptForKling already translates
-        // both tags into prose; other providers read them as semantic text.
-        const tags: string[] = []
-        if (bodyParts.length > 0) {
-            tags.push(`[BODY: ${bodyParts.join(', ')}]`)
-        }
-        // The dense Auto-Analyze face descriptor was never sent to the model.
-        // Injecting it as [FACE: ...] is the single highest-impact change for
-        // likeness/consistency.
-        if (faceDescription.trim()) {
-            tags.push(`[FACE: ${faceDescription.trim()}]`)
-        }
-
-        // Honor "no tattoos / sin tatuajes" for ALL providers: remove tattoo
-        // mentions (incl. the one the Clone auto-analysis injects) so image
-        // models — which draw mentioned nouns and ignore "no X" — don't render it.
-        const assembled = tags.length > 0 ? `${tags.join(' ')} ${prompt}` : prompt
-        return stripNegatedTattoos(assembled)
-    },
-    setGenerationMode: (mode) =>
-        set((state) => ({
-            generationMode: mode,
-            // Clear detected terms when switching to VIDEO (only relevant for IMAGE mode)
-            detectedTerms: mode === 'VIDEO' ? [] : state.detectedTerms,
-        })),
-    setVideoSubMode: (mode) => set({ videoSubMode: mode }),
-    setAvatarDefaultVoice: (voice) => set({ avatarDefaultVoice: voice }),
-    setSpeakModel: (model) => set({ speakModel: model }),
-    setSpeakAudioUrl: (url) => set({ speakAudioUrl: url }),
-    setAspectRatio: (ratio) => set({ aspectRatio: ratio }),
-    setVideoResolution: (resolution) => set({ videoResolution: resolution }),
-    setCameraMotion: (motion) => set({ cameraMotion: motion }),
-    setCameraShot: (shot) => set({ cameraShot: shot }),
-    setCameraAngle: (angle) => set({ cameraAngle: angle }),
-    setCinemaLens: (lens) => set({ cinemaLens: lens }),
-    setCinemaFocalLength: (focal) => set({ cinemaFocalLength: focal }),
-    setCinemaAperture: (aperture) => set({ cinemaAperture: aperture }),
-    setSubjectAction: (action) => set({ subjectAction: action }),
-    setVideoDialogue: (dialogue) => set({ videoDialogue: dialogue }),
-    setVoiceStyle: (style) => set({ voiceStyle: style }),
-    setNoMusic: (noMusic) => set({ noMusic }),
-    setNoBackgroundEffects: (noEffects) => set({ noBackgroundEffects: noEffects }),
-
-    // Actions - Kling Settings
-    setKlingVoiceEnabled: (enabled) => set({ klingVoiceEnabled: enabled }),
-    setKlingVoiceId: (voiceId) => set({ klingVoiceId: voiceId }),
-    setKlingDialogue: (dialogue) => set({ klingDialogue: dialogue }),
-    setKlingMotionBrushEnabled: (enabled) => set({ klingMotionBrushEnabled: enabled }),
-    setKlingStaticMask: (mask) => set({ klingStaticMask: mask }),
-    addKlingDynamicMask: (mask) =>
-        set((state) => ({
-            klingDynamicMasks: state.klingDynamicMasks.length < 6
-                ? [...state.klingDynamicMasks, mask]
-                : state.klingDynamicMasks,
-        })),
-    removeKlingDynamicMask: (index) =>
-        set((state) => ({
-            klingDynamicMasks: state.klingDynamicMasks.filter((_, i) => i !== index),
-        })),
-    clearKlingDynamicMasks: () => set({ klingDynamicMasks: [] }),
-    setKlingCameraControlType: (type) => set({ klingCameraControlType: type }),
-    setKlingCameraConfig: (config) => set({ klingCameraConfig: config }),
-    setKlingModel: (model) => set({ klingModel: model }),
-    resetKlingSettings: () =>
-        set({
-            klingVoiceEnabled: false,
-            klingVoiceId: '',
-            klingDialogue: '',
-            klingMotionBrushEnabled: false,
-            klingStaticMask: null,
-            klingDynamicMasks: [],
-            klingCameraControlType: null,
-            klingCameraConfig: null,
-            klingModel: 'kling-v1-6',
-            // Motion Control reset
-            klingMotionControlEnabled: false,
-            klingMotionVideoBase64: null,
-            klingMotionVideoUrl: null,
-            klingPresetMotion: null,
-            klingMotionOrientation: 'video',
-            klingKeepOriginalSound: false,
-            klingMotionDuration: '5',
-            klingNativeAudioEnabled: false,
-        }),
-
-    // Actions - Kling Motion Control
-    setKlingMotionControlEnabled: (enabled) => set({ klingMotionControlEnabled: enabled }),
-    setKlingMotionVideoBase64: (base64) => set({ klingMotionVideoBase64: base64, klingMotionVideoUrl: base64 ? null : get().klingMotionVideoUrl }),
-    setKlingMotionVideoUrl: (url) => set({ klingMotionVideoUrl: url, klingMotionVideoBase64: url ? null : get().klingMotionVideoBase64 }),
-    setKlingPresetMotion: (preset) => set({ klingPresetMotion: preset }),
-    setKlingMotionOrientation: (orientation) => set({ klingMotionOrientation: orientation }),
-    setKlingKeepOriginalSound: (keep) => set({ klingKeepOriginalSound: keep }),
-    setKlingMotionDuration: (duration) => set({ klingMotionDuration: duration }),
-    setKlingNativeAudioEnabled: (enabled) => set({ klingNativeAudioEnabled: enabled }),
-    setVideoDuration: (seconds) => set({ videoDuration: seconds }),
-
-    // Actions - Provider
-    setProviders: (providers) => set({ providers }),
-    setActiveProviderId: (id) => set({ activeProviderId: id }),
-    setShowProviderManager: (show) => set({ showProviderManager: show }),
-    setGeminiAutoFallback: (enabled) => set({ geminiAutoFallback: enabled }),
-
-    // Actions - App State
-    setAppState: (state) => set({ appState: state }),
-    lockAvatar: () => set({ isAvatarLocked: true, appState: AppState.AVATAR_DEFINED }),
-    unlockAvatar: () => set({ isAvatarLocked: false, appState: AppState.IDLE }),
-    setErrorMsg: (msg) => set({ errorMsg: msg }),
-
-    // Actions - Gallery
-    addToGallery: (media) =>
-        set((state) => ({
-            gallery: [media, ...state.gallery],
-        })),
-    removeFromGallery: (id) =>
-        set((state) => ({
-            gallery: state.gallery.filter((m) => m.id !== id),
-            previewMedia: state.previewMedia?.id === id ? null : state.previewMedia,
-        })),
-    setPreviewMedia: (media, startInEdit = false) =>
-        set({ previewMedia: media, previewStartInEdit: media ? startInEdit : false }),
-    clearGallery: () => set({ gallery: [], previewMedia: null }),
-    setGallerySearchQuery: (q) => set({ gallerySearchQuery: q }),
-    setGalleryMediaTypeFilter: (f) => set({ galleryMediaTypeFilter: f }),
-    setGalleryAvatarFilter: (f) => set({ galleryAvatarFilter: f }),
-    setGalleryView: (v) => set({ galleryView: v }),
-    setGalleryBarOpen: (open) => set({ galleryBarOpen: open }),
-    // Seed the gallery with persisted history from the `generations` table.
-    // Dedupe by generationId (persisted rows win), keep any session items not
-    // yet persisted, newest first (by timestamp).
-    loadPersistedGallery: (items) =>
-        set((state) => {
-            const persistedIds = new Set(
-                items.map((i) => i.generationId).filter(Boolean) as string[],
-            )
-            const sessionOnly = state.gallery.filter(
-                (m) => !m.generationId || !persistedIds.has(m.generationId),
-            )
-            const merged = [...sessionOnly, ...items].sort(
-                (a, b) => b.timestamp - a.timestamp,
-            )
-            return { gallery: merged }
-        }),
-    // Patch a gallery item (and the preview, if it's the same item) by client id.
-    updateGalleryItem: (id, patch) =>
-        set((state) => ({
-            gallery: state.gallery.map((m) =>
-                m.id === id ? { ...m, ...patch } : m,
-            ),
-            previewMedia:
-                state.previewMedia?.id === id
-                    ? { ...state.previewMedia, ...patch }
-                    : state.previewMedia,
-        })),
-
-    // Actions - Safety
-    setIsAnalyzing: (analyzing) => set({ isAnalyzing: analyzing }),
-    setSafetyAnalysis: (analysis) => set({ safetyAnalysis: analysis }),
-    setSelectedRiskTerm: (term) => set({ selectedRiskTerm: term }),
-
-    // Actions - Enhancement
-    setIsEnhancingPrompt: (enhancing) => set({ isEnhancingPrompt: enhancing }),
-    setIsDescribingImage: (describing) => set({ isDescribingImage: describing }),
-
-    setContinueUseAvatarIdentity: (value) => set({ continueUseAvatarIdentity: value }),
-    setContinueIdentityModel: (value) => set({ continueIdentityModel: value }),
-
-    // Actions - Style Popover
-    setShowStylePopover: (show) => set({ showStylePopover: show }),
-
-    // Actions - Prompt Library
-    setPromptPresets: (presets) => set({ promptPresets: presets }),
-    setIsPromptLibraryOpen: (open) => set({ isPromptLibraryOpen: open }),
-    setShowSavePromptInput: (show) => set({ showSavePromptInput: show }),
-    setNewPromptName: (name) => set({ newPromptName: name }),
-    togglePinnedAction: (actionId) =>
-        set((state) => ({
-            pinnedActionIds: state.pinnedActionIds.includes(actionId)
-                ? state.pinnedActionIds.filter((id) => id !== actionId)
-                : [...state.pinnedActionIds, actionId],
-        })),
-    setPinnedActionIds: (ids) => set({ pinnedActionIds: ids }),
-
-    // Actions - Loading
-    setIsGenerating: (generating) => set({ isGenerating: generating }),
-    addPendingGeneration: (p) =>
-        set((state) => ({
-            pendingGenerations: [...state.pendingGenerations, p],
-        })),
-    removePendingGeneration: (id) =>
-        set((state) => ({
-            pendingGenerations: state.pendingGenerations.filter(
-                (p) => p.id !== id,
-            ),
-        })),
-    setIsSavingAvatar: (saving) => set({ isSavingAvatar: saving }),
-    setIsLoadingReferences: (loading) => set({ isLoadingReferences: loading }),
-
-    // Computed helpers
-    hasAvatarRefs: () => {
-        const state = get()
-        return (
-            state.generalReferences.length > 0 ||
-            state.faceRef !== null ||
-            state.bodyRef !== null ||
-            state.angleRef !== null
-        )
-    },
-    getActiveProvider: () => {
-        const state = get()
-        if (!state.activeProviderId) return null
-        return state.providers.find((p) => p.id === state.activeProviderId) || null
-    },
-
-    // Reset
-    resetStore: () => set(initialState),
-    loadAvatarData: (avatar, references, faceRef, angleRef, bodyRef, bustRef = null, glutesRef = null) =>
-        set({
-            currentAvatar: avatar,
-            avatarId: avatar.id,
-            avatarName: avatar.name,
-            generalReferences: references.filter((r) => r.type === 'general'),
-            faceRef,
-            angleRef,
-            bodyRef,
-            bustRef,
-            glutesRef,
-            identityWeight: avatar.identity_weight || 85,
-            measurements: avatar.measurements || initialMeasurements,
-            faceDescription: avatar.face_description || '',
-            isAvatarLocked: true,
-            appState: AppState.AVATAR_DEFINED,
-        }),
-}),
         {
             name: 'avatar-studio-storage',
             storage: createJSONStorage(() => sessionStorage),
             // Don't persist anything - gallery items have URLs from Supabase, previewMedia is large base64
             // Persisting base64 data exceeds sessionStorage quota (~5MB limit)
             partialize: () => ({}),
-        }
-    )
+        },
+    ),
 )
 
 /**
@@ -919,17 +1023,23 @@ function skinToneToWords(tone: SkinTone): string {
  * and bold labels confuse image models into producing spec-sheet infographics.
  */
 function sanitizeCloneTags(prompt: string): string {
-    return prompt.replace(/\[CLONE:\s*([\s\S]*?)\]/gi, (_match, inner: string) => {
-        const cleaned = inner
-            .replace(/^\s*\**\s*\d+\.\s*[A-Z][A-Z\s&]+\**\s*$/gm, '')
-            .replace(/\*\*([^*]+)\*\*/g, '$1')
-            .replace(/^\s*[-*•]\s+/gm, '')
-            .replace(/^(Outfit|Accessories|Footwear|Hair\s*style|Pose|Setting|Lighting|Composition|Style|Background|Mood)[^:]*:\s*/gim, '')
-            .replace(/\n+/g, ', ')
-            .replace(/\s+/g, ' ')
-            .replace(/,\s*,+/g, ',')
-            .replace(/\s+,/g, ',')
-            .trim()
-        return `[CLONE: ${cleaned}]`
-    })
+    return prompt.replace(
+        /\[CLONE:\s*([\s\S]*?)\]/gi,
+        (_match, inner: string) => {
+            const cleaned = inner
+                .replace(/^\s*\**\s*\d+\.\s*[A-Z][A-Z\s&]+\**\s*$/gm, '')
+                .replace(/\*\*([^*]+)\*\*/g, '$1')
+                .replace(/^\s*[-*•]\s+/gm, '')
+                .replace(
+                    /^(Outfit|Accessories|Footwear|Hair\s*style|Pose|Setting|Lighting|Composition|Style|Background|Mood)[^:]*:\s*/gim,
+                    '',
+                )
+                .replace(/\n+/g, ', ')
+                .replace(/\s+/g, ' ')
+                .replace(/,\s*,+/g, ',')
+                .replace(/\s+,/g, ',')
+                .trim()
+            return `[CLONE: ${cleaned}]`
+        },
+    )
 }

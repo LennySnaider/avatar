@@ -54,7 +54,12 @@ async function build(ctx: ImageRouteContext): Promise<KieImageRequest> {
                 clauses: extraClauses,
                 hasBody,
                 hasClone,
-            } = planExtraRefs(ctx.referenceImages, 9, ctx.deepfakeMode)
+            } = planExtraRefs(
+                ctx.referenceImages,
+                9,
+                ctx.deepfakeMode,
+                ctx.cloneWeight,
+            )
             const urls: string[] = [
                 await ctx.uploadRef(
                     ctx.referenceImage.base64,

@@ -49,7 +49,12 @@ async function build(ctx: ImageRouteContext): Promise<KieImageRequest> {
                 clauses: wanExtraClauses,
                 hasBody: wanHasBody,
                 hasClone: wanHasClone,
-            } = planExtraRefs(ctx.referenceImages, 8, ctx.deepfakeMode)
+            } = planExtraRefs(
+                ctx.referenceImages,
+                8,
+                ctx.deepfakeMode,
+                ctx.cloneWeight,
+            )
             const wanUrls: string[] = [
                 await ctx.uploadRef(
                     ctx.referenceImage.base64,

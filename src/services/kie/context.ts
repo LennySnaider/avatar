@@ -40,6 +40,13 @@ export interface ImageRouteContext {
     deepfakeMode?: boolean
     curveBoost?: string
     /**
+     * Peso del Clone Ref (0-100). 100 = recrear la foto EXACTA (default);
+     * más bajo = referencia más suelta / "inspirado en". Cada ruta lo traduce
+     * a su manera (fuerza del clause). El cliente además decide si MANDA la
+     * imagen del clone según el umbral.
+     */
+    cloneWeight?: number
+    /**
      * Sube un ref y devuelve su URL pública. En producción =
      * `uploadReferenceToSupabase`; en el snapshot = un stub determinista. Es la
      * ÚNICA dependencia con efecto de una ruta.

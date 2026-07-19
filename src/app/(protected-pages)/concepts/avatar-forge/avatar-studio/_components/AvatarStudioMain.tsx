@@ -389,6 +389,7 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
         sceneImage,
         poseImage,
         cloneImage,
+        cloneWeight,
         deepfakeImage,
         placeImage,
         bustRef,
@@ -1439,6 +1440,11 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                             curveBoost: deepfakeActive
                                 ? undefined
                                 : seedreamCurveBoost || undefined,
+                            // Peso del Clone Ref (slider): escala la fuerza del
+                            // clone clause en las rutas i2i. Deepfake ignora.
+                            cloneWeight: deepfakeActive
+                                ? undefined
+                                : cloneWeight,
                             deepfakeMode: deepfakeActive,
                             // Color de pelo DENTRO del ancla i2i: como "brown
                             // hair" en el [BODY:] tardío, Seedream/Wan seguían
@@ -2191,6 +2197,7 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
         angleRef,
         poseImage,
         cloneImage,
+        cloneWeight,
         deepfakeImage,
         placeImage,
         bustRef,

@@ -30,6 +30,10 @@ export function planExtraRefs(
     referenceImages: KieRefWithRole[] | undefined,
     maxExtras: number,
     deepfakeMode = false,
+    // Peso del Clone Ref (0-100). Escala la FUERZA de la cláusula del clone:
+    // ≥75 recrea EXACTO (default), 40-74 referencia fuerte con variación, <40
+    // inspiración suelta. Solo afecta al clause del clone; el resto igual.
+    cloneWeight = 100,
 ): {
     extras: KieRefWithRole[]
     clauses: string
@@ -100,13 +104,18 @@ export function planExtraRefs(
                     `Image ${n} = the LOCATION: place her in THIS exact environment (architecture, furniture, lighting); IGNORE any person in it.`,
                 )
                 break
-            case 'clone':
-                parts.push(
-                    deepfakeMode
-                        ? `Image ${n} = the ORIGINAL photo: reproduce it EXACTLY (body, outfit, pose, hands, framing, lighting, background). MANDATORY face swap: the output face MUST be the person from image 1 — never keep the original face. Do NOT alter clothing. REMOVE overlaid stickers/watermarks/emojis — output a clean photo.`
-                        : `Image ${n} = the CLONE source: recreate its EXACT pose, body position, outfit, hands, objects held, framing, camera angle, lighting and setting. Its person is a FACELESS MANNEQUIN — the face comes ONLY from image 1. Keep her FULLY dressed as shown; do NOT remove or reduce clothing. REMOVE overlaid stickers/watermarks/emojis — output a clean photo.`,
-                )
+            case 'clone': {
+                // Fuerza del clone escalada por cloneWeight (slider del Studio).
+                const cloneClause = deepfakeMode
+                    ? `Image ${n} = the ORIGINAL photo: reproduce it EXACTLY (body, outfit, pose, hands, framing, lighting, background). MANDATORY face swap: the output face MUST be the person from image 1 — never keep the original face. Do NOT alter clothing. REMOVE overlaid stickers/watermarks/emojis — output a clean photo.`
+                    : cloneWeight >= 75
+                      ? `Image ${n} = the CLONE source: recreate its EXACT pose, body position, outfit, hands, objects held, framing, camera angle, lighting and setting. Its person is a FACELESS MANNEQUIN — the face comes ONLY from image 1. Keep her FULLY dressed as shown; do NOT remove or reduce clothing. REMOVE overlaid stickers/watermarks/emojis — output a clean photo.`
+                      : cloneWeight >= 40
+                        ? `Image ${n} = a STRONG reference: follow its outfit, pose, framing and setting closely but allow natural variation (it need not be pixel-identical). Its person is a FACELESS MANNEQUIN — the face comes ONLY from image 1. Keep her fully dressed. REMOVE overlaid stickers/watermarks/emojis.`
+                        : `Image ${n} = a LOOSE style/mood reference: take only the general vibe, outfit style and setting cues — freely reinterpret the pose, framing and details. Its person is a FACELESS MANNEQUIN — the face comes ONLY from image 1.`
+                parts.push(cloneClause)
                 break
+            }
         }
     })
     return {

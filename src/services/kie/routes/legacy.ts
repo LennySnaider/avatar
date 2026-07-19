@@ -41,6 +41,7 @@ export async function buildLegacyRequest(
         identityWeight,
         deepfakeMode,
         curveBoost,
+        cloneWeight,
         uploadRef,
         cropToAspect,
     } = ctx
@@ -148,7 +149,7 @@ export async function buildLegacyRequest(
                     clauses: extraClauses,
                     hasBody,
                     hasClone,
-                } = planExtraRefs(referenceImages, 9, deepfakeMode)
+                } = planExtraRefs(referenceImages, 9, deepfakeMode, cloneWeight)
                 const urls: string[] = [
                     await uploadRef(
                         referenceImage.base64,
@@ -222,7 +223,7 @@ export async function buildLegacyRequest(
                     clauses: wanExtraClauses,
                     hasBody: wanHasBody,
                     hasClone: wanHasClone,
-                } = planExtraRefs(referenceImages, 8, deepfakeMode)
+                } = planExtraRefs(referenceImages, 8, deepfakeMode, cloneWeight)
                 const wanUrls: string[] = [
                     await uploadRef(
                         referenceImage.base64,
@@ -268,7 +269,7 @@ export async function buildLegacyRequest(
                     clauses: fluxClauses,
                     hasBody: fluxHasBody,
                     hasClone: fluxHasClone,
-                } = planExtraRefs(referenceImages, 7, deepfakeMode)
+                } = planExtraRefs(referenceImages, 7, deepfakeMode, cloneWeight)
                 const urls: string[] = [
                     await uploadRef(
                         referenceImage.base64,
