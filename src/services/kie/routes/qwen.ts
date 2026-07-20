@@ -105,13 +105,19 @@ async function build(ctx: ImageRouteContext): Promise<KieImageRequest> {
                         qwenUrls.push(await ctx.uploadRef(a.base64, a.mimeType))
                     }
                     input.image_url = qwenUrls
+                    // OJO: Qwen 2.0 tiene "structured text rendering" (renderiza
+                    // el texto que ve en el prompt). La cláusula vieja repetía la
+                    // palabra "LOGO" en mayúsculas y hasta entre comillas ("never
+                    // write LOGO") → Qwen la PINTABA literal en la prenda. Aquí NO
+                    // aparece esa palabra: se describe el asset como diseño/estampado
+                    // y se prohíbe inventar texto SIN nombrarlo.
                     const assetLines = qwenAssets
                         .map(
                             (_, i) =>
-                                `Image ${i + 2} is a LOGO/BRAND GRAPHIC — it is ARTWORK, not a scene element: print this EXACT design on her clothing wherever the outfit shows a logo or graphic, reproducing its shapes and colors faithfully. Do NOT blend or overlay it onto the scene, and never write placeholder text such as "LOGO".`,
+                                `The attached image ${i + 2} is a graphic design to reproduce as a PRINT on the fabric of her outfit: copy its EXACT shapes, patterns and colors, sized and placed naturally on the garment. Do NOT paste it as a floating sticker over the scene.`,
                         )
                         .join(' ')
-                    input.prompt = `The FIRST image is the person — keep her EXACT face and likeness.${faceFidelityClause}${hairClause} Her eyes keep their exact natural color and iris texture from the reference photo — do NOT recolor, brighten or saturate them. ${assetLines} ${input.prompt}`
+                    input.prompt = `The FIRST image is the person — keep her EXACT face and likeness.${faceFidelityClause}${hairClause} Her eyes keep their exact natural color and iris texture from the reference photo — do NOT recolor, brighten or saturate them. ${assetLines} Do NOT add any lettering, words, captions or watermarks of your own anywhere in the image — the ONLY artwork on the outfit is the attached design itself. ${input.prompt}`
                     console.log(
                         `[KIE] qwen2/image-edit with ${qwenUrls.length} imgs (face + ${qwenAssets.length} asset)`,
                     )
