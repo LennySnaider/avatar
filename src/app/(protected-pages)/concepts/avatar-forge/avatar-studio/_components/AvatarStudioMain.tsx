@@ -393,7 +393,6 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
         id: string
         base64: string
         mimeType: string
-        masked: boolean
     } | null>(null)
     // Drives the gallery's hidden upload input from the header "Upload" button.
     const galleryUploadInputRef = useRef<HTMLInputElement>(null)
@@ -1023,20 +1022,27 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                     base64: string
                     mimeType: string
                 } | null = null
-                let cloneFaceMasked = false
                 if (cloneImage?.base64) {
                     if (maskedCloneCacheRef.current?.id === cloneImage.id) {
                         optimizedCloneRef = {
                             base64: maskedCloneCacheRef.current.base64,
                             mimeType: maskedCloneCacheRef.current.mimeType,
                         }
-                        cloneFaceMasked = maskedCloneCacheRef.current.masked
                     } else {
                         optimizedCloneRef = await optimizeImage({
                             base64: cloneImage.base64,
                             mimeType: cloneImage.mimeType,
                         })
                         if (optimizedCloneRef) {
+                            // Mejor esfuerzo: si Gemini DETECTA la cara del clon se
+                            // difumina (evita el rostro rival que Seedream copiaría).
+                            // Si NO la detecta —o la refusa por ser contenido
+                            // explícito— el clon se manda IGUAL, sin enmascarar: el
+                            // IDENTITY LOCK de texto de la ruta cuida la identidad, y
+                            // NO mandar la imagen deja al modelo sin escena/pose/
+                            // cuerpo (con [CLONE:]/[POSE:] cayendo a texto genérico
+                            // salía un retrato de estudio genérico). Un bleed leve es
+                            // infinitamente mejor que perder toda la referencia.
                             try {
                                 const faceBox = await detectFaceBox({
                                     base64: optimizedCloneRef.base64,
@@ -1051,20 +1057,21 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                                         base64: maskedB64,
                                         mimeType: 'image/jpeg',
                                     }
-                                    cloneFaceMasked = true
                                 } else {
                                     console.warn(
-                                        '[clone face-mask] no face detected — sent unmasked',
+                                        '[clone face-mask] sin cara detectable — clon enviado SIN enmascarar',
                                     )
                                 }
                             } catch (e) {
-                                console.warn('[clone face-mask] failed:', e)
+                                console.warn(
+                                    '[clone face-mask] detección falló — clon enviado SIN enmascarar:',
+                                    e,
+                                )
                             }
                             maskedCloneCacheRef.current = {
                                 id: cloneImage.id,
                                 base64: optimizedCloneRef.base64,
                                 mimeType: optimizedCloneRef.mimeType,
-                                masked: cloneFaceMasked,
                             }
                         }
                     }
@@ -1368,11 +1375,14 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                                 // maniquí → clona fiel + el peso pesa la imagen.
                                 kieModel.startsWith('qwen') ||
                                 // Seedream Pro COPIA la cara del clone (muy
-                                // adherente a la imagen). Solo se le manda la
-                                // imagen del clone si su cara YA fue enmascarada
-                                // (sin rostro rival); si no, cae a clone-como-texto.
-                                (cloneFaceMasked &&
-                                    kieModel.startsWith('seedream/'))) &&
+                                // adherente a la imagen), por eso el clon va con la
+                                // cara difuminada CUANDO Gemini la detecta. Pero la
+                                // imagen SIEMPRE se manda: si el masking no corrió
+                                // (Gemini refusó el explícito) dejarlo fuera lo
+                                // volvía un retrato genérico —perdía escena/pose/
+                                // cuerpo— porque [CLONE:]/[POSE:] caen a texto
+                                // genérico. El IDENTITY LOCK de la ruta es la red.
+                                kieModel.startsWith('seedream/')) &&
                             optimizedCloneRef &&
                             kieReferenceImages.length > 0
                         ) {
