@@ -76,8 +76,14 @@ async function build(ctx: ImageRouteContext): Promise<KieImageRequest> {
             const wanSceneRoom = Math.max(250, 2750 - wanAnchor.length)
             let wanSceneText = String(input.prompt)
             if (wanHasClone) {
+                // CONSERVA la descripción del clon (verificado por repro: sin ella
+                // el prompt de Wan NO menciona la tiara → Wan la pierde, mientras
+                // Seedream/Qwen que SÍ la conservan la muestran). Solo se quitan
+                // los corchetes/label para que lea como prosa. (Mi revert previo
+                // fue prematuro: le quité justo lo que reancla los accesorios.)
                 wanSceneText = wanSceneText
-                    .replace(/\[CLONE:[^\]]*\]/gi, ' ')
+                    .replace(/\[CLONE:\s*/gi, '')
+                    .replace(/\]/g, ' ')
                     .replace(/\s{2,}/g, ' ')
                     .trim()
             }
