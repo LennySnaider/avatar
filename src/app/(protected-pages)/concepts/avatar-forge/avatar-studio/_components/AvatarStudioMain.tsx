@@ -1127,11 +1127,22 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                         ...optimizedPayload.bodyRef,
                         role: 'body',
                     },
-                    optimizedBustRef && { ...optimizedBustRef, role: 'bust' },
-                    optimizedGlutesRef && {
-                        ...optimizedGlutesRef,
-                        role: 'glutes',
-                    },
+                    // Con CLONE activo NO se envían las imágenes de Bust/Glutes
+                    // Ref: fuerzan esas regiones a aparecer y, si la pose del clon
+                    // es de FRENTE, el modelo contorsiona el cuerpo para mostrar
+                    // pecho Y trasero a la vez → anatomía DEFORME (reporte del
+                    // usuario). La forma del busto/glúteos ya viaja por TEXTO
+                    // (bodyEmphasis/curveBoost) y el cuerpo/pose lo da el clon.
+                    !optimizedCloneRef &&
+                        optimizedBustRef && {
+                            ...optimizedBustRef,
+                            role: 'bust',
+                        },
+                    !optimizedCloneRef &&
+                        optimizedGlutesRef && {
+                            ...optimizedGlutesRef,
+                            role: 'glutes',
+                        },
                     // Assets (logo/producto) antes solo llegaban al path Gemini
                     // (assetReferences) — en KIE el clone decía "hoodie with logo"
                     // y Seedream pintaba la palabra literal "LOGO" en la prenda.
