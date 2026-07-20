@@ -85,20 +85,32 @@ async function build(ctx: ImageRouteContext): Promise<KieImageRequest> {
                     )
                     input.image_url = [cloneUrl, refUrl]
                     const cw = ctx.cloneWeight ?? 100
-                    const reproduce =
+                    const fidelity =
                         cw >= 75
-                            ? `keep her EXACT outfit (every garment piece, its cut and coverage — do NOT merge a two-piece into a one-piece or restyle it), body, pose, hands, framing, lighting, floor, furniture and FULL background — all pixel-faithful, NOT a plain/white/studio backdrop`
+                            ? `Keep EVERYTHING else EXACTLY as the FIRST image — the SAME outfit (all garment pieces, NO restyling or merging into a one-piece), pose, framing and FULL background/setting (NOT a plain, white or studio backdrop)`
                             : cw >= 50
-                              ? `keep her outfit, pose, framing and the same background/setting closely (same kind of garments and surroundings, NOT a plain backdrop), allowing only minor natural variation`
+                              ? `Keep the outfit, pose, framing and background close to the FIRST image (NOT a plain backdrop), minor natural variation allowed`
                               : cw >= 25
-                                ? `use the FIRST image as a general BASIS (outfit style, general pose and its setting/background) but freely reinterpret the exact details and framing`
-                                : `take only LOOSE inspiration from the FIRST image (general vibe, outfit style and kind of setting); freely reinterpret the pose and framing`
-                    // El texto [CLONE:] es redundante con la imagen → se quita.
-                    const scene = String(input.prompt)
-                        .replace(/\[CLONE:[^\]]*\]/gi, ' ')
+                                ? `Use the FIRST image as a general BASIS for outfit, pose and setting, reinterpreting the details freely`
+                                : `Take only LOOSE inspiration from the FIRST image (vibe, outfit style, kind of setting)`
+                    // Qwen sigue MUY bien el texto (por eso pintaba "LOGO") pero
+                    // REESTILIZA si depende solo de la imagen del clone. Se le pasa
+                    // la descripción del [CLONE:] como TEXTO (outfit por piezas +
+                    // fondo) además de la imagen. Del prompt ORIGINAL (sin la POSE
+                    // relocada, para ahorrar presupuesto) y sin corchetes (Qwen los
+                    // renderiza literales). El face-swap va al FRENTE (sobrevive el
+                    // cap 800); la cola de la descripción es la que cede.
+                    const cloneMatch = String(ctx.prompt).match(
+                        /\[CLONE:\s*([^\]]*)\]/i,
+                    )
+                    const cloneDesc = (
+                        cloneMatch
+                            ? cloneMatch[1]
+                            : String(input.prompt).replace(/\[[^\]]*\]/g, ' ')
+                    )
                         .replace(/\s{2,}/g, ' ')
                         .trim()
-                    input.prompt = `EDIT the FIRST image IN PLACE — ${reproduce}. ONLY replace the face with the SECOND image's face (exact features, freckles, likeness); keep that person's hair and natural eye colour; NEVER keep the first image's original face. Do NOT blend the two images, and remove any overlaid stickers, watermarks or emojis. ${scene}`
+                    input.prompt = `Swap ONLY the face — use the SECOND image's face (exact features, freckles, likeness), keep that person's hair and natural eye colour, NEVER the first image's original face. ${fidelity}: ${cloneDesc}`
                     console.log(
                         `[KIE] qwen2/image-edit CLONE (clone canvas + face swap, weight ${cw})`,
                     )
