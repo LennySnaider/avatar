@@ -44,12 +44,17 @@ export async function maskFaceInImage(
             // hacia frente/mentón/orejas) para tapar bien todos los rasgos.
             const bw = box.x1 - box.x0
             const bh = box.y1 - box.y0
-            const padX = bw * 0.18
-            const padY = bh * 0.24
+            const padX = bw * 0.15
+            // Padding ASIMÉTRICO: casi nada ARRIBA (para NO tapar la tiara/corona
+            // ni el pelo sobre la frente — se perdían) y generoso ABAJO (mentón/
+            // mandíbula) y a los lados (mejillas/orejas), que es donde vive la
+            // identidad. El bbox de la cara ya empieza en la línea del pelo.
+            const padTop = bh * 0.02
+            const padBottom = bh * 0.2
             const x0 = Math.max(0, (box.x0 - padX) * img.width)
-            const y0 = Math.max(0, (box.y0 - padY) * img.height)
+            const y0 = Math.max(0, (box.y0 - padTop) * img.height)
             const x1 = Math.min(img.width, (box.x1 + padX) * img.width)
-            const y1 = Math.min(img.height, (box.y1 + padY) * img.height)
+            const y1 = Math.min(img.height, (box.y1 + padBottom) * img.height)
             const w = x1 - x0
             const h = y1 - y0
             if (w <= 0 || h <= 0) {
