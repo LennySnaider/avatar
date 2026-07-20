@@ -98,13 +98,18 @@ async function build(ctx: ImageRouteContext): Promise<KieImageRequest> {
             // ya viaja en la imagen 1 + curveBoost), NUNCA la escena. Sin
             // recorte el ancla es byte-idéntica a antes.
             const SEEDREAM_BUDGET = 2750
-            const SCENE_FLOOR = 1300
-            // Con clone a peso alto, Seedream Pro reproduce TAN fiel la foto del
-            // clone que se queda con SU cara e ignora el swap al avatar (reporte:
-            // "Seedream Pro no puso la cara de MiaUltra"; Wan sí la puso). Guard
-            // explícito de face-swap cuando hay clone — la cara SOLO de imagen 1.
+            // Con clone, la ESCENA la lleva la IMAGEN → el texto de escena es
+            // corto (solo la pose), así que el piso baja a 500 y ese presupuesto
+            // se reinvierte en el ancla de IDENTIDAD (cara + medidas del avatar).
+            // Sin clone, la escena viene por texto largo → piso 1300 (fix Fase 6).
+            const SCENE_FLOOR = hasClone ? 380 : 1300
+            // IDENTITY LOCK (core del avatar = MISMA cara Y MISMO físico siempre):
+            // a peso alto el clone bleedea su cara, pelo, pecas Y cuerpo → Seedream
+            // salía con la cara/pelo del clone y perdía las medidas de MiaUltra
+            // (reporte del usuario). Del clone se toma SOLO outfit/pose/escena; la
+            // PERSONA (cara + atributos + cuerpo/medidas) es SIEMPRE la del avatar.
             const cloneFaceGuard = hasClone
-                ? ` CRITICAL: the person in the CLONE reference photo is NOT her — that face is a faceless mannequin; the OUTPUT face, its features, bone structure and likeness MUST come ENTIRELY from the FIRST image, NEVER from the clone photo. Render that swapped face CLEARLY and recognizably — lit well enough to read her exact features, NOT hidden in shadow or darkened.`
+                ? ` CRITICAL IDENTITY LOCK — the avatar is ONE consistent person: from the CLONE reference take ONLY the outfit, pose, framing and setting, NOTHING about the person herself. Her face, facial features, bone structure, freckles/moles, skin tone, EYE COLOUR, HAIR colour, AND her BODY proportions, curves, height and measurements must ALL come from the avatar (the FIRST image + the body spec below), NEVER from the clone (whose face and body are a faceless mannequin). Render her face clearly and well-lit (not in shadow) so she reads as the SAME person every time.`
                 : ''
             const anchorHead = `The person in the FIRST attached reference image is the subject — keep her EXACT face, facial features and likeness from that image.${faceFidelityClause}${cloneFaceGuard} `
             // Guard anti-duplicación: los prompts de VIDEO (movimiento/secuencia:
