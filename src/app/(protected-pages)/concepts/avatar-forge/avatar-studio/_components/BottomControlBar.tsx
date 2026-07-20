@@ -629,14 +629,23 @@ const BottomControlBar = ({
     const handlePoseRefUpload = async (file: File) => {
         const { base64, mimeType, url } = await processFileToBase64(file)
 
-        // Save image for visual reference
-        setPoseImage({
-            id: crypto.randomUUID(),
-            url,
-            mimeType,
-            base64,
-            type: 'pose',
-        })
+        // Con CLONE activo, el Pose Ref SOLO aporta el texto [POSE:]; NO se guarda
+        // la imagen. Su rostro es un ROSTRO RIVAL que se mezcla con la cara del
+        // avatar y arruina la identidad (confirmado A/B por el usuario: quitar la
+        // imagen del Pose Ref fijó la cara de MiaUltra). Sin clone, se conserva
+        // como imagen (aporta pose/composición y no compite tanto por la cara).
+        const cloneActive = Boolean(
+            useAvatarStudioStore.getState().cloneImage?.base64,
+        )
+        if (!cloneActive) {
+            setPoseImage({
+                id: crypto.randomUUID(),
+                url,
+                mimeType,
+                base64,
+                type: 'pose',
+            })
+        }
 
         // Analyze pose from image and extract text description
         setIsAnalyzingPose(true)
@@ -657,6 +666,15 @@ const BottomControlBar = ({
                 setPrompt(
                     currentPrompt ? `${currentPrompt} ${poseText}` : poseText,
                 )
+                if (cloneActive) {
+                    toast.push(
+                        <Notification type="info" title="Pose → prompt">
+                            Con Clone activo, la pose se añadió como TEXTO y la
+                            imagen NO se envía — así su rostro no pisa la cara
+                            del avatar.
+                        </Notification>,
+                    )
+                }
             }
         } catch (error) {
             console.error('Failed to analyze pose:', error)

@@ -1076,11 +1076,22 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                         ...a,
                         role: 'asset',
                     })),
-                    optimizedPoseRef && { ...optimizedPoseRef, role: 'pose' },
-                    optimizedPayload.sceneImage && {
-                        ...optimizedPayload.sceneImage,
-                        role: 'scene',
-                    },
+                    // Con CLONE activo NO se envía la IMAGEN de Pose/Scene: su
+                    // rostro es un ROSTRO RIVAL que se mezcla con la cara del
+                    // avatar y arruina la identidad (confirmado A/B por el
+                    // usuario). La pose/escena ya viajan por TEXTO ([POSE:]/
+                    // [SCENE:]) + la imagen del clone. Safety net por si el clone
+                    // se activó DESPUÉS de subir el pose (la imagen quedó guardada).
+                    !optimizedCloneRef &&
+                        optimizedPoseRef && {
+                            ...optimizedPoseRef,
+                            role: 'pose',
+                        },
+                    !optimizedCloneRef &&
+                        optimizedPayload.sceneImage && {
+                            ...optimizedPayload.sceneImage,
+                            role: 'scene',
+                        },
                     optimizedPlaceRef && {
                         ...optimizedPlaceRef,
                         role: 'place',
