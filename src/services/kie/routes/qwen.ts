@@ -87,9 +87,9 @@ async function build(ctx: ImageRouteContext): Promise<KieImageRequest> {
                     const cw = ctx.cloneWeight ?? 100
                     const reproduce =
                         cw >= 75
-                            ? `reproduce the FIRST image EXACTLY — same body, build, curves, outfit, pose, hands, framing and lighting, and KEEP its FULL background, floor, setting and surroundings unchanged. Do NOT replace the scene with a plain, white or studio backdrop`
+                            ? `keep her EXACT outfit (every garment piece, its cut and coverage — do NOT merge a two-piece into a one-piece or restyle it), body, pose, hands, framing, lighting, floor, furniture and FULL background — all pixel-faithful, NOT a plain/white/studio backdrop`
                             : cw >= 50
-                              ? `follow the FIRST image CLOSELY — body, outfit, pose, framing AND its background/setting (keep the same surroundings, NOT a plain backdrop), allowing only minor natural variation`
+                              ? `keep her outfit, pose, framing and the same background/setting closely (same kind of garments and surroundings, NOT a plain backdrop), allowing only minor natural variation`
                               : cw >= 25
                                 ? `use the FIRST image as a general BASIS (outfit style, general pose and its setting/background) but freely reinterpret the exact details and framing`
                                 : `take only LOOSE inspiration from the FIRST image (general vibe, outfit style and kind of setting); freely reinterpret the pose and framing`
@@ -98,7 +98,7 @@ async function build(ctx: ImageRouteContext): Promise<KieImageRequest> {
                         .replace(/\[CLONE:[^\]]*\]/gi, ' ')
                         .replace(/\s{2,}/g, ' ')
                         .trim()
-                    input.prompt = `REMOVE any overlaid stickers, watermarks, emojis or UI graphics — output a clean photograph. The FIRST image is the scene to recreate — ${reproduce}; do NOT blend the two images. The SECOND image shows the person whose FACE to use: the FACE SWAP is MANDATORY — replace the face in the first image with the SECOND image's face (exact features, freckles, likeness), NEVER keep the first image's original face. Keep her hair and natural eye colour from the second image. Do NOT alter or remove any clothing. ${scene}`
+                    input.prompt = `EDIT the FIRST image IN PLACE — ${reproduce}. ONLY replace the face with the SECOND image's face (exact features, freckles, likeness); keep that person's hair and natural eye colour; NEVER keep the first image's original face. Do NOT blend the two images, and remove any overlaid stickers, watermarks or emojis. ${scene}`
                     console.log(
                         `[KIE] qwen2/image-edit CLONE (clone canvas + face swap, weight ${cw})`,
                     )
