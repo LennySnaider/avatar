@@ -1180,16 +1180,21 @@ export async function analyzeImageForClone(image: {
                         },
                     },
                     {
-                        text: `You are generating an image-generation prompt fragment that captures everything about this image EXCEPT the person's face, body type, skin tone, hair color, age, or ethnicity (those come from the avatar).
+                        text: `You are generating an image-generation prompt fragment that captures EVERYTHING about this image EXCEPT the person's face, body type, skin tone, hair color, age, or ethnicity (those come from the avatar).
 
-Cover: outfit/clothing/accessories/footwear/hairstyle, pose and body orientation, setting and background, lighting quality and direction, camera angle and shot type, and overall artistic style.
+Be PRECISE and SPECIFIC — vague words make every generation look different, so pin the scene down with concrete detail on ALL of these:
+- CAMERA & FRAMING: the exact shot type and distance (extreme close-up / close-up / waist-up / full-body / wide), the angle (high-angle looking down / eye-level / low-angle), and how the subject is cropped and placed in the frame.
+- POSE: the exact body position and orientation, where every limb is (arms, hands, legs, torso lean), head tilt and gaze direction, and weight distribution.
+- LIGHTING: direction and source (overhead / side / window / front), quality (soft-diffused vs hard), mood and color temperature, and how the shadows fall.
+- OUTFIT: each garment SEPARATELY with its cut, coverage and material (e.g. "a fitted lace top and a separate matching bottom", never just "lace set"), plus accessories, footwear and hairstyle.
+- SETTING & STYLE: the background elements and their positions, the floor/surface, and the overall photographic style and color grading.
 
 CRITICAL OUTPUT FORMAT:
 - Write ONE flowing paragraph of natural prose, separated by commas
 - NO headers, NO numbered sections, NO bullet points, NO markdown (no **bold**, no asterisks)
-- NO labels like "Outfit:", "Pose:", "Setting:". Just natural description
-- Keep under 500 characters total
-- It must read like a standard image-generation prompt, not a spec sheet
+- NO labels like "Outfit:", "Pose:", "Camera:". Just natural description
+- Keep under 800 characters total
+- It must read like a rich, detailed image-generation prompt, not a spec sheet
 
 DO NOT describe: facial features, body measurements or body type (thin/curvy/muscular), age, skin tone/complexion, hair color, or ethnicity.
 
@@ -1201,7 +1206,7 @@ VOCABULARY RESTRICTIONS (these trigger downstream safety filters, never use them
 - "bustier" → "structured bodice"
 - "corset" → "structured waist garment"
 
-Example output (format to match): "a woman wearing a floral halter swim top and striped high-cut swim bottom with a delicate gold chain necklace, leaning forward on white pool coping with hands resting on the edge, bright outdoor swimming pool with clear blue water, soft overhead daylight with gentle shadows, medium three-quarter shot from slightly low angle, casual lifestyle photography with vibrant natural color grading"`,
+Example output (format and richness to match): "a woman in a fitted white lace loungewear top with thin straps and a separate matching high-cut bottom, a slim gold chain necklace and a small tiara, kneeling upright sitting back on her heels with both hands resting flat on the floor in front of her knees, torso upright and head tilted slightly up toward the lens, on a dark wooden floor over a patterned rug beside a rumpled white bed with a dark headboard, warm soft overhead light from the upper left casting gentle shadows, shot from a high angle looking down from about waist height, an intimate dim boudoir photograph with warm natural color grading"`,
                     },
                 ],
             },
