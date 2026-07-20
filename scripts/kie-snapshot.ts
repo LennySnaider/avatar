@@ -172,7 +172,7 @@ async function main() {
     // Modelos con FIX INTENCIONAL de Fase 6: divergen de legacy a propósito.
     // Para ellos solo exigimos que su build() corra sin crash (no deepEqual).
     // El resto queda CONGELADO: deepEqual == legacy es obligatorio.
-    const DIVERGED = ['grok-imagine', 'qwen', 'seedream', 'wan']
+    const DIVERGED = ['grok-imagine', 'qwen', 'seedream']
     const isDiverged = (m: string) => DIVERGED.some((d) => m.startsWith(d))
     let fail = 0
     let checked = 0
