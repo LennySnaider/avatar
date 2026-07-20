@@ -100,7 +100,11 @@ async function build(ctx: ImageRouteContext): Promise<KieImageRequest> {
             const SEEDREAM_BUDGET = 2750
             const SCENE_FLOOR = 1300
             const anchorHead = `The person in the FIRST attached reference image is the subject — keep her EXACT face, facial features and likeness from that image.${faceFidelityClause} `
-            const anchorTail = `${hairClause}${eyeClause}${extraClauses} Follow the SCENE, POSE and ACTION described below EXACTLY.`
+            // Guard anti-duplicación: los prompts de VIDEO (movimiento/secuencia:
+            // "as they turn… then… concluding with…") que se cuelan al campo de
+            // imagen hacían que Seedream renderizara al sujeto en varias poses =
+            // 2 personas. Se fuerza UN solo sujeto en UNA pose.
+            const anchorTail = `${hairClause}${eyeClause}${extraClauses} Render EXACTLY ONE person — a single subject in ONE pose; do NOT duplicate the figure, show multiple poses side by side, or add any extra people. Follow the SCENE, POSE and ACTION described below EXACTLY.`
             const bodyClauseMax =
                 SEEDREAM_BUDGET -
                 SCENE_FLOOR -
