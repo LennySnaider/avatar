@@ -69,32 +69,35 @@ async function build(ctx: ImageRouteContext): Promise<KieImageRequest> {
                     .filter((r) => r.role === 'asset')
                     .slice(0, 2)
                 if (qwenClone) {
-                    // Qwen recibe la IMAGEN del clone como 2ª imagen (image_url
-                    // acepta array): clona outfit/pose/escena FIEL y el peso del
-                    // clon escala la cláusula por tramo. Guard de maniquí: la
-                    // cara SOLO de la imagen 1 (Qwen es débil mezclando rostros).
+                    // Qwen EDITA la primera imagen → el CLONE debe ser el LIENZO
+                    // (imagen 1) para adoptar su pose/cuerpo/outfit/escena/fondo;
+                    // la cara del avatar va como imagen 2 con FACE-SWAP. Con la
+                    // cara como imagen 1 (1er intento), Qwen anclaba la composición
+                    // del RETRATO e ignoraba la pose/fondo del clone (reporte: cara
+                    // perfecta pero físico/pose/fondo mal). Mismo patrón que el
+                    // deepfake de Qwen (que SÍ funciona), escalado por el peso.
                     const cloneUrl = await ctx.uploadRef(
                         qwenClone.base64,
                         qwenClone.mimeType,
                     )
-                    input.image_url = [refUrl, cloneUrl]
+                    input.image_url = [cloneUrl, refUrl]
                     const cw = ctx.cloneWeight ?? 100
-                    const cloneClause =
+                    const reproduce =
                         cw >= 75
-                            ? `The SECOND image is the CLONE source — recreate its EXACT outfit, pose, hands, framing, lighting and setting. Its person is a FACELESS MANNEQUIN: use ONLY the face from the FIRST image, NEVER the second image's face. Keep her FULLY dressed; do NOT merge the two faces.`
+                            ? `reproduce the FIRST image EXACTLY: same body, build, curves, outfit, pose, hands, framing, lighting, background and setting`
                             : cw >= 50
-                              ? `The SECOND image is a STRONG reference — follow its outfit, pose, framing and setting closely, allowing natural variation. FACELESS MANNEQUIN: the face comes ONLY from the first image, never the second's.`
+                              ? `follow the FIRST image CLOSELY (body, outfit, pose, framing, background), allowing only minor natural variation`
                               : cw >= 25
-                                ? `The SECOND image is a MODERATE reference — keep its outfit style, general pose and setting but freely reinterpret the details and framing. FACELESS MANNEQUIN: the face comes ONLY from the first image.`
-                                : `The SECOND image is a LOOSE style reference — take only its general vibe and outfit style; freely reinterpret the pose, framing and setting. FACELESS MANNEQUIN: the face comes ONLY from the first image.`
+                                ? `use the FIRST image as a general BASIS (outfit style, general pose and setting) but freely reinterpret the exact details and framing`
+                                : `take only LOOSE inspiration from the FIRST image (general vibe and outfit style); freely reinterpret the pose, framing and background`
                     // El texto [CLONE:] es redundante con la imagen → se quita.
                     const scene = String(input.prompt)
                         .replace(/\[CLONE:[^\]]*\]/gi, ' ')
                         .replace(/\s{2,}/g, ' ')
                         .trim()
-                    input.prompt = `The FIRST image is the person — keep her EXACT face and likeness.${faceFidelityClause}${hairClause} Her eyes keep their exact natural color and iris texture from the reference photo — do NOT recolor, brighten or saturate them. ${cloneClause} ${scene}`
+                    input.prompt = `REMOVE any overlaid stickers, watermarks, emojis or UI graphics — output a clean photograph. The FIRST image is the scene to recreate — ${reproduce}; do NOT blend the two images. The SECOND image shows the person whose FACE to use: the FACE SWAP is MANDATORY — replace the face in the first image with the SECOND image's face (exact features, freckles, likeness), NEVER keep the first image's original face.${faceFidelityClause}${hairClause} Do NOT alter or remove any clothing. ${scene}`
                     console.log(
-                        `[KIE] qwen2/image-edit CLONE (face + clone image, weight ${cw})`,
+                        `[KIE] qwen2/image-edit CLONE (clone canvas + face swap, weight ${cw})`,
                     )
                 } else if (qwenAssets.length > 0) {
                     const qwenUrls: string[] = [refUrl]
