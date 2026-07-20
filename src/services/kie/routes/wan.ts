@@ -76,8 +76,12 @@ async function build(ctx: ImageRouteContext): Promise<KieImageRequest> {
             const wanSceneRoom = Math.max(250, 2750 - wanAnchor.length)
             let wanSceneText = String(input.prompt)
             if (wanHasClone) {
+                // Se CONSERVA la descripción del clon (antes se borraba) para
+                // REANCLAR accesorios finos (tiara, collar) que Wan "limpia" si
+                // solo van en la imagen. Solo se quitan los corchetes/label.
                 wanSceneText = wanSceneText
-                    .replace(/\[CLONE:[^\]]*\]/gi, ' ')
+                    .replace(/\[CLONE:\s*/gi, '')
+                    .replace(/\]/g, ' ')
                     .replace(/\s{2,}/g, ' ')
                     .trim()
             }

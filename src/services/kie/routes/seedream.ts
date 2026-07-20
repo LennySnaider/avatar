@@ -102,7 +102,7 @@ async function build(ctx: ImageRouteContext): Promise<KieImageRequest> {
             // corto (solo la pose), así que el piso baja a 500 y ese presupuesto
             // se reinvierte en el ancla de IDENTIDAD (cara + medidas del avatar).
             // Sin clone, la escena viene por texto largo → piso 1300 (fix Fase 6).
-            const SCENE_FLOOR = hasClone ? 380 : 1300
+            const SCENE_FLOOR = hasClone ? 500 : 1300
             // IDENTITY LOCK (core del avatar = MISMA cara Y MISMO físico siempre):
             // a peso alto el clone bleedea su cara, pelo, pecas Y cuerpo → Seedream
             // salía con la cara/pelo del clone y perdía las medidas de MiaUltra
@@ -133,8 +133,14 @@ async function build(ctx: ImageRouteContext): Promise<KieImageRequest> {
             )
             let sceneText = String(input.prompt)
             if (hasClone) {
+                // Se CONSERVA la descripción del clon (antes se borraba por
+                // redundante con la imagen) para REANCLAR los accesorios finos —
+                // tiara, collar/pendiente — que Seedream "limpia" si solo van en
+                // la imagen (Qwen los clava porque usa imagen + texto). Solo se
+                // quitan los corchetes/label para que lea como prosa natural.
                 sceneText = sceneText
-                    .replace(/\[CLONE:[^\]]*\]/gi, ' ')
+                    .replace(/\[CLONE:\s*/gi, '')
+                    .replace(/\]/g, ' ')
                     .replace(/\s{2,}/g, ' ')
                     .trim()
             }
