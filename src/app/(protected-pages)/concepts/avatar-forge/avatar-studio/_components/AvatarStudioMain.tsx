@@ -1285,9 +1285,15 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                         // recibían el texto [CLONE:] y re-imaginaban el outfit.
                         if (
                             !deepfakeActive &&
+                            // PRUEBA (reversible): Seedream Pro es tan adherente a
+                            // la imagen que COPIA la cara del clone pese a todos los
+                            // guards (Wan/Qwen no). Se le QUITA la imagen del clone
+                            // → lee el clone como TEXTO [CLONE:] + la face ref del
+                            // avatar (cero cara rival = identidad fija). Si la escena
+                            // sale peor por texto, re-añadir kieModel.startsWith(
+                            // 'seedream/') a esta lista.
                             (kieModel === 'nano-banana-pro' ||
                                 kieModel.startsWith('nano-banana-2') ||
-                                kieModel.startsWith('seedream/') ||
                                 kieModel === 'wan/2-7-image' ||
                                 kieModel.startsWith('flux-2/') ||
                                 // Qwen es editor de imagen (image_url acepta
