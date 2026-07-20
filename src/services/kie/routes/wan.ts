@@ -72,7 +72,19 @@ async function build(ctx: ImageRouteContext): Promise<KieImageRequest> {
                   : ctx.bodyEmphasis
                     ? ` Use the reference image ONLY for the face and identity — do NOT copy the body proportions from it: the person in the photo looks SLIMMER than the character really is. Her real body is: ${ctx.bodyEmphasis}. Her hips, glutes and thighs must be visibly FULLER and WIDER than in the reference photo — the narrow waist makes the hip curve obvious. Keep the bust true to the spec: do NOT inflate the chest or add overall body mass beyond it.`
                     : ''
-            const wanAnchor = `The person in the FIRST attached reference image is the subject — keep her EXACT face, facial features and likeness from that image.${faceFidelityClause}${wanBodyClause}${hairClause}${eyeClause}${wanExtraClauses} Follow the SCENE, POSE and ACTION described below EXACTLY.`
+            // FIX Wan-específico (cabeza grande / cara "pegada"): Wan reconcilia
+            // multi-ref tipo "collage" — pega el face-crop (imagen 1) sobre el
+            // cuerpo del clon (imagen 2) a mala escala y sin integrar piel/luz,
+            // dando cabeza agrandada y look composited. Seedream/Qwen re-sintetizan
+            // la persona completa y no lo sufren. Cláusula SOLO-positiva (el i2i de
+            // Wan ignora/invierte negaciones al no tener negative_prompt) que fija
+            // la escala cabeza↔hombros y armoniza piel/luz/ángulo con el cuerpo del
+            // clon. Solo con clone (cuando ocurre el pegado face-crop+clone-body) y
+            // sin nombrar accesorios (para no re-tocar la reancla de tiara/collar).
+            const wanBlendClause = wanHasClone
+                ? ` Render image 1's face at true head-to-shoulders scale on image 2's body, matching that body's skin tone, lighting and camera angle so the head reads as one naturally photographed person.`
+                : ''
+            const wanAnchor = `The person in the FIRST attached reference image is the subject — keep her EXACT face, facial features and likeness from that image.${faceFidelityClause}${wanBodyClause}${hairClause}${eyeClause}${wanExtraClauses}${wanBlendClause} Follow the SCENE, POSE and ACTION described below EXACTLY.`
             const wanSceneRoom = Math.max(250, 2750 - wanAnchor.length)
             let wanSceneText = String(input.prompt)
             if (wanHasClone) {
