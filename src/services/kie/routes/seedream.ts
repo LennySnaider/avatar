@@ -104,7 +104,7 @@ async function build(ctx: ImageRouteContext): Promise<KieImageRequest> {
             // "Seedream Pro no puso la cara de MiaUltra"; Wan sí la puso). Guard
             // explícito de face-swap cuando hay clone — la cara SOLO de imagen 1.
             const cloneFaceGuard = hasClone
-                ? ` CRITICAL: the person in the CLONE reference photo is NOT her — that face is a faceless mannequin; the OUTPUT face, its features, bone structure and likeness MUST come ENTIRELY from the FIRST image, NEVER from the clone photo.`
+                ? ` CRITICAL: the person in the CLONE reference photo is NOT her — that face is a faceless mannequin; the OUTPUT face, its features, bone structure and likeness MUST come ENTIRELY from the FIRST image, NEVER from the clone photo. Render that swapped face CLEARLY and recognizably — lit well enough to read her exact features, NOT hidden in shadow or darkened.`
                 : ''
             const anchorHead = `The person in the FIRST attached reference image is the subject — keep her EXACT face, facial features and likeness from that image.${faceFidelityClause}${cloneFaceGuard} `
             // Guard anti-duplicación: los prompts de VIDEO (movimiento/secuencia:
