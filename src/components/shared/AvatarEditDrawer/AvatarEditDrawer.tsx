@@ -24,8 +24,7 @@ import {
 import { generateAvatar, analyzeFaceFromImages } from '@/services/GeminiService'
 import type { PhysicalMeasurements } from '@/@types/supabase'
 import { createThumbnail, resizeBase64Image } from '@/utils/imageOptimization'
-import HairColorPicker from '@/components/shared/HairColorPicker'
-import EyeColorPicker from '@/components/shared/EyeColorPicker'
+import PhysicalAttributesEditor from '@/components/shared/PhysicalAttributesEditor'
 
 // Reference image interface
 export interface AvatarReferenceImage {
@@ -92,15 +91,21 @@ const AvatarEditDrawer = ({
     const [saveAvatarName, setSaveAvatarName] = useState('')
     const [isAnalyzingFace, setIsAnalyzingFace] = useState(false)
     const [isGeneratingAngle, setIsGeneratingAngle] = useState(false)
-    const [previewImage, setPreviewImage] = useState<AvatarReferenceImage | null>(null)
+    const [previewImage, setPreviewImage] =
+        useState<AvatarReferenceImage | null>(null)
     const [previewZoom, setPreviewZoom] = useState(1)
 
     // Local editing state
-    const [localGeneralRefs, setLocalGeneralRefs] = useState<AvatarReferenceImage[]>([])
-    const [localFaceRef, setLocalFaceRef] = useState<AvatarReferenceImage | null>(null)
-    const [localAngleRef, setLocalAngleRef] = useState<AvatarReferenceImage | null>(null)
+    const [localGeneralRefs, setLocalGeneralRefs] = useState<
+        AvatarReferenceImage[]
+    >([])
+    const [localFaceRef, setLocalFaceRef] =
+        useState<AvatarReferenceImage | null>(null)
+    const [localAngleRef, setLocalAngleRef] =
+        useState<AvatarReferenceImage | null>(null)
     const [localIdentityWeight, setLocalIdentityWeight] = useState(85)
-    const [localMeasurements, setLocalMeasurements] = useState<PhysicalMeasurements>(defaultMeasurements)
+    const [localMeasurements, setLocalMeasurements] =
+        useState<PhysicalMeasurements>(defaultMeasurements)
     const [localFaceDescription, setLocalFaceDescription] = useState('')
 
     // Sync local state from initialData when drawer opens
@@ -135,30 +140,37 @@ const AvatarEditDrawer = ({
     }, [])
 
     const handlePreviewZoomIn = useCallback(() => {
-        setPreviewZoom(prev => Math.min(prev + 0.25, 3))
+        setPreviewZoom((prev) => Math.min(prev + 0.25, 3))
     }, [])
 
     const handlePreviewZoomOut = useCallback(() => {
-        setPreviewZoom(prev => Math.max(prev - 0.25, 1))
+        setPreviewZoom((prev) => Math.max(prev - 0.25, 1))
     }, [])
 
     const handlePreviewWheel = useCallback((e: React.WheelEvent) => {
         e.preventDefault()
         if (e.deltaY < 0) {
-            setPreviewZoom(prev => Math.min(prev + 0.25, 3))
+            setPreviewZoom((prev) => Math.min(prev + 0.25, 3))
         } else {
-            setPreviewZoom(prev => Math.max(prev - 0.25, 1))
+            setPreviewZoom((prev) => Math.max(prev - 0.25, 1))
         }
     }, [])
 
     // Process file upload
     const processFile = useCallback(
         async (file: File, type: 'general' | 'face' | 'angle' | 'body') => {
-            if (!['image/jpeg', 'image/png', 'image/webp', 'image/heic'].includes(file.type)) {
+            if (
+                ![
+                    'image/jpeg',
+                    'image/png',
+                    'image/webp',
+                    'image/heic',
+                ].includes(file.type)
+            ) {
                 toast.push(
                     <Notification type="warning" title="Invalid File">
                         Please upload JPG, PNG, or WebP images
-                    </Notification>
+                    </Notification>,
                 )
                 return
             }
@@ -170,7 +182,10 @@ const AvatarEditDrawer = ({
                 if (matches) {
                     let thumbnailUrl = result
                     try {
-                        thumbnailUrl = await createThumbnail(matches[2], 'THUMBNAIL')
+                        thumbnailUrl = await createThumbnail(
+                            matches[2],
+                            'THUMBNAIL',
+                        )
                     } catch {
                         // Fallback to original
                     }
@@ -186,7 +201,7 @@ const AvatarEditDrawer = ({
 
                     switch (type) {
                         case 'general':
-                            setLocalGeneralRefs(prev => [...prev, newImage])
+                            setLocalGeneralRefs((prev) => [...prev, newImage])
                             break
                         case 'face':
                             setLocalFaceRef(newImage)
@@ -200,17 +215,20 @@ const AvatarEditDrawer = ({
             }
             reader.readAsDataURL(file)
         },
-        []
+        [],
     )
 
     const handleFileChange = useCallback(
-        (event: React.ChangeEvent<HTMLInputElement>, type: 'general' | 'face' | 'angle' | 'body') => {
+        (
+            event: React.ChangeEvent<HTMLInputElement>,
+            type: 'general' | 'face' | 'angle' | 'body',
+        ) => {
             const files = event.target.files
             if (!files) return
             Array.from(files).forEach((file) => processFile(file, type))
             event.target.value = ''
         },
-        [processFile]
+        [processFile],
     )
 
     const handleDragOver = (e: React.DragEvent) => {
@@ -218,7 +236,10 @@ const AvatarEditDrawer = ({
         e.stopPropagation()
     }
 
-    const handleDrop = (e: React.DragEvent, type: 'general' | 'face' | 'angle' | 'body') => {
+    const handleDrop = (
+        e: React.DragEvent,
+        type: 'general' | 'face' | 'angle' | 'body',
+    ) => {
         e.preventDefault()
         e.stopPropagation()
         const files = e.dataTransfer.files
@@ -228,7 +249,7 @@ const AvatarEditDrawer = ({
     }
 
     const handleRemoveGeneralRef = (id: string) => {
-        setLocalGeneralRefs(prev => prev.filter(r => r.id !== id))
+        setLocalGeneralRefs((prev) => prev.filter((r) => r.id !== id))
     }
 
     // Apply changes
@@ -239,7 +260,7 @@ const AvatarEditDrawer = ({
         toast.push(
             <Notification type="success" title="Changes Applied">
                 Avatar settings updated
-            </Notification>
+            </Notification>,
         )
         onClose()
     }
@@ -257,13 +278,15 @@ const AvatarEditDrawer = ({
     const handleAnalyzeFace = async () => {
         const validRefs = localFaceRef?.base64
             ? [localFaceRef]
-            : localGeneralRefs.filter((r) => r.base64 && r.base64.length > 0).slice(0, 3)
+            : localGeneralRefs
+                  .filter((r) => r.base64 && r.base64.length > 0)
+                  .slice(0, 3)
 
         if (validRefs.length === 0) {
             toast.push(
                 <Notification type="warning" title="No Images">
                     Please add reference images first
-                </Notification>
+                </Notification>,
             )
             return
         }
@@ -290,7 +313,7 @@ const AvatarEditDrawer = ({
                 toast.push(
                     <Notification type="success" title="Face Analyzed">
                         Face description generated successfully
-                    </Notification>
+                    </Notification>,
                 )
             }
         } catch (error) {
@@ -298,7 +321,7 @@ const AvatarEditDrawer = ({
             toast.push(
                 <Notification type="danger" title="Analysis Failed">
                     Could not analyze face
-                </Notification>
+                </Notification>,
             )
         } finally {
             setIsAnalyzingFace(false)
@@ -313,10 +336,16 @@ const AvatarEditDrawer = ({
         try {
             const result = await generateAvatar({
                 prompt: 'Face angle reference sheet, 9 images in a 3x3 grid showing the same person from different angles: front view smiling, 3/4 left view, 3/4 right view, profile left, profile right, looking up, looking down, front serious expression, extreme close-up of eyes. No frames, no text, no borders between images, seamless grid layout, ultra high quality, studio lighting, neutral background',
-                avatarReferences: localGeneralRefs.map(ref => ({ base64: ref.base64, mimeType: ref.mimeType })),
+                avatarReferences: localGeneralRefs.map((ref) => ({
+                    base64: ref.base64,
+                    mimeType: ref.mimeType,
+                })),
                 assetReferences: [],
                 sceneReference: null,
-                faceRefImage: { base64: localFaceRef.base64, mimeType: localFaceRef.mimeType },
+                faceRefImage: {
+                    base64: localFaceRef.base64,
+                    mimeType: localFaceRef.mimeType,
+                },
                 bodyRefImage: null, // Body ref is now a session tool
                 angleRefImage: null,
                 poseRefImage: null,
@@ -350,21 +379,22 @@ const AvatarEditDrawer = ({
             toast.push(
                 <Notification type="success" title="Angle Generated">
                     Angle reference sheet created
-                </Notification>
+                </Notification>,
             )
         } catch (error) {
             console.error('Error generating angle:', error)
             toast.push(
                 <Notification type="danger" title="Generation Failed">
                     Could not generate angle reference
-                </Notification>
+                </Notification>,
             )
         } finally {
             setIsGeneratingAngle(false)
         }
     }
 
-    const hasLocalRefs = localGeneralRefs.length > 0 || localFaceRef || localAngleRef
+    const hasLocalRefs =
+        localGeneralRefs.length > 0 || localFaceRef || localAngleRef
 
     // Reference Slot Component
     const ReferenceSlot = ({
@@ -398,13 +428,18 @@ const AvatarEditDrawer = ({
             {image ? (
                 <div className="relative group">
                     <img
-                        src={image.thumbnailUrl || image.url || image.storagePath}
+                        src={
+                            image.thumbnailUrl || image.url || image.storagePath
+                        }
                         alt={slotTitle}
                         className="w-full h-32 object-cover rounded-lg cursor-pointer hover:ring-2 hover:ring-primary transition-all"
                         onClick={() => setPreviewImage(image)}
                     />
                     <button
-                        onClick={(e) => { e.stopPropagation(); onRemove() }}
+                        onClick={(e) => {
+                            e.stopPropagation()
+                            onRemove()
+                        }}
                         className="absolute top-1 right-1 p-1 bg-red-500 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
                     >
                         <HiOutlineX className="w-3 h-3" />
@@ -413,7 +448,9 @@ const AvatarEditDrawer = ({
             ) : isGenerating ? (
                 <div className="w-full h-32 border-2 border-primary border-dashed rounded-lg flex flex-col items-center justify-center">
                     <Spinner size={24} />
-                    <span className="text-xs text-primary mt-2">Generating...</span>
+                    <span className="text-xs text-primary mt-2">
+                        Generating...
+                    </span>
                 </div>
             ) : (
                 <div className="space-y-2">
@@ -450,7 +487,9 @@ const AvatarEditDrawer = ({
                         <HiOutlineUser className="w-5 h-5 text-primary" />
                         <span>{title || 'Edit Avatar'}</span>
                         {avatarName && (
-                            <span className="text-sm text-primary font-normal">- {avatarName}</span>
+                            <span className="text-sm text-primary font-normal">
+                                - {avatarName}
+                            </span>
                         )}
                     </div>
                 }
@@ -467,13 +506,18 @@ const AvatarEditDrawer = ({
                             <Card className="p-4">
                                 <div className="flex items-center justify-between mb-3">
                                     <div>
-                                        <h3 className="text-sm font-semibold">General Identity Photos</h3>
+                                        <h3 className="text-sm font-semibold">
+                                            General Identity Photos
+                                        </h3>
                                         <p className="text-xs text-gray-500">
-                                            Upload multiple photos from different angles
+                                            Upload multiple photos from
+                                            different angles
                                         </p>
                                     </div>
                                     <button
-                                        onClick={() => fileInputRef.current?.click()}
+                                        onClick={() =>
+                                            fileInputRef.current?.click()
+                                        }
                                         className="text-sm text-primary hover:underline"
                                     >
                                         + Add Photos
@@ -485,20 +529,35 @@ const AvatarEditDrawer = ({
                                     accept="image/*"
                                     multiple
                                     className="hidden"
-                                    onChange={(e) => handleFileChange(e, 'general')}
+                                    onChange={(e) =>
+                                        handleFileChange(e, 'general')
+                                    }
                                 />
                                 {localGeneralRefs.length > 0 ? (
                                     <div className="grid grid-cols-4 gap-3">
                                         {localGeneralRefs.map((ref) => (
-                                            <div key={ref.id} className="relative group">
+                                            <div
+                                                key={ref.id}
+                                                className="relative group"
+                                            >
                                                 <img
-                                                    src={ref.thumbnailUrl || ref.url}
+                                                    src={
+                                                        ref.thumbnailUrl ||
+                                                        ref.url
+                                                    }
                                                     alt="Reference"
                                                     className="w-full aspect-square object-cover rounded-lg cursor-pointer hover:ring-2 hover:ring-primary transition-all"
-                                                    onClick={() => setPreviewImage(ref)}
+                                                    onClick={() =>
+                                                        setPreviewImage(ref)
+                                                    }
                                                 />
                                                 <button
-                                                    onClick={(e) => { e.stopPropagation(); handleRemoveGeneralRef(ref.id) }}
+                                                    onClick={(e) => {
+                                                        e.stopPropagation()
+                                                        handleRemoveGeneralRef(
+                                                            ref.id,
+                                                        )
+                                                    }}
                                                     className="absolute top-1 right-1 p-1 bg-red-500 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
                                                 >
                                                     <HiOutlineX className="w-3 h-3" />
@@ -508,27 +567,37 @@ const AvatarEditDrawer = ({
                                     </div>
                                 ) : (
                                     <div
-                                        onClick={() => fileInputRef.current?.click()}
+                                        onClick={() =>
+                                            fileInputRef.current?.click()
+                                        }
                                         onDragOver={handleDragOver}
                                         onDrop={(e) => handleDrop(e, 'general')}
                                         className="h-32 border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-lg flex flex-col items-center justify-center text-gray-400 hover:border-primary hover:text-primary transition-colors cursor-pointer"
                                     >
                                         <HiOutlineUpload className="w-8 h-8 mb-2" />
-                                        <span>Click or drag to upload photos</span>
-                                        <span className="text-xs">JPG, PNG, WebP supported</span>
+                                        <span>
+                                            Click or drag to upload photos
+                                        </span>
+                                        <span className="text-xs">
+                                            JPG, PNG, WebP supported
+                                        </span>
                                     </div>
                                 )}
                             </Card>
 
                             {/* Specific References */}
                             <Card className="p-4">
-                                <h3 className="text-sm font-semibold mb-4">Specific References (Optional)</h3>
+                                <h3 className="text-sm font-semibold mb-4">
+                                    Specific References (Optional)
+                                </h3>
                                 <div className="grid grid-cols-2 gap-4">
                                     <ReferenceSlot
                                         slotTitle="Face Close-up"
                                         subtitle="For facial details"
                                         image={localFaceRef}
-                                        onUpload={() => faceInputRef.current?.click()}
+                                        onUpload={() =>
+                                            faceInputRef.current?.click()
+                                        }
                                         onRemove={() => setLocalFaceRef(null)}
                                         dropType="face"
                                     />
@@ -537,14 +606,18 @@ const AvatarEditDrawer = ({
                                         type="file"
                                         accept="image/*"
                                         className="hidden"
-                                        onChange={(e) => handleFileChange(e, 'face')}
+                                        onChange={(e) =>
+                                            handleFileChange(e, 'face')
+                                        }
                                     />
 
                                     <ReferenceSlot
                                         slotTitle="Angle Sheet"
                                         subtitle="Multiple angles"
                                         image={localAngleRef}
-                                        onUpload={() => angleInputRef.current?.click()}
+                                        onUpload={() =>
+                                            angleInputRef.current?.click()
+                                        }
                                         onRemove={() => setLocalAngleRef(null)}
                                         dropType="angle"
                                         onAutoGenerate={handleGenerateAngle}
@@ -556,23 +629,32 @@ const AvatarEditDrawer = ({
                                         type="file"
                                         accept="image/*"
                                         className="hidden"
-                                        onChange={(e) => handleFileChange(e, 'angle')}
+                                        onChange={(e) =>
+                                            handleFileChange(e, 'angle')
+                                        }
                                     />
                                 </div>
                                 <p className="text-xs text-gray-400 mt-3 italic">
-                                    Body Ref is available as a session tool in the generation bar
+                                    Body Ref is available as a session tool in
+                                    the generation bar
                                 </p>
                             </Card>
 
                             {/* Identity Weight */}
                             <Card className="p-4">
                                 <div className="flex items-center justify-between mb-3">
-                                    <h3 className="text-sm font-semibold">Identity Weight</h3>
-                                    <span className="text-sm font-mono text-primary">{localIdentityWeight}%</span>
+                                    <h3 className="text-sm font-semibold">
+                                        Identity Weight
+                                    </h3>
+                                    <span className="text-sm font-mono text-primary">
+                                        {localIdentityWeight}%
+                                    </span>
                                 </div>
                                 <Slider
                                     value={localIdentityWeight}
-                                    onChange={(val) => setLocalIdentityWeight(val as number)}
+                                    onChange={(val) =>
+                                        setLocalIdentityWeight(val as number)
+                                    }
                                     min={0}
                                     max={100}
                                 />
@@ -580,178 +662,32 @@ const AvatarEditDrawer = ({
                                     {localIdentityWeight > 85
                                         ? 'Very high - Deepfake-level consistency'
                                         : localIdentityWeight > 50
-                                        ? 'High - Strong identity preservation'
-                                        : 'Low - More creative freedom'}
+                                          ? 'High - Strong identity preservation'
+                                          : 'Low - More creative freedom'}
                                 </p>
                             </Card>
 
                             {/* Physical Attributes */}
                             <Card className="p-4">
-                                <h3 className="text-sm font-semibold mb-3">Physical Attributes</h3>
-                                <div className="space-y-3">
-                                    {/* Body Type */}
-                                    <div>
-                                        <label className="text-xs text-gray-500 block mb-1">Body Type</label>
-                                        <div className="flex flex-wrap gap-1">
-                                            {(['petite', 'slim', 'athletic', 'average', 'curvy', 'hourglass', 'plus-size'] as const).map((type) => (
-                                                <button
-                                                    key={type}
-                                                    onClick={() => setLocalMeasurements({ ...localMeasurements, bodyType: type })}
-                                                    className={`px-2 py-1 text-xs rounded border transition-colors capitalize ${
-                                                        localMeasurements.bodyType === type
-                                                            ? 'bg-primary text-white border-primary'
-                                                            : 'bg-gray-50 dark:bg-gray-800 border-gray-200 dark:border-gray-700 hover:border-primary'
-                                                    }`}
-                                                >
-                                                    {type}
-                                                </button>
-                                            ))}
-                                        </div>
-                                    </div>
-
-                                    {/* Leg Type */}
-                                    <div>
-                                        <label className="text-xs text-gray-500 block mb-1">Leg Type</label>
-                                        <div className="flex flex-wrap gap-1">
-                                            {([undefined, 'slim', 'toned', 'athletic', 'long', 'curvy', 'thick'] as const).map((leg) => (
-                                                <button
-                                                    key={leg ?? 'auto'}
-                                                    onClick={() => setLocalMeasurements({ ...localMeasurements, legType: leg })}
-                                                    className={`px-2 py-1 text-xs rounded border transition-colors capitalize ${
-                                                        (localMeasurements.legType ?? undefined) === leg
-                                                            ? 'bg-primary text-white border-primary'
-                                                            : 'bg-gray-50 dark:bg-gray-800 border-gray-200 dark:border-gray-700 hover:border-primary'
-                                                    }`}
-                                                >
-                                                    {leg ?? 'auto'}
-                                                </button>
-                                            ))}
-                                        </div>
-                                    </div>
-
-                                    {/* Skin Tone */}
-                                    <div>
-                                        <div className="flex items-center justify-between mb-2">
-                                            <label className="text-xs text-gray-500">Skin Tone</label>
-                                            <span className="text-xs font-mono text-primary">
-                                                {localMeasurements.skinTone === 1 ? 'Very Fair' :
-                                                 localMeasurements.skinTone === 2 ? 'Fair' :
-                                                 localMeasurements.skinTone === 3 ? 'Light' :
-                                                 localMeasurements.skinTone === 4 ? 'Light-Medium' :
-                                                 localMeasurements.skinTone === 5 ? 'Medium' :
-                                                 localMeasurements.skinTone === 6 ? 'Medium-Tan' :
-                                                 localMeasurements.skinTone === 7 ? 'Tan' :
-                                                 localMeasurements.skinTone === 8 ? 'Dark' :
-                                                 'Very Dark'}
-                                            </span>
-                                        </div>
-                                        <div className="relative mb-1">
-                                            <div className="h-3 rounded-full overflow-hidden flex">
-                                                {[1, 2, 3, 4, 5, 6, 7, 8, 9].map((tone) => (
-                                                    <button
-                                                        key={tone}
-                                                        onClick={() => setLocalMeasurements({ ...localMeasurements, skinTone: tone as 1|2|3|4|5|6|7|8|9 })}
-                                                        className={`flex-1 transition-all ${
-                                                            localMeasurements.skinTone === tone ? 'ring-2 ring-primary ring-offset-1 z-10 scale-110' : ''
-                                                        }`}
-                                                        style={{
-                                                            backgroundColor:
-                                                                tone === 1 ? '#FFECD2' :
-                                                                tone === 2 ? '#FFE4C4' :
-                                                                tone === 3 ? '#F5D5B8' :
-                                                                tone === 4 ? '#E8C4A0' :
-                                                                tone === 5 ? '#D4A574' :
-                                                                tone === 6 ? '#C68642' :
-                                                                tone === 7 ? '#A0522D' :
-                                                                tone === 8 ? '#6B4423' :
-                                                                '#3D2314'
-                                                        }}
-                                                    />
-                                                ))}
-                                            </div>
-                                        </div>
-                                        <Slider
-                                            value={localMeasurements.skinTone || 5}
-                                            onChange={(val) => setLocalMeasurements({ ...localMeasurements, skinTone: val as 1|2|3|4|5|6|7|8|9 })}
-                                            min={1}
-                                            max={9}
-                                            step={1}
-                                        />
-                                    </div>
-
-                                    {/* Hair Type + Color (degradado 2-3 tonos) */}
-                                    <HairColorPicker
-                                        value={localMeasurements.hairColor}
-                                        tones={localMeasurements.hairColors}
-                                        hairStyle={localMeasurements.hairStyle}
-                                        onChange={(c) => setLocalMeasurements({ ...localMeasurements, hairColor: c })}
-                                        onGradientChange={(p) => setLocalMeasurements({ ...localMeasurements, ...p })}
-                                    />
-
-                                    {/* Eye Color */}
-                                    <EyeColorPicker
-                                        value={localMeasurements.eyeColor}
-                                        onChange={(c) => setLocalMeasurements({ ...localMeasurements, eyeColor: c })}
-                                    />
-
-                                    {/* Measurements */}
-                                    <div className="flex gap-2 flex-wrap">
-                                        <div className="w-20">
-                                            <label className="text-xs text-gray-500">Age</label>
-                                            <Input
-                                                size="sm"
-                                                type="number"
-                                                value={localMeasurements.age}
-                                                onChange={(e) => setLocalMeasurements({ ...localMeasurements, age: parseInt(e.target.value) || 25 })}
-                                            />
-                                        </div>
-                                        <div className="w-20">
-                                            <label className="text-xs text-gray-500">Height</label>
-                                            <Input
-                                                size="sm"
-                                                type="number"
-                                                value={localMeasurements.height}
-                                                onChange={(e) => setLocalMeasurements({ ...localMeasurements, height: parseInt(e.target.value) || 165 })}
-                                            />
-                                        </div>
-                                        <div className="w-20">
-                                            <label className="text-xs text-gray-500">Bust</label>
-                                            <Input
-                                                size="sm"
-                                                type="number"
-                                                value={localMeasurements.bust}
-                                                onChange={(e) => setLocalMeasurements({ ...localMeasurements, bust: parseInt(e.target.value) || 90 })}
-                                            />
-                                        </div>
-                                        <div className="w-20">
-                                            <label className="text-xs text-gray-500">Waist</label>
-                                            <Input
-                                                size="sm"
-                                                type="number"
-                                                value={localMeasurements.waist}
-                                                onChange={(e) => setLocalMeasurements({ ...localMeasurements, waist: parseInt(e.target.value) || 60 })}
-                                            />
-                                        </div>
-                                        <div className="w-20">
-                                            <label className="text-xs text-gray-500">Hips</label>
-                                            <Input
-                                                size="sm"
-                                                type="number"
-                                                value={localMeasurements.hips}
-                                                onChange={(e) => setLocalMeasurements({ ...localMeasurements, hips: parseInt(e.target.value) || 90 })}
-                                            />
-                                        </div>
-                                    </div>
-                                </div>
+                                <h3 className="text-sm font-semibold mb-3">
+                                    Physical Attributes
+                                </h3>
+                                <PhysicalAttributesEditor
+                                    measurements={localMeasurements}
+                                    onChange={setLocalMeasurements}
+                                />
                             </Card>
 
                             {/* Face Description */}
                             <Card className="p-4">
                                 <div className="flex items-center justify-between mb-3">
                                     <div>
-                                        <h3 className="text-sm font-semibold">Face Description</h3>
+                                        <h3 className="text-sm font-semibold">
+                                            Face Description
+                                        </h3>
                                         <p className="text-xs text-gray-500">
-                                            Detailed description for consistent facial features
+                                            Detailed description for consistent
+                                            facial features
                                         </p>
                                     </div>
                                     {hasLocalRefs && (
@@ -768,7 +704,9 @@ const AvatarEditDrawer = ({
                                 </div>
                                 <textarea
                                     value={localFaceDescription}
-                                    onChange={(e) => setLocalFaceDescription(e.target.value)}
+                                    onChange={(e) =>
+                                        setLocalFaceDescription(e.target.value)
+                                    }
                                     placeholder="Describe facial features: eye shape, nose, lips, skin tone, distinctive features..."
                                     rows={4}
                                     className="w-full p-3 border rounded-lg bg-transparent resize-none"
@@ -798,8 +736,15 @@ const AvatarEditDrawer = ({
                                         <Input
                                             placeholder="Avatar name..."
                                             value={saveAvatarName}
-                                            onChange={(e) => setSaveAvatarName(e.target.value)}
-                                            onKeyDown={(e) => e.key === 'Enter' && handleSave()}
+                                            onChange={(e) =>
+                                                setSaveAvatarName(
+                                                    e.target.value,
+                                                )
+                                            }
+                                            onKeyDown={(e) =>
+                                                e.key === 'Enter' &&
+                                                handleSave()
+                                            }
                                         />
                                         <div className="flex gap-2">
                                             <Button
@@ -809,13 +754,17 @@ const AvatarEditDrawer = ({
                                                 onClick={handleSave}
                                                 loading={isSaving}
                                                 className="flex-1"
-                                                disabled={!saveAvatarName.trim()}
+                                                disabled={
+                                                    !saveAvatarName.trim()
+                                                }
                                             >
                                                 Save Avatar
                                             </Button>
                                             <Button
                                                 variant="plain"
-                                                onClick={() => setShowSaveInput(false)}
+                                                onClick={() =>
+                                                    setShowSaveInput(false)
+                                                }
                                             >
                                                 Cancel
                                             </Button>
@@ -878,13 +827,16 @@ const AvatarEditDrawer = ({
                             onWheel={handlePreviewWheel}
                         >
                             <img
-                                src={previewImage.url || previewImage.storagePath}
+                                src={
+                                    previewImage.url || previewImage.storagePath
+                                }
                                 alt="Preview"
                                 className="rounded-lg object-contain select-none"
                                 style={{
                                     transform: `scale(${previewZoom})`,
                                     transition: 'transform 0.2s ease-out',
-                                    maxHeight: previewZoom === 1 ? '65vh' : 'none',
+                                    maxHeight:
+                                        previewZoom === 1 ? '65vh' : 'none',
                                 }}
                                 draggable={false}
                             />

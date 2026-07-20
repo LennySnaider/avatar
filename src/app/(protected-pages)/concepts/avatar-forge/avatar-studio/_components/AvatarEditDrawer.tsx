@@ -14,24 +14,6 @@ import Notification from '@/components/ui/Notification'
 import toast from '@/components/ui/toast'
 import Tooltip from '@/components/ui/Tooltip'
 import {
-    BODY_TYPE_TOOLTIP,
-    LEG_TYPE_TOOLTIP,
-    BUST_LEVEL_PHRASE,
-    GLUTES_LEVEL_PHRASE,
-    THIGHS_LEVEL_PHRASE,
-    BUST_SHAPES,
-    BUST_LEVEL_TO_CM,
-    GLUTES_LEVEL_TO_CM,
-    cmToBustLevel,
-    cmToGlutesLevel,
-    GLUTES_SHAPES,
-    BUST_SHAPE_PHRASE,
-    GLUTES_SHAPE_PHRASE,
-    effectiveThighsLevel,
-} from '@/utils/bodyDescriptors'
-import type { CurveLevel, BustShape, GlutesShape } from '@/@types/supabase'
-import MeasurementSlider from '../../_shared/MeasurementSlider'
-import {
     HiOutlineUpload,
     HiOutlineX,
     HiOutlineSave,
@@ -44,8 +26,7 @@ import { generateAvatar, analyzeFaceFromImages } from '@/services/GeminiService'
 import type { ReferenceImage } from '../types'
 import type { PhysicalMeasurements } from '@/@types/supabase'
 import { createThumbnail } from '@/utils/imageOptimization'
-import HairColorPicker from '@/components/shared/HairColorPicker'
-import EyeColorPicker from '@/components/shared/EyeColorPicker'
+import PhysicalAttributesEditor from '@/components/shared/PhysicalAttributesEditor'
 
 interface AvatarEditDrawerProps {
     isOpen: boolean
@@ -54,39 +35,54 @@ interface AvatarEditDrawerProps {
     onAnalyzeFace?: () => Promise<void>
 }
 
-const AvatarEditDrawer = ({ isOpen, onClose, onSaveAvatar }: AvatarEditDrawerProps) => {
+const AvatarEditDrawer = ({
+    isOpen,
+    onClose,
+    onSaveAvatar,
+}: AvatarEditDrawerProps) => {
     const fileInputRef = useRef<HTMLInputElement>(null)
     const faceInputRef = useRef<HTMLInputElement>(null)
     const angleInputRef = useRef<HTMLInputElement>(null)
-    const bustInputRef = useRef<HTMLInputElement>(null)
-    const glutesInputRef = useRef<HTMLInputElement>(null)
 
     const [showSaveInput, setShowSaveInput] = useState(false)
     const [saveAvatarName, setSaveAvatarName] = useState('')
     const [isAnalyzingFace, setIsAnalyzingFace] = useState(false)
     const [isGeneratingAngle, setIsGeneratingAngle] = useState(false)
-    const [previewImage, setPreviewImage] = useState<ReferenceImage | null>(null)
+    const [previewImage, setPreviewImage] = useState<ReferenceImage | null>(
+        null,
+    )
     const [previewZoom, setPreviewZoom] = useState(1)
 
     // Local editing state (copy from store when drawer opens)
-    const [localGeneralRefs, setLocalGeneralRefs] = useState<ReferenceImage[]>([])
-    const [localFaceRef, setLocalFaceRef] = useState<ReferenceImage | null>(null)
-    const [localAngleRef, setLocalAngleRef] = useState<ReferenceImage | null>(null)
+    const [localGeneralRefs, setLocalGeneralRefs] = useState<ReferenceImage[]>(
+        [],
+    )
+    const [localFaceRef, setLocalFaceRef] = useState<ReferenceImage | null>(
+        null,
+    )
+    const [localAngleRef, setLocalAngleRef] = useState<ReferenceImage | null>(
+        null,
+    )
     // Refs de REGIÓN (fijos por avatar, junto a su slider de Curves) — solo
     // viajan a modelos permisivos.
-    const [localBustRef, setLocalBustRef] = useState<ReferenceImage | null>(null)
-    const [localGlutesRef, setLocalGlutesRef] = useState<ReferenceImage | null>(null)
+    const [localBustRef, setLocalBustRef] = useState<ReferenceImage | null>(
+        null,
+    )
+    const [localGlutesRef, setLocalGlutesRef] = useState<ReferenceImage | null>(
+        null,
+    )
     const [localIdentityWeight, setLocalIdentityWeight] = useState(85)
-    const [localMeasurements, setLocalMeasurements] = useState<PhysicalMeasurements>({
-        age: 25,
-        height: 165,
-        bodyType: 'average',
-        bust: 90,
-        waist: 60,
-        hips: 90,
-        skinTone: 5,
-        hairColor: 'brown',
-    })
+    const [localMeasurements, setLocalMeasurements] =
+        useState<PhysicalMeasurements>({
+            age: 25,
+            height: 165,
+            bodyType: 'average',
+            bust: 90,
+            waist: 60,
+            hips: 90,
+            skinTone: 5,
+            hairColor: 'brown',
+        })
     const [localFaceDescription, setLocalFaceDescription] = useState('')
 
     const {
@@ -123,7 +119,18 @@ const AvatarEditDrawer = ({ isOpen, onClose, onSaveAvatar }: AvatarEditDrawerPro
             setLocalFaceDescription(faceDescription)
             setSaveAvatarName(avatarName || '')
         }
-    }, [isOpen, generalReferences, faceRef, angleRef, bustRef, glutesRef, identityWeight, measurements, faceDescription, avatarName])
+    }, [
+        isOpen,
+        generalReferences,
+        faceRef,
+        angleRef,
+        bustRef,
+        glutesRef,
+        identityWeight,
+        measurements,
+        faceDescription,
+        avatarName,
+    ])
 
     // Preview handlers
     const handlePreviewClose = useCallback(() => {
@@ -132,30 +139,40 @@ const AvatarEditDrawer = ({ isOpen, onClose, onSaveAvatar }: AvatarEditDrawerPro
     }, [])
 
     const handlePreviewZoomIn = useCallback(() => {
-        setPreviewZoom(prev => Math.min(prev + 0.25, 3))
+        setPreviewZoom((prev) => Math.min(prev + 0.25, 3))
     }, [])
 
     const handlePreviewZoomOut = useCallback(() => {
-        setPreviewZoom(prev => Math.max(prev - 0.25, 1))
+        setPreviewZoom((prev) => Math.max(prev - 0.25, 1))
     }, [])
 
     const handlePreviewWheel = useCallback((e: React.WheelEvent) => {
         e.preventDefault()
         if (e.deltaY < 0) {
-            setPreviewZoom(prev => Math.min(prev + 0.25, 3))
+            setPreviewZoom((prev) => Math.min(prev + 0.25, 3))
         } else {
-            setPreviewZoom(prev => Math.max(prev - 0.25, 1))
+            setPreviewZoom((prev) => Math.max(prev - 0.25, 1))
         }
     }, [])
 
     // Process file upload
     const processFile = useCallback(
-        async (file: File, type: 'general' | 'face' | 'angle' | 'body' | 'bust' | 'glutes') => {
-            if (!['image/jpeg', 'image/png', 'image/webp', 'image/heic'].includes(file.type)) {
+        async (
+            file: File,
+            type: 'general' | 'face' | 'angle' | 'body' | 'bust' | 'glutes',
+        ) => {
+            if (
+                ![
+                    'image/jpeg',
+                    'image/png',
+                    'image/webp',
+                    'image/heic',
+                ].includes(file.type)
+            ) {
                 toast.push(
                     <Notification type="warning" title="Invalid File">
                         Please upload JPG, PNG, or WebP images
-                    </Notification>
+                    </Notification>,
                 )
                 return
             }
@@ -167,7 +184,10 @@ const AvatarEditDrawer = ({ isOpen, onClose, onSaveAvatar }: AvatarEditDrawerPro
                 if (matches) {
                     let thumbnailUrl = result
                     try {
-                        thumbnailUrl = await createThumbnail(matches[2], 'THUMBNAIL')
+                        thumbnailUrl = await createThumbnail(
+                            matches[2],
+                            'THUMBNAIL',
+                        )
                     } catch {
                         // Fallback to original
                     }
@@ -183,7 +203,7 @@ const AvatarEditDrawer = ({ isOpen, onClose, onSaveAvatar }: AvatarEditDrawerPro
 
                     switch (type) {
                         case 'general':
-                            setLocalGeneralRefs(prev => [...prev, newImage])
+                            setLocalGeneralRefs((prev) => [...prev, newImage])
                             break
                         case 'face':
                             setLocalFaceRef(newImage)
@@ -203,17 +223,20 @@ const AvatarEditDrawer = ({ isOpen, onClose, onSaveAvatar }: AvatarEditDrawerPro
             }
             reader.readAsDataURL(file)
         },
-        []
+        [],
     )
 
     const handleFileChange = useCallback(
-        (event: React.ChangeEvent<HTMLInputElement>, type: 'general' | 'face' | 'angle' | 'body' | 'bust' | 'glutes') => {
+        (
+            event: React.ChangeEvent<HTMLInputElement>,
+            type: 'general' | 'face' | 'angle' | 'body' | 'bust' | 'glutes',
+        ) => {
             const files = event.target.files
             if (!files) return
             Array.from(files).forEach((file) => processFile(file, type))
             event.target.value = ''
         },
-        [processFile]
+        [processFile],
     )
 
     const handleDragOver = (e: React.DragEvent) => {
@@ -221,7 +244,10 @@ const AvatarEditDrawer = ({ isOpen, onClose, onSaveAvatar }: AvatarEditDrawerPro
         e.stopPropagation()
     }
 
-    const handleDrop = (e: React.DragEvent, type: 'general' | 'face' | 'angle' | 'body' | 'bust' | 'glutes') => {
+    const handleDrop = (
+        e: React.DragEvent,
+        type: 'general' | 'face' | 'angle' | 'body' | 'bust' | 'glutes',
+    ) => {
         e.preventDefault()
         e.stopPropagation()
         const files = e.dataTransfer.files
@@ -231,7 +257,7 @@ const AvatarEditDrawer = ({ isOpen, onClose, onSaveAvatar }: AvatarEditDrawerPro
     }
 
     const handleRemoveGeneralRef = (id: string) => {
-        setLocalGeneralRefs(prev => prev.filter(r => r.id !== id))
+        setLocalGeneralRefs((prev) => prev.filter((r) => r.id !== id))
     }
 
     // Apply changes to store
@@ -248,7 +274,7 @@ const AvatarEditDrawer = ({ isOpen, onClose, onSaveAvatar }: AvatarEditDrawerPro
         toast.push(
             <Notification type="success" title="Changes Applied">
                 Avatar settings updated
-            </Notification>
+            </Notification>,
         )
         onClose()
     }
@@ -274,13 +300,15 @@ const AvatarEditDrawer = ({ isOpen, onClose, onSaveAvatar }: AvatarEditDrawerPro
     const handleAnalyzeFace = async () => {
         const validRefs = localFaceRef?.base64
             ? [localFaceRef]
-            : localGeneralRefs.filter((r) => r.base64 && r.base64.length > 0).slice(0, 3)
+            : localGeneralRefs
+                  .filter((r) => r.base64 && r.base64.length > 0)
+                  .slice(0, 3)
 
         if (validRefs.length === 0) {
             toast.push(
                 <Notification type="warning" title="No Images">
                     Please add reference images first
-                </Notification>
+                </Notification>,
             )
             return
         }
@@ -291,14 +319,14 @@ const AvatarEditDrawer = ({ isOpen, onClose, onSaveAvatar }: AvatarEditDrawerPro
                 validRefs.map((img) => ({
                     base64: img.base64,
                     mimeType: img.mimeType,
-                }))
+                })),
             )
             if (description) {
                 setLocalFaceDescription(description)
                 toast.push(
                     <Notification type="success" title="Face Analyzed">
                         Face description generated successfully
-                    </Notification>
+                    </Notification>,
                 )
             }
         } catch (error) {
@@ -306,7 +334,7 @@ const AvatarEditDrawer = ({ isOpen, onClose, onSaveAvatar }: AvatarEditDrawerPro
             toast.push(
                 <Notification type="danger" title="Analysis Failed">
                     Could not analyze face
-                </Notification>
+                </Notification>,
             )
         } finally {
             setIsAnalyzingFace(false)
@@ -321,10 +349,16 @@ const AvatarEditDrawer = ({ isOpen, onClose, onSaveAvatar }: AvatarEditDrawerPro
         try {
             const result = await generateAvatar({
                 prompt: 'Face angle reference sheet, 9 images in a 3x3 grid showing the same person from different angles: front view smiling, 3/4 left view, 3/4 right view, profile left, profile right, looking up, looking down, front serious expression, extreme close-up of eyes. No frames, no text, no borders between images, seamless grid layout, ultra high quality, studio lighting, neutral background',
-                avatarReferences: localGeneralRefs.map(ref => ({ base64: ref.base64, mimeType: ref.mimeType })),
+                avatarReferences: localGeneralRefs.map((ref) => ({
+                    base64: ref.base64,
+                    mimeType: ref.mimeType,
+                })),
                 assetReferences: [],
                 sceneReference: null,
-                faceRefImage: { base64: localFaceRef.base64, mimeType: localFaceRef.mimeType },
+                faceRefImage: {
+                    base64: localFaceRef.base64,
+                    mimeType: localFaceRef.mimeType,
+                },
                 bodyRefImage: null, // Body ref is now a session tool
                 angleRefImage: null,
                 poseRefImage: null,
@@ -358,21 +392,22 @@ const AvatarEditDrawer = ({ isOpen, onClose, onSaveAvatar }: AvatarEditDrawerPro
             toast.push(
                 <Notification type="success" title="Angle Generated">
                     Angle reference sheet created
-                </Notification>
+                </Notification>,
             )
         } catch (error) {
             console.error('Error generating angle:', error)
             toast.push(
                 <Notification type="danger" title="Generation Failed">
                     Could not generate angle reference
-                </Notification>
+                </Notification>,
             )
         } finally {
             setIsGeneratingAngle(false)
         }
     }
 
-    const hasLocalRefs = localGeneralRefs.length > 0 || localFaceRef || localAngleRef
+    const hasLocalRefs =
+        localGeneralRefs.length > 0 || localFaceRef || localAngleRef
 
     // Reference Slot Component (same as AvatarCreatorMain)
     const ReferenceSlot = ({
@@ -406,13 +441,18 @@ const AvatarEditDrawer = ({ isOpen, onClose, onSaveAvatar }: AvatarEditDrawerPro
             {image ? (
                 <div className="relative group">
                     <img
-                        src={image.thumbnailUrl || image.url || image.storagePath}
+                        src={
+                            image.thumbnailUrl || image.url || image.storagePath
+                        }
                         alt={title}
                         className="w-full h-32 object-cover rounded-lg cursor-pointer hover:ring-2 hover:ring-primary transition-all"
                         onClick={() => setPreviewImage(image)}
                     />
                     <button
-                        onClick={(e) => { e.stopPropagation(); onRemove() }}
+                        onClick={(e) => {
+                            e.stopPropagation()
+                            onRemove()
+                        }}
                         className="absolute top-1 right-1 p-1 bg-red-500 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
                     >
                         <HiOutlineX className="w-3 h-3" />
@@ -421,7 +461,9 @@ const AvatarEditDrawer = ({ isOpen, onClose, onSaveAvatar }: AvatarEditDrawerPro
             ) : isGenerating ? (
                 <div className="w-full h-32 border-2 border-primary border-dashed rounded-lg flex flex-col items-center justify-center">
                     <Spinner size={24} />
-                    <span className="text-xs text-primary mt-2">Generating...</span>
+                    <span className="text-xs text-primary mt-2">
+                        Generating...
+                    </span>
                 </div>
             ) : (
                 <div className="space-y-2">
@@ -458,7 +500,9 @@ const AvatarEditDrawer = ({ isOpen, onClose, onSaveAvatar }: AvatarEditDrawerPro
                         <HiOutlineUser className="w-5 h-5 text-primary" />
                         <span>Edit Avatar</span>
                         {avatarName && (
-                            <span className="text-sm text-primary font-normal">- {avatarName}</span>
+                            <span className="text-sm text-primary font-normal">
+                                - {avatarName}
+                            </span>
                         )}
                     </div>
                 }
@@ -475,13 +519,18 @@ const AvatarEditDrawer = ({ isOpen, onClose, onSaveAvatar }: AvatarEditDrawerPro
                             <Card className="p-4">
                                 <div className="flex items-center justify-between mb-3">
                                     <div>
-                                        <h3 className="text-sm font-semibold">General Identity Photos</h3>
+                                        <h3 className="text-sm font-semibold">
+                                            General Identity Photos
+                                        </h3>
                                         <p className="text-xs text-gray-500">
-                                            Upload multiple photos from different angles
+                                            Upload multiple photos from
+                                            different angles
                                         </p>
                                     </div>
                                     <button
-                                        onClick={() => fileInputRef.current?.click()}
+                                        onClick={() =>
+                                            fileInputRef.current?.click()
+                                        }
                                         className="text-sm text-primary hover:underline"
                                     >
                                         + Add Photos
@@ -493,20 +542,35 @@ const AvatarEditDrawer = ({ isOpen, onClose, onSaveAvatar }: AvatarEditDrawerPro
                                     accept="image/*"
                                     multiple
                                     className="hidden"
-                                    onChange={(e) => handleFileChange(e, 'general')}
+                                    onChange={(e) =>
+                                        handleFileChange(e, 'general')
+                                    }
                                 />
                                 {localGeneralRefs.length > 0 ? (
                                     <div className="grid grid-cols-4 gap-3">
                                         {localGeneralRefs.map((ref) => (
-                                            <div key={ref.id} className="relative group">
+                                            <div
+                                                key={ref.id}
+                                                className="relative group"
+                                            >
                                                 <img
-                                                    src={ref.thumbnailUrl || ref.url}
+                                                    src={
+                                                        ref.thumbnailUrl ||
+                                                        ref.url
+                                                    }
                                                     alt="Reference"
                                                     className="w-full aspect-square object-cover rounded-lg cursor-pointer hover:ring-2 hover:ring-primary transition-all"
-                                                    onClick={() => setPreviewImage(ref)}
+                                                    onClick={() =>
+                                                        setPreviewImage(ref)
+                                                    }
                                                 />
                                                 <button
-                                                    onClick={(e) => { e.stopPropagation(); handleRemoveGeneralRef(ref.id) }}
+                                                    onClick={(e) => {
+                                                        e.stopPropagation()
+                                                        handleRemoveGeneralRef(
+                                                            ref.id,
+                                                        )
+                                                    }}
                                                     className="absolute top-1 right-1 p-1 bg-red-500 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
                                                 >
                                                     <HiOutlineX className="w-3 h-3" />
@@ -516,27 +580,37 @@ const AvatarEditDrawer = ({ isOpen, onClose, onSaveAvatar }: AvatarEditDrawerPro
                                     </div>
                                 ) : (
                                     <div
-                                        onClick={() => fileInputRef.current?.click()}
+                                        onClick={() =>
+                                            fileInputRef.current?.click()
+                                        }
                                         onDragOver={handleDragOver}
                                         onDrop={(e) => handleDrop(e, 'general')}
                                         className="h-32 border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-lg flex flex-col items-center justify-center text-gray-400 hover:border-primary hover:text-primary transition-colors cursor-pointer"
                                     >
                                         <HiOutlineUpload className="w-8 h-8 mb-2" />
-                                        <span>Click or drag to upload photos</span>
-                                        <span className="text-xs">JPG, PNG, WebP supported</span>
+                                        <span>
+                                            Click or drag to upload photos
+                                        </span>
+                                        <span className="text-xs">
+                                            JPG, PNG, WebP supported
+                                        </span>
                                     </div>
                                 )}
                             </Card>
 
                             {/* Specific References */}
                             <Card className="p-4">
-                                <h3 className="text-sm font-semibold mb-4">Specific References (Optional)</h3>
+                                <h3 className="text-sm font-semibold mb-4">
+                                    Specific References (Optional)
+                                </h3>
                                 <div className="grid grid-cols-2 gap-4">
                                     <ReferenceSlot
                                         title="Face Close-up"
                                         subtitle="For facial details"
                                         image={localFaceRef}
-                                        onUpload={() => faceInputRef.current?.click()}
+                                        onUpload={() =>
+                                            faceInputRef.current?.click()
+                                        }
                                         onRemove={() => setLocalFaceRef(null)}
                                         dropType="face"
                                     />
@@ -545,14 +619,18 @@ const AvatarEditDrawer = ({ isOpen, onClose, onSaveAvatar }: AvatarEditDrawerPro
                                         type="file"
                                         accept="image/*"
                                         className="hidden"
-                                        onChange={(e) => handleFileChange(e, 'face')}
+                                        onChange={(e) =>
+                                            handleFileChange(e, 'face')
+                                        }
                                     />
 
                                     <ReferenceSlot
                                         title="Angle Sheet"
                                         subtitle="Multiple angles"
                                         image={localAngleRef}
-                                        onUpload={() => angleInputRef.current?.click()}
+                                        onUpload={() =>
+                                            angleInputRef.current?.click()
+                                        }
                                         onRemove={() => setLocalAngleRef(null)}
                                         dropType="angle"
                                         onAutoGenerate={handleGenerateAngle}
@@ -564,23 +642,32 @@ const AvatarEditDrawer = ({ isOpen, onClose, onSaveAvatar }: AvatarEditDrawerPro
                                         type="file"
                                         accept="image/*"
                                         className="hidden"
-                                        onChange={(e) => handleFileChange(e, 'angle')}
+                                        onChange={(e) =>
+                                            handleFileChange(e, 'angle')
+                                        }
                                     />
                                 </div>
                                 <p className="text-xs text-gray-400 mt-3 italic">
-                                    Body Ref is available as a session tool in the generation bar
+                                    Body Ref is available as a session tool in
+                                    the generation bar
                                 </p>
                             </Card>
 
                             {/* Identity Weight */}
                             <Card className="p-4">
                                 <div className="flex items-center justify-between mb-3">
-                                    <h3 className="text-sm font-semibold">Identity Weight</h3>
-                                    <span className="text-sm font-mono text-primary">{localIdentityWeight}%</span>
+                                    <h3 className="text-sm font-semibold">
+                                        Identity Weight
+                                    </h3>
+                                    <span className="text-sm font-mono text-primary">
+                                        {localIdentityWeight}%
+                                    </span>
                                 </div>
                                 <Slider
                                     value={localIdentityWeight}
-                                    onChange={(val) => setLocalIdentityWeight(val as number)}
+                                    onChange={(val) =>
+                                        setLocalIdentityWeight(val as number)
+                                    }
                                     min={0}
                                     max={100}
                                 />
@@ -588,365 +675,44 @@ const AvatarEditDrawer = ({ isOpen, onClose, onSaveAvatar }: AvatarEditDrawerPro
                                     {localIdentityWeight > 85
                                         ? 'Very high - Deepfake-level consistency'
                                         : localIdentityWeight > 50
-                                        ? 'High - Strong identity preservation'
-                                        : 'Low - More creative freedom'}
+                                          ? 'High - Strong identity preservation'
+                                          : 'Low - More creative freedom'}
                                 </p>
                             </Card>
 
                             {/* Physical Attributes */}
                             <Card className="p-4">
-                                <h3 className="text-sm font-semibold mb-3">Physical Attributes</h3>
-                                <div className="space-y-4">
-                                    {/* Body Type */}
-                                    <div>
-                                        <label className="text-xs text-gray-500 block mb-1">Body Type</label>
-                                        <div className="flex flex-wrap gap-1">
-                                            {(['petite', 'slim', 'athletic', 'average', 'curvy', 'hourglass', 'plus-size'] as const).map((type) => (
-                                                <Tooltip key={type} title={BODY_TYPE_TOOLTIP[type]}>
-                                                    <button
-                                                        onClick={() => setLocalMeasurements({ ...localMeasurements, bodyType: type })}
-                                                        className={`px-2 py-1 text-xs rounded border transition-colors capitalize ${
-                                                            localMeasurements.bodyType === type
-                                                                ? 'bg-primary text-white border-primary'
-                                                                : 'bg-gray-50 dark:bg-gray-800 border-gray-200 dark:border-gray-700 hover:border-primary'
-                                                        }`}
-                                                    >
-                                                        {type}
-                                                    </button>
-                                                </Tooltip>
-                                            ))}
-                                        </div>
-                                    </div>
-
-                                    {/* Measurements — slider dinámico + número al lado */}
-                                    <div className="space-y-2">
-                                        <MeasurementSlider label="Age" min={18} max={65} value={localMeasurements.age} onChange={(v) => setLocalMeasurements({ ...localMeasurements, age: v })} />
-                                        <MeasurementSlider label="Height" unit="cm" min={140} max={200} value={localMeasurements.height} onChange={(v) => setLocalMeasurements({ ...localMeasurements, height: v })} />
-                                        <MeasurementSlider label="Waist" unit="cm" min={45} max={100} value={localMeasurements.waist} onChange={(v) => setLocalMeasurements({ ...localMeasurements, waist: v })} />
-                                    </div>
-
-                                    {/* Leg Type */}
-                                    <div>
-                                        <label className="text-xs text-gray-500 block mb-1">Leg Type</label>
-                                        <div className="flex flex-wrap gap-1">
-                                            {([undefined, 'slim', 'toned', 'athletic', 'muscular-thighs', 'long', 'curvy', 'thick'] as const).map((leg) => (
-                                                <Tooltip key={leg ?? 'auto'} title={LEG_TYPE_TOOLTIP[leg ?? 'auto']}>
-                                                    <button
-                                                        onClick={() => setLocalMeasurements({ ...localMeasurements, legType: leg })}
-                                                        className={`px-2 py-1 text-xs rounded border transition-colors capitalize ${
-                                                            (localMeasurements.legType ?? undefined) === leg
-                                                                ? 'bg-primary text-white border-primary'
-                                                                : 'bg-gray-50 dark:bg-gray-800 border-gray-200 dark:border-gray-700 hover:border-primary'
-                                                        }`}
-                                                    >
-                                                        {leg ?? 'auto'}
-                                                    </button>
-                                                </Tooltip>
-                                            ))}
-                                        </div>
-                                        <div className="mt-2">
-                                            <div className="flex items-center justify-between">
-                                                <span className="text-xs text-gray-500">
-                                                    Thighs volume{' '}
-                                                    <span className="text-[10px] text-amber-500">(permissive models only)</span>
-                                                </span>
-                                                <span className="text-xs font-mono text-primary">
-                                                    {localMeasurements.thighsLevel ? `${localMeasurements.thighsLevel}/5` : 'Auto'}
-                                                </span>
-                                            </div>
-                                            <Slider
-                                                value={localMeasurements.thighsLevel ?? 0}
-                                                onChange={(val) =>
-                                                    setLocalMeasurements({
-                                                        ...localMeasurements,
-                                                        thighsLevel:
-                                                            (val as number) === 0
-                                                                ? undefined
-                                                                : ((val as number) as CurveLevel),
-                                                    })
-                                                }
-                                                min={0}
-                                                max={5}
-                                            />
-                                            {localMeasurements.thighsLevel ? (
-                                                <p className="text-[10px] text-gray-400 mt-0.5">
-                                                    {THIGHS_LEVEL_PHRASE[localMeasurements.thighsLevel]}
-                                                </p>
-                                            ) : null}
-                                            {(effectiveThighsLevel(localMeasurements) ?? 0) >
-                                            (localMeasurements.thighsLevel ?? 0) ? (
-                                                <p className="text-[10px] text-amber-500 mt-0.5">
-                                                    auto ≥{effectiveThighsLevel(localMeasurements)}/5 para hacer match con Glutes {localMeasurements.glutesLevel}/5 (coherencia anatómica)
-                                                </p>
-                                            ) : null}
-                                        </div>
-                                    </div>
-
-                                    {/* Curvas 1-5 — SOLO viajan a modelos con
-                                        trait permissive (gating en el caller) */}
-                                    <div>
-                                        <label className="text-xs text-gray-500 block mb-2">
-                                            Curves{' '}
-                                            <span className="text-[10px] text-amber-500">
-                                                (permissive models only)
-                                            </span>
-                                        </label>
-                                        <div className="space-y-3">
-                                            {(
-                                                [
-                                                    ['Bust', 'bustLevel', BUST_LEVEL_PHRASE],
-                                                    ['Glutes', 'glutesLevel', GLUTES_LEVEL_PHRASE],
-                                                ] as const
-                                            ).map(([label, key, phrases]) => {
-                                                // Ref de REGIÓN fijo por avatar junto a su slider
-                                                // (la IMAGEN ancla mejor que el texto del slider).
-                                                const regionRef =
-                                                    key === 'bustLevel'
-                                                        ? localBustRef
-                                                        : key === 'glutesLevel'
-                                                          ? localGlutesRef
-                                                          : null
-                                                const setRegionRef =
-                                                    key === 'bustLevel'
-                                                        ? setLocalBustRef
-                                                        : key === 'glutesLevel'
-                                                          ? setLocalGlutesRef
-                                                          : null
-                                                const regionInput =
-                                                    key === 'bustLevel'
-                                                        ? bustInputRef
-                                                        : key === 'glutesLevel'
-                                                          ? glutesInputRef
-                                                          : null
-                                                // Control UNIFICADO: el slider 1-5 manda y escribe el cm
-                                                // mapeado; el input cm permite manual (deriva nivel).
-                                                const cmField = key === 'bustLevel' ? 'bust' : 'hips'
-                                                const cmValue = key === 'bustLevel' ? localMeasurements.bust : localMeasurements.hips
-                                                const levelToCm = key === 'bustLevel' ? BUST_LEVEL_TO_CM : GLUTES_LEVEL_TO_CM
-                                                const cmToLevel = key === 'bustLevel' ? cmToBustLevel : cmToGlutesLevel
-                                                return (
-                                                <div key={key} className="flex items-start gap-2">
-                                                    <div className="flex-1 min-w-0">
-                                                    <div className="flex items-center justify-between">
-                                                        <span className="text-xs text-gray-500">{label}</span>
-                                                        <span className="text-xs font-mono text-primary">
-                                                            {localMeasurements[key] ? `${localMeasurements[key]}/5` : 'Auto'}
-                                                        </span>
-                                                    </div>
-                                                    <div className="flex items-center gap-2">
-                                                        <div className="flex-1 min-w-0">
-                                                            <Slider
-                                                                value={localMeasurements[key] ?? 0}
-                                                                onChange={(val) => {
-                                                                    const lvl =
-                                                                        (val as number) === 0
-                                                                            ? undefined
-                                                                            : ((val as number) as CurveLevel)
-                                                                    setLocalMeasurements({
-                                                                        ...localMeasurements,
-                                                                        [key]: lvl,
-                                                                        ...(lvl ? { [cmField]: levelToCm[lvl] } : {}),
-                                                                    })
-                                                                }}
-                                                                min={0}
-                                                                max={5}
-                                                            />
-                                                        </div>
-                                                        <div className="flex items-center gap-1 shrink-0">
-                                                            <Input
-                                                                size="sm"
-                                                                type="number"
-                                                                className="w-16 text-right py-0.5 px-1.5"
-                                                                value={cmValue}
-                                                                onChange={(e) => {
-                                                                    const n = parseInt(e.target.value)
-                                                                    if (!Number.isFinite(n)) return
-                                                                    setLocalMeasurements({
-                                                                        ...localMeasurements,
-                                                                        [cmField]: n,
-                                                                        [key]: cmToLevel(n),
-                                                                    })
-                                                                }}
-                                                            />
-                                                            <span className="text-[10px] text-gray-400">cm</span>
-                                                        </div>
-                                                    </div>
-                                                    {localMeasurements[key] ? (
-                                                        <p className="text-[10px] text-gray-400 mt-0.5">
-                                                            {phrases[localMeasurements[key]!]}
-                                                        </p>
-                                                    ) : null}
-                                                    {key === 'bustLevel' || key === 'glutesLevel' ? (
-                                                        <div className="flex flex-wrap gap-1 mt-1.5">
-                                                            {[undefined, ...(key === 'bustLevel' ? BUST_SHAPES : GLUTES_SHAPES)].map((shape) => {
-                                                                const current = key === 'bustLevel' ? localMeasurements.bustShape : localMeasurements.glutesShape
-                                                                const phraseMap = key === 'bustLevel' ? BUST_SHAPE_PHRASE : GLUTES_SHAPE_PHRASE
-                                                                return (
-                                                                    <Tooltip key={shape ?? 'auto'} title={shape ? phraseMap[shape] : 'sin forma explícita — la decide el modelo'}>
-                                                                        <button
-                                                                            onClick={() =>
-                                                                                setLocalMeasurements(
-                                                                                    key === 'bustLevel'
-                                                                                        ? { ...localMeasurements, bustShape: shape as BustShape | undefined }
-                                                                                        : { ...localMeasurements, glutesShape: shape as GlutesShape | undefined },
-                                                                                )
-                                                                            }
-                                                                            className={`px-1.5 py-0.5 text-[10px] rounded border transition-colors capitalize ${
-                                                                                (current ?? undefined) === shape
-                                                                                    ? 'bg-primary text-white border-primary'
-                                                                                    : 'bg-gray-50 dark:bg-gray-800 border-gray-200 dark:border-gray-700 hover:border-primary'
-                                                                            }`}
-                                                                        >
-                                                                            {shape ?? 'auto'}
-                                                                        </button>
-                                                                    </Tooltip>
-                                                                )
-                                                            })}
-                                                        </div>
-                                                    ) : null}
-                                                    </div>
-                                                    {setRegionRef && (
-                                                        <div className="shrink-0 pt-4">
-                                                            {regionRef ? (
-                                                                <div
-                                                                    className="relative group"
-                                                                    onDragOver={handleDragOver}
-                                                                    onDrop={(e) => handleDrop(e, key === 'bustLevel' ? 'bust' : 'glutes')}
-                                                                >
-                                                                    <img
-                                                                        src={regionRef.thumbnailUrl || regionRef.url}
-                                                                        alt={`${label} ref`}
-                                                                        className="w-12 h-12 object-cover rounded-lg cursor-pointer"
-                                                                        onClick={() => regionInput?.current?.click()}
-                                                                    />
-                                                                    <button
-                                                                        onClick={() => setRegionRef(null)}
-                                                                        className="absolute -top-1 -right-1 p-0.5 bg-red-500 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
-                                                                    >
-                                                                        <HiOutlineX className="w-3 h-3" />
-                                                                    </button>
-                                                                </div>
-                                                            ) : (
-                                                                <Tooltip title={`${label} Ref — la imagen ancla la forma exacta (mejor que el slider); solo viaja a modelos permisivos`}>
-                                                                    <button
-                                                                        onClick={() => regionInput?.current?.click()}
-                                                                        onDragOver={handleDragOver}
-                                                                        onDrop={(e) => handleDrop(e, key === 'bustLevel' ? 'bust' : 'glutes')}
-                                                                        className="w-12 h-12 rounded-lg border-2 border-dashed border-gray-300 dark:border-gray-600 hover:border-primary flex items-center justify-center text-gray-400 hover:text-primary transition-colors"
-                                                                    >
-                                                                        <HiOutlineUpload className="w-4 h-4" />
-                                                                    </button>
-                                                                </Tooltip>
-                                                            )}
-                                                        </div>
-                                                    )}
-                                                </div>
-                                                )
-                                            })}
-                                            <input
-                                                ref={bustInputRef}
-                                                type="file"
-                                                accept="image/*"
-                                                className="hidden"
-                                                onChange={(e) => handleFileChange(e, 'bust')}
-                                            />
-                                            <input
-                                                ref={glutesInputRef}
-                                                type="file"
-                                                accept="image/*"
-                                                className="hidden"
-                                                onChange={(e) => handleFileChange(e, 'glutes')}
-                                            />
-                                        </div>
-                                    </div>
-
-                                    {/* Skin Tone Slider */}
-                                    <div>
-                                        <div className="flex items-center justify-between mb-2">
-                                            <label className="text-xs text-gray-500">Skin Tone</label>
-                                            <span className="text-xs font-mono text-primary">
-                                                {localMeasurements.skinTone === 1 ? 'Very Fair' :
-                                                 localMeasurements.skinTone === 2 ? 'Fair' :
-                                                 localMeasurements.skinTone === 3 ? 'Light' :
-                                                 localMeasurements.skinTone === 4 ? 'Light-Medium' :
-                                                 localMeasurements.skinTone === 5 ? 'Medium' :
-                                                 localMeasurements.skinTone === 6 ? 'Medium-Tan' :
-                                                 localMeasurements.skinTone === 7 ? 'Tan' :
-                                                 localMeasurements.skinTone === 8 ? 'Dark' :
-                                                 'Very Dark'}
-                                            </span>
-                                        </div>
-                                        {/* Visual skin tone gradient */}
-                                        <div className="relative mb-1">
-                                            <div className="h-3 rounded-full overflow-hidden flex">
-                                                {[1, 2, 3, 4, 5, 6, 7, 8, 9].map((tone) => (
-                                                    <button
-                                                        key={tone}
-                                                        onClick={() => setLocalMeasurements({ ...localMeasurements, skinTone: tone as 1|2|3|4|5|6|7|8|9 })}
-                                                        className={`flex-1 transition-all ${
-                                                            localMeasurements.skinTone === tone ? 'ring-2 ring-primary ring-offset-1 z-10 scale-110' : ''
-                                                        }`}
-                                                        style={{
-                                                            backgroundColor:
-                                                                tone === 1 ? '#FFECD2' :
-                                                                tone === 2 ? '#FFE4C4' :
-                                                                tone === 3 ? '#F5D5B8' :
-                                                                tone === 4 ? '#E8C4A0' :
-                                                                tone === 5 ? '#D4A574' :
-                                                                tone === 6 ? '#C68642' :
-                                                                tone === 7 ? '#A0522D' :
-                                                                tone === 8 ? '#6B4423' :
-                                                                '#3D2314'
-                                                        }}
-                                                        title={
-                                                            tone === 1 ? 'Very Fair' :
-                                                            tone === 2 ? 'Fair' :
-                                                            tone === 3 ? 'Light' :
-                                                            tone === 4 ? 'Light-Medium' :
-                                                            tone === 5 ? 'Medium' :
-                                                            tone === 6 ? 'Medium-Tan' :
-                                                            tone === 7 ? 'Tan' :
-                                                            tone === 8 ? 'Dark' :
-                                                            'Very Dark'
-                                                        }
-                                                    />
-                                                ))}
-                                            </div>
-                                        </div>
-                                        <Slider
-                                            value={localMeasurements.skinTone || 5}
-                                            onChange={(val) => setLocalMeasurements({ ...localMeasurements, skinTone: val as 1|2|3|4|5|6|7|8|9 })}
-                                            min={1}
-                                            max={9}
-                                            step={1}
-                                        />
-                                    </div>
-
-                                    {/* Hair Type + Color (degradado 2-3 tonos) */}
-                                    <HairColorPicker
-                                        value={localMeasurements.hairColor}
-                                        tones={localMeasurements.hairColors}
-                                        hairStyle={localMeasurements.hairStyle}
-                                        onChange={(c) => setLocalMeasurements({ ...localMeasurements, hairColor: c })}
-                                        onGradientChange={(p) => setLocalMeasurements({ ...localMeasurements, ...p })}
-                                    />
-
-                                    {/* Eye Color */}
-                                    <EyeColorPicker
-                                        value={localMeasurements.eyeColor}
-                                        onChange={(c) => setLocalMeasurements({ ...localMeasurements, eyeColor: c })}
-                                    />
-
-                                </div>
+                                <h3 className="text-sm font-semibold mb-3">
+                                    Physical Attributes
+                                </h3>
+                                <PhysicalAttributesEditor
+                                    measurements={localMeasurements}
+                                    onChange={setLocalMeasurements}
+                                    bustRef={localBustRef}
+                                    glutesRef={localGlutesRef}
+                                    onBustRef={(r) =>
+                                        setLocalBustRef(
+                                            r as ReferenceImage | null,
+                                        )
+                                    }
+                                    onGlutesRef={(r) =>
+                                        setLocalGlutesRef(
+                                            r as ReferenceImage | null,
+                                        )
+                                    }
+                                />
                             </Card>
 
                             {/* Face Description */}
                             <Card className="p-4">
                                 <div className="flex items-center justify-between mb-3">
                                     <div>
-                                        <h3 className="text-sm font-semibold">Face Description</h3>
+                                        <h3 className="text-sm font-semibold">
+                                            Face Description
+                                        </h3>
                                         <p className="text-xs text-gray-500">
-                                            Detailed description for consistent facial features
+                                            Detailed description for consistent
+                                            facial features
                                         </p>
                                     </div>
                                     {hasLocalRefs && (
@@ -963,7 +729,9 @@ const AvatarEditDrawer = ({ isOpen, onClose, onSaveAvatar }: AvatarEditDrawerPro
                                 </div>
                                 <textarea
                                     value={localFaceDescription}
-                                    onChange={(e) => setLocalFaceDescription(e.target.value)}
+                                    onChange={(e) =>
+                                        setLocalFaceDescription(e.target.value)
+                                    }
                                     placeholder="Describe facial features: eye shape, nose, lips, skin tone, distinctive features..."
                                     rows={4}
                                     className="w-full p-3 border rounded-lg bg-transparent resize-none"
@@ -991,8 +759,15 @@ const AvatarEditDrawer = ({ isOpen, onClose, onSaveAvatar }: AvatarEditDrawerPro
                                         <Input
                                             placeholder="Avatar name..."
                                             value={saveAvatarName}
-                                            onChange={(e) => setSaveAvatarName(e.target.value)}
-                                            onKeyDown={(e) => e.key === 'Enter' && handleSave()}
+                                            onChange={(e) =>
+                                                setSaveAvatarName(
+                                                    e.target.value,
+                                                )
+                                            }
+                                            onKeyDown={(e) =>
+                                                e.key === 'Enter' &&
+                                                handleSave()
+                                            }
                                         />
                                         <div className="flex gap-2">
                                             <Button
@@ -1002,13 +777,17 @@ const AvatarEditDrawer = ({ isOpen, onClose, onSaveAvatar }: AvatarEditDrawerPro
                                                 onClick={handleSave}
                                                 loading={isSavingAvatar}
                                                 className="flex-1"
-                                                disabled={!saveAvatarName.trim()}
+                                                disabled={
+                                                    !saveAvatarName.trim()
+                                                }
                                             >
                                                 Save Avatar
                                             </Button>
                                             <Button
                                                 variant="plain"
-                                                onClick={() => setShowSaveInput(false)}
+                                                onClick={() =>
+                                                    setShowSaveInput(false)
+                                                }
                                             >
                                                 Cancel
                                             </Button>
@@ -1071,13 +850,16 @@ const AvatarEditDrawer = ({ isOpen, onClose, onSaveAvatar }: AvatarEditDrawerPro
                             onWheel={handlePreviewWheel}
                         >
                             <img
-                                src={previewImage.url || previewImage.storagePath}
+                                src={
+                                    previewImage.url || previewImage.storagePath
+                                }
                                 alt="Preview"
                                 className="rounded-lg object-contain select-none"
                                 style={{
                                     transform: `scale(${previewZoom})`,
                                     transition: 'transform 0.2s ease-out',
-                                    maxHeight: previewZoom === 1 ? '65vh' : 'none',
+                                    maxHeight:
+                                        previewZoom === 1 ? '65vh' : 'none',
                                 }}
                                 draggable={false}
                             />

@@ -1,0 +1,653 @@
+'use client'
+
+/**
+ * Editor de Atributos Físicos COMPARTIDO (store-agnóstico) — fuente ÚNICA de la
+ * UI de Body Type / medidas / Leg+Thighs / Curves (Bust·Glutes con slider
+ * unificado cm↔nivel + shape chips + ref de región) / Skin Tone / Hair / Eye.
+ *
+ * Antes estaba COPY-PASTEADO en 3 sitios (avatar-studio/AvatarEditDrawer,
+ * avatar-creator/AvatarCreatorMain, components/shared/AvatarEditDrawer) — el
+ * shared drawer ya se había quedado atrás (inputs planos, sin Curves). Este
+ * componente es `value + onChange` puro: cada host le pasa sus measurements y
+ * (opcional) sus refs de región; sin acoplarse a ningún store.
+ */
+
+import { useRef } from 'react'
+import Slider from '@/components/ui/Slider'
+import Input from '@/components/ui/Input'
+import Tooltip from '@/components/ui/Tooltip'
+import Notification from '@/components/ui/Notification'
+import toast from '@/components/ui/toast'
+import { HiOutlineX, HiOutlineUpload } from 'react-icons/hi'
+import HairColorPicker from '@/components/shared/HairColorPicker'
+import EyeColorPicker from '@/components/shared/EyeColorPicker'
+import MeasurementSlider from '@/app/(protected-pages)/concepts/avatar-forge/_shared/MeasurementSlider'
+import { createThumbnail } from '@/utils/imageOptimization'
+import {
+    BODY_TYPE_TOOLTIP,
+    LEG_TYPE_TOOLTIP,
+    BUST_LEVEL_PHRASE,
+    GLUTES_LEVEL_PHRASE,
+    THIGHS_LEVEL_PHRASE,
+    BUST_SHAPES,
+    GLUTES_SHAPES,
+    BUST_SHAPE_PHRASE,
+    GLUTES_SHAPE_PHRASE,
+    BUST_LEVEL_TO_CM,
+    GLUTES_LEVEL_TO_CM,
+    cmToBustLevel,
+    cmToGlutesLevel,
+    effectiveThighsLevel,
+} from '@/utils/bodyDescriptors'
+import type {
+    PhysicalMeasurements,
+    CurveLevel,
+    BustShape,
+    GlutesShape,
+} from '@/@types/supabase'
+
+// Forma mínima compartida de un ref de región (bust/glutes). Estructuralmente
+// compatible con el ReferenceImage del Studio (que trae 'bust'|'glutes' en
+// `type`); los hosts castean al setear si su tipo local es más estricto.
+export interface PhysicalRegionRef {
+    id?: string
+    url: string
+    mimeType: string
+    base64: string
+    type?: string
+    storagePath?: string
+    thumbnailUrl?: string
+}
+
+interface PhysicalAttributesEditorProps {
+    measurements: PhysicalMeasurements
+    onChange: (measurements: PhysicalMeasurements) => void
+    // Refs de región (opcional). Si no se pasan los callbacks, el upload de
+    // imagen junto a Bust/Glutes NO se muestra (p.ej. hosts sin refs de región).
+    bustRef?: PhysicalRegionRef | null
+    glutesRef?: PhysicalRegionRef | null
+    onBustRef?: (ref: PhysicalRegionRef | null) => void
+    onGlutesRef?: (ref: PhysicalRegionRef | null) => void
+}
+
+const PhysicalAttributesEditor = ({
+    measurements,
+    onChange,
+    bustRef,
+    glutesRef,
+    onBustRef,
+    onGlutesRef,
+}: PhysicalAttributesEditorProps) => {
+    const bustInputRef = useRef<HTMLInputElement>(null)
+    const glutesInputRef = useRef<HTMLInputElement>(null)
+
+    const set = (patch: Partial<PhysicalMeasurements>) =>
+        onChange({ ...measurements, ...patch })
+
+    const processRegionFile = (file: File, region: 'bust' | 'glutes') => {
+        if (
+            !['image/jpeg', 'image/png', 'image/webp', 'image/heic'].includes(
+                file.type,
+            )
+        ) {
+            toast.push(
+                <Notification type="warning" title="Invalid File">
+                    Please upload JPG, PNG, or WebP images
+                </Notification>,
+            )
+            return
+        }
+        const reader = new FileReader()
+        reader.onload = async (e) => {
+            const result = e.target?.result as string
+            const matches = result.match(/^data:(.+);base64,(.+)$/)
+            if (!matches) return
+            let thumbnailUrl = result
+            try {
+                thumbnailUrl = await createThumbnail(matches[2], 'THUMBNAIL')
+            } catch {
+                // Fallback to original
+            }
+            const ref: PhysicalRegionRef = {
+                id: crypto.randomUUID(),
+                url: result,
+                mimeType: matches[1],
+                base64: matches[2],
+                type: region,
+                thumbnailUrl,
+            }
+            if (region === 'bust') onBustRef?.(ref)
+            else onGlutesRef?.(ref)
+        }
+        reader.readAsDataURL(file)
+    }
+
+    const handleRegionFileChange = (
+        e: React.ChangeEvent<HTMLInputElement>,
+        region: 'bust' | 'glutes',
+    ) => {
+        const files = e.target.files
+        if (!files) return
+        Array.from(files).forEach((file) => processRegionFile(file, region))
+        e.target.value = ''
+    }
+    const handleDragOver = (e: React.DragEvent) => {
+        e.preventDefault()
+        e.stopPropagation()
+    }
+    const handleRegionDrop = (
+        e: React.DragEvent,
+        region: 'bust' | 'glutes',
+    ) => {
+        e.preventDefault()
+        e.stopPropagation()
+        const files = e.dataTransfer.files
+        if (files)
+            Array.from(files).forEach((f) => processRegionFile(f, region))
+    }
+
+    return (
+        <div className="space-y-4">
+            {/* Body Type */}
+            <div>
+                <label className="text-xs text-gray-500 block mb-1">
+                    Body Type
+                </label>
+                <div className="flex flex-wrap gap-1">
+                    {(
+                        [
+                            'petite',
+                            'slim',
+                            'athletic',
+                            'average',
+                            'curvy',
+                            'hourglass',
+                            'plus-size',
+                        ] as const
+                    ).map((type) => (
+                        <Tooltip key={type} title={BODY_TYPE_TOOLTIP[type]}>
+                            <button
+                                onClick={() => set({ bodyType: type })}
+                                className={`px-2 py-1 text-xs rounded border transition-colors capitalize ${
+                                    measurements.bodyType === type
+                                        ? 'bg-primary text-white border-primary'
+                                        : 'bg-gray-50 dark:bg-gray-800 border-gray-200 dark:border-gray-700 hover:border-primary'
+                                }`}
+                            >
+                                {type}
+                            </button>
+                        </Tooltip>
+                    ))}
+                </div>
+            </div>
+
+            {/* Measurements — slider dinámico + número al lado */}
+            <div className="space-y-2">
+                <MeasurementSlider
+                    label="Age"
+                    min={18}
+                    max={65}
+                    value={measurements.age}
+                    onChange={(v) => set({ age: v })}
+                />
+                <MeasurementSlider
+                    label="Height"
+                    unit="cm"
+                    min={140}
+                    max={200}
+                    value={measurements.height}
+                    onChange={(v) => set({ height: v })}
+                />
+                <MeasurementSlider
+                    label="Waist"
+                    unit="cm"
+                    min={45}
+                    max={100}
+                    value={measurements.waist}
+                    onChange={(v) => set({ waist: v })}
+                />
+            </div>
+
+            {/* Leg Type */}
+            <div>
+                <label className="text-xs text-gray-500 block mb-1">
+                    Leg Type
+                </label>
+                <div className="flex flex-wrap gap-1">
+                    {(
+                        [
+                            undefined,
+                            'slim',
+                            'toned',
+                            'athletic',
+                            'muscular-thighs',
+                            'long',
+                            'curvy',
+                            'thick',
+                        ] as const
+                    ).map((leg) => (
+                        <Tooltip
+                            key={leg ?? 'auto'}
+                            title={LEG_TYPE_TOOLTIP[leg ?? 'auto']}
+                        >
+                            <button
+                                onClick={() => set({ legType: leg })}
+                                className={`px-2 py-1 text-xs rounded border transition-colors capitalize ${
+                                    (measurements.legType ?? undefined) === leg
+                                        ? 'bg-primary text-white border-primary'
+                                        : 'bg-gray-50 dark:bg-gray-800 border-gray-200 dark:border-gray-700 hover:border-primary'
+                                }`}
+                            >
+                                {leg ?? 'auto'}
+                            </button>
+                        </Tooltip>
+                    ))}
+                </div>
+                <div className="mt-2">
+                    <div className="flex items-center justify-between">
+                        <span className="text-xs text-gray-500">
+                            Thighs volume{' '}
+                            <span className="text-[10px] text-amber-500">
+                                (permissive models only)
+                            </span>
+                        </span>
+                        <span className="text-xs font-mono text-primary">
+                            {measurements.thighsLevel
+                                ? `${measurements.thighsLevel}/5`
+                                : 'Auto'}
+                        </span>
+                    </div>
+                    <Slider
+                        value={measurements.thighsLevel ?? 0}
+                        onChange={(val) =>
+                            set({
+                                thighsLevel:
+                                    (val as number) === 0
+                                        ? undefined
+                                        : (val as number as CurveLevel),
+                            })
+                        }
+                        min={0}
+                        max={5}
+                    />
+                    {measurements.thighsLevel ? (
+                        <p className="text-[10px] text-gray-400 mt-0.5">
+                            {THIGHS_LEVEL_PHRASE[measurements.thighsLevel]}
+                        </p>
+                    ) : null}
+                    {(effectiveThighsLevel(measurements) ?? 0) >
+                    (measurements.thighsLevel ?? 0) ? (
+                        <p className="text-[10px] text-amber-500 mt-0.5">
+                            auto ≥{effectiveThighsLevel(measurements)}/5 para
+                            hacer match con Glutes {measurements.glutesLevel}/5
+                            (coherencia anatómica)
+                        </p>
+                    ) : null}
+                </div>
+            </div>
+
+            {/* Curvas 1-5 — SOLO viajan a modelos con trait permissive (gating
+                en el caller) */}
+            <div>
+                <label className="text-xs text-gray-500 block mb-2">
+                    Curves{' '}
+                    <span className="text-[10px] text-amber-500">
+                        (permissive models only)
+                    </span>
+                </label>
+                <div className="space-y-3">
+                    {(
+                        [
+                            ['Bust', 'bustLevel', BUST_LEVEL_PHRASE],
+                            ['Glutes', 'glutesLevel', GLUTES_LEVEL_PHRASE],
+                        ] as const
+                    ).map(([label, key, phrases]) => {
+                        // Ref de REGIÓN fijo por avatar junto a su slider (la
+                        // IMAGEN ancla mejor que el texto del slider).
+                        const regionRef =
+                            key === 'bustLevel' ? bustRef : glutesRef
+                        const setRegionRef =
+                            key === 'bustLevel' ? onBustRef : onGlutesRef
+                        const regionInput =
+                            key === 'bustLevel' ? bustInputRef : glutesInputRef
+                        const regionName =
+                            key === 'bustLevel' ? 'bust' : 'glutes'
+                        // Control UNIFICADO: el slider 1-5 manda y escribe el cm
+                        // mapeado; el input cm permite manual (deriva nivel).
+                        const cmField = key === 'bustLevel' ? 'bust' : 'hips'
+                        const cmValue =
+                            key === 'bustLevel'
+                                ? measurements.bust
+                                : measurements.hips
+                        const levelToCm =
+                            key === 'bustLevel'
+                                ? BUST_LEVEL_TO_CM
+                                : GLUTES_LEVEL_TO_CM
+                        const cmToLevel =
+                            key === 'bustLevel'
+                                ? cmToBustLevel
+                                : cmToGlutesLevel
+                        return (
+                            <div key={key} className="flex items-start gap-2">
+                                <div className="flex-1 min-w-0">
+                                    <div className="flex items-center justify-between">
+                                        <span className="text-xs text-gray-500">
+                                            {label}
+                                        </span>
+                                        <span className="text-xs font-mono text-primary">
+                                            {measurements[key]
+                                                ? `${measurements[key]}/5`
+                                                : 'Auto'}
+                                        </span>
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                        <div className="flex-1 min-w-0">
+                                            <Slider
+                                                value={measurements[key] ?? 0}
+                                                onChange={(val) => {
+                                                    const lvl =
+                                                        (val as number) === 0
+                                                            ? undefined
+                                                            : (val as number as CurveLevel)
+                                                    set({
+                                                        [key]: lvl,
+                                                        ...(lvl
+                                                            ? {
+                                                                  [cmField]:
+                                                                      levelToCm[
+                                                                          lvl
+                                                                      ],
+                                                              }
+                                                            : {}),
+                                                    })
+                                                }}
+                                                min={0}
+                                                max={5}
+                                            />
+                                        </div>
+                                        <div className="flex items-center gap-1 shrink-0">
+                                            <Input
+                                                size="sm"
+                                                type="number"
+                                                className="w-16 text-right py-0.5 px-1.5"
+                                                value={cmValue}
+                                                onChange={(e) => {
+                                                    const n = parseInt(
+                                                        e.target.value,
+                                                    )
+                                                    if (!Number.isFinite(n))
+                                                        return
+                                                    set({
+                                                        [cmField]: n,
+                                                        [key]: cmToLevel(n),
+                                                    })
+                                                }}
+                                            />
+                                            <span className="text-[10px] text-gray-400">
+                                                cm
+                                            </span>
+                                        </div>
+                                    </div>
+                                    {measurements[key] ? (
+                                        <p className="text-[10px] text-gray-400 mt-0.5">
+                                            {phrases[measurements[key]!]}
+                                        </p>
+                                    ) : null}
+                                    <div className="flex flex-wrap gap-1 mt-1.5">
+                                        {[
+                                            undefined,
+                                            ...(key === 'bustLevel'
+                                                ? BUST_SHAPES
+                                                : GLUTES_SHAPES),
+                                        ].map((shape) => {
+                                            const current =
+                                                key === 'bustLevel'
+                                                    ? measurements.bustShape
+                                                    : measurements.glutesShape
+                                            const phraseMap =
+                                                key === 'bustLevel'
+                                                    ? BUST_SHAPE_PHRASE
+                                                    : GLUTES_SHAPE_PHRASE
+                                            return (
+                                                <Tooltip
+                                                    key={shape ?? 'auto'}
+                                                    title={
+                                                        shape
+                                                            ? phraseMap[shape]
+                                                            : 'sin forma explícita — la decide el modelo'
+                                                    }
+                                                >
+                                                    <button
+                                                        onClick={() =>
+                                                            set(
+                                                                key ===
+                                                                    'bustLevel'
+                                                                    ? {
+                                                                          bustShape:
+                                                                              shape as
+                                                                                  | BustShape
+                                                                                  | undefined,
+                                                                      }
+                                                                    : {
+                                                                          glutesShape:
+                                                                              shape as
+                                                                                  | GlutesShape
+                                                                                  | undefined,
+                                                                      },
+                                                            )
+                                                        }
+                                                        className={`px-1.5 py-0.5 text-[10px] rounded border transition-colors capitalize ${
+                                                            (current ??
+                                                                undefined) ===
+                                                            shape
+                                                                ? 'bg-primary text-white border-primary'
+                                                                : 'bg-gray-50 dark:bg-gray-800 border-gray-200 dark:border-gray-700 hover:border-primary'
+                                                        }`}
+                                                    >
+                                                        {shape ?? 'auto'}
+                                                    </button>
+                                                </Tooltip>
+                                            )
+                                        })}
+                                    </div>
+                                </div>
+                                {setRegionRef && (
+                                    <div className="shrink-0 pt-4">
+                                        {regionRef ? (
+                                            <div
+                                                className="relative group"
+                                                onDragOver={handleDragOver}
+                                                onDrop={(e) =>
+                                                    handleRegionDrop(
+                                                        e,
+                                                        regionName,
+                                                    )
+                                                }
+                                            >
+                                                <img
+                                                    src={
+                                                        regionRef.thumbnailUrl ||
+                                                        regionRef.url
+                                                    }
+                                                    alt={`${label} ref`}
+                                                    className="w-12 h-12 object-cover rounded-lg cursor-pointer"
+                                                    onClick={() =>
+                                                        regionInput?.current?.click()
+                                                    }
+                                                />
+                                                <button
+                                                    onClick={() =>
+                                                        setRegionRef(null)
+                                                    }
+                                                    className="absolute -top-1 -right-1 p-0.5 bg-red-500 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
+                                                >
+                                                    <HiOutlineX className="w-3 h-3" />
+                                                </button>
+                                            </div>
+                                        ) : (
+                                            <Tooltip
+                                                title={`${label} Ref — la imagen ancla la forma exacta (mejor que el slider); solo viaja a modelos permisivos`}
+                                            >
+                                                <button
+                                                    onClick={() =>
+                                                        regionInput?.current?.click()
+                                                    }
+                                                    onDragOver={handleDragOver}
+                                                    onDrop={(e) =>
+                                                        handleRegionDrop(
+                                                            e,
+                                                            regionName,
+                                                        )
+                                                    }
+                                                    className="w-12 h-12 rounded-lg border-2 border-dashed border-gray-300 dark:border-gray-600 hover:border-primary flex items-center justify-center text-gray-400 hover:text-primary transition-colors"
+                                                >
+                                                    <HiOutlineUpload className="w-4 h-4" />
+                                                </button>
+                                            </Tooltip>
+                                        )}
+                                    </div>
+                                )}
+                            </div>
+                        )
+                    })}
+                    <input
+                        ref={bustInputRef}
+                        type="file"
+                        accept="image/*"
+                        className="hidden"
+                        onChange={(e) => handleRegionFileChange(e, 'bust')}
+                    />
+                    <input
+                        ref={glutesInputRef}
+                        type="file"
+                        accept="image/*"
+                        className="hidden"
+                        onChange={(e) => handleRegionFileChange(e, 'glutes')}
+                    />
+                </div>
+            </div>
+
+            {/* Skin Tone Slider */}
+            <div>
+                <div className="flex items-center justify-between mb-2">
+                    <label className="text-xs text-gray-500">Skin Tone</label>
+                    <span className="text-xs font-mono text-primary">
+                        {measurements.skinTone === 1
+                            ? 'Very Fair'
+                            : measurements.skinTone === 2
+                              ? 'Fair'
+                              : measurements.skinTone === 3
+                                ? 'Light'
+                                : measurements.skinTone === 4
+                                  ? 'Light-Medium'
+                                  : measurements.skinTone === 5
+                                    ? 'Medium'
+                                    : measurements.skinTone === 6
+                                      ? 'Medium-Tan'
+                                      : measurements.skinTone === 7
+                                        ? 'Tan'
+                                        : measurements.skinTone === 8
+                                          ? 'Dark'
+                                          : 'Very Dark'}
+                    </span>
+                </div>
+                {/* Visual skin tone gradient */}
+                <div className="relative mb-1">
+                    <div className="h-3 rounded-full overflow-hidden flex">
+                        {[1, 2, 3, 4, 5, 6, 7, 8, 9].map((tone) => (
+                            <button
+                                key={tone}
+                                onClick={() =>
+                                    set({
+                                        skinTone: tone as
+                                            | 1
+                                            | 2
+                                            | 3
+                                            | 4
+                                            | 5
+                                            | 6
+                                            | 7
+                                            | 8
+                                            | 9,
+                                    })
+                                }
+                                className={`flex-1 transition-all ${
+                                    measurements.skinTone === tone
+                                        ? 'ring-2 ring-primary ring-offset-1 z-10 scale-110'
+                                        : ''
+                                }`}
+                                style={{
+                                    backgroundColor:
+                                        tone === 1
+                                            ? '#FFECD2'
+                                            : tone === 2
+                                              ? '#FFE4C4'
+                                              : tone === 3
+                                                ? '#F5D5B8'
+                                                : tone === 4
+                                                  ? '#E8C4A0'
+                                                  : tone === 5
+                                                    ? '#D4A574'
+                                                    : tone === 6
+                                                      ? '#C68642'
+                                                      : tone === 7
+                                                        ? '#A0522D'
+                                                        : tone === 8
+                                                          ? '#6B4423'
+                                                          : '#3D2314',
+                                }}
+                                title={
+                                    tone === 1
+                                        ? 'Very Fair'
+                                        : tone === 2
+                                          ? 'Fair'
+                                          : tone === 3
+                                            ? 'Light'
+                                            : tone === 4
+                                              ? 'Light-Medium'
+                                              : tone === 5
+                                                ? 'Medium'
+                                                : tone === 6
+                                                  ? 'Medium-Tan'
+                                                  : tone === 7
+                                                    ? 'Tan'
+                                                    : tone === 8
+                                                      ? 'Dark'
+                                                      : 'Very Dark'
+                                }
+                            />
+                        ))}
+                    </div>
+                </div>
+                <Slider
+                    value={measurements.skinTone || 5}
+                    onChange={(val) =>
+                        set({
+                            skinTone: val as 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9,
+                        })
+                    }
+                    min={1}
+                    max={9}
+                    step={1}
+                />
+            </div>
+
+            {/* Hair Type + Color (degradado 2-3 tonos) */}
+            <HairColorPicker
+                value={measurements.hairColor}
+                tones={measurements.hairColors}
+                hairStyle={measurements.hairStyle}
+                onChange={(c) => set({ hairColor: c })}
+                onGradientChange={(p) => set({ ...p })}
+            />
+
+            {/* Eye Color */}
+            <EyeColorPicker
+                value={measurements.eyeColor}
+                onChange={(c) => set({ eyeColor: c })}
+            />
+        </div>
+    )
+}
+
+export default PhysicalAttributesEditor
