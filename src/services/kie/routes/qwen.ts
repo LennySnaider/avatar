@@ -87,12 +87,12 @@ async function build(ctx: ImageRouteContext): Promise<KieImageRequest> {
                     const cw = ctx.cloneWeight ?? 100
                     const reproduce =
                         cw >= 75
-                            ? `reproduce the FIRST image EXACTLY: same body, build, curves, outfit, pose, hands, framing, lighting, background and setting`
+                            ? `reproduce the FIRST image EXACTLY — same body, build, curves, outfit, pose, hands, framing and lighting, and KEEP its FULL background, floor, setting and surroundings unchanged. Do NOT replace the scene with a plain, white or studio backdrop`
                             : cw >= 50
-                              ? `follow the FIRST image CLOSELY (body, outfit, pose, framing, background), allowing only minor natural variation`
+                              ? `follow the FIRST image CLOSELY — body, outfit, pose, framing AND its background/setting (keep the same surroundings, NOT a plain backdrop), allowing only minor natural variation`
                               : cw >= 25
-                                ? `use the FIRST image as a general BASIS (outfit style, general pose and setting) but freely reinterpret the exact details and framing`
-                                : `take only LOOSE inspiration from the FIRST image (general vibe and outfit style); freely reinterpret the pose, framing and background`
+                                ? `use the FIRST image as a general BASIS (outfit style, general pose and its setting/background) but freely reinterpret the exact details and framing`
+                                : `take only LOOSE inspiration from the FIRST image (general vibe, outfit style and kind of setting); freely reinterpret the pose and framing`
                     // El texto [CLONE:] es redundante con la imagen → se quita.
                     const scene = String(input.prompt)
                         .replace(/\[CLONE:[^\]]*\]/gi, ' ')
