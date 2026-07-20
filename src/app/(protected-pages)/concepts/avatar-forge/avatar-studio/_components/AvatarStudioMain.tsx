@@ -60,7 +60,9 @@ import {
     editImage,
     describeImageForPrompt,
     analyzePromptSafety,
+    detectFaceBox,
 } from '@/services/GeminiService'
+import { maskFaceInImage } from '@/utils/faceMask'
 import {
     generateVideo as generateVideoKling,
     generateAvatarVideo as generateAvatarVideoKling,
@@ -384,6 +386,15 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
     // evitan que su success/catch/finally pise el estado del run nuevo.
     const foregroundRunIdRef = useRef<string | null>(null)
     const backgroundedRunsRef = useRef<Set<string>>(new Set())
+    // Cache del Clone Ref con la cara enmascarada (keyed por cloneImage.id) para
+    // no re-detectar+enmascarar en cada modelo de un Batch (1 call de Gemini por
+    // clon, no por generación).
+    const maskedCloneCacheRef = useRef<{
+        id: string
+        base64: string
+        mimeType: string
+        masked: boolean
+    } | null>(null)
     // Drives the gallery's hidden upload input from the header "Upload" button.
     const galleryUploadInputRef = useRef<HTMLInputElement>(null)
 
@@ -1000,12 +1011,64 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                 // Optimize the Clone Ref IMAGE (the original to replicate). Image
                 // models like GPT Image 2 can't clone body/outfit/pose from text —
                 // they need the actual image (as you did in ChatGPT: face + scene).
-                const optimizedCloneRef = cloneImage?.base64
-                    ? await optimizeImage({
-                          base64: cloneImage.base64,
-                          mimeType: cloneImage.mimeType,
-                      })
-                    : null
+                // FACE MASKING del Clone Ref: la foto del clon aporta escena/pose/
+                // outfit/luz PERFECTOS, pero su CARA es un rostro rival que modelos
+                // muy adherentes (Seedream Pro) copian y pisan la identidad del
+                // avatar. Se difumina SOLO la cara antes de enviarla → el modelo
+                // reproduce todo menos la cara → usa la del avatar (imagen 1).
+                // Fallback: si no se detecta cara, va sin enmascarar y a Seedream
+                // se le sigue quitando la imagen (clone-como-texto). Cache por
+                // cloneImage.id → un Batch enmascara 1 vez, no 1 por modelo.
+                let optimizedCloneRef: {
+                    base64: string
+                    mimeType: string
+                } | null = null
+                let cloneFaceMasked = false
+                if (cloneImage?.base64) {
+                    if (maskedCloneCacheRef.current?.id === cloneImage.id) {
+                        optimizedCloneRef = {
+                            base64: maskedCloneCacheRef.current.base64,
+                            mimeType: maskedCloneCacheRef.current.mimeType,
+                        }
+                        cloneFaceMasked = maskedCloneCacheRef.current.masked
+                    } else {
+                        optimizedCloneRef = await optimizeImage({
+                            base64: cloneImage.base64,
+                            mimeType: cloneImage.mimeType,
+                        })
+                        if (optimizedCloneRef) {
+                            try {
+                                const faceBox = await detectFaceBox({
+                                    base64: optimizedCloneRef.base64,
+                                    mimeType: optimizedCloneRef.mimeType,
+                                })
+                                if (faceBox) {
+                                    const maskedB64 = await maskFaceInImage(
+                                        optimizedCloneRef.base64,
+                                        faceBox,
+                                    )
+                                    optimizedCloneRef = {
+                                        base64: maskedB64,
+                                        mimeType: 'image/jpeg',
+                                    }
+                                    cloneFaceMasked = true
+                                } else {
+                                    console.warn(
+                                        '[clone face-mask] no face detected — sent unmasked',
+                                    )
+                                }
+                            } catch (e) {
+                                console.warn('[clone face-mask] failed:', e)
+                            }
+                            maskedCloneCacheRef.current = {
+                                id: cloneImage.id,
+                                base64: optimizedCloneRef.base64,
+                                mimeType: optimizedCloneRef.mimeType,
+                                masked: cloneFaceMasked,
+                            }
+                        }
+                    }
+                }
 
                 // Deepfake Ref — face-swap puro. Solo se optimiza si el provider
                 // lo soporta (seedream/wan/flux2 vía cláusula de clone variante).
@@ -1285,13 +1348,6 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                         // recibían el texto [CLONE:] y re-imaginaban el outfit.
                         if (
                             !deepfakeActive &&
-                            // PRUEBA (reversible): Seedream Pro es tan adherente a
-                            // la imagen que COPIA la cara del clone pese a todos los
-                            // guards (Wan/Qwen no). Se le QUITA la imagen del clone
-                            // → lee el clone como TEXTO [CLONE:] + la face ref del
-                            // avatar (cero cara rival = identidad fija). Si la escena
-                            // sale peor por texto, re-añadir kieModel.startsWith(
-                            // 'seedream/') a esta lista.
                             (kieModel === 'nano-banana-pro' ||
                                 kieModel.startsWith('nano-banana-2') ||
                                 kieModel === 'wan/2-7-image' ||
@@ -1299,7 +1355,13 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                                 // Qwen es editor de imagen (image_url acepta
                                 // array): recibe [cara, clone] con guard de
                                 // maniquí → clona fiel + el peso pesa la imagen.
-                                kieModel.startsWith('qwen')) &&
+                                kieModel.startsWith('qwen') ||
+                                // Seedream Pro COPIA la cara del clone (muy
+                                // adherente a la imagen). Solo se le manda la
+                                // imagen del clone si su cara YA fue enmascarada
+                                // (sin rostro rival); si no, cae a clone-como-texto.
+                                (cloneFaceMasked &&
+                                    kieModel.startsWith('seedream/'))) &&
                             optimizedCloneRef &&
                             kieReferenceImages.length > 0
                         ) {

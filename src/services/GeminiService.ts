@@ -1234,6 +1234,64 @@ Example output (format to match): "a woman wearing a floral halter swim top and 
     }
 }
 
+/**
+ * Detecta el bounding box del rostro MÁS GRANDE de una imagen (normalizado 0-1)
+ * vía Gemini. Se usa para ENMASCARAR la cara del Clone Ref antes de enviarla al
+ * modelo (evita que copie un rostro rival y pise la identidad del avatar).
+ * Devuelve null si no hay cara o si falla → el caller no enmascara (fallback).
+ */
+export async function detectFaceBox(image: {
+    base64: string
+    mimeType: string
+}): Promise<{ x0: number; y0: number; x1: number; y1: number } | null> {
+    const apiKey = getApiKey()
+    const ai = new GoogleGenAI({ apiKey })
+    try {
+        const response = await ai.models.generateContent({
+            model: 'gemini-2.5-flash',
+            config: { safetySettings: ANALYSIS_SAFETY_SETTINGS },
+            contents: {
+                parts: [
+                    {
+                        inlineData: {
+                            mimeType: image.mimeType,
+                            data: cleanBase64Data(image.base64),
+                        },
+                    },
+                    {
+                        text: `Find the LARGEST human FACE in this image (just the face: hairline/forehead down to chin, ear to ear). Return ONLY compact JSON with its tight bounding box normalized 0-1: {"x0":<left>,"y0":<top>,"x1":<right>,"y1":<bottom>} where x is left→right and y is top→bottom. If there is NO visible human face, return exactly {"none":true}. No prose, no markdown, no code fences.`,
+                    },
+                ],
+            },
+        })
+        const text = response.text?.trim() ?? ''
+        const match = text.match(/\{[\s\S]*\}/)
+        if (!match) return null
+        const obj = JSON.parse(match[0]) as Record<string, unknown>
+        if (obj.none) return null
+        const nums = ['x0', 'y0', 'x1', 'y1'].map((k) => Number(obj[k]))
+        if (nums.some((v) => !Number.isFinite(v))) return null
+        let [x0, y0, x1, y1] = nums
+        // Algunos modelos devuelven 0-100 o 0-1000 en vez de 0-1.
+        const maxv = Math.max(x0, y0, x1, y1)
+        const scale = maxv > 100 ? 1000 : maxv > 1 ? 100 : 1
+        x0 /= scale
+        y0 /= scale
+        x1 /= scale
+        y1 /= scale
+        if (x1 <= x0 || y1 <= y0) return null
+        return {
+            x0: Math.max(0, Math.min(1, x0)),
+            y0: Math.max(0, Math.min(1, y0)),
+            x1: Math.max(0, Math.min(1, x1)),
+            y1: Math.max(0, Math.min(1, y1)),
+        }
+    } catch (e) {
+        console.warn('[detectFaceBox] failed:', e)
+        return null
+    }
+}
+
 /** Non-blocking fallback when Gemini won't describe a reference (safety block). */
 const CLONE_FALLBACK =
     'replicate the subject exactly as in the reference image — same pose, outfit, framing, lighting and setting'
