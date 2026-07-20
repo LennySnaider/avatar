@@ -13,13 +13,16 @@ import {
     relocatePoseTag,
     capAtWordBoundary,
     stripIdentityRedundancy,
-    hairClause as buildHairClause,
-    faceFidelityClause as buildFaceFidelityClause,
 } from '../shared'
 
 async function build(ctx: ImageRouteContext): Promise<KieImageRequest> {
-    const hairClause = buildHairClause(ctx.hairEmphasis)
-    const faceFidelityClause = buildFaceFidelityClause(ctx.identityWeight)
+    // PRESUPUESTO DURO 800 chars (API qwen2/image-edit). Qwen EDITA la imagen de
+    // la cara → la identidad (cara/pelo/ojos) ya viaja EN la imagen, así que el
+    // ancla de identidad va COMPACTA: el prefijo verboso (FACE FIDELITY + hair
+    // RECOLOR + eye) medía ~470 chars y con la POSE relocada se comía los 800
+    // → el OUTFIT y el FONDO se decapitaban (reporte: Qwen salía desnuda y sin
+    // fondo con el crop top/pink skirt EN el prompt pero cortados). Ancla corta
+    // = presupuesto para la escena (ropa+pose+fondo), que es lo que el usuario ve.
 
     // Qwen NO es nano → reubica la pose; cap 1800.
     let promptText = relocatePoseTag(ctx.prompt)
@@ -95,7 +98,7 @@ async function build(ctx: ImageRouteContext): Promise<KieImageRequest> {
                         .replace(/\[CLONE:[^\]]*\]/gi, ' ')
                         .replace(/\s{2,}/g, ' ')
                         .trim()
-                    input.prompt = `REMOVE any overlaid stickers, watermarks, emojis or UI graphics — output a clean photograph. The FIRST image is the scene to recreate — ${reproduce}; do NOT blend the two images. The SECOND image shows the person whose FACE to use: the FACE SWAP is MANDATORY — replace the face in the first image with the SECOND image's face (exact features, freckles, likeness), NEVER keep the first image's original face.${faceFidelityClause}${hairClause} Do NOT alter or remove any clothing. ${scene}`
+                    input.prompt = `REMOVE any overlaid stickers, watermarks, emojis or UI graphics — output a clean photograph. The FIRST image is the scene to recreate — ${reproduce}; do NOT blend the two images. The SECOND image shows the person whose FACE to use: the FACE SWAP is MANDATORY — replace the face in the first image with the SECOND image's face (exact features, freckles, likeness), NEVER keep the first image's original face. Keep her hair and natural eye colour from the second image. Do NOT alter or remove any clothing. ${scene}`
                     console.log(
                         `[KIE] qwen2/image-edit CLONE (clone canvas + face swap, weight ${cw})`,
                     )
@@ -117,13 +120,13 @@ async function build(ctx: ImageRouteContext): Promise<KieImageRequest> {
                                 `The attached image ${i + 2} is a graphic design to reproduce as a PRINT on the fabric of her outfit: copy its EXACT shapes, patterns and colors, sized and placed naturally on the garment. Do NOT paste it as a floating sticker over the scene.`,
                         )
                         .join(' ')
-                    input.prompt = `The FIRST image is the person — keep her EXACT face and likeness.${faceFidelityClause}${hairClause} Her eyes stay EXACTLY as in the reference image: the same real, natural iris colour with soft realistic detail — ordinary matte human eyes. ${assetLines} Do NOT add any lettering, words, captions or watermarks of your own anywhere in the image — the ONLY artwork on the outfit is the attached design itself. ${input.prompt}`
+                    input.prompt = `The FIRST image is the person — keep her EXACT face, hair and natural, matte eye colour, unchanged. ${assetLines} Do NOT add any lettering, words, captions or watermarks of your own anywhere in the image — the ONLY artwork on the outfit is the attached design itself. ${input.prompt}`
                     console.log(
                         `[KIE] qwen2/image-edit with ${qwenUrls.length} imgs (face + ${qwenAssets.length} asset)`,
                     )
                 } else {
                     input.image_url = refUrl
-                    input.prompt = `Keep the EXACT face and likeness of the person in the reference image.${faceFidelityClause}${hairClause} Her eyes stay EXACTLY as in the reference image: the same real, natural iris colour with soft realistic detail — ordinary matte human eyes. ${input.prompt}`
+                    input.prompt = `Keep her EXACT face, hair and natural realistic eyes from the reference image. ${input.prompt}`
                 }
             }
         } catch (e) {
