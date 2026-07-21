@@ -35,20 +35,23 @@ export function buildBodySheetPrompt(m: PhysicalMeasurements): string {
     // un ratio implícito. Solo si las tres están presentes.
     const measurements =
         m.bust && m.waist && m.hips
-            ? `Exact body measurements to render faithfully: bust ${m.bust}cm, waist ${m.waist}cm, hips ${m.hips}cm — a clearly defined waist with bust and hips visibly fuller than the waist.`
+            ? `Exact body measurements — reproduce them literally and faithfully, NOT an idealised average: bust ${m.bust}cm, waist ${m.waist}cm, hips ${m.hips}cm — a clearly defined waist with bust and hips visibly fuller than the waist.`
             : ''
 
     return [
         `Full-body character reference sheet of ONE ${person}.`,
         'Three full-body views of the SAME woman side by side in a single image, left to right: front view, side profile view, back view.',
-        // Spec de CUERPO mandatoria — es el objetivo del sheet: que las curvas de
-        // los sliders se vean, sin que el modelo caiga en un cuerpo de modelo slim.
+        // Spec de CUERPO mandatoria + CONTROL TOTAL: reproducir EXACTO, sin
+        // normalizar/promediar, aunque quede exagerado (meta multitenant: quien
+        // quiera cuerpos desproporcionados debe poder lograrlos con los sliders).
         curves
-            ? `MANDATORY BODY SHAPE — this is the priority of the image; render these curves clearly and accurately, do NOT slim them down or default to a generic thin fashion-model body: ${curves}.`
+            ? `MANDATORY BODY SHAPE — reproducing the exact measurements and curves below is the single most important goal of this image. Render them precisely; do NOT normalise, average out or slim them toward a generic fashion-model body, EVEN IF the resulting figure looks striking, exaggerated or disproportionate: ${curves}.`
             : '',
         measurements,
         'Standing in a neutral relaxed A-pose, arms slightly away from the body, feet shoulder-width apart.',
-        'Wearing a minimal skin-toned nude-beige TWO-PIECE micro bikini (a separate bra top and bikini bottom) that closely matches her skin colour, so her full body shape, waist, hips, glutes and curves read clearly. It must be a two-piece bikini — NOT a one-piece swimsuit or bodysuit. No accessories, no props.',
+        // Tono piel/beige (NO "nude" — dispara el filtro NSFW de KIE) para leer la
+        // silueta. Dos piezas explícito: los editores tienden a sacar enterizo.
+        'Wearing a minimal bikini in a soft beige tone close to her own skin colour, a TWO-PIECE set (a separate bra top and a bikini bottom) so her full body shape — waist, hips, glutes and curves — reads clearly. It must be a two-piece bikini, NOT a one-piece swimsuit or bodysuit. No accessories, no props.',
         'Plain seamless light-gray studio background, soft even frontal lighting, no harsh shadows.',
         'The body shape, bust, waist, hips, glutes and thighs must be IDENTICAL across all three views and must match the measurements and body shape described above.',
         'Full body visible head-to-toe in every view, whole figure in frame, no cropping.',

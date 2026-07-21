@@ -69,6 +69,7 @@ export interface BodyLabProps {
     onSelectModel: (model: string) => void
     isGenerating: boolean
     sheet: PhysicalRegionRef | null // preview del sheet generado
+    sheetModel?: string // nombre del modelo con que se generó el sheet (badge)
     onGenerate: () => void
     onUseAsBody: () => void
     // Click en el preview → abrir en grande (el host usa su propio lightbox).
@@ -711,19 +712,26 @@ const PhysicalAttributesEditor = ({
                     </div>
 
                     {bodyLab.sheet && (
-                        <img
-                            src={
-                                bodyLab.sheet.thumbnailUrl ||
-                                bodyLab.sheet.url
-                            }
-                            alt="Body angle sheet"
-                            onClick={bodyLab.onPreview}
-                            className={`w-full rounded-lg border border-gray-200 dark:border-gray-700 object-cover${
-                                bodyLab.onPreview
-                                    ? ' cursor-pointer hover:ring-2 hover:ring-primary transition-all'
-                                    : ''
-                            }`}
-                        />
+                        <div className="relative">
+                            <img
+                                src={
+                                    bodyLab.sheet.thumbnailUrl ||
+                                    bodyLab.sheet.url
+                                }
+                                alt="Body angle sheet"
+                                onClick={bodyLab.onPreview}
+                                className={`w-full rounded-lg border border-gray-200 dark:border-gray-700 object-cover${
+                                    bodyLab.onPreview
+                                        ? ' cursor-pointer hover:ring-2 hover:ring-primary transition-all'
+                                        : ''
+                                }`}
+                            />
+                            {bodyLab.sheetModel && (
+                                <span className="absolute top-2 left-2 px-2 py-0.5 rounded-md bg-black/70 text-white text-[10px] font-medium backdrop-blur-sm pointer-events-none">
+                                    {bodyLab.sheetModel}
+                                </span>
+                            )}
+                        </div>
                     )}
 
                     <div className="flex gap-2">

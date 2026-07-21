@@ -124,6 +124,7 @@ const AvatarEditDrawer = ({
     const [bodySheet, setBodySheet] = useState<AvatarReferenceImage | null>(
         null,
     )
+    const [bodySheetModel, setBodySheetModel] = useState('')
     const [isGeneratingBody, setIsGeneratingBody] = useState(false)
     const [selectedBodyModel, setSelectedBodyModel] = useState('')
 
@@ -460,6 +461,11 @@ const AvatarEditDrawer = ({
             if (!result.success) throw new Error(result.error)
             const sheet = await toBodyReferenceImage(result.url)
             setBodySheet(sheet)
+            setBodySheetModel(
+                PERMISSIVE_BODY_MODELS.find(
+                    (p) => p.model === selectedBodyModel,
+                )?.name || selectedBodyModel,
+            )
             toast.push(
                 <Notification type="success" title="Cuerpo generado">
                     Sheet de 3 vistas listo. Revísalo y pulsa &quot;Usar como
@@ -782,6 +788,9 @@ const AvatarEditDrawer = ({
                                         onSelectModel: setSelectedBodyModel,
                                         isGenerating: isGeneratingBody,
                                         sheet: bodySheet || localBodyRef,
+                                        sheetModel: bodySheet
+                                            ? bodySheetModel
+                                            : undefined,
                                         onGenerate: handleGenerateBody,
                                         onUseAsBody: handleUseAsBody,
                                         onPreview: () => {
