@@ -465,16 +465,18 @@ const AvatarEditDrawer = ({
         setIsGeneratingBody(true)
         try {
             const result = await generateImageKie({
+                // La cara va como referenceImage SINGULAR: las rutas KIE
+                // (seedream/qwen/wan/flux2) solo activan el manejo de imagen con
+                // este campo, y planExtraRefs ignora el rol 'face' (solo procesa
+                // body/pose/clone/etc). Sin esto el modelo queda en text-to-image
+                // sin imagen → KIE 500 "This field is required".
                 prompt: buildBodySheetPrompt(localMeasurements),
                 model: selectedBodyModel,
                 aspectRatio: '16:9',
-                referenceImages: [
-                    {
-                        base64: localFaceRef.base64,
-                        mimeType: localFaceRef.mimeType,
-                        role: 'face',
-                    },
-                ],
+                referenceImage: {
+                    base64: localFaceRef.base64,
+                    mimeType: localFaceRef.mimeType,
+                },
                 bodyEmphasis: buildCurvesEmphasis(localMeasurements),
             })
             if (!result.success) throw new Error(result.error)
