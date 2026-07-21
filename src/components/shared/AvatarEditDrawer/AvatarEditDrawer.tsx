@@ -782,15 +782,16 @@ const AvatarEditDrawer = ({
                                         selectedModel: selectedBodyModel,
                                         onSelectModel: setSelectedBodyModel,
                                         isGenerating: isGeneratingBody,
-                                        // Solo el sheet recién generado en esta
-                                        // sesión — NO auto-cargar el body ref
-                                        // persistido (evita la imagen "fantasma"
-                                        // que confundía). El cuerpo guardado
-                                        // sigue en getCurrentData/persistencia.
-                                        sheet: bodySheet,
+                                        // Sheet recién generado, o si no, el
+                                        // cuerpo guardado del avatar (localBodyRef
+                                        // hidratado de initialData.bodyRef) para
+                                        // que el usuario VEA su cuerpo canónico.
+                                        sheet: bodySheet || localBodyRef,
                                         sheetModel: bodySheet
                                             ? bodySheetModel
-                                            : undefined,
+                                            : localBodyRef
+                                              ? 'Cuerpo guardado'
+                                              : undefined,
                                         onGenerate: handleGenerateBody,
                                         onUseAsBody: handleUseAsBody,
                                         onPreview: () => {

@@ -109,6 +109,7 @@ const AvatarEditDrawer = ({
         setIdentityWeight,
         setMeasurements,
         setFaceDescription,
+        bodyRef,
         setBodyRef,
     } = useAvatarStudioStore()
 
@@ -794,15 +795,20 @@ const AvatarEditDrawer = ({
                                         selectedModel: selectedBodyModel,
                                         onSelectModel: setSelectedBodyModel,
                                         isGenerating: isGeneratingBody,
-                                        sheet: bodySheet,
+                                        // Sheet recién generado, o el cuerpo
+                                        // guardado del avatar (store bodyRef
+                                        // hidratado) para que se VEA al reabrir.
+                                        sheet: bodySheet || bodyRef,
                                         sheetModel: bodySheet
                                             ? bodySheetModel
-                                            : undefined,
+                                            : bodyRef
+                                              ? 'Cuerpo guardado'
+                                              : undefined,
                                         onGenerate: handleGenerateBody,
                                         onUseAsBody: handleUseAsBody,
                                         onPreview: () => {
-                                            if (bodySheet)
-                                                setPreviewImage(bodySheet)
+                                            const s = bodySheet || bodyRef
+                                            if (s) setPreviewImage(s)
                                         },
                                         disabledReason:
                                             permissiveBodyModels.length === 0
