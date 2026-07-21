@@ -526,6 +526,10 @@ export const getProviderDescription = (provider: AIProvider): string => {
  * Por eso el body sheet usa un allowlist explícito, no un filtro por nombre.
  */
 export const BODY_SHEET_T2I_MODELS = [
+    // Wan 2.7 Image (unificado t2i+edit, sin ref = t2i puro; permisivo "NSFW
+    // real") — DEFAULT: sigue mucho mejor las curvas dramáticas (5/5) que Qwen,
+    // que suaviza los cuerpos extremos hacia un "fit normal".
+    'wan/2-7-image',
     'qwen2/text-to-image',
     // FLUX.2 quitado: lento, caro y daba cuerpos peores para el sheet.
 ]
