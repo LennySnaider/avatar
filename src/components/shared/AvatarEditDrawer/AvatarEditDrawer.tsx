@@ -6,7 +6,6 @@ import Button from '@/components/ui/Button'
 import Input from '@/components/ui/Input'
 import Slider from '@/components/ui/Slider'
 import Card from '@/components/ui/Card'
-import Dialog from '@/components/ui/Dialog'
 import Spinner from '@/components/ui/Spinner'
 import ScrollBar from '@/components/ui/ScrollBar'
 import Notification from '@/components/ui/Notification'
@@ -18,8 +17,6 @@ import {
     HiOutlineSave,
     HiOutlineUser,
     HiOutlineSparkles,
-    HiOutlineZoomIn,
-    HiOutlineZoomOut,
 } from 'react-icons/hi'
 import { generateAvatar, analyzeFaceFromImages } from '@/services/GeminiService'
 import { generateImageKie } from '@/services/KieService'
@@ -32,6 +29,7 @@ import {
     getPermissiveBodyModels,
 } from '@/app/(protected-pages)/concepts/avatar-forge/_shared/providerCatalog'
 import PhysicalAttributesEditor from '@/components/shared/PhysicalAttributesEditor'
+import ImageLightbox from '@/components/shared/ImageLightbox'
 
 // Modelos permisivos aptos para el body sheet (Seedream/Wan), del catálogo de
 // providers por defecto — este drawer es store-agnóstico y no tiene acceso a
@@ -106,7 +104,6 @@ const AvatarEditDrawer = ({
     const [isGeneratingAngle, setIsGeneratingAngle] = useState(false)
     const [previewImage, setPreviewImage] =
         useState<AvatarReferenceImage | null>(null)
-    const [previewZoom, setPreviewZoom] = useState(1)
 
     // Local editing state
     const [localGeneralRefs, setLocalGeneralRefs] = useState<
@@ -166,27 +163,8 @@ const AvatarEditDrawer = ({
         faceDescription: localFaceDescription,
     })
 
-    // Preview handlers
     const handlePreviewClose = useCallback(() => {
         setPreviewImage(null)
-        setPreviewZoom(1)
-    }, [])
-
-    const handlePreviewZoomIn = useCallback(() => {
-        setPreviewZoom((prev) => Math.min(prev + 0.25, 3))
-    }, [])
-
-    const handlePreviewZoomOut = useCallback(() => {
-        setPreviewZoom((prev) => Math.max(prev - 0.25, 1))
-    }, [])
-
-    const handlePreviewWheel = useCallback((e: React.WheelEvent) => {
-        e.preventDefault()
-        if (e.deltaY < 0) {
-            setPreviewZoom((prev) => Math.min(prev + 0.25, 3))
-        } else {
-            setPreviewZoom((prev) => Math.max(prev - 0.25, 1))
-        }
     }, [])
 
     // Process file upload
@@ -927,64 +905,15 @@ const AvatarEditDrawer = ({
                 </div>
             </Drawer>
 
-            {/* Image Preview Dialog */}
-            <Dialog
-                isOpen={!!previewImage}
+            {/* Image Preview Lightbox (grande + zoom + arrastrar) */}
+            <ImageLightbox
+                imageUrl={
+                    previewImage
+                        ? previewImage.url || previewImage.storagePath || null
+                        : null
+                }
                 onClose={handlePreviewClose}
-                onRequestClose={handlePreviewClose}
-                width={700}
-            >
-                {previewImage && (
-                    <div className="flex flex-col">
-                        {/* Zoom Controls */}
-                        <div className="flex items-center justify-center gap-2 p-2 border-b">
-                            <button
-                                onClick={handlePreviewZoomOut}
-                                disabled={previewZoom <= 1}
-                                className="p-2 bg-gray-100 dark:bg-gray-700 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                                title="Zoom Out"
-                            >
-                                <HiOutlineZoomOut className="w-4 h-4" />
-                            </button>
-                            <button
-                                onClick={() => setPreviewZoom(1)}
-                                className="px-3 py-1 text-sm text-gray-600 dark:text-gray-300 hover:text-gray-800 dark:hover:text-white min-w-14 text-center"
-                                title="Reset Zoom"
-                            >
-                                {Math.round(previewZoom * 100)}%
-                            </button>
-                            <button
-                                onClick={handlePreviewZoomIn}
-                                disabled={previewZoom >= 3}
-                                className="p-2 bg-gray-100 dark:bg-gray-700 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                                title="Zoom In"
-                            >
-                                <HiOutlineZoomIn className="w-4 h-4" />
-                            </button>
-                        </div>
-                        {/* Image */}
-                        <div
-                            className="p-2 overflow-auto max-h-[70vh] flex items-center justify-center"
-                            onWheel={handlePreviewWheel}
-                        >
-                            <img
-                                src={
-                                    previewImage.url || previewImage.storagePath
-                                }
-                                alt="Preview"
-                                className="rounded-lg object-contain select-none"
-                                style={{
-                                    transform: `scale(${previewZoom})`,
-                                    transition: 'transform 0.2s ease-out',
-                                    maxHeight:
-                                        previewZoom === 1 ? '65vh' : 'none',
-                                }}
-                                draggable={false}
-                            />
-                        </div>
-                    </div>
-                )}
-            </Dialog>
+            />
         </>
     )
 }
