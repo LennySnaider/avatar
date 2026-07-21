@@ -22,9 +22,11 @@ import {
 import { generateAvatar, analyzeFaceFromImages } from '@/services/GeminiService'
 import { generateImageKie } from '@/services/KieService'
 import {
-    buildBodySheetPrompt,
+    buildBodyViewPrompt,
+    BODY_VIEWS,
     BODY_SHEET_NEGATIVE_PROMPT,
 } from '@/utils/bodySheetPrompt'
+import { stitchImagesHorizontal, urlToDataUrl } from '@/utils/imageStitch'
 import { getPermissiveBodyModels } from '../../_shared/providerCatalog'
 import type { ReferenceImage } from '../types'
 import type { PhysicalMeasurements } from '@/@types/supabase'
@@ -448,20 +450,28 @@ const AvatarEditDrawer = ({
         if (!selectedBodyModel) return
         setIsGeneratingBody(true)
         try {
-            const result = await generateImageKie({
-                // TEXT-TO-IMAGE PURO: sin foto de cara. El cuerpo lo define 100%
-                // el configurador (buildBodySheetPrompt con el mapa dedicado).
-                // Pasar la cara metía las rutas KIE en image-edit (Qwen arruinaba
-                // el resultado) y jalaba el cuerpo hacia el físico de la foto. La
-                // cara real entra luego por el Clone Ref; el sheet es SOLO ancla
-                // de CUERPO. Requiere un modelo t2i real (Qwen/Flux.2).
-                prompt: buildBodySheetPrompt(localMeasurements),
-                model: selectedBodyModel,
-                aspectRatio: '16:9',
-                negativePrompt: BODY_SHEET_NEGATIVE_PROMPT,
-            })
-            if (!result.success) throw new Error(result.error)
-            const sheet = await toReferenceImage(result.url, 'body')
+            // 3 generaciones SEPARADAS (frente/lado/espalda) + stitch: un solo
+            // t2i no logra 3 vistas ortográficas en una imagen (repetía la misma
+            // pose). Text-to-image puro (sin cara): el cuerpo lo define el
+            // configurador; la cara real entra luego por el Clone Ref.
+            const results = await Promise.all(
+                BODY_VIEWS.map((view) =>
+                    generateImageKie({
+                        prompt: buildBodyViewPrompt(localMeasurements, view),
+                        model: selectedBodyModel,
+                        aspectRatio: '3:4',
+                        negativePrompt: BODY_SHEET_NEGATIVE_PROMPT,
+                    }),
+                ),
+            )
+            const urls: string[] = []
+            for (const r of results) {
+                if (!r.success) throw new Error(r.error)
+                urls.push(r.url)
+            }
+            const dataUrls = await Promise.all(urls.map(urlToDataUrl))
+            const stitched = await stitchImagesHorizontal(dataUrls)
+            const sheet = await toReferenceImage(stitched, 'body')
             setBodySheet(sheet)
             setBodySheetModel(
                 permissiveBodyModels.find((p) => p.model === selectedBodyModel)

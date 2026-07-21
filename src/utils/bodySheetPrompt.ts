@@ -129,6 +129,58 @@ export function buildBodySheetPrompt(m: PhysicalMeasurements): string {
         .join(' ')
 }
 
+// Las 3 vistas del sheet, en orden de izquierda a derecha.
+export type BodyView = 'front' | 'side' | 'back'
+export const BODY_VIEWS: BodyView[] = ['front', 'side', 'back']
+
+const VIEW_CLAUSE: Record<BodyView, string> = {
+    front: 'FRONT view: she faces the camera directly, standing straight, arms relaxed slightly away from the body — the FRONT of her body and her face are fully visible.',
+    side: 'SIDE profile view: her whole body turned 90 degrees to the side, standing straight — her side silhouette (bust, belly, glute projection) is visible, face in profile.',
+    back: 'BACK view: seen from directly BEHIND, her back to the camera, standing straight — her back, spine and glutes are visible; her face is NOT visible.',
+}
+
+/**
+ * Prompt de UNA sola vista del cuerpo (frente / lado / espalda). Se genera una
+ * imagen por vista y luego se unen en el sheet — un solo modelo t2i (Qwen) NO
+ * logra 3 vistas ortográficas distintas en una imagen (probado: repetía la
+ * misma pose). Cada llamada es una vista limpia; el cuerpo (medidas/curvas) es
+ * idéntico entre vistas porque el spec es el mismo, solo cambia el ángulo.
+ */
+export function buildBodyViewPrompt(
+    m: PhysicalMeasurements,
+    view: BodyView,
+): string {
+    const body = describeBody(m)
+    const curves = buildBodySheetCurves(m)
+    const skin = getSkinToneDescription(m.skinTone)
+    const hair = getHairColorDescription(m.hairColor)
+    const person = [`${m.age ?? 22}-year-old woman`, body, skin, hair]
+        .filter(Boolean)
+        .join(', ')
+    const measurements =
+        m.bust && m.waist && m.hips
+            ? `Exact body proportions — reproduce them literally, NOT an idealised average: bust ${m.bust}cm, waist ${m.waist}cm, hips ${m.hips}cm${
+                  m.shoulders ? `, shoulders ${m.shoulders}cm wide` : ''
+              }. The waist is the reference for the silhouette.`
+            : ''
+
+    return [
+        `Single full-body studio photo of ONE ${person}.`,
+        `Camera angle — ${VIEW_CLAUSE[view]}`,
+        curves
+            ? `MANDATORY BODY SHAPE — render these curves precisely; do NOT normalise, average out or slim them toward a generic fashion-model body, EVEN IF the figure looks striking, exaggerated or disproportionate: ${curves}.`
+            : '',
+        measurements,
+        'Standing in a neutral relaxed pose, whole body head-to-toe in frame, centered, no cropping.',
+        'Wearing a minimal bikini in a soft beige tone close to her own skin colour, a TWO-PIECE set (separate bra top and bikini bottom). It must be a two-piece bikini, NOT a one-piece swimsuit or bodysuit. No accessories, no props.',
+        'Plain seamless light-gray studio background, soft even lighting, no harsh shadows.',
+        'Photorealistic raw photo, natural skin texture with visible pores, subtle imperfections, subsurface scattering, shot on a 50mm lens (no lens distortion), 8k, ultra high detail, sharp focus.',
+        'ONE single woman only, one pose, no duplicated figures, no text, no watermark.',
+    ]
+        .filter(Boolean)
+        .join(' ')
+}
+
 /**
  * Negative prompt del body sheet — lo que NO queremos (patrón de los prompts de
  * alta fidelidad del usuario). Sube calidad y limpia defectos: mata el look
