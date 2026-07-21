@@ -31,6 +31,7 @@ import {
     getPermissiveBodyModels,
 } from '@/app/(protected-pages)/concepts/avatar-forge/_shared/providerCatalog'
 import PhysicalAttributesEditor from '@/components/shared/PhysicalAttributesEditor'
+import AppearanceEditor from '@/components/shared/AppearanceEditor'
 import BodyLab from '@/components/shared/BodyLab'
 import ImageLightbox from '@/components/shared/ImageLightbox'
 import { deriveShapeFromMeasurements } from '@/utils/bodyShapes'
@@ -749,6 +750,17 @@ const AvatarEditDrawer = ({
                                     Body Ref is available as a session tool in
                                     the generation bar
                                 </p>
+                            </Card>
+
+                            {/* Appearance (piel / pelo / ojos) — junto a la cara */}
+                            <Card className="p-4">
+                                <h3 className="text-sm font-semibold mb-3">
+                                    Appearance
+                                </h3>
+                                <AppearanceEditor
+                                    measurements={localMeasurements}
+                                    onChange={setLocalMeasurements}
+                                />
                             </Card>
 
                             {/* Identity Weight */}

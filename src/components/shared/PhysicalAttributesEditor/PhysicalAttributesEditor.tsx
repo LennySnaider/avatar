@@ -20,8 +20,6 @@ import Tooltip from '@/components/ui/Tooltip'
 import Notification from '@/components/ui/Notification'
 import toast from '@/components/ui/toast'
 import { HiOutlineX, HiOutlineUpload } from 'react-icons/hi'
-import HairColorPicker from '@/components/shared/HairColorPicker'
-import EyeColorPicker from '@/components/shared/EyeColorPicker'
 import MeasurementSlider from '@/app/(protected-pages)/concepts/avatar-forge/_shared/MeasurementSlider'
 import { createThumbnail } from '@/utils/imageOptimization'
 import {
@@ -614,125 +612,8 @@ const PhysicalAttributesEditor = ({
                 </div>
             </div>
 
-            {/* Skin Tone Slider */}
-            <div>
-                <div className="flex items-center justify-between mb-2">
-                    <label className="text-xs text-gray-500">Skin Tone</label>
-                    <span className="text-xs font-mono text-primary">
-                        {measurements.skinTone === 1
-                            ? 'Very Fair'
-                            : measurements.skinTone === 2
-                              ? 'Fair'
-                              : measurements.skinTone === 3
-                                ? 'Light'
-                                : measurements.skinTone === 4
-                                  ? 'Light-Medium'
-                                  : measurements.skinTone === 5
-                                    ? 'Medium'
-                                    : measurements.skinTone === 6
-                                      ? 'Medium-Tan'
-                                      : measurements.skinTone === 7
-                                        ? 'Tan'
-                                        : measurements.skinTone === 8
-                                          ? 'Dark'
-                                          : 'Very Dark'}
-                    </span>
-                </div>
-                {/* Visual skin tone gradient */}
-                <div className="relative mb-1">
-                    <div className="h-3 rounded-full overflow-hidden flex">
-                        {[1, 2, 3, 4, 5, 6, 7, 8, 9].map((tone) => (
-                            <button
-                                key={tone}
-                                onClick={() =>
-                                    set({
-                                        skinTone: tone as
-                                            | 1
-                                            | 2
-                                            | 3
-                                            | 4
-                                            | 5
-                                            | 6
-                                            | 7
-                                            | 8
-                                            | 9,
-                                    })
-                                }
-                                className={`flex-1 transition-all ${
-                                    measurements.skinTone === tone
-                                        ? 'ring-2 ring-primary ring-offset-1 z-10 scale-110'
-                                        : ''
-                                }`}
-                                style={{
-                                    backgroundColor:
-                                        tone === 1
-                                            ? '#FFECD2'
-                                            : tone === 2
-                                              ? '#FFE4C4'
-                                              : tone === 3
-                                                ? '#F5D5B8'
-                                                : tone === 4
-                                                  ? '#E8C4A0'
-                                                  : tone === 5
-                                                    ? '#D4A574'
-                                                    : tone === 6
-                                                      ? '#C68642'
-                                                      : tone === 7
-                                                        ? '#A0522D'
-                                                        : tone === 8
-                                                          ? '#6B4423'
-                                                          : '#3D2314',
-                                }}
-                                title={
-                                    tone === 1
-                                        ? 'Very Fair'
-                                        : tone === 2
-                                          ? 'Fair'
-                                          : tone === 3
-                                            ? 'Light'
-                                            : tone === 4
-                                              ? 'Light-Medium'
-                                              : tone === 5
-                                                ? 'Medium'
-                                                : tone === 6
-                                                  ? 'Medium-Tan'
-                                                  : tone === 7
-                                                    ? 'Tan'
-                                                    : tone === 8
-                                                      ? 'Dark'
-                                                      : 'Very Dark'
-                                }
-                            />
-                        ))}
-                    </div>
-                </div>
-                <Slider
-                    value={measurements.skinTone || 5}
-                    onChange={(val) =>
-                        set({
-                            skinTone: val as 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9,
-                        })
-                    }
-                    min={1}
-                    max={9}
-                    step={1}
-                />
-            </div>
-
-            {/* Hair Type + Color (degradado 2-3 tonos) */}
-            <HairColorPicker
-                value={measurements.hairColor}
-                tones={measurements.hairColors}
-                hairStyle={measurements.hairStyle}
-                onChange={(c) => set({ hairColor: c })}
-                onGradientChange={(p) => set({ ...p })}
-            />
-
-            {/* Eye Color */}
-            <EyeColorPicker
-                value={measurements.eyeColor}
-                onChange={(c) => set({ eyeColor: c })}
-            />
+            {/* Skin Tone / Hair / Eye se movieron a <AppearanceEditor> (se
+                renderiza junto a las referencias de cara en el drawer). */}
 
             {/* Confirmación al sobreescribir medidas con un preset de forma (ECME) */}
             <ConfirmDialog
