@@ -55,36 +55,110 @@ async function build(ctx: ImageRouteContext): Promise<KieImageRequest> {
                 ctx.deepfakeMode,
                 ctx.cloneWeight,
             )
-            const wanUrls: string[] = [
-                await ctx.uploadRef(
-                    ctx.referenceImage.base64,
-                    ctx.referenceImage.mimeType,
-                ),
-            ]
-            for (const r of wanExtras) {
-                wanUrls.push(await ctx.uploadRef(r.base64, r.mimeType))
+            // FIX "cabeza grande" (raíz ARQUITECTÓNICA, no prosa — el texto falló
+            // 2×): Wan 2.7 con imágenes es un FUSOR sobre lienzo, no re-sintetiza la
+            // persona como Seedream/Qwen. Hereda la proporción de la imagen 1; con el
+            // FACE-CROP como imagen 1 (cabeza llena el frame) la salida sale cabezona.
+            // Solución (elección del usuario, verificada por A/B live): con CLONE
+            // (no-deepfake) el clon FULL-BODY va de imagen 1 (LIENZO que fija la
+            // escala cabeza↔cuerpo) y la cara de imagen 2 (identidad). No hay knob de
+            // API de peso de cara (confirmado vs OpenAPI). Cláusulas Wan-específicas
+            // re-indexadas — shared.ts (planExtraRefs) es cross-model y NO se toca.
+            // Deepfake NO reordena (reproduce la foto entera + swap, sin el collage).
+            const cloneRef =
+                wanHasClone && !ctx.deepfakeMode
+                    ? wanExtras.find((r) => r.role === 'clone')
+                    : undefined
+
+            let wanUrls: string[]
+            let wanAnchor: string
+            let logRoles: string
+
+            if (cloneRef) {
+                // ── REORDEN: [clon = img1 (lienzo/escala), cara = img2 (identidad), ...otros] ──
+                const otherExtras = wanExtras.filter(
+                    (r) => r.role !== 'clone',
+                )
+                wanUrls = [
+                    await ctx.uploadRef(
+                        cloneRef.base64,
+                        cloneRef.mimeType,
+                    ),
+                    await ctx.uploadRef(
+                        ctx.referenceImage.base64,
+                        ctx.referenceImage.mimeType,
+                    ),
+                ]
+                for (const r of otherExtras) {
+                    wanUrls.push(await ctx.uploadRef(r.base64, r.mimeType))
+                }
+                // Fuerza del clon (imagen 1) por tramo del slider (cloneWeight).
+                const cw = ctx.cloneWeight ?? 100
+                const cloneCanvasClause =
+                    cw >= 75
+                        ? `The FIRST attached image is the SCENE to recreate: reproduce its EXACT pose, body position, outfit, hands, objects held, framing, camera angle, lighting and setting, keeping the body's own natural head-to-body proportions. Its person is a FACELESS MANNEQUIN — do NOT take her face from this image; keep her FULLY dressed as shown, do NOT remove or reduce clothing. REMOVE overlaid stickers/watermarks/emojis.`
+                        : cw >= 50
+                          ? `The FIRST attached image is a STRONG reference: follow its outfit, pose, framing and setting closely (natural variation allowed), keeping the body's own natural head-to-body proportions. Its person is a FACELESS MANNEQUIN — do NOT take her face from it; keep her fully dressed. REMOVE overlaid stickers/watermarks/emojis.`
+                          : cw >= 25
+                            ? `The FIRST attached image is a MODERATE reference: keep its overall outfit style, general pose and setting at natural body proportions, but reinterpret the exact details and framing. Its person is a FACELESS MANNEQUIN — do NOT take her face from it; keep her dressed.`
+                            : `The FIRST attached image is a LOOSE style reference: take only its general vibe, outfit style and setting at natural body proportions; reinterpret pose, framing and details. Its person is a FACELESS MANNEQUIN — do NOT take her face from it.`
+                // La cara va de imagen 2 → integrada a escala natural del cuerpo.
+                const faceIdentityClause = ` The SECOND attached image is the SUBJECT'S FACE: give the person THIS exact face, facial features and likeness, rendered at natural scale and proportion for the body (a head that fits the shoulders and torso, not oversized).${faceFidelityClause}`
+                const bodyTextClause =
+                    !wanHasBody && ctx.bodyEmphasis
+                        ? ` Her real body is: ${ctx.bodyEmphasis}. Render her hips, glutes and thighs visibly fuller than a slim reference; keep the bust true to the spec, do NOT inflate the chest.`
+                        : ''
+                // Cláusulas de los extras restantes (body/asset/…), RE-INDEXADAS
+                // desde imagen 3 (clon=1, cara=2). Verbatim funcional de shared,
+                // duplicado a propósito porque shared asume cara=imagen 1.
+                const otherClauses = otherExtras
+                    .map((r, i) => {
+                        const n = i + 3
+                        switch (r.role) {
+                            case 'body':
+                                return `Image ${n} shows her real BODY — replicate its exact body shape, proportions, curves and build; IGNORE its clothing, pose, scene, lighting and background.`
+                            case 'bust':
+                                return `Image ${n} = her real BUST: copy ONLY its size, shape and fullness. IGNORE that image's clothing/nudity, pose, scene and lighting.`
+                            case 'glutes':
+                                return `Image ${n} = her real GLUTES and hips: copy ONLY their size, shape, fullness and projection. IGNORE that image's clothing/nudity, pose, scene and lighting.`
+                            case 'asset':
+                                return `Image ${n} = product ASSET. If a garment/accessory: dress her in this EXACT item. If a logo/graphic: print it faithfully ONLY where the scene text places it; NEVER add other logos, brand names or placeholder text.`
+                            case 'pose':
+                                return `Image ${n} = POSE reference: copy ONLY the body position — not its face, proportions or clothing.`
+                            case 'scene':
+                                return `Image ${n} = STYLE/SCENE reference: use for setting, lighting and composition; REPLACE its subject with her.`
+                            case 'place':
+                                return `Image ${n} = the LOCATION: place her in THIS exact environment; IGNORE any person in it.`
+                            default:
+                                return ''
+                        }
+                    })
+                    .filter(Boolean)
+                    .join(' ')
+                wanAnchor = `${cloneCanvasClause}${faceIdentityClause}${hairClause}${eyeClause}${bodyTextClause}${otherClauses ? ' ' + otherClauses : ''} Render EXACTLY ONE person in ONE natural pose. Follow the SCENE, POSE and ACTION described below EXACTLY.`
+                logRoles = `clone(img1), face(img2)${otherExtras.length > 0 ? ', ' + otherExtras.map((r) => r.role).join(', ') : ''}`
+            } else {
+                // ── Sin clone (o deepfake): cara = imagen 1 (byte-idéntico a antes) ──
+                wanUrls = [
+                    await ctx.uploadRef(
+                        ctx.referenceImage.base64,
+                        ctx.referenceImage.mimeType,
+                    ),
+                ]
+                for (const r of wanExtras) {
+                    wanUrls.push(await ctx.uploadRef(r.base64, r.mimeType))
+                }
+                const wanBodyClause = ctx.deepfakeMode
+                    ? ''
+                    : wanHasBody
+                      ? ` The SECOND attached image shows her real BODY — replicate its exact body shape, proportions, curves and build; do NOT take the body from the first image. IGNORE the second image's clothing, pose, scene, lighting and background — her outfit, pose and the scene come ONLY from ${wanHasClone ? 'the CLONE image and the text description' : 'the text description'}.`
+                      : ctx.bodyEmphasis
+                        ? ` Use the reference image ONLY for the face and identity — do NOT copy the body proportions from it: the person in the photo looks SLIMMER than the character really is. Her real body is: ${ctx.bodyEmphasis}. Her hips, glutes and thighs must be visibly FULLER and WIDER than in the reference photo — the narrow waist makes the hip curve obvious. Keep the bust true to the spec: do NOT inflate the chest or add overall body mass beyond it.`
+                        : ''
+                wanAnchor = `The person in the FIRST attached reference image is the subject — keep her EXACT face, facial features and likeness from that image.${faceFidelityClause}${wanBodyClause}${hairClause}${eyeClause}${wanExtraClauses} Follow the SCENE, POSE and ACTION described below EXACTLY.`
+                logRoles = `face${wanExtras.length > 0 ? ', ' + wanExtras.map((r) => r.role).join(', ') : ''}`
             }
             input.input_urls = wanUrls
-            const wanBodyClause = ctx.deepfakeMode
-                ? ''
-                : wanHasBody
-                  ? ` The SECOND attached image shows her real BODY — replicate its exact body shape, proportions, curves and build; do NOT take the body from the first image. IGNORE the second image's clothing, pose, scene, lighting and background — her outfit, pose and the scene come ONLY from ${wanHasClone ? 'the CLONE image and the text description' : 'the text description'}.`
-                  : ctx.bodyEmphasis
-                    ? ` Use the reference image ONLY for the face and identity — do NOT copy the body proportions from it: the person in the photo looks SLIMMER than the character really is. Her real body is: ${ctx.bodyEmphasis}. Her hips, glutes and thighs must be visibly FULLER and WIDER than in the reference photo — the narrow waist makes the hip curve obvious. Keep the bust true to the spec: do NOT inflate the chest or add overall body mass beyond it.`
-                    : ''
-            // FIX Wan-específico (cabeza grande / cara "pegada"): Wan reconcilia
-            // multi-ref tipo "collage" — pega el face-crop (imagen 1) sobre el
-            // cuerpo del clon (imagen 2) a mala escala y sin integrar piel/luz,
-            // dando cabeza agrandada y look composited. Seedream/Qwen re-sintetizan
-            // la persona completa y no lo sufren. Cláusula SOLO-positiva (el i2i de
-            // Wan ignora/invierte negaciones al no tener negative_prompt) que fija
-            // la escala cabeza↔hombros y armoniza piel/luz/ángulo con el cuerpo del
-            // clon. Solo con clone (cuando ocurre el pegado face-crop+clone-body) y
-            // sin nombrar accesorios (para no re-tocar la reancla de tiara/collar).
-            const wanBlendClause = wanHasClone
-                ? ` Render image 1's face at true head-to-shoulders scale on image 2's body, matching that body's skin tone, lighting and camera angle so the head reads as one naturally photographed person.`
-                : ''
-            const wanAnchor = `The person in the FIRST attached reference image is the subject — keep her EXACT face, facial features and likeness from that image.${faceFidelityClause}${wanBodyClause}${hairClause}${eyeClause}${wanExtraClauses}${wanBlendClause} Follow the SCENE, POSE and ACTION described below EXACTLY.`
             const wanSceneRoom = Math.max(250, 2750 - wanAnchor.length)
             let wanSceneText = String(input.prompt)
             if (wanHasClone) {
@@ -110,7 +184,7 @@ async function build(ctx: ImageRouteContext): Promise<KieImageRequest> {
             }
             input.prompt = `${wanAnchor} ${wanSceneText}`
             console.log(
-                `[KIE] Wan 2.7 Image with ${wanUrls.length} ref(s) via input_urls (roles: face${wanExtras.length > 0 ? ', ' + wanExtras.map((r) => r.role).join(', ') : ''}${wanBodyClause && !wanHasBody ? ' + body-text anchor' : ''}${hairClause ? ' + hair override' : ''})`,
+                `[KIE] Wan 2.7 Image with ${wanUrls.length} ref(s) via input_urls (roles: ${logRoles}${hairClause ? ' + hair override' : ''})`,
             )
         } catch (e) {
             console.warn('[KIE] ref upload failed, staying text-only:', e)
