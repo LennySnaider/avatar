@@ -94,7 +94,9 @@ export function buildBodySheetPrompt(m: PhysicalMeasurements): string {
     // un ratio implícito. Solo si las tres están presentes.
     const measurements =
         m.bust && m.waist && m.hips
-            ? `Exact body measurements — reproduce them literally and faithfully, NOT an idealised average: bust ${m.bust}cm, waist ${m.waist}cm, hips ${m.hips}cm — a clearly defined waist with bust and hips visibly fuller than the waist.`
+            ? `Exact body proportions — reproduce them literally, NOT an idealised average: bust ${m.bust}cm, waist ${m.waist}cm, hips ${m.hips}cm${
+                  m.shoulders ? `, shoulders ${m.shoulders}cm wide` : ''
+              }. The waist is the reference for the silhouette; render the bust, hips and shoulders relative to it exactly as specified.`
             : ''
 
     return [
