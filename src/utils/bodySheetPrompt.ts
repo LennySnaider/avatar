@@ -48,7 +48,7 @@ export function buildBodySheetPrompt(m: PhysicalMeasurements): string {
             : '',
         measurements,
         'Standing in a neutral relaxed A-pose, arms slightly away from the body, feet shoulder-width apart.',
-        'Wearing a simple plain micro bikini (matte solid color), no accessories, no props.',
+        'Wearing a minimal skin-toned nude-beige TWO-PIECE micro bikini (a separate bra top and bikini bottom) that closely matches her skin colour, so her full body shape, waist, hips, glutes and curves read clearly. It must be a two-piece bikini — NOT a one-piece swimsuit or bodysuit. No accessories, no props.',
         'Plain seamless light-gray studio background, soft even frontal lighting, no harsh shadows.',
         'The body shape, bust, waist, hips, glutes and thighs must be IDENTICAL across all three views and must match the measurements and body shape described above.',
         'Full body visible head-to-toe in every view, whole figure in frame, no cropping.',
