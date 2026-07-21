@@ -40,7 +40,8 @@ export function describeShapeAndBuild(m: PhysicalMeasurements): string {
     // Comparativa de intensidad de cintura (refuerza la forma con el ratio real).
     if (m.waist && m.hips) {
         const whr = m.waist / m.hips
-        if (whr <= 0.68) parts.push('extremely small, dramatically cinched waist')
+        if (whr <= 0.68)
+            parts.push('extremely small, dramatically cinched waist')
         else if (whr <= 0.78) parts.push('clearly defined narrow waist')
     }
     // Torso/piernas.
@@ -69,7 +70,10 @@ export function getBodyDescriptors(m: PhysicalMeasurements): string {
 
     // Upper torso proportions
     if (m.bust >= 100) {
-        descriptors.push('fuller upper silhouette', 'generous torso proportions')
+        descriptors.push(
+            'fuller upper silhouette',
+            'generous torso proportions',
+        )
     } else if (m.bust >= 90) {
         descriptors.push('balanced upper proportions', 'well-defined torso')
     } else if (m.bust <= 80) {
@@ -78,7 +82,11 @@ export function getBodyDescriptors(m: PhysicalMeasurements): string {
 
     // Midsection definition
     if (m.waist <= 60) {
-        descriptors.push('very defined waistline', 'narrow midsection', 'cinched waist')
+        descriptors.push(
+            'very defined waistline',
+            'narrow midsection',
+            'cinched waist',
+        )
     } else if (m.waist <= 68) {
         descriptors.push('defined waist', 'tapered midsection')
     } else if (m.waist >= 80) {
@@ -87,7 +95,11 @@ export function getBodyDescriptors(m: PhysicalMeasurements): string {
 
     // Lower body proportions
     if (m.hips >= 100) {
-        descriptors.push('wide lower frame', 'generous hip width', 'full lower silhouette')
+        descriptors.push(
+            'wide lower frame',
+            'generous hip width',
+            'full lower silhouette',
+        )
     } else if (m.hips >= 92) {
         descriptors.push('proportionate hips', 'balanced lower body')
     } else if (m.hips <= 85) {
@@ -96,25 +108,38 @@ export function getBodyDescriptors(m: PhysicalMeasurements): string {
 
     // Overall figure type (derived from ratios)
     if (hipWaistRatio >= 1.5 && bustWaistRatio >= 1.45) {
-        descriptors.push('classic hourglass silhouette', 'defined waist-to-hip ratio')
+        descriptors.push(
+            'classic hourglass silhouette',
+            'defined waist-to-hip ratio',
+        )
     } else if (hipWaistRatio >= 1.35 || bustWaistRatio >= 1.35) {
         descriptors.push('hourglass body type', 'proportionate figure')
     } else if (hipWaistRatio <= 1.15 && bustWaistRatio <= 1.15) {
-        descriptors.push('athletic body type', 'rectangular silhouette', 'straight figure')
+        descriptors.push(
+            'athletic body type',
+            'rectangular silhouette',
+            'straight figure',
+        )
     } else if (hipWaistRatio > bustWaistRatio + 0.15) {
         descriptors.push('pear body type', 'hip-emphasized proportions')
     } else if (bustWaistRatio > hipWaistRatio + 0.15) {
-        descriptors.push('inverted triangle body type', 'shoulder-emphasized proportions')
+        descriptors.push(
+            'inverted triangle body type',
+            'shoulder-emphasized proportions',
+        )
     }
 
     // Body-mass anchor — fights the diffusion-model default of rendering a tiny
     // waist as an underweight fashion body. Only added when the specs imply a
     // fuller figure (full bust OR full hips OR a curvy/plus body type); slim /
     // petite / athletic avatars are intentionally left lean.
-    const wantsFuller =
-        m.bust >= 90 || m.hips >= 95 || (m.build ?? 3) >= 4
+    const wantsFuller = m.bust >= 90 || m.hips >= 95 || (m.build ?? 3) >= 4
     if (wantsFuller) {
-        descriptors.push('healthy natural body weight', 'soft feminine curves with natural body fat', 'NOT skinny or underweight')
+        descriptors.push(
+            'healthy natural body weight',
+            'soft feminine curves with natural body fat',
+            'NOT skinny or underweight',
+        )
     }
 
     // Leg shape (explicit selector wins; otherwise nothing is added here).
@@ -181,23 +206,41 @@ export const THIGHS_LEVEL_PHRASE: Record<number, string> = {
 // buildCurvesEmphasis y comparten su gating permisivo.
 export const GLUTES_SHAPE_PHRASE: Record<string, string> = {
     square: 'square-shaped glutes — straight vertical line from waist to glutes with little side curve',
-    'v-shape': 'V-shaped glutes — fuller at the top narrowing downward, slim hips with little lower fullness',
-    'a-shape': 'A-shaped pear glutes — narrow at the top and widest at the bottom, volume concentrated low on the glutes and hips',
+    'v-shape':
+        'V-shaped glutes — fuller at the top narrowing downward, slim hips with little lower fullness',
+    'a-shape':
+        'A-shaped pear glutes — narrow at the top and widest at the bottom, volume concentrated low on the glutes and hips',
     round: 'perfectly round glutes — full and balanced in every direction, symmetric youthful shape',
     heart: 'heart-shaped glutes — voluminous curvy lower part tapering up to a narrow waist, upside-down-heart silhouette with wide hips',
 }
 
 export const BUST_SHAPE_PHRASE: Record<string, string> = {
     round: 'perfectly round breasts — even fullness in every direction with centered nipples, youthful round shape',
-    athletic: 'athletic breasts — round firm base with a toned muscular look and less tissue volume',
-    conical: 'conical breasts — rounded base tapering toward the nipple in a cone shape',
-    teardrop: 'teardrop pear-shaped breasts — slimmer flatter upper pole with fuller lower quadrants, natural sloped profile',
-    tuberous: 'tubular breasts — narrow constricted base, wide spacing between the breasts, prominent areolas',
+    athletic:
+        'athletic breasts — round firm base with a toned muscular look and less tissue volume',
+    conical:
+        'conical breasts — rounded base tapering toward the nipple in a cone shape',
+    teardrop:
+        'teardrop pear-shaped breasts — slimmer flatter upper pole with fuller lower quadrants, natural sloped profile',
+    tuberous:
+        'tubular breasts — narrow constricted base, wide spacing between the breasts, prominent areolas',
 }
 
 // Listas para los chips de la UI (orden de despliegue)
-export const GLUTES_SHAPES = ['square', 'v-shape', 'a-shape', 'round', 'heart'] as const
-export const BUST_SHAPES = ['round', 'athletic', 'conical', 'teardrop', 'tuberous'] as const
+export const GLUTES_SHAPES = [
+    'square',
+    'v-shape',
+    'a-shape',
+    'round',
+    'heart',
+] as const
+export const BUST_SHAPES = [
+    'round',
+    'athletic',
+    'conical',
+    'teardrop',
+    'tuberous',
+] as const
 
 /**
  * COHERENCIA ANATÓMICA glúteos→muslos: busto y glúteos pueden ir
@@ -365,28 +408,30 @@ export function getSkinToneDescription(skinTone?: number): string {
 export function getHairColorDescription(hairColor?: string): string {
     if (!hairColor) return ''
     const descriptions: Record<string, string> = {
-        'black': 'jet black hair, dark raven colored hair',
+        black: 'jet black hair, dark raven colored hair',
         'dark-brown': 'dark brown hair, deep brunette hair',
-        'brown': 'brown hair, medium brunette hair',
+        brown: 'brown hair, medium brunette hair',
         'light-brown': 'light brown hair, chestnut colored hair',
-        'dark-blonde': 'dark blonde hair, dirty blonde hair, honey colored hair',
-        'blonde': 'blonde hair, golden blonde hair',
-        'platinum-blonde': 'platinum blonde hair, very light blonde, almost white hair',
-        'red': 'red hair, deep red colored hair',
-        'auburn': 'auburn hair, reddish brown hair',
-        'ginger': 'ginger hair, bright orange-red hair, copper colored hair',
-        'gray': 'gray hair, salt and pepper hair',
-        'silver': 'silver hair, metallic gray hair',
-        'white': 'white hair, snow white hair',
+        'dark-blonde':
+            'dark blonde hair, dirty blonde hair, honey colored hair',
+        blonde: 'blonde hair, golden blonde hair',
+        'platinum-blonde':
+            'platinum blonde hair, very light blonde, almost white hair',
+        red: 'red hair, deep red colored hair',
+        auburn: 'auburn hair, reddish brown hair',
+        ginger: 'ginger hair, bright orange-red hair, copper colored hair',
+        gray: 'gray hair, salt and pepper hair',
+        silver: 'silver hair, metallic gray hair',
+        white: 'white hair, snow white hair',
         // Fashion colors
-        'purple': 'vibrant purple hair, violet dyed hair',
-        'pink': 'pink hair, rose pink dyed hair',
-        'blue': 'blue hair, electric blue dyed hair',
-        'green': 'green hair, emerald green dyed hair',
-        'teal': 'teal hair, blue-green dyed hair',
-        'lavender': 'lavender hair, pastel purple dyed hair',
+        purple: 'vibrant purple hair, violet dyed hair',
+        pink: 'pink hair, rose pink dyed hair',
+        blue: 'blue hair, electric blue dyed hair',
+        green: 'green hair, emerald green dyed hair',
+        teal: 'teal hair, blue-green dyed hair',
+        lavender: 'lavender hair, pastel purple dyed hair',
         'rose-gold': 'rose gold hair, pinkish blonde dyed hair',
-        'burgundy': 'burgundy hair, deep wine red dyed hair',
+        burgundy: 'burgundy hair, deep wine red dyed hair',
     }
     // Free-text custom colors fall through to a "<name> hair" description.
     return descriptions[hairColor] || hairColor.replace(/-/g, ' ') + ' hair'
@@ -401,24 +446,35 @@ export function getEyeColorDescription(eyeColor?: string): string {
     if (!eyeColor) return ''
     const descriptions: Record<string, string> = {
         'dark-brown': 'dark brown eyes',
-        'brown': 'warm brown eyes',
-        'amber': 'amber golden-brown eyes',
-        'hazel': 'hazel eyes, green-brown blend',
-        'green': 'green eyes',
-        'blue': 'blue eyes',
+        brown: 'warm brown eyes',
+        amber: 'amber golden-brown eyes',
+        hazel: 'hazel eyes, green-brown blend',
+        green: 'green eyes',
+        blue: 'blue eyes',
         'light-blue': 'light ice-blue eyes',
-        'gray': 'gray eyes',
+        gray: 'gray eyes',
         // Fashion / colored contacts
-        'violet': 'violet colored contact-lens eyes',
-        'aqua': 'aqua turquoise colored eyes',
-        'red': 'red colored contact-lens eyes',
+        violet: 'violet colored contact-lens eyes',
+        aqua: 'aqua turquoise colored eyes',
+        red: 'red colored contact-lens eyes',
     }
     return descriptions[eyeColor] || eyeColor.replace(/-/g, ' ') + ' eyes'
 }
 
 const NATURAL_HAIR_COLORS = new Set([
-    'black', 'dark-brown', 'brown', 'light-brown', 'dark-blonde', 'blonde',
-    'platinum-blonde', 'red', 'auburn', 'ginger', 'gray', 'silver', 'white',
+    'black',
+    'dark-brown',
+    'brown',
+    'light-brown',
+    'dark-blonde',
+    'blonde',
+    'platinum-blonde',
+    'red',
+    'auburn',
+    'ginger',
+    'gray',
+    'silver',
+    'white',
 ])
 
 /**

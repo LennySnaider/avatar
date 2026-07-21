@@ -754,13 +754,11 @@ const AvatarEditDrawer = ({
                             {/* Body Lab — justo debajo de cara/ángulos */}
                             <Card className="p-4">
                                 <BodyLab
-                                    models={PERMISSIVE_BODY_MODELS.map(
-                                        (p) => ({
-                                            id: p.id,
-                                            name: p.name,
-                                            model: p.model,
-                                        }),
-                                    )}
+                                    models={PERMISSIVE_BODY_MODELS.map((p) => ({
+                                        id: p.id,
+                                        name: p.name,
+                                        model: p.model,
+                                    }))}
                                     selectedModel={selectedBodyModel}
                                     onSelectModel={setSelectedBodyModel}
                                     isGenerating={isGeneratingBody}

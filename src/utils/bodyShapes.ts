@@ -44,7 +44,9 @@ export const SHAPE_PRESETS: Record<
  * para respetar ajustes manuales). Heurística por ratios; los hombros caen a
  * `bust` si no están seteados.
  */
-export function deriveShapeFromMeasurements(m: PhysicalMeasurements): BodyShape {
+export function deriveShapeFromMeasurements(
+    m: PhysicalMeasurements,
+): BodyShape {
     const sh = m.shoulders ?? m.bust
     const { bust: b, waist: w, hips: h } = m
     if (!b || !w || !h) return 'hourglass'

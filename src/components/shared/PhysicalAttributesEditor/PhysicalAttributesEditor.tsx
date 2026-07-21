@@ -224,11 +224,7 @@ const PhysicalAttributesEditor = ({
                         max={5}
                     />
                     <p className="text-[10px] text-gray-400 mt-0.5">
-                        {
-                            BUILD_LEVEL_SHORT_LABEL[
-                                measurements.build ?? 3
-                            ]
-                        }
+                        {BUILD_LEVEL_SHORT_LABEL[measurements.build ?? 3]}
                     </p>
                 </div>
                 <MeasurementSlider

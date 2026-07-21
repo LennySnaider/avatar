@@ -63,9 +63,7 @@ const BodyLab = (props: BodyLabProps) => {
                     className="w-full h-9 px-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-transparent text-sm"
                     value={props.selectedModel}
                     onChange={(e) => props.onSelectModel(e.target.value)}
-                    disabled={
-                        props.models.length === 0 || props.isGenerating
-                    }
+                    disabled={props.models.length === 0 || props.isGenerating}
                 >
                     {props.models.length === 0 ? (
                         <option value="">
@@ -126,9 +124,7 @@ const BodyLab = (props: BodyLabProps) => {
             </div>
 
             {props.disabledReason && (
-                <p className="text-xs text-amber-500">
-                    {props.disabledReason}
-                </p>
+                <p className="text-xs text-amber-500">{props.disabledReason}</p>
             )}
         </div>
     )
