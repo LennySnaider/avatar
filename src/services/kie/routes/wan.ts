@@ -55,34 +55,24 @@ async function build(ctx: ImageRouteContext): Promise<KieImageRequest> {
                 ctx.deepfakeMode,
                 ctx.cloneWeight,
             )
-            // FIX "cabeza grande" (raíz ARQUITECTÓNICA, no prosa — el texto falló
-            // 2×): Wan 2.7 con imágenes es un FUSOR sobre lienzo, no re-sintetiza la
-            // persona como Seedream/Qwen. Hereda la proporción de la imagen 1.
-            // REORDEN SOLO cuando el clon NO se pudo enmascarar (cara rival presente):
-            //  - clon ENMASCARADO (sin cara rival, caso común bikini/moda) → orden
-            //    NORMAL (cara=img1): Wan renderiza natural, sin cabezón y sin look
-            //    "pegado" (era el estado perfecto confirmado por el usuario).
-            //  - clon SIN enmascarar (explícito, Gemini refusó la detección) → la
-            //    cara rival en img1 hace que Wan salga cabezón → se reordena: clon
-            //    full-body de img1 (LIENZO que fija la escala cabeza↔cuerpo) + cara
-            //    de img2 (identidad). Acepta un face-swap algo "pegado" a cambio de
-            //    matar el cabezón, SOLO en el caso que no se puede enmascarar.
-            // No hay knob de API de peso de cara (confirmado vs OpenAPI). Cláusulas
-            // Wan-específicas re-indexadas — shared.ts (planExtraRefs) es cross-model
-            // y NO se toca. Deepfake NO reordena (reproduce la foto entera + swap).
+            // CLONE en Wan = método de QWEN (su luz sale PERFECTA, ref del usuario):
+            // Wan 2.7 con imágenes es un FUSOR sobre lienzo. Con la cara de img1 salía
+            // cabezón + luz mala (importa la luz del face-ref). Fix portado de qwen.ts:
+            // clon = imagen 1 (LIENZO, fija escala + APORTA la luz de la escena) + cara
+            // = imagen 2, con framing de FACE-SWAP "keep EVERYTHING from image 1, swap
+            // ONLY the face, RELIGHT it to the scene". Así la cara se re-ilumina a la
+            // luz del lienzo → sin cabezón y sin mismatch. Cláusulas Wan re-indexadas
+            // (shared.ts/planExtraRefs es cross-model, NO se toca). Deepfake NO reordena.
             //
-            // RELIGHT (intento): el tell de "no engaña al cerebro" es la cara con
-            // su propia luz sobre una escena de otra luz (más notorio en el reorden/
-            // face-swap). Cláusula SOLO-positiva (Wan ignora negaciones) que pide
-            // igualar la luz de la cara a la de la escena. Solo con clone.
-            const wanRelightClause = wanHasClone
-                ? ` Light her face from the SAME side as the scene's main light source (window, lamp or sun): the side of her face toward that light is bright, the far side falls into soft shadow, matching the exact direction, colour temperature and brightness of the light on her body and the background. If her head is turned away from the light, her face is correspondingly shadowed — one consistent light for the whole photo.`
-                : ''
+            // APPROACH DE QWEN (la luz sale PERFECTA en Qwen, referencia del
+            // usuario): clone = imagen 1 (LIENZO) + cara = imagen 2, con framing de
+            // FACE-SWAP "keep EVERYTHING from image 1 (incl. su LUZ), swap ONLY the
+            // face, RELIGHT it to the scene". Qwen es editor y re-ilumina la cara a
+            // la luz del lienzo → cero mismatch. Se aplica a TODO clone (enmascarado
+            // o no — el swap reemplaza la cara del lienzo igual). Deepfake NO reordena.
             const cloneRef =
                 wanHasClone && !ctx.deepfakeMode
-                    ? wanExtras.find(
-                          (r) => r.role === 'clone' && !r.masked,
-                      )
+                    ? wanExtras.find((r) => r.role === 'clone')
                     : undefined
 
             let wanUrls: string[]
@@ -107,18 +97,19 @@ async function build(ctx: ImageRouteContext): Promise<KieImageRequest> {
                 for (const r of otherExtras) {
                     wanUrls.push(await ctx.uploadRef(r.base64, r.mimeType))
                 }
-                // Fuerza del clon (imagen 1) por tramo del slider (cloneWeight).
+                // Framing FACE-SWAP estilo Qwen (mantener TODO de la imagen 1,
+                // incluida su LUZ; cambiar SOLO la cara). Fuerza por tramo del slider.
                 const cw = ctx.cloneWeight ?? 100
                 const cloneCanvasClause =
                     cw >= 75
-                        ? `The FIRST attached image is the SCENE to recreate: reproduce its EXACT pose, body position, outfit, hands, objects held, framing, camera angle, lighting and setting, keeping the body's own natural head-to-body proportions. Its person is a FACELESS MANNEQUIN — do NOT take her face from this image; keep her FULLY dressed as shown, do NOT remove or reduce clothing. REMOVE overlaid stickers/watermarks/emojis.`
+                        ? `The FIRST attached image is the original photo — keep it EXACTLY: the same body, build, outfit (every garment piece, NO restyling or merging), pose, hands, objects held, framing, camera angle, background, setting AND its lighting, shadows and colour. Do NOT redraw or re-imagine the scene; only edit the face. Keep her FULLY dressed as shown. REMOVE overlaid stickers/watermarks/emojis.`
                         : cw >= 50
-                          ? `The FIRST attached image is a STRONG reference: follow its outfit, pose, framing and setting closely (natural variation allowed), keeping the body's own natural head-to-body proportions. Its person is a FACELESS MANNEQUIN — do NOT take her face from it; keep her fully dressed. REMOVE overlaid stickers/watermarks/emojis.`
+                          ? `The FIRST attached image is the original photo — keep its outfit, pose, hands, framing, background, setting AND lighting close to it (minor natural variation allowed); only edit the face. REMOVE overlaid stickers/watermarks/emojis.`
                           : cw >= 25
-                            ? `The FIRST attached image is a MODERATE reference: keep its overall outfit style, general pose and setting at natural body proportions, but reinterpret the exact details and framing. Its person is a FACELESS MANNEQUIN — do NOT take her face from it; keep her dressed.`
-                            : `The FIRST attached image is a LOOSE style reference: take only its general vibe, outfit style and setting at natural body proportions; reinterpret pose, framing and details. Its person is a FACELESS MANNEQUIN — do NOT take her face from it.`
-                // La cara va de imagen 2 → integrada a escala natural del cuerpo.
-                const faceIdentityClause = ` The SECOND attached image is the SUBJECT'S FACE: give the person THIS exact face, facial features and likeness, rendered at natural scale and proportion for the body (a head that fits the shoulders and torso, not oversized).${faceFidelityClause}`
+                            ? `Use the FIRST attached image as the basis for the outfit, pose, setting and lighting, reinterpreting the exact details; edit the face.`
+                            : `Take loose inspiration from the FIRST attached image's outfit style, setting and mood; edit the face.`
+                // Swap SOLO la cara desde imagen 2 + RELIGHT a la luz del lienzo.
+                const faceIdentityClause = ` Swap ONLY the FACE: give her the SECOND attached image's face — exact features, bone structure, freckles, eye colour and likeness — NEVER the first image's original face. Keep her hair and body as in the first image, with her head at natural head-to-body proportion (a head that fits the shoulders and torso, not oversized).${faceFidelityClause} RELIGHT the swapped face to match the FIRST image's OWN light: the same direction, colour temperature, brightness and shadows as the scene casts on her — if her head is turned away from the light source, her face is correspondingly shadowed — so the face looks naturally photographed in that scene, not lit separately.`
                 const bodyTextClause =
                     !wanHasBody && ctx.bodyEmphasis
                         ? ` Her real body is: ${ctx.bodyEmphasis}. Render her hips, glutes and thighs visibly fuller than a slim reference; keep the bust true to the spec, do NOT inflate the chest.`
@@ -150,7 +141,7 @@ async function build(ctx: ImageRouteContext): Promise<KieImageRequest> {
                     })
                     .filter(Boolean)
                     .join(' ')
-                wanAnchor = `${cloneCanvasClause}${faceIdentityClause}${hairClause}${eyeClause}${bodyTextClause}${otherClauses ? ' ' + otherClauses : ''}${wanRelightClause} Render EXACTLY ONE person in ONE natural pose. Follow the SCENE, POSE and ACTION described below EXACTLY.`
+                wanAnchor = `${cloneCanvasClause}${faceIdentityClause}${hairClause}${eyeClause}${bodyTextClause}${otherClauses ? ' ' + otherClauses : ''} Render EXACTLY ONE person in ONE natural pose. Follow the SCENE, POSE and ACTION described below EXACTLY.`
                 logRoles = `clone(img1), face(img2)${otherExtras.length > 0 ? ', ' + otherExtras.map((r) => r.role).join(', ') : ''}`
             } else {
                 // ── Sin clone (o deepfake): cara = imagen 1 (byte-idéntico a antes) ──
@@ -170,7 +161,7 @@ async function build(ctx: ImageRouteContext): Promise<KieImageRequest> {
                       : ctx.bodyEmphasis
                         ? ` Use the reference image ONLY for the face and identity — do NOT copy the body proportions from it: the person in the photo looks SLIMMER than the character really is. Her real body is: ${ctx.bodyEmphasis}. Her hips, glutes and thighs must be visibly FULLER and WIDER than in the reference photo — the narrow waist makes the hip curve obvious. Keep the bust true to the spec: do NOT inflate the chest or add overall body mass beyond it.`
                         : ''
-                wanAnchor = `The person in the FIRST attached reference image is the subject — keep her EXACT face, facial features and likeness from that image.${faceFidelityClause}${wanBodyClause}${hairClause}${eyeClause}${wanExtraClauses}${wanRelightClause} Follow the SCENE, POSE and ACTION described below EXACTLY.`
+                wanAnchor = `The person in the FIRST attached reference image is the subject — keep her EXACT face, facial features and likeness from that image.${faceFidelityClause}${wanBodyClause}${hairClause}${eyeClause}${wanExtraClauses} Follow the SCENE, POSE and ACTION described below EXACTLY.`
                 logRoles = `face${wanExtras.length > 0 ? ', ' + wanExtras.map((r) => r.role).join(', ') : ''}`
             }
             input.input_urls = wanUrls
