@@ -1607,6 +1607,10 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                               ? {
                                     generation_type: 'clone',
                                     clone_weight: cloneWeight,
+                                    // Diagnóstico: ¿se pudo difuminar la cara del
+                                    // clon? true → Wan usa orden normal (relightea
+                                    // bien); false → Gemini refusó, Wan reordena.
+                                    clone_masked: cloneFaceMasked,
                                 }
                               : undefined
 

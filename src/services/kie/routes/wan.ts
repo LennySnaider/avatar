@@ -70,6 +70,14 @@ async function build(ctx: ImageRouteContext): Promise<KieImageRequest> {
             // No hay knob de API de peso de cara (confirmado vs OpenAPI). Cláusulas
             // Wan-específicas re-indexadas — shared.ts (planExtraRefs) es cross-model
             // y NO se toca. Deepfake NO reordena (reproduce la foto entera + swap).
+            //
+            // RELIGHT (intento): el tell de "no engaña al cerebro" es la cara con
+            // su propia luz sobre una escena de otra luz (más notorio en el reorden/
+            // face-swap). Cláusula SOLO-positiva (Wan ignora negaciones) que pide
+            // igualar la luz de la cara a la de la escena. Solo con clone.
+            const wanRelightClause = wanHasClone
+                ? ` Light her face with the scene's OWN light — the same direction, colour temperature, brightness and shadows as the body and background, so her face looks photographed under one single light with the rest of the image, not lit separately.`
+                : ''
             const cloneRef =
                 wanHasClone && !ctx.deepfakeMode
                     ? wanExtras.find(
@@ -142,7 +150,7 @@ async function build(ctx: ImageRouteContext): Promise<KieImageRequest> {
                     })
                     .filter(Boolean)
                     .join(' ')
-                wanAnchor = `${cloneCanvasClause}${faceIdentityClause}${hairClause}${eyeClause}${bodyTextClause}${otherClauses ? ' ' + otherClauses : ''} Render EXACTLY ONE person in ONE natural pose. Follow the SCENE, POSE and ACTION described below EXACTLY.`
+                wanAnchor = `${cloneCanvasClause}${faceIdentityClause}${hairClause}${eyeClause}${bodyTextClause}${otherClauses ? ' ' + otherClauses : ''}${wanRelightClause} Render EXACTLY ONE person in ONE natural pose. Follow the SCENE, POSE and ACTION described below EXACTLY.`
                 logRoles = `clone(img1), face(img2)${otherExtras.length > 0 ? ', ' + otherExtras.map((r) => r.role).join(', ') : ''}`
             } else {
                 // ── Sin clone (o deepfake): cara = imagen 1 (byte-idéntico a antes) ──
@@ -162,7 +170,7 @@ async function build(ctx: ImageRouteContext): Promise<KieImageRequest> {
                       : ctx.bodyEmphasis
                         ? ` Use the reference image ONLY for the face and identity — do NOT copy the body proportions from it: the person in the photo looks SLIMMER than the character really is. Her real body is: ${ctx.bodyEmphasis}. Her hips, glutes and thighs must be visibly FULLER and WIDER than in the reference photo — the narrow waist makes the hip curve obvious. Keep the bust true to the spec: do NOT inflate the chest or add overall body mass beyond it.`
                         : ''
-                wanAnchor = `The person in the FIRST attached reference image is the subject — keep her EXACT face, facial features and likeness from that image.${faceFidelityClause}${wanBodyClause}${hairClause}${eyeClause}${wanExtraClauses} Follow the SCENE, POSE and ACTION described below EXACTLY.`
+                wanAnchor = `The person in the FIRST attached reference image is the subject — keep her EXACT face, facial features and likeness from that image.${faceFidelityClause}${wanBodyClause}${hairClause}${eyeClause}${wanExtraClauses}${wanRelightClause} Follow the SCENE, POSE and ACTION described below EXACTLY.`
                 logRoles = `face${wanExtras.length > 0 ? ', ' + wanExtras.map((r) => r.role).join(', ') : ''}`
             }
             input.input_urls = wanUrls

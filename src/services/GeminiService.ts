@@ -1246,50 +1246,59 @@ export async function detectFaceBox(image: {
 }): Promise<{ x0: number; y0: number; x1: number; y1: number } | null> {
     const apiKey = getApiKey()
     const ai = new GoogleGenAI({ apiKey })
-    try {
-        const response = await ai.models.generateContent({
-            model: 'gemini-2.5-flash',
-            config: { safetySettings: ANALYSIS_SAFETY_SETTINGS },
-            contents: {
-                parts: [
-                    {
-                        inlineData: {
-                            mimeType: image.mimeType,
-                            data: cleanBase64Data(image.base64),
+    // Prompts en orden de más específico → más laxo. Se prueba el 1º; si no
+    // devuelve una caja válida (Gemini titubeó, cara girada/de perfil que "no
+    // vio", o {none} espurio), se reintenta con el 2º (detecta la CABEZA aunque
+    // esté girada/parcial). Enmascarar de más es inocuo (padding asimétrico), pero
+    // NO enmascarar manda el clon con cara rival y arruina a Wan → priorizar hit.
+    const prompts = [
+        `Find the LARGEST human FACE in this image (just the face: hairline/forehead down to chin, ear to ear). Return ONLY compact JSON with its tight bounding box normalized 0-1: {"x0":<left>,"y0":<top>,"x1":<right>,"y1":<bottom>} where x is left→right and y is top→bottom. If there is genuinely NO human face or head anywhere, return exactly {"none":true}. No prose, no markdown, no code fences.`,
+        `Locate the person's HEAD region in this image — the face-and-head area EVEN IF the head is turned away, seen in profile, tilted, or only partially visible (from the top of the hair/forehead down to the chin/jaw, across both cheeks and ears). This is for a privacy blur, so err toward INCLUDING it. Return ONLY compact JSON: {"x0":<left>,"y0":<top>,"x1":<right>,"y1":<bottom>} normalized 0-1 (x left→right, y top→bottom). Only return {"none":true} if there is truly no head anywhere. No prose, no markdown.`,
+    ]
+    for (const prompt of prompts) {
+        try {
+            const response = await ai.models.generateContent({
+                model: 'gemini-2.5-flash',
+                config: { safetySettings: ANALYSIS_SAFETY_SETTINGS },
+                contents: {
+                    parts: [
+                        {
+                            inlineData: {
+                                mimeType: image.mimeType,
+                                data: cleanBase64Data(image.base64),
+                            },
                         },
-                    },
-                    {
-                        text: `Find the LARGEST human FACE in this image (just the face: hairline/forehead down to chin, ear to ear). Return ONLY compact JSON with its tight bounding box normalized 0-1: {"x0":<left>,"y0":<top>,"x1":<right>,"y1":<bottom>} where x is left→right and y is top→bottom. If there is NO visible human face, return exactly {"none":true}. No prose, no markdown, no code fences.`,
-                    },
-                ],
-            },
-        })
-        const text = response.text?.trim() ?? ''
-        const match = text.match(/\{[\s\S]*\}/)
-        if (!match) return null
-        const obj = JSON.parse(match[0]) as Record<string, unknown>
-        if (obj.none) return null
-        const nums = ['x0', 'y0', 'x1', 'y1'].map((k) => Number(obj[k]))
-        if (nums.some((v) => !Number.isFinite(v))) return null
-        let [x0, y0, x1, y1] = nums
-        // Algunos modelos devuelven 0-100 o 0-1000 en vez de 0-1.
-        const maxv = Math.max(x0, y0, x1, y1)
-        const scale = maxv > 100 ? 1000 : maxv > 1 ? 100 : 1
-        x0 /= scale
-        y0 /= scale
-        x1 /= scale
-        y1 /= scale
-        if (x1 <= x0 || y1 <= y0) return null
-        return {
-            x0: Math.max(0, Math.min(1, x0)),
-            y0: Math.max(0, Math.min(1, y0)),
-            x1: Math.max(0, Math.min(1, x1)),
-            y1: Math.max(0, Math.min(1, y1)),
+                        { text: prompt },
+                    ],
+                },
+            })
+            const text = response.text?.trim() ?? ''
+            const match = text.match(/\{[\s\S]*\}/)
+            if (!match) continue
+            const obj = JSON.parse(match[0]) as Record<string, unknown>
+            if (obj.none) continue
+            const nums = ['x0', 'y0', 'x1', 'y1'].map((k) => Number(obj[k]))
+            if (nums.some((v) => !Number.isFinite(v))) continue
+            let [x0, y0, x1, y1] = nums
+            // Algunos modelos devuelven 0-100 o 0-1000 en vez de 0-1.
+            const maxv = Math.max(x0, y0, x1, y1)
+            const scale = maxv > 100 ? 1000 : maxv > 1 ? 100 : 1
+            x0 /= scale
+            y0 /= scale
+            x1 /= scale
+            y1 /= scale
+            if (x1 <= x0 || y1 <= y0) continue
+            return {
+                x0: Math.max(0, Math.min(1, x0)),
+                y0: Math.max(0, Math.min(1, y0)),
+                x1: Math.max(0, Math.min(1, x1)),
+                y1: Math.max(0, Math.min(1, y1)),
+            }
+        } catch (e) {
+            console.warn('[detectFaceBox] attempt failed:', e)
         }
-    } catch (e) {
-        console.warn('[detectFaceBox] failed:', e)
-        return null
     }
+    return null
 }
 
 /** Non-blocking fallback when Gemini won't describe a reference (safety block). */
