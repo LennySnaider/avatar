@@ -21,7 +21,10 @@ import {
 } from 'react-icons/hi'
 import { generateAvatar, analyzeFaceFromImages } from '@/services/GeminiService'
 import { generateImageKie } from '@/services/KieService'
-import { buildBodySheetPrompt } from '@/utils/bodySheetPrompt'
+import {
+    buildBodySheetPrompt,
+    BODY_SHEET_NEGATIVE_PROMPT,
+} from '@/utils/bodySheetPrompt'
 import { getPermissiveBodyModels } from '../../_shared/providerCatalog'
 import type { ReferenceImage } from '../types'
 import type { PhysicalMeasurements } from '@/@types/supabase'
@@ -445,6 +448,7 @@ const AvatarEditDrawer = ({
                 prompt: buildBodySheetPrompt(localMeasurements),
                 model: selectedBodyModel,
                 aspectRatio: '16:9',
+                negativePrompt: BODY_SHEET_NEGATIVE_PROMPT,
             })
             if (!result.success) throw new Error(result.error)
             const sheet = await toReferenceImage(result.url, 'body')

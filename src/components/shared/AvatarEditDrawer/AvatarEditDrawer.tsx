@@ -22,7 +22,10 @@ import { generateAvatar, analyzeFaceFromImages } from '@/services/GeminiService'
 import { generateImageKie } from '@/services/KieService'
 import type { PhysicalMeasurements } from '@/@types/supabase'
 import { createThumbnail, resizeBase64Image } from '@/utils/imageOptimization'
-import { buildBodySheetPrompt } from '@/utils/bodySheetPrompt'
+import {
+    buildBodySheetPrompt,
+    BODY_SHEET_NEGATIVE_PROMPT,
+} from '@/utils/bodySheetPrompt'
 import {
     DEFAULT_PROVIDERS,
     getPermissiveBodyModels,
@@ -452,6 +455,7 @@ const AvatarEditDrawer = ({
                 prompt: buildBodySheetPrompt(localMeasurements),
                 model: selectedBodyModel,
                 aspectRatio: '16:9',
+                negativePrompt: BODY_SHEET_NEGATIVE_PROMPT,
             })
             if (!result.success) throw new Error(result.error)
             const sheet = await toBodyReferenceImage(result.url)

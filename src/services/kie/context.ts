@@ -46,6 +46,8 @@ export interface ImageRouteContext {
      * imagen del clone según el umbral.
      */
     cloneWeight?: number
+    /** Negative prompt (lo que NO debe salir). Cada ruta decide si lo manda. */
+    negativePrompt?: string
     /**
      * Sube un ref y devuelve su URL pública. En producción =
      * `uploadReferenceToSupabase`; en el snapshot = un stub determinista. Es la

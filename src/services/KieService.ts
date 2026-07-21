@@ -371,6 +371,9 @@ export interface GenerateImageKieParams {
     curveBoost?: string
     // Peso del Clone Ref (0-100). 100=recrear exacto (default); bajo=inspirado.
     cloneWeight?: number
+    // Negative prompt (lo que NO debe salir). Hoy lo usa el body sheet vía la
+    // ruta qwen; otras rutas lo ignoran hasta que se cablee en cada una.
+    negativePrompt?: string
 }
 
 /**
@@ -402,6 +405,7 @@ export async function generateImageKie(
         deepfakeMode,
         curveBoost,
         cloneWeight,
+        negativePrompt,
     } = params
     // Route to the right adapter with a given (already-sanitized) prompt.
     const runWithPrompt = async (
@@ -458,6 +462,7 @@ export async function generateImageKie(
             deepfakeMode,
             curveBoost,
             cloneWeight,
+            negativePrompt,
             uploadRef: uploadReferenceToSupabase,
             cropToAspect: cropBase64ToAspect,
         })

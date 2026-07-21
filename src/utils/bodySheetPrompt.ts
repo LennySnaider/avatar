@@ -114,8 +114,25 @@ export function buildBodySheetPrompt(m: PhysicalMeasurements): string {
         'Plain seamless light-gray studio background, soft even frontal lighting, no harsh shadows.',
         'The body shape, bust, waist, hips, glutes and thighs must be IDENTICAL across all three views and must match the measurements and body shape described above.',
         'Full body visible head-to-toe in every view, whole figure in frame, no cropping.',
-        'Photorealistic, ultra high detail, sharp focus. No text, no labels, no borders, no grid lines, no watermark.',
+        // Anclas de FOTORREALISMO (neutras — sin escena): textura de piel real +
+        // óptica neutra (50mm, sin distorsión de proporciones) + quality tags.
+        'Photorealistic raw photo, natural skin texture with visible pores, subtle imperfections and soft peach fuzz, subsurface scattering, even soft studio lighting, shot on a 50mm lens (no lens distortion), 8k, ultra high detail, sharp focus.',
+        'No text, no labels, no borders, no grid lines, no collage separators, no watermark.',
     ]
         .filter(Boolean)
         .join(' ')
 }
+
+/**
+ * Negative prompt del body sheet — lo que NO queremos (patrón de los prompts de
+ * alta fidelidad del usuario). Sube calidad y limpia defectos: mata el look
+ * plástico/3D, fuerza dos-piezas (no enterizo), y quita texto/marcas/collage.
+ */
+export const BODY_SHEET_NEGATIVE_PROMPT = [
+    'cartoon, illustration, 3d render, anime, cgi, stylized, airbrushed',
+    'plastic skin, doll-like, over-smoothed skin, heavy makeup',
+    'deformed anatomy, extra limbs, extra legs, extra arms, extra fingers, fused limbs, malformed hands',
+    'one-piece swimsuit, bodysuit, dress, full clothing',
+    'text, labels, watermark, signature, logo, borders, grid lines, collage frames',
+    'low quality, blurry, jpeg artifacts, cropped, out of frame',
+].join(', ')

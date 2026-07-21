@@ -44,6 +44,9 @@ async function build(ctx: ImageRouteContext): Promise<KieImageRequest> {
         enable_safety_checker: false,
         nsfw_checker: false,
     }
+    if (ctx.negativePrompt) {
+        input.negative_prompt = ctx.negativePrompt
+    }
 
     if (ctx.referenceImage) {
         try {
