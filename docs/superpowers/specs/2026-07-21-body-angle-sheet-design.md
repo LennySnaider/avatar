@@ -16,7 +16,10 @@ motor. Causa raíz:
 - Las *General Identity Photos* (fotos sueltas de glúteos/busto) son pistas sin
   estructura; el motor las reinterpreta cada vez.
 
-No existe un **ancla visual persistente** del cuerpo, como sí existe para la cara.
+No existe **una forma de GENERAR y fijar** un ancla visual del cuerpo desde los
+sliders. La infraestructura de almacenar/hidratar/inyectar un `bodyRef` (type
+`'body'`) **ya existe y funciona** (ver "Contexto de código"); lo que falta es la
+herramienta que produzca ese ancla a partir de los atributos físicos.
 
 ## Objetivo
 
@@ -43,7 +46,8 @@ futura.
 
 4. **Uso auto-ruteado (destino: método C), entregado por fases:**
    - **Fase 1 (v1):** método **A universal** — el body sheet persistido se inyecta con rol
-     `'body'` en todos los motores. Resuelve el problema central.
+     `'body'` en todos los motores. **Esta inyección YA existe** (el `bodyRef` ya viaja con
+     rol `'body'`); v1 solo agrega la forma de *generar* y *fijar* ese `bodyRef`.
    - **Fase 2:** método **B lienzo** para Qwen/Wan (requiere derivar una vista frontal única,
      porque el sheet de 3 vistas no puede ser lienzo directo) + variante desnuda opcional.
 
@@ -69,11 +73,28 @@ Piezas reutilizables ya presentes:
   - Tabla `avatar_references` con `type: ReferenceType` que **ya incluye `'body'`**
     (`src/@types/supabase.ts:396`). Sin migración.
   - Tabla `avatars.measurements` (JSON `PhysicalMeasurements`).
-  - Servicio: `AvatarForgeService` (`uploadAvatarReference`, `apiAddAvatarReference`,
-    `apiGetAvatarReferences`).
-  - Store: `avatarStudioStore.ts` con `bodyRef` (hoy **solo de sesión**, no persistido).
+  - Servicio: `AvatarForgeService` (`apiUploadReference(avatarId, file, type)` sube + crea
+    fila; `apiGetAvatarReferences`, `apiDeleteAvatarReference`).
+- **Persistencia + hidratación del `bodyRef` YA FUNCIONAN (hallazgo clave):**
+  - **Guardar:** al guardar el avatar, `body` está en `SINGLETON_REF_TYPES`
+    (`AvatarStudioMain.tsx:710`) → borra la fila `'body'` previa y sube la nueva vía
+    `apiUploadReference`. Un solo cuerpo canónico, sin acumular.
+  - **Cargar:** `AvatarStudioProvider.tsx:161` hace
+    `bodyRef = loadedRefs.find(r => r.type === 'body')` → `loadAvatarData(... bodyRef ...)` →
+    store `set({ bodyRef })`. Se rehidrata solo.
+  - **Store:** `avatarStudioStore.ts` ya tiene `bodyRef` + `setBodyRef` + `loadAvatarData`.
+  - El comentario *"Body ref is now a session tool"* en `AvatarEditDrawer.tsx:362` es
+    engañoso: se refiere a que el *drawer* no tiene slot de subida persistente, **no** a
+    que el `bodyRef` no se persista. Se persiste.
 - **Editor compartido de sliders:** `src/components/shared/PhysicalAttributesEditor/PhysicalAttributesEditor.tsx`
-  (fuente única, consumida por 3 hosts).
+  (fuente única, consumida por 3 hosts). Es `value + onChange` puro (store-agnóstico).
+- **Generación KIE:** `generateImageKie(params)` en `src/services/KieService.ts:381`
+  (`params: { prompt, model, aspectRatio?, referenceImages?: {base64,mimeType,role?}[],
+  bodyEmphasis?, ... }`). Rutea por familia de modelo. `bodyEmphasis` es donde se inyecta
+  `buildCurvesEmphasis(measurements)`.
+- **Traits permisivos:** `PROVIDER_TRAITS` en `_shared/providerCatalog.ts:430`. Permisivos con
+  `face: true` (ideales para el body sheet): `minimax-image-01`, `kie-seedream-4-5`,
+  `kie-seedream-5-lite`, `kie-seedream-5-pro`, `kie-wan-2-2-uncensored`, `kie-wan-image`.
 
 ## Diseño por componentes
 
@@ -88,7 +109,8 @@ hosts que no generan no lo muestren):
   permisivos; si el usuario elige uno no-permisivo, aviso de que las curvas no aplicarán.
 - **Botón "Generar cuerpo"** — deshabilitado sin `faceRef` (hint explicativo).
 - **Preview** del sheet de 3 vistas.
-- **Botón "Guardar como cuerpo"** — visible cuando hay un sheet generado en preview.
+- **Botón "Usar como cuerpo"** — visible cuando hay un sheet generado en preview; hace
+  `setBodyRef(sheet)`. La persistencia real ocurre en el guardado del avatar ya existente.
 
 El editor sigue siendo "tonto": no llama servicios directamente, solo dispara callbacks que
 el host (AvatarEditDrawer / AvatarStudioMain) cablea.
@@ -104,23 +126,26 @@ el host (AvatarEditDrawer / AvatarStudioMain) cablea.
   para coherencia de identidad, llama al provider seleccionado vía los servicios existentes
   (`generateImageKie` / provider services), devuelve **una sola imagen** con las 3 vistas.
 
-### 3. Persistencia — "Guardar como cuerpo"
+### 3. Persistencia — "Usar como cuerpo" (mayormente YA existe)
 
-- Sube el sheet al bucket `avatars` (Storage) vía `uploadAvatarReference`.
-- Upsert en `avatar_references` con `type: 'body'` — **reemplaza** el ref `'body'` previo
-  del avatar (un solo cuerpo canónico).
-- Guarda en `metadata` el **snapshot de `measurements`** que produjo el sheet (reproducible).
-- Al **cargar el avatar**, hidrata `bodyRef` en el store desde el ref `'body'`
-  (hoy `bodyRef` nace vacío por ser solo de sesión — este es el cambio clave de persistencia).
+**Descubrimiento:** persistencia + hidratación del `bodyRef` (type `'body'`) ya funcionan
+(ver "Contexto de código"). v1 **no reimplementa** guardado/carga.
 
-### 4. Uso en generación (Fase 1 — método A universal)
+- El botón **"Usar como cuerpo"** hace `setBodyRef(sheet)` con `sheet.type = 'body'`.
+- El **guardado del avatar** existente (`AvatarStudioMain.tsx:~700`) ya sube `bodyRef` a
+  Storage y reemplaza la fila `'body'` previa (singleton). **No se toca.**
+- La **carga del avatar** existente (`AvatarStudioProvider.tsx:161`) ya rehidrata `bodyRef`.
+  **No se toca.**
+- Único requisito: el `ReferenceImage` del sheet debe llevar `type: 'body'` para caer en la
+  rama singleton correcta.
 
-- El `bodyRef` persistido ya se empuja en `kieReferenceImages` con `role: 'body'`.
-  Con la hidratación de la Sección 3, esto ahora ocurre en **cada** generación, en todos los
-  motores (permisivos y no-permisivos), sin que el usuario re-suba nada.
+### 4. Uso en generación (Fase 1 — método A universal) — YA existe
+
+- El `bodyRef` ya se empuja en `kieReferenceImages` con `role: 'body'` en cada generación,
+  en todos los motores (permisivos y no-permisivos).
 - Etiqueta `BODY_SHAPE` ("COPY THIS EXACT SILHOUETTE") ya presente en el prompt builder.
-- **No** se toca el hot path de ruteo por motor en v1 más allá de garantizar que el body ref
-  hidratado viaje como rol `'body'`.
+- **v1 no toca el hot path de generación.** Al fijar `bodyRef` con el sheet, la inyección
+  existente hace el resto.
 
 ### 5. Fase 2 (fuera de v1, documentado para no perderlo)
 
@@ -133,22 +158,26 @@ el host (AvatarEditDrawer / AvatarStudioMain) cablea.
 ## Manejo de errores
 
 - Sin `faceRef` → botón "Generar cuerpo" deshabilitado con hint.
-- Motor no-permisivo seleccionado para generar cuerpo → aviso de que `buildCurvesEmphasis`
-  (busto/glúteos/muslos) no aplicará.
-- Fallo de generación → toast; se conserva el cuerpo guardado previo (no se borra en fallo).
-- "Guardar como cuerpo" con cuerpo existente → confirmación antes de reemplazar.
+- Sin modelo permisivo disponible → selector vacío; botón deshabilitado con hint
+  ("configura un proveedor permisivo — Seedream / Wan").
+- Fallo de generación → toast; el preview no cambia y el `bodyRef` fijado previo se conserva.
 
 ## Testing
 
-- **Unitario:** `buildBodySheetPrompt` con fixtures de `PhysicalMeasurements` (verificar que
-  incluye descriptores de curvas solo cuando corresponde, mini-bikini, 3 vistas).
-- **Unitario/integración:** persistencia — el guardado **reemplaza** el ref `'body'` previo y
-  el snapshot de measurements queda en metadata; la hidratación en carga puebla `bodyRef`.
-- **Manual/visual:** consistencia real del cuerpo entre generaciones y entre motores
-  (generación externa y costosa; no automatizable de forma barata).
+- **Unitario:** `buildBodySheetPrompt` con fixtures de `PhysicalMeasurements` — verifica que
+  el prompt pide 3 vistas (front/side/back), mini-bikini y fondo neutro, e incluye las frases
+  de curvas solo cuando los niveles están seteados (no en Auto).
+- **Unitario:** `getPermissiveBodyModels(providers)` — devuelve solo providers permisivos y
+  prioriza los `face: true`.
+- **Manual/visual:** consistencia real del cuerpo entre generaciones y entre motores tras
+  fijar el sheet (generación externa y costosa; no automatizable de forma barata).
 
 ## Alcance de v1 (aprobado)
 
-- Fase 1: método A universal — generar sheet de cuerpo (3 vistas, bikini) desde sliders,
-  iterar, guardar como cuerpo canónico persistido, e inyectarlo en cada generación.
+- **v1 = solo el generador.** Persistencia (guardado singleton), hidratación en carga e
+  inyección con rol `'body'` **ya existen** — v1 no las toca.
+- Trabajo real de v1: (a) `buildBodySheetPrompt`, (b) `getPermissiveBodyModels`,
+  (c) un handler `handleGenerateBody` que llama `generateImageKie` con modelo permisivo +
+  `faceRef` + `bodyEmphasis`, (d) UI en `PhysicalAttributesEditor` (selector + botón +
+  preview + "Usar como cuerpo" → `setBodyRef`).
 - **Fuera de v1:** método B lienzo (Qwen/Wan) y variante desnuda → Fase 2.
