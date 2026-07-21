@@ -76,7 +76,7 @@ async function build(ctx: ImageRouteContext): Promise<KieImageRequest> {
             // face-swap). Cláusula SOLO-positiva (Wan ignora negaciones) que pide
             // igualar la luz de la cara a la de la escena. Solo con clone.
             const wanRelightClause = wanHasClone
-                ? ` Light her face with the scene's OWN light — the same direction, colour temperature, brightness and shadows as the body and background, so her face looks photographed under one single light with the rest of the image, not lit separately.`
+                ? ` Light her face from the SAME side as the scene's main light source (window, lamp or sun): the side of her face toward that light is bright, the far side falls into soft shadow, matching the exact direction, colour temperature and brightness of the light on her body and the background. If her head is turned away from the light, her face is correspondingly shadowed — one consistent light for the whole photo.`
                 : ''
             const cloneRef =
                 wanHasClone && !ctx.deepfakeMode
