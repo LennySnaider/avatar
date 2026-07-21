@@ -1,10 +1,69 @@
 import type { PhysicalMeasurements } from '@/@types/supabase'
 import {
     describeBody,
-    buildCurvesEmphasis,
     getSkinToneDescription,
     getHairColorDescription,
+    effectiveThighsLevel,
+    BUST_SHAPE_PHRASE,
+    GLUTES_SHAPE_PHRASE,
 } from '@/utils/bodyDescriptors'
+
+/**
+ * Mapas de curvas EXCLUSIVOS del Body Lab — más fuertes y con rango completo
+ * (1 = sutil, 5 = dramático/exagerado) para dar CONTROL TOTAL del cuerpo del
+ * sheet, incluidos cuerpos desproporcionados (meta multitenant). NO tocan los
+ * mapas compartidos (`BUST_LEVEL_PHRASE`, etc.) que usa la generación normal, así
+ * que ajustar la intensidad aquí no contamina el resto de la app.
+ */
+const SHEET_BUST_PHRASE: Record<number, string> = {
+    1: 'small perky bust',
+    2: 'modest natural bust',
+    3: 'full rounded bust',
+    4: 'large heavy bust with deep cleavage',
+    5: 'extremely large, voluptuous, dramatically heavy bust with deep cleavage',
+}
+
+const SHEET_GLUTES_PHRASE: Record<number, string> = {
+    1: 'small subtle glutes',
+    2: 'rounded firm glutes',
+    3: 'full round lifted glutes',
+    4: 'very large, prominent round glutes with a strong hip curve',
+    5: 'extremely large, dramatic bubble-butt glutes that project strongly',
+}
+
+const SHEET_THIGHS_PHRASE: Record<number, string> = {
+    1: 'slim slender thighs',
+    2: 'toned smooth thighs',
+    3: 'sculpted athletic thighs',
+    4: 'thick, strong, full thighs that touch',
+    5: 'extremely thick, heavy, massive thighs with dramatic volume, fully touching',
+}
+
+/**
+ * Frase de curvas del sheet a partir de los sliders 1-5 + formas. Usa los mapas
+ * dedicados (arriba) para el TAMAÑO y reutiliza en solo-lectura los mapas de
+ * FORMA compartidos (descriptivos, no de intensidad).
+ */
+function buildBodySheetCurves(m: PhysicalMeasurements): string {
+    const parts: string[] = []
+    if (m.bustLevel && SHEET_BUST_PHRASE[m.bustLevel]) {
+        parts.push(SHEET_BUST_PHRASE[m.bustLevel])
+    }
+    if (m.bustShape && BUST_SHAPE_PHRASE[m.bustShape]) {
+        parts.push(BUST_SHAPE_PHRASE[m.bustShape])
+    }
+    if (m.glutesLevel && SHEET_GLUTES_PHRASE[m.glutesLevel]) {
+        parts.push(SHEET_GLUTES_PHRASE[m.glutesLevel])
+    }
+    if (m.glutesShape && GLUTES_SHAPE_PHRASE[m.glutesShape]) {
+        parts.push(GLUTES_SHAPE_PHRASE[m.glutesShape])
+    }
+    const thighs = effectiveThighsLevel(m)
+    if (thighs && SHEET_THIGHS_PHRASE[thighs]) {
+        parts.push(SHEET_THIGHS_PHRASE[thighs])
+    }
+    return parts.join(', ')
+}
 
 /**
  * Prompt para el BODY ANGLE SHEET del avatar: una sola imagen con 3 vistas
@@ -23,7 +82,7 @@ import {
  */
 export function buildBodySheetPrompt(m: PhysicalMeasurements): string {
     const body = describeBody(m)
-    const curves = buildCurvesEmphasis(m)
+    const curves = buildBodySheetCurves(m)
     const skin = getSkinToneDescription(m.skinTone)
     const hair = getHairColorDescription(m.hairColor)
 

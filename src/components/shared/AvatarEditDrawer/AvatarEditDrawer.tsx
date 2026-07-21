@@ -787,7 +787,12 @@ const AvatarEditDrawer = ({
                                         selectedModel: selectedBodyModel,
                                         onSelectModel: setSelectedBodyModel,
                                         isGenerating: isGeneratingBody,
-                                        sheet: bodySheet || localBodyRef,
+                                        // Solo el sheet recién generado en esta
+                                        // sesión — NO auto-cargar el body ref
+                                        // persistido (evita la imagen "fantasma"
+                                        // que confundía). El cuerpo guardado
+                                        // sigue en getCurrentData/persistencia.
+                                        sheet: bodySheet,
                                         sheetModel: bodySheet
                                             ? bodySheetModel
                                             : undefined,
