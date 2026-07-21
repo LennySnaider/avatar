@@ -100,8 +100,8 @@ export function buildBodySheetPrompt(m: PhysicalMeasurements): string {
             : ''
 
     return [
-        `Full-body character turnaround / model sheet of ONE ${person}.`,
-        'The image contains EXACTLY THREE full-body views of the SAME woman, evenly spaced left-to-right on one image, and each view is a DIFFERENT camera angle:',
+        `A set of three REAL PHOTOREALISTIC full-body studio PHOTOGRAPHS of ONE ${person}, placed side by side in one wide image (a real photo contact sheet — NOT an illustration, drawing or cartoon).`,
+        'The image contains EXACTLY THREE full-body photographs of the SAME woman, evenly spaced left-to-right, and each is a DIFFERENT camera angle:',
         'LEFT view = full FRONT view, she faces the camera directly (front of her body and face visible).',
         'CENTER view = full SIDE profile, her body turned 90 degrees to the side (side silhouette visible, one side of the face in profile).',
         'RIGHT view = full BACK view, she is turned around with her back to the camera (her back, spine and glutes visible, face NOT visible).',
@@ -187,7 +187,7 @@ export function buildBodyViewPrompt(
  * plástico/3D, fuerza dos-piezas (no enterizo), y quita texto/marcas/collage.
  */
 export const BODY_SHEET_NEGATIVE_PROMPT = [
-    'cartoon, illustration, 3d render, anime, cgi, stylized, airbrushed',
+    'cartoon, illustration, drawing, sketch, concept art, character sheet, line art, vector art, comic, cel-shaded, painting, anime, 3d render, cgi, stylized, airbrushed',
     'plastic skin, doll-like, over-smoothed skin, heavy makeup',
     'deformed anatomy, extra limbs, extra legs, extra arms, extra fingers, fused limbs, malformed hands',
     'one-piece swimsuit, bodysuit, dress, full clothing',
