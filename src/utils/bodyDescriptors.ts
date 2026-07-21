@@ -330,46 +330,17 @@ export const cmToBustLevel = (cm: number): CurveLevel =>
 export const cmToGlutesLevel = (cm: number): CurveLevel =>
     nearestLevel(GLUTES_LEVEL_TO_CM, cm)
 
-// Tooltips para los selectores de UI (creator + edit drawer): la frase EXACTA
-// que se inyecta al prompt, para que el usuario sepa qué pide cada opción.
-// Body Type combina la frase líder (BODY_TYPE_PHRASE) + la línea de
-// proporciones de BODY_TYPE_DESCRIPTIONS (avatarPromptBuilder) — mantener en
-// sync si esos mapas cambian.
-export const BODY_TYPE_TOOLTIP: Record<string, string> = {
-    petite: 'petite delicate frame — small-boned, compact proportions',
-    slim: 'slim slender figure — lean, elongated proportions',
-    athletic: 'athletic toned physique — muscular definition, sporty build',
-    average: 'average balanced figure — proportionate, natural build',
-    curvy: 'curvy voluptuous figure — fuller proportions with defined curves',
-    hourglass:
-        'classic hourglass figure, pin-up proportions — narrow waist with fuller bust and hips',
-    'plus-size': 'plus-size full figure — generous proportions throughout',
-}
-
 export const LEG_TYPE_TOOLTIP: Record<string, string> = {
     auto: 'no explicit phrase — legs follow the Body Type and hip descriptors',
     ...LEG_TYPE_PHRASE,
 }
 
-// Lead phrase for the explicit body-type selector — kept for the UI/tooltips
-// (BODY_TYPE_TOOLTIP composes with it) even though describeBody no longer uses
-// it as the prompt lead (that's what contradicted the measurements).
-export const BODY_TYPE_PHRASE: Record<string, string> = {
-    petite: 'petite delicate frame',
-    slim: 'slim slender figure',
-    athletic: 'athletic toned physique',
-    average: 'average balanced figure',
-    curvy: 'curvy voluptuous figure',
-    hourglass: 'classic hourglass figure',
-    'plus-size': 'plus-size full figure',
-}
-
 /**
  * Build a single descriptive body phrase from an avatar's measurements:
  * shape + build + comparatives (leads) + ratio-derived descriptors. Per-avatar;
- * changing the avatar's specs changes the output. No longer leads with
- * BODY_TYPE_PHRASE — that size-word lead is what contradicted the measurements
- * (e.g. "slim slender figure" fighting a cinched-waist hourglass).
+ * changing the avatar's specs changes the output. No longer leads with a
+ * fixed body-type size-word phrase — that lead is what contradicted the
+ * measurements (e.g. "slim slender figure" fighting a cinched-waist hourglass).
  */
 export function describeBody(m: PhysicalMeasurements): string {
     const parts: string[] = [describeShapeAndBuild(m)]

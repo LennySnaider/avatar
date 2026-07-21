@@ -162,10 +162,7 @@ const PhysicalAttributesEditor = ({
                         <button
                             key={shape}
                             onClick={() => {
-                                const hasCustom =
-                                    measurements.shoulders ||
-                                    measurements.waist ||
-                                    measurements.hips
+                                const hasCustom = !!measurements.shape
                                 if (
                                     hasCustom &&
                                     !window.confirm(
