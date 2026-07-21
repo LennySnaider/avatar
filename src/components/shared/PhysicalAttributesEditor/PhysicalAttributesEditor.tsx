@@ -24,7 +24,6 @@ import EyeColorPicker from '@/components/shared/EyeColorPicker'
 import MeasurementSlider from '@/app/(protected-pages)/concepts/avatar-forge/_shared/MeasurementSlider'
 import { createThumbnail } from '@/utils/imageOptimization'
 import {
-    BODY_TYPE_TOOLTIP,
     LEG_TYPE_TOOLTIP,
     BUST_LEVEL_PHRASE,
     GLUTES_LEVEL_PHRASE,
@@ -39,6 +38,7 @@ import {
     cmToGlutesLevel,
     effectiveThighsLevel,
 } from '@/utils/bodyDescriptors'
+import { BODY_SHAPES, SHAPE_LABEL, SHAPE_PRESETS } from '@/utils/bodyShapes'
 import type {
     PhysicalMeasurements,
     CurveLevel,
@@ -52,6 +52,16 @@ import type { PhysicalRegionRef } from '@/components/shared/BodyLab'
 // `type`); los hosts castean al setear si su tipo local es más estricto.
 // Re-exportado desde BodyLab (mismo tipo) para no romper imports existentes.
 export type { PhysicalRegionRef } from '@/components/shared/BodyLab'
+
+// Etiquetas cortas para el slider de Build (1-5) — replican el sentido de
+// BUILD_PHRASE en bodyDescriptors.ts sin importar ese const privado.
+const BUILD_LEVEL_SHORT_LABEL: Record<number, string> = {
+    1: '1 · lean',
+    2: '2 · fit',
+    3: '3 · balanced',
+    4: '4 · curvy',
+    5: '5 · full',
+}
 
 interface PhysicalAttributesEditorProps {
     measurements: PhysicalMeasurements
@@ -142,35 +152,41 @@ const PhysicalAttributesEditor = ({
 
     return (
         <div className="space-y-4">
-            {/* Body Type */}
+            {/* Body Shape (preset) */}
             <div>
                 <label className="text-xs text-gray-500 block mb-1">
-                    Body Type
+                    Body Shape
                 </label>
                 <div className="flex flex-wrap gap-1">
-                    {(
-                        [
-                            'petite',
-                            'slim',
-                            'athletic',
-                            'average',
-                            'curvy',
-                            'hourglass',
-                            'plus-size',
-                        ] as const
-                    ).map((type) => (
-                        <Tooltip key={type} title={BODY_TYPE_TOOLTIP[type]}>
-                            <button
-                                onClick={() => set({ bodyType: type })}
-                                className={`px-2 py-1 text-xs rounded border transition-colors capitalize ${
-                                    measurements.bodyType === type
-                                        ? 'bg-primary text-white border-primary'
-                                        : 'bg-gray-50 dark:bg-gray-800 border-gray-200 dark:border-gray-700 hover:border-primary'
-                                }`}
-                            >
-                                {type}
-                            </button>
-                        </Tooltip>
+                    {BODY_SHAPES.map((shape) => (
+                        <button
+                            key={shape}
+                            onClick={() => {
+                                const hasCustom =
+                                    measurements.shoulders ||
+                                    measurements.waist ||
+                                    measurements.hips
+                                if (
+                                    hasCustom &&
+                                    !window.confirm(
+                                        'Aplicar esta forma sobreescribe hombros/busto/cintura/cadera con un ejemplo canónico. ¿Continuar?',
+                                    )
+                                )
+                                    return
+                                onChange({
+                                    ...measurements,
+                                    ...SHAPE_PRESETS[shape],
+                                    shape,
+                                })
+                            }}
+                            className={`px-2 py-1 text-xs rounded border transition-colors ${
+                                measurements.shape === shape
+                                    ? 'bg-primary text-white border-primary'
+                                    : 'bg-gray-50 dark:bg-gray-800 border-gray-200 dark:border-gray-700 hover:border-primary'
+                            }`}
+                        >
+                            {SHAPE_LABEL[shape]}
+                        </button>
                     ))}
                 </div>
             </div>
@@ -192,6 +208,37 @@ const PhysicalAttributesEditor = ({
                     value={measurements.height}
                     onChange={(v) => set({ height: v })}
                 />
+                <div>
+                    <div className="flex items-center justify-between">
+                        <span className="text-xs text-gray-500">Build</span>
+                        <span className="text-xs font-mono text-primary">
+                            {measurements.build ?? 3}/5
+                        </span>
+                    </div>
+                    <Slider
+                        value={measurements.build ?? 3}
+                        onChange={(val) =>
+                            set({ build: val as number as CurveLevel })
+                        }
+                        min={1}
+                        max={5}
+                    />
+                    <p className="text-[10px] text-gray-400 mt-0.5">
+                        {
+                            BUILD_LEVEL_SHORT_LABEL[
+                                measurements.build ?? 3
+                            ]
+                        }
+                    </p>
+                </div>
+                <MeasurementSlider
+                    label="Shoulders"
+                    unit="cm"
+                    min={70}
+                    max={130}
+                    value={measurements.shoulders ?? measurements.bust}
+                    onChange={(v) => set({ shoulders: v })}
+                />
                 <MeasurementSlider
                     label="Waist"
                     unit="cm"
@@ -208,6 +255,42 @@ const PhysicalAttributesEditor = ({
                     value={measurements.hips}
                     onChange={(v) => set({ hips: v })}
                 />
+                <div>
+                    <div className="flex items-center justify-between">
+                        <span className="text-xs text-gray-500">
+                            Torso / legs
+                        </span>
+                        <span className="text-xs font-mono text-primary">
+                            {measurements.torsoLegRatio
+                                ? measurements.torsoLegRatio > 0
+                                    ? `+${measurements.torsoLegRatio}`
+                                    : measurements.torsoLegRatio
+                                : '0'}
+                        </span>
+                    </div>
+                    <Slider
+                        value={measurements.torsoLegRatio ?? 0}
+                        onChange={(val) =>
+                            set({
+                                torsoLegRatio:
+                                    (val as number) === 0
+                                        ? undefined
+                                        : (val as number),
+                            })
+                        }
+                        min={-2}
+                        max={2}
+                    />
+                    <p className="text-[10px] text-gray-400 mt-0.5">
+                        {measurements.torsoLegRatio &&
+                        measurements.torsoLegRatio >= 1
+                            ? 'long legs, elongated lower body'
+                            : measurements.torsoLegRatio &&
+                                measurements.torsoLegRatio <= -1
+                              ? 'shorter legs, longer torso'
+                              : 'neutral proportions'}
+                    </p>
+                </div>
             </div>
 
             {/* Leg Type */}
