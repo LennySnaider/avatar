@@ -515,17 +515,24 @@ export const getProviderDescription = (provider: AIProvider): string => {
 }
 
 /**
- * De los providers configurados, los aptos para generar el BODY ANGLE SHEET:
- * permisivos (dejan pasar bikini + énfasis de curvas). Se priorizan los que
- * además reciben cara (`face: true`) porque el sheet inyecta el faceRef. El
- * caller pasa `provider.model` a generateImageKie.
+ * De los providers configurados, los aptos para generar el BODY ANGLE SHEET.
+ * Requisitos (los tres, o KIE devuelve 500 "This field is required"):
+ *  - `permissive` — dejan pasar bikini + énfasis de curvas.
+ *  - `type === 'KIE'` — el body sheet se genera con generateImageKie, que SOLO
+ *    rutea modelos KIE. MiniMax es permisivo pero vive en otro servicio → fuera.
+ *  - `supports_image` — excluye modelos de video (p.ej. wan-2-2 i2v).
+ * Se priorizan los `face: true` porque el sheet inyecta el faceRef. El caller
+ * pasa `provider.model` a generateImageKie.
  */
 export function getPermissiveBodyModels(providers: AIProvider[]): AIProvider[] {
-    const permissive = providers.filter(
-        (p) => PROVIDER_TRAITS[p.id]?.permissive === true,
+    const usable = providers.filter(
+        (p) =>
+            PROVIDER_TRAITS[p.id]?.permissive === true &&
+            p.type === 'KIE' &&
+            p.supports_image === true,
     )
     // Los `face: true` primero (mejor coherencia con el faceRef del sheet).
-    return permissive.sort((a, b) => {
+    return usable.sort((a, b) => {
         const fa = PROVIDER_TRAITS[a.id]?.face === true ? 0 : 1
         const fb = PROVIDER_TRAITS[b.id]?.face === true ? 0 : 1
         return fa - fb
