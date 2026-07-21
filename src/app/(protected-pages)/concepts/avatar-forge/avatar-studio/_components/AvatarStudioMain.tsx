@@ -99,7 +99,11 @@ import {
     getEyeColorDescription,
     buildCurvesEmphasis,
 } from '@/utils/bodyDescriptors'
-import { readDefaultProviderId } from '../../_shared/providerPrefs'
+import {
+    readDefaultProviderId,
+    readBatchIds,
+    writeBatchIds,
+} from '../../_shared/providerPrefs'
 import { PROVIDER_TRAITS } from '../../_shared/providerCatalog'
 import { createPortal } from 'react-dom'
 import { useStudioHeaderSlot } from './StudioHeaderSlotContext'
@@ -503,6 +507,7 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
         galleryMediaTypeFilter,
         galleryAvatarFilter,
         galleryView,
+        setBatchProviderIds,
     } = useAvatarStudioStore()
 
     // Punto en el toggle cuando hay búsqueda/filtro activo (para no “perder”
@@ -1097,8 +1102,9 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                                 id: cloneImage.id,
                                 // optimizedCloneRef ya es non-null aquí (se asignó
                                 // desde optimizedCloneRawRef, o el masked version).
-                                base64: (optimizedCloneRef ?? optimizedCloneRawRef)
-                                    .base64,
+                                base64: (
+                                    optimizedCloneRef ?? optimizedCloneRawRef
+                                ).base64,
                                 mimeType: (
                                     optimizedCloneRef ?? optimizedCloneRawRef
                                 ).mimeType,
@@ -3339,6 +3345,33 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                     <BottomControlBar
                         onGenerate={() => handleGenerate()}
                         onOpenBatch={() => {
+                            // Modelos marcados con ☑ en el selector (persistidos).
+                            // Si hay ≥1 → genera DIRECTO (sin abrir el dialog); si
+                            // no hay ninguno → abre el dialog para elegir.
+                            const marked = readBatchIds().filter((id) =>
+                                providers.some(
+                                    (p) => p.id === id && p.supports_image,
+                                ),
+                            )
+                            if (marked.length > 0) {
+                                if (
+                                    !getFullPrompt().trim() &&
+                                    !deepfakeImage?.base64
+                                ) {
+                                    toast.push(
+                                        <Notification
+                                            type="warning"
+                                            title="Falta prompt"
+                                        >
+                                            Escribe un prompt o carga un
+                                            Deepfake para generar el Batch.
+                                        </Notification>,
+                                    )
+                                    return
+                                }
+                                handleBatchGenerate(marked)
+                                return
+                            }
                             setBatchSelected(
                                 activeProviderId ? [activeProviderId] : [],
                             )
@@ -3511,6 +3544,10 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                         }
                         onClick={() => {
                             setBatchOpen(false)
+                            // Persiste la selección del dialog → la próxima vez el
+                            // botón Batch genera directo en estos, sin re-elegir.
+                            writeBatchIds(batchSelected)
+                            setBatchProviderIds(batchSelected)
                             handleBatchGenerate(batchSelected)
                         }}
                     >

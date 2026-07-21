@@ -433,6 +433,7 @@ const BottomControlBar = ({
         setIsPromptLibraryOpen,
         clearDetectedTerms,
         getActiveProvider,
+        batchProviderIds,
     } = useAvatarStudioStore()
 
     // Get avatar thumbnail
@@ -1756,18 +1757,30 @@ const BottomControlBar = ({
                     >
                         {isGenerating ? 'Generating...' : 'Generate'}
                     </Button>
-                    {generationMode === 'IMAGE' && (
-                        <button
-                            type="button"
-                            onClick={onOpenBatch}
-                            disabled={!canGenerate()}
-                            className="flex h-7 items-center justify-center gap-1 rounded-lg border border-dashed border-gray-300 text-xs font-medium text-gray-500 transition-colors hover:border-blue-400 hover:text-blue-500 disabled:cursor-not-allowed disabled:opacity-40 dark:border-gray-600 dark:text-gray-400"
-                            title="Manda el mismo prompt a varios modelos a la vez"
-                        >
-                            <TbStack2 className="text-sm" />
-                            Batch
-                        </button>
-                    )}
+                    {generationMode === 'IMAGE' &&
+                        (() => {
+                            const n = batchProviderIds.length
+                            return (
+                                <button
+                                    type="button"
+                                    onClick={onOpenBatch}
+                                    disabled={!canGenerate()}
+                                    className={`flex h-7 items-center justify-center gap-1 rounded-lg border text-xs font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${
+                                        n > 0
+                                            ? 'border-solid border-blue-400 text-blue-500 dark:border-blue-500'
+                                            : 'border-dashed border-gray-300 text-gray-500 hover:border-blue-400 hover:text-blue-500 dark:border-gray-600 dark:text-gray-400'
+                                    }`}
+                                    title={
+                                        n > 0
+                                            ? `Batch directo en ${n} modelo${n === 1 ? '' : 's'} marcado${n === 1 ? '' : 's'} (☑ en el selector para cambiarlos)`
+                                            : 'Marca modelos con ☑ en el selector, o elige aquí — mismo prompt a varios a la vez'
+                                    }
+                                >
+                                    <TbStack2 className="text-sm" />
+                                    {n > 0 ? `Batch · ${n}` : 'Batch'}
+                                </button>
+                            )
+                        })()}
                 </div>
             </div>
 

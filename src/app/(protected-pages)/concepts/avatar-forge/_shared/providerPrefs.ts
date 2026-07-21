@@ -11,6 +11,9 @@
 const FAVORITES_KEY = 'avatar-studio:favorite-providers'
 const HIDDEN_KEY = 'avatar-forge:hidden-providers'
 const ORDER_KEY = 'avatar-forge:provider-order'
+// Modelos marcados para el BATCH (☑ en cada card del selector). Persisten para
+// no re-elegir cada vez: el botón Batch genera directo en estos. Máx 3.
+const BATCH_KEY = 'avatar-studio:batch-providers'
 
 function readIds(key: string): string[] {
     if (typeof window === 'undefined') return []
@@ -41,6 +44,12 @@ export const writeHiddenIds = (ids: string[]) => writeIds(HIDDEN_KEY, ids)
 
 export const readProviderOrder = () => readIds(ORDER_KEY)
 export const writeProviderOrder = (ids: string[]) => writeIds(ORDER_KEY, ids)
+
+// Set de Batch (máx 3). El botón Batch genera directo en estos modelos.
+export const BATCH_MAX = 3
+export const readBatchIds = () => readIds(BATCH_KEY).slice(0, BATCH_MAX)
+export const writeBatchIds = (ids: string[]) =>
+    writeIds(BATCH_KEY, ids.slice(0, BATCH_MAX))
 
 // Default (pin 📌) POR MODO — el provider con el que arranca una sesión
 // fresca del Studio. Vivía en ProviderManagerDrawer; compartido aquí porque

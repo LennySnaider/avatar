@@ -150,6 +150,10 @@ interface AvatarStudioState {
     providers: AIProvider[]
     activeProviderId: string | null
     geminiAutoFallback: boolean
+    // Modelos marcados para BATCH (☑ en el selector). Mirror reactivo — la
+    // persistencia durable vive en localStorage (providerPrefs); esto solo drive
+    // el contador del botón Batch en vivo. Se hidrata desde localStorage al montar.
+    batchProviderIds: string[]
 
     // App State
     appState: AppState
@@ -300,6 +304,7 @@ interface AvatarStudioState {
     setActiveProviderId: (id: string | null) => void
     setShowProviderManager: (show: boolean) => void
     setGeminiAutoFallback: (enabled: boolean) => void
+    setBatchProviderIds: (ids: string[]) => void
 
     // Actions - App State
     setAppState: (state: AppState) => void
@@ -459,6 +464,7 @@ const initialState = {
     providers: [],
     activeProviderId: null,
     geminiAutoFallback: false,
+    batchProviderIds: [],
 
     appState: AppState.IDLE,
     isAvatarLocked: false,
@@ -826,6 +832,7 @@ export const useAvatarStudioStore = create<AvatarStudioState>()(
                 set({ showProviderManager: show }),
             setGeminiAutoFallback: (enabled) =>
                 set({ geminiAutoFallback: enabled }),
+            setBatchProviderIds: (ids) => set({ batchProviderIds: ids }),
 
             // Actions - App State
             setAppState: (state) => set({ appState: state }),

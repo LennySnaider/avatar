@@ -16,6 +16,8 @@ import {
     HiOutlineUserCircle,
     HiOutlineLockOpen,
     HiOutlineSearch,
+    HiCollection,
+    HiOutlineCollection,
 } from 'react-icons/hi'
 import { PiPushPin, PiPushPinFill } from 'react-icons/pi'
 import type { AIProvider, ProviderType } from '@/@types/supabase'
@@ -26,6 +28,9 @@ import {
     sortByUserOrder,
     readDefaultProviderId,
     writeDefaultProviderId,
+    readBatchIds,
+    writeBatchIds,
+    BATCH_MAX,
 } from '../../_shared/providerPrefs'
 import {
     DEFAULT_PROVIDERS,
@@ -36,16 +41,18 @@ import {
 
 // Re-export: el catálogo vivió aquí siempre y varios módulos lo importan
 // de este archivo; la fuente de verdad ahora es _shared/providerCatalog.
-export { DEFAULT_PROVIDERS, PROVIDER_COST, PROVIDER_TRAITS, getProviderDescription }
+export {
+    DEFAULT_PROVIDERS,
+    PROVIDER_COST,
+    PROVIDER_TRAITS,
+    getProviderDescription,
+}
 
 // El default (pin 📌) por modo vive en _shared/providerPrefs — compartido con
 // AvatarStudioMain, cuyo init también debe respetarlo.
 
 // Favoritos / ocultos / orden manual: módulo compartido con la página AI
 // Providers (misma key de ⭐ que se usaba aquí — un solo favorito en la app).
-
-
-
 
 const ProviderManagerDrawer = () => {
     const {
@@ -58,33 +65,44 @@ const ProviderManagerDrawer = () => {
         generationMode,
         geminiAutoFallback,
         setGeminiAutoFallback,
+        batchProviderIds,
+        setBatchProviderIds,
     } = useAvatarStudioStore()
 
     // Default por modo (badge "Default") = último provider seleccionado.
-    const [defaultProviderId, setDefaultProviderId] = useState<string | null>(null)
+    const [defaultProviderId, setDefaultProviderId] = useState<string | null>(
+        null,
+    )
     // Favoritos multi (drive la ★ de cada card y el chip "⭐ Favoritos").
     const [favoriteIds, setFavoriteIds] = useState<string[]>([])
+    // BATCH (☑): batchProviderIds vive en el store (mirror reactivo → contador del
+    // botón); la persistencia durable es localStorage (readBatchIds/writeBatchIds).
     // Ocultos desde la página AI Providers — no se muestran en este selector.
     const [hiddenIds, setHiddenIds] = useState<string[]>([])
     const [search, setSearch] = useState('')
-    const [filter, setFilter] = useState<'all' | 'favorites' | 'face' | 'permissive'>('all')
+    const [filter, setFilter] = useState<
+        'all' | 'favorites' | 'face' | 'permissive'
+    >('all')
     useEffect(() => {
         setDefaultProviderId(readDefaultProviderId(generationMode))
         setFavoriteIds(readFavoriteIds())
         setHiddenIds(readHiddenIds())
-    }, [generationMode, showProviderManager])
+        setBatchProviderIds(readBatchIds())
+    }, [generationMode, showProviderManager, setBatchProviderIds])
 
     // Initialize providers on mount - always sync with DEFAULT_PROVIDERS
     useEffect(() => {
         // Always update providers to ensure we have the latest list
         // This handles cases where new providers are added to DEFAULT_PROVIDERS
-        const currentProviderIds = providers.map(p => p.id)
-        const defaultProviderIds = DEFAULT_PROVIDERS.map(p => p.id)
+        const currentProviderIds = providers.map((p) => p.id)
+        const defaultProviderIds = DEFAULT_PROVIDERS.map((p) => p.id)
 
         // Check if providers need updating (missing providers or different count)
         const needsUpdate =
             providers.length === 0 ||
-            !defaultProviderIds.every(id => currentProviderIds.includes(id)) ||
+            !defaultProviderIds.every((id) =>
+                currentProviderIds.includes(id),
+            ) ||
             providers.length !== DEFAULT_PROVIDERS.length
 
         if (needsUpdate) {
@@ -98,13 +116,22 @@ const ProviderManagerDrawer = () => {
                 generationMode === 'IMAGE' ? p.supports_image : p.supports_video
             const stored = readDefaultProviderId(generationMode)
             const defaultProvider =
-                (stored ? DEFAULT_PROVIDERS.find((p) => p.id === stored && isForMode(p)) : null) ||
-                DEFAULT_PROVIDERS.find(isForMode)
+                (stored
+                    ? DEFAULT_PROVIDERS.find(
+                          (p) => p.id === stored && isForMode(p),
+                      )
+                    : null) || DEFAULT_PROVIDERS.find(isForMode)
             if (defaultProvider) {
                 setActiveProviderId(defaultProvider.id)
             }
         }
-    }, [providers, setProviders, generationMode, activeProviderId, setActiveProviderId])
+    }, [
+        providers,
+        setProviders,
+        generationMode,
+        activeProviderId,
+        setActiveProviderId,
+    ])
 
     // Filter by mode, then surface favoritos first, then the useful ones
     // (Cara+Permisivo → Cara → Permisivo → resto) so the best picks aren't
@@ -133,7 +160,11 @@ const ProviderManagerDrawer = () => {
         if (filter === 'permissive' && !t?.permissive) return false
         if (search.trim()) {
             const q = search.toLowerCase()
-            if (!p.name.toLowerCase().includes(q) && !p.model.toLowerCase().includes(q)) return false
+            if (
+                !p.name.toLowerCase().includes(q) &&
+                !p.model.toLowerCase().includes(q)
+            )
+                return false
         }
         return true
     })
@@ -167,6 +198,19 @@ const ProviderManagerDrawer = () => {
             : [...favoriteIds, providerId]
         writeFavoriteIds(next)
         setFavoriteIds(next)
+    }
+
+    // Batch (☑): marca este modelo para el Batch — el botón Batch genera directo
+    // en los marcados. Tope BATCH_MAX; al llenar, un click a uno nuevo se ignora.
+    const handleToggleBatch = (e: React.MouseEvent, providerId: string) => {
+        e.stopPropagation() // don't trigger the card's select
+        const inBatch = batchProviderIds.includes(providerId)
+        if (!inBatch && batchProviderIds.length >= BATCH_MAX) return
+        const next = inBatch
+            ? batchProviderIds.filter((id) => id !== providerId)
+            : [...batchProviderIds, providerId]
+        writeBatchIds(next) // persistencia durable (localStorage)
+        setBatchProviderIds(next) // mirror reactivo (store)
     }
 
     const getProviderIcon = (type: ProviderType) => {
@@ -223,15 +267,20 @@ const ProviderManagerDrawer = () => {
                 ) : (
                     <HiOutlineVideoCamera className="w-5 h-5 text-blue-400" />
                 )}
-                <h5 className="mb-0">{generationMode === 'IMAGE' ? 'Image' : 'Video'} Provider</h5>
+                <h5 className="mb-0">
+                    {generationMode === 'IMAGE' ? 'Image' : 'Video'} Provider
+                </h5>
             </div>
 
             {/* Gemini auto-fallback (IMAGE mode only) */}
             {generationMode === 'IMAGE' && (
                 <div className="flex items-center justify-between gap-3 p-2.5 mb-3 bg-gray-50 dark:bg-gray-800/60 border border-gray-200 dark:border-gray-700 rounded-lg">
                     <p className="text-xs text-gray-600 dark:text-gray-300">
-                        <span className="font-medium">Auto-fallback a MiniMax</span> — si Gemini
-                        bloquea por safety, reintenta automáticamente.
+                        <span className="font-medium">
+                            Auto-fallback a MiniMax
+                        </span>{' '}
+                        — si Gemini bloquea por safety, reintenta
+                        automáticamente.
                     </p>
                     <Switcher
                         checked={geminiAutoFallback}
@@ -293,6 +342,9 @@ const ProviderManagerDrawer = () => {
                         const isSelected = activeProviderId === provider.id
                         const isDefault = defaultProviderId === provider.id
                         const isFavorite = favoriteIds.includes(provider.id)
+                        const isInBatch = batchProviderIds.includes(provider.id)
+                        const batchDisabled =
+                            !isInBatch && batchProviderIds.length >= BATCH_MAX
                         const tr = PROVIDER_TRAITS[provider.id]
                         return (
                             <Card
@@ -302,16 +354,66 @@ const ProviderManagerDrawer = () => {
                                         ? 'ring-2 ring-blue-500 bg-blue-50 dark:bg-blue-900/20'
                                         : 'hover:bg-gray-50 dark:hover:bg-gray-800'
                                 }`}
-                                onClick={() => handleSelectProvider(provider.id)}
+                                onClick={() =>
+                                    handleSelectProvider(provider.id)
+                                }
                             >
                                 <div className="absolute top-1.5 right-1.5 flex items-center">
+                                    {/* ☑ marca el modelo para el BATCH (solo image
+                                        providers). El botón Batch genera directo en
+                                        los marcados, sin re-elegir cada vez. */}
+                                    {provider.supports_image && (
+                                        <button
+                                            type="button"
+                                            disabled={batchDisabled}
+                                            onClick={(e) =>
+                                                handleToggleBatch(
+                                                    e,
+                                                    provider.id,
+                                                )
+                                            }
+                                            title={
+                                                isInBatch
+                                                    ? 'Quitar del Batch'
+                                                    : batchDisabled
+                                                      ? `Batch lleno (máx ${BATCH_MAX})`
+                                                      : 'Añadir al Batch'
+                                            }
+                                            aria-label={
+                                                isInBatch
+                                                    ? 'Quitar del Batch'
+                                                    : 'Añadir al Batch'
+                                            }
+                                            className={`p-1 rounded-lg transition-colors ${
+                                                batchDisabled
+                                                    ? 'opacity-30 cursor-not-allowed'
+                                                    : 'hover:bg-gray-200 dark:hover:bg-gray-700'
+                                            }`}
+                                        >
+                                            {isInBatch ? (
+                                                <HiCollection className="w-4 h-4 text-blue-500" />
+                                            ) : (
+                                                <HiOutlineCollection className="w-4 h-4 text-gray-400" />
+                                            )}
+                                        </button>
+                                    )}
                                     {/* 📌 fija el DEFAULT de arranque del modo
                                         sin seleccionar ni cerrar el modal. */}
                                     <button
                                         type="button"
-                                        onClick={(e) => handlePinDefault(e, provider.id)}
-                                        title={isDefault ? 'Default de arranque de este modo' : 'Fijar como default de arranque'}
-                                        aria-label={isDefault ? 'Default de arranque de este modo' : 'Fijar como default de arranque'}
+                                        onClick={(e) =>
+                                            handlePinDefault(e, provider.id)
+                                        }
+                                        title={
+                                            isDefault
+                                                ? 'Default de arranque de este modo'
+                                                : 'Fijar como default de arranque'
+                                        }
+                                        aria-label={
+                                            isDefault
+                                                ? 'Default de arranque de este modo'
+                                                : 'Fijar como default de arranque'
+                                        }
                                         className="p-1 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
                                     >
                                         {isDefault ? (
@@ -322,9 +424,19 @@ const ProviderManagerDrawer = () => {
                                     </button>
                                     <button
                                         type="button"
-                                        onClick={(e) => handleToggleFavorite(e, provider.id)}
-                                        title={isFavorite ? 'Quitar de favoritos' : 'Marcar como favorito'}
-                                        aria-label={isFavorite ? 'Quitar de favoritos' : 'Marcar como favorito'}
+                                        onClick={(e) =>
+                                            handleToggleFavorite(e, provider.id)
+                                        }
+                                        title={
+                                            isFavorite
+                                                ? 'Quitar de favoritos'
+                                                : 'Marcar como favorito'
+                                        }
+                                        aria-label={
+                                            isFavorite
+                                                ? 'Quitar de favoritos'
+                                                : 'Marcar como favorito'
+                                        }
                                         className="p-1 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
                                     >
                                         {isFavorite ? (
@@ -340,7 +452,7 @@ const ProviderManagerDrawer = () => {
                                         <HiOutlineCheck className="w-4 h-4 text-blue-500" />
                                     )}
                                 </div>
-                                <h3 className="font-medium text-sm text-gray-900 dark:text-white leading-tight pr-12">
+                                <h3 className="font-medium text-sm text-gray-900 dark:text-white leading-tight pr-20">
                                     {provider.name}
                                 </h3>
                                 <p className="text-[11px] text-gray-500 dark:text-gray-400 mt-1 line-clamp-3">
@@ -387,7 +499,10 @@ const ProviderManagerDrawer = () => {
             )}
 
             <div className="flex justify-end mt-4">
-                <Button variant="plain" onClick={() => setShowProviderManager(false)}>
+                <Button
+                    variant="plain"
+                    onClick={() => setShowProviderManager(false)}
+                >
                     Cerrar
                 </Button>
             </div>
