@@ -393,6 +393,11 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
         id: string
         base64: string
         mimeType: string
+        // El clon SIN enmascarar (optimizado). Qwen (editor confiable, face-swap
+        // limpio) lo usa para conservar la POSE EXACTA de la imagen — el masking
+        // borra la cabeza y la pose caía al texto lossy de Gemini.
+        rawBase64: string
+        rawMimeType: string
         masked: boolean
     } | null>(null)
     // Drives the gallery's hidden upload input from the header "Upload" button.
@@ -1023,10 +1028,17 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                     base64: string
                     mimeType: string
                 } | null = null
-                // ¿Se pudo difuminar la cara del clon? Decide el REORDEN de Wan:
-                // clon SIN cara rival (masked) → Wan usa el orden normal (cara=img1)
-                // y sale perfecto; clon CON cara rival (explícito, Gemini refusó) →
-                // Wan reordena (clon=canvas) para no salir cabezón. Ver wan.ts.
+                // Clon SIN enmascarar (optimizado) — Qwen lo usa para conservar la
+                // POSE EXACTA de la imagen (ver append). El masking borra la cabeza
+                // y la pose caía al texto lossy/erróneo de Gemini ("kneeling" cuando
+                // en realidad estaba de pie) → Qwen, que sigue mucho el texto, la
+                // renderizaba mal. Qwen hace face-swap limpio → no necesita máscara.
+                let optimizedCloneRawRef: {
+                    base64: string
+                    mimeType: string
+                } | null = null
+                // ¿Se pudo difuminar la cara del clon? Diagnóstico + control de qué
+                // clon recibe cada modelo (Seedream copia caras → enmascarado).
                 let cloneFaceMasked = false
                 if (cloneImage?.base64) {
                     if (maskedCloneCacheRef.current?.id === cloneImage.id) {
@@ -1034,13 +1046,18 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                             base64: maskedCloneCacheRef.current.base64,
                             mimeType: maskedCloneCacheRef.current.mimeType,
                         }
+                        optimizedCloneRawRef = {
+                            base64: maskedCloneCacheRef.current.rawBase64,
+                            mimeType: maskedCloneCacheRef.current.rawMimeType,
+                        }
                         cloneFaceMasked = maskedCloneCacheRef.current.masked
                     } else {
-                        optimizedCloneRef = await optimizeImage({
+                        optimizedCloneRawRef = await optimizeImage({
                             base64: cloneImage.base64,
                             mimeType: cloneImage.mimeType,
                         })
-                        if (optimizedCloneRef) {
+                        optimizedCloneRef = optimizedCloneRawRef
+                        if (optimizedCloneRawRef) {
                             // Mejor esfuerzo: si Gemini DETECTA la cara del clon se
                             // difumina (evita el rostro rival que Seedream copiaría).
                             // Si NO la detecta —o la refusa por ser contenido
@@ -1052,12 +1069,12 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                             // infinitamente mejor que perder toda la referencia.
                             try {
                                 const faceBox = await detectFaceBox({
-                                    base64: optimizedCloneRef.base64,
-                                    mimeType: optimizedCloneRef.mimeType,
+                                    base64: optimizedCloneRawRef.base64,
+                                    mimeType: optimizedCloneRawRef.mimeType,
                                 })
                                 if (faceBox) {
                                     const maskedB64 = await maskFaceInImage(
-                                        optimizedCloneRef.base64,
+                                        optimizedCloneRawRef.base64,
                                         faceBox,
                                     )
                                     optimizedCloneRef = {
@@ -1078,8 +1095,15 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                             }
                             maskedCloneCacheRef.current = {
                                 id: cloneImage.id,
-                                base64: optimizedCloneRef.base64,
-                                mimeType: optimizedCloneRef.mimeType,
+                                // optimizedCloneRef ya es non-null aquí (se asignó
+                                // desde optimizedCloneRawRef, o el masked version).
+                                base64: (optimizedCloneRef ?? optimizedCloneRawRef)
+                                    .base64,
+                                mimeType: (
+                                    optimizedCloneRef ?? optimizedCloneRawRef
+                                ).mimeType,
+                                rawBase64: optimizedCloneRawRef.base64,
+                                rawMimeType: optimizedCloneRawRef.mimeType,
                                 masked: cloneFaceMasked,
                             }
                         }
@@ -1396,13 +1420,23 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                             optimizedCloneRef &&
                             kieReferenceImages.length > 0
                         ) {
+                            // Qwen (editor confiable, face-swap limpio) recibe el
+                            // clon SIN enmascarar → conserva la POSE EXACTA de la
+                            // imagen. El masking borra la cabeza y la pose caía al
+                            // texto lossy/erróneo de Gemini ("kneeling" ≠ pose real);
+                            // Qwen sigue mucho el texto → la renderizaba mal.
+                            // Resto: enmascarado (Seedream COPIA la cara; Wan es
+                            // fuser y sin máscara podría bleedear la cara rival).
+                            const cloneForModel =
+                                kieModel.startsWith('qwen') &&
+                                optimizedCloneRawRef
+                                    ? optimizedCloneRawRef
+                                    : optimizedCloneRef
                             kieRefsToSend = [
                                 ...kieReferenceImages,
                                 {
-                                    ...optimizedCloneRef,
+                                    ...cloneForModel,
                                     role: 'clone' as const,
-                                    // Wan usa esto: clon SIN cara rival (masked) →
-                                    // orden normal; con cara rival → reordena.
                                     masked: cloneFaceMasked,
                                 },
                             ]
