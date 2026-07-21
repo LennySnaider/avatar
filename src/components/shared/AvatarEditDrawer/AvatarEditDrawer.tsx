@@ -697,6 +697,33 @@ const AvatarEditDrawer = ({
                                 )}
                             </Card>
 
+                            {/* Identity Weight */}
+                            <Card className="p-4">
+                                <div className="flex items-center justify-between mb-3">
+                                    <h3 className="text-sm font-semibold">
+                                        Identity Weight
+                                    </h3>
+                                    <span className="text-sm font-mono text-primary">
+                                        {localIdentityWeight}%
+                                    </span>
+                                </div>
+                                <Slider
+                                    value={localIdentityWeight}
+                                    onChange={(val) =>
+                                        setLocalIdentityWeight(val as number)
+                                    }
+                                    min={0}
+                                    max={100}
+                                />
+                                <p className="text-xs text-gray-500 mt-2">
+                                    {localIdentityWeight > 85
+                                        ? 'Very high - Deepfake-level consistency'
+                                        : localIdentityWeight > 50
+                                          ? 'High - Strong identity preservation'
+                                          : 'Low - More creative freedom'}
+                                </p>
+                            </Card>
+
                             {/* Specific References */}
                             <Card className="p-4">
                                 <h3 className="text-sm font-semibold mb-4">
@@ -761,33 +788,6 @@ const AvatarEditDrawer = ({
                                     measurements={localMeasurements}
                                     onChange={setLocalMeasurements}
                                 />
-                            </Card>
-
-                            {/* Identity Weight */}
-                            <Card className="p-4">
-                                <div className="flex items-center justify-between mb-3">
-                                    <h3 className="text-sm font-semibold">
-                                        Identity Weight
-                                    </h3>
-                                    <span className="text-sm font-mono text-primary">
-                                        {localIdentityWeight}%
-                                    </span>
-                                </div>
-                                <Slider
-                                    value={localIdentityWeight}
-                                    onChange={(val) =>
-                                        setLocalIdentityWeight(val as number)
-                                    }
-                                    min={0}
-                                    max={100}
-                                />
-                                <p className="text-xs text-gray-500 mt-2">
-                                    {localIdentityWeight > 85
-                                        ? 'Very high - Deepfake-level consistency'
-                                        : localIdentityWeight > 50
-                                          ? 'High - Strong identity preservation'
-                                          : 'Low - More creative freedom'}
-                                </p>
                             </Card>
 
                             {/* Physical Attributes */}
