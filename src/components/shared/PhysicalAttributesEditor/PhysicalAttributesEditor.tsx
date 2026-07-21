@@ -12,8 +12,9 @@
  * (opcional) sus refs de región; sin acoplarse a ningún store.
  */
 
-import { useRef } from 'react'
+import { useRef, useState } from 'react'
 import Slider from '@/components/ui/Slider'
+import ConfirmDialog from '@/components/shared/ConfirmDialog'
 import Input from '@/components/ui/Input'
 import Tooltip from '@/components/ui/Tooltip'
 import Notification from '@/components/ui/Notification'
@@ -44,6 +45,7 @@ import type {
     CurveLevel,
     BustShape,
     GlutesShape,
+    BodyShape,
 } from '@/@types/supabase'
 import type { PhysicalRegionRef } from '@/components/shared/BodyLab'
 
@@ -87,6 +89,12 @@ const PhysicalAttributesEditor = ({
 
     const set = (patch: Partial<PhysicalMeasurements>) =>
         onChange({ ...measurements, ...patch })
+
+    // Forma → preset. Si ya hay una forma establecida, confirmar antes de
+    // sobreescribir (con el ConfirmDialog de ECME — NUNCA window.confirm).
+    const [pendingShape, setPendingShape] = useState<BodyShape | null>(null)
+    const applyShape = (shape: BodyShape) =>
+        onChange({ ...measurements, ...SHAPE_PRESETS[shape], shape })
 
     const processRegionFile = (file: File, region: 'bust' | 'glutes') => {
         if (
@@ -162,19 +170,10 @@ const PhysicalAttributesEditor = ({
                         <button
                             key={shape}
                             onClick={() => {
-                                const hasCustom = !!measurements.shape
-                                if (
-                                    hasCustom &&
-                                    !window.confirm(
-                                        'Aplicar esta forma sobreescribe hombros/busto/cintura/cadera con un ejemplo canónico. ¿Continuar?',
-                                    )
-                                )
-                                    return
-                                onChange({
-                                    ...measurements,
-                                    ...SHAPE_PRESETS[shape],
-                                    shape,
-                                })
+                                // Si ya hay forma establecida, confirmar (ECME);
+                                // en avatar nuevo se aplica directo.
+                                if (measurements.shape) setPendingShape(shape)
+                                else applyShape(shape)
                             }}
                             className={`px-2 py-1 text-xs rounded border transition-colors ${
                                 measurements.shape === shape
@@ -734,6 +733,27 @@ const PhysicalAttributesEditor = ({
                 value={measurements.eyeColor}
                 onChange={(c) => set({ eyeColor: c })}
             />
+
+            {/* Confirmación al sobreescribir medidas con un preset de forma (ECME) */}
+            <ConfirmDialog
+                isOpen={!!pendingShape}
+                type="warning"
+                title="Aplicar forma"
+                confirmText="Aplicar"
+                cancelText="Cancelar"
+                onClose={() => setPendingShape(null)}
+                onRequestClose={() => setPendingShape(null)}
+                onCancel={() => setPendingShape(null)}
+                onConfirm={() => {
+                    if (pendingShape) applyShape(pendingShape)
+                    setPendingShape(null)
+                }}
+            >
+                <p>
+                    Aplicar esta forma sobreescribe hombros, busto, cintura y
+                    cadera con un ejemplo canónico. ¿Continuar?
+                </p>
+            </ConfirmDialog>
         </div>
     )
 }
