@@ -229,6 +229,14 @@ const PhysicalAttributesEditor = ({
                     value={measurements.waist}
                     onChange={(v) => set({ waist: v })}
                 />
+                <MeasurementSlider
+                    label="Hips"
+                    unit="cm"
+                    min={70}
+                    max={140}
+                    value={measurements.hips}
+                    onChange={(v) => set({ hips: v })}
+                />
             </div>
 
             {/* Leg Type */}
@@ -372,9 +380,14 @@ const PhysicalAttributesEditor = ({
                                                         (val as number) === 0
                                                             ? undefined
                                                             : (val as number as CurveLevel)
+                                                    // Solo Bust mapea a cm (m.bust).
+                                                    // Glúteos = nivel/volumen puro;
+                                                    // la cadera (m.hips) se controla
+                                                    // con su propio slider arriba.
                                                     set({
                                                         [key]: lvl,
-                                                        ...(lvl
+                                                        ...(lvl &&
+                                                        key === 'bustLevel'
                                                             ? {
                                                                   [cmField]:
                                                                       levelToCm[
@@ -388,28 +401,33 @@ const PhysicalAttributesEditor = ({
                                                 max={5}
                                             />
                                         </div>
-                                        <div className="flex items-center gap-1 shrink-0">
-                                            <Input
-                                                size="sm"
-                                                type="number"
-                                                className="w-16 text-right py-0.5 px-1.5"
-                                                value={cmValue}
-                                                onChange={(e) => {
-                                                    const n = parseInt(
-                                                        e.target.value,
-                                                    )
-                                                    if (!Number.isFinite(n))
-                                                        return
-                                                    set({
-                                                        [cmField]: n,
-                                                        [key]: cmToLevel(n),
-                                                    })
-                                                }}
-                                            />
-                                            <span className="text-[10px] text-gray-400">
-                                                cm
-                                            </span>
-                                        </div>
+                                        {/* Solo Bust muestra cm (m.bust). Glúteos
+                                            es nivel/volumen puro — la cadera
+                                            (m.hips) tiene su slider propio arriba. */}
+                                        {key === 'bustLevel' && (
+                                            <div className="flex items-center gap-1 shrink-0">
+                                                <Input
+                                                    size="sm"
+                                                    type="number"
+                                                    className="w-16 text-right py-0.5 px-1.5"
+                                                    value={cmValue}
+                                                    onChange={(e) => {
+                                                        const n = parseInt(
+                                                            e.target.value,
+                                                        )
+                                                        if (!Number.isFinite(n))
+                                                            return
+                                                        set({
+                                                            [cmField]: n,
+                                                            [key]: cmToLevel(n),
+                                                        })
+                                                    }}
+                                                />
+                                                <span className="text-[10px] text-gray-400">
+                                                    cm
+                                                </span>
+                                            </div>
+                                        )}
                                     </div>
                                     {measurements[key] ? (
                                         <p className="text-[10px] text-gray-400 mt-0.5">

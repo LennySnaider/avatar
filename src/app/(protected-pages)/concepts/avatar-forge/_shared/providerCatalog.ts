@@ -527,7 +527,7 @@ export const getProviderDescription = (provider: AIProvider): string => {
  */
 export const BODY_SHEET_T2I_MODELS = [
     'qwen2/text-to-image',
-    'flux-2/pro-text-to-image',
+    // FLUX.2 quitado: lento, caro y daba cuerpos peores para el sheet.
 ]
 
 export function getPermissiveBodyModels(providers: AIProvider[]): AIProvider[] {
