@@ -44,7 +44,7 @@ const SHEET_THIGHS_PHRASE: Record<number, string> = {
  * dedicados (arriba) para el TAMAÑO y reutiliza en solo-lectura los mapas de
  * FORMA compartidos (descriptivos, no de intensidad).
  */
-function buildBodySheetCurves(m: PhysicalMeasurements): string {
+export function buildBodySheetCurves(m: PhysicalMeasurements): string {
     const parts: string[] = []
     if (m.bustLevel && SHEET_BUST_PHRASE[m.bustLevel]) {
         parts.push(SHEET_BUST_PHRASE[m.bustLevel])
@@ -124,6 +124,43 @@ export function buildBodySheetPrompt(m: PhysicalMeasurements): string {
         // óptica neutra (50mm, sin distorsión de proporciones) + quality tags.
         'Photorealistic raw photo, natural skin texture with visible pores, subtle imperfections and soft peach fuzz, subsurface scattering, even soft studio lighting, shot on a 50mm lens (no lens distortion), 8k, ultra high detail, sharp focus.',
         'No text, no labels, no borders, no grid lines, no collage separators, no watermark.',
+    ]
+        .filter(Boolean)
+        .join(' ')
+}
+
+/**
+ * Plantilla FIJA de turnaround (imagen bundleada en public/). Seedream Pro i2i
+ * la usa como referencia de POSES/LAYOUT (4 vistas limpias y consistentes) y
+ * renderiza el cuerpo del config encima. 1 sola generación. Si el archivo no
+ * existe, el drawer cae a Wan t2i.
+ */
+export const BODY_TURNAROUND_TEMPLATE_URL = '/body/turnaround-template.jpg'
+
+/** Modelo i2i para el refinado sobre la plantilla (mejor seguidor de curvas). */
+export const BODY_SHEET_REFINE_MODEL = 'seedream/5-pro-image-to-image'
+
+/**
+ * Prompt para Seedream i2i sobre la plantilla fija: conservar las MISMAS vistas/
+ * poses/fondo de la referencia, pero con el CUERPO del configurador (no el de la
+ * plantilla). La ruta de Seedream además inyecta, vía bodyEmphasis, la cláusula
+ * "su cuerpo real es X, renderízalo más lleno que la referencia".
+ */
+export function buildTurnaroundRefinePrompt(m: PhysicalMeasurements): string {
+    const body = describeBody(m)
+    const curves = buildBodySheetCurves(m)
+    const skin = getSkinToneDescription(m.skinTone)
+    const measurements =
+        m.bust && m.waist && m.hips
+            ? `bust ${m.bust}cm, waist ${m.waist}cm, hips ${m.hips}cm${
+                  m.shoulders ? `, shoulders ${m.shoulders}cm` : ''
+              }`
+            : ''
+    return [
+        'The reference image is a full-body multi-view TURNAROUND of a woman on a plain beige studio background (four full-body views side by side: front, three-quarter, side, back).',
+        'Recreate the EXACT same multi-view turnaround: same number of views, same poses, same camera angles, same framing and the same plain beige studio background.',
+        `Render a woman whose BODY matches this spec exactly — do NOT copy the reference body; make it: ${[body, curves, measurements].filter(Boolean).join(', ')}. ${skin}.`,
+        'Wearing a minimal beige two-piece bikini. Photorealistic, natural skin texture, 8k, sharp focus. Not an illustration.',
     ]
         .filter(Boolean)
         .join(' ')

@@ -24,8 +24,13 @@ import type { PhysicalMeasurements } from '@/@types/supabase'
 import { createThumbnail, resizeBase64Image } from '@/utils/imageOptimization'
 import {
     buildBodySheetPrompt,
+    buildBodySheetCurves,
+    buildTurnaroundRefinePrompt,
+    BODY_TURNAROUND_TEMPLATE_URL,
+    BODY_SHEET_REFINE_MODEL,
     BODY_SHEET_NEGATIVE_PROMPT,
 } from '@/utils/bodySheetPrompt'
+import { urlToDataUrl } from '@/utils/imageStitch'
 import {
     DEFAULT_PROVIDERS,
     getPermissiveBodyModels,
@@ -460,22 +465,42 @@ const AvatarEditDrawer = ({
         if (!selectedBodyModel) return
         setIsGeneratingBody(true)
         try {
-            // UNA sola imagen con las 3 vistas → un lienzo = un cuerpo
-            // CONSISTENTE entre ángulos. Text-to-image puro (sin cara); la cara
-            // real entra luego por el Clone Ref. Modelo t2i permisivo (Wan/Qwen).
-            const result = await generateImageKie({
-                prompt: buildBodySheetPrompt(localMeasurements),
-                model: selectedBodyModel,
-                aspectRatio: '16:9',
-                negativePrompt: BODY_SHEET_NEGATIVE_PROMPT,
-            })
+            // Preferido: plantilla FIJA de turnaround + Seedream i2i (poses de la
+            // plantilla + curvas del config, 1 gen). Fallback: Wan t2i si la
+            // plantilla no está o falla.
+            let tmpl: { base64: string; mimeType: string } | null = null
+            try {
+                const dataUrl = await urlToDataUrl(BODY_TURNAROUND_TEMPLATE_URL)
+                const mt = dataUrl.match(/^data:(.+);base64,(.+)$/)
+                if (mt) tmpl = { mimeType: mt[1], base64: mt[2] }
+            } catch {
+                // plantilla ausente → fallback
+            }
+
+            const result = tmpl
+                ? await generateImageKie({
+                      prompt: buildTurnaroundRefinePrompt(localMeasurements),
+                      model: BODY_SHEET_REFINE_MODEL,
+                      aspectRatio: '3:2',
+                      referenceImage: tmpl,
+                      bodyEmphasis: buildBodySheetCurves(localMeasurements),
+                      negativePrompt: BODY_SHEET_NEGATIVE_PROMPT,
+                  })
+                : await generateImageKie({
+                      prompt: buildBodySheetPrompt(localMeasurements),
+                      model: selectedBodyModel,
+                      aspectRatio: '16:9',
+                      negativePrompt: BODY_SHEET_NEGATIVE_PROMPT,
+                  })
             if (!result.success) throw new Error(result.error)
             const sheet = await toBodyReferenceImage(result.url)
             setBodySheet(sheet)
             setBodySheetModel(
-                PERMISSIVE_BODY_MODELS.find(
-                    (p) => p.model === selectedBodyModel,
-                )?.name || selectedBodyModel,
+                tmpl
+                    ? 'Seedream 5.0 Pro · plantilla'
+                    : PERMISSIVE_BODY_MODELS.find(
+                          (p) => p.model === selectedBodyModel,
+                      )?.name || selectedBodyModel,
             )
             toast.push(
                 <Notification type="success" title="Cuerpo generado">
