@@ -57,17 +57,24 @@ async function build(ctx: ImageRouteContext): Promise<KieImageRequest> {
             )
             // FIX "cabeza grande" (raíz ARQUITECTÓNICA, no prosa — el texto falló
             // 2×): Wan 2.7 con imágenes es un FUSOR sobre lienzo, no re-sintetiza la
-            // persona como Seedream/Qwen. Hereda la proporción de la imagen 1; con el
-            // FACE-CROP como imagen 1 (cabeza llena el frame) la salida sale cabezona.
-            // Solución (elección del usuario, verificada por A/B live): con CLONE
-            // (no-deepfake) el clon FULL-BODY va de imagen 1 (LIENZO que fija la
-            // escala cabeza↔cuerpo) y la cara de imagen 2 (identidad). No hay knob de
-            // API de peso de cara (confirmado vs OpenAPI). Cláusulas Wan-específicas
-            // re-indexadas — shared.ts (planExtraRefs) es cross-model y NO se toca.
-            // Deepfake NO reordena (reproduce la foto entera + swap, sin el collage).
+            // persona como Seedream/Qwen. Hereda la proporción de la imagen 1.
+            // REORDEN SOLO cuando el clon NO se pudo enmascarar (cara rival presente):
+            //  - clon ENMASCARADO (sin cara rival, caso común bikini/moda) → orden
+            //    NORMAL (cara=img1): Wan renderiza natural, sin cabezón y sin look
+            //    "pegado" (era el estado perfecto confirmado por el usuario).
+            //  - clon SIN enmascarar (explícito, Gemini refusó la detección) → la
+            //    cara rival en img1 hace que Wan salga cabezón → se reordena: clon
+            //    full-body de img1 (LIENZO que fija la escala cabeza↔cuerpo) + cara
+            //    de img2 (identidad). Acepta un face-swap algo "pegado" a cambio de
+            //    matar el cabezón, SOLO en el caso que no se puede enmascarar.
+            // No hay knob de API de peso de cara (confirmado vs OpenAPI). Cláusulas
+            // Wan-específicas re-indexadas — shared.ts (planExtraRefs) es cross-model
+            // y NO se toca. Deepfake NO reordena (reproduce la foto entera + swap).
             const cloneRef =
                 wanHasClone && !ctx.deepfakeMode
-                    ? wanExtras.find((r) => r.role === 'clone')
+                    ? wanExtras.find(
+                          (r) => r.role === 'clone' && !r.masked,
+                      )
                     : undefined
 
             let wanUrls: string[]

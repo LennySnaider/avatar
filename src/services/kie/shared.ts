@@ -14,7 +14,14 @@
  * byte-a-byte mientras se migra a rutas por modelo.
  */
 
-export type KieRefWithRole = { base64: string; mimeType: string; role?: string }
+export type KieRefWithRole = {
+    base64: string
+    mimeType: string
+    role?: string
+    // Solo para role:'clone' — ¿se difuminó la cara rival del clon? Wan lo usa
+    // para decidir el reorden (clon SIN cara → orden normal; con cara → reordena).
+    masked?: boolean
+}
 
 /**
  * Selección + orden CANÓNICO de los refs que acompañan a la cara en los

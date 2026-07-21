@@ -393,6 +393,7 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
         id: string
         base64: string
         mimeType: string
+        masked: boolean
     } | null>(null)
     // Drives the gallery's hidden upload input from the header "Upload" button.
     const galleryUploadInputRef = useRef<HTMLInputElement>(null)
@@ -1022,12 +1023,18 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                     base64: string
                     mimeType: string
                 } | null = null
+                // ¿Se pudo difuminar la cara del clon? Decide el REORDEN de Wan:
+                // clon SIN cara rival (masked) → Wan usa el orden normal (cara=img1)
+                // y sale perfecto; clon CON cara rival (explícito, Gemini refusó) →
+                // Wan reordena (clon=canvas) para no salir cabezón. Ver wan.ts.
+                let cloneFaceMasked = false
                 if (cloneImage?.base64) {
                     if (maskedCloneCacheRef.current?.id === cloneImage.id) {
                         optimizedCloneRef = {
                             base64: maskedCloneCacheRef.current.base64,
                             mimeType: maskedCloneCacheRef.current.mimeType,
                         }
+                        cloneFaceMasked = maskedCloneCacheRef.current.masked
                     } else {
                         optimizedCloneRef = await optimizeImage({
                             base64: cloneImage.base64,
@@ -1057,6 +1064,7 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                                         base64: maskedB64,
                                         mimeType: 'image/jpeg',
                                     }
+                                    cloneFaceMasked = true
                                 } else {
                                     console.warn(
                                         '[clone face-mask] sin cara detectable — clon enviado SIN enmascarar',
@@ -1072,6 +1080,7 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                                 id: cloneImage.id,
                                 base64: optimizedCloneRef.base64,
                                 mimeType: optimizedCloneRef.mimeType,
+                                masked: cloneFaceMasked,
                             }
                         }
                     }
@@ -1184,6 +1193,7 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                         base64: string
                         mimeType: string
                         role: string
+                        masked?: boolean
                     } => Boolean(r && r.base64),
                 )
 
@@ -1391,6 +1401,9 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                                 {
                                     ...optimizedCloneRef,
                                     role: 'clone' as const,
+                                    // Wan usa esto: clon SIN cara rival (masked) →
+                                    // orden normal; con cara rival → reordena.
+                                    masked: cloneFaceMasked,
                                 },
                             ]
                             refRoles = kieRefsToSend.map(
