@@ -513,3 +513,21 @@ export const getProviderDescription = (provider: AIProvider): string => {
             return provider.model
     }
 }
+
+/**
+ * De los providers configurados, los aptos para generar el BODY ANGLE SHEET:
+ * permisivos (dejan pasar bikini + énfasis de curvas). Se priorizan los que
+ * además reciben cara (`face: true`) porque el sheet inyecta el faceRef. El
+ * caller pasa `provider.model` a generateImageKie.
+ */
+export function getPermissiveBodyModels(providers: AIProvider[]): AIProvider[] {
+    const permissive = providers.filter(
+        (p) => PROVIDER_TRAITS[p.id]?.permissive === true,
+    )
+    // Los `face: true` primero (mejor coherencia con el faceRef del sheet).
+    return permissive.sort((a, b) => {
+        const fa = PROVIDER_TRAITS[a.id]?.face === true ? 0 : 1
+        const fb = PROVIDER_TRAITS[b.id]?.face === true ? 0 : 1
+        return fa - fb
+    })
+}
