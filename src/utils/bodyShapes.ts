@@ -50,16 +50,21 @@ export function deriveShapeFromMeasurements(m: PhysicalMeasurements): BodyShape 
     if (!b || !w || !h) return 'hourglass'
     const definedWaist = w <= Math.min(b, h) * 0.8 // cintura marcada
 
+    // Hombros claramente más anchos que cadera → triángulo invertido.
     if (sh > h * 1.05 && b >= h) return 'inverted-triangle'
+    // Cadera claramente más ancha que hombros/busto → pear o spoon.
     if (h > sh * 1.05 && h > b * 1.03) {
-        if (h > sh * 1.18 && definedWaist) return 'spoon'
+        if (h > sh * 1.22 && definedWaist) return 'spoon'
         return 'pear'
     }
+    // Cintura marcada y hombros≈cadera → hourglass.
     if (definedWaist && Math.abs(sh - h) <= Math.max(sh, h) * 0.06) {
         return 'hourglass'
     }
-    if (w >= b * 0.92 && w >= h * 0.92) {
-        return sh < h * 0.95 && b < h * 0.98 ? 'diamond' : 'apple'
-    }
+    // Cluster de cintura POCO marcada (apple / diamond / rectangle):
+    // apple = busto es lo más ancho (torso lleno arriba que se afina a la cadera).
+    if (b > h * 1.02 && b >= sh) return 'apple'
+    // diamond = hombros angostos respecto a busto Y cadera (peso al centro).
+    if (sh < b * 0.95 && sh < h * 0.95) return 'diamond'
     return 'rectangle'
 }
