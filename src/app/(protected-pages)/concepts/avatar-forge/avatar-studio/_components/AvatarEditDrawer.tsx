@@ -818,6 +818,10 @@ const AvatarEditDrawer = ({
                                         sheet: bodySheet,
                                         onGenerate: handleGenerateBody,
                                         onUseAsBody: handleUseAsBody,
+                                        onPreview: () => {
+                                            if (bodySheet)
+                                                setPreviewImage(bodySheet)
+                                        },
                                         disabledReason: !localFaceRef
                                             ? 'Sube o genera primero una cara (Face Close-up) para el cuerpo.'
                                             : permissiveBodyModels.length ===

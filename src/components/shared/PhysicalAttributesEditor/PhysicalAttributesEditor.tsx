@@ -71,6 +71,9 @@ export interface BodyLabProps {
     sheet: PhysicalRegionRef | null // preview del sheet generado
     onGenerate: () => void
     onUseAsBody: () => void
+    // Click en el preview → abrir en grande (el host usa su propio lightbox).
+    // Si no se pasa, el preview no es clickeable.
+    onPreview?: () => void
     // Motivo por el que no se puede generar (sin faceRef / sin modelo permisivo).
     // Si está presente, el botón "Generar cuerpo" se deshabilita y se muestra.
     disabledReason?: string
@@ -714,7 +717,12 @@ const PhysicalAttributesEditor = ({
                                 bodyLab.sheet.url
                             }
                             alt="Body angle sheet"
-                            className="w-full rounded-lg border border-gray-200 dark:border-gray-700 object-cover"
+                            onClick={bodyLab.onPreview}
+                            className={`w-full rounded-lg border border-gray-200 dark:border-gray-700 object-cover${
+                                bodyLab.onPreview
+                                    ? ' cursor-pointer hover:ring-2 hover:ring-primary transition-all'
+                                    : ''
+                            }`}
                         />
                     )}
 
