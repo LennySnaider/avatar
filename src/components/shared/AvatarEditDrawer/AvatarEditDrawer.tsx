@@ -31,7 +31,9 @@ import {
     getPermissiveBodyModels,
 } from '@/app/(protected-pages)/concepts/avatar-forge/_shared/providerCatalog'
 import PhysicalAttributesEditor from '@/components/shared/PhysicalAttributesEditor'
+import BodyLab from '@/components/shared/BodyLab'
 import ImageLightbox from '@/components/shared/ImageLightbox'
+import { deriveShapeFromMeasurements } from '@/utils/bodyShapes'
 
 // Modelos permisivos aptos para el body sheet (Seedream/Wan), del catálogo de
 // providers por defecto — este drawer es store-agnóstico y no tiene acceso a
@@ -139,7 +141,16 @@ const AvatarEditDrawer = ({
             setLocalBodyRef(initialData.bodyRef)
             setBodySheet(null)
             setLocalIdentityWeight(initialData.identityWeight)
-            setLocalMeasurements({ ...initialData.measurements })
+            setLocalMeasurements(
+                initialData.measurements.shape
+                    ? { ...initialData.measurements }
+                    : {
+                          ...initialData.measurements,
+                          shape: deriveShapeFromMeasurements(
+                              initialData.measurements,
+                          ),
+                      },
+            )
             setLocalFaceDescription(initialData.faceDescription)
             setSaveAvatarName(avatarName || initialData.name || '')
         }
@@ -740,6 +751,45 @@ const AvatarEditDrawer = ({
                                 </p>
                             </Card>
 
+                            {/* Body Lab — justo debajo de cara/ángulos */}
+                            <Card className="p-4">
+                                <BodyLab
+                                    models={PERMISSIVE_BODY_MODELS.map(
+                                        (p) => ({
+                                            id: p.id,
+                                            name: p.name,
+                                            model: p.model,
+                                        }),
+                                    )}
+                                    selectedModel={selectedBodyModel}
+                                    onSelectModel={setSelectedBodyModel}
+                                    isGenerating={isGeneratingBody}
+                                    // Sheet recién generado, o si no, el
+                                    // cuerpo guardado del avatar (localBodyRef
+                                    // hidratado de initialData.bodyRef) para
+                                    // que el usuario VEA su cuerpo canónico.
+                                    sheet={bodySheet || localBodyRef}
+                                    sheetModel={
+                                        bodySheet
+                                            ? bodySheetModel
+                                            : localBodyRef
+                                              ? 'Cuerpo guardado'
+                                              : undefined
+                                    }
+                                    onGenerate={handleGenerateBody}
+                                    onUseAsBody={handleUseAsBody}
+                                    onPreview={() => {
+                                        const s = bodySheet || localBodyRef
+                                        if (s) setPreviewImage(s)
+                                    }}
+                                    disabledReason={
+                                        PERMISSIVE_BODY_MODELS.length === 0
+                                            ? 'No hay modelo text-to-image permisivo disponible (Qwen / Flux.2).'
+                                            : undefined
+                                    }
+                                />
+                            </Card>
+
                             {/* Identity Weight */}
                             <Card className="p-4">
                                 <div className="flex items-center justify-between mb-3">
@@ -775,38 +825,6 @@ const AvatarEditDrawer = ({
                                 <PhysicalAttributesEditor
                                     measurements={localMeasurements}
                                     onChange={setLocalMeasurements}
-                                    bodyLab={{
-                                        models: PERMISSIVE_BODY_MODELS.map(
-                                            (p) => ({
-                                                id: p.id,
-                                                name: p.name,
-                                                model: p.model,
-                                            }),
-                                        ),
-                                        selectedModel: selectedBodyModel,
-                                        onSelectModel: setSelectedBodyModel,
-                                        isGenerating: isGeneratingBody,
-                                        // Sheet recién generado, o si no, el
-                                        // cuerpo guardado del avatar (localBodyRef
-                                        // hidratado de initialData.bodyRef) para
-                                        // que el usuario VEA su cuerpo canónico.
-                                        sheet: bodySheet || localBodyRef,
-                                        sheetModel: bodySheet
-                                            ? bodySheetModel
-                                            : localBodyRef
-                                              ? 'Cuerpo guardado'
-                                              : undefined,
-                                        onGenerate: handleGenerateBody,
-                                        onUseAsBody: handleUseAsBody,
-                                        onPreview: () => {
-                                            const s = bodySheet || localBodyRef
-                                            if (s) setPreviewImage(s)
-                                        },
-                                        disabledReason:
-                                            PERMISSIVE_BODY_MODELS.length === 0
-                                                ? 'No hay modelo text-to-image permisivo disponible (Qwen / Flux.2).'
-                                                : undefined,
-                                    }}
                                 />
                             </Card>
 

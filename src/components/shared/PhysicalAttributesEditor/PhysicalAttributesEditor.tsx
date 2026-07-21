@@ -45,40 +45,13 @@ import type {
     BustShape,
     GlutesShape,
 } from '@/@types/supabase'
+import type { PhysicalRegionRef } from '@/components/shared/BodyLab'
 
 // Forma mínima compartida de un ref de región (bust/glutes). Estructuralmente
 // compatible con el ReferenceImage del Studio (que trae 'bust'|'glutes' en
 // `type`); los hosts castean al setear si su tipo local es más estricto.
-export interface PhysicalRegionRef {
-    id?: string
-    url: string
-    mimeType: string
-    base64: string
-    type?: string
-    storagePath?: string
-    thumbnailUrl?: string
-}
-
-// Props del bloque "Body Lab" (opcional). El host inyecta la lógica de
-// generación/persistencia; este componente solo pinta. Si `bodyLab` no se pasa,
-// el bloque no se muestra (hosts sin generación: creator, shared drawer viejo).
-export interface BodyLabProps {
-    // Modelos permisivos a elegir. `model` es la cadena que va a generateImageKie.
-    models: { id: string; name: string; model: string }[]
-    selectedModel: string // cadena `model` seleccionada
-    onSelectModel: (model: string) => void
-    isGenerating: boolean
-    sheet: PhysicalRegionRef | null // preview del sheet generado
-    sheetModel?: string // nombre del modelo con que se generó el sheet (badge)
-    onGenerate: () => void
-    onUseAsBody: () => void
-    // Click en el preview → abrir en grande (el host usa su propio lightbox).
-    // Si no se pasa, el preview no es clickeable.
-    onPreview?: () => void
-    // Motivo por el que no se puede generar (sin faceRef / sin modelo permisivo).
-    // Si está presente, el botón "Generar cuerpo" se deshabilita y se muestra.
-    disabledReason?: string
-}
+// Re-exportado desde BodyLab (mismo tipo) para no romper imports existentes.
+export type { PhysicalRegionRef } from '@/components/shared/BodyLab'
 
 interface PhysicalAttributesEditorProps {
     measurements: PhysicalMeasurements
@@ -89,7 +62,6 @@ interface PhysicalAttributesEditorProps {
     glutesRef?: PhysicalRegionRef | null
     onBustRef?: (ref: PhysicalRegionRef | null) => void
     onGlutesRef?: (ref: PhysicalRegionRef | null) => void
-    bodyLab?: BodyLabProps
 }
 
 const PhysicalAttributesEditor = ({
@@ -99,7 +71,6 @@ const PhysicalAttributesEditor = ({
     glutesRef,
     onBustRef,
     onGlutesRef,
-    bodyLab,
 }: PhysicalAttributesEditorProps) => {
     const bustInputRef = useRef<HTMLInputElement>(null)
     const glutesInputRef = useRef<HTMLInputElement>(null)
@@ -687,104 +658,6 @@ const PhysicalAttributesEditor = ({
                 value={measurements.eyeColor}
                 onChange={(c) => set({ eyeColor: c })}
             />
-
-            {bodyLab && (
-                <div className="space-y-3 pt-4 border-t border-gray-200 dark:border-gray-700">
-                    <div>
-                        <p className="text-sm font-semibold">
-                            Body Lab — Cuerpo canónico
-                        </p>
-                        <p className="text-xs text-gray-500">
-                            Genera un cuerpo de 3 vistas (mini-bikini) desde
-                            estos atributos y fíjalo como el cuerpo del avatar.
-                        </p>
-                    </div>
-
-                    <div className="space-y-1">
-                        <label className="text-xs text-gray-500">
-                            Modelo de generación (permisivo)
-                        </label>
-                        <select
-                            className="w-full h-9 px-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-transparent text-sm"
-                            value={bodyLab.selectedModel}
-                            onChange={(e) =>
-                                bodyLab.onSelectModel(e.target.value)
-                            }
-                            disabled={
-                                bodyLab.models.length === 0 ||
-                                bodyLab.isGenerating
-                            }
-                        >
-                            {bodyLab.models.length === 0 ? (
-                                <option value="">
-                                    Sin proveedor permisivo configurado
-                                </option>
-                            ) : (
-                                bodyLab.models.map((m) => (
-                                    <option key={m.id} value={m.model}>
-                                        {m.name}
-                                    </option>
-                                ))
-                            )}
-                        </select>
-                    </div>
-
-                    {bodyLab.sheet && (
-                        <div className="relative">
-                            <img
-                                src={
-                                    bodyLab.sheet.thumbnailUrl ||
-                                    bodyLab.sheet.url
-                                }
-                                alt="Body angle sheet"
-                                onClick={bodyLab.onPreview}
-                                className={`w-full rounded-lg border border-gray-200 dark:border-gray-700 object-cover${
-                                    bodyLab.onPreview
-                                        ? ' cursor-pointer hover:ring-2 hover:ring-primary transition-all'
-                                        : ''
-                                }`}
-                            />
-                            {bodyLab.sheetModel && (
-                                <span className="absolute top-2 left-2 px-2 py-0.5 rounded-md bg-black/70 text-white text-[10px] font-medium backdrop-blur-sm pointer-events-none">
-                                    {bodyLab.sheetModel}
-                                </span>
-                            )}
-                        </div>
-                    )}
-
-                    <div className="flex gap-2">
-                        <button
-                            type="button"
-                            onClick={bodyLab.onGenerate}
-                            disabled={
-                                !!bodyLab.disabledReason || bodyLab.isGenerating
-                            }
-                            className="flex-1 h-9 rounded-lg bg-primary text-white text-sm disabled:opacity-50"
-                        >
-                            {bodyLab.isGenerating
-                                ? 'Generando…'
-                                : bodyLab.sheet
-                                  ? 'Regenerar cuerpo'
-                                  : 'Generar cuerpo'}
-                        </button>
-                        {bodyLab.sheet && !bodyLab.isGenerating && (
-                            <button
-                                type="button"
-                                onClick={bodyLab.onUseAsBody}
-                                className="flex-1 h-9 rounded-lg border border-primary text-primary text-sm"
-                            >
-                                Usar como cuerpo
-                            </button>
-                        )}
-                    </div>
-
-                    {bodyLab.disabledReason && (
-                        <p className="text-xs text-amber-500">
-                            {bodyLab.disabledReason}
-                        </p>
-                    )}
-                </div>
-            )}
         </div>
     )
 }

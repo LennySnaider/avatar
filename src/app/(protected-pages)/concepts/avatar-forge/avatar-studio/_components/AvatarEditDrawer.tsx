@@ -30,7 +30,9 @@ import type { ReferenceImage } from '../types'
 import type { PhysicalMeasurements } from '@/@types/supabase'
 import { createThumbnail } from '@/utils/imageOptimization'
 import PhysicalAttributesEditor from '@/components/shared/PhysicalAttributesEditor'
+import BodyLab from '@/components/shared/BodyLab'
 import ImageLightbox from '@/components/shared/ImageLightbox'
+import { deriveShapeFromMeasurements } from '@/utils/bodyShapes'
 
 interface AvatarEditDrawerProps {
     isOpen: boolean
@@ -125,7 +127,14 @@ const AvatarEditDrawer = ({
             setLocalBustRef(bustRef)
             setLocalGlutesRef(glutesRef)
             setLocalIdentityWeight(identityWeight)
-            setLocalMeasurements({ ...measurements })
+            setLocalMeasurements(
+                measurements.shape
+                    ? { ...measurements }
+                    : {
+                          ...measurements,
+                          shape: deriveShapeFromMeasurements(measurements),
+                      },
+            )
             setLocalFaceDescription(faceDescription)
             setSaveAvatarName(avatarName || '')
         }
@@ -741,6 +750,42 @@ const AvatarEditDrawer = ({
                                 </p>
                             </Card>
 
+                            {/* Body Lab — justo debajo de cara/ángulos */}
+                            <Card className="p-4">
+                                <BodyLab
+                                    models={permissiveBodyModels.map((p) => ({
+                                        id: p.id,
+                                        name: p.name,
+                                        model: p.model,
+                                    }))}
+                                    selectedModel={selectedBodyModel}
+                                    onSelectModel={setSelectedBodyModel}
+                                    isGenerating={isGeneratingBody}
+                                    // Sheet recién generado, o el cuerpo
+                                    // guardado del avatar (store bodyRef
+                                    // hidratado) para que se VEA al reabrir.
+                                    sheet={bodySheet || bodyRef}
+                                    sheetModel={
+                                        bodySheet
+                                            ? bodySheetModel
+                                            : bodyRef
+                                              ? 'Cuerpo guardado'
+                                              : undefined
+                                    }
+                                    onGenerate={handleGenerateBody}
+                                    onUseAsBody={handleUseAsBody}
+                                    onPreview={() => {
+                                        const s = bodySheet || bodyRef
+                                        if (s) setPreviewImage(s)
+                                    }}
+                                    disabledReason={
+                                        permissiveBodyModels.length === 0
+                                            ? 'No hay modelo text-to-image permisivo (Qwen / Flux.2). Actívalo en AI Providers.'
+                                            : undefined
+                                    }
+                                />
+                            </Card>
+
                             {/* Identity Weight */}
                             <Card className="p-4">
                                 <div className="flex items-center justify-between mb-3">
@@ -788,37 +833,6 @@ const AvatarEditDrawer = ({
                                             r as ReferenceImage | null,
                                         )
                                     }
-                                    bodyLab={{
-                                        models: permissiveBodyModels.map(
-                                            (p) => ({
-                                                id: p.id,
-                                                name: p.name,
-                                                model: p.model,
-                                            }),
-                                        ),
-                                        selectedModel: selectedBodyModel,
-                                        onSelectModel: setSelectedBodyModel,
-                                        isGenerating: isGeneratingBody,
-                                        // Sheet recién generado, o el cuerpo
-                                        // guardado del avatar (store bodyRef
-                                        // hidratado) para que se VEA al reabrir.
-                                        sheet: bodySheet || bodyRef,
-                                        sheetModel: bodySheet
-                                            ? bodySheetModel
-                                            : bodyRef
-                                              ? 'Cuerpo guardado'
-                                              : undefined,
-                                        onGenerate: handleGenerateBody,
-                                        onUseAsBody: handleUseAsBody,
-                                        onPreview: () => {
-                                            const s = bodySheet || bodyRef
-                                            if (s) setPreviewImage(s)
-                                        },
-                                        disabledReason:
-                                            permissiveBodyModels.length === 0
-                                                ? 'No hay modelo text-to-image permisivo (Qwen / Flux.2). Actívalo en AI Providers.'
-                                                : undefined,
-                                    }}
                                 />
                             </Card>
 
