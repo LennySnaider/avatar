@@ -515,26 +515,34 @@ export const getProviderDescription = (provider: AIProvider): string => {
 }
 
 /**
- * De los providers configurados, los aptos para generar el BODY ANGLE SHEET.
- * Requisitos (los tres, o KIE devuelve 500 "This field is required"):
- *  - `permissive` — dejan pasar bikini + énfasis de curvas.
- *  - `type === 'KIE'` — el body sheet se genera con generateImageKie, que SOLO
- *    rutea modelos KIE. MiniMax es permisivo pero vive en otro servicio → fuera.
- *  - `supports_image` — excluye modelos de video (p.ej. wan-2-2 i2v).
- * Se priorizan los `face: true` porque el sheet inyecta el faceRef. El caller
- * pasa `provider.model` a generateImageKie.
+ * Modelos t2i PUROS y permisivos aptos para el BODY ANGLE SHEET. El sheet se
+ * genera SIN foto de cara (text-to-image), así que el cuerpo lo define 100% el
+ * configurador.
+ *
+ * OJO con la trampa de nombres: los ids `seedream/*-text-to-image` NO sirven
+ * para t2i puro — en KIE ese endpoint EXIGE `image_urls` y sin referencia
+ * devuelve 500 "This field is required" (solo funcionan en modo edit, con
+ * imagen). Qwen Image 2.0 (unificado) y FLUX.2 Pro sí son text-to-image real.
+ * Por eso el body sheet usa un allowlist explícito, no un filtro por nombre.
  */
+export const BODY_SHEET_T2I_MODELS = [
+    'qwen2/text-to-image',
+    'flux-2/pro-text-to-image',
+]
+
 export function getPermissiveBodyModels(providers: AIProvider[]): AIProvider[] {
     const usable = providers.filter(
         (p) =>
             PROVIDER_TRAITS[p.id]?.permissive === true &&
             p.type === 'KIE' &&
-            p.supports_image === true,
+            p.supports_image === true &&
+            !!p.model &&
+            BODY_SHEET_T2I_MODELS.includes(p.model),
     )
-    // Los `face: true` primero (mejor coherencia con el faceRef del sheet).
-    return usable.sort((a, b) => {
-        const fa = PROVIDER_TRAITS[a.id]?.face === true ? 0 : 1
-        const fb = PROVIDER_TRAITS[b.id]?.face === true ? 0 : 1
-        return fa - fb
-    })
+    // Orden = el del allowlist (Qwen primero como default t2i confiable).
+    return usable.sort(
+        (a, b) =>
+            BODY_SHEET_T2I_MODELS.indexOf(a.model as string) -
+            BODY_SHEET_T2I_MODELS.indexOf(b.model as string),
+    )
 }

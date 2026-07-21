@@ -22,7 +22,6 @@ import {
 import { generateAvatar, analyzeFaceFromImages } from '@/services/GeminiService'
 import { generateImageKie } from '@/services/KieService'
 import { buildBodySheetPrompt } from '@/utils/bodySheetPrompt'
-import { buildCurvesEmphasis } from '@/utils/bodyDescriptors'
 import { getPermissiveBodyModels } from '../../_shared/providerCatalog'
 import type { ReferenceImage } from '../types'
 import type { PhysicalMeasurements } from '@/@types/supabase'
@@ -432,22 +431,19 @@ const AvatarEditDrawer = ({
     // Generate the Body Angle Sheet (3-view mini-bikini reference) via a
     // permissive KIE model, anchored to the face ref + curves emphasis.
     const handleGenerateBody = async () => {
-        if (!localFaceRef || !selectedBodyModel) return
+        if (!selectedBodyModel) return
         setIsGeneratingBody(true)
         try {
             const result = await generateImageKie({
-                // La cara va como referenceImage SINGULAR: las rutas KIE
-                // (seedream/qwen/wan/flux2) solo activan el manejo de imagen con
-                // este campo, y planExtraRefs ignora el rol 'face'. Sin esto el
-                // modelo queda en text-to-image sin imagen → KIE 500.
+                // TEXT-TO-IMAGE PURO: sin foto de cara. El cuerpo lo define 100%
+                // el configurador (buildBodySheetPrompt con el mapa dedicado).
+                // Pasar la cara metía las rutas KIE en image-edit (Qwen arruinaba
+                // el resultado) y jalaba el cuerpo hacia el físico de la foto. La
+                // cara real entra luego por el Clone Ref; el sheet es SOLO ancla
+                // de CUERPO. Requiere un modelo t2i real (Qwen/Flux.2).
                 prompt: buildBodySheetPrompt(localMeasurements),
                 model: selectedBodyModel,
                 aspectRatio: '16:9',
-                referenceImage: {
-                    base64: localFaceRef.base64,
-                    mimeType: localFaceRef.mimeType,
-                },
-                bodyEmphasis: buildCurvesEmphasis(localMeasurements),
             })
             if (!result.success) throw new Error(result.error)
             const sheet = await toReferenceImage(result.url, 'body')
@@ -808,12 +804,10 @@ const AvatarEditDrawer = ({
                                             if (bodySheet)
                                                 setPreviewImage(bodySheet)
                                         },
-                                        disabledReason: !localFaceRef
-                                            ? 'Sube o genera primero una cara (Face Close-up) para el cuerpo.'
-                                            : permissiveBodyModels.length ===
-                                                0
-                                              ? 'Configura un proveedor permisivo (Seedream / Wan) en AI Providers.'
-                                              : undefined,
+                                        disabledReason:
+                                            permissiveBodyModels.length === 0
+                                                ? 'No hay modelo text-to-image permisivo (Qwen / Flux.2). Actívalo en AI Providers.'
+                                                : undefined,
                                     }}
                                 />
                             </Card>

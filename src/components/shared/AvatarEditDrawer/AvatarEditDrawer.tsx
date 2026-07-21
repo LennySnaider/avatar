@@ -23,7 +23,6 @@ import { generateImageKie } from '@/services/KieService'
 import type { PhysicalMeasurements } from '@/@types/supabase'
 import { createThumbnail, resizeBase64Image } from '@/utils/imageOptimization'
 import { buildBodySheetPrompt } from '@/utils/bodySheetPrompt'
-import { buildCurvesEmphasis } from '@/utils/bodyDescriptors'
 import {
     DEFAULT_PROVIDERS,
     getPermissiveBodyModels,
@@ -440,23 +439,19 @@ const AvatarEditDrawer = ({
 
     // Genera el body angle sheet (3 vistas, mini-bikini) desde los sliders.
     const handleGenerateBody = async () => {
-        if (!localFaceRef || !selectedBodyModel) return
+        if (!selectedBodyModel) return
         setIsGeneratingBody(true)
         try {
             const result = await generateImageKie({
-                // La cara va como referenceImage SINGULAR: las rutas KIE
-                // (seedream/qwen/wan/flux2) solo activan el manejo de imagen con
-                // este campo, y planExtraRefs ignora el rol 'face' (solo procesa
-                // body/pose/clone/etc). Sin esto el modelo queda en text-to-image
-                // sin imagen → KIE 500 "This field is required".
+                // TEXT-TO-IMAGE PURO: sin foto de cara. El cuerpo lo define 100%
+                // el configurador (buildBodySheetPrompt con el mapa dedicado).
+                // Pasar la cara metía las rutas KIE en image-edit (Qwen arruinaba
+                // el resultado) y jalaba el cuerpo hacia el físico de la foto. La
+                // cara real entra luego por el Clone Ref; el sheet es SOLO ancla
+                // de CUERPO. Requiere un modelo t2i real (Qwen/Flux.2).
                 prompt: buildBodySheetPrompt(localMeasurements),
                 model: selectedBodyModel,
                 aspectRatio: '16:9',
-                referenceImage: {
-                    base64: localFaceRef.base64,
-                    mimeType: localFaceRef.mimeType,
-                },
-                bodyEmphasis: buildCurvesEmphasis(localMeasurements),
             })
             if (!result.success) throw new Error(result.error)
             const sheet = await toBodyReferenceImage(result.url)
@@ -802,11 +797,10 @@ const AvatarEditDrawer = ({
                                             const s = bodySheet || localBodyRef
                                             if (s) setPreviewImage(s)
                                         },
-                                        disabledReason: !localFaceRef
-                                            ? 'Sube o genera primero una cara (Face Close-up) para el cuerpo.'
-                                            : PERMISSIVE_BODY_MODELS.length === 0
-                                              ? 'No hay modelo permisivo disponible (Seedream / Wan).'
-                                              : undefined,
+                                        disabledReason:
+                                            PERMISSIVE_BODY_MODELS.length === 0
+                                                ? 'No hay modelo text-to-image permisivo disponible (Qwen / Flux.2).'
+                                                : undefined,
                                     }}
                                 />
                             </Card>
