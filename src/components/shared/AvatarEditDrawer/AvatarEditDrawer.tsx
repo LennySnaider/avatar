@@ -779,6 +779,41 @@ const AvatarEditDrawer = ({
                                 </p>
                             </Card>
 
+                            {/* Face Description — junto a las referencias de cara */}
+                            <Card className="p-4">
+                                <div className="flex items-center justify-between mb-3">
+                                    <div>
+                                        <h3 className="text-sm font-semibold">
+                                            Face Description
+                                        </h3>
+                                        <p className="text-xs text-gray-500">
+                                            Detailed description for consistent
+                                            facial features
+                                        </p>
+                                    </div>
+                                    {hasLocalRefs && (
+                                        <Button
+                                            size="sm"
+                                            variant="plain"
+                                            icon={<HiOutlineSparkles />}
+                                            onClick={handleAnalyzeFace}
+                                            loading={isAnalyzingFace}
+                                        >
+                                            Auto-Analyze
+                                        </Button>
+                                    )}
+                                </div>
+                                <textarea
+                                    value={localFaceDescription}
+                                    onChange={(e) =>
+                                        setLocalFaceDescription(e.target.value)
+                                    }
+                                    placeholder="Describe facial features: eye shape, nose, lips, skin tone, distinctive features..."
+                                    rows={4}
+                                    className="w-full p-3 border rounded-lg bg-transparent resize-none"
+                                />
+                            </Card>
+
                             {/* Appearance (piel / pelo / ojos) — junto a la cara */}
                             <Card className="p-4">
                                 <h3 className="text-sm font-semibold mb-3">
@@ -831,41 +866,6 @@ const AvatarEditDrawer = ({
                                             ? 'No hay modelo text-to-image permisivo disponible (Qwen / Flux.2).'
                                             : undefined
                                     }
-                                />
-                            </Card>
-
-                            {/* Face Description */}
-                            <Card className="p-4">
-                                <div className="flex items-center justify-between mb-3">
-                                    <div>
-                                        <h3 className="text-sm font-semibold">
-                                            Face Description
-                                        </h3>
-                                        <p className="text-xs text-gray-500">
-                                            Detailed description for consistent
-                                            facial features
-                                        </p>
-                                    </div>
-                                    {hasLocalRefs && (
-                                        <Button
-                                            size="sm"
-                                            variant="plain"
-                                            icon={<HiOutlineSparkles />}
-                                            onClick={handleAnalyzeFace}
-                                            loading={isAnalyzingFace}
-                                        >
-                                            Auto-Analyze
-                                        </Button>
-                                    )}
-                                </div>
-                                <textarea
-                                    value={localFaceDescription}
-                                    onChange={(e) =>
-                                        setLocalFaceDescription(e.target.value)
-                                    }
-                                    placeholder="Describe facial features: eye shape, nose, lips, skin tone, distinctive features..."
-                                    rows={4}
-                                    className="w-full p-3 border rounded-lg bg-transparent resize-none"
                                 />
                             </Card>
                         </div>
