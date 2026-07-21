@@ -106,6 +106,7 @@ const AvatarEditDrawer = ({
         faceDescription,
         avatarName,
         isSavingAvatar,
+        isLoadingReferences,
         providers,
         setGeneralReferences,
         setFaceRef,
@@ -610,9 +611,17 @@ const AvatarEditDrawer = ({
                 <div className="h-full flex flex-col">
                     {/* Scrollable Content */}
                     <ScrollBar className="flex-1">
-                        <div className="p-4 space-y-4">
+                        <div className="p-3 space-y-2 relative">
+                            {isLoadingReferences && (
+                                <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-2 bg-gray-900/60 backdrop-blur-sm rounded-lg">
+                                    <Spinner size={40} />
+                                    <span className="text-xs text-gray-300">
+                                        Cargando avatar…
+                                    </span>
+                                </div>
+                            )}
                             {/* General Identity Photos */}
-                            <Card className="p-4">
+                            <Card className="p-3">
                                 <div className="flex items-center justify-between mb-3">
                                     <div>
                                         <h3 className="text-sm font-semibold">
@@ -695,7 +704,7 @@ const AvatarEditDrawer = ({
                             </Card>
 
                             {/* Identity Weight */}
-                            <Card className="p-4">
+                            <Card className="p-3">
                                 <div className="flex items-center justify-between mb-3">
                                     <h3 className="text-sm font-semibold">
                                         Identity Weight
@@ -722,7 +731,7 @@ const AvatarEditDrawer = ({
                             </Card>
 
                             {/* Specific References */}
-                            <Card className="p-4">
+                            <Card className="p-3">
                                 <h3 className="text-sm font-semibold mb-4">
                                     Specific References (Optional)
                                 </h3>
@@ -777,7 +786,7 @@ const AvatarEditDrawer = ({
                             </Card>
 
                             {/* Face Description — junto a las referencias de cara */}
-                            <Card className="p-4">
+                            <Card className="p-3">
                                 <div className="flex items-center justify-between mb-3">
                                     <div>
                                         <h3 className="text-sm font-semibold">
@@ -812,7 +821,7 @@ const AvatarEditDrawer = ({
                             </Card>
 
                             {/* Appearance (piel / pelo / ojos) — junto a la cara */}
-                            <Card className="p-4">
+                            <Card className="p-3">
                                 <h3 className="text-sm font-semibold mb-3">
                                     Appearance
                                 </h3>
@@ -823,7 +832,7 @@ const AvatarEditDrawer = ({
                             </Card>
 
                             {/* Physical Attributes */}
-                            <Card className="p-4">
+                            <Card className="p-3">
                                 <h3 className="text-sm font-semibold mb-3">
                                     Physical Attributes
                                 </h3>
@@ -846,7 +855,7 @@ const AvatarEditDrawer = ({
                             </Card>
 
                             {/* Body Lab — genera el cuerpo desde los atributos de arriba */}
-                            <Card className="p-4">
+                            <Card className="p-3">
                                 <BodyLab
                                     models={permissiveBodyModels.map((p) => ({
                                         id: p.id,

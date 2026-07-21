@@ -12,9 +12,19 @@ import Notification from '@/components/ui/Notification'
 import toast from '@/components/ui/toast'
 import ConfirmDialog from '@/components/shared/ConfirmDialog'
 import Spinner from '@/components/ui/Spinner'
-import { AvatarEditDrawer, type AvatarEditData, type AvatarReferenceImage } from '@/components/shared/AvatarEditDrawer'
+import {
+    AvatarEditDrawer,
+    type AvatarEditData,
+    type AvatarReferenceImage,
+} from '@/components/shared/AvatarEditDrawer'
 import { useAvatarListStore } from '../_store/avatarListStore'
-import { apiDeleteAvatar, apiUpdateAvatar, apiUploadReference, apiDeleteAvatarReference, getSignedUrl } from '@/services/AvatarForgeService'
+import {
+    apiDeleteAvatar,
+    apiUpdateAvatar,
+    apiUploadReference,
+    apiDeleteAvatarReference,
+    getSignedUrl,
+} from '@/services/AvatarForgeService'
 import { createThumbnail, resizeBase64Image } from '@/utils/imageOptimization'
 import type { AvatarWithReferences } from '../types'
 import type { PhysicalMeasurements } from '@/@types/supabase'
@@ -40,7 +50,8 @@ const AvatarCard = ({ avatar }: AvatarCardProps) => {
     // Edit drawer state
     const [editDrawerOpen, setEditDrawerOpen] = useState(false)
     const [isSaving, setIsSaving] = useState(false)
-    const [initialEditData, setInitialEditData] = useState<AvatarEditData | null>(null)
+    const [initialEditData, setInitialEditData] =
+        useState<AvatarEditData | null>(null)
     const [originalRefIds, setOriginalRefIds] = useState<string[]>([])
 
     const { selectedAvatars, toggleSelectAvatar, deleteAvatar, updateAvatar } =
@@ -50,7 +61,7 @@ const AvatarCard = ({ avatar }: AvatarCardProps) => {
 
     // Get first reference image for preview
     const previewImage = avatar.avatar_references?.find(
-        (ref) => ref.type === 'face' || ref.type === 'general'
+        (ref) => ref.type === 'face' || ref.type === 'general',
     )
 
     // Load thumbnail on mount
@@ -62,7 +73,10 @@ const AvatarCard = ({ avatar }: AvatarCardProps) => {
             }
 
             try {
-                const signedUrl = await getSignedUrl('avatars', previewImage.storage_path)
+                const signedUrl = await getSignedUrl(
+                    'avatars',
+                    previewImage.storage_path,
+                )
                 const res = await fetch(signedUrl)
                 const data = res.ok ? await res.blob() : null
 
@@ -109,7 +123,10 @@ const AvatarCard = ({ avatar }: AvatarCardProps) => {
                 if (!ref.storage_path) continue
 
                 try {
-                    const signedUrl = await getSignedUrl('avatars', ref.storage_path)
+                    const signedUrl = await getSignedUrl(
+                        'avatars',
+                        ref.storage_path,
+                    )
                     const res = await fetch(signedUrl)
                     const data = res.ok ? await res.blob() : null
 
@@ -132,7 +149,11 @@ const AvatarCard = ({ avatar }: AvatarCardProps) => {
                             url: `data:${ref.mime_type};base64,${base64}`,
                             mimeType: ref.mime_type,
                             base64,
-                            type: ref.type as 'general' | 'face' | 'angle' | 'body',
+                            type: ref.type as
+                                | 'general'
+                                | 'face'
+                                | 'angle'
+                                | 'body',
                             storagePath: ref.storage_path,
                             thumbnailUrl: thumb,
                         }
@@ -190,7 +211,7 @@ const AvatarCard = ({ avatar }: AvatarCardProps) => {
         try {
             // Collect all current ref IDs from the data
             const currentRefIds: string[] = []
-            data.generalReferences.forEach(r => {
+            data.generalReferences.forEach((r) => {
                 if (r.storagePath) currentRefIds.push(r.id)
             })
             if (data.faceRef?.storagePath) currentRefIds.push(data.faceRef.id)
@@ -198,7 +219,9 @@ const AvatarCard = ({ avatar }: AvatarCardProps) => {
             if (data.bodyRef?.storagePath) currentRefIds.push(data.bodyRef.id)
 
             // Delete references that were removed
-            const refsToDelete = originalRefIds.filter(id => !currentRefIds.includes(id))
+            const refsToDelete = originalRefIds.filter(
+                (id) => !currentRefIds.includes(id),
+            )
             for (const refId of refsToDelete) {
                 try {
                     await apiDeleteAvatarReference(refId)
@@ -209,10 +232,16 @@ const AvatarCard = ({ avatar }: AvatarCardProps) => {
 
             // Upload new references (ones without storagePath)
             const allNewRefs = [
-                ...data.generalReferences.filter(r => !r.storagePath),
-                ...(data.faceRef && !data.faceRef.storagePath ? [data.faceRef] : []),
-                ...(data.angleRef && !data.angleRef.storagePath ? [data.angleRef] : []),
-                ...(data.bodyRef && !data.bodyRef.storagePath ? [data.bodyRef] : []),
+                ...data.generalReferences.filter((r) => !r.storagePath),
+                ...(data.faceRef && !data.faceRef.storagePath
+                    ? [data.faceRef]
+                    : []),
+                ...(data.angleRef && !data.angleRef.storagePath
+                    ? [data.angleRef]
+                    : []),
+                ...(data.bodyRef && !data.bodyRef.storagePath
+                    ? [data.bodyRef]
+                    : []),
             ]
 
             const uploadedRefs: AvatarWithReferences['avatar_references'] = []
@@ -225,7 +254,10 @@ const AvatarCard = ({ avatar }: AvatarCardProps) => {
                     let uploadBase64 = ref.base64
                     let uploadMime = ref.mimeType
                     try {
-                        uploadBase64 = await resizeBase64Image(ref.base64, 'API')
+                        uploadBase64 = await resizeBase64Image(
+                            ref.base64,
+                            'API',
+                        )
                         uploadMime = 'image/jpeg'
                     } catch {
                         // Fall back to the original bytes if canvas resize fails
@@ -237,10 +269,21 @@ const AvatarCard = ({ avatar }: AvatarCardProps) => {
                         uint8Array[i] = byteString.charCodeAt(i)
                     }
                     const blob = new Blob([uint8Array], { type: uploadMime })
-                    const ext = uploadMime === 'image/jpeg' ? 'jpg' : uploadMime.split('/')[1] || 'jpg'
-                    const file = new File([blob], `${ref.type}-${Date.now()}.${ext}`, { type: uploadMime })
+                    const ext =
+                        uploadMime === 'image/jpeg'
+                            ? 'jpg'
+                            : uploadMime.split('/')[1] || 'jpg'
+                    const file = new File(
+                        [blob],
+                        `${ref.type}-${Date.now()}.${ext}`,
+                        { type: uploadMime },
+                    )
 
-                    const saved = await apiUploadReference(avatar.id, file, ref.type)
+                    const saved = await apiUploadReference(
+                        avatar.id,
+                        file,
+                        ref.type,
+                    )
                     uploadedRefs.push(saved)
                 } catch (err) {
                     console.error('Failed to upload reference:', err)
@@ -259,7 +302,9 @@ const AvatarCard = ({ avatar }: AvatarCardProps) => {
             // Rebuild the reference list: survivors (not deleted) + newly uploaded,
             // so the card thumbnail and "refs" badge refresh without a page reload.
             const nextRefs = [
-                ...(avatar.avatar_references || []).filter(r => !refsToDelete.includes(r.id)),
+                ...(avatar.avatar_references || []).filter(
+                    (r) => !refsToDelete.includes(r.id),
+                ),
                 ...uploadedRefs,
             ]
             updateAvatar(avatar.id, {
@@ -274,15 +319,18 @@ const AvatarCard = ({ avatar }: AvatarCardProps) => {
                 // Don't claim success when new photos silently failed to upload —
                 // that was exactly how avatars ended up saved with zero images.
                 toast.push(
-                    <Notification type="warning" title="Saved without some photos">
+                    <Notification
+                        type="warning"
+                        title="Saved without some photos"
+                    >
                         {`${failedUploads.length} reference image(s) couldn't be uploaded. Your text and settings were saved — try re-adding the photos.`}
-                    </Notification>
+                    </Notification>,
                 )
             } else {
                 toast.push(
                     <Notification type="success" title="Saved">
                         Avatar updated successfully
-                    </Notification>
+                    </Notification>,
                 )
             }
             setEditDrawerOpen(false)
@@ -291,7 +339,7 @@ const AvatarCard = ({ avatar }: AvatarCardProps) => {
             toast.push(
                 <Notification type="danger" title="Error">
                     Failed to save changes
-                </Notification>
+                </Notification>,
             )
         } finally {
             setIsSaving(false)
@@ -336,10 +384,7 @@ const AvatarCard = ({ avatar }: AvatarCardProps) => {
                             />
                         }
                     >
-                        <Dropdown.Item
-                            eventKey="edit"
-                            onClick={handleEdit}
-                        >
+                        <Dropdown.Item eventKey="edit" onClick={handleEdit}>
                             <span className="flex items-center gap-2">
                                 <HiOutlinePencil />
                                 Edit
@@ -402,7 +447,9 @@ const AvatarCard = ({ avatar }: AvatarCardProps) => {
                 </div>
 
                 <div className="p-4">
-                    <h5 className="font-semibold mb-2 truncate">{avatar.name}</h5>
+                    <h5 className="font-semibold mb-2 truncate">
+                        {avatar.name}
+                    </h5>
 
                     <div className="flex flex-wrap gap-1 mb-3">
                         {avatar.avatar_references?.length > 0 && (
@@ -468,6 +515,7 @@ const AvatarCard = ({ avatar }: AvatarCardProps) => {
                 onSave={handleSaveFromDrawer}
                 showSaveToDb={true}
                 isSaving={isSaving}
+                isLoading={editDrawerOpen && !initialEditData}
             />
         </>
     )
