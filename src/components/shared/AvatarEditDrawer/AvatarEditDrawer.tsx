@@ -23,11 +23,9 @@ import { generateImageKie } from '@/services/KieService'
 import type { PhysicalMeasurements } from '@/@types/supabase'
 import { createThumbnail, resizeBase64Image } from '@/utils/imageOptimization'
 import {
-    buildBodyViewPrompt,
-    BODY_VIEWS,
+    buildBodySheetPrompt,
     BODY_SHEET_NEGATIVE_PROMPT,
 } from '@/utils/bodySheetPrompt'
-import { stitchImagesHorizontal, urlToDataUrl } from '@/utils/imageStitch'
 import {
     DEFAULT_PROVIDERS,
     getPermissiveBodyModels,
@@ -459,27 +457,17 @@ const AvatarEditDrawer = ({
         if (!selectedBodyModel) return
         setIsGeneratingBody(true)
         try {
-            // 3 generaciones SEPARADAS (frente/lado/espalda) + stitch: un solo
-            // t2i no logra 3 vistas ortográficas en una imagen. Text-to-image
-            // puro (sin cara); la cara real entra luego por el Clone Ref.
-            const results = await Promise.all(
-                BODY_VIEWS.map((view) =>
-                    generateImageKie({
-                        prompt: buildBodyViewPrompt(localMeasurements, view),
-                        model: selectedBodyModel,
-                        aspectRatio: '3:4',
-                        negativePrompt: BODY_SHEET_NEGATIVE_PROMPT,
-                    }),
-                ),
-            )
-            const urls: string[] = []
-            for (const r of results) {
-                if (!r.success) throw new Error(r.error)
-                urls.push(r.url)
-            }
-            const dataUrls = await Promise.all(urls.map(urlToDataUrl))
-            const stitched = await stitchImagesHorizontal(dataUrls)
-            const sheet = await toBodyReferenceImage(stitched)
+            // UNA sola imagen con las 3 vistas → un lienzo = un cuerpo
+            // CONSISTENTE entre ángulos. Text-to-image puro (sin cara); la cara
+            // real entra luego por el Clone Ref. Modelo t2i permisivo (Wan/Qwen).
+            const result = await generateImageKie({
+                prompt: buildBodySheetPrompt(localMeasurements),
+                model: selectedBodyModel,
+                aspectRatio: '16:9',
+                negativePrompt: BODY_SHEET_NEGATIVE_PROMPT,
+            })
+            if (!result.success) throw new Error(result.error)
+            const sheet = await toBodyReferenceImage(result.url)
             setBodySheet(sheet)
             setBodySheetModel(
                 PERMISSIVE_BODY_MODELS.find(
