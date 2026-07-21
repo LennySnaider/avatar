@@ -22,9 +22,22 @@ import {
     HiOutlineZoomOut,
 } from 'react-icons/hi'
 import { generateAvatar, analyzeFaceFromImages } from '@/services/GeminiService'
+import { generateImageKie } from '@/services/KieService'
 import type { PhysicalMeasurements } from '@/@types/supabase'
 import { createThumbnail, resizeBase64Image } from '@/utils/imageOptimization'
+import { buildBodySheetPrompt } from '@/utils/bodySheetPrompt'
+import { buildCurvesEmphasis } from '@/utils/bodyDescriptors'
+import {
+    DEFAULT_PROVIDERS,
+    getPermissiveBodyModels,
+} from '@/app/(protected-pages)/concepts/avatar-forge/_shared/providerCatalog'
 import PhysicalAttributesEditor from '@/components/shared/PhysicalAttributesEditor'
+
+// Modelos permisivos aptos para el body sheet (Seedream/Wan), del catálogo de
+// providers por defecto — este drawer es store-agnóstico y no tiene acceso a
+// los providers configurados del usuario. Constante de módulo: se calcula una
+// sola vez, no en cada render.
+const PERMISSIVE_BODY_MODELS = getPermissiveBodyModels(DEFAULT_PROVIDERS)
 
 // Reference image interface
 export interface AvatarReferenceImage {
@@ -107,6 +120,15 @@ const AvatarEditDrawer = ({
     const [localMeasurements, setLocalMeasurements] =
         useState<PhysicalMeasurements>(defaultMeasurements)
     const [localFaceDescription, setLocalFaceDescription] = useState('')
+    // Body Lab: cuerpo canónico persistido (localBodyRef) + sheet recién
+    // generado en preview (bodySheet, sin commitear hasta "Usar como cuerpo").
+    const [localBodyRef, setLocalBodyRef] =
+        useState<AvatarReferenceImage | null>(null)
+    const [bodySheet, setBodySheet] = useState<AvatarReferenceImage | null>(
+        null,
+    )
+    const [isGeneratingBody, setIsGeneratingBody] = useState(false)
+    const [selectedBodyModel, setSelectedBodyModel] = useState('')
 
     // Sync local state from initialData when drawer opens
     useEffect(() => {
@@ -114,6 +136,8 @@ const AvatarEditDrawer = ({
             setLocalGeneralRefs([...initialData.generalReferences])
             setLocalFaceRef(initialData.faceRef)
             setLocalAngleRef(initialData.angleRef)
+            setLocalBodyRef(initialData.bodyRef)
+            setBodySheet(null)
             setLocalIdentityWeight(initialData.identityWeight)
             setLocalMeasurements({ ...initialData.measurements })
             setLocalFaceDescription(initialData.faceDescription)
@@ -121,13 +145,22 @@ const AvatarEditDrawer = ({
         }
     }, [isOpen, initialData, avatarName])
 
+    // Default del selector de modelo del Body Lab (primer permisivo).
+    useEffect(() => {
+        if (!selectedBodyModel && PERMISSIVE_BODY_MODELS.length > 0) {
+            setSelectedBodyModel(PERMISSIVE_BODY_MODELS[0].model)
+        }
+    }, [selectedBodyModel])
+
     // Get current data object
     const getCurrentData = (): AvatarEditData => ({
         name: saveAvatarName,
         generalReferences: localGeneralRefs,
         faceRef: localFaceRef,
         angleRef: localAngleRef,
-        bodyRef: null, // Body ref is now a session tool, not saved with avatar
+        // El cuerpo canónico SÍ se guarda: AvatarCard.handleSaveFromDrawer sube
+        // data.bodyRef como type:'body' cuando no tiene storagePath.
+        bodyRef: localBodyRef,
         identityWeight: localIdentityWeight,
         measurements: localMeasurements,
         faceDescription: localFaceDescription,
@@ -391,6 +424,88 @@ const AvatarEditDrawer = ({
         } finally {
             setIsGeneratingAngle(false)
         }
+    }
+
+    // Normaliza una URL (http(s) o data:) a un AvatarReferenceImage con base64,
+    // que es lo que necesita el guardado (resizeBase64Image) y el thumbnail.
+    const toBodyReferenceImage = async (
+        url: string,
+    ): Promise<AvatarReferenceImage> => {
+        let dataUrl = url
+        if (!url.startsWith('data:')) {
+            const blob = await fetch(url).then((r) => r.blob())
+            dataUrl = await new Promise<string>((resolve, reject) => {
+                const reader = new FileReader()
+                reader.onloadend = () => resolve(reader.result as string)
+                reader.onerror = reject
+                reader.readAsDataURL(blob)
+            })
+        }
+        const matches = dataUrl.match(/^data:(.+);base64,(.+)$/)
+        if (!matches) throw new Error('Invalid image data returned')
+        let thumbnailUrl = dataUrl
+        try {
+            thumbnailUrl = await createThumbnail(matches[2], 'THUMBNAIL')
+        } catch {
+            // fallback al full
+        }
+        return {
+            id: crypto.randomUUID(),
+            url: dataUrl,
+            mimeType: matches[1],
+            base64: matches[2],
+            type: 'body',
+            thumbnailUrl,
+        }
+    }
+
+    // Genera el body angle sheet (3 vistas, mini-bikini) desde los sliders.
+    const handleGenerateBody = async () => {
+        if (!localFaceRef || !selectedBodyModel) return
+        setIsGeneratingBody(true)
+        try {
+            const result = await generateImageKie({
+                prompt: buildBodySheetPrompt(localMeasurements),
+                model: selectedBodyModel,
+                aspectRatio: '16:9',
+                referenceImages: [
+                    {
+                        base64: localFaceRef.base64,
+                        mimeType: localFaceRef.mimeType,
+                        role: 'face',
+                    },
+                ],
+                bodyEmphasis: buildCurvesEmphasis(localMeasurements),
+            })
+            if (!result.success) throw new Error(result.error)
+            const sheet = await toBodyReferenceImage(result.url)
+            setBodySheet(sheet)
+            toast.push(
+                <Notification type="success" title="Cuerpo generado">
+                    Sheet de 3 vistas listo. Revísalo y pulsa &quot;Usar como
+                    cuerpo&quot;.
+                </Notification>,
+            )
+        } catch (error) {
+            console.error('Error generating body sheet:', error)
+            toast.push(
+                <Notification type="danger" title="Falló la generación">
+                    No se pudo generar el cuerpo
+                </Notification>,
+            )
+        } finally {
+            setIsGeneratingBody(false)
+        }
+    }
+
+    const handleUseAsBody = () => {
+        if (!bodySheet) return
+        setLocalBodyRef(bodySheet)
+        toast.push(
+            <Notification type="success" title="Cuerpo fijado">
+                Se guardará como el cuerpo del avatar al guardar los cambios.
+            </Notification>,
+        )
     }
 
     const hasLocalRefs =
@@ -675,6 +790,26 @@ const AvatarEditDrawer = ({
                                 <PhysicalAttributesEditor
                                     measurements={localMeasurements}
                                     onChange={setLocalMeasurements}
+                                    bodyLab={{
+                                        models: PERMISSIVE_BODY_MODELS.map(
+                                            (p) => ({
+                                                id: p.id,
+                                                name: p.name,
+                                                model: p.model,
+                                            }),
+                                        ),
+                                        selectedModel: selectedBodyModel,
+                                        onSelectModel: setSelectedBodyModel,
+                                        isGenerating: isGeneratingBody,
+                                        sheet: bodySheet || localBodyRef,
+                                        onGenerate: handleGenerateBody,
+                                        onUseAsBody: handleUseAsBody,
+                                        disabledReason: !localFaceRef
+                                            ? 'Sube o genera primero una cara (Face Close-up) para el cuerpo.'
+                                            : PERMISSIVE_BODY_MODELS.length === 0
+                                              ? 'No hay modelo permisivo disponible (Seedream / Wan).'
+                                              : undefined,
+                                    }}
                                 />
                             </Card>
 
