@@ -1,4 +1,56 @@
 import type { PhysicalMeasurements, CurveLevel } from '@/@types/supabase'
+import { deriveShapeFromMeasurements } from '@/utils/bodyShapes'
+import type { BodyShape } from '@/@types/supabase'
+
+// Cláusula por forma — nombre + lenguaje COMPARATIVO (los modelos siguen ratios,
+// no cm). Ortogonal al tamaño (eso es BUILD_PHRASE).
+const SHAPE_CLAUSE: Record<BodyShape, string> = {
+    hourglass:
+        'hourglass silhouette — shoulders and hips balanced in width, with a sharply cinched waist noticeably narrower than both the bust and the hips',
+    pear: 'pear (triangle) shape — hips clearly wider than the shoulders and bust, with a defined waist and fuller lower body',
+    apple: 'apple (round) shape — fuller midsection and broad bust, with a less defined waist and comparatively slimmer hips',
+    rectangle:
+        'straight rectangular shape — shoulders, waist and hips of similar width with little waist definition',
+    'inverted-triangle':
+        'inverted-triangle shape — shoulders and bust clearly wider than the hips, athletic upper body tapering to narrower hips',
+    spoon: 'spoon shape — hips dramatically wider than the shoulders with a pronounced hip shelf, and a defined waist',
+    diamond:
+        'diamond shape — fuller midsection with narrower shoulders and narrower hips',
+}
+
+// Complexión general (1-5). NO contradice la forma: describe grasa/volumen.
+const BUILD_PHRASE: Record<number, string> = {
+    1: 'lean slim frame with minimal body fat, toned and slender',
+    2: 'fit toned body with low body fat',
+    3: 'balanced healthy body with soft natural curves',
+    4: 'full curvy figure with soft natural body fat',
+    5: 'plus-size full figure with generous soft body fat throughout',
+}
+
+/**
+ * Descripción de cuerpo por FORMA + BUILD (rediseño). Reemplaza el lead de
+ * tamaño de describeBody que contradecía las medidas. La forma sale de `m.shape`
+ * (elección del usuario) o se deriva de ratios; el build de `m.build` (1-5).
+ */
+export function describeShapeAndBuild(m: PhysicalMeasurements): string {
+    const shape: BodyShape = m.shape ?? deriveShapeFromMeasurements(m)
+    const parts: string[] = [SHAPE_CLAUSE[shape]]
+    const build = m.build ?? 3
+    if (BUILD_PHRASE[build]) parts.push(BUILD_PHRASE[build])
+    // Comparativa de intensidad de cintura (refuerza la forma con el ratio real).
+    if (m.waist && m.hips) {
+        const whr = m.waist / m.hips
+        if (whr <= 0.68) parts.push('extremely small, dramatically cinched waist')
+        else if (whr <= 0.78) parts.push('clearly defined narrow waist')
+    }
+    // Torso/piernas.
+    if (typeof m.torsoLegRatio === 'number' && m.torsoLegRatio >= 1) {
+        parts.push('long legs, elongated lower body')
+    } else if (typeof m.torsoLegRatio === 'number' && m.torsoLegRatio <= -1) {
+        parts.push('shorter legs, longer torso')
+    }
+    return parts.join(', ')
+}
 
 /**
  * Translate raw body measurements into professional fashion/modeling
@@ -60,8 +112,7 @@ export function getBodyDescriptors(m: PhysicalMeasurements): string {
     // fuller figure (full bust OR full hips OR a curvy/plus body type); slim /
     // petite / athletic avatars are intentionally left lean.
     const wantsFuller =
-        m.bust >= 90 || m.hips >= 90 ||
-        (m.bodyType && ['curvy', 'hourglass', 'plus-size'].includes(m.bodyType))
+        m.bust >= 90 || m.hips >= 95 || (m.build ?? 3) >= 4
     if (wantsFuller) {
         descriptors.push('healthy natural body weight', 'soft feminine curves with natural body fat', 'NOT skinny or underweight')
     }
@@ -257,9 +308,10 @@ export const LEG_TYPE_TOOLTIP: Record<string, string> = {
     ...LEG_TYPE_PHRASE,
 }
 
-// Lead phrase for the explicit body-type selector, so a user's choice is
-// honored even when the computed ratios land in a different bucket.
-const BODY_TYPE_PHRASE: Record<string, string> = {
+// Lead phrase for the explicit body-type selector — kept for the UI/tooltips
+// (BODY_TYPE_TOOLTIP composes with it) even though describeBody no longer uses
+// it as the prompt lead (that's what contradicted the measurements).
+export const BODY_TYPE_PHRASE: Record<string, string> = {
     petite: 'petite delicate frame',
     slim: 'slim slender figure',
     athletic: 'athletic toned physique',
@@ -271,14 +323,15 @@ const BODY_TYPE_PHRASE: Record<string, string> = {
 
 /**
  * Build a single descriptive body phrase from an avatar's measurements:
- * explicit body type (leads) + ratio-derived descriptors. Per-avatar; changing
- * the avatar's specs changes the output.
+ * shape + build + comparatives (leads) + ratio-derived descriptors. Per-avatar;
+ * changing the avatar's specs changes the output. No longer leads with
+ * BODY_TYPE_PHRASE — that size-word lead is what contradicted the measurements
+ * (e.g. "slim slender figure" fighting a cinched-waist hourglass).
  */
 export function describeBody(m: PhysicalMeasurements): string {
-    const parts: string[] = []
-    if (m.bodyType && BODY_TYPE_PHRASE[m.bodyType]) {
-        parts.push(BODY_TYPE_PHRASE[m.bodyType])
-    }
+    const parts: string[] = [describeShapeAndBuild(m)]
+    // Se conservan los descriptores derivados por ratio (torso/hombros/etc.),
+    // PERO ya no el lead de bodyType (era la fuente del conflicto slim-vs-curvy).
     const derived = getBodyDescriptors(m)
     if (derived) parts.push(derived)
     return parts.join(', ')
