@@ -449,6 +449,16 @@ export type BustShape =
     | 'teardrop'
     | 'tuberous'
 
+// Body shape (overall silhouette type — hourglass, pear, apple, rectangle, inverted-triangle, spoon, diamond)
+export type BodyShape =
+    | 'hourglass'
+    | 'pear'
+    | 'apple'
+    | 'rectangle'
+    | 'inverted-triangle'
+    | 'spoon'
+    | 'diamond'
+
 // Hair texture/type. Optional — when unset the hair follows the face
 // description (auto-analyzed from the reference photos).
 export type HairStyle = 'straight' | 'wavy' | 'curly' | 'coily' | (string & {})
@@ -526,6 +536,15 @@ export interface PhysicalMeasurements {
     /** Textura del cabello (straight/wavy/curly/coily). También se compone dentro de `hairColor`. */
     hairStyle?: HairStyle
     eyeColor?: EyeColor
+    // ── Modelo de cuerpo (rediseño): medidas = verdad, forma = preset ──
+    /** Ancho de hombros (cm). Necesario para distinguir formas (inverted/pear/rect). */
+    shoulders?: number
+    /** Complexión general lean↔full (1-5). No contradice la forma; escala volumen. */
+    build?: CurveLevel
+    /** Proporción torso↔piernas (−2 piernas cortas … +2 piernas largas; 0 neutro). */
+    torsoLegRatio?: number
+    /** Forma elegida en la UI (recuerda el preset activo). El prompt usa esta o la deriva. */
+    shape?: BodyShape
 }
 
 export interface GenerationMetadata {
