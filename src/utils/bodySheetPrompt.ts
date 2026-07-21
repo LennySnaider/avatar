@@ -100,8 +100,12 @@ export function buildBodySheetPrompt(m: PhysicalMeasurements): string {
             : ''
 
     return [
-        `Full-body character reference sheet of ONE ${person}.`,
-        'Three full-body views of the SAME woman side by side in a single image, left to right: front view, side profile view, back view.',
+        `Full-body character turnaround / model sheet of ONE ${person}.`,
+        'The image contains EXACTLY THREE full-body views of the SAME woman, evenly spaced left-to-right on one image, and each view is a DIFFERENT camera angle:',
+        'LEFT view = full FRONT view, she faces the camera directly (front of her body and face visible).',
+        'CENTER view = full SIDE profile, her body turned 90 degrees to the side (side silhouette visible, one side of the face in profile).',
+        'RIGHT view = full BACK view, she is turned around with her back to the camera (her back, spine and glutes visible, face NOT visible).',
+        'These MUST be three clearly different angles (front, side, back) — do NOT repeat the same pose or angle three times, do NOT render three front views or three profiles.',
         // Spec de CUERPO mandatoria + CONTROL TOTAL: reproducir EXACTO, sin
         // normalizar/promediar, aunque quede exagerado (meta multitenant: quien
         // quiera cuerpos desproporcionados debe poder lograrlos con los sliders).
@@ -137,4 +141,6 @@ export const BODY_SHEET_NEGATIVE_PROMPT = [
     'one-piece swimsuit, bodysuit, dress, full clothing',
     'text, labels, watermark, signature, logo, borders, grid lines, collage frames',
     'low quality, blurry, jpeg artifacts, cropped, out of frame',
+    // Anti-repetición: forzar 3 ángulos DISTINTOS (no la misma pose 3 veces).
+    'same pose repeated, three identical views, three identical angles, all front views, all profile views, duplicated identical figure',
 ].join(', ')
