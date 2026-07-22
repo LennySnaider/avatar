@@ -497,7 +497,7 @@ const AvatarEditDrawer = ({
             setBodySheet(sheet)
             setBodySheetModel(
                 tmpl
-                    ? 'Seedream 5.0 Pro · plantilla'
+                    ? 'Wan 2.7 · plantilla'
                     : PERMISSIVE_BODY_MODELS.find(
                           (p) => p.model === selectedBodyModel,
                       )?.name || selectedBodyModel,
