@@ -58,3 +58,23 @@ test('Escape [LOOK:] → intacto', () => {
     const input = '[LOOK: platinum blonde wig] a woman with fair skin at a party'
     assert.equal(stripSceneIdentity(input), input)
 })
+
+test('TATTOO_RE no come contenido de escena', () => {
+    const out = stripSceneIdentity(
+        'a tattoo of a rose on her shoulder standing near a red car',
+    )
+    assert.ok(/shoulder/i.test(out))
+    assert.ok(/standing/i.test(out))
+    assert.ok(/red car/i.test(out))
+    // "standing" truncado a mitad de palabra dejaría un fragmento "nding"
+    // como token aislado (con boundary a la izquierda); no debe aparecer.
+    assert.ok(!/\bnding\b/i.test(out))
+})
+
+test('JSON array de nivel superior se sanea', () => {
+    const input = '[{"hair":{"color":"blonde"},"background":"a beach"}]'
+    const out = stripSceneIdentity(input)
+    const arr = JSON.parse(out)
+    assert.equal(arr[0].hair, undefined)
+    assert.equal(arr[0].background, 'a beach')
+})

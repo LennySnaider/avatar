@@ -34,8 +34,12 @@ export const AGE_RES: RegExp[] = [
     /\b(?:young adult|\d{2}\s?(?:years old|yo))\b/gi,
 ]
 
-export const TATTOO_RE = /\b(?:tattoos?|tattooed|inked|sleeve tattoo)\b[^.,;:\n]{0,30}/gi
+export const TATTOO_RE = /\b(?:tattoos?|tattooed|inked|sleeve tattoo)\b/gi
 
+// Orden importa: HAIR_COLOR_RES debe correr antes que BODY_RES — el lookahead
+// de frase corporal ("curvy woman") depende de que el color de pelo ya haya
+// sido eliminado (p.ej. "curvy blonde woman" → tras el pase de pelo queda
+// "curvy woman", y ahí "curvy" queda adyacente a "woman").
 const ALL_IDENTITY_RES: RegExp[] = [
     ...HAIR_COLOR_RES,
     ...BODY_RES,
@@ -105,7 +109,15 @@ export function stripSceneIdentity(prompt: string): string {
     if (trimmed.startsWith('{') || trimmed.startsWith('[')) {
         try {
             const parsed = JSON.parse(trimmed)
-            if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+            if (Array.isArray(parsed)) {
+                for (const item of parsed) {
+                    if (item && typeof item === 'object' && !Array.isArray(item)) {
+                        sanitizeJsonObject(item as Record<string, unknown>)
+                    }
+                }
+                return JSON.stringify(parsed)
+            }
+            if (parsed && typeof parsed === 'object') {
                 sanitizeJsonObject(parsed as Record<string, unknown>)
                 return JSON.stringify(parsed)
             }
