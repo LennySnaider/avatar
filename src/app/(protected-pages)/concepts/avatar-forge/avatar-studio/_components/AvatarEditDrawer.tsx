@@ -179,7 +179,14 @@ const AvatarEditDrawer = ({
                 const refs = await apiGetAvatarReferences(avatarId, 'body')
                 const row = refs?.[0]
                 if (!row?.storage_path) return
-                if (bodyRef?.storagePath === row.storage_path) return // ya fresco
+                // No pisar: (a) una selección FRESCA sin guardar (sin
+                // storagePath), ni (b) si ya está fresco (mismo storagePath).
+                if (
+                    bodyRef &&
+                    (!bodyRef.storagePath ||
+                        bodyRef.storagePath === row.storage_path)
+                )
+                    return
                 const signed = await getSignedUrl('avatars', row.storage_path)
                 const dataUrl = await urlToDataUrl(signed)
                 const m = dataUrl.match(/^data:(.+);base64,(.+)$/)
