@@ -13,7 +13,7 @@ import {
     relocatePoseTag,
     capAtWordBoundary,
     stripIdentityRedundancy,
-    hairClause as buildHairClause,
+    hairClauseCompact as buildHairClause,
 } from '../shared'
 
 async function build(ctx: ImageRouteContext): Promise<KieImageRequest> {

@@ -245,6 +245,13 @@ export function hairClause(hairEmphasis?: string): string {
         : ''
 }
 
+/** Variante compacta del override de pelo para Qwen (cap 800 chars). */
+export function hairClauseCompact(hairEmphasis?: string): string {
+    return hairEmphasis
+        ? ` Her hair MUST be ${hairEmphasis} — ignore any other hair colour stated in the scene.`
+        : ''
+}
+
 /**
  * Override de ojos con guard anti-saturación (los editores single-image
  * qwen/grok NO lo envían). Verbatim de KieService:475-477.

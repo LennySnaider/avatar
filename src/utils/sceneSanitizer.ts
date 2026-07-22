@@ -20,7 +20,7 @@ export const HAIR_COLOR_RES: RegExp[] = [
 
 // Físico: adjetivo de cuerpo + sustantivo de cuerpo, y descriptores sueltos.
 export const BODY_RES: RegExp[] = [
-    /\b(?:voluptuous|hourglass|slim|slender|petite|curvy|thick|toned|fit|athletic|muscular|lean|plus[-\s]?size)\b[^.,;:\n]{0,40}\b(?:figure|body|frame|waist|thighs|abdomen|physique|build|bust|hips|silhouette)\b/gi,
+    /\b(?:voluptuous|hourglass|slim|slender|petite|curvy|thick|toned|fit|athletic|muscular|lean|plus[-\s]?size)\b[^.,;:\n]{0,40}\b(?:figure|body|waist|thighs|abdomen|physique|build|bust|hips|silhouette)\b/gi,
     /\b(?:visible ribcage|visible hip bones?|flat stomach|toned abdomen|defined abs)\b/gi,
     /\b(?:voluptuous|hourglass|slim|slender|petite|curvy|thick|toned|fit|athletic|muscular|lean|plus[-\s]?size)\b(?=\s+(?:woman|man|girl|boy|person|female|male|lady|guy)\b)/gi,
 ]
