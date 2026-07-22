@@ -116,7 +116,21 @@ const COMPOUND_IDENTITY_KEY_RE =
 // La ropa/paleta/luz/negativos NO se tocan; la identidad prosaica vive en
 // los campos de persona.
 const PERSON_CONTEXT_KEY_RE =
-    /^(?:subject|description|persons?|character|model|appearance|looks?|vibe|story|the_vibe)$/i
+    /^(?:subject|description|persons?|character|model|appearance|looks?|vibe|story|the_vibe|prompt|scene|caption)$/i
+// Sufijos de prosa libre: "scene_description", "image_prompt" — también son
+// contexto persona (prosa completa que puede describir a la persona).
+const PERSON_SUFFIX_KEY_RE = /[_\-.](?:description|prompt|caption|story)$/i
+// Keys claramente de ESCENA: RESETEAN el contexto persona para su subárbol.
+// Sin esto, el latch inPerson se pegaba a TODO descendiente de `subject` y
+// re-comía subject.wardrobe/palette/accessories (2º review adversarial).
+// Tradeoff aceptado: identidad escondida BAJO una key de escena
+// ("clothing": "she is a slim korean woman…") se escapa — la cubre el ancla
+// anti-etnicidad de Qwen y el [BODY:]/[FACE:] autoritativos.
+const SCENE_CONTEXT_KEY_RE =
+    /^(?:clothing|wardrobe|outfit|apparel|attire|palette|lighting|light|accessor(?:y|ies)|colors?|camera|photography|environment|background|setting|props?|quality|style|composition|mood|atmosphere)(?:[_\-.]|$)/i
+// Negativos ("negative_prompt", "negatives"): NUNCA se tocan — sanearlos
+// invertía su intención (borraba "slim hips" del anti-slimming).
+const NEGATIVE_KEY_RE = /negative/i
 // Arrays bajo estas keys se FILTRAN por entrada (una entrada de apariencia
 // desaparece completa); otros arrays solo sanean strings en contexto persona.
 const FILTERED_ARRAY_KEYS = new Set(['must_keep', 'avoid'])
@@ -165,6 +179,8 @@ function sanitizeJsonObject(
         const value = obj[key]
         const isObj =
             value !== null && typeof value === 'object' && !Array.isArray(value)
+        // Negativos primero: jamás se borran ni se sanean (string/array/objeto).
+        if (NEGATIVE_KEY_RE.test(key)) continue
         if (CORE_IDENTITY_KEY_RE.test(key)) {
             delete obj[key]
             continue
@@ -176,8 +192,14 @@ function sanitizeJsonObject(
             delete obj[key]
             continue
         }
-        const childInPerson =
-            inPerson || softOrCompound || PERSON_CONTEXT_KEY_RE.test(key)
+        // Prioridad: identidad > escena (resetea el latch) > persona/herencia.
+        const childInPerson = softOrCompound
+            ? true
+            : SCENE_CONTEXT_KEY_RE.test(key)
+              ? false
+              : inPerson ||
+                PERSON_CONTEXT_KEY_RE.test(key) ||
+                PERSON_SUFFIX_KEY_RE.test(key)
         if (isObj) {
             sanitizeJsonObject(
                 value as Record<string, unknown>,

@@ -250,3 +250,45 @@ test('JSON: identidad prosaica en contexto persona SÍ se sanea (subject/story)'
     assert.ok(!/blonde/i.test(obj.the_vibe.story))
     assert.ok(/evening/i.test(obj.the_vibe.story))
 })
+
+// ── 2º review adversarial: latch inPerson + allowlist de persona ──
+
+test('JSON: escena anidada BAJO subject/character queda intacta (latch reseteado)', () => {
+    const input = JSON.stringify({
+        subject: {
+            description: 'a slim korean woman',
+            wardrobe: 'slim-fit blazer hugging the waist',
+            palette: 'warm peach and tan skin tones',
+        },
+        character: {
+            outfit: 'lean cut suit with a narrow waist',
+            negative_prompt: ['slim hips', 'small chest'],
+        },
+        model: { clothing_detail: 'the dress has a perfect fit around the body' },
+    })
+    const obj = JSON.parse(stripSceneIdentity(input))
+    assert.ok(!/korean/i.test(obj.subject.description))
+    assert.equal(obj.subject.wardrobe, 'slim-fit blazer hugging the waist')
+    assert.equal(obj.subject.palette, 'warm peach and tan skin tones')
+    assert.equal(obj.character.outfit, 'lean cut suit with a narrow waist')
+    assert.deepEqual(obj.character.negative_prompt, ['slim hips', 'small chest'])
+    assert.equal(
+        obj.model.clothing_detail,
+        'the dress has a perfect fit around the body',
+    )
+})
+
+test('JSON: keys de prosa libre (prompt/scene/scene_description) SÍ se sanean', () => {
+    const obj = JSON.parse(
+        stripSceneIdentity(
+            JSON.stringify({
+                prompt: 'a stunning japanese woman, athletic physique, on a rooftop',
+                scene_description: 'a curvy blonde woman enjoying the sunset',
+            }),
+        ),
+    )
+    assert.ok(!/japanese/i.test(obj.prompt))
+    assert.ok(/rooftop/i.test(obj.prompt))
+    assert.ok(!/blonde/i.test(obj.scene_description))
+    assert.ok(/sunset/i.test(obj.scene_description))
+})
