@@ -19,6 +19,7 @@ import type { Avatar, AIProvider, Prompt, SkinTone } from '@/@types/supabase'
 import type { ClonedVoice } from '@/@types/voice'
 import { describeBody, getHairColorDescription } from '@/utils/bodyDescriptors'
 import { stripNegatedTattoos } from '@/utils/promptSanitizer'
+import { stripSceneIdentity, ANTI_WATERMARK_CLAUSE } from '@/utils/sceneSanitizer'
 import type {
     KlingCameraControlType,
     KlingCameraSimpleConfig,
@@ -649,7 +650,11 @@ export const useAvatarStudioStore = create<AvatarStudioState>()(
 
                 // Flatten any structured markdown inside a [CLONE: ...] tag so the
                 // image model doesn't read headers/bullets as "generate a spec sheet".
-                const prompt = sanitizeCloneTags(rawPrompt)
+                // Identity Lock: quita del prompt de escena los atributos de
+                // identidad (pelo/cuerpo/piel/ojos/edad/tatuajes) que compiten
+                // con el avatar. El avatar (config + [BODY:]/[FACE:] + body ref)
+                // define la identidad. [LOOK: …] en el prompt lo desactiva.
+                const prompt = stripSceneIdentity(sanitizeCloneTags(rawPrompt))
 
                 // Build body measurements string to reinforce avatar's body type.
                 // PRIORITY: Body goes FIRST in the prompt for maximum weight.
@@ -726,7 +731,8 @@ export const useAvatarStudioStore = create<AvatarStudioState>()(
                 // models — which draw mentioned nouns and ignore "no X" — don't render it.
                 const assembled =
                     tags.length > 0 ? `${tags.join(' ')} ${prompt}` : prompt
-                return stripNegatedTattoos(assembled)
+                // Anti-watermark universal (Seedream/Wan no tienen param negative).
+                return `${stripNegatedTattoos(assembled)} ${ANTI_WATERMARK_CLAUSE}`
             },
             setGenerationMode: (mode) =>
                 set((state) => ({
