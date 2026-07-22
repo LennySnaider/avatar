@@ -5,7 +5,7 @@ export interface ReferenceImage {
     url: string
     mimeType: string
     base64: string
-    type: 'general' | 'face' | 'angle' | 'body' | 'bust' | 'glutes'
+    type: 'general' | 'face' | 'angle' | 'body'
     storagePath?: string
 }
 
@@ -27,8 +27,6 @@ export interface AvatarCreatorState {
     faceRef: ReferenceImage | null
     angleRef: ReferenceImage | null
     bodyRef: ReferenceImage | null
-    bustRef: ReferenceImage | null
-    glutesRef: ReferenceImage | null
 
     // Settings
     identityWeight: number

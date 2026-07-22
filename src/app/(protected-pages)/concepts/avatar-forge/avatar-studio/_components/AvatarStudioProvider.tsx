@@ -159,11 +159,9 @@ const AvatarStudioProvider = ({
                     const faceRef = loadedRefs.find((r) => r.type === 'face') || null
                     const angleRef = loadedRefs.find((r) => r.type === 'angle') || null
                     const bodyRef = loadedRefs.find((r) => r.type === 'body') || null
-                    const bustRef = loadedRefs.find((r) => r.type === 'bust') || null
-                    const glutesRef = loadedRefs.find((r) => r.type === 'glutes') || null
                     const generalRefs = loadedRefs.filter((r) => r.type === 'general')
 
-                    loadAvatarData(avatar, generalRefs, faceRef, angleRef, bodyRef, bustRef, glutesRef)
+                    loadAvatarData(avatar, generalRefs, faceRef, angleRef, bodyRef)
                 })
                 .finally(() => {
                     setIsLoadingReferences(false)

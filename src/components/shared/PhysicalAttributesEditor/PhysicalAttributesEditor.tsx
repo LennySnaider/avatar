@@ -3,25 +3,25 @@
 /**
  * Editor de Atributos Físicos COMPARTIDO (store-agnóstico) — fuente ÚNICA de la
  * UI de Body Type / medidas / Leg+Thighs / Curves (Bust·Glutes con slider
- * unificado cm↔nivel + shape chips + ref de región) / Skin Tone / Hair / Eye.
+ * unificado cm↔nivel + shape chips) / Skin Tone / Hair / Eye.
  *
  * Antes estaba COPY-PASTEADO en 3 sitios (avatar-studio/AvatarEditDrawer,
  * avatar-creator/AvatarCreatorMain, components/shared/AvatarEditDrawer) — el
  * shared drawer ya se había quedado atrás (inputs planos, sin Curves). Este
- * componente es `value + onChange` puro: cada host le pasa sus measurements y
- * (opcional) sus refs de región; sin acoplarse a ningún store.
+ * componente es `value + onChange` puro: cada host le pasa sus measurements;
+ * sin acoplarse a ningún store.
+ *
+ * NOTA: el ref de imagen por región (bust/glutes) que vivía junto a estos
+ * sliders se retiró — quedó obsoleto frente al body ref canónico de Body Lab
+ * y dejaba refs fantasma sin UI para verlos/quitarlos en avatares viejos.
  */
 
-import { useRef, useState } from 'react'
+import { useState } from 'react'
 import Slider from '@/components/ui/Slider'
 import ConfirmDialog from '@/components/shared/ConfirmDialog'
 import Input from '@/components/ui/Input'
 import Tooltip from '@/components/ui/Tooltip'
-import Notification from '@/components/ui/Notification'
-import toast from '@/components/ui/toast'
-import { HiOutlineX, HiOutlineUpload } from 'react-icons/hi'
 import MeasurementSlider from '@/app/(protected-pages)/concepts/avatar-forge/_shared/MeasurementSlider'
-import { createThumbnail } from '@/utils/imageOptimization'
 import {
     LEG_TYPE_TOOLTIP,
     BUST_LEVEL_PHRASE,
@@ -45,13 +45,6 @@ import type {
     GlutesShape,
     BodyShape,
 } from '@/@types/supabase'
-import type { PhysicalRegionRef } from '@/components/shared/BodyLab'
-
-// Forma mínima compartida de un ref de región (bust/glutes). Estructuralmente
-// compatible con el ReferenceImage del Studio (que trae 'bust'|'glutes' en
-// `type`); los hosts castean al setear si su tipo local es más estricto.
-// Re-exportado desde BodyLab (mismo tipo) para no romper imports existentes.
-export type { PhysicalRegionRef } from '@/components/shared/BodyLab'
 
 // Etiquetas cortas para el slider de Build (1-5) — replican el sentido de
 // BUILD_PHRASE en bodyDescriptors.ts sin importar ese const privado.
@@ -66,25 +59,12 @@ const BUILD_LEVEL_SHORT_LABEL: Record<number, string> = {
 interface PhysicalAttributesEditorProps {
     measurements: PhysicalMeasurements
     onChange: (measurements: PhysicalMeasurements) => void
-    // Refs de región (opcional). Si no se pasan los callbacks, el upload de
-    // imagen junto a Bust/Glutes NO se muestra (p.ej. hosts sin refs de región).
-    bustRef?: PhysicalRegionRef | null
-    glutesRef?: PhysicalRegionRef | null
-    onBustRef?: (ref: PhysicalRegionRef | null) => void
-    onGlutesRef?: (ref: PhysicalRegionRef | null) => void
 }
 
 const PhysicalAttributesEditor = ({
     measurements,
     onChange,
-    bustRef,
-    glutesRef,
-    onBustRef,
-    onGlutesRef,
 }: PhysicalAttributesEditorProps) => {
-    const bustInputRef = useRef<HTMLInputElement>(null)
-    const glutesInputRef = useRef<HTMLInputElement>(null)
-
     const set = (patch: Partial<PhysicalMeasurements>) =>
         onChange({ ...measurements, ...patch })
 
@@ -93,68 +73,6 @@ const PhysicalAttributesEditor = ({
     const [pendingShape, setPendingShape] = useState<BodyShape | null>(null)
     const applyShape = (shape: BodyShape) =>
         onChange({ ...measurements, ...SHAPE_PRESETS[shape], shape })
-
-    const processRegionFile = (file: File, region: 'bust' | 'glutes') => {
-        if (
-            !['image/jpeg', 'image/png', 'image/webp', 'image/heic'].includes(
-                file.type,
-            )
-        ) {
-            toast.push(
-                <Notification type="warning" title="Invalid File">
-                    Please upload JPG, PNG, or WebP images
-                </Notification>,
-            )
-            return
-        }
-        const reader = new FileReader()
-        reader.onload = async (e) => {
-            const result = e.target?.result as string
-            const matches = result.match(/^data:(.+);base64,(.+)$/)
-            if (!matches) return
-            let thumbnailUrl = result
-            try {
-                thumbnailUrl = await createThumbnail(matches[2], 'THUMBNAIL')
-            } catch {
-                // Fallback to original
-            }
-            const ref: PhysicalRegionRef = {
-                id: crypto.randomUUID(),
-                url: result,
-                mimeType: matches[1],
-                base64: matches[2],
-                type: region,
-                thumbnailUrl,
-            }
-            if (region === 'bust') onBustRef?.(ref)
-            else onGlutesRef?.(ref)
-        }
-        reader.readAsDataURL(file)
-    }
-
-    const handleRegionFileChange = (
-        e: React.ChangeEvent<HTMLInputElement>,
-        region: 'bust' | 'glutes',
-    ) => {
-        const files = e.target.files
-        if (!files) return
-        Array.from(files).forEach((file) => processRegionFile(file, region))
-        e.target.value = ''
-    }
-    const handleDragOver = (e: React.DragEvent) => {
-        e.preventDefault()
-        e.stopPropagation()
-    }
-    const handleRegionDrop = (
-        e: React.DragEvent,
-        region: 'bust' | 'glutes',
-    ) => {
-        e.preventDefault()
-        e.stopPropagation()
-        const files = e.dataTransfer.files
-        if (files)
-            Array.from(files).forEach((f) => processRegionFile(f, region))
-    }
 
     return (
         <div className="space-y-4">
@@ -377,16 +295,6 @@ const PhysicalAttributesEditor = ({
                             ['Glutes', 'glutesLevel', GLUTES_LEVEL_PHRASE],
                         ] as const
                     ).map(([label, key, phrases]) => {
-                        // Ref de REGIÓN fijo por avatar junto a su slider (la
-                        // IMAGEN ancla mejor que el texto del slider).
-                        const regionRef =
-                            key === 'bustLevel' ? bustRef : glutesRef
-                        const setRegionRef =
-                            key === 'bustLevel' ? onBustRef : onGlutesRef
-                        const regionInput =
-                            key === 'bustLevel' ? bustInputRef : glutesInputRef
-                        const regionName =
-                            key === 'bustLevel' ? 'bust' : 'glutes'
                         // Control UNIFICADO: el slider 1-5 manda y escribe el cm
                         // mapeado; el input cm permite manual (deriva nivel).
                         const cmField = key === 'bustLevel' ? 'bust' : 'hips'
@@ -536,79 +444,9 @@ const PhysicalAttributesEditor = ({
                                         })}
                                     </div>
                                 </div>
-                                {setRegionRef && (
-                                    <div className="shrink-0 pt-4">
-                                        {regionRef ? (
-                                            <div
-                                                className="relative group"
-                                                onDragOver={handleDragOver}
-                                                onDrop={(e) =>
-                                                    handleRegionDrop(
-                                                        e,
-                                                        regionName,
-                                                    )
-                                                }
-                                            >
-                                                <img
-                                                    src={
-                                                        regionRef.thumbnailUrl ||
-                                                        regionRef.url
-                                                    }
-                                                    alt={`${label} ref`}
-                                                    className="w-12 h-12 object-cover rounded-lg cursor-pointer"
-                                                    onClick={() =>
-                                                        regionInput?.current?.click()
-                                                    }
-                                                />
-                                                <button
-                                                    onClick={() =>
-                                                        setRegionRef(null)
-                                                    }
-                                                    className="absolute -top-1 -right-1 p-0.5 bg-red-500 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
-                                                >
-                                                    <HiOutlineX className="w-3 h-3" />
-                                                </button>
-                                            </div>
-                                        ) : (
-                                            <Tooltip
-                                                title={`${label} Ref — la imagen ancla la forma exacta (mejor que el slider); solo viaja a modelos permisivos`}
-                                            >
-                                                <button
-                                                    onClick={() =>
-                                                        regionInput?.current?.click()
-                                                    }
-                                                    onDragOver={handleDragOver}
-                                                    onDrop={(e) =>
-                                                        handleRegionDrop(
-                                                            e,
-                                                            regionName,
-                                                        )
-                                                    }
-                                                    className="w-12 h-12 rounded-lg border-2 border-dashed border-gray-300 dark:border-gray-600 hover:border-primary flex items-center justify-center text-gray-400 hover:text-primary transition-colors"
-                                                >
-                                                    <HiOutlineUpload className="w-4 h-4" />
-                                                </button>
-                                            </Tooltip>
-                                        )}
-                                    </div>
-                                )}
                             </div>
                         )
                     })}
-                    <input
-                        ref={bustInputRef}
-                        type="file"
-                        accept="image/*"
-                        className="hidden"
-                        onChange={(e) => handleRegionFileChange(e, 'bust')}
-                    />
-                    <input
-                        ref={glutesInputRef}
-                        type="file"
-                        accept="image/*"
-                        className="hidden"
-                        onChange={(e) => handleRegionFileChange(e, 'glutes')}
-                    />
                 </div>
             </div>
 

@@ -79,8 +79,6 @@ const AvatarCreatorMain = ({
         generalReferences,
         faceRef,
         angleRef,
-        bustRef,
-        glutesRef,
         identityWeight,
         measurements,
         faceDescription,
@@ -90,8 +88,6 @@ const AvatarCreatorMain = ({
         removeGeneralReference,
         setFaceRef,
         setAngleRef,
-        setBustRef,
-        setGlutesRef,
         setAvatarId,
         setAvatarName,
         setIdentityWeight,
@@ -141,7 +137,7 @@ const AvatarCreatorMain = ({
     const processFile = useCallback(
         (
             file: File,
-            type: 'general' | 'face' | 'angle' | 'bust' | 'glutes',
+            type: 'general' | 'face' | 'angle',
         ) => {
             if (
                 ![
@@ -182,29 +178,17 @@ const AvatarCreatorMain = ({
                         case 'angle':
                             setAngleRef(newImage)
                             break
-                        case 'bust':
-                            setBustRef(newImage)
-                            break
-                        case 'glutes':
-                            setGlutesRef(newImage)
-                            break
                     }
                 }
             }
             reader.readAsDataURL(file)
         },
-        [
-            addGeneralReference,
-            setFaceRef,
-            setAngleRef,
-            setBustRef,
-            setGlutesRef,
-        ],
+        [addGeneralReference, setFaceRef, setAngleRef],
     )
 
     const handleFileChange = (
         event: React.ChangeEvent<HTMLInputElement>,
-        type: 'general' | 'face' | 'angle' | 'bust' | 'glutes',
+        type: 'general' | 'face' | 'angle',
     ) => {
         const files = event.target.files
         if (!files) return
@@ -388,8 +372,6 @@ const AvatarCreatorMain = ({
                 ...generalReferences,
                 ...(faceRef ? [faceRef] : []),
                 ...(angleRef ? [angleRef] : []),
-                ...(bustRef ? [bustRef] : []),
-                ...(glutesRef ? [glutesRef] : []),
             ]
 
             for (const ref of allRefs) {
@@ -453,7 +435,7 @@ const AvatarCreatorMain = ({
 
     const handleDrop = (
         e: React.DragEvent,
-        type: 'general' | 'face' | 'angle' | 'bust' | 'glutes',
+        type: 'general' | 'face' | 'angle',
     ) => {
         e.preventDefault()
         e.stopPropagation()
@@ -765,14 +747,6 @@ const AvatarCreatorMain = ({
                                 <PhysicalAttributesEditor
                                     measurements={measurements}
                                     onChange={setMeasurements}
-                                    bustRef={bustRef}
-                                    glutesRef={glutesRef}
-                                    onBustRef={(r) =>
-                                        setBustRef(r as ReferenceImage | null)
-                                    }
-                                    onGlutesRef={(r) =>
-                                        setGlutesRef(r as ReferenceImage | null)
-                                    }
                                 />
                             </Card>
                         </div>

@@ -12,8 +12,6 @@ interface AvatarCreatorActions {
     setFaceRef: (ref: ReferenceImage | null) => void
     setAngleRef: (ref: ReferenceImage | null) => void
     setBodyRef: (ref: ReferenceImage | null) => void
-    setBustRef: (ref: ReferenceImage | null) => void
-    setGlutesRef: (ref: ReferenceImage | null) => void
     clearAllReferences: () => void
 
     // Settings
@@ -47,8 +45,6 @@ const initialState: AvatarCreatorState = {
     faceRef: null,
     angleRef: null,
     bodyRef: null,
-    bustRef: null,
-    glutesRef: null,
     identityWeight: 85,
     measurements: { age: 25, height: 165, bodyType: 'average', bust: 90, waist: 60, hips: 90, skinTone: 5, hairColor: 'brown' },
     faceDescription: '',
@@ -80,16 +76,12 @@ export const useAvatarCreatorStore = create<AvatarCreatorState & AvatarCreatorAc
         setFaceRef: (ref) => set({ faceRef: ref, isDirty: true }),
         setAngleRef: (ref) => set({ angleRef: ref, isDirty: true }),
         setBodyRef: (ref) => set({ bodyRef: ref, isDirty: true }),
-        setBustRef: (ref) => set({ bustRef: ref, isDirty: true }),
-        setGlutesRef: (ref) => set({ glutesRef: ref, isDirty: true }),
         clearAllReferences: () =>
             set({
                 generalReferences: [],
                 faceRef: null,
                 angleRef: null,
                 bodyRef: null,
-                bustRef: null,
-                glutesRef: null,
                 isDirty: true,
             }),
 
@@ -122,8 +114,6 @@ export const useAvatarCreatorStore = create<AvatarCreatorState & AvatarCreatorAc
             const faceRef = data.references.find((r) => r.type === 'face') || null
             const angleRef = data.references.find((r) => r.type === 'angle') || null
             const bodyRef = data.references.find((r) => r.type === 'body') || null
-            const bustRef = data.references.find((r) => r.type === 'bust') || null
-            const glutesRef = data.references.find((r) => r.type === 'glutes') || null
 
             set({
                 avatarId: data.id,
@@ -135,8 +125,6 @@ export const useAvatarCreatorStore = create<AvatarCreatorState & AvatarCreatorAc
                 faceRef,
                 angleRef,
                 bodyRef,
-                bustRef,
-                glutesRef,
                 isDirty: false,
             })
         },

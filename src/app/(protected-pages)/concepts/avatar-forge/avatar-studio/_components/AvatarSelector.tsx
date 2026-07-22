@@ -43,8 +43,6 @@ const AvatarSelector = ({ userId, isOpen, onClose }: AvatarSelectorProps) => {
         addGeneralReference,
         setFaceRef,
         setAngleRef,
-        setBustRef,
-        setGlutesRef,
         setIdentityWeight,
         setMeasurements,
         setFaceDescription,
@@ -173,13 +171,13 @@ const AvatarSelector = ({ userId, isOpen, onClose }: AvatarSelectorProps) => {
                     // sube una foto en ese slot (reporte: Ana/Valeria/MiaUltra
                     // arrastraban un body ref viejo guardado en la BD). El ref
                     // sigue en la BD; solo dejamos de precargarlo.
+                    // Bust/Glutes refs (imagen por región) están retirados —
+                    // superados por el body ref canónico de Body Lab. Filas
+                    // viejas en la BD con type 'bust'/'glutes' simplemente se
+                    // ignoran aquí (nunca se auto-cargan, como el body ref).
                     case 'body':
-                        break
                     case 'bust':
-                        setBustRef(refImage)
-                        break
                     case 'glutes':
-                        setGlutesRef(refImage)
                         break
                 }
             }

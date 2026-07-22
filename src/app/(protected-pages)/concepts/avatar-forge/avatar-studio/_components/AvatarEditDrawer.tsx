@@ -86,14 +86,6 @@ const AvatarEditDrawer = ({
     const [localAngleRef, setLocalAngleRef] = useState<ReferenceImage | null>(
         null,
     )
-    // Refs de REGIÓN (fijos por avatar, junto a su slider de Curves) — solo
-    // viajan a modelos permisivos.
-    const [localBustRef, setLocalBustRef] = useState<ReferenceImage | null>(
-        null,
-    )
-    const [localGlutesRef, setLocalGlutesRef] = useState<ReferenceImage | null>(
-        null,
-    )
     const [localIdentityWeight, setLocalIdentityWeight] = useState(85)
     const [localMeasurements, setLocalMeasurements] =
         useState<PhysicalMeasurements>({
@@ -112,8 +104,6 @@ const AvatarEditDrawer = ({
         generalReferences,
         faceRef,
         angleRef,
-        bustRef,
-        glutesRef,
         identityWeight,
         measurements,
         faceDescription,
@@ -125,8 +115,6 @@ const AvatarEditDrawer = ({
         setGeneralReferences,
         setFaceRef,
         setAngleRef,
-        setBustRef,
-        setGlutesRef,
         setIdentityWeight,
         setMeasurements,
         setFaceDescription,
@@ -140,8 +128,6 @@ const AvatarEditDrawer = ({
             setLocalGeneralRefs([...generalReferences])
             setLocalFaceRef(faceRef)
             setLocalAngleRef(angleRef)
-            setLocalBustRef(bustRef)
-            setLocalGlutesRef(glutesRef)
             setLocalIdentityWeight(identityWeight)
             const synced = measurements.shape
                 ? { ...measurements }
@@ -159,8 +145,6 @@ const AvatarEditDrawer = ({
         generalReferences,
         faceRef,
         angleRef,
-        bustRef,
-        glutesRef,
         identityWeight,
         measurements,
         faceDescription,
@@ -217,7 +201,7 @@ const AvatarEditDrawer = ({
     const processFile = useCallback(
         async (
             file: File,
-            type: 'general' | 'face' | 'angle' | 'body' | 'bust' | 'glutes',
+            type: 'general' | 'face' | 'angle' | 'body',
         ) => {
             if (
                 ![
@@ -269,12 +253,6 @@ const AvatarEditDrawer = ({
                         case 'angle':
                             setLocalAngleRef(newImage)
                             break
-                        case 'bust':
-                            setLocalBustRef(newImage)
-                            break
-                        case 'glutes':
-                            setLocalGlutesRef(newImage)
-                            break
                         // Note: 'body' type is now handled as a session tool in BottomControlBar
                     }
                 }
@@ -287,7 +265,7 @@ const AvatarEditDrawer = ({
     const handleFileChange = useCallback(
         (
             event: React.ChangeEvent<HTMLInputElement>,
-            type: 'general' | 'face' | 'angle' | 'body' | 'bust' | 'glutes',
+            type: 'general' | 'face' | 'angle' | 'body',
         ) => {
             const files = event.target.files
             if (!files) return
@@ -304,7 +282,7 @@ const AvatarEditDrawer = ({
 
     const handleDrop = (
         e: React.DragEvent,
-        type: 'general' | 'face' | 'angle' | 'body' | 'bust' | 'glutes',
+        type: 'general' | 'face' | 'angle' | 'body',
     ) => {
         e.preventDefault()
         e.stopPropagation()
@@ -323,8 +301,6 @@ const AvatarEditDrawer = ({
         setGeneralReferences(localGeneralRefs)
         setFaceRef(localFaceRef)
         setAngleRef(localAngleRef)
-        setBustRef(localBustRef)
-        setGlutesRef(localGlutesRef)
         setIdentityWeight(localIdentityWeight)
         setMeasurements(localMeasurements)
         setFaceDescription(localFaceDescription)
@@ -341,8 +317,6 @@ const AvatarEditDrawer = ({
         setGeneralReferences(localGeneralRefs)
         setFaceRef(localFaceRef)
         setAngleRef(localAngleRef)
-        setBustRef(localBustRef)
-        setGlutesRef(localGlutesRef)
         setIdentityWeight(localIdentityWeight)
         setMeasurements(localMeasurements)
         setFaceDescription(localFaceDescription)
@@ -926,18 +900,6 @@ const AvatarEditDrawer = ({
                                 <PhysicalAttributesEditor
                                     measurements={localMeasurements}
                                     onChange={setLocalMeasurements}
-                                    bustRef={localBustRef}
-                                    glutesRef={localGlutesRef}
-                                    onBustRef={(r) =>
-                                        setLocalBustRef(
-                                            r as ReferenceImage | null,
-                                        )
-                                    }
-                                    onGlutesRef={(r) =>
-                                        setLocalGlutesRef(
-                                            r as ReferenceImage | null,
-                                        )
-                                    }
                                 />
                             </Card>
 

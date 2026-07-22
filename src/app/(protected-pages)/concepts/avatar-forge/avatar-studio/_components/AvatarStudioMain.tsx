@@ -436,8 +436,6 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
         cloneWeight,
         deepfakeImage,
         placeImage,
-        bustRef,
-        glutesRef,
         videoInputImage,
         identityWeight,
         measurements,
@@ -709,12 +707,6 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                         ...(fresh.bodyRef
                             ? [{ ...fresh.bodyRef, type: 'body' as const }]
                             : []),
-                        ...(fresh.bustRef
-                            ? [{ ...fresh.bustRef, type: 'bust' as const }]
-                            : []),
-                        ...(fresh.glutesRef
-                            ? [{ ...fresh.glutesRef, type: 'glutes' as const }]
-                            : []),
                     ]
 
                     // Tipos SINGLETON: al re-guardar con una imagen nueva se
@@ -725,8 +717,6 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                         'face',
                         'angle',
                         'body',
-                        'bust',
-                        'glutes',
                     ])
                     for (const ref of allRefs) {
                         if (!ref.storagePath) {
@@ -1190,26 +1180,11 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                       })
                     : null
 
-                // Refs de REGIÓN (Bust/Glutes) — como Body Ref pero
-                // independientes. SOLO viajan a providers con trait permissive:
-                // con un modelo no permisivo ni siquiera entran al array.
+                // SOLO viaja a providers con trait permissive (usado también
+                // por curvesEmphasis más abajo).
                 const isPermissiveProvider =
                     PROVIDER_TRAITS[activeProvider?.id ?? '']?.permissive ===
                     true
-                const optimizedBustRef =
-                    isPermissiveProvider && bustRef?.base64
-                        ? await optimizeImage({
-                              base64: bustRef.base64,
-                              mimeType: bustRef.mimeType,
-                          })
-                        : null
-                const optimizedGlutesRef =
-                    isPermissiveProvider && glutesRef?.base64
-                        ? await optimizeImage({
-                              base64: glutesRef.base64,
-                              mimeType: glutesRef.mimeType,
-                          })
-                        : null
 
                 // All reference images for providers that accept multiple inputs
                 // (Nano Banana Pro / GPT Image 2 via KIE). Each carries a `role` so
@@ -1228,22 +1203,6 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                         ...optimizedPayload.bodyRef,
                         role: 'body',
                     },
-                    // Con CLONE activo NO se envían las imágenes de Bust/Glutes
-                    // Ref: fuerzan esas regiones a aparecer y, si la pose del clon
-                    // es de FRENTE, el modelo contorsiona el cuerpo para mostrar
-                    // pecho Y trasero a la vez → anatomía DEFORME (reporte del
-                    // usuario). La forma del busto/glúteos ya viaja por TEXTO
-                    // (bodyEmphasis/curveBoost) y el cuerpo/pose lo da el clon.
-                    !optimizedCloneRef &&
-                        optimizedBustRef && {
-                            ...optimizedBustRef,
-                            role: 'bust',
-                        },
-                    !optimizedCloneRef &&
-                        optimizedGlutesRef && {
-                            ...optimizedGlutesRef,
-                            role: 'glutes',
-                        },
                     // Assets (logo/producto) antes solo llegaban al path Gemini
                     // (assetReferences) — en KIE el clone decía "hoodie with logo"
                     // y Seedream pintaba la palabra literal "LOGO" en la prenda.
@@ -2532,8 +2491,6 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
             cloneWeight,
             deepfakeImage,
             placeImage,
-            bustRef,
-            glutesRef,
             videoInputImage,
             aspectRatio,
             videoDuration,
