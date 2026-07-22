@@ -1,7 +1,11 @@
 // src/utils/sceneSanitizer.test.ts
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { stripSceneIdentity } from './sceneSanitizer.ts'
+import {
+    stripSceneIdentity,
+    buildIdentityNegative,
+    ANTI_WATERMARK_CLAUSE,
+} from './sceneSanitizer.ts'
 
 test('JSON: quita identidad y conserva escena', () => {
     const input = JSON.stringify({
@@ -77,4 +81,27 @@ test('JSON array de nivel superior se sanea', () => {
     const arr = JSON.parse(out)
     assert.equal(arr[0].hair, undefined)
     assert.equal(arr[0].background, 'a beach')
+})
+
+test('buildIdentityNegative: config curvy → anti-slimming + fijos', () => {
+    const neg = buildIdentityNegative({ bust: 100, waist: 60, hips: 105 })
+    assert.ok(/athletic slimness/i.test(neg))
+    assert.ok(/flat chest/i.test(neg))
+    assert.ok(/watermark/i.test(neg))
+})
+
+test('buildIdentityNegative: config no-curvy → solo fijos (sin anti-slimming)', () => {
+    const neg = buildIdentityNegative({ bust: 84, waist: 62, hips: 90 })
+    assert.ok(!/athletic slimness/i.test(neg))
+    assert.ok(/watermark/i.test(neg))
+})
+
+test('buildIdentityNegative: build alto (5) dispara anti-slimming', () => {
+    const neg = buildIdentityNegative({ build: 5 })
+    assert.ok(/athletic slimness/i.test(neg))
+})
+
+test('ANTI_WATERMARK_CLAUSE menciona watermark y text', () => {
+    assert.ok(/watermark/i.test(ANTI_WATERMARK_CLAUSE))
+    assert.ok(/text/i.test(ANTI_WATERMARK_CLAUSE))
 })

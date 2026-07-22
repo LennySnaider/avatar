@@ -9,6 +9,8 @@
 // IMPORTANTE: este módulo SOLO importa tipos → corre bajo el test runner nativo
 // de Node sin resolver alias @/ (los import type se strippean en runtime).
 
+import type { PhysicalMeasurements } from '@/@types/supabase'
+
 // Color de pelo (no estilo): "<color> ... hair" y la forma inversa.
 export const HAIR_COLOR_RES: RegExp[] = [
     /\b(?:golden|dark|light|dirty|platinum|strawberry|jet)?[-\s]?(?:blonde|blond|brunette|brown|black|red|auburn|ginger|redhead|silver|grey|gray|raven)\b[^.,;:\n]{0,15}\bhair\b/gi,
@@ -126,4 +128,41 @@ export function stripSceneIdentity(prompt: string): string {
         }
     }
     return stripProse(prompt)
+}
+
+/** Cláusula anti-watermark universal (in-prompt) — Seedream/Wan no tienen
+ *  parámetro negative en KIE, así que va como texto para los 3 motores. */
+export const ANTI_WATERMARK_CLAUSE =
+    'Do NOT add any watermark, logo, brand name, readable text, caption or signature anywhere in the image.'
+
+const FIXED_NEGATIVE =
+    'watermark, logo, brand text, readable text, signature, caption, extra fingers, deformed hands'
+
+// El avatar es curvy si busto/caderas o el nivel `build` están sobre el promedio.
+// Umbrales alineados con los presets: bust≥95cm / hips≥100cm / build≥4.
+function isCurvy(m?: Partial<PhysicalMeasurements> | null): boolean {
+    if (!m) return false
+    if (typeof m.bust === 'number' && m.bust >= 95) return true
+    if (typeof m.hips === 'number' && m.hips >= 100) return true
+    if (typeof m.build === 'number' && m.build >= 4) return true
+    return false
+}
+
+/**
+ * negative_prompt derivado del config para las rutas que lo soportan nativo
+ * (Qwen hoy). Anti-slimming si el avatar es curvy + fijos (watermark/manos).
+ * En Seedream/Wan el anti-slimming ya lo cubre el [BODY:] autoritativo y el
+ * anti-watermark va por ANTI_WATERMARK_CLAUSE in-prompt.
+ */
+export function buildIdentityNegative(
+    m?: Partial<PhysicalMeasurements> | null,
+): string {
+    const parts: string[] = []
+    if (isCurvy(m)) {
+        parts.push(
+            'small chest, flat chest, reduced bust volume, normalized anatomy, athletic slimness, slim hips',
+        )
+    }
+    parts.push(FIXED_NEGATIVE)
+    return parts.join(', ')
 }
