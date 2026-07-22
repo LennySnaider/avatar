@@ -638,7 +638,7 @@ const AvatarEditDrawer = ({
                     <ScrollBar className="flex-1">
                         <div className="p-3 space-y-2 relative">
                             {isLoadingReferences && (
-                                <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-2 bg-gray-900/60 backdrop-blur-sm rounded-lg">
+                                <div className="absolute inset-0 z-50 flex flex-col items-center justify-center gap-2 bg-gray-900/60 backdrop-blur-sm rounded-lg">
                                     <Spinner size={40} />
                                     <span className="text-xs text-gray-300">
                                         Cargando avatar…
