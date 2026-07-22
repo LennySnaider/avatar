@@ -30,6 +30,10 @@ import {
     BODY_SHEET_NEGATIVE_PROMPT,
 } from '@/utils/bodySheetPrompt'
 import { urlToDataUrl } from '@/utils/imageStitch'
+import {
+    apiGetAvatarReferences,
+    getSignedUrl,
+} from '@/services/AvatarForgeService'
 import { getPermissiveBodyModels } from '../../_shared/providerCatalog'
 import type { ReferenceImage } from '../types'
 import type { PhysicalMeasurements } from '@/@types/supabase'
@@ -114,6 +118,7 @@ const AvatarEditDrawer = ({
         measurements,
         faceDescription,
         avatarName,
+        avatarId,
         isSavingAvatar,
         isLoadingReferences,
         providers,
@@ -161,6 +166,41 @@ const AvatarEditDrawer = ({
         faceDescription,
         avatarName,
     ])
+
+    // Re-hidrata el body ref FRESCO de la BD al abrir el drawer. El Provider
+    // solo hidrata una vez ([avatar?.id]); si el cuerpo se guardó DESPUÉS (p.ej.
+    // desde My Avatars) el store queda desactualizado y no se veía aquí. Esto lo
+    // trae fresco en cada apertura (como hace My Avatars).
+    useEffect(() => {
+        if (!isOpen || !avatarId) return
+        let cancelled = false
+        ;(async () => {
+            try {
+                const refs = await apiGetAvatarReferences(avatarId, 'body')
+                const row = refs?.[0]
+                if (!row?.storage_path) return
+                if (bodyRef?.storagePath === row.storage_path) return // ya fresco
+                const signed = await getSignedUrl('avatars', row.storage_path)
+                const dataUrl = await urlToDataUrl(signed)
+                const m = dataUrl.match(/^data:(.+);base64,(.+)$/)
+                if (!m || cancelled) return
+                setBodyRef({
+                    id: row.id,
+                    url: dataUrl,
+                    mimeType: m[1],
+                    base64: m[2],
+                    type: 'body',
+                    storagePath: row.storage_path,
+                })
+            } catch {
+                // sin body ref o fallo de carga → se deja lo que haya
+            }
+        })()
+        return () => {
+            cancelled = true
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [isOpen, avatarId])
 
     const handlePreviewClose = useCallback(() => {
         setPreviewImage(null)
