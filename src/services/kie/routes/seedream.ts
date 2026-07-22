@@ -50,10 +50,12 @@ async function build(ctx: ImageRouteContext): Promise<KieImageRequest> {
         // en vivo, revertir a: model.startsWith('seedream/5-lite') ? 'high'
         // : 'basic'.
         quality: 'basic',
-        // JPEG (default: png): contenido fotográfico → pérdida imperceptible y
-        // el archivo pesa 5-10× menos = menos post-proceso en KIE + descarga/
-        // persistencia/render más rápidos en toda la cadena.
-        output_format: 'jpeg',
+        // output_format se queda en el default PNG. Se probó 'jpeg' por
+        // velocidad (2026-07-22) y KIE comprime AGRESIVO: mismo 736x1312 pero
+        // 1.7MB png → 150-350KB jpeg (~10×) — la cara del avatar perdía
+        // textura y proporción percibida en i2i (diagnóstico medido en BD:
+        // scripts/_diag patrón; reporte del usuario con evidencia visual).
+        // NO volver a jpeg aquí sin A/B de cara.
         nsfw_checker: false,
     }
 
