@@ -143,13 +143,18 @@ async function build(ctx: ImageRouteContext): Promise<KieImageRequest> {
                                 `The attached image ${i + 2} is a graphic design to reproduce as a PRINT on the fabric of her outfit: copy its EXACT shapes, patterns and colors, sized and placed naturally on the garment. Do NOT paste it as a floating sticker over the scene.`,
                         )
                         .join(' ')
-                    input.prompt = `The FIRST image is the person — keep her EXACT face, hair and natural, matte eye colour, unchanged.${hairClause} ${assetLines} Do NOT add any lettering, words, captions or watermarks of your own anywhere in the image — the ONLY artwork on the outfit is the attached design itself. ${input.prompt}`
+                    input.prompt = `The FIRST image is the person — keep her EXACT face, hair and natural, matte eye colour, unchanged regardless of any nationality or facial description in the text.${hairClause} ${assetLines} Do NOT add any lettering, words, captions or watermarks of your own anywhere in the image — the ONLY artwork on the outfit is the attached design itself. ${input.prompt}`
                     console.log(
                         `[KIE] qwen2/image-edit with ${qwenUrls.length} imgs (face + ${qwenAssets.length} asset)`,
                     )
                 } else {
                     input.image_url = refUrl
-                    input.prompt = `Keep her EXACT face, hair and natural realistic eyes from the reference image.${hairClause} ${input.prompt}`
+                    // Lock de cara AUTORITATIVO: Qwen obedece el TEXTO por
+                    // encima de la imagen — un prompt "mujer coreana" le cambió
+                    // la cara al avatar (caso real, BD 2026-07-22). El saneador
+                    // ya quita la etnicidad del texto; esto es defensa en
+                    // profundidad para lo que se escape.
+                    input.prompt = `Keep her EXACT face, hair and natural realistic eyes from the reference image — her face, facial features and ethnicity come ONLY from that image; IGNORE any nationality, ethnicity or facial description in the text below.${hairClause} ${input.prompt}`
                 }
             }
         } catch (e) {

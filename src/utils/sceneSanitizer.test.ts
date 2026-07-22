@@ -120,3 +120,75 @@ test('buildIdentityNegative: waist NO es señal curvy', () => {
     const neg = buildIdentityNegative({ waist: 110 })
     assert.ok(!/athletic slimness/i.test(neg))
 })
+
+// ── Etnicidad + español + JSON profundo (casos reales de BD, 2026-07-22) ──
+
+test('Prosa ES: quita "mujer coreana" (etnicidad), conserva persona y escena', () => {
+    const out = stripSceneIdentity(
+        'Retrato de estudio DSLR ultrarrealista de una impresionante mujer coreana posando con confianza dentro de un estudio de fotografía minimalista',
+    )
+    assert.ok(!/coreana/i.test(out))
+    assert.ok(/mujer/i.test(out))
+    assert.ok(/estudio de fotografía/i.test(out))
+})
+
+test('Prosa EN: quita "korean woman" (etnicidad), conserva escena', () => {
+    const out = stripSceneIdentity('a stunning korean woman posing in a minimalist studio')
+    assert.ok(!/korean/i.test(out))
+    assert.ok(/woman/i.test(out))
+    assert.ok(/studio/i.test(out))
+})
+
+test('Etnicidad de LUGAR se conserva (no es persona)', () => {
+    const en = stripSceneIdentity('eating ramen at a Korean restaurant at night')
+    assert.ok(/Korean restaurant/i.test(en))
+    const es = stripSceneIdentity('cenando en un restaurante coreano de noche')
+    assert.ok(/restaurante coreano/i.test(es))
+})
+
+test('Prosa ES: quita cabello/piel/ojos/edad en español, conserva escena', () => {
+    const out = stripSceneIdentity(
+        'una mujer de 25 años con cabello castaño, piel morena y ojos verdes caminando por la playa al atardecer',
+    )
+    assert.ok(!/castaño/i.test(out))
+    assert.ok(!/morena/i.test(out))
+    assert.ok(!/verdes/i.test(out))
+    assert.ok(!/25 años/i.test(out))
+    assert.ok(/playa/i.test(out))
+    assert.ok(/atardecer/i.test(out))
+})
+
+test('Prosa ES: peinado se conserva (no es color)', () => {
+    const out = stripSceneIdentity('pelo recogido en una coleta alta con mechones sueltos')
+    assert.ok(/coleta/i.test(out))
+    assert.ok(/pelo recogido/i.test(out))
+})
+
+test('JSON profundo: key compuesta "body_features" se borra (caso real)', () => {
+    const input = JSON.stringify({
+        subject: {
+            description: 'Young woman with a fit, tanned physique standing on a beach.',
+            apparel: 'Matching two-piece string bikini with a retro orange pattern',
+        },
+        body_features: 'Slender but curvy figure with a defined waist',
+        environment: { setting: 'sunny beach with turquoise water' },
+    })
+    const obj = JSON.parse(stripSceneIdentity(input))
+    assert.equal(obj.body_features, undefined)
+    assert.ok(/bikini/i.test(obj.subject.apparel))
+    assert.ok(!/fit, tanned physique/i.test(obj.subject.description))
+    assert.ok(/beach/i.test(obj.environment.setting))
+})
+
+test('JSON profundo: "body_and_pose" (objeto) conserva la pose, borra physique', () => {
+    const input = JSON.stringify({
+        body_and_pose: {
+            physique: 'fit, toned abdomen, visible ribcage',
+            arms: 'arms crossed behind the back',
+        },
+    })
+    const obj = JSON.parse(stripSceneIdentity(input))
+    assert.ok(obj.body_and_pose)
+    assert.equal(obj.body_and_pose.physique, undefined)
+    assert.ok(/arms crossed/i.test(obj.body_and_pose.arms))
+})

@@ -1,10 +1,17 @@
 //
 // Identity Lock — el prompt de escena NO debe dictar la identidad del avatar.
-// stripSceneIdentity quita color de pelo, físico, piel, ojos, edad y tatuajes
-// de la escena (que llega como JSON estructurado o prosa), dejando solo
-// pose/outfit/lugar/luz/mood. El avatar (config + body ref + [BODY:]/[FACE:])
-// define la identidad. Escape: un tag [LOOK: …] apaga el saneador para looks
-// intencionales (peluca, disfraz, shoot temático).
+// stripSceneIdentity quita color de pelo, físico, piel, ojos, edad, tatuajes
+// y ETNICIDAD de la escena (que llega como JSON estructurado o prosa, en
+// INGLÉS o ESPAÑOL), dejando solo pose/outfit/lugar/luz/mood. El avatar
+// (config + body ref + [BODY:]/[FACE:]) define la identidad. Escape: un tag
+// [LOOK: …] apaga el saneador para looks intencionales (peluca, disfraz,
+// shoot temático).
+//
+// Caso real que motivó la etnicidad + español (BD 2026-07-22): un prompt
+// "una impresionante mujer coreana posando…" cambió la CARA del avatar en
+// Qwen (editor literal que obedece el texto) — "coreana" es identidad, no
+// escena. "restaurante coreano" / "Korean restaurant" sí es escena y se
+// conserva (los patrones exigen un sustantivo de PERSONA adyacente).
 //
 // IMPORTANTE: este módulo SOLO importa tipos → corre bajo el test runner nativo
 // de Node sin resolver alias @/ (los import type se strippean en runtime).
@@ -16,11 +23,31 @@ export const HAIR_COLOR_RES: RegExp[] = [
     /\b(?:golden|dark|light|dirty|platinum|strawberry|jet)?[-\s]?(?:blonde|blond|brunette|brown|black|red|auburn|ginger|redhead|silver|grey|gray|raven)\b[^.,;:\n]{0,15}\bhair\b/gi,
     /\bhair\b[^.,;:\n]{0,15}\b(?:blonde|blond|brunette|brown|black|red|auburn|ginger|redhead|silver|grey|gray|raven)\b/gi,
     /\b(?:golden|dark|light|dirty|platinum|strawberry|jet)?[-\s]?(?:blonde|blond|brunette|brown|black|red|auburn|ginger|redhead|silver|grey|gray|raven)\b(?=\s+(?:woman|man|girl|boy|person|female|male|lady|guy)\b)/gi,
+    // Español: "cabello castaño", "pelo largo negro" (color, no peinado —
+    // "pelo recogido en coleta" NO matchea porque exige un color).
+    /\b(?:cabello|pelo|melena|cabellera)\b(?:\s+[\wáéíóúüñÁÉÍÓÚÜÑ]+){0,2}?\s+(?:rubi[oa]s?|castañ[oa]s?|negr[oa]s?|moren[oa]s?|pelirroj[oa]s?|platinad[oa]s?|canos[oa]s?|azabache|cobriz[oa]s?|caoba|chocolate|oscur[oa]s?|clar[oa]s?)\b/gi,
 ]
+
+// Etnicidad/nacionalidad de la PERSONA (identidad — la cara la define el
+// avatar). Inglés: adjetivo ANTES del sustantivo de persona → lookahead
+// (se borra solo el adjetivo, el sustantivo queda). "Korean woman" → "woman";
+// "Korean restaurant" se conserva (restaurant no es persona).
+export const ETHNICITY_EN_RE =
+    /\b(?:korean|japanese|chinese|thai|vietnamese|filipin[ao]|asian|caucasian|latina|latino|hispanic|european|scandinavian|slavic|russian|ukrainian|brazilian|colombian|venezuelan|mexican|argentinian|indian|arab(?:ic)?|middle[-\s]eastern|african|ebony|american|french|italian|spanish|german|swedish|nordic|british|irish|turkish|persian|moroccan|egyptian)\b(?=[^.,;:\n]{0,20}\b(?:woman|man|girl|boy|model|lady|female|male|person|beauty|face|features|descent|ethnicity|appearance|looks)\b)/gi
+
+// Español: el adjetivo va DESPUÉS del sustantivo ("mujer coreana") → se
+// captura el sustantivo (+hasta 2 palabras intermedias) y el replace deja
+// '$1$2', borrando solo el gentilicio. "vajilla china" se conserva.
+export const ETHNICITY_ES_RE =
+    /\b(mujer|chica|joven|modelo|señorita|dama|hombre|chico|persona)((?:\s+[\wáéíóúüñÁÉÍÓÚÜÑ]+){0,2}?)\s+(?:corean[oa]|japones[oa]|chin[oa]|tailandes[oa]|vietnamita|filipin[oa]|asiátic[oa]|caucásic[oa]|latin[oa]|hispan[oa]|europe[oa]|eslav[oa]|rus[oa]|ucranian[oa]|brasileñ[oa]|colombian[oa]|venezolan[oa]|mexican[oa]|argentin[oa]|indi[oa]|árabe|african[oa]|american[oa]|estadounidense|frances[oa]|italian[oa]|español[oa]|aleman[oa]|suec[oa]|nórdic[oa]|británic[oa]|irlandes[oa]|turc[oa]|pers[oa]|marroquí|egipci[oa])\b/gi
 
 // Físico: adjetivo de cuerpo + sustantivo de cuerpo, y descriptores sueltos.
 export const BODY_RES: RegExp[] = [
     /\b(?:voluptuous|hourglass|slim|slender|petite|curvy|thick|toned|fit|athletic|muscular|lean|plus[-\s]?size)\b[^.,;:\n]{0,40}\b(?:figure|body|waist|thighs|abdomen|physique|build|bust|hips|silhouette)\b/gi,
+    // Cadena de adjetivos con comas: "fit, tanned physique" (la coma rompe el
+    // puente [^.,;:\n] de arriba). Solo encadena adjetivos del SET (+conectores)
+    // → "fit gym, wide hips" NO matchea ("gym" corta la cadena).
+    /\b(?:voluptuous|hourglass|slim|slender|petite|curvy|thick|toned|fit|athletic|muscular|lean|tanned|plus[-\s]?size)(?:(?:\s*,\s*|\s+and\s+|\s+)(?:voluptuous|hourglass|slim|slender|petite|curvy|thick|toned|fit|athletic|muscular|lean|tanned|defined|wide|narrow|full|prominent|round|natural|dramatic|deep|very|super|extremely))*\s+(?:figure|body|waist|thighs|abdomen|physique|build|bust|hips|silhouette)\b/gi,
     /\b(?:visible ribcage|visible hip bones?|flat stomach|toned abdomen|defined abs)\b/gi,
     /\b(?:voluptuous|hourglass|slim|slender|petite|curvy|thick|toned|fit|athletic|muscular|lean|plus[-\s]?size)\b(?=\s+(?:woman|man|girl|boy|person|female|male|lady|guy)\b)/gi,
 ]
@@ -28,38 +55,68 @@ export const BODY_RES: RegExp[] = [
 export const SKIN_RE =
     /\b(?:fair|light|medium|olive|tan|tanned|dark|deep|porcelain|pale)\b(?:[-\s]to[-\s]\w+)?[^.,;:\n]{0,10}\bskin\b/gi
 
+// Español: "piel clara/morena/bronceada…" (adjetivo después del sustantivo).
+export const SKIN_ES_RE =
+    /\bpiel\b(?:\s+[\wáéíóúüñÁÉÍÓÚÜÑ]+){0,2}?\s+(?:clar[ao]|moren[ao]|bronceada?|oscur[ao]|pálid[ao]|blanc[ao]|olivácea|canela|tostada)\b/gi
+
 export const EYE_RE =
     /\b(?:blue|green|brown|hazel|grey|gray|amber|dark)\b[^.,;:\n]{0,10}\beyes?\b/gi
+
+// Español: "ojos verdes/azules/…".
+export const EYE_ES_RE =
+    /\bojos\b(?:\s+[\wáéíóúüñÁÉÍÓÚÜÑ]+){0,2}?\s+(?:azules|verdes|marrones|cafés?|avellana|grises|oscuros|claros|negros|miel)\b/gi
 
 export const AGE_RES: RegExp[] = [
     /\b(?:early|mid|late)?[-\s]?(?:teens|twenties|thirties|forties|20s|30s|40s)\b/gi,
     /\b(?:young adult|\d{2}\s?(?:years old|yo))\b/gi,
+    // Español: "23 años", "veinteañera".
+    /\b\d{2}\s*años\b/gi,
+    /\b(?:veinteañer[ao]|treintañer[ao]|veintitantos|treinta y tantos)\b/gi,
 ]
 
-export const TATTOO_RE = /\b(?:tattoos?|tattooed|inked|sleeve tattoo)\b/gi
+export const TATTOO_RE =
+    /\b(?:tattoos?|tattooed|inked|sleeve tattoo|tatuajes?|tatuad[oa]s?)\b/gi
 
 // Orden importa: HAIR_COLOR_RES debe correr antes que BODY_RES — el lookahead
 // de frase corporal ("curvy woman") depende de que el color de pelo ya haya
 // sido eliminado (p.ej. "curvy blonde woman" → tras el pase de pelo queda
 // "curvy woman", y ahí "curvy" queda adyacente a "woman").
+// ETHNICITY_ES_RE va APARTE (necesita replace '$1$2' para conservar el
+// sustantivo de persona, no el ' ' uniforme de esta lista).
 const ALL_IDENTITY_RES: RegExp[] = [
     ...HAIR_COLOR_RES,
     ...BODY_RES,
     SKIN_RE,
+    SKIN_ES_RE,
     EYE_RE,
+    EYE_ES_RE,
     ...AGE_RES,
     TATTOO_RE,
+    ETHNICITY_EN_RE,
 ]
 
-// Keys de identidad borradas del JSON parseado (nivel superior).
-const IDENTITY_KEYS = ['hair', 'body', 'physique', 'skin', 'demographics', 'tattoos']
-// Keys de identidad dentro de `subject`.
-const SUBJECT_IDENTITY_KEYS = ['age', 'face', 'physique', 'demographics', 'hair', 'body', 'skin']
+// Keys de identidad en el JSON. CORE (match exacto) se borra SIEMPRE, aunque
+// el valor sea un objeto ("hair": {color, style} → fuera entero). COMPOUND
+// (core + separador: "body_features", "skin_tone") se borra si el valor es
+// escalar/array, pero si es un OBJETO se recorre — "body_and_pose" contiene
+// la POSE (escena) junto al physique (identidad): borrarlo entero mataría la
+// pose; la recursión borra solo el physique de adentro.
+const CORE_IDENTITY_KEY_RE =
+    /^(?:hair|body|physique|skin|demographics?|tattoos?|ethnicity|race|nationality|face|age)$/i
+const COMPOUND_IDENTITY_KEY_RE =
+    /^(?:hair|body|physique|skin|demographics?|tattoos?|ethnicity|race|nationality|face|age)[_\-.]/i
+// Arrays bajo estas keys se FILTRAN por entrada (una entrada de apariencia
+// desaparece completa); cualquier otro array solo sanea sus strings.
+const FILTERED_ARRAY_KEYS = new Set(['must_keep', 'avoid'])
+const MAX_JSON_DEPTH = 5
 
 /** Quita frases de identidad de texto libre y limpia espacios/puntuación. */
 export function stripProse(text: string): string {
     let out = text
     for (const re of ALL_IDENTITY_RES) out = out.replace(re, ' ')
+    // Etnicidad ES: conserva el sustantivo de persona ($1) y las palabras
+    // intermedias ($2); borra solo el gentilicio.
+    out = out.replace(ETHNICITY_ES_RE, '$1$2')
     return out
         .replace(/\s{2,}/g, ' ')
         .replace(/\s+([.,;:])/g, '$1')
@@ -69,32 +126,52 @@ export function stripProse(text: string): string {
 
 /** true si la cadena contiene algún atributo de identidad. */
 function matchesIdentity(s: string): boolean {
-    return ALL_IDENTITY_RES.some((re) => {
+    const all = [...ALL_IDENTITY_RES, ETHNICITY_ES_RE]
+    return all.some((re) => {
         re.lastIndex = 0
         return re.test(s)
     })
 }
 
-function sanitizeJsonObject(obj: Record<string, unknown>): void {
-    for (const k of IDENTITY_KEYS) delete obj[k]
-
-    const subject = obj.subject
-    if (subject && typeof subject === 'object' && !Array.isArray(subject)) {
-        const s = subject as Record<string, unknown>
-        for (const k of SUBJECT_IDENTITY_KEYS) delete s[k]
-        if (typeof s.description === 'string') s.description = stripProse(s.description)
-    }
-
-    const constraints = obj.constraints
-    if (constraints && typeof constraints === 'object' && !Array.isArray(constraints)) {
-        const c = constraints as Record<string, unknown>
-        for (const key of ['must_keep', 'avoid']) {
-            const arr = c[key]
-            if (Array.isArray(arr)) {
-                c[key] = arr.filter(
-                    (item) => typeof item !== 'string' || !matchesIdentity(item),
-                )
-            }
+/**
+ * Saneo RECURSIVO del JSON de escena (antes solo nivel superior + `subject`:
+ * un "body_features" top-level o un "subject.hair" anidado se escapaban —
+ * caso real: prompt de playa con "body_features" en BD 2026-07-22). Reglas:
+ * key CORE → delete; key COMPOUND → delete salvo objeto (se recorre); string
+ * → stripProse; array bajo must_keep/avoid → filtra entradas de identidad;
+ * otros arrays → sanea strings; objeto → recursión (tope MAX_JSON_DEPTH).
+ */
+function sanitizeJsonObject(obj: Record<string, unknown>, depth = 0): void {
+    if (depth >= MAX_JSON_DEPTH) return
+    for (const key of Object.keys(obj)) {
+        const value = obj[key]
+        const isObj =
+            value !== null && typeof value === 'object' && !Array.isArray(value)
+        if (CORE_IDENTITY_KEY_RE.test(key)) {
+            delete obj[key]
+            continue
+        }
+        if (COMPOUND_IDENTITY_KEY_RE.test(key) && !isObj) {
+            delete obj[key]
+            continue
+        }
+        if (isObj) {
+            sanitizeJsonObject(value as Record<string, unknown>, depth + 1)
+            continue
+        }
+        if (typeof value === 'string') {
+            obj[key] = stripProse(value)
+            continue
+        }
+        if (Array.isArray(value)) {
+            obj[key] = FILTERED_ARRAY_KEYS.has(key.toLowerCase())
+                ? value.filter(
+                      (item) =>
+                          typeof item !== 'string' || !matchesIdentity(item),
+                  )
+                : value.map((item) =>
+                      typeof item === 'string' ? stripProse(item) : item,
+                  )
         }
     }
 }
