@@ -529,6 +529,7 @@ const AvatarEditDrawer = ({
     const handleUseAsBody = () => {
         if (!bodySheet) return
         setLocalBodyRef(bodySheet)
+        setBodySheet(null) // pasa a ser el "Cuerpo guardado" (feedback visible)
         toast.push(
             <Notification type="success" title="Cuerpo fijado">
                 Se guardará como el cuerpo del avatar al guardar los cambios.
@@ -903,6 +904,7 @@ const AvatarEditDrawer = ({
                                     }
                                     onGenerate={handleGenerateBody}
                                     onUseAsBody={handleUseAsBody}
+                                    canUseAsBody={!!bodySheet}
                                     onPreview={() => {
                                         const s = bodySheet || localBodyRef
                                         if (s) setPreviewImage(s)

@@ -36,6 +36,9 @@ export interface BodyLabProps {
     sheetModel?: string // nombre del modelo con que se generó el sheet (badge)
     onGenerate: () => void
     onUseAsBody: () => void
+    // true si hay una generación FRESCA para fijar (sin esto, el botón "Usar
+    // como cuerpo" no aplica — solo se está viendo el cuerpo ya guardado).
+    canUseAsBody?: boolean
     // Click en el preview → abrir en grande (el host usa su propio lightbox).
     // Si no se pasa, el preview no es clickeable.
     onPreview?: () => void
@@ -151,7 +154,7 @@ const BodyLab = (props: BodyLabProps) => {
                           ? 'Regenerar cuerpo'
                           : 'Generar cuerpo'}
                 </button>
-                {props.sheet && !props.isGenerating && (
+                {props.canUseAsBody && !props.isGenerating && (
                     <button
                         type="button"
                         onClick={props.onUseAsBody}
