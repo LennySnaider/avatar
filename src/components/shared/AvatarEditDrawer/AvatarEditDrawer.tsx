@@ -138,6 +138,8 @@ const AvatarEditDrawer = ({
         null,
     )
     const [bodySheetModel, setBodySheetModel] = useState('')
+    const [sheetMeasurements, setSheetMeasurements] =
+        useState<PhysicalMeasurements | null>(null)
     const [isGeneratingBody, setIsGeneratingBody] = useState(false)
     const [selectedBodyModel, setSelectedBodyModel] = useState('')
 
@@ -150,16 +152,16 @@ const AvatarEditDrawer = ({
             setLocalBodyRef(initialData.bodyRef)
             setBodySheet(null)
             setLocalIdentityWeight(initialData.identityWeight)
-            setLocalMeasurements(
-                initialData.measurements.shape
-                    ? { ...initialData.measurements }
-                    : {
-                          ...initialData.measurements,
-                          shape: deriveShapeFromMeasurements(
-                              initialData.measurements,
-                          ),
-                      },
-            )
+            const synced = initialData.measurements.shape
+                ? { ...initialData.measurements }
+                : {
+                      ...initialData.measurements,
+                      shape: deriveShapeFromMeasurements(
+                          initialData.measurements,
+                      ),
+                  }
+            setLocalMeasurements(synced)
+            setSheetMeasurements(synced)
             setLocalFaceDescription(initialData.faceDescription)
             setSaveAvatarName(avatarName || initialData.name || '')
         }
@@ -500,6 +502,7 @@ const AvatarEditDrawer = ({
             if (!result.success) throw new Error(result.error)
             const sheet = await toBodyReferenceImage(result.url)
             setBodySheet(sheet)
+            setSheetMeasurements(localMeasurements)
             const selName =
                 PERMISSIVE_BODY_MODELS.find(
                     (p) => p.model === selectedBodyModel,
@@ -535,6 +538,13 @@ const AvatarEditDrawer = ({
 
     const hasLocalRefs =
         localGeneralRefs.length > 0 || localFaceRef || localAngleRef
+
+    // ¿El sheet mostrado quedó desactualizado vs los atributos actuales?
+    const shownBody = bodySheet || localBodyRef
+    const bodyStale =
+        !!shownBody &&
+        !!sheetMeasurements &&
+        JSON.stringify(localMeasurements) !== JSON.stringify(sheetMeasurements)
 
     // Reference Slot Component
     const ReferenceSlot = ({
@@ -897,6 +907,7 @@ const AvatarEditDrawer = ({
                                         const s = bodySheet || localBodyRef
                                         if (s) setPreviewImage(s)
                                     }}
+                                    stale={bodyStale}
                                     disabledReason={
                                         PERMISSIVE_BODY_MODELS.length === 0
                                             ? 'No hay modelo text-to-image permisivo disponible (Qwen / Flux.2).'

@@ -65,6 +65,10 @@ const AvatarEditDrawer = ({
     )
     const [bodySheet, setBodySheet] = useState<ReferenceImage | null>(null)
     const [bodySheetModel, setBodySheetModel] = useState('')
+    // Snapshot de las medidas con que se generó/cargó el sheet mostrado — para
+    // detectar si el usuario cambió atributos (→ sheet "desactualizado").
+    const [sheetMeasurements, setSheetMeasurements] =
+        useState<PhysicalMeasurements | null>(null)
     const [isGeneratingBody, setIsGeneratingBody] = useState(false)
     const [selectedBodyModel, setSelectedBodyModel] = useState('')
 
@@ -134,14 +138,14 @@ const AvatarEditDrawer = ({
             setLocalBustRef(bustRef)
             setLocalGlutesRef(glutesRef)
             setLocalIdentityWeight(identityWeight)
-            setLocalMeasurements(
-                measurements.shape
-                    ? { ...measurements }
-                    : {
-                          ...measurements,
-                          shape: deriveShapeFromMeasurements(measurements),
-                      },
-            )
+            const synced = measurements.shape
+                ? { ...measurements }
+                : {
+                      ...measurements,
+                      shape: deriveShapeFromMeasurements(measurements),
+                  }
+            setLocalMeasurements(synced)
+            setSheetMeasurements(synced) // el cuerpo guardado coincide al abrir
             setLocalFaceDescription(faceDescription)
             setSaveAvatarName(avatarName || '')
         }
@@ -489,6 +493,7 @@ const AvatarEditDrawer = ({
             if (!result.success) throw new Error(result.error)
             const sheet = await toReferenceImage(result.url, 'body')
             setBodySheet(sheet)
+            setSheetMeasurements(localMeasurements) // sheet ↔ medidas actuales
             const selName =
                 permissiveBodyModels.find((p) => p.model === selectedBodyModel)
                     ?.name || selectedBodyModel
@@ -525,6 +530,13 @@ const AvatarEditDrawer = ({
         localGeneralRefs.length > 0 || localFaceRef || localAngleRef
 
     const permissiveBodyModels = getPermissiveBodyModels(providers)
+
+    // ¿El sheet mostrado quedó desactualizado vs los atributos actuales?
+    const shownBody = bodySheet || bodyRef
+    const bodyStale =
+        !!shownBody &&
+        !!sheetMeasurements &&
+        JSON.stringify(localMeasurements) !== JSON.stringify(sheetMeasurements)
 
     // Default: primer modelo permisivo (los face:true ya vienen primero).
     useEffect(() => {
@@ -906,6 +918,7 @@ const AvatarEditDrawer = ({
                                         const s = bodySheet || bodyRef
                                         if (s) setPreviewImage(s)
                                     }}
+                                    stale={bodyStale}
                                     disabledReason={
                                         permissiveBodyModels.length === 0
                                             ? 'No hay modelo text-to-image permisivo (Qwen / Flux.2). Actívalo en AI Providers.'
