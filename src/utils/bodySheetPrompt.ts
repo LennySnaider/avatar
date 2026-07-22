@@ -135,7 +135,7 @@ export function buildBodySheetPrompt(m: PhysicalMeasurements): string {
  * renderiza el cuerpo del config encima. 1 sola generación. Si el archivo no
  * existe, el drawer cae a Wan t2i.
  */
-export const BODY_TURNAROUND_TEMPLATE_URL = '/body/turnaround-template.jpg'
+export const BODY_TURNAROUND_TEMPLATE_URL = '/body/turnaround-template.png'
 
 /**
  * Modelo i2i para el refinado sobre la plantilla. Wan 2.7 (unificado t2i+edit,
