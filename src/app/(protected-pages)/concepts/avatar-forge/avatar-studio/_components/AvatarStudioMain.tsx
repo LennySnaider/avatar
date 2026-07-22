@@ -101,6 +101,7 @@ import {
     getEyeColorDescription,
     buildCurvesEmphasis,
 } from '@/utils/bodyDescriptors'
+import { buildIdentityNegative } from '@/utils/sceneSanitizer'
 import {
     readDefaultProviderId,
     readBatchIds,
@@ -1751,6 +1752,13 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                                     : getEyeColorDescription(
                                           measurements?.eyeColor,
                                       ) || undefined,
+                                // Identity Lock: negative derivado del config
+                                // para rutas con negative nativo (Qwen). En
+                                // deepfake se omite (el cuerpo/cara vienen del
+                                // lienzo, no del config).
+                                negativePrompt: deepfakeActive
+                                    ? undefined
+                                    : buildIdentityNegative(measurements),
                                 // Escala la cláusula de fidelidad facial del
                                 // ancla (port condensado del identity harness).
                                 identityWeight,
