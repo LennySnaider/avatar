@@ -235,8 +235,13 @@ export function aspectToImageSize(aspectRatio: string): string {
  * aunque el ref o la escena sugieran otro tono. Verbatim de KieService:468-470.
  */
 export function hairClause(hairEmphasis?: string): string {
+    // AUTORITATIVO: los prompts de escena repiten el color de pelo varias veces
+    // (hair.color + description + must_keep) → una mención suave perdía por
+    // volumen (Wan/Qwen salían rubios cuando el avatar no lo es). Se declara
+    // MANDATORIO y que ANULA cualquier otro color, negando explícitamente los
+    // colores que la escena pueda pedir.
     return hairEmphasis
-        ? ` Her hair MUST be ${hairEmphasis} — if the hair in the reference photo or the scene suggests a different color, RECOLOR it to this exact color.`
+        ? ` Her hair colour is MANDATORY: ${hairEmphasis}. This OVERRIDES any other hair colour anywhere in this prompt — ignore any "blonde", "brunette", "red", "black" etc. stated in the scene description; if the reference photo or the scene suggests a different colour, RECOLOR her hair to exactly this.`
         : ''
 }
 

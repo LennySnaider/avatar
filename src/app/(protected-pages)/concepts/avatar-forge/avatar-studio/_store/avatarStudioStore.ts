@@ -704,7 +704,15 @@ export const useAvatarStudioStore = create<AvatarStudioState>()(
                 // both tags into prose; other providers read them as semantic text.
                 const tags: string[] = []
                 if (bodyParts.length > 0) {
-                    tags.push(`[BODY: ${bodyParts.join(', ')}]`)
+                    // AUTORITATIVO + anti-slimming: el prompt de escena suele traer
+                    // su propio physique ("fit, toned, visible ribcage…") que pesa
+                    // más y aplana el cuerpo del avatar. Este tag declara que MANDA
+                    // y anula cualquier otra descripción de cuerpo. Sin palabras
+                    // NSFW de curvas (esas van por bodyEmphasis en permisivos) →
+                    // seguro para TODOS los motores.
+                    tags.push(
+                        `[BODY — the subject's EXACT and MANDATORY physique, proportions, weight and body volume; this OVERRIDES any other body, physique, build, weight or "fit/toned/slim" description anywhere else in this prompt. Do NOT slim down, normalise, reduce, average or flatten her body — preserve these proportions and volume exactly: ${bodyParts.join(', ')}]`,
+                    )
                 }
                 // The dense Auto-Analyze face descriptor was never sent to the model.
                 // Injecting it as [FACE: ...] is the single highest-impact change for

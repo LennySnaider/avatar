@@ -155,9 +155,20 @@ async function pollKieImageTask(
             throw new Error(sub.error)
         }
         let failMsg = ''
-        const deadlineMs = Date.now() + 18 * 60 * 1000
+        const startedAt = Date.now()
+        const deadlineMs = startedAt + 18 * 60 * 1000
         while (Date.now() < deadlineMs) {
-            await new Promise((r) => setTimeout(r, 5000))
+            // Cadencia ADAPTIVA. recordInfo NO cobra créditos (es un GET de
+            // estado), así que sondear rápido es gratis. Antes: 5s fijo + 5s de
+            // espera antes del 1er check → hasta ~7.5s muertos por generación
+            // (5s inicial + 5s de granularidad al terminar). Seedream/Flux i2i
+            // terminan en ~10-25s, así que sondeamos a 2s los primeros 20s
+            // (1er check a los 2s, no a los 5s) y hacemos back-off para tareas
+            // largas (nano-banana-pro) que no se benefician de sondeo agresivo.
+            const elapsed = Date.now() - startedAt
+            const interval =
+                elapsed < 20_000 ? 2000 : elapsed < 60_000 ? 3000 : 5000
+            await new Promise((r) => setTimeout(r, interval))
             const st = await checkKieImageTask(sub.taskId)
             if (st.status === 'done') {
                 return { url: st.url, fullApiPrompt: sub.fullApiPrompt }

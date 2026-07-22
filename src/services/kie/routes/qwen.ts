@@ -13,6 +13,7 @@ import {
     relocatePoseTag,
     capAtWordBoundary,
     stripIdentityRedundancy,
+    hairClause as buildHairClause,
 } from '../shared'
 
 async function build(ctx: ImageRouteContext): Promise<KieImageRequest> {
@@ -23,6 +24,13 @@ async function build(ctx: ImageRouteContext): Promise<KieImageRequest> {
     // → el OUTFIT y el FONDO se decapitaban (reporte: Qwen salía desnuda y sin
     // fondo con el crop top/pink skirt EN el prompt pero cortados). Ancla corta
     // = presupuesto para la escena (ropa+pose+fondo), que es lo que el usuario ve.
+
+    // Override de pelo AUTORITATIVO: Qwen es un editor literal que stripea
+    // [BODY:]/[FACE:] (bodyInAnchor=true) → perdía el color de pelo del avatar
+    // y seguía el "golden blonde" de la escena. Como el clause NO va en los
+    // tags stripeados sino en el ancla, sobrevive y recolorea. hairEmphasis solo
+    // se puebla en GENERACIÓN (no en EDIT, donde el usuario recolorea a mano).
+    const hairClause = buildHairClause(ctx.hairEmphasis)
 
     // Qwen NO es nano → reubica la pose; cap 1800.
     let promptText = relocatePoseTag(ctx.prompt)
@@ -113,7 +121,7 @@ async function build(ctx: ImageRouteContext): Promise<KieImageRequest> {
                     )
                         .replace(/\s{2,}/g, ' ')
                         .trim()
-                    input.prompt = `Swap ONLY the face — use the SECOND image's face (exact features, freckles, likeness), keep that person's hair and natural eye colour, NEVER the first image's original face. ${fidelity}: ${cloneDesc}`
+                    input.prompt = `Swap ONLY the face — use the SECOND image's face (exact features, freckles, likeness), keep that person's hair and natural eye colour, NEVER the first image's original face.${hairClause} ${fidelity}: ${cloneDesc}`
                     console.log(
                         `[KIE] qwen2/image-edit CLONE (clone canvas + face swap, weight ${cw})`,
                     )
@@ -135,13 +143,13 @@ async function build(ctx: ImageRouteContext): Promise<KieImageRequest> {
                                 `The attached image ${i + 2} is a graphic design to reproduce as a PRINT on the fabric of her outfit: copy its EXACT shapes, patterns and colors, sized and placed naturally on the garment. Do NOT paste it as a floating sticker over the scene.`,
                         )
                         .join(' ')
-                    input.prompt = `The FIRST image is the person — keep her EXACT face, hair and natural, matte eye colour, unchanged. ${assetLines} Do NOT add any lettering, words, captions or watermarks of your own anywhere in the image — the ONLY artwork on the outfit is the attached design itself. ${input.prompt}`
+                    input.prompt = `The FIRST image is the person — keep her EXACT face, hair and natural, matte eye colour, unchanged.${hairClause} ${assetLines} Do NOT add any lettering, words, captions or watermarks of your own anywhere in the image — the ONLY artwork on the outfit is the attached design itself. ${input.prompt}`
                     console.log(
                         `[KIE] qwen2/image-edit with ${qwenUrls.length} imgs (face + ${qwenAssets.length} asset)`,
                     )
                 } else {
                     input.image_url = refUrl
-                    input.prompt = `Keep her EXACT face, hair and natural realistic eyes from the reference image. ${input.prompt}`
+                    input.prompt = `Keep her EXACT face, hair and natural realistic eyes from the reference image.${hairClause} ${input.prompt}`
                 }
             }
         } catch (e) {
