@@ -21,7 +21,11 @@ function loadImage(src: string): Promise<HTMLImageElement> {
  */
 export async function urlToDataUrl(url: string): Promise<string> {
     if (url.startsWith('data:')) return url
-    const blob = await fetch(url).then((r) => r.blob())
+    const res = await fetch(url)
+    // Sin este check, un 404 (p.ej. plantilla ausente) devolvería la página de
+    // error como "imagen" → basura a KIE (500 "field required"). Falla limpio.
+    if (!res.ok) throw new Error(`fetch ${url} → ${res.status}`)
+    const blob = await res.blob()
     return new Promise<string>((resolve, reject) => {
         const reader = new FileReader()
         reader.onloadend = () => resolve(reader.result as string)
