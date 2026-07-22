@@ -466,31 +466,33 @@ const AvatarEditDrawer = ({
                 // plantilla ausente → fallback
             }
 
+            // Sin plantilla no se puede t2i con Seedream (i2i-only) → cae a Wan.
+            const t2iFallbackModel =
+                selectedBodyModel === BODY_SHEET_REFINE_MODEL
+                    ? 'wan/2-7-image'
+                    : selectedBodyModel
             const result = tmpl
                 ? await generateImageKie({
                       prompt: buildTurnaroundRefinePrompt(localMeasurements),
-                      model: BODY_SHEET_REFINE_MODEL,
-                      aspectRatio: '3:2',
+                      model: selectedBodyModel,
+                      aspectRatio: '16:9',
                       referenceImage: tmpl,
                       bodyEmphasis: buildBodySheetCurves(localMeasurements),
                       negativePrompt: BODY_SHEET_NEGATIVE_PROMPT,
                   })
                 : await generateImageKie({
                       prompt: buildBodySheetPrompt(localMeasurements),
-                      model: selectedBodyModel,
+                      model: t2iFallbackModel,
                       aspectRatio: '16:9',
                       negativePrompt: BODY_SHEET_NEGATIVE_PROMPT,
                   })
             if (!result.success) throw new Error(result.error)
             const sheet = await toReferenceImage(result.url, 'body')
             setBodySheet(sheet)
-            setBodySheetModel(
-                tmpl
-                    ? 'Wan 2.7 · plantilla'
-                    : permissiveBodyModels.find(
-                          (p) => p.model === selectedBodyModel,
-                      )?.name || selectedBodyModel,
-            )
+            const selName =
+                permissiveBodyModels.find((p) => p.model === selectedBodyModel)
+                    ?.name || selectedBodyModel
+            setBodySheetModel(tmpl ? `${selName} · plantilla` : selName)
             toast.push(
                 <Notification type="success" title="Cuerpo generado">
                     Sheet de 3 vistas listo. Revísalo y pulsa &quot;Usar como

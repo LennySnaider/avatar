@@ -5,7 +5,6 @@
 // exports en referencias opacas del RSC ('DEFAULT_PROVIDERS is not iterable').
 import type { AIProvider, ProviderType } from '@/@types/supabase'
 
-
 // Predefined providers - exported for use in initialization
 export const DEFAULT_PROVIDERS: AIProvider[] = [
     // Image Providers
@@ -427,7 +426,10 @@ export const PROVIDER_COST: Record<string, string> = {
 //  permissive = disables the content filter (nsfw off / less restrictive).
 // The sweet spot is BOTH (MiniMax). Drives the badges on each card so the pick
 // is obvious instead of trial-and-error.
-export const PROVIDER_TRAITS: Record<string, { face?: boolean; permissive?: boolean }> = {
+export const PROVIDER_TRAITS: Record<
+    string,
+    { face?: boolean; permissive?: boolean }
+> = {
     'gemini-nano-banana': { face: true },
     'gemini-flash-lite-image': { face: true },
     'kie-nano-banana-pro': { face: true },
@@ -515,23 +517,21 @@ export const getProviderDescription = (provider: AIProvider): string => {
 }
 
 /**
- * Modelos t2i PUROS y permisivos aptos para el BODY ANGLE SHEET. El sheet se
- * genera SIN foto de cara (text-to-image), así que el cuerpo lo define 100% el
- * configurador.
+ * Modelos permisivos aptos para el BODY ANGLE SHEET (selector del Body Lab).
  *
- * OJO con la trampa de nombres: los ids `seedream/*-text-to-image` NO sirven
- * para t2i puro — en KIE ese endpoint EXIGE `image_urls` y sin referencia
- * devuelve 500 "This field is required" (solo funcionan en modo edit, con
- * imagen). Qwen Image 2.0 (unificado) y FLUX.2 Pro sí son text-to-image real.
- * Por eso el body sheet usa un allowlist explícito, no un filtro por nombre.
+ * El flujo primario es i2i sobre la PLANTILLA fija de turnaround: por eso el
+ * primero es Seedream 5 Pro (i2i, el mejor siguiendo curvas). Wan 2.7 y Qwen
+ * también sirven y —a diferencia de Seedream— hacen t2i puro, así que son el
+ * fallback cuando NO hay plantilla (Seedream i2i-only daría 500 sin imagen).
  */
 export const BODY_SHEET_T2I_MODELS = [
-    // Wan 2.7 Image (unificado t2i+edit, sin ref = t2i puro; permisivo "NSFW
-    // real") — DEFAULT: sigue mucho mejor las curvas dramáticas (5/5) que Qwen,
-    // que suaviza los cuerpos extremos hacia un "fit normal".
+    // Seedream 5 Pro (i2i) — DEFAULT: rey de las curvas. Requiere imagen → usa
+    // la plantilla fija. (Sin plantilla no sirve; el drawer cae a Wan.)
+    'seedream/5-pro-image-to-image',
+    // Wan 2.7 (unificado t2i+edit, permisivo "NSFW real") — curvas fuertes y
+    // hace t2i puro (fallback sin plantilla).
     'wan/2-7-image',
     'qwen2/text-to-image',
-    // FLUX.2 quitado: lento, caro y daba cuerpos peores para el sheet.
 ]
 
 export function getPermissiveBodyModels(providers: AIProvider[]): AIProvider[] {

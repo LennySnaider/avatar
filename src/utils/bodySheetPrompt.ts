@@ -138,12 +138,11 @@ export function buildBodySheetPrompt(m: PhysicalMeasurements): string {
 export const BODY_TURNAROUND_TEMPLATE_URL = '/body/turnaround-template.png'
 
 /**
- * Modelo i2i para el refinado sobre la plantilla. Wan 2.7 (unificado t2i+edit,
- * permisivo, rey de las curvas): con la plantilla como referencia entra en modo
- * edit; si la subida de la ref fallara, cae a t2i en vez de 500 (Seedream
- * 5-pro-image-to-image es i2i-only y devolvía "This field is required").
+ * Modelo i2i-ONLY (Seedream 5 Pro): necesita imagen sí o sí. El refine sobre la
+ * plantilla usa el modelo SELECCIONADO; esta constante solo marca cuál NO puede
+ * hacer t2i, para que el fallback SIN plantilla caiga a Wan en vez de dar 500.
  */
-export const BODY_SHEET_REFINE_MODEL = 'wan/2-7-image'
+export const BODY_SHEET_REFINE_MODEL = 'seedream/5-pro-image-to-image'
 
 /**
  * Prompt para Seedream i2i sobre la plantilla fija: conservar las MISMAS vistas/
