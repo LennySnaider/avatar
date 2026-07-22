@@ -96,17 +96,29 @@ const ALL_IDENTITY_RES: RegExp[] = [
 ]
 
 // Keys de identidad en el JSON. CORE (match exacto) se borra SIEMPRE, aunque
-// el valor sea un objeto ("hair": {color, style} → fuera entero). COMPOUND
-// (core + separador: "body_features", "skin_tone") se borra si el valor es
-// escalar/array, pero si es un OBJETO se recorre — "body_and_pose" contiene
-// la POSE (escena) junto al physique (identidad): borrarlo entero mataría la
-// pose; la recursión borra solo el physique de adentro.
+// el valor sea un objeto ("hair": {color, style} → fuera entero). SOFT
+// (face/age) se borra si es escalar ("face": "sharp jawline" = identidad)
+// pero si es OBJETO se recorre — "face": {expression, gaze} es DIRECCIÓN DE
+// ESCENA (sonrisa/mirada), no identidad. COMPOUND (core + separador:
+// "body_features", "skin_tone") igual: escalar → fuera; objeto → recursión
+// ("body_and_pose" contiene la POSE junto al physique — borrarlo entero
+// mataría la pose; la recursión borra solo el physique de adentro).
 const CORE_IDENTITY_KEY_RE =
-    /^(?:hair|body|physique|skin|demographics?|tattoos?|ethnicity|race|nationality|face|age)$/i
+    /^(?:hair|body|physique|skin|demographics?|tattoos?|ethnicity|race|nationality)$/i
+const SOFT_IDENTITY_KEY_RE = /^(?:face|age)$/i
 const COMPOUND_IDENTITY_KEY_RE =
     /^(?:hair|body|physique|skin|demographics?|tattoos?|ethnicity|race|nationality|face|age)[_\-.]/i
+// stripProse solo corre en CONTEXTO DE PERSONA (subject/description/story…
+// o dentro de una key de identidad). Correrlo sobre TODA string del JSON
+// destrozaba escena legítima (review adversarial: "slim-fit blazer hugging
+// the waist" → "", "warm peach and tan skin tones" → mangled, y vaciaba
+// entradas de negative_prompt como "slim hips" — invirtiendo su intención).
+// La ropa/paleta/luz/negativos NO se tocan; la identidad prosaica vive en
+// los campos de persona.
+const PERSON_CONTEXT_KEY_RE =
+    /^(?:subject|description|persons?|character|model|appearance|looks?|vibe|story|the_vibe)$/i
 // Arrays bajo estas keys se FILTRAN por entrada (una entrada de apariencia
-// desaparece completa); cualquier otro array solo sanea sus strings.
+// desaparece completa); otros arrays solo sanean strings en contexto persona.
 const FILTERED_ARRAY_KEYS = new Set(['must_keep', 'avoid'])
 const MAX_JSON_DEPTH = 5
 
@@ -137,11 +149,17 @@ function matchesIdentity(s: string): boolean {
  * Saneo RECURSIVO del JSON de escena (antes solo nivel superior + `subject`:
  * un "body_features" top-level o un "subject.hair" anidado se escapaban —
  * caso real: prompt de playa con "body_features" en BD 2026-07-22). Reglas:
- * key CORE → delete; key COMPOUND → delete salvo objeto (se recorre); string
- * → stripProse; array bajo must_keep/avoid → filtra entradas de identidad;
- * otros arrays → sanea strings; objeto → recursión (tope MAX_JSON_DEPTH).
+ * key CORE → delete; SOFT/COMPOUND → delete salvo objeto (se recorre, en
+ * contexto persona); string → stripProse SOLO en contexto persona; array
+ * bajo must_keep/avoid → filtra entradas de identidad; otros arrays →
+ * stripProse solo en contexto persona; objeto → recursión (tope
+ * MAX_JSON_DEPTH, propagando el contexto persona).
  */
-function sanitizeJsonObject(obj: Record<string, unknown>, depth = 0): void {
+function sanitizeJsonObject(
+    obj: Record<string, unknown>,
+    depth = 0,
+    inPerson = false,
+): void {
     if (depth >= MAX_JSON_DEPTH) return
     for (const key of Object.keys(obj)) {
         const value = obj[key]
@@ -151,27 +169,40 @@ function sanitizeJsonObject(obj: Record<string, unknown>, depth = 0): void {
             delete obj[key]
             continue
         }
-        if (COMPOUND_IDENTITY_KEY_RE.test(key) && !isObj) {
+        const softOrCompound =
+            SOFT_IDENTITY_KEY_RE.test(key) ||
+            COMPOUND_IDENTITY_KEY_RE.test(key)
+        if (softOrCompound && !isObj) {
             delete obj[key]
             continue
         }
+        const childInPerson =
+            inPerson || softOrCompound || PERSON_CONTEXT_KEY_RE.test(key)
         if (isObj) {
-            sanitizeJsonObject(value as Record<string, unknown>, depth + 1)
+            sanitizeJsonObject(
+                value as Record<string, unknown>,
+                depth + 1,
+                childInPerson,
+            )
             continue
         }
         if (typeof value === 'string') {
-            obj[key] = stripProse(value)
+            if (childInPerson) obj[key] = stripProse(value)
             continue
         }
         if (Array.isArray(value)) {
-            obj[key] = FILTERED_ARRAY_KEYS.has(key.toLowerCase())
-                ? value.filter(
-                      (item) =>
-                          typeof item !== 'string' || !matchesIdentity(item),
-                  )
-                : value.map((item) =>
-                      typeof item === 'string' ? stripProse(item) : item,
-                  )
+            if (FILTERED_ARRAY_KEYS.has(key.toLowerCase())) {
+                obj[key] = value.filter(
+                    (item) =>
+                        typeof item !== 'string' || !matchesIdentity(item),
+                )
+            } else if (childInPerson) {
+                obj[key] = value.map((item) =>
+                    typeof item === 'string' ? stripProse(item) : item,
+                )
+            }
+            // Arrays fuera de contexto persona (negative_prompt, props,
+            // elements…) quedan INTACTOS.
         }
     }
 }

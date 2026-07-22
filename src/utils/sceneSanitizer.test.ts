@@ -192,3 +192,61 @@ test('JSON profundo: "body_and_pose" (objeto) conserva la pose, borra physique',
     assert.equal(obj.body_and_pose.physique, undefined)
     assert.ok(/arms crossed/i.test(obj.body_and_pose.arms))
 })
+
+// ── Anti-sobre-borrado (hallazgos del review adversarial 2026-07-22) ──
+
+test('JSON: ropa/paleta/luz FUERA de contexto persona quedan intactas', () => {
+    const input = JSON.stringify({
+        clothing: { detail: 'slim-fit blazer hugging the waist' },
+        colors_and_tone: { palette: 'warm peach and tan skin tones' },
+        accessories: { hairpiece: 'brown hair clip' },
+        lighting: { type: 'harsh natural sunlight' },
+    })
+    const obj = JSON.parse(stripSceneIdentity(input))
+    assert.equal(obj.clothing.detail, 'slim-fit blazer hugging the waist')
+    assert.equal(obj.colors_and_tone.palette, 'warm peach and tan skin tones')
+    assert.equal(obj.accessories.hairpiece, 'brown hair clip')
+})
+
+test('JSON: negative_prompt queda INTACTO (no invertir su intención)', () => {
+    const input = JSON.stringify({
+        negative_prompt: ['small chest', 'athletic slimness', 'slim hips', 'watermark'],
+    })
+    const obj = JSON.parse(stripSceneIdentity(input))
+    assert.deepEqual(obj.negative_prompt, [
+        'small chest',
+        'athletic slimness',
+        'slim hips',
+        'watermark',
+    ])
+})
+
+test('JSON: "face" objeto conserva expression/gaze (escena); "face" string se borra', () => {
+    const asObject = JSON.parse(
+        stripSceneIdentity(
+            JSON.stringify({
+                face: { expression: 'soft confident smile', gaze: 'into the lens' },
+            }),
+        ),
+    )
+    assert.ok(asObject.face)
+    assert.equal(asObject.face.expression, 'soft confident smile')
+    const asString = JSON.parse(
+        stripSceneIdentity(
+            JSON.stringify({ face: 'sharp jawline, high cheekbones' }),
+        ),
+    )
+    assert.equal(asString.face, undefined)
+})
+
+test('JSON: identidad prosaica en contexto persona SÍ se sanea (subject/story)', () => {
+    const input = JSON.stringify({
+        subject: { description: 'a stunning korean woman with a fit, tanned physique' },
+        the_vibe: { story: 'a curvy blonde woman enjoying the evening' },
+    })
+    const obj = JSON.parse(stripSceneIdentity(input))
+    assert.ok(!/korean/i.test(obj.subject.description))
+    assert.ok(!/physique/i.test(obj.subject.description))
+    assert.ok(!/blonde/i.test(obj.the_vibe.story))
+    assert.ok(/evening/i.test(obj.the_vibe.story))
+})
