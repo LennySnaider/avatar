@@ -280,3 +280,75 @@ export function faceFidelityClause(identityWeight?: number): string {
             ? ' Keep her face strongly consistent with the reference — no drift.'
             : ''
 }
+
+/**
+ * Aplana un bloque JSON embebido en el prompt a PROSA "clave: valor".
+ *
+ * Herramientas externas de prompting entregan el prompt como un objeto JSON
+ * ({"subject": {...}, "apparel": {...}}). Seedream lo lee bien, pero Wan lo
+ * ignora (llaves/comillas lo descarrilan → salida genérica) y en Qwen el cap
+ * de 800 chars lo DECAPITA a mitad de sintaxis: sobrevive solo el envoltorio
+ * ("prompt_configuration", "strict_mode") y CERO escena (reporte 2026-07-22:
+ * ambos sacaban retratos genéricos con el JSON completo en el prompt). Además
+ * cada llave/comilla es presupuesto quemado. Solo wan/qwen lo usan — la ruta
+ * seedream NO (su comportamiento con JSON está verificado bueno; no tocar).
+ *
+ * Busca el PRIMER bloque {...} balanceado (respetando strings), lo parsea y
+ * reemplaza in-place por prosa: hojas string/number como "clave: valor" en
+ * orden del documento (booleans = config, se omiten). Si no parsea, devuelve
+ * el prompt intacto.
+ */
+export function flattenJsonPromptToProse(prompt: string): string {
+    const start = prompt.indexOf('{')
+    if (start === -1) return prompt
+    let depth = 0
+    let end = -1
+    let inStr = false
+    for (let i = start; i < prompt.length; i++) {
+        const c = prompt[i]
+        if (inStr) {
+            if (c === '\\') i++
+            else if (c === '"') inStr = false
+            continue
+        }
+        if (c === '"') inStr = true
+        else if (c === '{') depth++
+        else if (c === '}') {
+            depth--
+            if (depth === 0) {
+                end = i
+                break
+            }
+        }
+    }
+    if (end === -1) return prompt
+    let parsed: unknown
+    try {
+        parsed = JSON.parse(prompt.slice(start, end + 1))
+    } catch {
+        return prompt
+    }
+    if (typeof parsed !== 'object' || parsed === null) return prompt
+    const parts: string[] = []
+    const walk = (node: unknown, key?: string) => {
+        if (node === null || node === undefined || typeof node === 'boolean')
+            return
+        if (typeof node === 'string' || typeof node === 'number') {
+            const text = String(node).trim()
+            if (!text) return
+            const label = key ? key.replace(/[_-]+/g, ' ').trim() : ''
+            parts.push(label ? `${label}: ${text}` : text)
+            return
+        }
+        if (Array.isArray(node)) {
+            for (const v of node) walk(v, key)
+            return
+        }
+        for (const [k, v] of Object.entries(node)) walk(v, k)
+    }
+    walk(parsed)
+    if (parts.length === 0) return prompt
+    return `${prompt.slice(0, start)}${parts.join('. ')}${prompt.slice(end + 1)}`
+        .replace(/\s{2,}/g, ' ')
+        .trim()
+}

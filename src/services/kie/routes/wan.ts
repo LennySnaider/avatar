@@ -13,6 +13,7 @@ import {
     stripIdentityRedundancy,
     relocatePoseTag,
     capAtWordBoundary,
+    flattenJsonPromptToProse,
     hairClause as buildHairClause,
     eyeClause as buildEyeClause,
     faceFidelityClause as buildFaceFidelityClause,
@@ -24,7 +25,9 @@ async function build(ctx: ImageRouteContext): Promise<KieImageRequest> {
     const faceFidelityClause = buildFaceFidelityClause(ctx.identityWeight)
 
     // Wan NO es nano → reubica la pose; luego strip (es seedream/wan) ANTES del cap.
-    let promptText = relocatePoseTag(ctx.prompt)
+    // JSON→prosa primero: Wan ignora blobs JSON (salida genérica) y cada
+    // llave/comilla quema presupuesto de escena.
+    let promptText = relocatePoseTag(flattenJsonPromptToProse(ctx.prompt))
     if (ctx.referenceImage) {
         promptText = stripIdentityRedundancy(
             promptText,

@@ -13,6 +13,7 @@ import {
     relocatePoseTag,
     capAtWordBoundary,
     stripIdentityRedundancy,
+    flattenJsonPromptToProse,
     hairClauseCompact as buildHairClause,
 } from '../shared'
 
@@ -33,7 +34,9 @@ async function build(ctx: ImageRouteContext): Promise<KieImageRequest> {
     const hairClause = buildHairClause(ctx.hairEmphasis)
 
     // Qwen NO es nano → reubica la pose; cap 1800.
-    let promptText = relocatePoseTag(ctx.prompt)
+    // JSON→prosa primero: con el cap 800 un blob JSON se decapita a mitad de
+    // sintaxis y sobrevive solo el envoltorio de config → CERO escena.
+    let promptText = relocatePoseTag(flattenJsonPromptToProse(ctx.prompt))
     // FIX (Fase 6, verificado A/B live): qwen2/image-edit es un EDITOR LITERAL
     // — el preámbulo + [BODY:] + [FACE:] de texto (identidad ya en la imagen) lo
     // SATURAN y lo descarrilan → ignoraba el [CLONE:] y sacaba un cuerpo/outfit/

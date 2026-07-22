@@ -43,6 +43,7 @@ const AvatarSelector = ({ userId, isOpen, onClose }: AvatarSelectorProps) => {
         addGeneralReference,
         setFaceRef,
         setAngleRef,
+        setBodyRef,
         setIdentityWeight,
         setMeasurements,
         setFaceDescription,
@@ -165,17 +166,19 @@ const AvatarSelector = ({ userId, isOpen, onClose }: AvatarSelectorProps) => {
                     case 'angle':
                         setAngleRef(refImage)
                         break
-                    // Body Ref NO se auto-carga: el cuerpo lo definen las MEDIDAS
-                    // (sliders/cm). El Body Ref es un OVERRIDE manual y por-
-                    // generación — debe venir vacío y solo pesar si el usuario
-                    // sube una foto en ese slot (reporte: Ana/Valeria/MiaUltra
-                    // arrastraban un body ref viejo guardado en la BD). El ref
-                    // sigue en la BD; solo dejamos de precargarlo.
+                    // Body Ref SÍ se auto-carga (2026-07-22, revierte la
+                    // decisión previa de dejarlo vacío): con Body Lab el body
+                    // ref es el cuerpo CANÓNICO del avatar y handleGenerate lo
+                    // refresca desde la BD y LO ENVÍA igual aunque la barra no
+                    // lo muestre (commit 2741462) — ocultarlo aquí hacía que la
+                    // barra mintiera (reporte: "no aparece al cargar, solo tras
+                    // abrir/cerrar el Edit", porque el drawer re-hidrata).
+                    case 'body':
+                        setBodyRef(refImage)
+                        break
                     // Bust/Glutes refs (imagen por región) están retirados —
                     // superados por el body ref canónico de Body Lab. Filas
-                    // viejas en la BD con type 'bust'/'glutes' simplemente se
-                    // ignoran aquí (nunca se auto-cargan, como el body ref).
-                    case 'body':
+                    // viejas en la BD con type 'bust'/'glutes' se ignoran.
                     case 'bust':
                     case 'glutes':
                         break
