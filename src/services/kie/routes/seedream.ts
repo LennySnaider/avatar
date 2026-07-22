@@ -86,10 +86,21 @@ async function build(ctx: ImageRouteContext): Promise<KieImageRequest> {
                     ? 'seedream/4.5-edit'
                     : model.replace('text-to-image', 'image-to-image')
             input.image_urls = urls
+            // hasBody: además de señalar la imagen 2, se RE-ANCLAN las medidas
+            // en TEXTO (bodyEmphasis). Sin esto el cuerpo dependía 100% de que
+            // Seedream obedeciera la imagen 2 — y su sesgo documentado es el
+            // contrario (copia el build del face ref: salía flaca con el body
+            // sheet curvy adjunto, reporte 2026-07-22). El body ref canónico
+            // ahora es la HOJA TURNAROUND de Body Lab (4 vistas) → se explicita
+            // que es UNA sola mujer para que no la lea como lámina de estilo.
             const bodyClause = ctx.deepfakeMode
                 ? ''
                 : hasBody
-                  ? `The SECOND attached image shows her real BODY — replicate its exact body shape, proportions, curves and build; do NOT take the body from the first image. IGNORE the second image's clothing, pose, scene, lighting and background — her outfit, pose and the scene come ONLY from ${hasClone ? 'the CLONE image and the text description' : 'the text description'}.`
+                  ? `The SECOND attached image shows her real BODY (a turnaround sheet: the SAME one woman from several angles) — replicate its exact body shape, proportions, curves and build; do NOT take the body from the first image, which looks slimmer than she really is.${
+                        ctx.bodyEmphasis
+                            ? ` Her exact body spec: ${ctx.bodyEmphasis} — render THAT body, matching the second image.`
+                            : ''
+                    } IGNORE the second image's clothing, pose, scene, lighting and background — her outfit, pose and the scene come ONLY from ${hasClone ? 'the CLONE image and the text description' : 'the text description'}.`
                   : `Use the reference image ONLY for the face and identity: do NOT copy the body, build, weight or proportions from it — the person in the photo may look slimmer than she really is.${
                         ctx.curveBoost ? ` ${ctx.curveBoost}` : ''
                     }${
