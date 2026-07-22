@@ -48,7 +48,9 @@ import {
     apiDeleteGeneration,
     apiGetGenerations,
     apiGetAvatars,
+    getSignedUrl,
 } from '@/services/AvatarForgeService'
+import { urlToDataUrl } from '@/utils/imageStitch'
 import { getStoragePublicUrl } from '@/lib/storagePaths'
 import { uploadToSignedStorageUrl } from '@/lib/storageUpload'
 import {
@@ -992,12 +994,53 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                 // undefined en el resto (Gemini/Gateway/video) → sin chip.
                 let generationMeta: GenerationMetadata | undefined
 
+                // Refrescar el body ref desde la BD → SIEMPRE se envía el último
+                // cuerpo guardado, sin depender de abrir el drawer de edit. No
+                // pisa una selección FRESCA sin guardar (sin storagePath).
+                let effectiveBodyRef = bodyRef
+                try {
+                    if (avatarId && (!bodyRef || bodyRef.storagePath)) {
+                        const rows = await apiGetAvatarReferences(
+                            avatarId,
+                            'body',
+                        )
+                        const row = rows?.[0]
+                        if (
+                            row?.storage_path &&
+                            bodyRef?.storagePath !== row.storage_path
+                        ) {
+                            const signed = await getSignedUrl(
+                                'avatars',
+                                row.storage_path,
+                            )
+                            const dataUrl = await urlToDataUrl(signed)
+                            const mm = dataUrl.match(/^data:(.+);base64,(.+)$/)
+                            if (mm) {
+                                effectiveBodyRef = {
+                                    id: row.id,
+                                    url: dataUrl,
+                                    mimeType: mm[1],
+                                    base64: mm[2],
+                                    type: 'body',
+                                    storagePath: row.storage_path,
+                                }
+                                // refleja también en el bottom bar (store)
+                                useAvatarStudioStore
+                                    .getState()
+                                    .setBodyRef(effectiveBodyRef)
+                            }
+                        }
+                    }
+                } catch {
+                    // si falla el refresh, se usa el body ref del store
+                }
+
                 // Optimize images before sending to API (resize to 1024px max)
                 const optimizedPayload = await prepareAvatarPayload({
                     generalRefs: validGeneralRefs,
                     assetImages: validAssetRefs,
                     faceRef,
-                    bodyRef,
+                    bodyRef: effectiveBodyRef,
                     sceneImage: sceneImage, // Scene Composite - literally places avatar in this scene
                 })
 
