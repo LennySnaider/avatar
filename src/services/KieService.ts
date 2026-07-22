@@ -1,5 +1,6 @@
 'use server'
 
+import { createHash } from 'crypto'
 import { createServerSupabaseClient } from '@/lib/supabase'
 import {
     centerCropToAspect,
@@ -210,6 +211,11 @@ async function checkTaskOnce(
  * Upload a base64 image to Supabase Storage and return a public URL.
  * Used to pass image references to KIE endpoints that only accept HTTP URLs
  * (Flux Kontext, GPT 4o Image), not data URIs.
+ *
+ * CONTENT-ADDRESSED: el nombre del archivo es el sha256 del contenido, así que
+ * la MISMA ref (cara/body/clone del avatar) se sube UNA vez en la vida — las
+ * generaciones siguientes hacen un HEAD (~100ms) y reutilizan la URL en vez de
+ * re-subir 1-3MB por ref en cada generación (y otra vez en el retry).
  */
 async function uploadReferenceToSupabase(
     base64: string,
@@ -229,20 +235,38 @@ async function uploadReferenceToSupabase(
           : mimeType.includes('webp')
             ? 'webp'
             : 'jpg'
-    const fileName = `kie-refs/${Date.now()}-${Math.random().toString(36).substr(2, 9)}.${ext}`
+    const hash = createHash('sha256').update(buffer).digest('hex').slice(0, 32)
+    const fileName = `kie-refs/${hash}.${ext}`
+    const publicUrl = `${SUPABASE_URL}/storage/v1/object/public/generations/${fileName}`
+
+    // ¿Ya existe? (misma ref de una generación anterior) → salta la subida.
+    // Cualquier fallo del HEAD cae al upload normal — nunca bloquea.
+    try {
+        const head = await fetchWithAbort(
+            publicUrl,
+            { method: 'HEAD' },
+            5_000,
+        )
+        if (head.ok) return publicUrl
+    } catch {
+        /* sin caché — sube normal */
+    }
 
     const supabase = createServerSupabaseClient()
     const { error } = await supabase.storage
         .from('generations')
         .upload(fileName, buffer, {
             contentType: mimeType,
-            cacheControl: '300',
-            upsert: false,
+            // Content-addressed → inmutable: cache larga es segura.
+            cacheControl: '3600',
+            // upsert: dos generaciones concurrentes con la misma ref no deben
+            // fallar por "already exists" (el contenido es idéntico por hash).
+            upsert: true,
         })
     if (error)
         throw new Error(`Failed to upload KIE reference: ${error.message}`)
 
-    return `${SUPABASE_URL}/storage/v1/object/public/generations/${fileName}`
+    return publicUrl
 }
 
 /**
@@ -299,9 +323,21 @@ async function cropBase64ToAspect(
  * Download a result URL and re-upload to Supabase Storage so we have a stable
  * URL that doesn't depend on KIE's CDN expiration / CORS rules.
  */
+/**
+ * Infer the stored extension from a KIE result URL. Seedream pide
+ * output_format jpeg; otros modelos devuelven png y los docs de Lite muestran
+ * ejemplos .webp — etiquetar bien el contentType evita servir bytes con MIME
+ * equivocado desde Supabase.
+ */
+function inferImageExt(url: string): 'jpg' | 'png' | 'webp' {
+    if (/\.jpe?g(\?|$)/i.test(url)) return 'jpg'
+    if (/\.webp(\?|$)/i.test(url)) return 'webp'
+    return 'png'
+}
+
 async function persistToSupabase(
     sourceUrl: string,
-    extension: 'mp4' | 'png' | 'jpg',
+    extension: 'mp4' | 'png' | 'jpg' | 'webp',
     subfolder: string,
     cropToAspect?: string,
 ): Promise<string> {
@@ -326,7 +362,7 @@ async function persistToSupabase(
     const contentType =
         extension === 'mp4'
             ? 'video/mp4'
-            : `image/${extension === 'jpg' ? 'jpeg' : 'png'}`
+            : `image/${extension === 'jpg' ? 'jpeg' : extension}`
     const fileName = `${subfolder}/${Date.now()}-${Math.random().toString(36).substr(2, 9)}.${extension}`
 
     return uploadBufferToGenerations(buffer, fileName, contentType)
@@ -567,7 +603,7 @@ export async function generateImageKie(
         }
         const persistedUrl = await persistToSupabase(
             urls[0],
-            'png',
+            inferImageExt(urls[0]),
             'kie-images',
         )
         return { url: persistedUrl, fullApiPrompt: promptText }
@@ -768,7 +804,11 @@ export async function submitKieImageTask(
 
 /**
  * Poll a single KIE image task (one quick check). The browser calls this every
- * few seconds. On success it persists the result to Supabase and returns the URL.
+ * few seconds. On success it returns the RAW KIE CDN URL de inmediato — un
+ * <img> la renderiza YA (preview instantáneo). La copia estable a Supabase se
+ * pide en PARALELO vía persistKieImageResult (el CDN de KIE expira y no da
+ * CORS para fetch→blob, así que la copia sigue siendo obligatoria — solo dejó
+ * de bloquear los 2-6s del final de cada generación).
  */
 export async function checkKieImageTask(
     taskId: string,
@@ -781,12 +821,33 @@ export async function checkKieImageTask(
         const r = await checkTaskOnce(taskId)
         if (r.state === 'running') return { status: 'running' }
         if (r.state === 'fail') return { status: 'failed', error: r.error }
-        // success → persist (gpt-image-2 & nano-banana-pro honor aspect_ratio natively, no crop)
-        const url = await persistToSupabase(r.urls[0], 'png', 'kie-images')
-        return { status: 'done', url }
+        return { status: 'done', url: r.urls[0] }
     } catch (err) {
         const message = err instanceof Error ? err.message : String(err)
         return { status: 'failed', error: message }
+    }
+}
+
+/**
+ * Persist a raw KIE result URL to Supabase (stable URL, CORS-friendly). El
+ * browser la llama en PARALELO al preview: muestra la URL de KIE al instante y
+ * swapea a esta cuando resuelve. Extensión inferida de la URL (Seedream ya
+ * pide output_format jpeg; el resto sigue devolviendo png).
+ */
+export async function persistKieImageResult(
+    kieUrl: string,
+): Promise<{ success: true; url: string } | { success: false; error: string }> {
+    try {
+        const url = await persistToSupabase(
+            kieUrl,
+            inferImageExt(kieUrl),
+            'kie-images',
+        )
+        return { success: true, url }
+    } catch (err) {
+        const message = err instanceof Error ? err.message : String(err)
+        console.error('[KIE] persistKieImageResult failed:', message)
+        return { success: false, error: message }
     }
 }
 

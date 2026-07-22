@@ -3,9 +3,9 @@
  *
  * Aislada. Reubica la pose, corre stripIdentityRedundancy, `planExtraRefs(_, 9)`,
  * two-way anchor (cara imagen 1 + cuerpo por bodyEmphasis/Body Ref), curveBoost
- * por-ratio, y presupuesto de escena anchor-aware (2750 − ancla). Quality 'high'
- * en 5-lite (misma cara, mismo precio) / 'basic' en el resto. Reproduce
- * exactamente lo que hacía legacy para 'seedream/*'.
+ * por-ratio, y presupuesto de escena anchor-aware (2750 − ancla). Quality
+ * 'basic' en todos los tiers (Lite basic = 2K desde el re-tiering de KIE; ver
+ * nota en el input). Reproduce lo que hacía legacy para 'seedream/*'.
  *
  * NOTA (pendiente Fase 6): recuperar el fondo de calle (Lite/Pro salían en
  * estudio). El fix va AQUÍ, aislado (revisar curveBoost/sceneRoom/strip).
@@ -43,7 +43,17 @@ async function build(ctx: ImageRouteContext): Promise<KieImageRequest> {
     const input: Record<string, unknown> = {
         prompt: capped,
         aspect_ratio: ctx.aspectRatio,
-        quality: model.startsWith('seedream/5-lite') ? 'high' : 'basic',
+        // 'basic' TODOS los tiers (2026-07-22): KIE re-tieró Lite — 'basic' ya
+        // es 2K (docs), la resolución del 'high' de Pro que mantiene la cara.
+        // El test viejo "basic deforma la cara" (8225cb5) era del tiering
+        // anterior; 'high' en Lite = 3K y ~138s/imagen. Si la cara se degrada
+        // en vivo, revertir a: model.startsWith('seedream/5-lite') ? 'high'
+        // : 'basic'.
+        quality: 'basic',
+        // JPEG (default: png): contenido fotográfico → pérdida imperceptible y
+        // el archivo pesa 5-10× menos = menos post-proceso en KIE + descarga/
+        // persistencia/render más rápidos en toda la cadena.
+        output_format: 'jpeg',
         nsfw_checker: false,
     }
 
@@ -60,15 +70,15 @@ async function build(ctx: ImageRouteContext): Promise<KieImageRequest> {
                 ctx.deepfakeMode,
                 ctx.cloneWeight,
             )
-            const urls: string[] = [
-                await ctx.uploadRef(
+            // En PARALELO (antes: secuencial — cara + N extras en fila sumaban
+            // segundos antes del submit). El orden se preserva: cara primero.
+            const urls: string[] = await Promise.all([
+                ctx.uploadRef(
                     ctx.referenceImage.base64,
                     ctx.referenceImage.mimeType,
                 ),
-            ]
-            for (const r of extras) {
-                urls.push(await ctx.uploadRef(r.base64, r.mimeType))
-            }
+                ...extras.map((r) => ctx.uploadRef(r.base64, r.mimeType)),
+            ])
             resolvedModel =
                 model === 'seedream/4.5-text-to-image'
                     ? 'seedream/4.5-edit'

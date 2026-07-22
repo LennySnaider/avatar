@@ -11,6 +11,7 @@ import {
 import { apiCreatePrompt } from '@/services/AvatarForgeService'
 import { resizeBase64Image } from '@/utils/imageOptimization'
 import Button from '@/components/ui/Button'
+import Dialog from '@/components/ui/Dialog'
 import Notification from '@/components/ui/Notification'
 import Spinner from '@/components/ui/Spinner'
 import toast from '@/components/ui/toast'
@@ -270,6 +271,11 @@ const BottomControlBar = ({
         null,
     ) // URL for visual preview
     const [isVideoToPromptOpen, setIsVideoToPromptOpen] = useState(false)
+    // Lightbox de una referencia (click en el thumbnail del dropzone).
+    const [refLightbox, setRefLightbox] = useState<{
+        url: string
+        label: string
+    } | null>(null)
 
     // Save-to-library de un tap: nombre auto (primeras palabras del prompt).
     const [isSavingPromptLib, setIsSavingPromptLib] = useState(false)
@@ -1438,11 +1444,23 @@ const BottomControlBar = ({
                             <div className="flex flex-col items-center gap-0.5">
                                 {bodyRef ? (
                                     <div className="relative group">
-                                        <img
-                                            src={bodyRef.url}
-                                            alt="Body"
-                                            className="w-11 h-11 object-cover rounded-lg"
-                                        />
+                                        <button
+                                            type="button"
+                                            title="View full size"
+                                            onClick={() =>
+                                                setRefLightbox({
+                                                    url: bodyRef.url,
+                                                    label: 'Body Ref',
+                                                })
+                                            }
+                                            className="block cursor-zoom-in"
+                                        >
+                                            <img
+                                                src={bodyRef.url}
+                                                alt="Body"
+                                                className="w-11 h-11 object-cover rounded-lg"
+                                            />
+                                        </button>
                                         <button
                                             onClick={() => setBodyRef(null)}
                                             className="absolute -top-1 -right-1 p-0.5 bg-red-500 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
@@ -2494,6 +2512,27 @@ const BottomControlBar = ({
                 isOpen={isSpeakDialogOpen}
                 onClose={() => setIsSpeakDialogOpen(false)}
             />
+
+            {/* Lightbox de referencia (Body Ref y futuros dropzones). */}
+            <Dialog
+                isOpen={!!refLightbox}
+                onClose={() => setRefLightbox(null)}
+                width={720}
+                className="bg-white! dark:bg-gray-900!"
+            >
+                {refLightbox && (
+                    <div className="relative">
+                        <img
+                            src={refLightbox.url}
+                            alt={refLightbox.label}
+                            className="w-full max-h-[75vh] object-contain rounded-lg"
+                        />
+                        <span className="absolute bottom-2 left-1/2 -translate-x-1/2 px-2 py-0.5 text-xs rounded bg-black/60 text-white">
+                            {refLightbox.label}
+                        </span>
+                    </div>
+                )}
+            </Dialog>
         </div>
     )
 }

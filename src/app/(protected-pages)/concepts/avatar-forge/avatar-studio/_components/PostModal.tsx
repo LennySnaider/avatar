@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import Link from 'next/link'
 import Dialog from '@/components/ui/Dialog'
 import Card from '@/components/ui/Card'
@@ -10,8 +10,15 @@ import Checkbox from '@/components/ui/Checkbox'
 import Radio from '@/components/ui/Radio'
 import DatePicker from '@/components/ui/DatePicker'
 import Notification from '@/components/ui/Notification'
+import Spinner from '@/components/ui/Spinner'
 import toast from '@/components/ui/toast'
-import { HiOutlineX, HiOutlineSparkles, HiOutlinePlus } from 'react-icons/hi'
+import {
+    HiOutlineX,
+    HiOutlineSparkles,
+    HiOutlinePlus,
+    HiChevronLeft,
+    HiChevronRight,
+} from 'react-icons/hi'
 import { createSocialPost, getSocialProfileAction } from '@/services/SocialService'
 import { createFanvuePost, getFanvueConnection } from '@/services/FanvueService'
 import { apiGetAvatarById } from '@/services/AvatarForgeService'
@@ -29,6 +36,10 @@ interface PostModalProps {
      * predates avatar linking (`media.avatarId` null/undefined). */
     fallbackAvatarId: string | null
     onClose: () => void
+    /** Genera una VARIANTE "misma sesión" de la portada (análisis Gemini →
+     * i2i Seedream 5 Pro), la guarda en galería+BD y la devuelve lista para
+     * el carrusel (con generationId). Implementada en AvatarStudioMain. */
+    onCreateVariant?: (source: GeneratedMedia) => Promise<GeneratedMedia | null>
 }
 
 type ScheduleMode = 'now' | 'schedule'
@@ -52,13 +63,25 @@ interface PublishOutcome {
  * so the platform list is the resolved avatar's, not global. Adapted from
  * `SocialComposer`; renders nothing when `media` is null.
  */
-const PostModal = ({ media, fallbackAvatarId, onClose }: PostModalProps) => {
+const PostModal = ({
+    media,
+    fallbackAvatarId,
+    onClose,
+    onCreateVariant,
+}: PostModalProps) => {
     const updateGalleryItem = useAvatarStudioStore((s) => s.updateGalleryItem)
     const gallery = useAvatarStudioStore((s) => s.gallery)
-    // Extra media (besides the opened one) for a multi-image carousel post, plus
-    // the picker that adds them.
-    const [extraMedia, setExtraMedia] = useState<GeneratedMedia[]>([])
+    // Carrusel como LISTA ORDENADA — el índice 0 ES el cover (el usuario puede
+    // arrastrar para reordenar, incluida la portada). Se inicializa con la
+    // media abierta y crece con el picker/variante.
+    const [postItems, setPostItems] = useState<GeneratedMedia[]>([])
     const [isPickerOpen, setIsPickerOpen] = useState(false)
+    // Variante en curso (botón "Variant" del carrusel) — genera + guarda y se
+    // auto-añade a postItems al terminar. Una a la vez.
+    const [isCreatingVariant, setIsCreatingVariant] = useState(false)
+    // Lightbox: ÍNDICE del item abierto a tamaño completo (click en thumbnail).
+    // Índice (no item) para navegar con flechas/teclado sobre la lista ordenada.
+    const [lightboxIdx, setLightboxIdx] = useState<number | null>(null)
     // Caption starts empty — the generation PROMPT is harness text, never a
     // caption; "Generate with AI" writes a real one from the media.
     const [caption, setCaption] = useState('')
@@ -98,12 +121,19 @@ const PostModal = ({ media, fallbackAvatarId, onClose }: PostModalProps) => {
     const [ownerName, setOwnerName] = useState<string | null>(null)
     const avatarName = media?.avatarInfo?.name ?? ownerName
 
+    // Media activa — guard de la variante en vuelo: si resuelve cuando el
+    // modal ya muestra OTRA portada, no se añade a ese carrusel (queda en la
+    // galería igual).
+    const currentMediaIdRef = useRef<string | null>(null)
+
     // Reset composer state + load destinations whenever a new media opens.
     useEffect(() => {
         if (!media) return
+        currentMediaIdRef.current = media.id
         setCaption('')
-        setExtraMedia([])
+        setPostItems([media])
         setIsPickerOpen(false)
+        setLightboxIdx(null)
         setHashtagInput('')
         setHashtags([])
         setCaptionLang('en')
@@ -280,30 +310,116 @@ const PostModal = ({ media, fallbackAvatarId, onClose }: PostModalProps) => {
     // Multi-media (carousel). Images only — the social backend rejects videos in
     // a carousel — so extras are limited to other SAVED images of this avatar.
     const MAX_MEDIA = 10
-    const postMediaItems = media ? [media, ...extraMedia] : []
+    const postMediaItems = postItems
     const canAddMedia = !!media && !isVideo && postMediaItems.length < MAX_MEDIA
     const pickerCandidates = gallery.filter(
         (g) =>
             g.mediaType === 'IMAGE' &&
             g.saveState === 'saved' &&
             !!g.generationId &&
-            g.id !== media?.id &&
-            !extraMedia.some((e) => e.id === g.id) &&
+            !postItems.some((e) => e.id === g.id) &&
             // Same avatar (or avatar-less) — social won't post another avatar's media.
             (!effectiveAvatarId || !g.avatarId || g.avatarId === effectiveAvatarId),
     )
     const addExtra = (item: GeneratedMedia) => {
-        setExtraMedia((prev) =>
-            prev.some((e) => e.id === item.id) || prev.length >= MAX_MEDIA - 1
+        setPostItems((prev) =>
+            prev.some((e) => e.id === item.id) || prev.length >= MAX_MEDIA
                 ? prev
                 : [...prev, item],
         )
     }
-    const removeExtra = (id: string) => setExtraMedia((prev) => prev.filter((e) => e.id !== id))
+    // Cualquier posición se puede quitar MENOS quedarse en 0 items; si se quita
+    // el cover, el siguiente pasa a serlo (índice 0 manda).
+    const removeExtra = (id: string) =>
+        setPostItems((prev) =>
+            prev.length > 1 ? prev.filter((e) => e.id !== id) : prev,
+        )
+    /** Drag & drop nativo HTML5 (mismo patrón que las cards de AI Providers —
+     * las libs dnd no soportan bien grids multi-línea). El índice 0 es el
+     * cover, así que arrastrar al frente CAMBIA la portada del carrusel. */
+    const dragIndexRef = useRef<number | null>(null)
+    const reorderItems = (from: number, to: number) => {
+        if (from === to || from < 0 || to < 0) return
+        setPostItems((prev) => {
+            if (from >= prev.length || to >= prev.length) return prev
+            const next = [...prev]
+            const [moved] = next.splice(from, 1)
+            next.splice(to, 0, moved)
+            return next
+        })
+    }
+
+    // Navegación del lightbox: flechas en pantalla + ← → del teclado (wrap).
+    // Esc lo maneja el propio Dialog (onClose).
+    const lightboxItem =
+        lightboxIdx !== null ? (postItems[lightboxIdx] ?? null) : null
+    useEffect(() => {
+        if (lightboxIdx === null) return
+        const count = postItems.length
+        if (count < 2) return
+        const onKey = (e: KeyboardEvent) => {
+            if (e.key === 'ArrowRight') {
+                e.preventDefault()
+                setLightboxIdx((prev) =>
+                    prev === null ? prev : (prev + 1) % count,
+                )
+            } else if (e.key === 'ArrowLeft') {
+                e.preventDefault()
+                setLightboxIdx((prev) =>
+                    prev === null ? prev : (prev - 1 + count) % count,
+                )
+            }
+        }
+        window.addEventListener('keydown', onKey)
+        return () => window.removeEventListener('keydown', onKey)
+    }, [lightboxIdx, postItems.length])
+
+    /**
+     * Carrusel sin segunda imagen → genera una variante "misma sesión" de la
+     * portada (delegado a onCreateVariant: análisis Gemini + i2i Seedream 5
+     * Pro + guardado) y la añade al carrusel al terminar. La generación sigue
+     * en 2º plano si se cierra el modal (aterriza en la galería igual).
+     */
+    const handleCreateVariant = async () => {
+        if (!media || !onCreateVariant || isCreatingVariant) return
+        const sourceId = media.id
+        setIsCreatingVariant(true)
+        try {
+            const variant = await onCreateVariant(media)
+            // Solo añadir si el modal sigue en la MISMA portada (la variante
+            // ya quedó en la galería en cualquier caso).
+            if (variant && currentMediaIdRef.current === sourceId) {
+                addExtra(variant)
+                if (!variant.generationId) {
+                    // Publicar manda solo generationIds — sin fila BD el item
+                    // se saltaría en silencio. Avisar en vez de fallar.
+                    toast.push(
+                        <Notification type="warning" title="Variant">
+                            The variant was generated but hasn&apos;t finished
+                            saving — it may be skipped if you publish right now.
+                        </Notification>,
+                    )
+                }
+            }
+        } catch (err) {
+            toast.push(
+                <Notification type="danger" title="Variant">
+                    {err instanceof Error
+                        ? err.message
+                        : 'Could not create the variant'}
+                </Notification>,
+            )
+        } finally {
+            setIsCreatingVariant(false)
+        }
+    }
 
     const handleSubmit = async () => {
         setError(null)
-        if (!media?.generationId) {
+        // El índice 0 de la lista ordenada ES el cover (puede haberse
+        // reordenado por drag — ya no es necesariamente la media abierta).
+        const cover = postItems[0]
+        if (!cover?.generationId) {
             setError('This media has not been saved yet — try again in a moment')
             return
         }
@@ -345,10 +461,11 @@ const PostModal = ({ media, fallbackAvatarId, onClose }: PostModalProps) => {
         try {
             // Audio is baked into the video in the Video Editor now — here we
             // publish the saved generation as-is.
-            const generationId = media.generationId
+            const generationId = cover.generationId
 
-            // Additional carousel media (images only, already saved).
-            const extraGenerationIds = extraMedia
+            // Additional carousel media in DISPLAY order (images only, saved).
+            const extraGenerationIds = postItems
+                .slice(1)
                 .map((m) => m.generationId)
                 .filter((id): id is string => Boolean(id))
 
@@ -407,11 +524,17 @@ const PostModal = ({ media, fallbackAvatarId, onClose }: PostModalProps) => {
                 newlyPosted.push('fanvue')
             }
             if (newlyPosted.length > 0) {
-                updateGalleryItem(media.id, {
-                    postedPlatforms: Array.from(
-                        new Set([...(media.postedPlatforms ?? []), ...newlyPosted]),
-                    ),
-                })
+                // TODOS los items del carrusel se publicaron — badge en cada uno.
+                for (const item of postItems) {
+                    updateGalleryItem(item.id, {
+                        postedPlatforms: Array.from(
+                            new Set([
+                                ...(item.postedPlatforms ?? []),
+                                ...newlyPosted,
+                            ]),
+                        ),
+                    })
+                }
             }
 
             toast.push(
@@ -486,15 +609,46 @@ const PostModal = ({ media, fallbackAvatarId, onClose }: PostModalProps) => {
                         {postMediaItems.map((item, idx) => (
                             <div
                                 key={item.id}
+                                draggable={postMediaItems.length > 1}
+                                onDragStart={() => {
+                                    dragIndexRef.current = idx
+                                }}
+                                onDragOver={(e) => e.preventDefault()}
+                                onDrop={(e) => {
+                                    e.preventDefault()
+                                    if (dragIndexRef.current !== null) {
+                                        reorderItems(dragIndexRef.current, idx)
+                                    }
+                                    dragIndexRef.current = null
+                                }}
+                                onDragEnd={() => {
+                                    dragIndexRef.current = null
+                                }}
                                 className="relative w-24 h-24 rounded-lg overflow-hidden bg-gray-100 dark:bg-gray-800"
                             >
-                                {item.mediaType === 'VIDEO' ? (
-                                    <video src={item.url} className="w-full h-full object-cover" />
-                                ) : (
-                                    <img src={item.url} alt="" className="w-full h-full object-cover" />
-                                )}
+                                <button
+                                    type="button"
+                                    onClick={() => setLightboxIdx(idx)}
+                                    title="View full size"
+                                    className="block w-full h-full cursor-zoom-in"
+                                >
+                                    {item.mediaType === 'VIDEO' ? (
+                                        <video
+                                            src={item.url}
+                                            draggable={false}
+                                            className="w-full h-full object-cover"
+                                        />
+                                    ) : (
+                                        <img
+                                            src={item.url}
+                                            alt=""
+                                            draggable={false}
+                                            className="w-full h-full object-cover"
+                                        />
+                                    )}
+                                </button>
                                 {idx === 0 && postMediaItems.length > 1 && (
-                                    <span className="absolute top-1 left-1 px-1.5 py-0.5 text-[9px] font-bold rounded bg-black/70 text-white">
+                                    <span className="absolute top-1 left-1 px-1.5 py-0.5 text-[9px] font-bold rounded bg-black/70 text-white pointer-events-none">
                                         Cover
                                     </span>
                                 )}
@@ -521,15 +675,49 @@ const PostModal = ({ media, fallbackAvatarId, onClose }: PostModalProps) => {
                                 <span className="text-[10px] mt-1">Add</span>
                             </button>
                         )}
+                        {canAddMedia && onCreateVariant && (
+                            <button
+                                type="button"
+                                onClick={handleCreateVariant}
+                                disabled={isCreatingVariant}
+                                title="Generate a same-session variant of the cover for the carousel"
+                                className="w-24 h-24 rounded-lg border-2 border-dashed border-gray-300 dark:border-gray-600 flex flex-col items-center justify-center text-gray-400 hover:border-primary hover:text-primary transition-colors disabled:opacity-60 disabled:cursor-wait"
+                            >
+                                {isCreatingVariant ? (
+                                    <>
+                                        <Spinner size={24} />
+                                        <span className="text-[10px] mt-1">
+                                            Creating…
+                                        </span>
+                                    </>
+                                ) : (
+                                    <>
+                                        <HiOutlineSparkles className="w-6 h-6" />
+                                        <span className="text-[10px] mt-1">
+                                            Variant
+                                        </span>
+                                    </>
+                                )}
+                            </button>
+                        )}
                     </div>
-                    {media.saveState !== 'saved' && (
+                    {isCreatingVariant && (
+                        <p className="text-xs text-gray-400 mt-2">
+                            Generating a same-session variant — usually ~30-60s.
+                            It lands in your gallery even if you close this
+                            modal.
+                        </p>
+                    )}
+                    {postMediaItems.some((i) => i.saveState !== 'saved') && (
                         <p className="text-xs text-amber-600 dark:text-amber-400 mt-2">
                             Media is still saving — publishing may fail until it finishes.
                         </p>
                     )}
                     {postMediaItems.length > 1 && (
                         <p className="text-xs text-gray-400 mt-2">
-                            Posts as a carousel — the cover shows first. Up to {MAX_MEDIA} images.
+                            Posts as a carousel — the cover shows first. Drag to
+                            reorder (first slot = cover). Up to {MAX_MEDIA}{' '}
+                            images.
                         </p>
                     )}
                 </Card>
@@ -845,6 +1033,71 @@ const PostModal = ({ media, fallbackAvatarId, onClose }: PostModalProps) => {
                         Done
                     </Button>
                 </div>
+            </Dialog>
+
+            {/* Lightbox — full-size preview con navegación (flechas + ← →). */}
+            <Dialog
+                isOpen={lightboxIdx !== null}
+                onClose={() => setLightboxIdx(null)}
+                width={900}
+                className="bg-white! dark:bg-gray-900!"
+            >
+                {lightboxItem && (
+                    <div className="relative">
+                        {lightboxItem.mediaType === 'VIDEO' ? (
+                            <video
+                                key={lightboxItem.id}
+                                src={lightboxItem.url}
+                                controls
+                                autoPlay
+                                className="w-full max-h-[75vh] rounded-lg bg-black"
+                            />
+                        ) : (
+                            <img
+                                key={lightboxItem.id}
+                                src={lightboxItem.url}
+                                alt=""
+                                className="w-full max-h-[75vh] object-contain rounded-lg"
+                            />
+                        )}
+                        {postMediaItems.length > 1 && lightboxIdx !== null && (
+                            <>
+                                <button
+                                    type="button"
+                                    aria-label="Previous image"
+                                    onClick={() =>
+                                        setLightboxIdx(
+                                            (lightboxIdx -
+                                                1 +
+                                                postMediaItems.length) %
+                                                postMediaItems.length,
+                                        )
+                                    }
+                                    className="absolute left-2 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full bg-black/50 text-white flex items-center justify-center hover:bg-black/70 transition-colors"
+                                >
+                                    <HiChevronLeft className="w-6 h-6" />
+                                </button>
+                                <button
+                                    type="button"
+                                    aria-label="Next image"
+                                    onClick={() =>
+                                        setLightboxIdx(
+                                            (lightboxIdx + 1) %
+                                                postMediaItems.length,
+                                        )
+                                    }
+                                    className="absolute right-2 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full bg-black/50 text-white flex items-center justify-center hover:bg-black/70 transition-colors"
+                                >
+                                    <HiChevronRight className="w-6 h-6" />
+                                </button>
+                                <span className="absolute bottom-2 left-1/2 -translate-x-1/2 px-2 py-0.5 text-xs rounded bg-black/60 text-white">
+                                    {lightboxIdx + 1} / {postMediaItems.length}
+                                    {lightboxIdx === 0 ? ' · Cover' : ''}
+                                </span>
+                            </>
+                        )}
+                    </div>
+                )}
             </Dialog>
         </Dialog>
     )

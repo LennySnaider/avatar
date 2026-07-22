@@ -83,6 +83,7 @@ import {
     generateMotionControlKieSafe,
     submitKieImageTask,
     checkKieImageTask,
+    persistKieImageResult,
     submitTalkingVideoKieTask,
     submitLipsyncVideoKieTask,
     checkKieVideoTask,
@@ -144,7 +145,16 @@ interface AvatarStudioMainProps {
  */
 async function pollKieImageTask(
     params: Parameters<typeof submitKieImageTask>[0],
-): Promise<{ url: string; fullApiPrompt: string }> {
+): Promise<{
+    url: string
+    fullApiPrompt: string
+    // Copia estable en Supabase, corriendo en PARALELO. `url` es el CDN crudo
+    // de KIE (renderiza YA en <img>, pero expira y no da CORS): el caller
+    // muestra `url` de inmediato y swapea a `stableUrl` cuando resuelva (null
+    // = persistencia fallida → conservar la URL de KIE y dejar que el
+    // auto-save marque su saveState 'error').
+    stableUrl: Promise<string | null>
+}> {
     // Hasta 2 tareas: KIE marca tareas fallidas con "internal error, please
     // try again later" (transitorio — su propio mensaje pide reintentar; las
     // tareas fallidas cobran 0 créditos). El path síncrono viejo re-enviaba
@@ -164,15 +174,27 @@ async function pollKieImageTask(
             // espera antes del 1er check → hasta ~7.5s muertos por generación
             // (5s inicial + 5s de granularidad al terminar). Seedream/Flux i2i
             // terminan en ~10-25s, así que sondeamos a 2s los primeros 20s
-            // (1er check a los 2s, no a los 5s) y hacemos back-off para tareas
-            // largas (nano-banana-pro) que no se benefician de sondeo agresivo.
+            // (1er check a los 2s, no a los 5s; ventana rápida hasta 30s) y
+            // hacemos back-off para tareas largas (nano-banana-pro) que no se
+            // benefician de sondeo agresivo.
             const elapsed = Date.now() - startedAt
             const interval =
-                elapsed < 20_000 ? 2000 : elapsed < 60_000 ? 3000 : 5000
+                elapsed < 30_000 ? 2000 : elapsed < 90_000 ? 3000 : 5000
             await new Promise((r) => setTimeout(r, interval))
             const st = await checkKieImageTask(sub.taskId)
             if (st.status === 'done') {
-                return { url: st.url, fullApiPrompt: sub.fullApiPrompt }
+                // PREVIEW INSTANTÁNEO: st.url es el CDN crudo de KIE — se
+                // devuelve YA (antes el server descargaba y re-subía a Supabase
+                // ANTES de responder: 2-6s de spinner con la imagen lista). La
+                // copia estable arranca aquí sin await.
+                const stableUrl = persistKieImageResult(st.url)
+                    .then((r) => (r.success ? r.url : null))
+                    .catch(() => null)
+                return {
+                    url: st.url,
+                    fullApiPrompt: sub.fullApiPrompt,
+                    stableUrl,
+                }
             }
             if (st.status === 'failed') {
                 failMsg = st.error
@@ -905,6 +927,113 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
         [userId, avatarId, updateGalleryItem],
     )
 
+    /**
+     * Persiste un resultado KIE async con preview instantáneo: el card ya
+     * muestra el CDN crudo de KIE; cuando la copia estable (Supabase) resuelve,
+     * swapea la URL del card y recién entonces corre persistGeneration — así
+     * NUNCA se sube/guarda el CDN efímero de KIE (sin CORS para fetch→blob).
+     * Si la copia falla (null), persistGeneration intenta con la URL de KIE y
+     * su catch marca saveState 'error' (badge de reintento existente).
+     */
+    const persistWhenStable = useCallback(
+        (
+            media: GeneratedMedia,
+            stable: Promise<string | null> | null,
+        ) => {
+            if (!stable) {
+                void persistGeneration(media)
+                return
+            }
+            void stable.then((url) => {
+                if (url) updateGalleryItem(media.id, { url })
+                void persistGeneration(url ? { ...media, url } : media)
+            })
+        },
+        [persistGeneration, updateGalleryItem],
+    )
+
+    /**
+     * Variante de CARRUSEL para el PostModal: analiza la foto + su prompt
+     * (generateImageVariantPrompt — misma sesión, modificación leve de
+     * pose/ángulo) y regenera i2i con Seedream 5 Pro usando la foto como ref —
+     * outfit/escena/identidad viajan en la IMAGEN. A diferencia de
+     * handleCreateVariant (que pisa prompt/appState del studio), esto corre
+     * BAJO el modal sin tocar la UI del studio, espera galería+BD (el modal
+     * necesita generationId para publicar) y devuelve el item final.
+     */
+    const createCarouselVariant = useCallback(
+        async (source: GeneratedMedia): Promise<GeneratedMedia | null> => {
+            // Fuente → base64 (media.url puede ser data:/blob:/https).
+            const res = await fetch(source.url)
+            if (!res.ok) {
+                throw new Error(`Failed to fetch source image (${res.status})`)
+            }
+            const blob = await res.blob()
+            const base64 = await new Promise<string>((resolve, reject) => {
+                const reader = new FileReader()
+                reader.onloadend = () =>
+                    resolve((reader.result as string).split(',')[1])
+                reader.onerror = () => reject(reader.error)
+                reader.readAsDataURL(blob)
+            })
+            const mimeType = blob.type || 'image/png'
+
+            // subtle: MICRO-variación — UN solo cambio (mirada / giro leve de
+            // cabeza / una extremidad), NADA más; la consistencia entre slides
+            // del carrusel manda (directiva del usuario).
+            const variantPrompt = await generateImageVariantPrompt(
+                { base64, mimeType },
+                source.prompt || source.fullApiPrompt || '',
+                { subtle: true },
+            )
+            // Seedream 5 Pro i2i (NO flux-2 — directiva del usuario; además
+            // FLUX.2 estaba caído en KIE cuando se probó). La ruta seedream
+            // convierte a 5-pro-image-to-image al llevar referenceImage —
+            // mismo path que el EDIT con Seedream (identidad + ratio
+            // verificados en vivo).
+            // deepfakeMode: reusa la variante de ancla "reproduce TODO tal
+            // cual" de la ruta — sin él, el bodyClause del ancla ordena "NO
+            // copies el cuerpo de la imagen, sigue el texto", justo lo
+            // contrario de una micro-variación (aquí cuerpo/pose/escena DEBEN
+            // venir de la imagen). identityWeight 100 = cláusula FACE FIDELITY
+            // máxima (misma cara exacta entre slides).
+            const polled = await pollKieImageTask({
+                prompt: variantPrompt,
+                referenceImage: { base64, mimeType },
+                aspectRatio: source.aspectRatio,
+                model: 'seedream/5-pro-text-to-image',
+                deepfakeMode: true,
+                identityWeight: 100,
+            })
+            const newMedia: GeneratedMedia = {
+                id: crypto.randomUUID(),
+                url: polled.url,
+                prompt: `Variant: ${variantPrompt}`,
+                aspectRatio: source.aspectRatio,
+                timestamp: Date.now(),
+                mediaType: 'IMAGE',
+                avatarId: source.avatarId ?? avatarId ?? null,
+                avatarInfo: source.avatarInfo,
+                fullApiPrompt: polled.fullApiPrompt,
+                providerName: 'Seedream 5.0 Pro',
+            }
+            addToGallery(newMedia)
+            // Persistencia SÍNCRONA (no persistWhenStable): el carrusel publica
+            // por generationId, así que hay que esperar URL estable + fila BD.
+            const stable = await polled.stableUrl
+            const finalMedia = stable ? { ...newMedia, url: stable } : newMedia
+            if (stable) updateGalleryItem(newMedia.id, { url: stable })
+            await persistGeneration(finalMedia)
+            // persistGeneration escribe generationId/saveState en el store —
+            // releer el item para devolverlo completo al modal.
+            const saved = useAvatarStudioStore
+                .getState()
+                .gallery.find((m) => m.id === newMedia.id)
+            return saved ?? finalMedia
+        },
+        [avatarId, addToGallery, updateGalleryItem, persistGeneration],
+    )
+
     // Generate Handler
     const handleGenerate = useCallback(
         async (opts?: {
@@ -991,6 +1120,10 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
 
             try {
                 let resultUrl: string
+                // Copia estable (Supabase) del resultado KIE async, resolviendo
+                // en 2º plano mientras el card ya muestra el CDN de KIE. null =
+                // proveedor no-async (resultUrl ya es estable).
+                let pendingStableUrl: Promise<string | null> | null = null
                 // Badge del card: modo efectivo con que se generó. Se asigna en
                 // la rama KIE cuando los refs ya están finalizados (post-filtros);
                 // undefined en el resto (Gemini/Gateway/video) → sin chip.
@@ -1724,6 +1857,7 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                             })
                             resultUrl = polled.url
                             apiPrompt = polled.fullApiPrompt
+                            pendingStableUrl = polled.stableUrl
                         } else {
                             const result = await generateImageKie({
                                 prompt: kiePrompt,
@@ -2411,7 +2545,8 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                 addToGallery(newMedia)
                 // Fire-and-forget: persist to the gallery in the background so the
                 // inline gallery IS the history and the item becomes postable.
-                void persistGeneration(newMedia)
+                // KIE async: espera el swap a la URL estable antes de persistir.
+                persistWhenStable(newMedia, pendingStableUrl)
                 if (backgroundedRunsRef.current.has(runId)) {
                     // Run "en espera": no toca el appState del run actual — solo
                     // retira su card pendiente y avisa que ya está en la galería.
@@ -2521,7 +2656,7 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
             getActiveProvider,
             getFullPrompt,
             addToGallery,
-            persistGeneration,
+            persistWhenStable,
             removePendingGeneration,
             setAppState,
             setErrorMsg,
@@ -2762,6 +2897,9 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
 
             try {
                 let resultUrl: string
+                // Copia estable pendiente (solo rama KIE async) — ver
+                // persistWhenStable.
+                let pendingStableUrl: Promise<string | null> | null = null
 
                 // Normalize the source to base64 FIRST — `media.url` can be a
                 // data: URL (session items), blob: (uploads) or an https
@@ -2864,6 +3002,7 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                                 model: editModel,
                             })
                             resultUrl = polled.url
+                            pendingStableUrl = polled.stableUrl
                         } else {
                             const r = await generateImageKie({
                                 prompt: editPrompt,
@@ -2905,7 +3044,8 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                 addToGallery(newMedia)
                 // Auto-persist the edited result too, so it survives reload and
                 // its Post button (gated on saveState === 'saved') becomes usable.
-                void persistGeneration(newMedia)
+                // KIE async: espera el swap a la URL estable antes de persistir.
+                persistWhenStable(newMedia, pendingStableUrl)
                 setAppState(AppState.SUCCESS)
             } catch (error: unknown) {
                 // warn, NOT error — handled below; see handleGenerate's catch.
@@ -2923,7 +3063,7 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
             avatarId,
             getActiveProvider,
             addToGallery,
-            persistGeneration,
+            persistWhenStable,
             setAppState,
             setErrorMsg,
             setIsGenerating,
@@ -3433,6 +3573,7 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                 media={postMedia}
                 fallbackAvatarId={avatarId ?? null}
                 onClose={() => setPostMedia(null)}
+                onCreateVariant={createCarouselVariant}
             />
 
             {/* Lipsync — gallery video + Voice Studio audio */}

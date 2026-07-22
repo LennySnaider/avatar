@@ -347,10 +347,35 @@ export async function enhancePrompt(
 export async function generateImageVariantPrompt(
     image: { base64: string; mimeType: string },
     originalPrompt: string,
+    // subtle=true → MICRO-variación para CARRUSEL (PostModal): un solo cambio
+    // mínimo (mirada / giro leve de cabeza / una extremidad) y NADA más — la
+    // consistencia entre slides manda. Default (false) = la variación amplia
+    // del botón Variant del Studio (nueva pose/ángulo/encuadre).
+    options?: { subtle?: boolean },
 ): Promise<string> {
     const apiKey = getApiKey()
     const ai = new GoogleGenAI({ apiKey })
-    const instructions = `You are a fashion/portrait art director creating a VARIATION of an existing photo of the SAME model.
+    const VOCAB = `VOCABULARY RESTRICTIONS (these trigger downstream safety filters — NEVER use them): "bikini" → "swim set", "strapless" → "off-shoulder", "lingerie" → "loungewear", "bralette" → "fitted top", "corset" → "structured waist garment".`
+    const instructions = options?.subtle
+        ? `You are creating a MICRO-VARIATION of an existing photo for a social media carousel: the SAME photo as if the shutter fired again a fraction of a second later.
+
+KEEP IDENTICAL — do NOT change: the overall pose and body position, the camera angle, the framing/crop and distance, the setting and background and every object in it, the lighting and color grade, the outfit and accessories, the hairstyle.
+
+CHANGE exactly ONE small natural thing — pick the single option that best fits this photo:
+- the gaze direction (e.g. from looking at the camera to glancing off to the side, or the reverse), OR
+- a slight head turn or tilt of a few degrees, OR
+- a small repositioning of ONE limb (e.g. a hand slides from the hip to the thigh, an arm relaxes down, a knee shifts slightly).
+
+Write ONE image-generation prompt that describes the photo WITH that single small change, and states EXPLICITLY that everything else — pose, framing, camera angle, setting, background, lighting, outfit — stays EXACTLY as in the reference image.
+
+Do NOT describe facial features, skin tone, hair color, body measurements or age (those come from the reference image).
+
+${VOCAB}
+
+Original prompt: "${originalPrompt}"
+
+Output ONLY the new prompt as one flowing paragraph, 2-3 sentences. No intro, no quotes, no labels.`
+        : `You are a fashion/portrait art director creating a VARIATION of an existing photo of the SAME model.
 
 You are given the ORIGINAL photo and the prompt that produced it. Produce ONE new prompt for an ALTERNATE SHOT of the same person in the same general style.
 
@@ -359,7 +384,7 @@ CHANGE to make it a genuine variation: the POSE and body position, the CAMERA AN
 
 Do NOT describe facial features, skin tone, hair color, body measurements or age (those come from the avatar settings). Describe only: pose, camera angle/framing, setting/background, lighting and mood — keeping the outfit consistent with the original.
 
-VOCABULARY RESTRICTIONS (these trigger downstream safety filters — NEVER use them): "bikini" → "swim set", "strapless" → "off-shoulder", "lingerie" → "loungewear", "bralette" → "fitted top", "corset" → "structured waist garment".
+${VOCAB}
 
 Original prompt: "${originalPrompt}"
 
