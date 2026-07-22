@@ -267,9 +267,14 @@ export function eyeClause(eyeEmphasis?: string): string {
  * KieService:481-488.
  */
 export function faceFidelityClause(identityWeight?: number): string {
+    // `>= 85` (no `> 85`): el DEFAULT del store es 85 (avatarStudioStore:408),
+    // así que con `> 85` el caso más común caía en la cláusula DÉBIL ("no drift")
+    // en vez de la fuerte ("match the reference face EXACTLY") → la cara del
+    // avatar salía genérica en Seedream/Wan/Flux/Grok. El slider al máximo por
+    // defecto DEBE disparar la fidelidad máxima.
     return identityWeight === undefined
         ? ''
-        : identityWeight > 85
+        : identityWeight >= 85
           ? ' FACE FIDELITY: match the reference face EXACTLY — same bone structure, nose, eye shape and spacing, lips, jawline, freckles/moles; do NOT beautify or genericize it.'
           : identityWeight > 50
             ? ' Keep her face strongly consistent with the reference — no drift.'

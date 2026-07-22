@@ -70,8 +70,20 @@ async function build(ctx: ImageRouteContext): Promise<KieImageRequest> {
             // face, RELIGHT it to the scene". Qwen es editor y re-ilumina la cara a
             // la luz del lienzo → cero mismatch. Se aplica a TODO clone (enmascarado
             // o no — el swap reemplaza la cara del lienzo igual). Deepfake NO reordena.
+            // cloneWeight decide el ROL ESTRUCTURAL del clon, no solo una frase.
+            // ANTES: el clon SIEMPRE era el lienzo (imagen 1) que Wan edita +
+            // face-swap fijo ("mantén cuerpo/pelo de imagen 1, cambia solo la
+            // cara") → a 15% (LOOSE) seguía saliendo copia casi exacta + swap,
+            // porque el peso solo suavizaba UNA frase mientras el andamiaje era
+            // invariante. AHORA: canvas-a-editar SOLO en fidelidad alta (cw>=50,
+            // EXACT/STRONG). Con cw<50 (MODERATE/LOOSE) cloneRef=undefined → cae
+            // al else branch: la cara es imagen 1 (identidad anclada) y el clon
+            // viaja como imagen EXTRA con la cláusula tiered de planExtraRefs
+            // (shared.ts:115-126 → LOOSE = "faceless mannequin, reinterpret the
+            // pose/framing freely"). Deepfake nunca usa este path (ya excluido).
+            const cw = ctx.cloneWeight ?? 100
             const cloneRef =
-                wanHasClone && !ctx.deepfakeMode
+                wanHasClone && !ctx.deepfakeMode && cw >= 50
                     ? wanExtras.find((r) => r.role === 'clone')
                     : undefined
 
@@ -98,16 +110,14 @@ async function build(ctx: ImageRouteContext): Promise<KieImageRequest> {
                     wanUrls.push(await ctx.uploadRef(r.base64, r.mimeType))
                 }
                 // Framing FACE-SWAP estilo Qwen (mantener TODO de la imagen 1,
-                // incluida su LUZ; cambiar SOLO la cara). Fuerza por tramo del slider.
-                const cw = ctx.cloneWeight ?? 100
+                // incluida su LUZ; cambiar SOLO la cara). Este path SOLO corre en
+                // fidelidad alta (cw>=50 garantizado por el gate de cloneRef), así
+                // que solo hay 2 tramos: EXACT (>=75) y STRONG (50-74). Los tramos
+                // MODERATE/LOOSE ya NO llegan aquí (caen al else branch como extra).
                 const cloneCanvasClause =
                     cw >= 75
                         ? `The FIRST attached image is the original photo — keep it EXACTLY: the same body, build, outfit (every garment piece, NO restyling or merging), pose, hands, objects held, framing, camera angle, background, setting AND its lighting, shadows and colour. Do NOT redraw or re-imagine the scene; only edit the face. Keep her FULLY dressed as shown. REMOVE overlaid stickers/watermarks/emojis.`
-                        : cw >= 50
-                          ? `The FIRST attached image is the original photo — keep its outfit, pose, hands, framing, background, setting AND lighting close to it (minor natural variation allowed); only edit the face. REMOVE overlaid stickers/watermarks/emojis.`
-                          : cw >= 25
-                            ? `Use the FIRST attached image as the basis for the outfit, pose, setting and lighting, reinterpreting the exact details; edit the face.`
-                            : `Take loose inspiration from the FIRST attached image's outfit style, setting and mood; edit the face.`
+                        : `The FIRST attached image is the original photo — keep its outfit, pose, hands, framing, background, setting AND lighting close to it (minor natural variation allowed); only edit the face. REMOVE overlaid stickers/watermarks/emojis.`
                 // Swap SOLO la cara desde imagen 2 + RELIGHT a la luz del lienzo.
                 const faceIdentityClause = ` Swap ONLY the FACE: give her the SECOND attached image's face — exact features, bone structure, freckles, eye colour and likeness — NEVER the first image's original face. Keep her hair and body as in the first image, with her head at natural head-to-body proportion (a head that fits the shoulders and torso, not oversized).${faceFidelityClause} RELIGHT the swapped face to match the FIRST image's OWN light: the same direction, colour temperature, brightness and shadows as the scene casts on her — if her head is turned away from the light source, her face is correspondingly shadowed — so the face looks naturally photographed in that scene, not lit separately.`
                 const bodyTextClause =
@@ -167,15 +177,23 @@ async function build(ctx: ImageRouteContext): Promise<KieImageRequest> {
             input.input_urls = wanUrls
             const wanSceneRoom = Math.max(250, 2750 - wanAnchor.length)
             let wanSceneText = String(input.prompt)
-            if (wanHasClone) {
-                // CONSERVA la descripción del clon (verificado por repro: sin ella
-                // el prompt de Wan NO menciona la tiara → Wan la pierde, mientras
-                // Seedream/Qwen que SÍ la conservan la muestran). Solo se quitan
-                // los corchetes/label para que lea como prosa. (Mi revert previo
-                // fue prematuro: le quité justo lo que reancla los accesorios.)
+            if (wanHasClone && cw >= 50) {
+                // canvas mode (cw>=50): CONSERVA la descripción del clon (verificado
+                // por repro: sin ella el prompt de Wan NO menciona la tiara → Wan la
+                // pierde, mientras Seedream/Qwen que SÍ la conservan la muestran).
+                // Solo se quitan los corchetes/label para que lea como prosa.
                 wanSceneText = wanSceneText
                     .replace(/\[CLONE:\s*/gi, '')
                     .replace(/\]/g, ' ')
+                    .replace(/\s{2,}/g, ' ')
+                    .trim()
+            } else if (wanHasClone) {
+                // MODERATE/LOOSE (cw<50): el clon es una referencia SUELTA (imagen
+                // extra con cláusula tiered). Re-inyectar su outfit/accesorios
+                // EXACTOS reimpondría la copia que el peso bajo quiere evitar, así
+                // que se ELIMINA el bloque [CLONE:...] completo del texto de escena.
+                wanSceneText = wanSceneText
+                    .replace(/\[CLONE:[^\]]*\]/gi, ' ')
                     .replace(/\s{2,}/g, ' ')
                     .trim()
             }
