@@ -525,13 +525,11 @@ export const getProviderDescription = (provider: AIProvider): string => {
  * fallback cuando NO hay plantilla (Seedream i2i-only daría 500 sin imagen).
  */
 export const BODY_SHEET_T2I_MODELS = [
-    // Seedream 5 Pro (i2i) — DEFAULT: rey de las curvas. Requiere imagen → usa
-    // la plantilla fija. (Sin plantilla no sirve; el drawer cae a Wan.)
+    // SOLO Seedream 5 Pro (i2i) en el selector del Body Lab — el rey de las
+    // curvas. Requiere imagen → usa la plantilla fija de turnaround. (Wan/Qwen
+    // se quitaron del selector por decisión del usuario; si faltara la plantilla
+    // el drawer cae internamente a Wan t2i, sin exponerlo en el selector.)
     'seedream/5-pro-image-to-image',
-    // Wan 2.7 (unificado t2i+edit, permisivo "NSFW real") — curvas fuertes y
-    // hace t2i puro (fallback sin plantilla).
-    'wan/2-7-image',
-    'qwen2/text-to-image',
 ]
 
 export function getPermissiveBodyModels(providers: AIProvider[]): AIProvider[] {

@@ -921,7 +921,7 @@ const AvatarEditDrawer = ({
                                     stale={bodyStale}
                                     disabledReason={
                                         permissiveBodyModels.length === 0
-                                            ? 'No hay modelo text-to-image permisivo (Qwen / Flux.2). Actívalo en AI Providers.'
+                                            ? 'No hay modelo permisivo (Seedream) disponible. Actívalo en AI Providers.'
                                             : undefined
                                     }
                                 />
