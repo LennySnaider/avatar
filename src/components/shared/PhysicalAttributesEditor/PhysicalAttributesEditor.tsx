@@ -41,6 +41,10 @@ import {
     effectiveThighsLevel,
     describeBody,
     buildCurvesEmphasis,
+    NIPPLE_COLORS,
+    NIPPLE_AREOLAS,
+    NIPPLE_COLOR_PHRASE,
+    NIPPLE_AREOLA_PHRASE,
 } from '@/utils/bodyDescriptors'
 import { BODY_SHAPES, SHAPE_LABEL, SHAPE_PRESETS } from '@/utils/bodyShapes'
 import type {
@@ -473,6 +477,80 @@ const PhysicalAttributesEditor = ({
                             </div>
                         )
                     })}
+                </div>
+            </div>
+
+            {/* Reglas de pezón POR AVATAR (consistencia NSFW) — condicional:
+                solo aplica cuando la escena la muestra descubierta. */}
+            <div>
+                <label className="text-xs text-gray-500 block mb-2">
+                    Nipples{' '}
+                    <span className="text-[10px] text-amber-500">
+                        (permissive models only — solo aplica en escenas
+                        descubiertas)
+                    </span>
+                </label>
+                <div className="space-y-2">
+                    <div className="flex flex-wrap items-center gap-1">
+                        <span className="text-[10px] text-gray-400 w-12">
+                            Color
+                        </span>
+                        {[undefined, ...NIPPLE_COLORS].map((c) => (
+                            <Tooltip
+                                key={c ?? 'auto'}
+                                title={
+                                    c
+                                        ? NIPPLE_COLOR_PHRASE[c]
+                                        : 'sin regla — cada modelo decide'
+                                }
+                            >
+                                <button
+                                    type="button"
+                                    onClick={() =>
+                                        set({ nippleColor: c })
+                                    }
+                                    className={`px-1.5 py-0.5 text-[10px] rounded border transition-colors capitalize ${
+                                        (measurements.nippleColor ??
+                                            undefined) === c
+                                            ? 'bg-primary text-white border-primary'
+                                            : 'bg-gray-50 dark:bg-gray-800 border-gray-200 dark:border-gray-700 hover:border-primary'
+                                    }`}
+                                >
+                                    {c ?? 'auto'}
+                                </button>
+                            </Tooltip>
+                        ))}
+                    </div>
+                    <div className="flex flex-wrap items-center gap-1">
+                        <span className="text-[10px] text-gray-400 w-12">
+                            Areola
+                        </span>
+                        {[undefined, ...NIPPLE_AREOLAS].map((a) => (
+                            <Tooltip
+                                key={a ?? 'auto'}
+                                title={
+                                    a
+                                        ? NIPPLE_AREOLA_PHRASE[a]
+                                        : 'sin regla — cada modelo decide'
+                                }
+                            >
+                                <button
+                                    type="button"
+                                    onClick={() =>
+                                        set({ nippleAreola: a })
+                                    }
+                                    className={`px-1.5 py-0.5 text-[10px] rounded border transition-colors capitalize ${
+                                        (measurements.nippleAreola ??
+                                            undefined) === a
+                                            ? 'bg-primary text-white border-primary'
+                                            : 'bg-gray-50 dark:bg-gray-800 border-gray-200 dark:border-gray-700 hover:border-primary'
+                                    }`}
+                                >
+                                    {a ?? 'auto'}
+                                </button>
+                            </Tooltip>
+                        ))}
+                    </div>
                 </div>
             </div>
 

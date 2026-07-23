@@ -440,6 +440,9 @@ export type LegType =
 // NO se recalibraron (avatares existentes intactos).
 export type CurveLevel = 1 | 2 | 3 | 4 | 5 | 6
 
+export type NippleColor = 'rosy' | 'peach' | 'light-brown' | 'brown' | 'dark'
+export type NippleAreola = 'small' | 'medium' | 'large' | 'puffy'
+
 // FORMA (ortogonal al tamaño): taxonomías del usuario — glúteos por
 // silueta (cuadrado/V/A-pera/redondo/corazón) y mama por criterio médico
 // (redonda/atlética/cónica/lágrima-pera/tuberosa). undefined = Auto.
@@ -523,6 +526,11 @@ export interface PhysicalMeasurements {
     // Sliders de curvas 1-5 (solo modelos permisivos; undefined = Auto)
     bustLevel?: CurveLevel
     glutesLevel?: CurveLevel
+    // Reglas de pezón POR AVATAR (consistencia NSFW: cada modelo inventaba
+    // color/tamaño distinto). Solo viajan a permisivos, con frase condicional
+    // "solo cuando estén descubiertos".
+    nippleColor?: NippleColor
+    nippleAreola?: NippleAreola
     thighsLevel?: CurveLevel
     // Forma (ortogonal al tamaño; solo modelos permisivos)
     bustShape?: BustShape

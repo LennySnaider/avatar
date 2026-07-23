@@ -249,6 +249,39 @@ export const BUST_SHAPE_PHRASE: Record<string, string> = {
         'tubular breasts — narrow constricted base, wide spacing between the breasts, prominent areolas',
 }
 
+// ── Reglas de pezón POR AVATAR (consistencia NSFW) ─────────────────────────
+// Cada modelo inventaba color/areola distintos entre generaciones topless
+// (reporte con batch: Seedream café, Wan rosa, Qwen oscuras grandes). Mismo
+// patrón que hair/eyeClause: spec fija del avatar, frase CONDICIONAL para no
+// empujar desnudez en escenas vestidas. Solo viaja a permisivos (va dentro de
+// buildCurvesEmphasis, que ya tiene ese gating).
+export const NIPPLE_COLOR_PHRASE: Record<string, string> = {
+    rosy: 'rosy pink',
+    peach: 'soft peach-toned',
+    'light-brown': 'light brown',
+    brown: 'medium brown',
+    dark: 'deep dark-brown',
+}
+
+export const NIPPLE_AREOLA_PHRASE: Record<string, string> = {
+    small: 'small neat areolas',
+    medium: 'medium proportionate areolas',
+    large: 'large wide areolas',
+    puffy: 'puffy softly-raised areolas',
+}
+
+export const NIPPLE_COLORS = ['rosy', 'peach', 'light-brown', 'brown', 'dark'] as const
+export const NIPPLE_AREOLAS = ['small', 'medium', 'large', 'puffy'] as const
+
+/** Cláusula condicional de pezones — vacía si el avatar no fijó reglas. */
+export function nippleClause(m: PhysicalMeasurements): string {
+    const color = m.nippleColor ? NIPPLE_COLOR_PHRASE[m.nippleColor] : ''
+    const areola = m.nippleAreola ? NIPPLE_AREOLA_PHRASE[m.nippleAreola] : ''
+    if (!color && !areola) return ''
+    const spec = [color && `${color} nipples`, areola].filter(Boolean).join(' with ')
+    return `ONLY if her breasts are uncovered in this scene: she has ${spec} — render them IDENTICAL in every image (this is her fixed anatomy); if she is clothed, this does NOT apply and nothing shows through the fabric`
+}
+
 // Listas para los chips de la UI (orden de despliegue)
 export const GLUTES_SHAPES = [
     'square',
@@ -329,6 +362,9 @@ export function buildCurvesEmphasis(m: PhysicalMeasurements): string {
     if (thighs && THIGHS_LEVEL_PHRASE[thighs]) {
         parts.push(THIGHS_LEVEL_PHRASE[thighs])
     }
+    // Reglas de pezón del avatar (condicional — solo aplica descubierta).
+    const nipples = nippleClause(m)
+    if (nipples) parts.push(nipples)
     // Puente de continuidad: con glúteos llenos, la curva glúteo→muslo debe
     // ser UNA sola — evita el mismatch "butt grande sobre piernas flacas"
     // aunque el legType diga slim.
