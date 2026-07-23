@@ -253,6 +253,14 @@ export function hairClauseCompact(hairEmphasis?: string): string {
 }
 
 /**
+ * Cuerpo COMPLETO e intacto — anti-mutilación para los anclas i2i (2026-07-23,
+ * los cuerpos XXL empujan al modelo a recortar extremidades). Compacta: va en
+ * el tail del ancla de seedream/wan/flux2 (Qwen recibe el negative nativo).
+ */
+export const INTACT_BODY_CLAUSE =
+    ' Her body is COMPLETE and intact — both arms, both legs, hands and feet fully rendered; never amputated, truncated or cropped limbs.'
+
+/**
  * Override de ojos con guard anti-saturación (los editores single-image
  * qwen/grok NO lo envían). Verbatim de KieService:475-477.
  */

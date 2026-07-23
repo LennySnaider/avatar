@@ -19,6 +19,7 @@ import {
     HiOutlineSave,
     HiOutlinePhotograph,
     HiOutlineVideoCamera,
+    HiOutlineChevronDown,
 } from 'react-icons/hi'
 import {
     PiPushPinFill,
@@ -58,6 +59,11 @@ const PromptLibraryDrawer = ({ userId }: PromptLibraryDrawerProps) => {
     const [isSaving, setIsSaving] = useState(false)
     const [prompts, setPrompts] = useState<Prompt[]>([])
     const [filterType, setFilterType] = useState<MediaType | 'ALL'>('ALL')
+    // 🌶️ NSFW: OFF oculta los prompts category==='nsfw' (default seguro —
+    // se conecta con el futuro safeMode del paquete comercial). Al guardar,
+    // el checkbox del save box decide la categoría.
+    const [showNsfw, setShowNsfw] = useState(false)
+    const [saveAsNsfw, setSaveAsNsfw] = useState(false)
     const [activeTab, setActiveTab] = useState('my-prompts')
     const [expandedCategory, setExpandedCategory] = useState<ActionCategory | null>('poses_basic')
 
@@ -107,6 +113,7 @@ const PromptLibraryDrawer = ({ userId }: PromptLibraryDrawerProps) => {
                 name: newPromptName.trim(),
                 text: prompt,
                 media_type: generationMode,
+                category: saveAsNsfw ? 'nsfw' : null,
             })
             setPrompts((prev) => [newPrompt, ...prev])
             setNewPromptName('')
@@ -180,10 +187,64 @@ const PromptLibraryDrawer = ({ userId }: PromptLibraryDrawerProps) => {
         }
     }
 
-    // Filter prompts
-    const filteredPrompts = prompts.filter((p) =>
-        filterType === 'ALL' ? true : p.media_type === filterType
+    // category codifica tema + flag NSFW: 'lifestyle' | 'nsfw:boudoir' | 'nsfw'
+    // (legacy sin tema) | 'custom' (guardados del usuario) | null.
+    const parseCategory = (c: string | null) => {
+        const isNsfw = !!c && c.startsWith('nsfw')
+        const theme = (c ?? '').replace(/^nsfw:?/, '') || 'general'
+        return { isNsfw, theme }
+    }
+
+    // Filter prompts (tipo de media + gate NSFW)
+    const filteredPrompts = prompts.filter(
+        (p) =>
+            (filterType === 'ALL' ? true : p.media_type === filterType) &&
+            (showNsfw ? true : !parseCategory(p.category).isNsfw),
     )
+
+    // Acordeones por tema (SFW primero, luego 🌶️), colapsados por default.
+    const THEME_ORDER = ['lifestyle', 'outdoor', 'boudoir', 'wet', 'tease', 'vehicles', 'sports', 'cosplay', 'custom', 'general']
+    const THEME_LABEL: Record<string, string> = {
+        lifestyle: 'Lifestyle',
+        outdoor: 'Outdoor',
+        boudoir: 'Boudoir',
+        wet: 'Wet',
+        tease: 'Tease',
+        vehicles: 'Vehicles',
+        sports: 'Sports',
+        cosplay: 'Cosplay',
+        custom: 'Custom',
+        general: 'General',
+    }
+    const groupedMyPrompts = (() => {
+        const map = new Map<string, { label: string; isNsfw: boolean; items: Prompt[] }>()
+        for (const p of filteredPrompts) {
+            const { isNsfw, theme } = parseCategory(p.category)
+            const key = `${isNsfw ? 'nsfw' : 'sfw'}:${theme}`
+            if (!map.has(key)) {
+                map.set(key, {
+                    label: `${THEME_LABEL[theme] ?? theme}${isNsfw ? ' 🌶️' : ''}`,
+                    isNsfw,
+                    items: [],
+                })
+            }
+            map.get(key)!.items.push(p)
+        }
+        const rank = (k: string, g: { isNsfw: boolean }) => {
+            const theme = k.split(':')[1]
+            const i = THEME_ORDER.indexOf(theme)
+            return (g.isNsfw ? 100 : 0) + (i === -1 ? 50 : i)
+        }
+        return [...map.entries()].sort(([ka, ga], [kb, gb]) => rank(ka, ga) - rank(kb, gb))
+    })()
+    const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set())
+    const toggleGroup = (key: string) =>
+        setExpandedGroups((prev) => {
+            const next = new Set(prev)
+            if (next.has(key)) next.delete(key)
+            else next.add(key)
+            return next
+        })
 
     // Filter action presets by media type
     const filteredPresets = MODEL_ACTION_PRESETS.filter((preset) =>
@@ -232,6 +293,17 @@ const PromptLibraryDrawer = ({ userId }: PromptLibraryDrawerProps) => {
                                 Save
                             </Button>
                         </div>
+                        <button
+                            type="button"
+                            onClick={() => setSaveAsNsfw((v) => !v)}
+                            className={`mt-2 px-2 py-0.5 text-[10px] rounded transition-colors ${
+                                saveAsNsfw
+                                    ? 'bg-red-500 text-white'
+                                    : 'bg-gray-100 dark:bg-gray-700 text-gray-500'
+                            }`}
+                        >
+                            🌶️ Guardar como NSFW
+                        </button>
                         <p className="text-xs text-gray-500 mt-2 line-clamp-2">{prompt}</p>
                     </div>
                 )}
@@ -259,6 +331,21 @@ const PromptLibraryDrawer = ({ userId }: PromptLibraryDrawerProps) => {
                         >
                             <HiOutlinePhotograph className="w-3.5 h-3.5" />
                             Image
+                        </button>
+                        <button
+                            onClick={() => setShowNsfw((v) => !v)}
+                            title={
+                                showNsfw
+                                    ? 'Mostrando prompts NSFW — click para ocultarlos'
+                                    : 'Mostrar prompts NSFW (ocultos por default)'
+                            }
+                            className={`px-3 py-1.5 text-xs rounded-lg transition-colors ${
+                                showNsfw
+                                    ? 'bg-red-500 text-white'
+                                    : 'bg-gray-100 dark:bg-gray-700 hover:bg-gray-200'
+                            }`}
+                        >
+                            🌶️ NSFW
                         </button>
                         <button
                             onClick={() => setFilterType('VIDEO')}
@@ -303,7 +390,30 @@ const PromptLibraryDrawer = ({ userId }: PromptLibraryDrawerProps) => {
                                         </p>
                                     </div>
                                 ) : (
-                                    filteredPrompts.map((p) => (
+                                    groupedMyPrompts.map(([key, group]) => (
+                                        <div key={key}>
+                                            <button
+                                                type="button"
+                                                onClick={() => toggleGroup(key)}
+                                                className="w-full flex items-center justify-between px-2 py-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+                                            >
+                                                <span className="text-xs font-semibold">
+                                                    {group.label}
+                                                </span>
+                                                <span className="flex items-center gap-1.5 text-[10px] text-gray-400">
+                                                    {group.items.length}
+                                                    <HiOutlineChevronDown
+                                                        className={`w-3.5 h-3.5 transition-transform ${
+                                                            expandedGroups.has(key)
+                                                                ? 'rotate-180'
+                                                                : ''
+                                                        }`}
+                                                    />
+                                                </span>
+                                            </button>
+                                            {expandedGroups.has(key) && (
+                                                <div className="space-y-2 mt-1 mb-2">
+                                                    {group.items.map((p) => (
                                         <div
                                             key={p.id}
                                             className="p-3 bg-gray-50 dark:bg-gray-800 rounded-lg group hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors cursor-pointer"
@@ -319,6 +429,13 @@ const PromptLibraryDrawer = ({ userId }: PromptLibraryDrawerProps) => {
                                                             <HiOutlinePhotograph className="w-3.5 h-3.5 text-blue-500 shrink-0" />
                                                         ) : (
                                                             <HiOutlineVideoCamera className="w-3.5 h-3.5 text-purple-500 shrink-0" />
+                                                        )}
+                                                        {parseCategory(
+                                                            p.category,
+                                                        ).isNsfw && (
+                                                            <span className="shrink-0 text-[10px]">
+                                                                🌶️
+                                                            </span>
                                                         )}
                                                     </div>
                                                     <p className="text-xs text-gray-500 line-clamp-2">
@@ -347,6 +464,10 @@ const PromptLibraryDrawer = ({ userId }: PromptLibraryDrawerProps) => {
                                                     />
                                                 </div>
                                             </div>
+                                        </div>
+                                                    ))}
+                                                </div>
+                                            )}
                                         </div>
                                     ))
                                 )}

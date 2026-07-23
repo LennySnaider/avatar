@@ -374,23 +374,31 @@ export const GLUTES_LEVEL_TO_CM: Record<number, number> = {
     6: 132,
 }
 
-const nearestLevel = (map: Record<number, number>, cm: number): CurveLevel => {
-    let best = 1
-    let bestDiff = Infinity
-    for (const [lvl, v] of Object.entries(map)) {
-        const d = Math.abs(v - cm)
-        if (d < bestDiff) {
-            bestDiff = d
-            best = Number(lvl)
-        }
+// cm → nivel por BANDAS alineadas a tablas de tallas reales (2026-07-23), NO
+// por "ancla más cercana": el punto medio entre las anclas 90 y 100 caía en
+// 95 — la zona MÁS usada — y escribir busto 95→96 brincaba el nivel 3→4
+// ("full rounded" → "large heavy, DEEP CLEAVAGE") en 1cm (mismo bug de clase
+// que el acantilado de cadera 100→101). Los bordes van entre tallas: 3/4 en
+// 97/98 (talla 42→44, territorio copa C donde "large" sí es defendible).
+const bandedLevel = (bounds: number[], cm: number): CurveLevel => {
+    // bounds[i] = límite SUPERIOR (inclusive) del nivel i+1.
+    for (let i = 0; i < bounds.length; i++) {
+        if (cm <= bounds[i]) return (i + 1) as CurveLevel
     }
-    return best as CurveLevel
+    return 6
 }
 
+// Tallas (Full Bust): <80 XS · 80-87 S · 88-97 M/42 · 98-107 44-46 (copa C) ·
+// 108-118 48-50 (D/E) · >118 XXL. Level→cm (slider) cae dentro de su banda:
+// 3→90 ✓ · 4→100 ✓ · 5→110 ✓ · 6→122 ✓.
 export const cmToBustLevel = (cm: number): CurveLevel =>
-    nearestLevel(BUST_LEVEL_TO_CM, cm)
+    bandedLevel([79, 87, 97, 107, 118], cm)
+// Tallas (Hip): <86 XS · 86-93 S · 94-101 M · 102-111 L · 112-123 XL · >123
+// XXL. Level→cm: 3→97 ✓ · 4→106 ✓ · 5→116 ✓ · 6→132 ✓. (Hoy la UI no deriva
+// glutesLevel desde cm — la cadera tiene su slider propio — pero la banda
+// queda alineada por si se re-cablea.)
 export const cmToGlutesLevel = (cm: number): CurveLevel =>
-    nearestLevel(GLUTES_LEVEL_TO_CM, cm)
+    bandedLevel([85, 93, 101, 111, 123], cm)
 
 export const LEG_TYPE_TOOLTIP: Record<string, string> = {
     auto: 'no explicit phrase — legs follow the Body Type and hip descriptors',

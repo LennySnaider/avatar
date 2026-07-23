@@ -12,6 +12,7 @@ import Notification from '@/components/ui/Notification'
 import toast from '@/components/ui/toast'
 import ConfirmDialog from '@/components/shared/ConfirmDialog'
 import Spinner from '@/components/ui/Spinner'
+import Tooltip from '@/components/ui/Tooltip'
 import {
     AvatarEditDrawer,
     type AvatarEditData,
@@ -34,6 +35,7 @@ import {
     HiOutlineDotsVertical,
     HiOutlinePhotograph,
     HiOutlineChatAlt2,
+    HiOutlineUser,
 } from 'react-icons/hi'
 
 interface AvatarCardProps {
@@ -70,6 +72,8 @@ const AvatarCard = ({ avatar }: AvatarCardProps) => {
         refs.find((r) => r.type === 'angle') ??
         refs.find((r) => r.type === 'general') ??
         refs.find((r) => r.storage_path)
+    // Cuerpo canónico del Body Lab = una ref persistida type:'body'.
+    const hasCanonicalBody = refs.some((r) => r.type === 'body')
 
     // Load thumbnail on mount
     useEffect(() => {
@@ -468,6 +472,17 @@ const AvatarCard = ({ avatar }: AvatarCardProps) => {
                             <Tag className="text-xs">
                                 {avatar.identity_weight}% identity
                             </Tag>
+                        )}
+                        {/* Cuerpo canónico generado en Body Lab. */}
+                        {hasCanonicalBody && (
+                            <Tooltip title="Cuerpo canónico generado en Body Lab">
+                                <Tag className="text-xs bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-300">
+                                    <span className="flex items-center gap-1">
+                                        <HiOutlineUser className="w-3 h-3" />
+                                        Cuerpo
+                                    </span>
+                                </Tag>
+                            </Tooltip>
                         )}
                     </div>
 

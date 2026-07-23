@@ -15,6 +15,7 @@ import {
     relocatePoseTag,
     capAtWordBoundary,
     stripIdentityRedundancy,
+    INTACT_BODY_CLAUSE,
     hairClause as buildHairClause,
     faceFidelityClause as buildFaceFidelityClause,
 } from '../shared'
@@ -53,6 +54,12 @@ async function build(ctx: ImageRouteContext): Promise<KieImageRequest> {
             if (hairClause || faceFidelityClause) {
                 input.prompt = `Keep the EXACT face and likeness of the person in the reference image.${faceFidelityClause}${hairClause} ${input.prompt}`
             }
+            // Anti-mutilación SIEMPRE (2026-07-23, reporte con imagen: Grok
+            // "escondía" ambos brazos tras la espalda = amputación visual).
+            // Grok NO soporta negative prompt y este ancla es condicional —
+            // era la única ruta sin cobertura. Al FRENTE (prioridad de
+            // supervivencia/atención).
+            input.prompt = `${INTACT_BODY_CLAUSE.trim()} ${input.prompt}`
             console.log(
                 `[KIE] Grok i2i with 1 identity ref (AR-cropped)${hairClause ? ' + hair override' : ''}`,
             )
