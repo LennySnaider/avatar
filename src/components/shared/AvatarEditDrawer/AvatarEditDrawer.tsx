@@ -22,6 +22,7 @@ import { generateAvatar, analyzeFaceFromImages } from '@/services/GeminiService'
 import { generateImageKie } from '@/services/KieService'
 import type { PhysicalMeasurements } from '@/@types/supabase'
 import { createThumbnail, resizeBase64Image } from '@/utils/imageOptimization'
+import { cleanRefWatermarkInBackground } from '@/utils/refWatermarkClean'
 import {
     buildBodySheetPrompt,
     buildBodySheetCurves,
@@ -33,7 +34,7 @@ import {
 import { urlToDataUrl } from '@/utils/imageStitch'
 import {
     DEFAULT_PROVIDERS,
-    getPermissiveBodyModels,
+    getBodyLabModels,
 } from '@/app/(protected-pages)/concepts/avatar-forge/_shared/providerCatalog'
 import PhysicalAttributesEditor from '@/components/shared/PhysicalAttributesEditor'
 import AppearanceEditor from '@/components/shared/AppearanceEditor'
@@ -45,7 +46,7 @@ import { deriveShapeFromMeasurements } from '@/utils/bodyShapes'
 // providers por defecto — este drawer es store-agnóstico y no tiene acceso a
 // los providers configurados del usuario. Constante de módulo: se calcula una
 // sola vez, no en cada render.
-const PERMISSIVE_BODY_MODELS = getPermissiveBodyModels(DEFAULT_PROVIDERS)
+const BODY_LAB_MODELS = getBodyLabModels(DEFAULT_PROVIDERS)
 
 // Reference image interface
 export interface AvatarReferenceImage {
@@ -122,6 +123,11 @@ const AvatarEditDrawer = ({
     const [localGeneralRefs, setLocalGeneralRefs] = useState<
         AvatarReferenceImage[]
     >([])
+    // Limpieza de marca de agua en curso por slot (overlay + Save bloqueado).
+    const [cleaningRefs, setCleaningRefs] = useState<{
+        face?: boolean
+        angle?: boolean
+    }>({})
     const [localFaceRef, setLocalFaceRef] =
         useState<AvatarReferenceImage | null>(null)
     const [localAngleRef, setLocalAngleRef] =
@@ -169,8 +175,8 @@ const AvatarEditDrawer = ({
 
     // Default del selector de modelo del Body Lab (primer permisivo).
     useEffect(() => {
-        if (!selectedBodyModel && PERMISSIVE_BODY_MODELS.length > 0) {
-            setSelectedBodyModel(PERMISSIVE_BODY_MODELS[0].model)
+        if (!selectedBodyModel && BODY_LAB_MODELS.length > 0) {
+            setSelectedBodyModel(BODY_LAB_MODELS[0].model)
         }
     }, [selectedBodyModel])
 
@@ -246,6 +252,48 @@ const AvatarEditDrawer = ({
                             setLocalAngleRef(newImage)
                             break
                         // Note: 'body' type is now handled as a session tool in the generation bar
+                    }
+
+                    // Marca de agua (cara/angles): limpieza en 2º plano con
+                    // swap por id (ver @/utils/refWatermarkClean).
+                    if (type === 'face' || type === 'angle') {
+                        setCleaningRefs((p) => ({ ...p, [type]: true }))
+                        void cleanRefWatermarkInBackground({
+                            base64: matches[2],
+                            mimeType: matches[1],
+                            label:
+                                type === 'face'
+                                    ? 'cara frontal'
+                                    : 'hoja de ángulos',
+                            onCleaned: async (img) => {
+                                let thumb = img.url
+                                try {
+                                    thumb = await createThumbnail(
+                                        img.base64,
+                                        'THUMBNAIL',
+                                    )
+                                } catch {
+                                    /* thumbnail fallback: full image */
+                                }
+                                const cleanedRef: AvatarReferenceImage = {
+                                    ...newImage,
+                                    url: img.url,
+                                    mimeType: img.mimeType,
+                                    base64: img.base64,
+                                    thumbnailUrl: thumb,
+                                }
+                                const swap = (
+                                    prev: AvatarReferenceImage | null,
+                                ) =>
+                                    prev?.id === newImage.id
+                                        ? cleanedRef
+                                        : prev
+                                if (type === 'face') setLocalFaceRef(swap)
+                                else setLocalAngleRef(swap)
+                            },
+                        }).finally(() =>
+                            setCleaningRefs((p) => ({ ...p, [type]: false })),
+                        )
                     }
                 }
             }
@@ -402,8 +450,9 @@ const AvatarEditDrawer = ({
 
             const thumbnailUrl = await createThumbnail(matches[2], 'THUMBNAIL')
 
+            const angleId = crypto.randomUUID()
             const newAngleImage: AvatarReferenceImage = {
-                id: crypto.randomUUID(),
+                id: angleId,
                 url: dataUrl,
                 mimeType: matches[1],
                 base64: matches[2],
@@ -416,6 +465,35 @@ const AvatarEditDrawer = ({
                 <Notification type="success" title="Angle Generated">
                     Angle reference sheet created
                 </Notification>,
+            )
+            // El sheet sale con la ✦ de Gemini → parche por color (sin
+            // re-render que arriesgue las 9 caras). Overlay + swap por id.
+            setCleaningRefs((p) => ({ ...p, angle: true }))
+            void cleanRefWatermarkInBackground({
+                base64: matches[2],
+                mimeType: matches[1],
+                label: 'hoja de ángulos',
+                onCleaned: async (img) => {
+                    let thumb = img.url
+                    try {
+                        thumb = await createThumbnail(img.base64, 'THUMBNAIL')
+                    } catch {
+                        /* thumbnail fallback: full image */
+                    }
+                    setLocalAngleRef((prev) =>
+                        prev?.id === angleId
+                            ? {
+                                  ...newAngleImage,
+                                  url: img.url,
+                                  mimeType: img.mimeType,
+                                  base64: img.base64,
+                                  thumbnailUrl: thumb,
+                              }
+                            : prev,
+                    )
+                },
+            }).finally(() =>
+                setCleaningRefs((p) => ({ ...p, angle: false })),
             )
         } catch (error) {
             console.error('Error generating angle:', error)
@@ -504,7 +582,7 @@ const AvatarEditDrawer = ({
             setBodySheet(sheet)
             setSheetMeasurements(localMeasurements)
             const selName =
-                PERMISSIVE_BODY_MODELS.find(
+                BODY_LAB_MODELS.find(
                     (p) => p.model === selectedBodyModel,
                 )?.name || selectedBodyModel
             setBodySheetModel(tmpl ? `${selName} · plantilla` : selName)
@@ -558,6 +636,7 @@ const AvatarEditDrawer = ({
         onAutoGenerate,
         isGenerating,
         canGenerate,
+        busy,
     }: {
         slotTitle: string
         subtitle: string
@@ -568,6 +647,8 @@ const AvatarEditDrawer = ({
         onAutoGenerate?: () => void
         isGenerating?: boolean
         canGenerate?: boolean
+        /** Limpieza de marca de agua en curso: overlay + slot bloqueado. */
+        busy?: boolean
     }) => (
         <div className="space-y-2">
             <div className="flex items-center justify-between">
@@ -584,17 +665,29 @@ const AvatarEditDrawer = ({
                         }
                         alt={slotTitle}
                         className="w-full h-32 object-cover rounded-lg cursor-pointer hover:ring-2 hover:ring-primary transition-all"
-                        onClick={() => setPreviewImage(image)}
-                    />
-                    <button
-                        onClick={(e) => {
-                            e.stopPropagation()
-                            onRemove()
+                        onClick={() => {
+                            if (!busy) setPreviewImage(image)
                         }}
-                        className="absolute top-1 right-1 p-1 bg-red-500 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
-                    >
-                        <HiOutlineX className="w-3 h-3" />
-                    </button>
+                    />
+                    {busy && (
+                        <div className="absolute inset-0 rounded-lg bg-black/60 flex flex-col items-center justify-center gap-1 cursor-wait">
+                            <Spinner size={20} />
+                            <span className="text-[10px] text-white">
+                                Limpiando marca…
+                            </span>
+                        </div>
+                    )}
+                    {!busy && (
+                        <button
+                            onClick={(e) => {
+                                e.stopPropagation()
+                                onRemove()
+                            }}
+                            className="absolute top-1 right-1 p-1 bg-red-500 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
+                        >
+                            <HiOutlineX className="w-3 h-3" />
+                        </button>
+                    )}
                 </div>
             ) : isGenerating ? (
                 <div className="w-full h-32 border-2 border-primary border-dashed rounded-lg flex flex-col items-center justify-center">
@@ -786,6 +879,7 @@ const AvatarEditDrawer = ({
                                         }
                                         onRemove={() => setLocalFaceRef(null)}
                                         dropType="face"
+                                        busy={cleaningRefs.face}
                                     />
                                     <input
                                         ref={faceInputRef}
@@ -809,6 +903,7 @@ const AvatarEditDrawer = ({
                                         onAutoGenerate={handleGenerateAngle}
                                         isGenerating={isGeneratingAngle}
                                         canGenerate={!!localFaceRef}
+                                        busy={cleaningRefs.angle}
                                     />
                                     <input
                                         ref={angleInputRef}
@@ -886,7 +981,7 @@ const AvatarEditDrawer = ({
                             {/* Body Lab — genera el cuerpo desde los atributos de arriba */}
                             <Card className="p-3">
                                 <BodyLab
-                                    models={PERMISSIVE_BODY_MODELS.map((p) => ({
+                                    models={BODY_LAB_MODELS.map((p) => ({
                                         id: p.id,
                                         name: p.name,
                                         model: p.model,
@@ -911,8 +1006,8 @@ const AvatarEditDrawer = ({
                                     }}
                                     stale={bodyStale}
                                     disabledReason={
-                                        PERMISSIVE_BODY_MODELS.length === 0
-                                            ? 'No hay modelo permisivo (Seedream) disponible.'
+                                        BODY_LAB_MODELS.length === 0
+                                            ? 'No hay modelos KIE de imagen disponibles.'
                                             : undefined
                                     }
                                 />
@@ -960,10 +1055,17 @@ const AvatarEditDrawer = ({
                                                 loading={isSaving}
                                                 className="flex-1"
                                                 disabled={
-                                                    !saveAvatarName.trim()
+                                                    !saveAvatarName.trim() ||
+                                                    // No guardar la versión CON
+                                                    // marca mientras se limpia.
+                                                    cleaningRefs.face ||
+                                                    cleaningRefs.angle
                                                 }
                                             >
-                                                Save Avatar
+                                                {cleaningRefs.face ||
+                                                cleaningRefs.angle
+                                                    ? 'Limpiando marca…'
+                                                    : 'Save Avatar'}
                                             </Button>
                                             <Button
                                                 variant="plain"

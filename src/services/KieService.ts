@@ -410,6 +410,11 @@ export interface GenerateImageKieParams {
     // Negative prompt (lo que NO debe salir). Hoy lo usa el body sheet vía la
     // ruta qwen; otras rutas lo ignoran hasta que se cablee en cada una.
     negativePrompt?: string
+    // SAFE MODE (cimiento age-gate / entitlement NSFW): prende el filtro de
+    // KIE en las rutas y fuerza la sanitización también en permisivos. Nadie
+    // lo pasa aún — se derivará del perfil del usuario EN EL SERVIDOR (un flag
+    // de cliente se falsifica).
+    safeMode?: boolean
 }
 
 /**
@@ -499,6 +504,7 @@ export async function generateImageKie(
             curveBoost,
             cloneWeight,
             negativePrompt,
+            safeMode: params.safeMode,
             uploadRef: uploadReferenceToSupabase,
             cropToAspect: cropBase64ToAspect,
         })
@@ -628,13 +634,17 @@ export async function generateImageKie(
     // ("mini bikini" → "mini swim set" made Seedream render a MINI SKIRT and
     // drop the bikini bottom, verified in prod). They get the RAW prompt;
     // sanitization stays as the on-block fallback only.
+    // safeMode (age-gate/entitlement) apaga el TRATO permisivo: el prompt se
+    // sanitiza como en los modelos filtrados y las rutas ya prenden el
+    // nsfw_checker de KIE (ctx.safeMode).
     const isPermissiveModel =
-        model.startsWith('seedream/') ||
-        model.startsWith('flux-2/') ||
-        model.startsWith('qwen') ||
-        model === 'z-image' ||
-        model === 'wan/2-7-image' ||
-        model.startsWith('grok-imagine/')
+        (model.startsWith('seedream/') ||
+            model.startsWith('flux-2/') ||
+            model.startsWith('qwen') ||
+            model === 'z-image' ||
+            model === 'wan/2-7-image' ||
+            model.startsWith('grok-imagine/')) &&
+        !params.safeMode
 
     // Submit-only mode: ONE submit, no sanitization ladder (permissive models
     // rarely block with nsfw off — same single-submit behavior as the other

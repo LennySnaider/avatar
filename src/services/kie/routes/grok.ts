@@ -37,7 +37,7 @@ async function build(ctx: ImageRouteContext): Promise<KieImageRequest> {
     const capped = capAtWordBoundary(promptText, 1800, ctx.model)
     const input: Record<string, unknown> = {
         prompt: capped,
-        nsfw_checker: false,
+        nsfw_checker: !!ctx.safeMode,
     }
 
     // i2i: 1 sola imagen (la cara), recortada al AR pedido.

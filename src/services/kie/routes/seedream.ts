@@ -17,6 +17,7 @@ import {
     stripIdentityRedundancy,
     relocatePoseTag,
     capAtWordBoundary,
+    INTACT_BODY_CLAUSE,
     hairClause as buildHairClause,
     eyeClause as buildEyeClause,
     faceFidelityClause as buildFaceFidelityClause,
@@ -56,7 +57,7 @@ async function build(ctx: ImageRouteContext): Promise<KieImageRequest> {
         // textura y proporción percibida en i2i (diagnóstico medido en BD:
         // scripts/_diag patrón; reporte del usuario con evidencia visual).
         // NO volver a jpeg aquí sin A/B de cara.
-        nsfw_checker: false,
+        nsfw_checker: !!ctx.safeMode,
     }
 
     if (ctx.referenceImage) {
@@ -97,10 +98,24 @@ async function build(ctx: ImageRouteContext): Promise<KieImageRequest> {
                 ? ''
                 : hasBody
                   ? `The SECOND attached image shows her real BODY (a turnaround sheet: the SAME one woman from several angles) — replicate its exact body shape, proportions, curves and build; do NOT take the body from the first image, which looks slimmer than she really is.${
+                        // ORDEN = prioridad de supervivencia al cap: el guard
+                        // IGNORE-clothing va ANTES del spec/curveBoost — si el
+                        // presupuesto recorta, muere el refuerzo, NUNCA el
+                        // guard (sin él Seedream copia la ropa interior/pose
+                        // del sheet — a0c2a56).
+                        ''
+                    } IGNORE the second image's clothing, pose, scene, lighting and background — her outfit, pose and the scene come ONLY from ${hasClone ? 'the CLONE image and the text description' : 'the text description'}.${
                         ctx.bodyEmphasis
                             ? ` Her exact body spec: ${ctx.bodyEmphasis} — render THAT body, matching the second image.`
                             : ''
-                    } IGNORE the second image's clothing, pose, scene, lighting and background — her outfit, pose and the scene come ONLY from ${hasClone ? 'the CLONE image and the text description' : 'the text description'}.`
+                    }${
+                        // curveBoost (refuerzo por RATIO, d4ca3f4) también con
+                        // body ref: MiaUltra (hips 119/waist 45, ratio 2.64)
+                        // salía flaca AUN con el sheet + spec — Seedream
+                        // necesita la orden dramática explícita (reporte
+                        // 2026-07-22, 2ª recurrencia).
+                        ctx.curveBoost ? ` ${ctx.curveBoost}` : ''
+                    }`
                   : `Use the reference image ONLY for the face and identity: do NOT copy the body, build, weight or proportions from it — the person in the photo may look slimmer than she really is.${
                         ctx.curveBoost ? ` ${ctx.curveBoost}` : ''
                     }${
@@ -139,10 +154,19 @@ async function build(ctx: ImageRouteContext): Promise<KieImageRequest> {
             // "as they turn… then… concluding with…") que se cuelan al campo de
             // imagen hacían que Seedream renderizara al sujeto en varias poses =
             // 2 personas. Se fuerza UN solo sujeto en UNA pose.
-            const anchorTail = `${hairClause}${eyeClause}${extraClauses} Render EXACTLY ONE person — a single subject in ONE pose; do NOT duplicate the figure, show multiple poses side by side, or add any extra people. Follow the SCENE, POSE and ACTION described below EXACTLY.`
+            const anchorTail = `${hairClause}${eyeClause}${extraClauses} Render EXACTLY ONE person — a single subject in ONE pose; do NOT duplicate the figure, show multiple poses side by side, or add any extra people.${INTACT_BODY_CLAUSE} Follow the SCENE, POSE and ACTION described below EXACTLY.`
+            // RESERVA DINÁMICA (2026-07-22): el piso fijo reservaba 1300 chars
+            // aunque la escena midiera 160 — y ese espacio VACÍO decapitaba el
+            // bodyClause (MiaUltra: curveBoost cortado a media frase y guard
+            // IGNORE perdido, medido con el harness). Se reserva lo que la
+            // escena REALMENTE ocupa (con margen), capado al piso de Fase 6.
+            const sceneReserve = Math.min(
+                SCENE_FLOOR,
+                String(input.prompt).length + 50,
+            )
             const bodyClauseMax =
                 SEEDREAM_BUDGET -
-                SCENE_FLOOR -
+                sceneReserve -
                 anchorHead.length -
                 anchorTail.length
             const fitBodyClause =

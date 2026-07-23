@@ -14,6 +14,7 @@ import {
     relocatePoseTag,
     capAtWordBoundary,
     flattenJsonPromptToProse,
+    INTACT_BODY_CLAUSE,
     hairClause as buildHairClause,
     eyeClause as buildEyeClause,
     faceFidelityClause as buildFaceFidelityClause,
@@ -42,7 +43,7 @@ async function build(ctx: ImageRouteContext): Promise<KieImageRequest> {
         aspect_ratio: ctx.aspectRatio,
         resolution: '2K',
         n: 1,
-        nsfw_checker: false,
+        nsfw_checker: !!ctx.safeMode,
     }
 
     if (ctx.referenceImage) {
@@ -154,7 +155,7 @@ async function build(ctx: ImageRouteContext): Promise<KieImageRequest> {
                     })
                     .filter(Boolean)
                     .join(' ')
-                wanAnchor = `${cloneCanvasClause}${faceIdentityClause}${hairClause}${eyeClause}${bodyTextClause}${otherClauses ? ' ' + otherClauses : ''} Render EXACTLY ONE person in ONE natural pose. Follow the SCENE, POSE and ACTION described below EXACTLY.`
+                wanAnchor = `${cloneCanvasClause}${faceIdentityClause}${hairClause}${eyeClause}${bodyTextClause}${otherClauses ? ' ' + otherClauses : ''} Render EXACTLY ONE person in ONE natural pose.${INTACT_BODY_CLAUSE} Follow the SCENE, POSE and ACTION described below EXACTLY.`
                 logRoles = `clone(img1), face(img2)${otherExtras.length > 0 ? ', ' + otherExtras.map((r) => r.role).join(', ') : ''}`
             } else {
                 // ── Sin clone (o deepfake): cara = imagen 1 (byte-idéntico a antes) ──
@@ -170,11 +171,19 @@ async function build(ctx: ImageRouteContext): Promise<KieImageRequest> {
                 const wanBodyClause = ctx.deepfakeMode
                     ? ''
                     : wanHasBody
-                      ? ` The SECOND attached image shows her real BODY — replicate its exact body shape, proportions, curves and build; do NOT take the body from the first image. IGNORE the second image's clothing, pose, scene, lighting and background — her outfit, pose and the scene come ONLY from ${wanHasClone ? 'the CLONE image and the text description' : 'the text description'}.`
+                      ? ` The SECOND attached image shows her real BODY (a turnaround sheet: the SAME one woman from several angles) — replicate its exact body shape, proportions, curves and build; do NOT take the body from the first image. IGNORE the second image's clothing, pose, scene, lighting and background — her outfit, pose and the scene come ONLY from ${wanHasClone ? 'the CLONE image and the text description' : 'the text description'}.${
+                            // Spec en TEXTO también con body ref (mismo hueco
+                            // que seedream, 2026-07-22) — con la calibración
+                            // DIRECCIONAL de Wan (6c97342): caderas/glúteos/
+                            // muslos llenos, busto fiel sin inflar.
+                            ctx.bodyEmphasis
+                                ? ` Her exact body spec: ${ctx.bodyEmphasis} — render THAT body matching the second image: hips, glutes and thighs visibly FULL and WIDE as specified; keep the bust true to the spec, do NOT inflate the chest.`
+                                : ''
+                        }`
                       : ctx.bodyEmphasis
                         ? ` Use the reference image ONLY for the face and identity — do NOT copy the body proportions from it: the person in the photo looks SLIMMER than the character really is. Her real body is: ${ctx.bodyEmphasis}. Her hips, glutes and thighs must be visibly FULLER and WIDER than in the reference photo — the narrow waist makes the hip curve obvious. Keep the bust true to the spec: do NOT inflate the chest or add overall body mass beyond it.`
                         : ''
-                wanAnchor = `The person in the FIRST attached reference image is the subject — keep her EXACT face, facial features and likeness from that image.${faceFidelityClause}${wanBodyClause}${hairClause}${eyeClause}${wanExtraClauses} Follow the SCENE, POSE and ACTION described below EXACTLY.`
+                wanAnchor = `The person in the FIRST attached reference image is the subject — keep her EXACT face, facial features and likeness from that image.${faceFidelityClause}${wanBodyClause}${hairClause}${eyeClause}${wanExtraClauses}${INTACT_BODY_CLAUSE} Follow the SCENE, POSE and ACTION described below EXACTLY.`
                 logRoles = `face${wanExtras.length > 0 ? ', ' + wanExtras.map((r) => r.role).join(', ') : ''}`
             }
             input.input_urls = wanUrls

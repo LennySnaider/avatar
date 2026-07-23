@@ -16,7 +16,7 @@ async function build(ctx: ImageRouteContext): Promise<KieImageRequest> {
     const input: Record<string, unknown> = {
         prompt: capped,
         aspect_ratio: ctx.aspectRatio,
-        nsfw_checker: false,
+        nsfw_checker: !!ctx.safeMode,
     }
     return { model: ctx.model, input, fullApiPrompt: promptText }
 }

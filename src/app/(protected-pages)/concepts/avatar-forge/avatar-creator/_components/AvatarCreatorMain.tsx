@@ -19,6 +19,7 @@ import {
 } from '@/services/AvatarForgeService'
 import { analyzeFaceFromImages, generateAvatar } from '@/services/GeminiService'
 import { resizeBase64Image } from '@/utils/imageOptimization'
+import { cleanRefWatermarkInBackground } from '@/utils/refWatermarkClean'
 import PhysicalAttributesEditor from '@/components/shared/PhysicalAttributesEditor'
 import {
     HiOutlineUpload,
@@ -45,6 +46,11 @@ const AvatarCreatorMain = ({
     const fileInputRef = useRef<HTMLInputElement>(null)
     const faceInputRef = useRef<HTMLInputElement>(null)
     const angleInputRef = useRef<HTMLInputElement>(null)
+    // Foto FUENTE (cualquier ángulo) → frontal canónica generada. La fuente se
+    // DESCARTA tras generar (decisión del usuario); el sheet se genera después
+    // con el Auto-Generate existente, una vez APROBADA la frontal.
+    const sourcePhotoInputRef = useRef<HTMLInputElement>(null)
+    const [isGeneratingFrontal, setIsGeneratingFrontal] = useState(false)
     const [isGeneratingAngle, setIsGeneratingAngle] = useState(false)
     const [previewImage, setPreviewImage] = useState<ReferenceImage | null>(
         null,
@@ -134,6 +140,12 @@ const AvatarCreatorMain = ({
         }
     }, [existingAvatar, loadAvatar, reset])
 
+    // Limpieza de marca de agua en curso por slot (overlay + Save bloqueado).
+    const [cleaningRefs, setCleaningRefs] = useState<{
+        face?: boolean
+        angle?: boolean
+    }>({})
+
     const processFile = useCallback(
         (
             file: File,
@@ -178,6 +190,37 @@ const AvatarCreatorMain = ({
                         case 'angle':
                             setAngleRef(newImage)
                             break
+                    }
+
+                    // Marca de agua (cara/angles): limpieza en 2º plano; swap
+                    // con guard leyendo el store (setters no-funcionales) —
+                    // si re-subió otra imagen, el swap viejo no la pisa.
+                    if (type === 'face' || type === 'angle') {
+                        setCleaningRefs((p) => ({ ...p, [type]: true }))
+                        void cleanRefWatermarkInBackground({
+                            base64: matches[2],
+                            mimeType: matches[1],
+                            label:
+                                type === 'face'
+                                    ? 'cara frontal'
+                                    : 'hoja de ángulos',
+                            onCleaned: (img) => {
+                                const s = useAvatarCreatorStore.getState()
+                                const current =
+                                    type === 'face' ? s.faceRef : s.angleRef
+                                if (current?.id !== newImage.id) return
+                                const cleanedRef: ReferenceImage = {
+                                    ...newImage,
+                                    url: img.url,
+                                    mimeType: img.mimeType,
+                                    base64: img.base64,
+                                }
+                                if (type === 'face') setFaceRef(cleanedRef)
+                                else setAngleRef(cleanedRef)
+                            },
+                        }).finally(() =>
+                            setCleaningRefs((p) => ({ ...p, [type]: false })),
+                        )
                     }
                 }
             }
@@ -261,6 +304,98 @@ const AvatarCreatorMain = ({
     }
 
     // Generate angle reference from face
+    /**
+     * Foto arbitraria del rostro → FRONTAL canónica en alta (mismo motor que
+     * el angle sheet: generateAvatar/Gemini, identityWeight 100). PARA aquí a
+     * propósito: el usuario APRUEBA la frontal y recién entonces dispara el
+     * sheet con Auto-Generate — si la frontal derivó identidad, el sheet no
+     * hereda el error. Bonus: el re-render elimina cualquier marca de agua de
+     * la fuente, así que este path NO corre la limpieza de watermark.
+     */
+    const handleGenerateFrontalFromPhoto = async (file: File) => {
+        if (!['image/jpeg', 'image/png', 'image/webp', 'image/heic'].includes(file.type)) {
+            toast.push(
+                <Notification type="warning" title="Invalid File">
+                    Please upload JPG, PNG, or WebP images
+                </Notification>,
+            )
+            return
+        }
+        const dataUrl: string = await new Promise((resolve, reject) => {
+            const reader = new FileReader()
+            reader.onload = () => resolve(reader.result as string)
+            reader.onerror = () => reject(reader.error)
+            reader.readAsDataURL(file)
+        })
+        const src = dataUrl.match(/^data:(.+);base64,(.+)$/)
+        if (!src) return
+        setIsGeneratingFrontal(true)
+        try {
+            const result = await generateAvatar({
+                prompt: 'Ultra-detailed frontal FACE CLOSE-UP portrait of the SAME person shown in the reference photo: looking straight at the camera, neutral relaxed expression, head and shoulders framing, soft even studio lighting, plain neutral light-gray background, photorealistic, ultra high quality, sharp focus, natural skin texture with pores and fine detail preserved, no beautify or retouching. Keep her EXACT face, facial features, freckles/moles, eye color and hair from the photo. Remove any watermark or text overlay.',
+                avatarReferences: [],
+                assetReferences: [],
+                sceneReference: null,
+                faceRefImage: { base64: src[2], mimeType: src[1] },
+                bodyRefImage: null,
+                angleRefImage: null,
+                poseRefImage: null,
+                aspectRatio: '1:1',
+                identityWeight: 100,
+                measurements,
+                faceDescription,
+            })
+            if (!result.success) throw new Error(result.error)
+            const out = result.url.match(/^data:(.+);base64,(.+)$/)
+            if (!out) throw new Error('Invalid image data returned')
+            const frontalId = crypto.randomUUID()
+            setFaceRef({
+                id: frontalId,
+                url: result.url,
+                mimeType: out[1],
+                base64: out[2],
+                type: 'face',
+            })
+            toast.push(
+                <Notification type="success" title="Frontal generada">
+                    Revísala — si te convence, usa Auto-Generate en Angle Sheet
+                    para completar las referencias.
+                </Notification>,
+            )
+            // Gemini REPRODUCE/estampa la ✦ de la foto fuente en la salida →
+            // parcheo por color (sin re-render). Overlay + swap por id.
+            setCleaningRefs((p) => ({ ...p, face: true }))
+            void cleanRefWatermarkInBackground({
+                base64: out[2],
+                mimeType: out[1],
+                label: 'cara frontal',
+                onCleaned: (img) => {
+                    if (useAvatarCreatorStore.getState().faceRef?.id !== frontalId)
+                        return
+                    setFaceRef({
+                        id: frontalId,
+                        url: img.url,
+                        mimeType: img.mimeType,
+                        base64: img.base64,
+                        type: 'face',
+                    })
+                },
+            }).finally(() =>
+                setCleaningRefs((p) => ({ ...p, face: false })),
+            )
+        } catch (error) {
+            toast.push(
+                <Notification type="danger" title="Frontal">
+                    {error instanceof Error
+                        ? error.message
+                        : 'No se pudo generar la frontal'}
+                </Notification>,
+            )
+        } finally {
+            setIsGeneratingFrontal(false)
+        }
+    }
+
     const handleGenerateAngle = async () => {
         if (!faceRef) return
 
@@ -297,8 +432,9 @@ const AvatarCreatorMain = ({
             const matches = dataUrl.match(/^data:(.+);base64,(.+)$/)
             if (!matches) throw new Error('Invalid image data returned')
 
+            const angleId = crypto.randomUUID()
             const newAngleImage: ReferenceImage = {
-                id: crypto.randomUUID(),
+                id: angleId,
                 url: dataUrl,
                 mimeType: matches[1],
                 base64: matches[2],
@@ -310,6 +446,29 @@ const AvatarCreatorMain = ({
                 <Notification type="success" title="Angle Generated">
                     Angle reference created from face image
                 </Notification>,
+            )
+            // El sheet sale con la ✦ de Gemini → parche por color (sin
+            // re-render que arriesgue las 9 caras). Overlay + swap por id.
+            setCleaningRefs((p) => ({ ...p, angle: true }))
+            void cleanRefWatermarkInBackground({
+                base64: matches[2],
+                mimeType: matches[1],
+                label: 'hoja de ángulos',
+                onCleaned: (img) => {
+                    if (
+                        useAvatarCreatorStore.getState().angleRef?.id !== angleId
+                    )
+                        return
+                    setAngleRef({
+                        id: angleId,
+                        url: img.url,
+                        mimeType: img.mimeType,
+                        base64: img.base64,
+                        type: 'angle',
+                    })
+                },
+            }).finally(() =>
+                setCleaningRefs((p) => ({ ...p, angle: false })),
             )
         } catch (error) {
             console.error('Error generating angle:', error)
@@ -455,6 +614,9 @@ const AvatarCreatorMain = ({
         onAutoGenerate,
         isGenerating,
         canGenerate,
+        busy,
+        autoGenerateLabel = 'Auto-Generate',
+        autoGenerateTooltip = 'Auto-generate from Face',
     }: {
         title: string
         subtitle: string
@@ -465,6 +627,10 @@ const AvatarCreatorMain = ({
         onAutoGenerate?: () => void
         isGenerating?: boolean
         canGenerate?: boolean
+        /** Limpieza de marca de agua en curso: overlay + slot bloqueado. */
+        busy?: boolean
+        autoGenerateLabel?: string
+        autoGenerateTooltip?: string
     }) => (
         <div className="space-y-2">
             <div className="flex items-center justify-between">
@@ -479,17 +645,29 @@ const AvatarCreatorMain = ({
                         src={image.url || image.storagePath}
                         alt={title}
                         className="w-full h-32 object-cover rounded-lg cursor-pointer hover:ring-2 hover:ring-primary transition-all"
-                        onClick={() => setPreviewImage(image)}
-                    />
-                    <button
-                        onClick={(e) => {
-                            e.stopPropagation()
-                            onRemove()
+                        onClick={() => {
+                            if (!busy) setPreviewImage(image)
                         }}
-                        className="absolute top-1 right-1 p-1 bg-red-500 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
-                    >
-                        <HiOutlineX className="w-3 h-3" />
-                    </button>
+                    />
+                    {busy && (
+                        <div className="absolute inset-0 rounded-lg bg-black/60 flex flex-col items-center justify-center gap-1 cursor-wait">
+                            <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                            <span className="text-[10px] text-white">
+                                Limpiando marca…
+                            </span>
+                        </div>
+                    )}
+                    {!busy && (
+                        <button
+                            onClick={(e) => {
+                                e.stopPropagation()
+                                onRemove()
+                            }}
+                            className="absolute top-1 right-1 p-1 bg-red-500 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
+                        >
+                            <HiOutlineX className="w-3 h-3" />
+                        </button>
+                    )}
                 </div>
             ) : isGenerating ? (
                 <div className="w-full h-32 border-2 border-primary border-dashed rounded-lg flex flex-col items-center justify-center">
@@ -510,13 +688,13 @@ const AvatarCreatorMain = ({
                         <span className="text-sm">Upload</span>
                     </div>
                     {onAutoGenerate && canGenerate && (
-                        <Tooltip title="Auto-generate from Face">
+                        <Tooltip title={autoGenerateTooltip}>
                             <button
                                 onClick={onAutoGenerate}
                                 className="w-full px-2 py-1.5 bg-primary text-white text-xs rounded-lg shadow hover:bg-primary-dark transition-colors flex items-center justify-center gap-1"
                             >
                                 <HiOutlineSparkles className="w-3 h-3" />
-                                Auto-Generate
+                                {autoGenerateLabel}
                             </button>
                         </Tooltip>
                     )}
@@ -559,9 +737,19 @@ const AvatarCreatorMain = ({
                             icon={<HiOutlineSave />}
                             onClick={handleSave}
                             loading={isSaving}
-                            disabled={!hasReferences() || !avatarName.trim()}
+                            disabled={
+                                !hasReferences() ||
+                                !avatarName.trim() ||
+                                // No guardar la versión CON marca mientras se limpia.
+                                cleaningRefs.face ||
+                                cleaningRefs.angle
+                            }
                         >
-                            {avatarId ? 'Update' : 'Save Avatar'}
+                            {cleaningRefs.face || cleaningRefs.angle
+                                ? 'Limpiando marca…'
+                                : avatarId
+                                  ? 'Update'
+                                  : 'Save Avatar'}
                         </Button>
                     </div>
                 </div>
@@ -672,6 +860,14 @@ const AvatarCreatorMain = ({
                                     }
                                     onRemove={() => setFaceRef(null)}
                                     dropType="face"
+                                    busy={cleaningRefs.face}
+                                    onAutoGenerate={() =>
+                                        sourcePhotoInputRef.current?.click()
+                                    }
+                                    isGenerating={isGeneratingFrontal}
+                                    canGenerate
+                                    autoGenerateLabel="Generar desde foto"
+                                    autoGenerateTooltip="Sube CUALQUIER foto del rostro (cualquier ángulo) y se genera la frontal canónica en alta — la foto fuente se descarta. Después usa Auto-Generate en Angle Sheet."
                                 />
                                 <input
                                     ref={faceInputRef}
@@ -681,6 +877,21 @@ const AvatarCreatorMain = ({
                                     onChange={(e) =>
                                         handleFileChange(e, 'face')
                                     }
+                                />
+                                <input
+                                    ref={sourcePhotoInputRef}
+                                    type="file"
+                                    accept="image/*"
+                                    className="hidden"
+                                    onChange={(e) => {
+                                        const f = e.target.files?.[0]
+                                        if (f) {
+                                            void handleGenerateFrontalFromPhoto(
+                                                f,
+                                            )
+                                        }
+                                        e.target.value = ''
+                                    }}
                                 />
 
                                 <ReferenceSlot
@@ -695,6 +906,7 @@ const AvatarCreatorMain = ({
                                     onAutoGenerate={handleGenerateAngle}
                                     isGenerating={isGeneratingAngle}
                                     canGenerate={!!faceRef}
+                                    busy={cleaningRefs.angle}
                                 />
                                 <input
                                     ref={angleInputRef}

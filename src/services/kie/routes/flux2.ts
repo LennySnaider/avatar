@@ -11,6 +11,7 @@ import {
     planExtraRefs,
     relocatePoseTag,
     capAtWordBoundary,
+    INTACT_BODY_CLAUSE,
     hairClause as buildHairClause,
     eyeClause as buildEyeClause,
     faceFidelityClause as buildFaceFidelityClause,
@@ -30,7 +31,7 @@ async function build(ctx: ImageRouteContext): Promise<KieImageRequest> {
         prompt: capped,
         aspect_ratio: ctx.aspectRatio,
         resolution: '2K',
-        nsfw_checker: false,
+        nsfw_checker: !!ctx.safeMode,
     }
 
     if (ctx.referenceImage) {
@@ -68,7 +69,7 @@ async function build(ctx: ImageRouteContext): Promise<KieImageRequest> {
                     .replace(/\s{2,}/g, ' ')
                     .trim()
             }
-            input.prompt = `The person in the FIRST attached image is the subject — keep her EXACT face, facial features and likeness from that image.${faceFidelityClause}${fluxBodyClause}${hairClause}${eyeClause}${fluxClauses} Follow the SCENE, POSE and ACTION described below EXACTLY. ${input.prompt}`
+            input.prompt = `The person in the FIRST attached image is the subject — keep her EXACT face, facial features and likeness from that image.${faceFidelityClause}${fluxBodyClause}${hairClause}${eyeClause}${fluxClauses}${INTACT_BODY_CLAUSE} Follow the SCENE, POSE and ACTION described below EXACTLY. ${input.prompt}`
             console.log(
                 `[KIE] FLUX.2 i2i with ${urls.length} ref(s) (roles: face${fluxExtras.length > 0 ? ', ' + fluxExtras.map((r) => r.role).join(', ') : ''})`,
             )

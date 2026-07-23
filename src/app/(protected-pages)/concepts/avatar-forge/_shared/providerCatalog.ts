@@ -524,27 +524,37 @@ export const getProviderDescription = (provider: AIProvider): string => {
  * también sirven y —a diferencia de Seedream— hacen t2i puro, así que son el
  * fallback cuando NO hay plantilla (Seedream i2i-only daría 500 sin imagen).
  */
-export const BODY_SHEET_T2I_MODELS = [
-    // SOLO Seedream 5 Pro (i2i) en el selector del Body Lab — el rey de las
-    // curvas. Requiere imagen → usa la plantilla fija de turnaround. (Wan/Qwen
-    // se quitaron del selector por decisión del usuario; si faltara la plantilla
-    // el drawer cae internamente a Wan t2i, sin exponerlo en el selector.)
+// ORDEN PREFERIDO del selector del Body Lab (2026-07-23): ya NO es un allowlist
+// que filtra — es solo la prioridad de aparición. Seedream 5 Pro primero
+// (default, el rey de las curvas); el resto de KIE-imagen aparece después. El
+// usuario pidió TODOS los modelos (permisivos Y no permisivos) para probar,
+// porque el body sheet solo pide un mini-bikini (SFW → hasta los filtrados lo
+// generan). Pendiente futuro: si queda un solo modelo, ocultar el selector.
+export const BODY_SHEET_MODEL_ORDER = [
     'seedream/5-pro-image-to-image',
+    'seedream/5-lite-text-to-image',
+    'seedream/4.5-text-to-image',
+    'wan/2-7-image',
+    'qwen2/text-to-image',
+    'flux-2/pro-text-to-image',
 ]
 
-export function getPermissiveBodyModels(providers: AIProvider[]): AIProvider[] {
+/**
+ * Modelos del selector del Body Lab = TODOS los proveedores KIE de imagen
+ * (permisivos y no permisivos). El Body Lab genera vía `generateImageKie`, así
+ * que solo entran modelos KIE; Gemini/Kling/MiniMax NO pasan por ese path.
+ * Orden: los de BODY_SHEET_MODEL_ORDER primero (Seedream 5 Pro = default),
+ * luego el resto en su orden de catálogo.
+ */
+export function getBodyLabModels(providers: AIProvider[]): AIProvider[] {
     const usable = providers.filter(
-        (p) =>
-            PROVIDER_TRAITS[p.id]?.permissive === true &&
-            p.type === 'KIE' &&
-            p.supports_image === true &&
-            !!p.model &&
-            BODY_SHEET_T2I_MODELS.includes(p.model),
+        (p) => p.type === 'KIE' && p.supports_image === true && !!p.model,
     )
-    // Orden = el del allowlist (Qwen primero como default t2i confiable).
+    const rank = (m: string) => {
+        const i = BODY_SHEET_MODEL_ORDER.indexOf(m)
+        return i === -1 ? BODY_SHEET_MODEL_ORDER.length : i
+    }
     return usable.sort(
-        (a, b) =>
-            BODY_SHEET_T2I_MODELS.indexOf(a.model as string) -
-            BODY_SHEET_T2I_MODELS.indexOf(b.model as string),
+        (a, b) => rank(a.model as string) - rank(b.model as string),
     )
 }

@@ -440,6 +440,8 @@ const BottomControlBar = ({
         clearDetectedTerms,
         getActiveProvider,
         batchProviderIds,
+        nsfwMode,
+        setNsfwMode,
     } = useAvatarStudioStore()
 
     // Get avatar thumbnail
@@ -1779,24 +1781,46 @@ const BottomControlBar = ({
                         (() => {
                             const n = batchProviderIds.length
                             return (
-                                <button
-                                    type="button"
-                                    onClick={onOpenBatch}
-                                    disabled={!canGenerate()}
-                                    className={`flex h-7 items-center justify-center gap-1 rounded-lg border text-xs font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${
-                                        n > 0
-                                            ? 'border-solid border-blue-400 text-blue-500 dark:border-blue-500'
-                                            : 'border-dashed border-gray-300 text-gray-500 hover:border-blue-400 hover:text-blue-500 dark:border-gray-600 dark:text-gray-400'
-                                    }`}
-                                    title={
-                                        n > 0
-                                            ? `Batch directo en ${n} modelo${n === 1 ? '' : 's'} marcado${n === 1 ? '' : 's'} (☑ en el selector para cambiarlos)`
-                                            : 'Marca modelos con ☑ en el selector, o elige aquí — mismo prompt a varios a la vez'
-                                    }
-                                >
-                                    <TbStack2 className="text-sm" />
-                                    {n > 0 ? `Batch · ${n}` : 'Batch'}
-                                </button>
+                                <div className="flex gap-1">
+                                    <button
+                                        type="button"
+                                        onClick={onOpenBatch}
+                                        disabled={!canGenerate()}
+                                        className={`flex h-7 flex-1 items-center justify-center gap-1 rounded-lg border text-xs font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${
+                                            n > 0
+                                                ? 'border-solid border-blue-400 text-blue-500 dark:border-blue-500'
+                                                : 'border-dashed border-gray-300 text-gray-500 hover:border-blue-400 hover:text-blue-500 dark:border-gray-600 dark:text-gray-400'
+                                        }`}
+                                        title={
+                                            n > 0
+                                                ? nsfwMode
+                                                    ? `Batch NSFW: la versión explícita SOLO a los marcados que la rinden (Seedream/Wan/Qwen). Apaga 🌶️ para el batch SFW.`
+                                                    : `Batch directo en ${n} modelo${n === 1 ? '' : 's'} marcado${n === 1 ? '' : 's'} (☑ en el selector para cambiarlos)`
+                                                : 'Marca modelos con ☑ en el selector, o elige aquí — mismo prompt a varios a la vez'
+                                        }
+                                    >
+                                        <TbStack2 className="text-sm" />
+                                        {n > 0
+                                            ? `Batch${nsfwMode ? ' 🌶️' : ''} · ${n}`
+                                            : 'Batch'}
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => setNsfwMode(!nsfwMode)}
+                                        title={
+                                            nsfwMode
+                                                ? 'NSFW ON: Generate y Batch crean la versión explícita (escena spicificada) solo en Seedream/Wan/Qwen. Click para apagar.'
+                                                : 'Genera la versión NSFW explícita de la escena (misma locación/pose, sin ropa). Solo Seedream/Wan/Qwen la rinden. Para ambas versiones: un batch con 🌶️ OFF y otro con ON.'
+                                        }
+                                        className={`flex h-7 shrink-0 items-center justify-center rounded-lg border px-2 text-xs font-medium transition-colors ${
+                                            nsfwMode
+                                                ? 'border-solid border-red-500 bg-red-500/10 text-red-500'
+                                                : 'border-dashed border-gray-300 text-gray-500 hover:border-red-400 hover:text-red-500 dark:border-gray-600 dark:text-gray-400'
+                                        }`}
+                                    >
+                                        🌶️
+                                    </button>
+                                </div>
                             )
                         })()}
                 </div>

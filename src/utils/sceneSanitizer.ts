@@ -266,7 +266,10 @@ export const ANTI_WATERMARK_CLAUSE =
     'Do NOT add any watermark, logo, brand name, readable text, caption or signature anywhere in the image.'
 
 const FIXED_NEGATIVE =
-    'watermark, logo, brand text, readable text, signature, caption, extra fingers, deformed hands'
+    // Anti-mutilación añadido 2026-07-23 (cuerpos XXL empujan al modelo a
+    // "resolver" recortando extremidades). Solo Qwen lo consume nativo; los
+    // demás llevan la cláusula positiva INTACT_BODY_CLAUSE en el ancla.
+    'watermark, logo, brand text, readable text, signature, caption, extra fingers, deformed hands, missing limbs, missing arms, missing legs, missing hands, missing feet, amputated limbs, severed limbs, truncated legs, incomplete body'
 
 // El avatar es curvy si busto/caderas o el nivel `build` están sobre el promedio.
 // Umbrales alineados con los presets: bust≥95cm / hips≥100cm / build≥4.

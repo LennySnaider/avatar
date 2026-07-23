@@ -172,7 +172,9 @@ async function main() {
     // Modelos con FIX INTENCIONAL de Fase 6: divergen de legacy a propósito.
     // Para ellos solo exigimos que su build() corra sin crash (no deepEqual).
     // El resto queda CONGELADO: deepEqual == legacy es obligatorio.
-    const DIVERGED = ['grok-imagine', 'qwen', 'seedream', 'wan']
+    // flux-2 divergió el 2026-07-23: INTACT_BODY_CLAUSE (anti-mutilación) en
+    // su ancla i2i + safeMode en nsfw_checker.
+    const DIVERGED = ['grok-imagine', 'qwen', 'seedream', 'wan', 'flux-2']
     const isDiverged = (m: string) => DIVERGED.some((d) => m.startsWith(d))
     let fail = 0
     let checked = 0

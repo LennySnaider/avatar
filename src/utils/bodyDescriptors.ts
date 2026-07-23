@@ -40,7 +40,13 @@ export function describeShapeAndBuild(m: PhysicalMeasurements): string {
     // Comparativa de intensidad de cintura (refuerza la forma con el ratio real).
     if (m.waist && m.hips) {
         const whr = m.waist / m.hips
-        if (whr <= 0.68)
+        if (whr <= 1 / 2.2)
+            // XXL (ratio cadera/cintura >= 2.2): más allá de lo natural —
+            // MISMO borde que isExaggeratedBody (un solo acantilado, alineado).
+            parts.push(
+                'EXTREME exaggerated wasp waist — dramatically, unnaturally cinched, far smaller than her hips (a deliberate exaggerated-hourglass look)',
+            )
+        else if (whr <= 0.68)
             parts.push('extremely small, dramatically cinched waist')
         else if (whr <= 0.78) parts.push('clearly defined narrow waist')
     }
@@ -81,7 +87,13 @@ export function getBodyDescriptors(m: PhysicalMeasurements): string {
     }
 
     // Midsection definition
-    if (m.waist <= 60) {
+    if (m.waist <= 50) {
+        descriptors.push(
+            'extreme wasp waist',
+            'dramatically cinched tiny midsection',
+            'waist far narrower than natural proportions',
+        )
+    } else if (m.waist <= 60) {
         descriptors.push(
             'very defined waistline',
             'narrow midsection',
@@ -93,8 +105,15 @@ export function getBodyDescriptors(m: PhysicalMeasurements): string {
         descriptors.push('straight waistline', 'less defined midsection')
     }
 
-    // Lower body proportions
-    if (m.hips >= 100) {
+    // Lower body proportions (umbral dramático = 130, el XXL de las tablas
+    // de tallas reales; 100-129 = wide natural, sin salto).
+    if (m.hips >= 130) {
+        descriptors.push(
+            'dramatically wide exaggerated hips far beyond natural proportions',
+            'hips clearly wider than her shoulders',
+            'massive lower silhouette',
+        )
+    } else if (m.hips >= 100) {
         descriptors.push(
             'wide lower frame',
             'generous hip width',
@@ -183,6 +202,8 @@ export const BUST_LEVEL_PHRASE: Record<number, string> = {
     3: 'full rounded bust',
     4: 'large heavy full bust, deep cleavage',
     5: 'very large voluptuous heavy bust, dramatic deep cleavage',
+    // 6 = XXL (más allá de lo natural — pedido multitenant 2026-07-23).
+    6: 'ENORMOUS exaggerated surgically-enhanced bust, dramatically oversized beyond natural proportions, extreme deep cleavage',
 }
 
 export const GLUTES_LEVEL_PHRASE: Record<number, string> = {
@@ -191,6 +212,7 @@ export const GLUTES_LEVEL_PHRASE: Record<number, string> = {
     3: 'full round lifted glutes',
     4: 'large prominent round glutes, deep hip curve',
     5: 'very large prominent bubble butt, dramatic glute projection',
+    6: 'MASSIVE exaggerated BBL-style glutes and hips, dramatically oversized beyond natural anatomy — hips far wider than her shoulders, extreme shelf-like glute projection',
 }
 
 export const THIGHS_LEVEL_PHRASE: Record<number, string> = {
@@ -199,6 +221,7 @@ export const THIGHS_LEVEL_PHRASE: Record<number, string> = {
     3: 'sculpted toned thighs, visible but soft muscle tone, athletic yet feminine',
     4: 'full thick strong thighs, soft natural definition, thighs almost touching',
     5: 'very thick heavy thighs with substantial volume, thighs touching (no thigh gap)',
+    6: 'MASSIVE exaggerated thighs, each thigh nearly as wide as her waist, pressed firmly together with dramatic outer-thigh curve',
 }
 
 // FORMA (ortogonal al tamaño). Glúteos: taxonomía por silueta del usuario;
@@ -260,7 +283,32 @@ export function effectiveThighsLevel(
 }
 
 /**
- * Frase combinada de los sliders de curvas (1-5). Vacía si todo está en Auto.
+ * ¿Cuerpo DELIBERADAMENTE exagerado (más allá de anatomía natural)? Dispara
+ * por nivel 6 en cualquier zona O por medidas extremas (ratio cadera/cintura
+ * >= 2.0, o cadera >= 118cm) — el usuario puede llegar al XXL solo con los
+ * sliders de cm (reporte 2026-07-23: waist 45 / hips 120 sin niveles → las
+ * capas XXL no disparaban y el sheet salía natural).
+ */
+export function isExaggeratedBody(m: PhysicalMeasurements): boolean {
+    const ratio = m.waist && m.hips ? m.hips / m.waist : 0
+    // Umbrales RECALIBRADOS a tablas de tallas reales (2026-07-23, aportadas
+    // por el usuario): cadera 100-104 = talla M (natural), el XXL real empieza
+    // ~130 (talla 52/XXL). El gate viejo (ratio 2.0 / hips 118) creaba un
+    // ACANTILADO: con cintura 50, pasar cadera de 100→101 cruzaba 2.0 y caían
+    // de golpe XXL+anti-normalize+RESHAPE (reporte: "el salto no corresponde
+    // con la realidad"). ratio 2.2 == whr 0.4545 (alineado con la frase wasp
+    // extrema de describeBody — un solo borde, no dos).
+    return (
+        (m.bustLevel ?? 0) >= 6 ||
+        (m.glutesLevel ?? 0) >= 6 ||
+        (effectiveThighsLevel(m) ?? 0) >= 6 ||
+        ratio >= 2.2 ||
+        (m.hips ?? 0) >= 130
+    )
+}
+
+/**
+ * Frase combinada de los sliders de curvas (1-6). Vacía si todo está en Auto.
  * El caller decide si el provider la merece (trait permissive).
  */
 export function buildCurvesEmphasis(m: PhysicalMeasurements): string {
@@ -289,6 +337,18 @@ export function buildCurvesEmphasis(m: PhysicalMeasurements): string {
             'her full glutes flow into proportionally full thighs in one continuous natural curve — never slim or skinny legs under full glutes',
         )
     }
+    // XXL (nivel 6 O medidas extremas) → candado anti-normalización: sin esta
+    // orden los difusores regresan a proporciones naturales.
+    if (isExaggeratedBody(m)) {
+        if (m.waist && m.hips && m.hips / m.waist >= 2.2) {
+            parts.push(
+                `her hips (${m.hips}cm) are MORE THAN TWICE as wide as her wasp waist (${m.waist}cm) — an extreme exaggerated hourglass with massive hips, oversized glutes and heavy thighs`,
+            )
+        }
+        parts.push(
+            'these proportions are DELIBERATELY EXAGGERATED beyond natural anatomy — render them at FULL intensity exactly as described; do NOT tone them down or normalize toward average realistic proportions',
+        )
+    }
     return parts.join(', ')
 }
 
@@ -302,6 +362,7 @@ export const BUST_LEVEL_TO_CM: Record<number, number> = {
     3: 90,
     4: 100,
     5: 110,
+    6: 122,
 }
 
 export const GLUTES_LEVEL_TO_CM: Record<number, number> = {
@@ -310,6 +371,7 @@ export const GLUTES_LEVEL_TO_CM: Record<number, number> = {
     3: 97,
     4: 106,
     5: 116,
+    6: 132,
 }
 
 const nearestLevel = (map: Record<number, number>, cm: number): CurveLevel => {

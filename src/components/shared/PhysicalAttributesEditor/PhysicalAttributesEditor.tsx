@@ -18,8 +18,11 @@
 
 import { useState } from 'react'
 import Slider from '@/components/ui/Slider'
+import Button from '@/components/ui/Button'
 import ConfirmDialog from '@/components/shared/ConfirmDialog'
 import Input from '@/components/ui/Input'
+import Notification from '@/components/ui/Notification'
+import toast from '@/components/ui/toast'
 import Tooltip from '@/components/ui/Tooltip'
 import MeasurementSlider from '@/app/(protected-pages)/concepts/avatar-forge/_shared/MeasurementSlider'
 import {
@@ -36,6 +39,8 @@ import {
     cmToBustLevel,
     cmToGlutesLevel,
     effectiveThighsLevel,
+    describeBody,
+    buildCurvesEmphasis,
 } from '@/utils/bodyDescriptors'
 import { BODY_SHAPES, SHAPE_LABEL, SHAPE_PRESETS } from '@/utils/bodyShapes'
 import type {
@@ -71,6 +76,27 @@ const PhysicalAttributesEditor = ({
     // Forma → preset. Si ya hay una forma establecida, confirmar antes de
     // sobreescribir (con el ConfirmDialog de ECME — NUNCA window.confirm).
     const [pendingShape, setPendingShape] = useState<BodyShape | null>(null)
+
+    // Prompt del físico (inspección/calibración): el MISMO material que viaja
+    // al modelo — silueta por ratio + frases de curvas (incl. candado XXL) +
+    // cm exactos. Editable para retocar y copiar.
+    const [physiquePrompt, setPhysiquePrompt] = useState('')
+    const buildPhysiquePrompt = () => {
+        const m = measurements
+        const cm =
+            m.bust && m.waist && m.hips
+                ? `bust ${m.bust}cm, waist ${m.waist}cm, hips ${m.hips}cm${
+                      m.shoulders ? `, shoulders ${m.shoulders}cm` : ''
+                  }${
+                      m.waist && m.hips
+                          ? ` — hip-to-waist ratio ${(m.hips / m.waist).toFixed(2)}`
+                          : ''
+                  }`
+                : ''
+        return [describeBody(m), buildCurvesEmphasis(m), cm]
+            .filter(Boolean)
+            .join('. ')
+    }
     const applyShape = (shape: BodyShape) =>
         onChange({ ...measurements, ...SHAPE_PRESETS[shape], shape })
 
@@ -246,7 +272,7 @@ const PhysicalAttributesEditor = ({
                         </span>
                         <span className="text-xs font-mono text-primary">
                             {measurements.thighsLevel
-                                ? `${measurements.thighsLevel}/5`
+                                ? `${measurements.thighsLevel}/6`
                                 : 'Auto'}
                         </span>
                     </div>
@@ -261,7 +287,7 @@ const PhysicalAttributesEditor = ({
                             })
                         }
                         min={0}
-                        max={5}
+                        max={6}
                     />
                     {measurements.thighsLevel ? (
                         <p className="text-[10px] text-gray-400 mt-0.5">
@@ -271,8 +297,8 @@ const PhysicalAttributesEditor = ({
                     {(effectiveThighsLevel(measurements) ?? 0) >
                     (measurements.thighsLevel ?? 0) ? (
                         <p className="text-[10px] text-amber-500 mt-0.5">
-                            auto ≥{effectiveThighsLevel(measurements)}/5 para
-                            hacer match con Glutes {measurements.glutesLevel}/5
+                            auto ≥{effectiveThighsLevel(measurements)}/6 para
+                            hacer match con Glutes {measurements.glutesLevel}/6
                             (coherencia anatómica)
                         </p>
                     ) : null}
@@ -319,7 +345,7 @@ const PhysicalAttributesEditor = ({
                                         </span>
                                         <span className="text-xs font-mono text-primary">
                                             {measurements[key]
-                                                ? `${measurements[key]}/5`
+                                                ? `${measurements[key]}/6`
                                                 : 'Auto'}
                                         </span>
                                     </div>
@@ -350,7 +376,7 @@ const PhysicalAttributesEditor = ({
                                                     })
                                                 }}
                                                 min={0}
-                                                max={5}
+                                                max={6}
                                             />
                                         </div>
                                         {/* Solo Bust muestra cm (m.bust). Glúteos
@@ -452,6 +478,92 @@ const PhysicalAttributesEditor = ({
 
             {/* Skin Tone / Hair / Eye se movieron a <AppearanceEditor> (se
                 renderiza junto a las referencias de cara en el drawer). */}
+
+            {/* Prompt del físico — inspección/edición del texto que estos
+                sliders producen (describeBody + curvas + cm), con copy/paste.
+                Herramienta de calibración pedida por el usuario (2026-07-23). */}
+            <div className="space-y-1.5">
+                <div className="flex items-center justify-between">
+                    <label className="text-xs text-gray-500">
+                        Prompt del físico
+                    </label>
+                    <div className="flex items-center gap-1">
+                        <Button
+                            size="xs"
+                            variant="plain"
+                            onClick={() =>
+                                setPhysiquePrompt(buildPhysiquePrompt())
+                            }
+                        >
+                            Generar prompt
+                        </Button>
+                        <Button
+                            size="xs"
+                            variant="plain"
+                            disabled={!physiquePrompt.trim()}
+                            onClick={async () => {
+                                try {
+                                    await navigator.clipboard.writeText(
+                                        physiquePrompt,
+                                    )
+                                    toast.push(
+                                        <Notification
+                                            type="success"
+                                            title="Copiado"
+                                            duration={2000}
+                                        >
+                                            Prompt del físico en el
+                                            portapapeles.
+                                        </Notification>,
+                                    )
+                                } catch {
+                                    toast.push(
+                                        <Notification
+                                            type="warning"
+                                            title="Copiar"
+                                        >
+                                            No se pudo acceder al portapapeles.
+                                        </Notification>,
+                                    )
+                                }
+                            }}
+                        >
+                            Copy
+                        </Button>
+                        <Button
+                            size="xs"
+                            variant="plain"
+                            onClick={async () => {
+                                try {
+                                    const text =
+                                        await navigator.clipboard.readText()
+                                    if (text.trim()) setPhysiquePrompt(text)
+                                } catch {
+                                    toast.push(
+                                        <Notification
+                                            type="warning"
+                                            title="Pegar"
+                                        >
+                                            No se pudo leer el portapapeles —
+                                            pega manualmente (⌘V) en el campo.
+                                        </Notification>,
+                                    )
+                                }
+                            }}
+                        >
+                            Paste
+                        </Button>
+                    </div>
+                </div>
+                <Input
+                    textArea
+                    rows={5}
+                    placeholder="Pulsa «Generar prompt» para ver el texto físico que producen estos sliders…"
+                    value={physiquePrompt}
+                    onChange={(e) => setPhysiquePrompt(e.target.value)}
+                    className="text-xs font-mono"
+                />
+            </div>
 
             {/* Confirmación al sobreescribir medidas con un preset de forma (ECME) */}
             <ConfirmDialog

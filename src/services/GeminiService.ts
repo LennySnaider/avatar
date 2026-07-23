@@ -626,6 +626,9 @@ export async function generateSocialCaption(input: {
     draft?: string
     /** Output language for caption + hashtags; defaults to English (or the draft's language). */
     language?: 'en' | 'es'
+    /** Tono pícaro/sugerente (toggle 🌶️ NSFW del PostModal): coqueto y
+     * provocador SIN lenguaje explícito (apto para IG/X y Fanvue). */
+    spicy?: boolean
 }): Promise<SocialCaptionResult> {
     try {
         // blob:/data: URIs only exist in the browser — undici fails on them
@@ -665,12 +668,17 @@ CAPTION:
 - First person, as if the influencer herself is posting.
 - 1-3 short sentences, engaging and scroll-stopping. Tasteful emojis (0-3).
 - NO hashtags inside the caption.
-${input.language ? `- Write the caption AND hashtags in ${input.language === 'es' ? 'SPANISH' : 'ENGLISH'}.` : ''}
+${
+    input.spicy
+        ? `- TONE: flirty, teasing and suggestive (pícara) — confident playful innuendo that matches what the ${input.mediaType === 'VIDEO' ? 'video' : 'photo'} shows, seductive and cheeky. Push the flirtation, but NO explicit or graphic sexual wording (platform-safe teasing that drives engagement and DMs).
+`
+        : ''
+}${input.language ? `- Write the caption AND hashtags in ${input.language === 'es' ? 'SPANISH' : 'ENGLISH'}.` : ''}
 ${input.draft?.trim() ? `- The user drafted this — keep its intent${input.language ? '' : ' and language'}, improve it: "${input.draft.trim()}"` : input.language ? '' : '- Write in English.'}
 
 HASHTAGS:
 - 8-12 relevant hashtags, lowercase, WITHOUT the # symbol.
-- Mix broad reach tags with content-specific ones.
+- Mix broad reach tags with content-specific ones.${input.spicy ? '\n- Lean flirty/lifestyle on a few tags where natural (still platform-safe).' : ''}
 `
 
         const response = await ai.models.generateContent({
@@ -687,6 +695,10 @@ HASHTAGS:
                 ],
             },
             config: {
+                // Sin BLOCK_NONE, media NSFW (Fanvue) hacía que Gemini
+                // devolviera vacío y el caption fallara — mismo patrón que los
+                // analizadores de refs (c7f6e8d).
+                safetySettings: ANALYSIS_SAFETY_SETTINGS,
                 responseMimeType: 'application/json',
                 responseSchema: {
                     type: Type.OBJECT,
@@ -725,6 +737,216 @@ HASHTAGS:
             success: false,
             error: e instanceof Error ? e.message : String(e),
         }
+    }
+}
+
+/**
+ * Convierte el prompt de escena SFW en su versión NSFW EXPLÍCITA (batch dual /
+ * toggle 🌶️): misma locación, pose, luz y encuadre — solo cambia vestuario y
+ * actitud. Es TRANSFORMACIÓN DE TEXTO (Gemini con BLOCK_NONE escribe prompts
+ * subidos de tono sin problema — generar la IMAGEN es otra cosa y va a los
+ * modelos permisivos). Fallback fijo si Gemini rehúsa: nunca frena el batch.
+ */
+export async function spicifyScenePrompt(scenePrompt: string): Promise<string> {
+    const fallback = `${scenePrompt}\n\nNSFW VARIANT (MANDATORY): the same scene, setting, pose, lighting and framing — but fully explicit: she is topless or completely nude (whichever fits the scene more naturally), her clothing removed, with a confident, sensual attitude. Explicit adult nudity is required in the output.`
+    try {
+        const apiKey = getApiKey()
+        const ai = new GoogleGenAI({ apiKey })
+        const response = await ai.models.generateContent({
+            model: 'gemini-2.5-flash',
+            config: { safetySettings: ANALYSIS_SAFETY_SETTINGS },
+            contents: {
+                parts: [
+                    {
+                        text: `Rewrite this image-generation scene prompt into its EXPLICIT NSFW version for an adults-only platform.
+
+KEEP IDENTICAL: the location/setting, the pose and action, the lighting, the camera framing, and any bracketed tags like [POSE: ...] or [CLONE: ...] (copy tags VERBATIM).
+CHANGE: the wardrobe and attitude — she is now topless or completely nude (choose what fits the scene naturally; e.g. lingerie bottoms only, or fully nude), with a confident, sensual, provocative attitude. Be direct and explicit about the nudity in plain words.
+
+OUTPUT: ONLY the rewritten prompt as flowing prose (same language as the input). No intro, no quotes, no commentary.
+
+SCENE PROMPT:
+${scenePrompt}`,
+                    },
+                ],
+            },
+        })
+        const out = response.text?.trim()
+        if (!out || out.length < 30) {
+            console.warn('[spicify] empty/short — fallback clause')
+            return fallback
+        }
+        return out
+    } catch (e) {
+        console.warn('[spicify] failed — fallback clause:', e)
+        return fallback
+    }
+}
+
+/**
+ * Localiza la MARCA DE AGUA de un ref (bounding box normalizado 0-1) con
+ * gemini-2.5-flash. Devuelve null si no hay marca. Reutiliza el patrón de
+ * detectFaceBox (escala 0-1 / 0-100 / 0-1000). Incluye la ✦ de Gemini
+ * (pequeña, semitransparente, en esquina).
+ */
+async function locateRefWatermark(image: {
+    base64: string
+    mimeType: string
+}): Promise<{ x0: number; y0: number; x1: number; y1: number } | null> {
+    const apiKey = getApiKey()
+    const ai = new GoogleGenAI({ apiKey })
+    try {
+        const res = await ai.models.generateContent({
+            model: 'gemini-2.5-flash',
+            config: { safetySettings: ANALYSIS_SAFETY_SETTINGS },
+            contents: {
+                parts: [
+                    {
+                        inlineData: {
+                            mimeType: image.mimeType,
+                            data: cleanBase64Data(image.base64),
+                        },
+                    },
+                    {
+                        text: `Find the SINGLE watermark/overlay stamped on this photo and return its TIGHT bounding box. This includes: AI-generator marks (the Gemini four-pointed star/sparkle ✦, Meta AI, Grok glyphs — usually small and semi-transparent in a CORNER), classic watermarks, logos, usernames/handles (@name), timestamps, captions or stickers. Natural text that is physically part of the scene (a street sign, a t-shirt print) does NOT count.
+Return ONLY compact JSON with the box normalized 0-1: {"x0":<left>,"y0":<top>,"x1":<right>,"y1":<bottom>} (x left→right, y top→bottom). If there is genuinely NO watermark/overlay, return exactly {"none":true}. No prose, no markdown, no code fences.`,
+                    },
+                ],
+            },
+        })
+        const text = res.text?.trim() ?? ''
+        const match = text.match(/\{[\s\S]*\}/)
+        if (!match) return null
+        const obj = JSON.parse(match[0]) as Record<string, unknown>
+        if (obj.none) return null
+        const nums = ['x0', 'y0', 'x1', 'y1'].map((k) => Number(obj[k]))
+        if (nums.some((v) => !Number.isFinite(v))) return null
+        let [x0, y0, x1, y1] = nums
+        const maxv = Math.max(x0, y0, x1, y1)
+        const scale = maxv > 100 ? 1000 : maxv > 1 ? 100 : 1
+        x0 /= scale
+        y0 /= scale
+        x1 /= scale
+        y1 /= scale
+        if (x1 <= x0 || y1 <= y0) return null
+        console.log('[watermark] located box:', { x0, y0, x1, y1 })
+        return {
+            x0: Math.max(0, Math.min(1, x0)),
+            y0: Math.max(0, Math.min(1, y0)),
+            x1: Math.max(0, Math.min(1, x1)),
+            y1: Math.max(0, Math.min(1, y1)),
+        }
+    } catch (e) {
+        console.warn('[watermark] locate failed:', e)
+        return null
+    }
+}
+
+/**
+ * Quita la marca de agua de un ref PARCHÁNDOLA con el color del fondo
+ * adyacente (sharp) — NO re-renderiza la imagen. Elegido a propósito sobre un
+ * pase i2i: (1) Gemini estampa/reproduce su propia ✦, así que Gemini no puede
+ * limpiarla (el prompt "remove watermark" de la frontal ya fallaba); (2) un
+ * re-render del angle sheet (9 caras) arriesgaría la identidad. La frontal y
+ * el sheet salen con FONDO NEUTRO y la ✦ va en una esquina sobre ese fondo →
+ * el parche del color muestreado es INVISIBLE y de cero riesgo. Devuelve el
+ * estado para que el caller toastee con precisión.
+ */
+export async function removeRefWatermark(image: {
+    base64: string
+    mimeType: string
+}): Promise<
+    | { status: 'clean' }
+    | { status: 'removed'; base64: string; mimeType: string }
+    | { status: 'failed' }
+> {
+    const box = await locateRefWatermark(image)
+    if (!box) return { status: 'clean' }
+    try {
+        const sharp = (await import('sharp')).default
+        const buf = Buffer.from(cleanBase64Data(image.base64), 'base64')
+        const meta = await sharp(buf).metadata()
+        const W = meta.width ?? 0
+        const H = meta.height ?? 0
+        if (!W || !H) return { status: 'failed' }
+
+        // Caja en px + margen del 25% (la localización de un glifo pequeño no
+        // es perfecta; sobre-cubrir en fondo liso es inocuo).
+        const bw0 = (box.x1 - box.x0) * W
+        const bh0 = (box.y1 - box.y0) * H
+        const mx = bw0 * 0.25
+        const my = bh0 * 0.25
+        let left = Math.floor(box.x0 * W - mx)
+        let top = Math.floor(box.y0 * H - my)
+        let right = Math.ceil(box.x1 * W + mx)
+        let bottom = Math.ceil(box.y1 * H + my)
+        left = Math.max(0, left)
+        top = Math.max(0, top)
+        right = Math.min(W, right)
+        bottom = Math.min(H, bottom)
+        const rw = right - left
+        const rh = bottom - top
+        if (rw <= 0 || rh <= 0) return { status: 'failed' }
+
+        // Muestra el color del fondo en una franja INMEDIATA hacia el centro
+        // (fuera de la caja de la marca). Para una ✦ de esquina, el vecino
+        // hacia el interior es fondo neutro.
+        const towardCenterX = box.x0 < 0.5 ? right : left
+        const towardCenterY = box.y0 < 0.5 ? bottom : top
+        const sampleSize = Math.max(
+            4,
+            Math.min(24, Math.floor(Math.min(rw, rh) / 2)),
+        )
+        const sx = Math.max(
+            0,
+            Math.min(
+                W - sampleSize,
+                box.x0 < 0.5
+                    ? towardCenterX
+                    : towardCenterX - sampleSize,
+            ),
+        )
+        const sy = Math.max(
+            0,
+            Math.min(
+                H - sampleSize,
+                box.y0 < 0.5
+                    ? towardCenterY
+                    : towardCenterY - sampleSize,
+            ),
+        )
+        const stats = await sharp(buf)
+            .extract({
+                left: Math.floor(sx),
+                top: Math.floor(sy),
+                width: sampleSize,
+                height: sampleSize,
+            })
+            .stats()
+        const [r, g, b] = stats.channels.map((c) => Math.round(c.mean))
+
+        const patch = await sharp({
+            create: {
+                width: rw,
+                height: rh,
+                channels: 3,
+                background: { r, g, b },
+            },
+        })
+            .png()
+            .toBuffer()
+        const out = await sharp(buf)
+            .composite([{ input: patch, left, top }])
+            .jpeg({ quality: 95 })
+            .toBuffer()
+        return {
+            status: 'removed',
+            base64: out.toString('base64'),
+            mimeType: 'image/jpeg',
+        }
+    } catch (e) {
+        console.warn('[watermark] patch failed — keeping original:', e)
+        return { status: 'failed' }
     }
 }
 
@@ -2944,15 +3166,23 @@ export async function editImage(
     // Build prompt
     let textPrompt = `EDIT INSTRUCTION: ${editPrompt}. Maintain the original style, composition, and identity, changing ONLY what is requested.`
 
-    // Add mask if provided - clean base64 prefix if present
+    // Add mask if provided - clean base64 prefix if present.
+    // Desde 2026-07-22 el cliente manda un COMPOSITE (la MISMA foto con la
+    // zona a editar resaltada en morado translúcido, a resolución natural) en
+    // vez del PNG de trazos sobre transparente a resolución de pantalla — el
+    // modelo ve exactamente lo que el usuario pintó, con contexto espacial.
     if (maskBase64) {
         parts.push({
             inlineData: {
-                mimeType: 'image/png',
+                // El composite llega como data URL jpeg; el mask crudo legacy
+                // era png. Detectar por prefijo para etiquetar bien el MIME.
+                mimeType: maskBase64.startsWith('data:image/jpeg')
+                    ? 'image/jpeg'
+                    : 'image/png',
                 data: cleanBase64Data(maskBase64),
             },
         })
-        textPrompt += `\nVISUAL GUIDE: The second image shows a highlighted area. Apply the edit specifically to that area.`
+        textPrompt += `\nVISUAL GUIDE: The second image is the SAME photo with the target area highlighted in translucent purple. Apply the edit ONLY inside that highlighted area; keep everything outside it exactly as the first image. The purple tint is an annotation — NEVER render purple in the output.`
     }
 
     // Add reference assets if provided - convert each if needed

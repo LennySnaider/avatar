@@ -34,7 +34,8 @@ import {
     apiGetAvatarReferences,
     getSignedUrl,
 } from '@/services/AvatarForgeService'
-import { getPermissiveBodyModels } from '../../_shared/providerCatalog'
+import { getBodyLabModels } from '../../_shared/providerCatalog'
+import { cleanRefWatermarkInBackground } from '@/utils/refWatermarkClean'
 import type { ReferenceImage } from '../types'
 import type { PhysicalMeasurements } from '@/@types/supabase'
 import { createThumbnail } from '@/utils/imageOptimization'
@@ -80,6 +81,13 @@ const AvatarEditDrawer = ({
     const [localGeneralRefs, setLocalGeneralRefs] = useState<ReferenceImage[]>(
         [],
     )
+    // Limpieza de marca de agua en curso por slot (face/angle): overlay en el
+    // thumbnail + Save bloqueado (evita guardar la versión CON marca antes del
+    // swap — la limpieza tarda ~15s).
+    const [cleaningRefs, setCleaningRefs] = useState<{
+        face?: boolean
+        angle?: boolean
+    }>({})
     const [localFaceRef, setLocalFaceRef] = useState<ReferenceImage | null>(
         null,
     )
@@ -255,6 +263,48 @@ const AvatarEditDrawer = ({
                             break
                         // Note: 'body' type is now handled as a session tool in BottomControlBar
                     }
+
+                    // Marca de agua (cara/angles): overlays/logos meten ruido
+                    // en varios modelos i2i. Limpieza en 2º plano — el slot se
+                    // swapea al terminar, con guard por id (si re-subió otra
+                    // imagen, el swap viejo no la pisa).
+                    if (type === 'face' || type === 'angle') {
+                        setCleaningRefs((p) => ({ ...p, [type]: true }))
+                        void cleanRefWatermarkInBackground({
+                            base64: matches[2],
+                            mimeType: matches[1],
+                            label:
+                                type === 'face'
+                                    ? 'cara frontal'
+                                    : 'hoja de ángulos',
+                            onCleaned: async (img) => {
+                                let thumb = img.url
+                                try {
+                                    thumb = await createThumbnail(
+                                        img.base64,
+                                        'THUMBNAIL',
+                                    )
+                                } catch {
+                                    /* thumbnail fallback: full image */
+                                }
+                                const cleanedRef: ReferenceImage = {
+                                    ...newImage,
+                                    url: img.url,
+                                    mimeType: img.mimeType,
+                                    base64: img.base64,
+                                    thumbnailUrl: thumb,
+                                }
+                                const swap = (prev: ReferenceImage | null) =>
+                                    prev?.id === newImage.id
+                                        ? cleanedRef
+                                        : prev
+                                if (type === 'face') setLocalFaceRef(swap)
+                                else setLocalAngleRef(swap)
+                            },
+                        }).finally(() =>
+                            setCleaningRefs((p) => ({ ...p, [type]: false })),
+                        )
+                    }
                 }
             }
             reader.readAsDataURL(file)
@@ -411,8 +461,9 @@ const AvatarEditDrawer = ({
 
             const thumbnailUrl = await createThumbnail(matches[2], 'THUMBNAIL')
 
+            const angleId = crypto.randomUUID()
             const newAngleImage: ReferenceImage = {
-                id: crypto.randomUUID(),
+                id: angleId,
                 url: dataUrl,
                 mimeType: matches[1],
                 base64: matches[2],
@@ -425,6 +476,35 @@ const AvatarEditDrawer = ({
                 <Notification type="success" title="Angle Generated">
                     Angle reference sheet created
                 </Notification>,
+            )
+            // El sheet sale con la ✦ de Gemini → parche por color (sin
+            // re-render que arriesgue las 9 caras). Overlay + swap por id.
+            setCleaningRefs((p) => ({ ...p, angle: true }))
+            void cleanRefWatermarkInBackground({
+                base64: matches[2],
+                mimeType: matches[1],
+                label: 'hoja de ángulos',
+                onCleaned: async (img) => {
+                    let thumb = img.url
+                    try {
+                        thumb = await createThumbnail(img.base64, 'THUMBNAIL')
+                    } catch {
+                        /* thumbnail fallback: full image */
+                    }
+                    setLocalAngleRef((prev) =>
+                        prev?.id === angleId
+                            ? {
+                                  ...newAngleImage,
+                                  url: img.url,
+                                  mimeType: img.mimeType,
+                                  base64: img.base64,
+                                  thumbnailUrl: thumb,
+                              }
+                            : prev,
+                    )
+                },
+            }).finally(() =>
+                setCleaningRefs((p) => ({ ...p, angle: false })),
             )
         } catch (error) {
             console.error('Error generating angle:', error)
@@ -516,7 +596,7 @@ const AvatarEditDrawer = ({
             setBodySheet(sheet)
             setSheetMeasurements(localMeasurements) // sheet ↔ medidas actuales
             const selName =
-                permissiveBodyModels.find((p) => p.model === selectedBodyModel)
+                bodyLabModels.find((p) => p.model === selectedBodyModel)
                     ?.name || selectedBodyModel
             setBodySheetModel(tmpl ? `${selName} · plantilla` : selName)
             toast.push(
@@ -551,7 +631,7 @@ const AvatarEditDrawer = ({
     const hasLocalRefs =
         localGeneralRefs.length > 0 || localFaceRef || localAngleRef
 
-    const permissiveBodyModels = getPermissiveBodyModels(providers)
+    const bodyLabModels = getBodyLabModels(providers)
 
     // ¿El sheet mostrado quedó desactualizado vs los atributos actuales?
     const shownBody = bodySheet || bodyRef
@@ -562,10 +642,10 @@ const AvatarEditDrawer = ({
 
     // Default: primer modelo permisivo (los face:true ya vienen primero).
     useEffect(() => {
-        if (!selectedBodyModel && permissiveBodyModels.length > 0) {
-            setSelectedBodyModel(permissiveBodyModels[0].model)
+        if (!selectedBodyModel && bodyLabModels.length > 0) {
+            setSelectedBodyModel(bodyLabModels[0].model)
         }
-    }, [permissiveBodyModels, selectedBodyModel])
+    }, [bodyLabModels, selectedBodyModel])
 
     // Reference Slot Component (same as AvatarCreatorMain)
     const ReferenceSlot = ({
@@ -578,6 +658,7 @@ const AvatarEditDrawer = ({
         onAutoGenerate,
         isGenerating,
         canGenerate,
+        busy,
     }: {
         title: string
         subtitle: string
@@ -588,6 +669,8 @@ const AvatarEditDrawer = ({
         onAutoGenerate?: () => void
         isGenerating?: boolean
         canGenerate?: boolean
+        /** Limpieza de marca de agua en curso: overlay + slot bloqueado. */
+        busy?: boolean
     }) => (
         <div className="space-y-2">
             <div className="flex items-center justify-between">
@@ -604,17 +687,29 @@ const AvatarEditDrawer = ({
                         }
                         alt={title}
                         className="w-full h-32 object-cover rounded-lg cursor-pointer hover:ring-2 hover:ring-primary transition-all"
-                        onClick={() => setPreviewImage(image)}
-                    />
-                    <button
-                        onClick={(e) => {
-                            e.stopPropagation()
-                            onRemove()
+                        onClick={() => {
+                            if (!busy) setPreviewImage(image)
                         }}
-                        className="absolute top-1 right-1 p-1 bg-red-500 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
-                    >
-                        <HiOutlineX className="w-3 h-3" />
-                    </button>
+                    />
+                    {busy && (
+                        <div className="absolute inset-0 rounded-lg bg-black/60 flex flex-col items-center justify-center gap-1 cursor-wait">
+                            <Spinner size={20} />
+                            <span className="text-[10px] text-white">
+                                Limpiando marca…
+                            </span>
+                        </div>
+                    )}
+                    {!busy && (
+                        <button
+                            onClick={(e) => {
+                                e.stopPropagation()
+                                onRemove()
+                            }}
+                            className="absolute top-1 right-1 p-1 bg-red-500 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
+                        >
+                            <HiOutlineX className="w-3 h-3" />
+                        </button>
+                    )}
                 </div>
             ) : isGenerating ? (
                 <div className="w-full h-32 border-2 border-primary border-dashed rounded-lg flex flex-col items-center justify-center">
@@ -806,6 +901,7 @@ const AvatarEditDrawer = ({
                                         }
                                         onRemove={() => setLocalFaceRef(null)}
                                         dropType="face"
+                                        busy={cleaningRefs.face}
                                     />
                                     <input
                                         ref={faceInputRef}
@@ -829,6 +925,7 @@ const AvatarEditDrawer = ({
                                         onAutoGenerate={handleGenerateAngle}
                                         isGenerating={isGeneratingAngle}
                                         canGenerate={!!localFaceRef}
+                                        busy={cleaningRefs.angle}
                                     />
                                     <input
                                         ref={angleInputRef}
@@ -906,7 +1003,7 @@ const AvatarEditDrawer = ({
                             {/* Body Lab — genera el cuerpo desde los atributos de arriba */}
                             <Card className="p-3">
                                 <BodyLab
-                                    models={permissiveBodyModels.map((p) => ({
+                                    models={bodyLabModels.map((p) => ({
                                         id: p.id,
                                         name: p.name,
                                         model: p.model,
@@ -931,8 +1028,8 @@ const AvatarEditDrawer = ({
                                     }}
                                     stale={bodyStale}
                                     disabledReason={
-                                        permissiveBodyModels.length === 0
-                                            ? 'No hay modelo permisivo (Seedream) disponible. Actívalo en AI Providers.'
+                                        bodyLabModels.length === 0
+                                            ? 'No hay modelos KIE de imagen disponibles. Actívalos en AI Providers.'
                                             : undefined
                                     }
                                 />
@@ -978,10 +1075,17 @@ const AvatarEditDrawer = ({
                                                 loading={isSavingAvatar}
                                                 className="flex-1"
                                                 disabled={
-                                                    !saveAvatarName.trim()
+                                                    !saveAvatarName.trim() ||
+                                                    // No guardar la versión CON
+                                                    // marca mientras se limpia.
+                                                    cleaningRefs.face ||
+                                                    cleaningRefs.angle
                                                 }
                                             >
-                                                Save Avatar
+                                                {cleaningRefs.face ||
+                                                cleaningRefs.angle
+                                                    ? 'Limpiando marca…'
+                                                    : 'Save Avatar'}
                                             </Button>
                                             <Button
                                                 variant="plain"

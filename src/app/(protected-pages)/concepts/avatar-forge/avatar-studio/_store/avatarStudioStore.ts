@@ -249,8 +249,14 @@ interface AvatarStudioState {
     setPromptAndAnalyze: (prompt: string) => void // Sets prompt and analyzes for contaminants
     removeDetectedTerm: (id: string) => void // Removes a detected term from prompt
     clearDetectedTerms: () => void // Clears all detected terms
-    getFullPrompt: () => string
+    // overrideScene: compone el prompt completo con OTRA escena (batch NSFW
+    // spicificado) sin tocar el prompt del store.
+    getFullPrompt: (overrideScene?: string) => string
     setGenerationMode: (mode: MediaType) => void
+    // Toggle 🌶️ NSFW (sesión): Generate spicifica la escena y exige modelo
+    // explícito-capaz; Batch pasa a modo DUAL (SFW + NSFW).
+    nsfwMode: boolean
+    setNsfwMode: (on: boolean) => void
     setVideoSubMode: (mode: VideoSubMode) => void
     setAvatarDefaultVoice: (voice: ClonedVoice | null) => void
     setSpeakModel: (model: SpeakModel) => void
@@ -412,6 +418,7 @@ const initialState = {
     prompt: '',
     detectedTerms: [] as DetectedTerm[],
     generationMode: 'IMAGE' as MediaType,
+    nsfwMode: false,
     videoSubMode: 'ANIMATE' as VideoSubMode,
     avatarDefaultVoice: null as ClonedVoice | null,
     speakModel: 'infinitalk' as SpeakModel,
@@ -621,13 +628,10 @@ export const useAvatarStudioStore = create<AvatarStudioState>()(
                     }
                 }),
             clearDetectedTerms: () => set({ detectedTerms: [] }),
-            getFullPrompt: () => {
+            getFullPrompt: (overrideScene?: string) => {
                 const state = get()
-                const {
-                    prompt: rawPrompt,
-                    measurements,
-                    faceDescription,
-                } = state
+                const { measurements, faceDescription } = state
+                const rawPrompt = overrideScene ?? state.prompt
 
                 // If there's no prompt, return empty
                 if (!rawPrompt.trim()) return ''
@@ -718,6 +722,7 @@ export const useAvatarStudioStore = create<AvatarStudioState>()(
                 // Anti-watermark universal (Seedream/Wan no tienen param negative).
                 return `${stripNegatedTattoos(assembled)} ${ANTI_WATERMARK_CLAUSE}`
             },
+            setNsfwMode: (on) => set({ nsfwMode: on }),
             setGenerationMode: (mode) =>
                 set((state) => ({
                     generationMode: mode,

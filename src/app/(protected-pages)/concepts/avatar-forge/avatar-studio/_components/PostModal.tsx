@@ -88,6 +88,10 @@ const PostModal = ({
     const [hashtagInput, setHashtagInput] = useState('')
     const [hashtags, setHashtags] = useState<{ tag: string; active: boolean }[]>([])
     const [captionLang, setCaptionLang] = useState<'en' | 'es'>('en')
+    // Caption pícaro (🌶️ NSFW): Generate with AI escribe en tono coqueto/
+    // sugerente (sin explícito). Default off y se resetea al abrir — que un
+    // post a IG no salga picante por accidente.
+    const [spicyCaption, setSpicyCaption] = useState(false)
     const [isTranslating, setIsTranslating] = useState(false)
     const [isGeneratingAi, setIsGeneratingAi] = useState(false)
 
@@ -137,6 +141,7 @@ const PostModal = ({
         setHashtagInput('')
         setHashtags([])
         setCaptionLang('en')
+        setSpicyCaption(false)
         setSelectedPlatforms([])
         setFanvueSelected(false)
         setFanvueCreatorUuid(null)
@@ -223,6 +228,7 @@ const PostModal = ({
                 mediaType,
                 draft: caption.trim() || undefined,
                 language: captionLang,
+                spicy: spicyCaption,
             })
             if (!result.success || !result.caption) {
                 setError(result.error ?? 'AI caption generation failed')
@@ -726,6 +732,18 @@ const PostModal = ({
                     <div className="flex items-center justify-between mb-2 flex-wrap gap-2">
                         <p className="text-sm font-semibold">Caption</p>
                         <div className="flex items-center gap-2">
+                            <button
+                                type="button"
+                                onClick={() => setSpicyCaption((v) => !v)}
+                                title="Caption pícaro/sugerente (Generate with AI escribe en tono coqueto)"
+                                className={`px-2 py-0.5 text-[10px] font-medium rounded transition-colors ${
+                                    spicyCaption
+                                        ? 'bg-red-500 text-white'
+                                        : 'bg-gray-100 dark:bg-gray-700 text-gray-500'
+                                }`}
+                            >
+                                🌶️ NSFW
+                            </button>
                             <div className="flex bg-gray-100 dark:bg-gray-700 rounded p-0.5">
                                 {(['en', 'es'] as const).map((lang) => (
                                     <button

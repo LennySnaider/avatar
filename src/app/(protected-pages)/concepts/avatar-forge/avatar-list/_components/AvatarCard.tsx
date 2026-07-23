@@ -59,10 +59,17 @@ const AvatarCard = ({ avatar }: AvatarCardProps) => {
 
     const isSelected = selectedAvatars.some((a) => a.id === avatar.id)
 
-    // Get first reference image for preview
-    const previewImage = avatar.avatar_references?.find(
-        (ref) => ref.type === 'face' || ref.type === 'general',
-    )
+    // Thumbnail por PRIORIDAD, no por orden en el array: la cara (face) es el
+    // retrato canónico y debe mandar. El bug: un `find(face || general)` tomaba
+    // la PRIMERA que matcheara, así que una General Identity Photo cargada antes
+    // que la cara se volvía la portada (reporte Evelyn: foto random de portada).
+    // Orden: face → angle → general → cualquier ref con imagen.
+    const refs = avatar.avatar_references ?? []
+    const previewImage =
+        refs.find((r) => r.type === 'face') ??
+        refs.find((r) => r.type === 'angle') ??
+        refs.find((r) => r.type === 'general') ??
+        refs.find((r) => r.storage_path)
 
     // Load thumbnail on mount
     useEffect(() => {

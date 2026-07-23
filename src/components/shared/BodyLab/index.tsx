@@ -65,7 +65,7 @@ const BodyLab = (props: BodyLabProps) => {
 
             <div className="space-y-1">
                 <label className="text-xs text-gray-500">
-                    Modelo de generación (permisivo)
+                    Modelo de generación
                 </label>
                 <select
                     className="w-full h-9 px-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-transparent text-sm"
@@ -75,7 +75,7 @@ const BodyLab = (props: BodyLabProps) => {
                 >
                     {props.models.length === 0 ? (
                         <option value="">
-                            Sin proveedor permisivo configurado
+                            Sin modelo KIE configurado
                         </option>
                     ) : (
                         props.models.map((m) => (

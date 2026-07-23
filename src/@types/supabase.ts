@@ -435,7 +435,10 @@ export type LegType =
 // Nivel 1-5 para los sliders de curvas (busto/glúteos/muslos). undefined =
 // Auto. SOLO se envían a providers con trait `permissive` (gating en el
 // caller) — nunca entran al [BODY:] genérico.
-export type CurveLevel = 1 | 2 | 3 | 4 | 5
+// 6 = XXL/Exagerado (2026-07-23): más allá de anatomía natural — BBL-style,
+// para tenants que piden cuerpos deliberadamente exagerados. Los niveles 1-5
+// NO se recalibraron (avatares existentes intactos).
+export type CurveLevel = 1 | 2 | 3 | 4 | 5 | 6
 
 // FORMA (ortogonal al tamaño): taxonomías del usuario — glúteos por
 // silueta (cuadrado/V/A-pera/redondo/corazón) y mama por criterio médico
@@ -559,6 +562,9 @@ export interface GenerationMetadata {
     // Ausente en generaciones previas al feature → el card no muestra chip.
     generation_type?: 'clone' | 'deepfake' | 'plain'
     clone_weight?: number
+    // Generación NSFW (toggle 🌶️ / batch dual): etiquetada al crear para que
+    // la galería sea filtrable por edad (safe mode) sin clasificar retroactivo.
+    nsfw?: boolean
     [key: string]: unknown
 }
 

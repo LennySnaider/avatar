@@ -63,8 +63,13 @@ import {
     describeImageForPrompt,
     analyzePromptSafety,
     detectFaceBox,
+    spicifyScenePrompt,
 } from '@/services/GeminiService'
 import { maskFaceInImage } from '@/utils/faceMask'
+import {
+    compositeMaskOverlay,
+    MASKED_EDIT_INSTRUCTION,
+} from '../_utils/maskOverlay'
 import {
     generateVideo as generateVideoKling,
     generateAvatarVideo as generateAvatarVideoKling,
@@ -229,6 +234,17 @@ const KIE_ASYNC_MODELS = ['nano-banana-pro', 'gpt-image-2-text-to-image']
 // poll held one request open 50–140s; when it outlived the serverless/HTTP
 // window the client saw a "failure" even though KIE had finished — losing the
 // result from the gallery and prompting a duplicate re-gen (double charge).
+/**
+ * Modelos que RINDEN desnudo explícito de verdad (batch/toggle 🌶️ NSFW):
+ * Wan 2.7 = el permisivo real; Seedream lo rinde con nsfw_checker off; Qwen
+ * (qwen2/*) también — el bloqueo documentado el 2026-07-16 era de los ids
+ * VIEJOS qwen/*, con qwen2/* el usuario reporta buenos resultados NSFW. El
+ * resto rebota upstream: FLUX.2 da 422 nsfw (BFL), Grok 431 (xAI),
+ * Gemini/Nano filtro Google.
+ */
+const isExplicitCapableModel = (m: string): boolean =>
+    m.startsWith('seedream/') || m === 'wan/2-7-image' || m.startsWith('qwen')
+
 const isKieAsyncImageModel = (m: string): boolean =>
     KIE_ASYNC_MODELS.includes(m) ||
     m.startsWith('seedream/') ||
@@ -464,6 +480,7 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
         faceDescription,
         prompt,
         generationMode,
+        nsfwMode,
         videoSubMode,
         avatarDefaultVoice,
         aspectRatio,
@@ -944,9 +961,23 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                 void persistGeneration(media)
                 return
             }
-            void stable.then((url) => {
-                if (url) updateGalleryItem(media.id, { url })
-                void persistGeneration(url ? { ...media, url } : media)
+            void stable.then(async (url) => {
+                let finalUrl = url
+                if (!finalUrl) {
+                    // La copia estable falló (transitorio de red/KIE) →
+                    // REINTENTO server-side antes de caer a persistGeneration
+                    // con la URL de KIE, cuyo fetch() del browser muere por
+                    // CORS ("Failed to fetch" reportado 2026-07-22) y deja el
+                    // card en saveState 'error'.
+                    const retry = await persistKieImageResult(media.url).catch(
+                        () => null,
+                    )
+                    if (retry?.success) finalUrl = retry.url
+                }
+                if (finalUrl) updateGalleryItem(media.id, { url: finalUrl })
+                void persistGeneration(
+                    finalUrl ? { ...media, url: finalUrl } : media,
+                )
             })
         },
         [persistGeneration, updateGalleryItem],
@@ -1041,6 +1072,10 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
             // "En espera") sin bloquear la UI ni pisar el estado foreground.
             providerOverride?: AIProvider | null
             background?: boolean
+            // 🌶️ Batch dual: escena YA spicificada (se spicifica UNA vez para
+            // toda la ola NSFW, no por modelo) + tagging metadata.nsfw.
+            scenePromptOverride?: string
+            nsfw?: boolean
         }) => {
             if (!opts?.background && isGenerating) return
             if (isLoadingReferences) {
@@ -1051,7 +1086,7 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                 )
                 return
             }
-            const fullPrompt = getFullPrompt()
+            let fullPrompt = getFullPrompt(opts?.scenePromptOverride)
             // Deepfake: la foto es la instrucción; el prompt de texto es opcional.
             const deepfakeWaiving =
                 generationMode === 'IMAGE' && Boolean(deepfakeImage?.base64)
@@ -1086,6 +1121,29 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                     )
                     return
                 }
+            }
+
+            // 🌶️ NSFW single-run: toggle ON (sin override ya spicificado del
+            // batch) → spicifica la escena y exige modelo explícito-capaz.
+            let nsfwRun = Boolean(opts?.nsfw)
+            if (
+                nsfwMode &&
+                !opts?.scenePromptOverride &&
+                generationMode === 'IMAGE' &&
+                fullPrompt.trim()
+            ) {
+                const m = activeProvider?.model || ''
+                if (!isExplicitCapableModel(m)) {
+                    toast.push(
+                        <Notification type="warning" title="🌶️ NSFW">
+                            {`${activeProvider?.name ?? 'Este modelo'} no rinde explícito (filtro upstream). Usa Seedream, Wan 2.7 o Qwen, o apaga el toggle 🌶️.`}
+                        </Notification>,
+                    )
+                    return
+                }
+                const spicy = await spicifyScenePrompt(prompt)
+                fullPrompt = getFullPrompt(spicy)
+                nsfwRun = true
             }
 
             // Identidad de ESTE run — si el usuario lo manda "a espera" (o es un
@@ -1777,10 +1835,17 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                             measurements?.waist && measurements?.hips
                                 ? measurements.hips / measurements.waist
                                 : 0
+                        // Ratio >= 2.2 = XXL deliberado (mismo borde que
+                        // isExaggeratedBody — recalibrado a tablas de tallas
+                        // reales; 2.0 creaba el acantilado 100→101 con
+                        // cintura 50): la orden sube a EXAGGERATED + candado
+                        // anti-normalización. 1.5-2.2 = DRAMATIC natural.
                         const seedreamCurveBoost =
-                            hwRatio >= 1.5 && measurements?.waist
-                                ? `Her figure is a DRAMATIC HOURGLASS: her hips are MUCH WIDER than her very narrow waist (hips ${measurements.hips}cm vs cinched waist ${measurements.waist}cm, ratio ${hwRatio.toFixed(1)}) — render WIDE, FULL, rounded hips and glutes with full thighs and a tiny cinched waist, visibly curvier and fuller than the reference photo suggests.`
-                                : ''
+                            hwRatio >= 2.2 && measurements?.waist
+                                ? `Her figure is a DELIBERATELY EXAGGERATED extreme hourglass, far beyond natural anatomy: an extreme wasp waist of ${measurements.waist}cm against MASSIVE ${measurements.hips}cm hips (ratio ${hwRatio.toFixed(1)} — hips more than TWICE her waist and wider than her shoulders). Render ENORMOUS wide rounded hips, oversized BBL-style glutes and heavy thighs pressed together, with a dramatically cinched tiny waist. This exaggerated physique is INTENTIONAL — render it at FULL intensity, do NOT normalize it toward average realistic proportions.`
+                                : hwRatio >= 1.5 && measurements?.waist
+                                  ? `Her figure is a DRAMATIC HOURGLASS: her hips are MUCH WIDER than her very narrow waist (hips ${measurements.hips}cm vs cinched waist ${measurements.waist}cm, ratio ${hwRatio.toFixed(1)}) — render WIDE, FULL, rounded hips and glutes with full thighs and a tiny cinched waist, visibly curvier and fuller than the reference photo suggests.`
+                                  : ''
 
                         // Badge: refleja lo que el USUARIO usó, no el detalle
                         // interno de cada modelo. Si cargó un Clone Ref (y no es
@@ -1800,6 +1865,14 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                                     clone_masked: cloneFaceMasked,
                                 }
                               : undefined
+                        // Tag NSFW al CREAR (galería filtrable por edad /
+                        // safe mode — sin clasificación retroactiva).
+                        if (nsfwRun) {
+                            generationMeta = {
+                                ...(generationMeta ?? {}),
+                                nsfw: true,
+                            }
+                        }
 
                         if (isKieAsyncImageModel(kieModel)) {
                             // ASYNC submit + browser poll (see pollKieImageTask).
@@ -2627,6 +2700,7 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
             deepfakeImage,
             placeImage,
             videoInputImage,
+            nsfwMode,
             aspectRatio,
             videoDuration,
             cameraShot,
@@ -2675,21 +2749,82 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
     // 2º plano (card "En espera") con su proveedor por override; como no tocan
     // el estado foreground, corren sin interferir entre sí ni con la UI. Con
     // las rutas aisladas del servidor, 3 modelos distintos = 0 riesgo cruzado.
+    // 🌶️ El toggle decide QUÉ ola manda el batch (nunca ambas — el modo DUAL
+    // se descartó por costo, duplicaba créditos en un click): OFF = SFW a
+    // todos los marcados; ON = SOLO la ola NSFW (escena spicificada UNA vez)
+    // a los explícito-capaces (Seedream/Wan/Qwen — el resto rebota upstream).
     const handleBatchGenerate = useCallback(
-        (providerIds: string[]) => {
+        async (providerIds: string[]) => {
             const chosen = providerIds
                 .map((id) => providers.find((p) => p.id === id))
                 .filter((p): p is AIProvider => Boolean(p))
                 .slice(0, 3)
             if (chosen.length === 0) return
-            for (const provider of chosen) {
+            if (!nsfwMode) {
+                // Confirmación INMEDIATA (auto-cierra 2s): las cards "En
+                // espera" tardan un momento en aparecer y sin feedback el
+                // usuario re-clickeaba.
+                toast.push(
+                    <Notification
+                        type="success"
+                        title="Batch enviado"
+                        duration={2000}
+                    >
+                        {`${chosen.length} modelo${chosen.length === 1 ? '' : 's'} en cola (${chosen.map((p) => p.name).join(', ')}).`}
+                    </Notification>,
+                )
+                for (const provider of chosen) {
+                    void handleGenerate({
+                        providerOverride: provider,
+                        background: true,
+                    })
+                }
+                return
+            }
+            const explicitCapable = chosen.filter((p) =>
+                isExplicitCapableModel(p.model || ''),
+            )
+            if (explicitCapable.length === 0) {
+                toast.push(
+                    <Notification type="warning" title="🌶️ Batch NSFW">
+                        Ninguno de los modelos marcados rinde explícito. Marca
+                        Seedream, Wan 2.7 o Qwen — o apaga el toggle 🌶️ para un
+                        batch SFW.
+                    </Notification>,
+                )
+                return
+            }
+            // Confirmación ANTES del spicify (la llamada a Gemini añade 1-3s
+            // extra antes de que aparezcan las cards del batch NSFW).
+            toast.push(
+                <Notification
+                    type="success"
+                    title="🌶️ Batch NSFW enviado"
+                    duration={2000}
+                >
+                    {`${explicitCapable.length} modelo${explicitCapable.length === 1 ? '' : 's'} en cola (${explicitCapable.map((p) => p.name).join(', ')}) — preparando la escena…`}
+                </Notification>,
+            )
+            const spicy = await spicifyScenePrompt(
+                useAvatarStudioStore.getState().prompt,
+            )
+            for (const provider of explicitCapable) {
                 void handleGenerate({
                     providerOverride: provider,
                     background: true,
+                    scenePromptOverride: spicy,
+                    nsfw: true,
                 })
             }
+            if (explicitCapable.length < chosen.length) {
+                toast.push(
+                    <Notification type="info" title="🌶️ Batch NSFW">
+                        {`Solo ${explicitCapable.map((p) => p.name).join(', ')} — los demás marcados no rinden explícito y se omitieron.`}
+                    </Notification>,
+                )
+            }
         },
-        [providers, handleGenerate],
+        [providers, handleGenerate, nsfwMode],
     )
 
     // "Dejar en espera": manda el run en curso a segundo plano y libera la UI
@@ -2926,12 +3061,40 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                 )
                 const sourceMime = blob.type || 'image/png'
 
+                // MÁSCARA → COMPOSITE (auditoría 2026-07-22): el canvas exporta
+                // trazos morados sobre TRANSPARENTE a resolución de pantalla —
+                // los paths no-Gemini la DESCARTABAN en silencio y Gemini la
+                // recibía sin contexto espacial. El composite (foto + overlay
+                // morado translúcido a resolución natural) viaja: a Gemini como
+                // 2ª imagen, y a KIE/Kling/MiniMax como LA imagen fuente + la
+                // instrucción MASKED_EDIT al frente del prompt.
+                let maskedRefB64 = sourceBase64
+                let maskedRefMime = sourceMime
+                let maskedPrompt = editPrompt
+                let geminiMask = maskBase64
+                if (maskBase64) {
+                    try {
+                        const comp = await compositeMaskOverlay(
+                            `data:${sourceMime};base64,${sourceBase64}`,
+                            maskBase64,
+                        )
+                        maskedRefB64 = comp.base64
+                        maskedRefMime = comp.mimeType
+                        maskedPrompt = `${MASKED_EDIT_INSTRUCTION} ${editPrompt}`
+                        geminiMask = `data:${comp.mimeType};base64,${comp.base64}`
+                    } catch (e) {
+                        // Sin composite se cae al comportamiento previo (mask
+                        // cruda a Gemini; los demás la ignoran).
+                        console.warn('[edit] mask composite failed:', e)
+                    }
+                }
+
                 if (!resolvedProvider || resolvedProvider.type === 'GOOGLE') {
-                    // Gemini retains its native edit endpoint with mask + multiple references
+                    // Gemini: original como 1ª imagen + composite como 2ª.
                     resultUrl = await editImage(
                         `data:${sourceMime};base64,${sourceBase64}`,
                         editPrompt,
-                        maskBase64,
+                        geminiMask,
                         targetAspectRatio,
                         referenceAssets,
                     )
@@ -2940,10 +3103,10 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                     // image-to-image using the source as reference.
                     if (resolvedProvider.type === 'KLING') {
                         const r = await generateImageKling({
-                            prompt: editPrompt,
+                            prompt: maskedPrompt,
                             referenceImage: {
-                                base64: sourceBase64,
-                                mimeType: sourceMime,
+                                base64: maskedRefB64,
+                                mimeType: maskedRefMime,
                             },
                             aspectRatio: targetAspectRatio,
                             modelName: resolvedProvider.model || 'kling-v2-1',
@@ -2952,9 +3115,9 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                         resultUrl = r.url
                     } else if (resolvedProvider.type === 'MINIMAX') {
                         const r = await generateImageMiniMax({
-                            prompt: editPrompt,
+                            prompt: maskedPrompt,
                             aspectRatio: targetAspectRatio,
-                            faceReferenceUrl: `data:${sourceMime};base64,${sourceBase64}`,
+                            faceReferenceUrl: `data:${maskedRefMime};base64,${maskedRefB64}`,
                         })
                         if (!r.success) throw new Error(r.error)
                         resultUrl = r.url
@@ -2963,9 +3126,19 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                             resolvedProvider.model ||
                             'flux-kontext/text-to-image'
                         const editRef = {
-                            base64: sourceBase64,
-                            mimeType: sourceMime,
+                            base64: maskedRefB64,
+                            mimeType: maskedRefMime,
                         }
+                        // Reference Assets del editor → refs KIE con rol
+                        // 'asset' (las rutas ya los soportan: Seedream cláusula
+                        // de asset, Qwen path anti-blend; antes se DESCARTABAN
+                        // en silencio — auditoría 2026-07-22).
+                        const editKieAssets = referenceAssets?.length
+                            ? referenceAssets.map((a) => ({
+                                  ...a,
+                                  role: 'asset',
+                              }))
+                            : undefined
                         // Text-to-image-ONLY KIE models (Z-Image, Ideogram) can't
                         // consume the source image: their generic createTask flow
                         // drops the reference, so "editing" with them ignores the
@@ -2996,8 +3169,9 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                             // edit path falls back to the retired 600s sync poll that
                             // abandons slow nano-banana/gpt-image-2 tasks (phantom dupes).
                             const polled = await pollKieImageTask({
-                                prompt: editPrompt,
+                                prompt: maskedPrompt,
                                 referenceImage: editRef,
+                                referenceImages: editKieAssets,
                                 aspectRatio: targetAspectRatio,
                                 model: editModel,
                             })
@@ -3005,8 +3179,9 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                             pendingStableUrl = polled.stableUrl
                         } else {
                             const r = await generateImageKie({
-                                prompt: editPrompt,
+                                prompt: maskedPrompt,
                                 referenceImage: editRef,
+                                referenceImages: editKieAssets,
                                 aspectRatio: targetAspectRatio,
                                 model: editModel,
                             })

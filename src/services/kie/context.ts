@@ -49,6 +49,15 @@ export interface ImageRouteContext {
     /** Negative prompt (lo que NO debe salir). Cada ruta decide si lo manda. */
     negativePrompt?: string
     /**
+     * SAFE MODE (cimiento del age-gate / entitlement "paquete NSFW"): true →
+     * las rutas prenden el filtro de contenido de KIE (`nsfw_checker: true`,
+     * `enable_safety_checker: true`) y la fachada NO salta la sanitización de
+     * prompts para los permisivos. Hoy nadie lo pasa (default undefined =
+     * comportamiento actual); se activará desde el perfil del usuario en el
+     * servidor cuando entre el control de edad.
+     */
+    safeMode?: boolean
+    /**
      * Sube un ref y devuelve su URL pública. En producción =
      * `uploadReferenceToSupabase`; en el snapshot = un stub determinista. Es la
      * ÚNICA dependencia con efecto de una ruta.

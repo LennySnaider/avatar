@@ -18,13 +18,15 @@ import {
 } from '../shared'
 
 async function build(ctx: ImageRouteContext): Promise<KieImageRequest> {
-    // PRESUPUESTO DURO 800 chars (API qwen2/image-edit). Qwen EDITA la imagen de
-    // la cara → la identidad (cara/pelo/ojos) ya viaja EN la imagen, así que el
-    // ancla de identidad va COMPACTA: el prefijo verboso (FACE FIDELITY + hair
-    // RECOLOR + eye) medía ~470 chars y con la POSE relocada se comía los 800
-    // → el OUTFIT y el FONDO se decapitaban (reporte: Qwen salía desnuda y sin
-    // fondo con el crop top/pink skirt EN el prompt pero cortados). Ancla corta
-    // = presupuesto para la escena (ropa+pose+fondo), que es lo que el usuario ve.
+    // PRESUPUESTO: los docs actuales de qwen2/image-edit dicen prompt ≤ 5000
+    // chars (2026-07-23, aportados por el usuario) — el cap viejo de 800 era
+    // una medición de la era qwen/* y DECAPITABA el Body Lab entero (medido:
+    // refine 3203 → 799, morían RESHAPE/CONSISTENCY/ANATOMY/XXL). Se sube a
+    // 4800 (margen bajo 5000); si KIE rechazara por longitud, el retry
+    // self-healing de KieService ("text length") recorta y reenvía solo.
+    // El ancla sigue COMPACTA por otra razón vigente: Qwen es un editor
+    // literal y el texto de identidad verboso lo SATURA (verificado A/B) —
+    // corto no por límite, sino por adherencia.
 
     // Override de pelo AUTORITATIVO: Qwen es un editor literal que stripea
     // [BODY:]/[FACE:] (bodyInAnchor=true) → perdía el color de pelo del avatar
@@ -33,9 +35,9 @@ async function build(ctx: ImageRouteContext): Promise<KieImageRequest> {
     // se puebla en GENERACIÓN (no en EDIT, donde el usuario recolorea a mano).
     const hairClause = buildHairClause(ctx.hairEmphasis)
 
-    // Qwen NO es nano → reubica la pose; cap 1800.
-    // JSON→prosa primero: con el cap 800 un blob JSON se decapita a mitad de
-    // sintaxis y sobrevive solo el envoltorio de config → CERO escena.
+    // Qwen NO es nano → reubica la pose; cap 4000 (docs: 5000).
+    // JSON→prosa primero: un blob JSON con llaves/comillas descarrila al
+    // editor y quema presupuesto → CERO escena útil.
     let promptText = relocatePoseTag(flattenJsonPromptToProse(ctx.prompt))
     // FIX (Fase 6, verificado A/B live): qwen2/image-edit es un EDITOR LITERAL
     // — el preámbulo + [BODY:] + [FACE:] de texto (identidad ya en la imagen) lo
@@ -47,13 +49,13 @@ async function build(ctx: ImageRouteContext): Promise<KieImageRequest> {
     if (ctx.referenceImage) {
         promptText = stripIdentityRedundancy(promptText, true)
     }
-    const capped = capAtWordBoundary(promptText, 1800, ctx.model)
+    const capped = capAtWordBoundary(promptText, 4000, ctx.model)
     let resolvedModel = ctx.model
     const input: Record<string, unknown> = {
         prompt: capped,
         image_size: ctx.aspectRatio,
-        enable_safety_checker: false,
-        nsfw_checker: false,
+        enable_safety_checker: !!ctx.safeMode,
+        nsfw_checker: !!ctx.safeMode,
     }
     if (ctx.negativePrompt) {
         input.negative_prompt = ctx.negativePrompt
@@ -112,8 +114,8 @@ async function build(ctx: ImageRouteContext): Promise<KieImageRequest> {
                     // la descripción del [CLONE:] como TEXTO (outfit por piezas +
                     // fondo) además de la imagen. Del prompt ORIGINAL (sin la POSE
                     // relocada, para ahorrar presupuesto) y sin corchetes (Qwen los
-                    // renderiza literales). El face-swap va al FRENTE (sobrevive el
-                    // cap 800); la cola de la descripción es la que cede.
+                    // renderiza literales). El face-swap va al FRENTE (sobrevive
+                    // cualquier recorte); la cola de la descripción cede.
                     const cloneMatch = String(ctx.prompt).match(
                         /\[CLONE:\s*([^\]]*)\]/i,
                     )
@@ -152,13 +154,23 @@ async function build(ctx: ImageRouteContext): Promise<KieImageRequest> {
                     )
                 } else {
                     input.image_url = refUrl
+                    // CUERPO por TEXTO (2026-07-22): Qwen NUNCA recibía el
+                    // cuerpo — no se le manda el body sheet (funde body/pose/
+                    // scene) y stripIdentityRedundancy le quita el [BODY:] →
+                    // su cuerpo salía de la escena + face ref (MiaUltra
+                    // 119/45 salía slim). Qwen obedece el TEXTO sobre la
+                    // imagen (caso "mujer coreana"), así que un spec COMPACTO
+                    // (cap 200 — el presupuesto total es 800) sí ancla.
+                    const qwenBodyClause = ctx.bodyEmphasis
+                        ? ` Her body (MANDATORY): ${capAtWordBoundary(ctx.bodyEmphasis, 700, 'qwen-body')} — render THAT body, NOT a slimmer one.`
+                        : ''
                     // Lock de cara AUTORITATIVO y COMPACTO (cap 800): Qwen
                     // obedece el TEXTO por encima de la imagen — un prompt
                     // "mujer coreana" le cambió la cara al avatar (caso real,
                     // BD 2026-07-22). El saneador ya quita la etnicidad del
                     // texto; esto es defensa en profundidad, corta para no
                     // comerse el presupuesto de escena.
-                    input.prompt = `Keep her EXACT face, hair and natural realistic eyes from the reference image — IGNORE any nationality, ethnicity or facial description in the text.${hairClause} ${input.prompt}`
+                    input.prompt = `Keep her EXACT face, hair and natural realistic eyes from the reference image — IGNORE any nationality, ethnicity or facial description in the text.${hairClause}${qwenBodyClause} ${input.prompt}`
                 }
             }
         } catch (e) {
@@ -169,7 +181,7 @@ async function build(ctx: ImageRouteContext): Promise<KieImageRequest> {
     // Qwen impone prompt ≤ 800 chars (API qwen2/image-edit). El ancla (cara +
     // cláusula de clone) va al FRENTE, así que un recorte cae en la cola de
     // escena, nunca en la identidad.
-    input.prompt = capAtWordBoundary(String(input.prompt), 800, resolvedModel)
+    input.prompt = capAtWordBoundary(String(input.prompt), 4800, resolvedModel)
     return { model: resolvedModel, input, fullApiPrompt: promptText }
 }
 
