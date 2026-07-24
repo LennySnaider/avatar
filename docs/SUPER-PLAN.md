@@ -8,7 +8,7 @@
 
 ---
 
-## 📍 ESTADO ACTUAL (2026-07-15)
+## 📍 ESTADO ACTUAL (2026-07-22)
 
 | Fase | Entregable | Estado |
 |---|---|---|
@@ -16,7 +16,7 @@
 | 1 | Persona + RAG pgvector + Playground por avatar | ✅ HECHA |
 | 2 | Inbox Fanvue con borradores aprobables + memoria por fan | ✅ HECHA |
 | 3 | Autopilot + voice notes + PPV + métricas | ✅ HECHA (mass messages diferido) |
-| 4 | Multitenant core | ⬜ SIGUIENTE (gate: validar producto) |
+| 4 | Multitenant core | 🔄 EN CURSO — 4.0/4.1 ✅ en prod; 4.2 en curso (a/b/d ✅, c 🟡, e/f/g 🔴) |
 | 5 | Billing + límites | ⬜ |
 | 5.5 | Meta Direct Publishing | ⬜ |
 | 6 | Agencia (dashboard earnings, white-label, plantillas) | ⬜ |
@@ -168,7 +168,9 @@ profiles_used) + asignación automática de perfil-en-pool al habilitar social;
 `social_profiles.pool_id` FK opcional (BYOK sigue como opción avanzada). Webhook: una
 registración por pool. Los tenants NUNCA ven las keys del pool.
 
-### 4.1 Migraciones org_id
+### 4.1 Migraciones org_id — ✅ APLICADA EN PROD (2026-07-18, vía MCP `apply_migration`; sin archivos locales en `supabase/migrations/`)
+> **Estado real (verificado 2026-07-22):** `org_id` en TODAS las tablas tenant; **PUENTE ACTIVO** = `DEFAULT '…0001'` en las 12 tablas legacy (avatars, avatar_references, generations, prompts, cloned_voices, audio_scripts, video_flows, social_profiles, social_posts, fanvue_connections, fanvue_creators, fanvue_posts) → **se quita en 4.2.g**. RLS ON en todas; 6 legacy conservan políticas viejas `auth.uid()` (avatars/prompts/avatar_references/generations/video_flows/ai_providers → reemplazar en 4.2.g), resto RLS-on-0-políticas (backstop anti-anon). ⚠️ `orgStoragePath()` **aún NO existe** — es entregable de **4.2.c**, no de 4.1.
+
 TODA tabla tenant lleva `organization_id` directo, NOT NULL tras backfill a la org default;
 `user_id` se conserva como "creado por": `avatars`, `avatar_references`, `generations`,
 `prompts`, `cloned_voices`, `audio_scripts`, `video_flows`, `social_profiles`, `social_posts`,
@@ -177,14 +179,23 @@ TODA tabla tenant lleva `organization_id` directo, NOT NULL tras backfill a la o
 +api_key text (NULL = plantilla global). Storage: nuevos uploads `org/{orgId}/...` vía helper
 `orgStoragePath()`.
 
-### 4.2 Refactor scoping (cada paso deja main verde)
+### 4.2 Refactor scoping (cada paso deja main verde) — 🔄 EN CURSO
 Patrón: `const ctx = await getOrgContext()` + wrapper **`orgTable(ctx, 'tabla')`** en
-`src/lib/org/`. Anti-regresión 3 capas: ESLint `no-restricted-imports`, script CI grep,
-smoke test de aislamiento (2 orgs seed).
-Orden: 1) lib/org + lint warn → 2) **AvatarForgeService** (quitar userId de firmas, ownership
-real) + matar reads anon de los 8 componentes cliente → 3) pipeline generación → 4)
-`api/voice/*` → 5) Social → 6) Fanvue (`tokenStore` rescope a org) → 7) providers page →
-8) lint a error + CI + smoke.
+`src/lib/org/` (`orgTable`/`orgInsert`/`orgUpsert`/`orgSupabase`; `TENANT_TABLES`=18). Anti-regresión
+3 capas: ESLint `no-restricted-imports`, script CI grep, smoke test de aislamiento (2 orgs seed).
+
+**Avance verificado (código + BD remota, 2026-07-22):**
+- ✅ **a** — lib/org + ESLint `no-restricted-imports` en **WARN** (solo prohíbe `@/lib/supabase`).
+- ✅ **b** — `AvatarForgeService` (ownership por org; fila `generations` scoped) + 8 componentes cliente limpios (0 `.from()` crudo en `.tsx`).
+- 🟡 **c** pipeline generación — **PARCIAL**: la *fila* `generations` va org-scoped; **falta** `orgStoragePath()` (no existe) + los *bytes* en Storage siguen sin scope (Kie/Gateway/MiniMax suben a folders genéricos; `apiCreateGenerationUploadUrl` usa `{userId}/`, no `org/`). Requiere helper + **dual-read** (viejo `{userId}/` + nuevo `org/{orgId}/`; los archivos viejos NO se mueven).
+- ✅ **d** — `api/voice/*` (9) + `api/script/*` (2) org-scoped (aún con `.from()` crudo guardado por `.eq(org)` → migrar a orgTable en **g** por estilo/CI).
+- 🔴 **e** Social — `SocialService.ts` con **19** `.from()` crudos (14 `social_profiles` + 5 `social_posts`), 0 org-scoped. Webhook/cron exentos (correlación por `request_id`, legítimo).
+- 🔴 **f** Fanvue — `FanvueService` + `tokenStore` por `user_id`/`connection_id`; `upsertConnection` con `onConflict:'user_id'` (contradice el `unique(org)` de 4.1 → arreglar aquí).
+- 🔴 **g** cierre — lint→**error** + cerrar loophole `@/lib/agent/db` (`agentSupabase()`); script CI grep (`TENANT_TABLES`); migrar las 8 rutas voice/script a orgTable; **DROP del puente** `…0001`; reemplazar las 6 políticas RLS legacy; smoke 2 orgs. **Toca BD prod → checkpoint con OK explícito.**
+
+**🆕 Huecos fuera del desglose original (verificados 2026-07-22; cerrar dentro de 4.2 antes de g):**
+- **`src/server/actions/getAvatarStudioData.ts`** — lee 5 tablas tenant SIN filtro de org y alimenta las páginas principales de Avatar Studio (`avatar-studio/page.tsx` + `[slug]`). Hueco de lectura más grande. (+ `getAvatars.ts`, `getAvatarAgentData.ts`.)
+- **`concepts/avatar-forge/agent/page.tsx`** + **`api/agent/chat/route.ts`** — leen `avatars`/`avatar_personas` vía `agentSupabase()` (`@/lib/agent/db`); el candado ESLint no lo cubre (loophole → cerrar en g).
 
 ### 4.3 Roles, equipo, invitaciones, asignación
 Roles org: `owner|admin|operator|viewer`; superadmin = flag `users.is_platform_admin`.
