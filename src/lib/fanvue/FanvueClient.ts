@@ -29,6 +29,7 @@ import type {
     FanvueUploadSession,
     SendChatMessageInput,
     SendChatMessageResponse,
+    UpdatePostInput,
 } from './types'
 
 /** Wire-level Fanvue error carrying the HTTP status + raw response body. */
@@ -253,6 +254,40 @@ export class FanvueClient {
             `${this.base(creatorUuid)}/posts`,
             body,
         )
+    }
+
+    /**
+     * `PATCH [/creators/{uuid}]/posts/{postUuid}` — edit a post's text,
+     * audience, price, schedule, media, etc. Returns the updated post.
+     */
+    async updateCreatorPost(
+        creatorUuid: string | null,
+        postUuid: string,
+        body: UpdatePostInput,
+    ): Promise<FanvuePostResponse> {
+        return this.requestJson<FanvuePostResponse>(
+            'PATCH',
+            `${this.base(creatorUuid)}/posts/${encodeURIComponent(postUuid)}`,
+            body,
+        )
+    }
+
+    /**
+     * `DELETE [/creators/{uuid}]/posts/{postUuid}` — soft-delete on Fanvue's
+     * side (204, no body). Idempotent: a 404 means it's already gone there, so
+     * we treat it as success and let the caller clean up its local record.
+     */
+    async deleteCreatorPost(
+        creatorUuid: string | null,
+        postUuid: string,
+    ): Promise<void> {
+        const res = await this.fetchWithAuth(
+            'DELETE',
+            `${this.base(creatorUuid)}/posts/${encodeURIComponent(postUuid)}`,
+        )
+        if (!res.ok && res.status !== 404) {
+            throw new FanvueApiError(res.status, await res.text())
+        }
     }
 
     // -----------------------------------------------------------------------

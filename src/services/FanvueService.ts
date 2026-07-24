@@ -34,7 +34,10 @@ import type {
     CreatePostInput,
     FanvueMediaType,
     FanvuePostAudience,
+    UpdatePostInput,
 } from '@/lib/fanvue/types'
+import { getStoragePublicUrl } from '@/lib/storagePaths'
+import type { MediaType } from '@/@types/supabase'
 
 export interface FanvueResult<T> {
     success: boolean
@@ -74,6 +77,24 @@ export interface FanvuePostRow {
     published_at: string | null
     error_message: string | null
     created_at: string
+    /**
+     * Cover thumbnail — resolved from the cover generation's storage path in
+     * `listFanvuePosts` (the row itself only stores `generation_id`). Present
+     * only on list results; `null` if the generation was deleted.
+     */
+    cover_url?: string | null
+    cover_media_type?: MediaType | null
+}
+
+export interface UpdateFanvuePostInput {
+    postId: string
+    /** New caption. `null`/empty clears it. Omit to leave unchanged. */
+    caption?: string | null
+    audience?: FanvuePostAudience
+    /** Cents (≥300), or `null`/0 for free. Omit to leave unchanged. */
+    price?: number | null
+    /** New schedule (ISO). `null` to publish immediately. Omit to leave unchanged. */
+    publishAt?: string | null
 }
 
 export interface CreateFanvuePostInput {
@@ -438,7 +459,10 @@ export async function createFanvuePost(
     }
 }
 
-/** Post history for the current user (most recent first). */
+const POST_COLUMNS =
+    'id, creator_user_uuid, generation_id, caption, audience, price, media_uuids, fanvue_post_uuid, status, scheduled_at, published_at, error_message, created_at'
+
+/** Post history for the current user (most recent first), with cover thumbnails. */
 export async function listFanvuePosts(): Promise<
     FanvueResult<FanvuePostRow[]>
 > {
@@ -447,14 +471,187 @@ export async function listFanvuePosts(): Promise<
         const supabase = fanvueSupabase()
         const { data, error } = await supabase
             .from('fanvue_posts')
-            .select(
-                'id, creator_user_uuid, generation_id, caption, audience, price, media_uuids, fanvue_post_uuid, status, scheduled_at, published_at, error_message, created_at',
-            )
+            .select(POST_COLUMNS)
             .eq('user_id', userId)
             .order('created_at', { ascending: false })
             .limit(100)
         if (error) throw new Error(error.message)
-        return { success: true, data: (data ?? []) as FanvuePostRow[] }
+        const rows = (data ?? []) as FanvuePostRow[]
+
+        // Resolve each post's cover thumbnail. The row only stores the cover
+        // `generation_id`; the actual image lives in `generations.storage_path`.
+        // One batched lookup (scoped to the user's own media) → public URLs.
+        const genIds = Array.from(
+            new Set(
+                rows
+                    .map((r) => r.generation_id)
+                    .filter((id): id is string => Boolean(id)),
+            ),
+        )
+        if (genIds.length > 0) {
+            const { data: gens } = await supabase
+                .from('generations')
+                .select('id, storage_path, media_type')
+                .eq('user_id', userId)
+                .in('id', genIds)
+            const coverById = new Map(
+                (gens ?? []).map(
+                    (g: {
+                        id: string
+                        storage_path: string
+                        media_type: MediaType
+                    }) => [
+                        g.id,
+                        {
+                            url: getStoragePublicUrl(
+                                'generations',
+                                g.storage_path,
+                            ),
+                            mediaType: g.media_type ?? null,
+                        },
+                    ],
+                ),
+            )
+            for (const r of rows) {
+                const cover = r.generation_id
+                    ? coverById.get(r.generation_id)
+                    : undefined
+                r.cover_url = cover?.url ?? null
+                r.cover_media_type = cover?.mediaType ?? null
+            }
+        }
+        return { success: true, data: rows }
+    } catch (e) {
+        return fail(e)
+    }
+}
+
+/**
+ * Edit a tracked Fanvue post. Pushes the change to Fanvue (PATCH) when the
+ * post exists there, then mirrors it locally. Only fields present in `input`
+ * are touched — everything else is left as-is on both sides.
+ */
+export async function updateFanvuePost(
+    input: UpdateFanvuePostInput,
+): Promise<FanvueResult<FanvuePostRow>> {
+    const supabase = fanvueSupabase()
+    try {
+        const userId = await requireSession()
+
+        // Ownership is enforced by matching user_id on the tracked row.
+        const { data: existing, error: exErr } = await supabase
+            .from('fanvue_posts')
+            .select('id, creator_user_uuid, fanvue_post_uuid, status')
+            .eq('id', input.postId)
+            .eq('user_id', userId)
+            .maybeSingle()
+        if (exErr) throw new Error(exErr.message)
+        if (!existing) return { success: false, error: 'Post not found' }
+
+        if (input.audience && !VALID_AUDIENCES.has(input.audience)) {
+            return { success: false, error: 'Invalid audience' }
+        }
+        // Fanvue's paid floor is 300 cents; 0/null means free.
+        if (
+            input.price !== undefined &&
+            input.price !== null &&
+            input.price > 0 &&
+            input.price < 300
+        ) {
+            return { success: false, error: 'Minimum price is 300 cents ($3.00)' }
+        }
+
+        // Normalise once so Fanvue and the local mirror agree.
+        const normPrice =
+            input.price !== undefined
+                ? input.price && input.price > 0
+                    ? input.price
+                    : null
+                : undefined
+        const normCaption =
+            input.caption !== undefined
+                ? input.caption?.trim()
+                    ? input.caption
+                    : null
+                : undefined
+
+        // Push to Fanvue only if the post actually made it there (a 'failed'
+        // record has no uuid — we can still fix its local fields for a retry).
+        if (existing.fanvue_post_uuid) {
+            const body: UpdatePostInput = {}
+            if (normCaption !== undefined) body.text = normCaption
+            if (input.audience !== undefined) body.audience = input.audience
+            if (normPrice !== undefined) body.price = normPrice
+            if (input.publishAt !== undefined) body.publishAt = input.publishAt
+            if (Object.keys(body).length > 0) {
+                const client = makeClient(userId)
+                await client.updateCreatorPost(
+                    existing.creator_user_uuid,
+                    existing.fanvue_post_uuid,
+                    body,
+                )
+            }
+        }
+
+        // Mirror locally.
+        const patch: Record<string, unknown> = {
+            updated_at: new Date().toISOString(),
+        }
+        if (normCaption !== undefined) patch.caption = normCaption
+        if (input.audience !== undefined) patch.audience = input.audience
+        if (normPrice !== undefined) patch.price = normPrice
+        if (input.publishAt !== undefined) {
+            patch.scheduled_at = input.publishAt ?? null
+        }
+        const { data: row, error: updErr } = await supabase
+            .from('fanvue_posts')
+            .update(patch)
+            .eq('id', input.postId)
+            .eq('user_id', userId)
+            .select(POST_COLUMNS)
+            .single()
+        if (updErr) throw new Error(updErr.message)
+        return { success: true, data: row as FanvuePostRow }
+    } catch (e) {
+        return fail(e)
+    }
+}
+
+/**
+ * Delete a tracked Fanvue post. Soft-deletes it on Fanvue first (idempotent —
+ * a 404 there is fine), then removes the local tracking row so it leaves the
+ * history. A 'failed' record (never published) is just removed locally.
+ */
+export async function deleteFanvuePost(
+    postId: string,
+): Promise<FanvueResult<{ id: string }>> {
+    const supabase = fanvueSupabase()
+    try {
+        const userId = await requireSession()
+        const { data: existing, error: exErr } = await supabase
+            .from('fanvue_posts')
+            .select('id, creator_user_uuid, fanvue_post_uuid')
+            .eq('id', postId)
+            .eq('user_id', userId)
+            .maybeSingle()
+        if (exErr) throw new Error(exErr.message)
+        if (!existing) return { success: false, error: 'Post not found' }
+
+        if (existing.fanvue_post_uuid) {
+            const client = makeClient(userId)
+            await client.deleteCreatorPost(
+                existing.creator_user_uuid,
+                existing.fanvue_post_uuid,
+            )
+        }
+
+        const { error: delErr } = await supabase
+            .from('fanvue_posts')
+            .delete()
+            .eq('id', postId)
+            .eq('user_id', userId)
+        if (delErr) throw new Error(delErr.message)
+        return { success: true, data: { id: postId } }
     } catch (e) {
         return fail(e)
     }

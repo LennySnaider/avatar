@@ -99,6 +99,22 @@ export interface CreatePostInput {
     collectionUuids?: string[]
 }
 
+/**
+ * Body for `PATCH [/creators/{uuid}]/posts/{postUuid}`. Every field optional —
+ * only the keys present are changed (verified against the update-post reference,
+ * 2026-07-24). `null` clears a value (e.g. `price: null` makes a post free).
+ */
+export interface UpdatePostInput {
+    text?: string | null
+    audience?: FanvuePostAudience
+    price?: number | null
+    publishAt?: string | null
+    expiresAt?: string | null
+    mediaUuids?: string[]
+    mediaPreviewUuid?: string | null
+    collectionUuids?: string[] | null
+}
+
 /** Response of the create-post call (201). */
 export interface FanvuePostResponse {
     uuid: string
