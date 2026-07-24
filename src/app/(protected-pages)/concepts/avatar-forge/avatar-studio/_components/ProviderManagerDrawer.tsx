@@ -63,6 +63,8 @@ const ProviderManagerDrawer = () => {
         activeProviderId,
         setActiveProviderId,
         generationMode,
+        cloneImage,
+        deepfakeImage,
         geminiAutoFallback,
         setGeminiAutoFallback,
         batchProviderIds,
@@ -145,12 +147,28 @@ const ProviderManagerDrawer = () => {
     // Orden manual del usuario (página AI Providers) como orden BASE; el sort
     // estable por rank (favoritos/traits) lo respeta entre empates. Los
     // ocultados desde esa página no aparecen aquí.
+    // Wan 2.7 Image = EDITOR-ONLY: en generación de IMAGEN copiaba el body sheet
+    // e ignoraba el texto (fusor de píxeles). Se esconde del selector salvo que
+    // haya un Clone Ref o Deepfake que EDITAR (donde sí brilla). En el modal de
+    // Editar sigue disponible por canEditImage; el video de Wan NO se afecta.
+    const wanEditSource =
+        Boolean(cloneImage?.base64) || Boolean(deepfakeImage?.base64)
+    const isWanImageModel = (m: string) =>
+        m === 'wan/2-7-image' || m === 'wan/2-7-image-pro'
     const availableProviders = sortByUserOrder(
         providers.filter((p) =>
             generationMode === 'IMAGE' ? p.supports_image : p.supports_video,
         ),
     )
         .filter((p) => !hiddenIds.includes(p.id))
+        .filter(
+            (p) =>
+                !(
+                    generationMode === 'IMAGE' &&
+                    !wanEditSource &&
+                    isWanImageModel(p.model)
+                ),
+        )
         .sort((a, b) => rankScore(b.id) - rankScore(a.id))
 
     const filteredProviders = availableProviders.filter((p) => {
