@@ -167,6 +167,8 @@ interface AvatarStudioState {
     galleryView: 'all' | 'favorites' | 'archived'
     /** Muestra/oculta TODA la barra de búsqueda+filtros (toggle en el header). */
     galleryBarOpen: boolean
+    /** Oculta las generaciones NSFW (filtro cliente por metadata.nsfw). Persiste. */
+    galleryHideNsfw: boolean
 
     // Safety Analysis
     isAnalyzing: boolean
@@ -331,6 +333,7 @@ interface AvatarStudioState {
     setGalleryAvatarFilter: (f: string) => void
     setGalleryView: (v: 'all' | 'favorites' | 'archived') => void
     setGalleryBarOpen: (open: boolean) => void
+    setGalleryHideNsfw: (v: boolean) => void
 
     // Actions - Safety
     setIsAnalyzing: (analyzing: boolean) => void
@@ -473,6 +476,7 @@ const initialState = {
     previewStartInEdit: false,
     gallerySearchQuery: '',
     galleryBarOpen: false,
+    galleryHideNsfw: false,
     galleryMediaTypeFilter: 'ALL' as const,
     galleryAvatarFilter: 'ALL',
     galleryView: 'all' as const,
@@ -873,6 +877,7 @@ export const useAvatarStudioStore = create<AvatarStudioState>()(
             setGalleryAvatarFilter: (f) => set({ galleryAvatarFilter: f }),
             setGalleryView: (v) => set({ galleryView: v }),
             setGalleryBarOpen: (open) => set({ galleryBarOpen: open }),
+            setGalleryHideNsfw: (v) => set({ galleryHideNsfw: v }),
             // Seed the gallery with persisted history from the `generations` table.
             // Dedupe by generationId (persisted rows win), keep any session items not
             // yet persisted, newest first (by timestamp).
@@ -998,9 +1003,11 @@ export const useAvatarStudioStore = create<AvatarStudioState>()(
         {
             name: 'avatar-studio-storage',
             storage: createJSONStorage(() => sessionStorage),
-            // Don't persist anything - gallery items have URLs from Supabase, previewMedia is large base64
-            // Persisting base64 data exceeds sessionStorage quota (~5MB limit)
-            partialize: () => ({}),
+            // Solo persistimos el flag de ocultar-NSFW (booleano minúsculo): un
+            // reload NO debe re-mostrar el material picante. Nada más se persiste
+            // — los items de galería / previewMedia en base64 revientan la cuota
+            // de sessionStorage (~5MB).
+            partialize: (state) => ({ galleryHideNsfw: state.galleryHideNsfw }),
         },
     ),
 )

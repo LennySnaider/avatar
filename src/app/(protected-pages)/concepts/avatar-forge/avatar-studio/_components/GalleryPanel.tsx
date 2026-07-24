@@ -32,8 +32,11 @@ import {
     HiArchive,
     HiOutlineArchive,
     HiArrowUp,
+    HiOutlineEye,
+    HiOutlineEyeOff,
 } from 'react-icons/hi'
 import { PiFlowArrowDuotone } from 'react-icons/pi'
+import { TbPepper } from 'react-icons/tb'
 import { useVideoFlowStore } from '../../video-flows/_store/videoFlowStore'
 import { useStudioTabStore } from '../_store/studioTabStore'
 import type { GeneratedMedia, AspectRatio, MediaType } from '../types'
@@ -89,6 +92,8 @@ const GalleryPanel = ({
         setGalleryView,
         galleryBarOpen,
         setGalleryBarOpen,
+        galleryHideNsfw,
+        setGalleryHideNsfw,
     } = useAvatarStudioStore()
 
     // Prefer the parent-provided ref (header "Upload" button) so both trigger
@@ -158,6 +163,24 @@ const GalleryPanel = ({
         setFlags(media, { favorite: !media.favorite })
     const toggleArchive = (media: GeneratedMedia) =>
         setFlags(media, { archived: !media.archived })
+    // NSFW vive SOLO en metadata (no es campo top-level como favorite/archived),
+    // por eso no reusa setFlags: parcha metadata.nsfw en memoria y lo persiste en
+    // la fila `generations` para etiquetar retroactivamente lo que el auto-tag no
+    // captó (todo lo generado sin el 🌶️).
+    const toggleNsfw = (media: GeneratedMedia) => {
+        const nextMeta = {
+            ...(media.metadata ?? {}),
+            nsfw: !media.metadata?.nsfw,
+        }
+        updateGalleryItem(media.id, {
+            metadata: nextMeta as typeof media.metadata,
+        })
+        if (media.generationId) {
+            void apiUpdateGenerationMetadata(media.generationId, nextMeta).catch(
+                (e) => console.error('Failed to persist NSFW flag:', e),
+            )
+        }
+    }
 
     // "Assign avatar" — decides which avatar's accounts can publish this media.
     const [assignTarget, setAssignTarget] = useState<GeneratedMedia | null>(
@@ -224,11 +247,25 @@ const GalleryPanel = ({
                 : galleryView === 'favorites'
                   ? !!media.favorite && !media.archived
                   : !media.archived
-        return matchesSearch && matchesType && matchesAvatar && matchesView
+        // Ocultar-NSFW: con el toggle ON, las cards con metadata.nsfw salen de la
+        // grilla (privacidad — "esconder el material picante").
+        const matchesNsfw = !galleryHideNsfw || !media.metadata?.nsfw
+        return (
+            matchesSearch &&
+            matchesType &&
+            matchesAvatar &&
+            matchesView &&
+            matchesNsfw
+        )
     })
 
     const favCount = gallery.filter((m) => m.favorite && !m.archived).length
     const archivedCount = gallery.filter((m) => m.archived).length
+    // Cuántas NSFW hay (no archivadas): alimenta el conteo del toggle y decide si
+    // el toggle se muestra (galería SFW-only → no aparece).
+    const nsfwCount = gallery.filter(
+        (m) => m.metadata?.nsfw && !m.archived,
+    ).length
 
     const detectAspectRatio = (width: number, height: number): AspectRatio => {
         const ratio = width / height
@@ -457,6 +494,32 @@ const GalleryPanel = ({
                                 </button>
                             ))}
                         </div>
+                        {nsfwCount > 0 && (
+                            <button
+                                type="button"
+                                onClick={() =>
+                                    setGalleryHideNsfw(!galleryHideNsfw)
+                                }
+                                title={
+                                    galleryHideNsfw
+                                        ? 'Mostrar contenido NSFW'
+                                        : 'Ocultar contenido NSFW'
+                                }
+                                className={`flex items-center gap-1 px-2.5 py-1 text-xs rounded-lg border transition-colors ${
+                                    galleryHideNsfw
+                                        ? 'border-pink-500 bg-pink-50 dark:bg-pink-500/20 text-pink-700 dark:text-pink-200 font-medium'
+                                        : 'border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'
+                                }`}
+                            >
+                                {galleryHideNsfw ? (
+                                    <HiOutlineEyeOff className="w-3.5 h-3.5" />
+                                ) : (
+                                    <HiOutlineEye className="w-3.5 h-3.5" />
+                                )}
+                                NSFW
+                                <span className="opacity-60">{nsfwCount}</span>
+                            </button>
+                        )}
                         <button
                             type="button"
                             onClick={() => setGalleryBarOpen(false)}
@@ -746,6 +809,13 @@ const GalleryPanel = ({
                                             }
                                             return null
                                         })()}
+                                        {/* 🌶️ NSFW: etiqueta al crear (toggle 🌶️)
+                                            o marcada a mano desde el hover. */}
+                                        {media.metadata?.nsfw && (
+                                            <span className="px-2 py-1 text-[10px] font-bold rounded bg-pink-600 text-white inline-flex items-center gap-0.5">
+                                                🌶️ NSFW
+                                            </span>
+                                        )}
                                     </div>
 
                                     {/* Overlay Actions */}
@@ -840,6 +910,25 @@ const GalleryPanel = ({
                                                 {/* Save + Delete grouped on the right, both solid so
                                                         they stay visible over the image. */}
                                                 <div className="ml-auto flex gap-1.5">
+                                                    <Button
+                                                        size="xs"
+                                                        variant="solid"
+                                                        icon={<TbPepper />}
+                                                        title={
+                                                            media.metadata?.nsfw
+                                                                ? 'Quitar etiqueta NSFW'
+                                                                : 'Marcar como NSFW'
+                                                        }
+                                                        className={
+                                                            media.metadata?.nsfw
+                                                                ? 'bg-pink-600! hover:bg-pink-700!'
+                                                                : undefined
+                                                        }
+                                                        onClick={(e) => {
+                                                            e.stopPropagation()
+                                                            toggleNsfw(media)
+                                                        }}
+                                                    />
                                                     <Button
                                                         size="xs"
                                                         variant="solid"
