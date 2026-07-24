@@ -1106,6 +1106,28 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
 
             const activeProvider = opts?.providerOverride ?? getActiveProvider()
 
+            // Wan 2.7 es un EDITOR (fusor sobre input_urls): en generación desde
+            // cero copiaba el outfit/fondo del body sheet e IGNORABA el texto —
+            // píxeles > prosa (verificado live 2026-07-24, confirmado en los docs
+            // de KIE: es i2i tipo "turn image into…"). Queda SOLO como editor:
+            // corre con Clone Ref o Deepfake (edita ese lienzo); en generación
+            // pura se BLOQUEA (ahorra tokens en gens malas) y manda a los
+            // generadores reales. Cubre single Y batch (ambos pasan por aquí).
+            const isWanModel =
+                activeProvider?.model === 'wan/2-7-image' ||
+                activeProvider?.model === 'wan/2-7-image-pro'
+            const hasEditSource =
+                Boolean(cloneImage?.base64) || Boolean(deepfakeImage?.base64)
+            if (generationMode === 'IMAGE' && isWanModel && !hasEditSource) {
+                toast.push(
+                    <Notification type="warning" title="Wan es editor">
+                        Wan 2.7 quedó como editor — úsalo con Clone Ref o
+                        Deepfake. Para generar desde cero, elige Seedream o Qwen.
+                    </Notification>,
+                )
+                return
+            }
+
             // Deepfake requiere un modelo KIE multi-imagen con ancla calibrada —
             // aviso ANTES de generar (con Gemini/Kling/MiniMax no viaja la foto).
             if (generationMode === 'IMAGE' && deepfakeImage?.base64) {
