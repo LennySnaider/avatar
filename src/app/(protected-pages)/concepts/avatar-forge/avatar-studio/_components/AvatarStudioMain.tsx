@@ -1625,12 +1625,24 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                         // (harness propio), Seedream/Wan/FLUX.2 lo consumen vía
                         // planExtraRefs con guard de maniquí (KieService) — antes solo
                         // recibían el texto [CLONE:] y re-imaginaban el outfit.
+                        // WAN cw<50: NO se adjunta la imagen del clon — como ref
+                        // suelta viaja ENMASCARADA y Wan (fuser que copia
+                        // píxeles) pintaba el óvalo difuminado como OBJETO en la
+                        // imagen (bug del "círculo gris", 2026-07-23; mismo modo
+                        // de falla que Qwen pintando el overlay morado). La
+                        // inspiración MODERATE/LOOSE viaja por el TEXTO [CLONE:]
+                        // (sin clone-imagen, wan.ts ya no lo stripea). Seedream
+                        // NO sufre esto: re-sintetiza (no copia píxeles). El
+                        // badge Clone NN% no se afecta (keyea optimizedCloneRef).
+                        const wanCanvasMode =
+                            (kieModel === 'wan/2-7-image' ||
+                                kieModel === 'wan/2-7-image-pro') &&
+                            (cloneWeight ?? 100) >= 50
                         if (
                             !deepfakeActive &&
                             (kieModel === 'nano-banana-pro' ||
                                 kieModel.startsWith('nano-banana-2') ||
-                                kieModel === 'wan/2-7-image' ||
-                                kieModel === 'wan/2-7-image-pro' ||
+                                wanCanvasMode ||
                                 kieModel.startsWith('flux-2/') ||
                                 // Qwen es editor de imagen (image_url acepta
                                 // array): recibe [cara, clone] con guard de
@@ -1655,19 +1667,10 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                             // Qwen sigue mucho el texto → la renderizaba mal.
                             // Resto: enmascarado (Seedream COPIA la cara; Wan es
                             // fuser y sin máscara podría bleedear la cara rival).
-                            // Wan en modo CANVAS (cw>=50, wan.ts): el clon ES el
-                            // lienzo que se edita con face-swap — igual que Qwen
-                            // necesita los píxeles INTACTOS: la máscara borraba
-                            // los accesorios de la cara (lentes) y el óvalo
-                            // borroso aflojaba el edit-in-place (encuadre/fidelidad
-                            // derivaban). El framing del swap ya descarta la cara
-                            // rival ("NEVER the first image's original face"). A
-                            // cw<50 el clon viaja como ref SUELTA → sigue
-                            // enmascarado (ahí sí bleedearía en un fuser).
-                            const wanCanvasMode =
-                                (kieModel === 'wan/2-7-image' ||
-                                    kieModel === 'wan/2-7-image-pro') &&
-                                (cloneWeight ?? 100) >= 50
+                            // wanCanvasMode viene del scope de arriba: en canvas
+                            // (cw>=50) el clon va RAW como lienzo (la máscara
+                            // borraba lentes y aflojaba el edit-in-place); a
+                            // cw<50 wan NI ENTRA aquí (sin imagen — solo texto).
                             const cloneForModel =
                                 (kieModel.startsWith('qwen') ||
                                     wanCanvasMode) &&
