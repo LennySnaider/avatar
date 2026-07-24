@@ -21,6 +21,22 @@ import { analyzeFaceFromImages, generateAvatar } from '@/services/GeminiService'
 import { resizeBase64Image } from '@/utils/imageOptimization'
 import { cleanRefWatermarkInBackground } from '@/utils/refWatermarkClean'
 import PhysicalAttributesEditor from '@/components/shared/PhysicalAttributesEditor'
+import BodyLab from '@/components/shared/BodyLab'
+import { generateImageKie } from '@/services/KieService'
+import {
+    buildBodySheetPrompt,
+    buildBodySheetCurves,
+    buildTurnaroundRefinePrompt,
+    BODY_TURNAROUND_TEMPLATE_URL,
+    BODY_SHEET_REFINE_MODEL,
+    BODY_SHEET_NEGATIVE_PROMPT,
+    sameBodyShape,
+} from '@/utils/bodySheetPrompt'
+import { urlToDataUrl } from '@/utils/imageStitch'
+import {
+    getBodyLabModels,
+    DEFAULT_PROVIDERS,
+} from '../../_shared/providerCatalog'
 import {
     HiOutlineUpload,
     HiOutlineX,
@@ -85,6 +101,7 @@ const AvatarCreatorMain = ({
         generalReferences,
         faceRef,
         angleRef,
+        bodyRef,
         identityWeight,
         measurements,
         faceDescription,
@@ -94,6 +111,7 @@ const AvatarCreatorMain = ({
         removeGeneralReference,
         setFaceRef,
         setAngleRef,
+        setBodyRef,
         setAvatarId,
         setAvatarName,
         setIdentityWeight,
@@ -106,6 +124,117 @@ const AvatarCreatorMain = ({
         loadAvatar,
         reset,
     } = useAvatarCreatorStore()
+
+    // ── Body Lab — cuerpo canónico (portado del drawer del Studio) ──────────
+    const [selectedBodyModel, setSelectedBodyModel] = useState('')
+    const [isGeneratingBody, setIsGeneratingBody] = useState(false)
+    const [bodySheet, setBodySheet] = useState<ReferenceImage | null>(null)
+    const [sheetMeasurements, setSheetMeasurements] = useState<
+        typeof measurements | null
+    >(null)
+    const bodyLabModels = getBodyLabModels(DEFAULT_PROVIDERS)
+    // ¿el sheet mostrado quedó desactualizado vs los atributos? (ignora los
+    // campos de apariencia que el sheet no dibuja — pezones — vía sameBodyShape).
+    const shownBody = bodySheet || bodyRef
+    const bodyStale =
+        !!shownBody &&
+        !!sheetMeasurements &&
+        !sameBodyShape(measurements, sheetMeasurements)
+
+    useEffect(() => {
+        if (!selectedBodyModel && bodyLabModels.length > 0) {
+            setSelectedBodyModel(bodyLabModels[0].model)
+        }
+    }, [bodyLabModels, selectedBodyModel])
+
+    // URL (Supabase o data:) → ReferenceImage type 'body'.
+    const bodySheetToRef = async (url: string): Promise<ReferenceImage> => {
+        let dataUrl = url
+        if (!url.startsWith('data:')) {
+            const blob = await fetch(url).then((r) => r.blob())
+            dataUrl = await new Promise<string>((resolve, reject) => {
+                const reader = new FileReader()
+                reader.onloadend = () => resolve(reader.result as string)
+                reader.onerror = reject
+                reader.readAsDataURL(blob)
+            })
+        }
+        const m = dataUrl.match(/^data:(.+);base64,(.+)$/)
+        if (!m) throw new Error('Invalid image data returned')
+        return {
+            id: crypto.randomUUID(),
+            url: dataUrl,
+            mimeType: m[1],
+            base64: m[2],
+            type: 'body',
+        }
+    }
+
+    const handleGenerateBody = async () => {
+        if (!selectedBodyModel) return
+        setIsGeneratingBody(true)
+        try {
+            // Preferido: plantilla FIJA de turnaround + i2i (poses/layout
+            // consistentes + curvas del config); fallback t2i si no está.
+            let tmpl: { base64: string; mimeType: string } | null = null
+            try {
+                const dataUrl = await urlToDataUrl(BODY_TURNAROUND_TEMPLATE_URL)
+                const mt = dataUrl.match(/^data:(.+);base64,(.+)$/)
+                if (mt) tmpl = { mimeType: mt[1], base64: mt[2] }
+            } catch {
+                // plantilla ausente → fallback t2i
+            }
+            const t2iFallbackModel =
+                selectedBodyModel === BODY_SHEET_REFINE_MODEL
+                    ? 'wan/2-7-image'
+                    : selectedBodyModel
+            const result = tmpl
+                ? await generateImageKie({
+                      prompt: buildTurnaroundRefinePrompt(measurements),
+                      model: selectedBodyModel,
+                      aspectRatio: '16:9',
+                      referenceImage: tmpl,
+                      bodyEmphasis: buildBodySheetCurves(measurements),
+                      negativePrompt: BODY_SHEET_NEGATIVE_PROMPT,
+                  })
+                : await generateImageKie({
+                      prompt: buildBodySheetPrompt(measurements),
+                      model: t2iFallbackModel,
+                      aspectRatio: '16:9',
+                      negativePrompt: BODY_SHEET_NEGATIVE_PROMPT,
+                  })
+            if (!result.success) throw new Error(result.error)
+            const sheet = await bodySheetToRef(result.url)
+            setBodySheet(sheet)
+            setSheetMeasurements(measurements)
+            toast.push(
+                <Notification type="success" title="Cuerpo generado">
+                    Sheet de 3 vistas listo. Revísalo y pulsa «Usar como
+                    cuerpo».
+                </Notification>,
+            )
+        } catch (error) {
+            console.error('Error generating body sheet:', error)
+            toast.push(
+                <Notification type="danger" title="Falló la generación">
+                    No se pudo generar el cuerpo
+                </Notification>,
+            )
+        } finally {
+            setIsGeneratingBody(false)
+        }
+    }
+
+    const handleUseAsBody = () => {
+        if (!bodySheet) return
+        setBodyRef(bodySheet)
+        setBodySheet(null) // pasa a "Cuerpo guardado" (se persiste con el avatar)
+        toast.push(
+            <Notification type="success" title="Cuerpo fijado">
+                Se guardará con el avatar al pulsar «Save Avatar».
+            </Notification>,
+        )
+    }
 
     // Load existing avatar data
     useEffect(() => {
@@ -525,12 +654,14 @@ const AvatarCreatorMain = ({
                 setAvatarId(savedAvatarId)
             }
 
-            // Upload new references (those without storagePath)
-            // Note: Body ref is now a session tool in the Studio, not saved with avatar
+            // Upload new references (those without storagePath). El cuerpo del
+            // Body Lab (bodyRef) SÍ se guarda con el avatar (cuerpo canónico);
+            // el Body Ref manual de sesión sigue viviendo solo en el Studio.
             const allRefs = [
                 ...generalReferences,
                 ...(faceRef ? [faceRef] : []),
                 ...(angleRef ? [angleRef] : []),
+                ...(bodyRef ? [bodyRef] : []),
             ]
 
             for (const ref of allRefs) {
@@ -926,6 +1057,7 @@ const AvatarCreatorMain = ({
 
                         {/* Identity Settings */}
                         <div className="grid grid-cols-2 gap-6">
+                            <div className="space-y-6">
                             <Card className="p-4">
                                 <div className="flex items-center justify-between mb-3">
                                     <h3 className="text-sm font-semibold">
@@ -951,6 +1083,42 @@ const AvatarCreatorMain = ({
                                           : 'Low - More creative freedom'}
                                 </p>
                             </Card>
+
+                            {/* Body Lab — cuerpo canónico desde estos atributos */}
+                            <Card className="p-3">
+                                <BodyLab
+                                    models={bodyLabModels.map((p) => ({
+                                        id: p.id,
+                                        name: p.name,
+                                        model: p.model,
+                                    }))}
+                                    selectedModel={selectedBodyModel}
+                                    onSelectModel={setSelectedBodyModel}
+                                    isGenerating={isGeneratingBody}
+                                    sheet={bodySheet || bodyRef}
+                                    sheetModel={
+                                        bodySheet
+                                            ? 'Nuevo'
+                                            : bodyRef
+                                              ? 'Cuerpo guardado'
+                                              : undefined
+                                    }
+                                    onGenerate={handleGenerateBody}
+                                    onUseAsBody={handleUseAsBody}
+                                    canUseAsBody={!!bodySheet}
+                                    onPreview={() => {
+                                        const s = bodySheet || bodyRef
+                                        if (s) setPreviewImage(s)
+                                    }}
+                                    stale={bodyStale}
+                                    disabledReason={
+                                        bodyLabModels.length === 0
+                                            ? 'No hay modelos KIE de imagen. Actívalos en AI Providers.'
+                                            : undefined
+                                    }
+                                />
+                            </Card>
+                            </div>
 
                             <Card className="p-4">
                                 <h3 className="text-sm font-semibold mb-3">
