@@ -326,12 +326,20 @@ const BottomControlBar = ({
             generationMode === 'VIDEO' ? 'VIDEO' : 'IMAGE',
         )
         if (pool.length === 0) return
+        // El Dice manda el prompt COMPLETO: pose/cámara/luz (`text`) + vestuario
+        // y locación concretos (`scene`). Sin la escena el prompt no nombra ropa
+        // ni lugar y el spec del cuerpo llena ese vacío — los 3 motores devolvían
+        // la plantilla del Body Lab en tonos piel (verificado live 2026-07-24).
+        // Los CHIPS de la librería siguen usando solo `text`: ahí el prompt se
+        // AÑADE a la escena del usuario y un 2º outfit chocaría.
+        const full = (p: { text: string; scene?: string }) =>
+            [p.text, p.scene].filter(Boolean).join(' ')
         let pick = pool[Math.floor(Math.random() * pool.length)]
         let guard = 0
-        while (pool.length > 1 && pick.text === prompt && guard++ < 6) {
+        while (pool.length > 1 && full(pick) === prompt && guard++ < 6) {
             pick = pool[Math.floor(Math.random() * pool.length)]
         }
-        setPrompt(pick.text)
+        setPrompt(full(pick))
     }
 
     const handleGenerateVideoPrompt = async () => {
