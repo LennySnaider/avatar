@@ -1575,6 +1575,57 @@ export async function generateMotionControlKieSafe(
  * a "failure", re-generated → duplicate task → double charge. The browser now
  * polls `checkKieVideoTask` instead, so no single request runs long.
  */
+/**
+ * Grok Imagine Video 1.5 Preview (xAI vía KIE) — image-to-video, #1 en el I2V
+ * Arena de KIE. `image_urls` = ARRAY de URLs http públicas (se sube el first
+ * frame a Supabase, como Seedance) + prompt de movimiento. duration 1-15s,
+ * 480p/720p. `aspect_ratio: 'auto'` sigue el tamaño de la imagen (ideal 9:16).
+ * OJO FILTRO: con imagen externa el modo spicy se degrada a normal → SFW-only
+ * (mismo filtro que Grok imagen). Para video NSFW: Wan 2.2 uncensored. Precio
+ * sin medir — leer creditsConsumed del primer run.
+ */
+async function submitVideoGrokImagine(
+    params: GenerateVideoKieParams,
+): Promise<string> {
+    const {
+        prompt,
+        firstFrameImage,
+        aspectRatio,
+        duration = 8,
+        resolution = '720p',
+    } = params
+    const GROK_AR = new Set(['1:1', '16:9', '9:16', '3:2', '2:3', 'auto'])
+    const input: Record<string, unknown> = {
+        prompt,
+        // docs: entero 1-15 (default 8); nuestro default de video es 5 → clamp.
+        duration: Math.min(15, Math.max(1, Math.round(duration))),
+        resolution: resolution === '720p' ? '720p' : '480p',
+        // 'auto' sigue el tamaño de la imagen (lo ideal para animar el avatar).
+        aspect_ratio:
+            firstFrameImage || !aspectRatio || !GROK_AR.has(aspectRatio)
+                ? 'auto'
+                : aspectRatio,
+        nsfw_checker: false,
+    }
+    if (firstFrameImage) {
+        const url = await uploadReferenceToSupabase(
+            firstFrameImage.base64,
+            firstFrameImage.mimeType,
+        )
+        input.image_urls = [url]
+    }
+    console.log(
+        `[KIE/Grok] grok-imagine-video-1-5-preview: duration=${input.duration}s, res=${input.resolution}, ar=${input.aspect_ratio}, hasImage=${!!firstFrameImage}`,
+    )
+    const taskId = await withTimeout(
+        submitTask({ model: 'grok-imagine-video-1-5-preview', input }),
+        30_000,
+        'KIE Grok video submit',
+    )
+    console.log(`[KIE/Grok] Video task submitted: ${taskId}`)
+    return taskId
+}
+
 async function submitVideoKieTaskId(
     params: GenerateVideoKieParams,
 ): Promise<string> {
@@ -1589,6 +1640,9 @@ async function submitVideoKieTaskId(
     }
     if (params.model === 'kling-3.0/video') {
         return submitVideoKling3(params)
+    }
+    if (params.model === 'grok-imagine-video-1-5-preview') {
+        return submitVideoGrokImagine(params)
     }
 
     const {

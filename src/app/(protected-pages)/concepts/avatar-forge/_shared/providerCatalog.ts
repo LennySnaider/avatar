@@ -381,6 +381,22 @@ export const DEFAULT_PROVIDERS: AIProvider[] = [
         created_at: null,
     },
     {
+        // Grok Imagine Video 1.5 Preview — #1 en el I2V Arena de KIE. i2v:
+        // anima el avatar (first frame + prompt de movimiento). SFW-only
+        // probable (filtro spicy→normal con imagen externa). Precio SIN medir.
+        id: 'kie-grok-imagine-video',
+        name: 'Grok Imagine Video 1.5 · KIE',
+        type: 'KIE' as ProviderType,
+        model: 'grok-imagine-video-1-5-preview',
+        endpoint: 'https://api.kie.ai/api/v1',
+        is_active: true,
+        supports_image: false,
+        supports_video: true,
+        requires_api_key: true,
+        api_key_env_var: 'KIE_API_KEY',
+        created_at: null,
+    },
+    {
         id: 'kie-wan-2-2-uncensored',
         name: 'Wan 2.2 Sin Censura · KIE',
         type: 'KIE' as ProviderType,
@@ -433,6 +449,7 @@ export const PROVIDER_COST: Record<string, string> = {
     'kie-nano-banana-2': '~$0.06',
     'kie-nano-banana-2-lite': '~$0.034',
     'kie-grok-imagine': '~$0.02',
+    'kie-grok-imagine-video': '~$?',
     // Medido live 2026-07-16: 4.8cr en 1K y en 2K (precio plano por imagen).
     'kie-wan-image': '~$0.024',
     'kie-wan-image-pro': '~$0.06',
@@ -461,6 +478,7 @@ export const PROVIDER_TRAITS: Record<
     'kie-flux-2-pro': { permissive: true },
     'kie-qwen-image': { permissive: true },
     'kie-grok-imagine': { face: true },
+    'kie-grok-imagine-video': { face: true },
     // Ambos reciben la cara vía image_input[] (mismo patrón que nano-banana-pro)
     'kie-nano-banana-2': { face: true },
     'kie-nano-banana-2-lite': { face: true },
@@ -519,6 +537,8 @@ export const getProviderDescription = (provider: AIProvider): string => {
             return 'Nano Banana 2 (Google) — calidad top hasta 4K, usa la cara del avatar (image_input). OJO: Google = filtro estricto (no ayuda con bloqueos)'
         case 'kie-nano-banana-2-lite':
             return 'Nano Banana 2 Lite (Gemini 3.1 Flash-Lite) — el más RÁPIDO (~4s) y barato de Google, 1K, usa la cara del avatar (image_input). Filtro estricto de Google — para SFW con identidad y volumen'
+        case 'kie-grok-imagine-video':
+            return 'Grok Imagine Video 1.5 (xAI) · image-to-video — #1 en el I2V Arena de KIE. Anima tu avatar (first frame + prompt de movimiento), 480p/720p, 1-15s. OJO: filtro estilo Grok imagen → probablemente SFW (para NSFW en video usa Wan 2.2 Sin Censura). Precio sin medir aún'
         case 'kie-grok-imagine':
             return 'Grok Imagine (xAI) · image-to-image — usa la cara del avatar (la ref se recorta al aspect ratio pedido: su salida copia el ratio del input). OJO: su PROPIO filtro bloquea bikini/sensual aun con nsfw off — para sensual usa Seedream / FLUX.2. Para SFW con identidad'
         case 'kie-wan-image-pro':

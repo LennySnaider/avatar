@@ -26,6 +26,9 @@ export function getDurationOptionsForProvider(provider: AIProvider | null): numb
             if (provider.model === 'wan/2-7-image-to-video') return [2, 5, 7, 10, 12, 15]
             // Wan 2.2 turbo no expone duración — clip fijo (~5s).
             if (provider.model === 'wan/2-2-a14b-image-to-video-turbo') return [5]
+            // Grok Imagine Video 1.5: entero 1-15s (default 8).
+            if (provider.model === 'grok-imagine-video-1-5-preview')
+                return [4, 6, 8, 10, 12, 15]
             // Older KIE models (Veo via aggregator, etc.) — sane default.
             return [5]
         case 'GATEWAY':
@@ -80,6 +83,7 @@ export function getResolutionOptionsForProvider(
             if (provider.model === 'bytedance/seedance-2') return ['480p', '720p', '1080p']
             if (provider.model === 'wan/2-7-image-to-video') return ['720p', '1080p']
             if (provider.model === 'wan/2-2-a14b-image-to-video-turbo') return ['480p', '720p']
+            if (provider.model === 'grok-imagine-video-1-5-preview') return ['480p', '720p']
             // Other KIE models (legacy Veo wiring, etc.) don't expose resolution.
             return null
         case 'GATEWAY':
