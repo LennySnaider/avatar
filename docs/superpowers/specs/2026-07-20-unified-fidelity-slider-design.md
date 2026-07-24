@@ -134,3 +134,10 @@ Se persiste en `metadata.generation_type` (`'inspiration'` | `'clone'` |
 3. En **Suelto…Exacto**, el comportamiento es idéntico al Clone Ref actual por tier.
 4. Deepfake sigue funcionando igual, separado.
 5. El badge refleja Inspiración / Clon NN%·Tier / Deepfake.
+
+## Extensión (2026-07-24, feedback del usuario): AUTO-MOTOR
+El usuario final NO sabe de motores ni de quirks ("el usuario no se va a poner a hacer eso"). Además del slider de Fidelidad, el modo NO-experto debe **enrutar el motor automáticamente por INTENCIÓN**, no exponer el selector:
+- Fidelidad Exacto + accesorios en cara → Wan canvas / Seedream Pro; Inspiración → describe-a-texto; NSFW → solo permisivos; edición por zona → motor con soporte (Gemini/Nano).
+- Los quirks documentados (Wan copia píxeles de máscara; Qwen pinta overlays; cw<50 no manda imagen; etc.) se vuelven REGLAS DE ENRUTAMIENTO invisibles.
+- El selector de modelo actual queda como "modo avanzado" (para el operador/dueño, no el cliente final).
+Prioridad: DESPUÉS de F4.2 multitenant (que es lo que habilita tener usuarios finales). Anotado, no en curso.
