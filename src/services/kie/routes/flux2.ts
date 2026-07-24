@@ -12,6 +12,7 @@ import {
     relocatePoseTag,
     capAtWordBoundary,
     INTACT_BODY_CLAUSE,
+    BODY_SPEC_NOT_WARDROBE_CLAUSE,
     hairClause as buildHairClause,
     eyeClause as buildEyeClause,
     faceFidelityClause as buildFaceFidelityClause,
@@ -61,7 +62,7 @@ async function build(ctx: ImageRouteContext): Promise<KieImageRequest> {
             const fluxBodyClause = ctx.deepfakeMode
                 ? ''
                 : fluxHasBody
-                  ? ` The SECOND attached image shows her real BODY — replicate its exact body shape, proportions, curves and build; do NOT take the body from the first image. IGNORE the second image's clothing, pose, scene, lighting and background — her outfit, pose and the scene come ONLY from ${fluxHasClone ? 'the CLONE image and the text description' : 'the text description'}.`
+                  ? ` The SECOND attached image shows her real BODY — replicate its exact body shape, proportions, curves and build; do NOT take the body from the first image. IGNORE the second image's clothing, pose, scene, lighting and background — her outfit, pose and the scene come ONLY from ${fluxHasClone ? 'the CLONE image and the text description' : 'the text description'}.${BODY_SPEC_NOT_WARDROBE_CLAUSE}`
                   : ''
             if (fluxHasClone) {
                 input.prompt = String(input.prompt)

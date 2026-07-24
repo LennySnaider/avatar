@@ -16,6 +16,7 @@ import {
     flattenJsonPromptToProse,
     hairClauseCompact as buildHairClause,
     INTACT_BODY_CLAUSE,
+    BODY_SPEC_NOT_WARDROBE_CLAUSE,
 } from '../shared'
 
 async function build(ctx: ImageRouteContext): Promise<KieImageRequest> {
@@ -163,7 +164,7 @@ async function build(ctx: ImageRouteContext): Promise<KieImageRequest> {
                     // imagen (caso "mujer coreana"), así que un spec COMPACTO
                     // (cap 200 — el presupuesto total es 800) sí ancla.
                     const qwenBodyClause = ctx.bodyEmphasis
-                        ? ` Her body (MANDATORY): ${capAtWordBoundary(ctx.bodyEmphasis, 700, 'qwen-body')} — render THAT body, NOT a slimmer one.`
+                        ? ` Her body (MANDATORY): ${capAtWordBoundary(ctx.bodyEmphasis, 700, 'qwen-body')} — render THAT body, NOT a slimmer one.${BODY_SPEC_NOT_WARDROBE_CLAUSE}`
                         : ''
                     // Lock de cara AUTORITATIVO y COMPACTO (cap 800): Qwen
                     // obedece el TEXTO por encima de la imagen — un prompt

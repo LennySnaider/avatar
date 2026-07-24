@@ -15,6 +15,7 @@ import {
     capAtWordBoundary,
     flattenJsonPromptToProse,
     INTACT_BODY_CLAUSE,
+    BODY_SPEC_NOT_WARDROBE_CLAUSE,
     hairClause as buildHairClause,
     eyeClause as buildEyeClause,
     faceFidelityClause as buildFaceFidelityClause,
@@ -217,7 +218,7 @@ async function build(ctx: ImageRouteContext): Promise<KieImageRequest> {
                             // DIRECCIONAL de Wan (6c97342): caderas/glúteos/
                             // muslos llenos, busto fiel sin inflar.
                             ctx.bodyEmphasis
-                                ? ` Her exact body spec: ${ctx.bodyEmphasis} — render THAT body matching the second image: hips, glutes and thighs visibly FULL and WIDE as specified; keep the bust true to the spec, do NOT inflate the chest.`
+                                ? ` Her exact body spec: ${ctx.bodyEmphasis} — render THAT body matching the second image: hips, glutes and thighs visibly FULL and WIDE as specified; keep the bust true to the spec, do NOT inflate the chest.${BODY_SPEC_NOT_WARDROBE_CLAUSE}`
                                 : ''
                         }`
                       : ctx.bodyEmphasis

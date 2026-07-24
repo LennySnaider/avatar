@@ -18,6 +18,7 @@ import {
     relocatePoseTag,
     capAtWordBoundary,
     INTACT_BODY_CLAUSE,
+    BODY_SPEC_NOT_WARDROBE_CLAUSE,
     hairClause as buildHairClause,
     eyeClause as buildEyeClause,
     faceFidelityClause as buildFaceFidelityClause,
@@ -123,7 +124,7 @@ async function build(ctx: ImageRouteContext): Promise<KieImageRequest> {
                         ''
                     } IGNORE the second image's clothing, pose, scene, lighting and background — her outfit, pose and the scene come ONLY from ${hasClone ? 'the CLONE image and the text description' : 'the text description'}.${
                         denseBodySpec
-                            ? ` Her exact measurements: ${denseBodySpec} — render THAT body, matching the second image.`
+                            ? ` Her exact measurements: ${denseBodySpec} — render THAT body, matching the second image.${BODY_SPEC_NOT_WARDROBE_CLAUSE}`
                             : ''
                     }${
                         // curveBoost (refuerzo por RATIO, d4ca3f4) también con

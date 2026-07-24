@@ -360,3 +360,16 @@ export function flattenJsonPromptToProse(prompt: string): string {
         .replace(/\s{2,}/g, ' ')
         .trim()
 }
+
+/**
+ * VACÍO DE VESTUARIO (bug verificado live 2026-07-24 en Seedream+Wan+Qwen a la
+ * vez): con un prompt que solo describe POSE, los 3 motores devolvían el
+ * VESTUARIO Y FONDO de la plantilla del Body Lab (sujetador y braguita beige
+ * sobre fondo liso — bodySheetPrompt L166). El spec del cuerpo llenaba el hueco:
+ * por IMAGEN en los que reciben el sheet (seedream/wan/flux2) y por TEXTO en
+ * Qwen (las curvas + "only when uncovered"). El guard viejo ("la ropa viene
+ * SOLO del texto") no bastaba: si el texto NO nombra ropa, no hay nada que gane.
+ * Este cierra el hueco dando el FALLBACK explícito: inventar acorde al mood.
+ */
+export const BODY_SPEC_NOT_WARDROBE_CLAUSE =
+    ' The body spec is PROPORTIONS only, never wardrobe or setting: do NOT default to plain underwear, a neutral two-piece or an empty studio backdrop. If the text names no outfit or location, invent ones that suit its mood.'
