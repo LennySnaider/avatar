@@ -15,6 +15,7 @@ import {
     stripIdentityRedundancy,
     flattenJsonPromptToProse,
     hairClauseCompact as buildHairClause,
+    INTACT_BODY_CLAUSE,
 } from '../shared'
 
 async function build(ctx: ImageRouteContext): Promise<KieImageRequest> {
@@ -170,7 +171,14 @@ async function build(ctx: ImageRouteContext): Promise<KieImageRequest> {
                     // BD 2026-07-22). El saneador ya quita la etnicidad del
                     // texto; esto es defensa en profundidad, corta para no
                     // comerse el presupuesto de escena.
-                    input.prompt = `Keep her EXACT face, hair and natural realistic eyes from the reference image — IGNORE any nationality, ethnicity or facial description in the text.${hairClause}${qwenBodyClause} ${input.prompt}`
+                    // INTACT_BODY_CLAUSE (positivo): Qwen es la ÚNICA ruta que
+                    // dependía solo del negative_prompt para no amputar — y en un
+                    // editor LITERAL el positivo pesa mucho más que el negativo.
+                    // Con el empuje XXL "beyond natural anatomy at FULL intensity"
+                    // el modelo "resolvía" recortando piernas/pies. Se le da la
+                    // MISMA cláusula positiva que ya llevan seedream/wan/flux2/grok
+                    // (el negative_prompt se conserva como defensa en profundidad).
+                    input.prompt = `Keep her EXACT face, hair and natural realistic eyes from the reference image — IGNORE any nationality, ethnicity or facial description in the text.${hairClause}${qwenBodyClause}${INTACT_BODY_CLAUSE} ${input.prompt}`
                 }
             }
         } catch (e) {
