@@ -372,4 +372,4 @@ export function flattenJsonPromptToProse(prompt: string): string {
  * Este cierra el hueco dando el FALLBACK explícito: inventar acorde al mood.
  */
 export const BODY_SPEC_NOT_WARDROBE_CLAUSE =
-    ' The body spec is PROPORTIONS only, never wardrobe or setting: do NOT default to plain underwear, a neutral two-piece or an empty studio backdrop. If the text names no outfit or location, invent ones that suit its mood.'
+    ' The body spec is PROPORTIONS only, never wardrobe or setting: do NOT default to plain underwear, a neutral two-piece or an empty studio backdrop. If the text names no outfit or location, invent ones that suit its mood, and give every garment a DEFINITE colour that reads clearly against her skin — never a nude, beige or skin-tone garment unless the text explicitly names that colour.'
