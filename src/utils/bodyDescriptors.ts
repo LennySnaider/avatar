@@ -256,30 +256,43 @@ export const BUST_SHAPE_PHRASE: Record<string, string> = {
 // empujar desnudez en escenas vestidas. Solo viaja a permisivos (va dentro de
 // buildCurvesEmphasis, que ya tiene ese gating).
 export const NIPPLE_COLOR_PHRASE: Record<string, string> = {
-    rosy: 'rosy pink',
+    rosy: 'natural rosy',
     peach: 'soft peach-toned',
     'light-brown': 'light brown',
     brown: 'medium brown',
     dark: 'deep dark-brown',
 }
 
+// Tamaños RELATIVOS y directivos: 'small neat' era demasiado débil contra el
+// prior busto-grande→areola-grande (verificado en Qwen con specs XXL: color
+// obedecía, tamaño no — misma oración, así que el texto SÍ llegaba).
 export const NIPPLE_AREOLA_PHRASE: Record<string, string> = {
-    small: 'small neat areolas',
+    small: 'small compact areolas, tight around the nipple — noticeably smaller than average for her bust',
     medium: 'medium proportionate areolas',
-    large: 'large wide areolas',
-    puffy: 'puffy softly-raised areolas',
+    large: 'large wide areolas spanning much of the breast tip',
+    puffy: 'puffy raised areolas projecting softly outward',
 }
 
 export const NIPPLE_COLORS = ['rosy', 'peach', 'light-brown', 'brown', 'dark'] as const
 export const NIPPLE_AREOLAS = ['small', 'medium', 'large', 'puffy'] as const
 
-/** Cláusula condicional de pezones — vacía si el avatar no fijó reglas. */
+/** Cláusula condicional de pezones — vacía si el avatar no fijó reglas.
+ * COMPACTA a propósito (~155 chars): vive dentro del body clause de Seedream,
+ * que tiene techo duro de 900 — cada char compite con el spec del cuerpo.
+ * Guard de realismo ("not oversaturated candy-pink"): Qwen es un editor
+ * literal y pintaba un rosa saturado FAKE — mismo patrón que la eyeClause
+ * suavizada (58a0957: describir con naturalidad, no color plano imperativo). */
 export function nippleClause(m: PhysicalMeasurements): string {
     const color = m.nippleColor ? NIPPLE_COLOR_PHRASE[m.nippleColor] : ''
     const areola = m.nippleAreola ? NIPPLE_AREOLA_PHRASE[m.nippleAreola] : ''
     if (!color && !areola) return ''
     const spec = [color && `${color} nipples`, areola].filter(Boolean).join(' with ')
-    return `ONLY if her breasts are uncovered in this scene: she has ${spec} — render them IDENTICAL in every image (this is her fixed anatomy); if she is clothed, this does NOT apply and nothing shows through the fabric`
+    // Candado de tamaño: desacopla la areola del tamaño del busto (el prior
+    // que la infla). Solo se paga cuando hay regla de areola.
+    const sizeLock = areola
+        ? ' — areola size EXACTLY as stated, independent of her bust size'
+        : ''
+    return `only when uncovered: ${spec}${sizeLock}, realistic soft tone not oversaturated candy-pink, always identical; when clothed nothing shows through fabric`
 }
 
 // Listas para los chips de la UI (orden de despliegue)

@@ -55,6 +55,16 @@ import type {
     BodyShape,
 } from '@/@types/supabase'
 
+// Gradiente de tono de pezón para el slider (patrón SKIN_TONE_HEX de
+// AppearanceEditor): tonos REALISTAS (dusty/naturales), nunca candy-pink.
+const NIPPLE_HEX: Record<string, string> = {
+    rosy: '#C88A86',
+    peach: '#C4917A',
+    'light-brown': '#B0785C',
+    brown: '#8C5A42',
+    dark: '#5E3A2B',
+}
+
 // Etiquetas cortas para el slider de Build (1-5) — replican el sentido de
 // BUILD_PHRASE en bodyDescriptors.ts sin importar ese const privado.
 const BUILD_LEVEL_SHORT_LABEL: Record<number, string> = {
@@ -491,35 +501,78 @@ const PhysicalAttributesEditor = ({
                     </span>
                 </label>
                 <div className="space-y-2">
-                    <div className="flex flex-wrap items-center gap-1">
-                        <span className="text-[10px] text-gray-400 w-12">
-                            Color
-                        </span>
-                        {[undefined, ...NIPPLE_COLORS].map((c) => (
-                            <Tooltip
-                                key={c ?? 'auto'}
-                                title={
-                                    c
-                                        ? NIPPLE_COLOR_PHRASE[c]
-                                        : 'sin regla — cada modelo decide'
-                                }
-                            >
+                    {/* Tono de pezón — gradiente estilo Skin Tone: fila de
+                        swatches clickeables + Slider 1..5 + botón Auto. Auto =
+                        sin regla (no empuja desnudez en escenas vestidas). */}
+                    <div>
+                        <div className="flex items-center justify-between mb-1">
+                            <span className="text-[10px] text-gray-400 w-12">
+                                Color
+                            </span>
+                            <span className="text-[10px] text-gray-500">
+                                {measurements.nippleColor
+                                    ? NIPPLE_COLOR_PHRASE[
+                                          measurements.nippleColor
+                                      ]
+                                    : 'auto — cada modelo decide'}
+                            </span>
+                        </div>
+                        <div className="h-3 rounded-full overflow-hidden flex mb-1">
+                            {NIPPLE_COLORS.map((c) => (
                                 <button
+                                    key={c}
                                     type="button"
-                                    onClick={() =>
-                                        set({ nippleColor: c })
-                                    }
-                                    className={`px-1.5 py-0.5 text-[10px] rounded border transition-colors capitalize ${
-                                        (measurements.nippleColor ??
-                                            undefined) === c
-                                            ? 'bg-primary text-white border-primary'
-                                            : 'bg-gray-50 dark:bg-gray-800 border-gray-200 dark:border-gray-700 hover:border-primary'
+                                    title={NIPPLE_COLOR_PHRASE[c]}
+                                    onClick={() => set({ nippleColor: c })}
+                                    className={`flex-1 transition-all ${
+                                        measurements.nippleColor === c
+                                            ? 'ring-2 ring-primary ring-offset-1 z-10 scale-110'
+                                            : ''
                                     }`}
-                                >
-                                    {c ?? 'auto'}
-                                </button>
-                            </Tooltip>
-                        ))}
+                                    style={{ backgroundColor: NIPPLE_HEX[c] }}
+                                />
+                            ))}
+                        </div>
+                        <div className="flex items-center gap-2">
+                            <div className="flex-1">
+                                <Slider
+                                    value={
+                                        measurements.nippleColor
+                                            ? Math.max(
+                                                  1,
+                                                  NIPPLE_COLORS.indexOf(
+                                                      measurements.nippleColor,
+                                                  ) + 1,
+                                              )
+                                            : 3
+                                    }
+                                    onChange={(val) =>
+                                        set({
+                                            nippleColor:
+                                                NIPPLE_COLORS[
+                                                    (val as number) - 1
+                                                ],
+                                        })
+                                    }
+                                    min={1}
+                                    max={5}
+                                    step={1}
+                                />
+                            </div>
+                            <button
+                                type="button"
+                                onClick={() =>
+                                    set({ nippleColor: undefined })
+                                }
+                                className={`px-1.5 py-0.5 text-[10px] rounded border transition-colors ${
+                                    measurements.nippleColor === undefined
+                                        ? 'bg-primary text-white border-primary'
+                                        : 'bg-gray-50 dark:bg-gray-800 border-gray-200 dark:border-gray-700 hover:border-primary'
+                                }`}
+                            >
+                                Auto
+                            </button>
+                        </div>
                     </div>
                     <div className="flex flex-wrap items-center gap-1">
                         <span className="text-[10px] text-gray-400 w-12">

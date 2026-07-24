@@ -10,6 +10,34 @@ import {
 } from '@/utils/bodyDescriptors'
 
 /**
+ * Campos de APARIENCIA que el Body Sheet NO dibuja (turnaround de FORMA en
+ * mini-bikini): los pezones no se ven, así que cambiarlos no altera el cuerpo
+ * generado. Ignorarlos al detectar "desactualizado" evita regenerar el sheet
+ * (y gastar tokens) por un cambio que no afecta la forma. NOTA: skinTone y
+ * hairColor SÍ los usa el sheet → NO van aquí. (eyeColor tampoco lo consume el
+ * sheet; se puede sumar si se quiere.)
+ */
+const SHEET_IGNORED_KEYS = ['nippleColor', 'nippleAreola'] as const
+
+/**
+ * True si dos configs producen el MISMO cuerpo en el sheet — ignora los campos
+ * de apariencia que el sheet no dibuja. Úsalo para el flag "desactualizado" en
+ * vez de comparar el objeto de medidas entero.
+ */
+export function sameBodyShape(
+    a?: PhysicalMeasurements | null,
+    b?: PhysicalMeasurements | null,
+): boolean {
+    const strip = (m?: PhysicalMeasurements | null): string => {
+        if (!m) return ''
+        const clone: Record<string, unknown> = { ...m }
+        for (const k of SHEET_IGNORED_KEYS) delete clone[k]
+        return JSON.stringify(clone)
+    }
+    return strip(a) === strip(b)
+}
+
+/**
  * Mapas de curvas EXCLUSIVOS del Body Lab — más fuertes y con rango completo
  * (1 = sutil, 5 = dramático/exagerado) para dar CONTROL TOTAL del cuerpo del
  * sheet, incluidos cuerpos desproporcionados (meta multitenant). NO tocan los

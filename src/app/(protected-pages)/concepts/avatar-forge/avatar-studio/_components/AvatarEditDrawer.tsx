@@ -28,6 +28,7 @@ import {
     BODY_TURNAROUND_TEMPLATE_URL,
     BODY_SHEET_REFINE_MODEL,
     BODY_SHEET_NEGATIVE_PROMPT,
+    sameBodyShape,
 } from '@/utils/bodySheetPrompt'
 import { urlToDataUrl } from '@/utils/imageStitch'
 import {
@@ -635,10 +636,12 @@ const AvatarEditDrawer = ({
 
     // ¿El sheet mostrado quedó desactualizado vs los atributos actuales?
     const shownBody = bodySheet || bodyRef
+    // Ignora los campos de apariencia que el sheet no dibuja (pezones) — cambiarlos
+    // no altera el cuerpo, así que NO debe pedir regenerar (gasto de tokens).
     const bodyStale =
         !!shownBody &&
         !!sheetMeasurements &&
-        JSON.stringify(localMeasurements) !== JSON.stringify(sheetMeasurements)
+        !sameBodyShape(localMeasurements, sheetMeasurements)
 
     // Default: primer modelo permisivo (los face:true ya vienen primero).
     useEffect(() => {
