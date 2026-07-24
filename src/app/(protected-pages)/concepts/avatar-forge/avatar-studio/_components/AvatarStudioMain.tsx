@@ -106,6 +106,7 @@ import {
     getHairColorDescription,
     getEyeColorDescription,
     buildCurvesEmphasis,
+    nippleClause,
 } from '@/utils/bodyDescriptors'
 import { buildIdentityNegative } from '@/utils/sceneSanitizer'
 import {
@@ -243,7 +244,10 @@ const KIE_ASYNC_MODELS = ['nano-banana-pro', 'gpt-image-2-text-to-image']
  * Gemini/Nano filtro Google.
  */
 const isExplicitCapableModel = (m: string): boolean =>
-    m.startsWith('seedream/') || m === 'wan/2-7-image' || m.startsWith('qwen')
+    m.startsWith('seedream/') ||
+    m === 'wan/2-7-image' ||
+    m === 'wan/2-7-image-pro' ||
+    m.startsWith('qwen')
 
 const isKieAsyncImageModel = (m: string): boolean =>
     KIE_ASYNC_MODELS.includes(m) ||
@@ -254,7 +258,8 @@ const isKieAsyncImageModel = (m: string): boolean =>
     m === 'z-image' ||
     m.startsWith('nano-banana-2') ||
     m.startsWith('grok-imagine/') ||
-    m === 'wan/2-7-image'
+    m === 'wan/2-7-image' ||
+    m === 'wan/2-7-image-pro'
 
 /**
  * InfiniteTalk talking-heads regularly run past 10 minutes — same async
@@ -1108,6 +1113,7 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                 const dfCapable =
                     m.startsWith('seedream/') ||
                     m === 'wan/2-7-image' ||
+                    m === 'wan/2-7-image-pro' ||
                     m.startsWith('flux-2/') ||
                     m.startsWith('qwen') ||
                     m === 'nano-banana-pro' ||
@@ -1550,6 +1556,15 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                         // / Flux Kontext) replace kiePrompt with their own harness, so this
                         // only reaches the diffusion models that actually benefit from it.
                         let kiePrompt = `${buildDiffusionBodyPreamble(measurements, { cameraShot, cameraAngle })} ${fullPrompt}`
+                        // 🌶️ Reglas de pezón EN LA ESCENA (2026-07-23): la dieta
+                        // del ancla Seedream dejó las curvas/nipple fuera del spec
+                        // denso (con sheet la señal viaja en imagen + cm + boost).
+                        // Contextualmente pertenecen aquí — solo aplican si el
+                        // outfit descubre, y solo los runs NSFW pueden descubrir.
+                        if (nsfwRun && !optimizedDeepfakeRef && measurements) {
+                            const nip = nippleClause(measurements)
+                            if (nip) kiePrompt = `${kiePrompt} Her anatomy: ${nip}.`
+                        }
                         let kieRefsToSend = kieReferenceImages
                         // DEEPFAKE puro: cara del avatar + la foto original como
                         // 'clone'. Sin preamble de cuerpo ni curvas — la imagen 2
@@ -1558,6 +1573,7 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                         const deepfakeCapable =
                             kieModel.startsWith('seedream/') ||
                             kieModel === 'wan/2-7-image' ||
+                            kieModel === 'wan/2-7-image-pro' ||
                             kieModel.startsWith('flux-2/') ||
                             kieModel.startsWith('qwen') ||
                             kieModel === 'nano-banana-pro' ||
@@ -1614,6 +1630,7 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                             (kieModel === 'nano-banana-pro' ||
                                 kieModel.startsWith('nano-banana-2') ||
                                 kieModel === 'wan/2-7-image' ||
+                                kieModel === 'wan/2-7-image-pro' ||
                                 kieModel.startsWith('flux-2/') ||
                                 // Qwen es editor de imagen (image_url acepta
                                 // array): recibe [cara, clone] con guard de
@@ -1638,8 +1655,22 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                             // Qwen sigue mucho el texto → la renderizaba mal.
                             // Resto: enmascarado (Seedream COPIA la cara; Wan es
                             // fuser y sin máscara podría bleedear la cara rival).
+                            // Wan en modo CANVAS (cw>=50, wan.ts): el clon ES el
+                            // lienzo que se edita con face-swap — igual que Qwen
+                            // necesita los píxeles INTACTOS: la máscara borraba
+                            // los accesorios de la cara (lentes) y el óvalo
+                            // borroso aflojaba el edit-in-place (encuadre/fidelidad
+                            // derivaban). El framing del swap ya descarta la cara
+                            // rival ("NEVER the first image's original face"). A
+                            // cw<50 el clon viaja como ref SUELTA → sigue
+                            // enmascarado (ahí sí bleedearía en un fuser).
+                            const wanCanvasMode =
+                                (kieModel === 'wan/2-7-image' ||
+                                    kieModel === 'wan/2-7-image-pro') &&
+                                (cloneWeight ?? 100) >= 50
                             const cloneForModel =
-                                kieModel.startsWith('qwen') &&
+                                (kieModel.startsWith('qwen') ||
+                                    wanCanvasMode) &&
                                 optimizedCloneRawRef
                                     ? optimizedCloneRawRef
                                     : optimizedCloneRef
@@ -1840,11 +1871,15 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                         // reales; 2.0 creaba el acantilado 100→101 con
                         // cintura 50): la orden sube a EXAGGERATED + candado
                         // anti-normalización. 1.5-2.2 = DRAMATIC natural.
+                        // COMPACTOS (2026-07-23, "cara/ojos raros"): mismas
+                        // frases-ancla validadas (EXAGGERATED, MASSIVE+cm,
+                        // ENORMOUS/BBL, do NOT normalize) sin la prosa puente —
+                        // cada char del boost compite con la CARA en el ancla.
                         const seedreamCurveBoost =
                             hwRatio >= 2.2 && measurements?.waist
-                                ? `Her figure is a DELIBERATELY EXAGGERATED extreme hourglass, far beyond natural anatomy: an extreme wasp waist of ${measurements.waist}cm against MASSIVE ${measurements.hips}cm hips (ratio ${hwRatio.toFixed(1)} — hips more than TWICE her waist and wider than her shoulders). Render ENORMOUS wide rounded hips, oversized BBL-style glutes and heavy thighs pressed together, with a dramatically cinched tiny waist. This exaggerated physique is INTENTIONAL — render it at FULL intensity, do NOT normalize it toward average realistic proportions.`
+                                ? `Her figure is a DELIBERATELY EXAGGERATED extreme hourglass: ${measurements.waist}cm wasp waist vs MASSIVE ${measurements.hips}cm hips (ratio ${hwRatio.toFixed(1)} — hips over TWICE her waist, wider than her shoulders). ENORMOUS wide rounded hips, oversized BBL-style glutes, heavy thighs, dramatically cinched tiny waist. This is INTENTIONAL — render at FULL intensity, do NOT normalize toward average proportions.`
                                 : hwRatio >= 1.5 && measurements?.waist
-                                  ? `Her figure is a DRAMATIC HOURGLASS: her hips are MUCH WIDER than her very narrow waist (hips ${measurements.hips}cm vs cinched waist ${measurements.waist}cm, ratio ${hwRatio.toFixed(1)}) — render WIDE, FULL, rounded hips and glutes with full thighs and a tiny cinched waist, visibly curvier and fuller than the reference photo suggests.`
+                                  ? `Her figure is a DRAMATIC HOURGLASS (hips ${measurements.hips}cm vs cinched waist ${measurements.waist}cm, ratio ${hwRatio.toFixed(1)}): render WIDE, FULL, rounded hips and glutes, full thighs and a tiny cinched waist — visibly curvier and fuller than the reference photo suggests.`
                                   : ''
 
                         // Badge: refleja lo que el USUARIO usó, no el detalle
@@ -3072,7 +3107,23 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                 let maskedRefMime = sourceMime
                 let maskedPrompt = editPrompt
                 let geminiMask = maskBase64
-                if (maskBase64) {
+                // QWEN pinta los gráficos que VE en los píxeles (quirk "LOGO"
+                // literal): el composite morado acababa DENTRO de la imagen
+                // generada (bug 2026-07-23) — la prosa "NEVER paint purple" no
+                // le gana a sus píxeles. A Qwen: imagen LIMPIA + edit por texto.
+                const overlayHostile = Boolean(
+                    resolvedProvider?.model?.startsWith('qwen'),
+                )
+                if (maskBase64 && overlayHostile) {
+                    toast.push(
+                        <Notification type="warning" title="Máscara">
+                            Qwen no soporta la máscara dibujada — el edit se
+                            aplica por TEXTO a toda la imagen. Para edición por
+                            zona usa Gemini o Nano Banana.
+                        </Notification>,
+                    )
+                }
+                if (maskBase64 && !overlayHostile) {
                     try {
                         const comp = await compositeMaskOverlay(
                             `data:${sourceMime};base64,${sourceBase64}`,

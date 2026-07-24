@@ -46,8 +46,13 @@ export interface ImageRouteContext {
      * imagen del clone según el umbral.
      */
     cloneWeight?: number
-    /** Negative prompt (lo que NO debe salir). Cada ruta decide si lo manda. */
+    /** Negative prompt (lo que NO debe salir). Cada ruta decide si lo manda.
+     *  OJO: Wan base/pro NO lo soportan (verificado en docs 2026-07-23) — esa
+     *  ruta lo descarta a propósito; Qwen sí lo consume. */
     negativePrompt?: string
+    /** Seed (reproducibilidad). Hoy solo Wan base/pro lo soportan en KIE
+     *  (0-2147483647; 0/undefined = aleatorio). Para A/B de calibración. */
+    seed?: number
     /**
      * SAFE MODE (cimiento del age-gate / entitlement "paquete NSFW"): true →
      * las rutas prenden el filtro de contenido de KIE (`nsfw_checker: true`,

@@ -409,7 +409,11 @@ export interface GenerateImageKieParams {
     cloneWeight?: number
     // Negative prompt (lo que NO debe salir). Hoy lo usa el body sheet vía la
     // ruta qwen; otras rutas lo ignoran hasta que se cablee en cada una.
+    // Wan base/pro NO lo soportan (docs 2026-07-23) — su ruta lo descarta.
     negativePrompt?: string
+    // Seed (reproducibilidad; solo Wan base/pro lo soportan hoy). Para A/B de
+    // calibración de clones: mismo seed + mismo prompt = salida estable.
+    seed?: number
     // SAFE MODE (cimiento age-gate / entitlement NSFW): prende el filtro de
     // KIE en las rutas y fuerza la sanitización también en permisivos. Nadie
     // lo pasa aún — se derivará del perfil del usuario EN EL SERVIDOR (un flag
@@ -447,6 +451,7 @@ export async function generateImageKie(
         curveBoost,
         cloneWeight,
         negativePrompt,
+        seed,
     } = params
     // Route to the right adapter with a given (already-sanitized) prompt.
     const runWithPrompt = async (
@@ -504,6 +509,7 @@ export async function generateImageKie(
             curveBoost,
             cloneWeight,
             negativePrompt,
+            seed,
             safeMode: params.safeMode,
             uploadRef: uploadReferenceToSupabase,
             cropToAspect: cropBase64ToAspect,
@@ -643,6 +649,7 @@ export async function generateImageKie(
             model.startsWith('qwen') ||
             model === 'z-image' ||
             model === 'wan/2-7-image' ||
+            model === 'wan/2-7-image-pro' ||
             model.startsWith('grok-imagine/')) &&
         !params.safeMode
 

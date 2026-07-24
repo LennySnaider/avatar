@@ -44,6 +44,13 @@ async function build(ctx: ImageRouteContext): Promise<KieImageRequest> {
         resolution: '2K',
         n: 1,
         nsfw_checker: !!ctx.safeMode,
+        // Docs 2026-07-23 (base Y pro): watermark existe (default false — se fija
+        // explícito por si KIE cambia el default) y seed 0-2147483647 (0=random).
+        // El seed mata la VARIANZA entre regens — clave para calibrar clones.
+        watermark: false,
+    }
+    if (typeof ctx.seed === 'number' && ctx.seed > 0) {
+        input.seed = ctx.seed
     }
 
     if (ctx.referenceImage) {
@@ -113,21 +120,54 @@ async function build(ctx: ImageRouteContext): Promise<KieImageRequest> {
                 for (const r of otherExtras) {
                     wanUrls.push(await ctx.uploadRef(r.base64, r.mimeType))
                 }
-                // Framing FACE-SWAP estilo Qwen (mantener TODO de la imagen 1,
-                // incluida su LUZ; cambiar SOLO la cara). Este path SOLO corre en
-                // fidelidad alta (cw>=50 garantizado por el gate de cloneRef), así
-                // que solo hay 2 tramos: EXACT (>=75) y STRONG (50-74). Los tramos
-                // MODERATE/LOOSE ya NO llegan aquí (caen al else branch como extra).
+                // ANCLA LEAN (rediseño 2026-07-23, repro-medido): la versión previa
+                // llegó a 2872 chars con 3 CONTRADICCIONES (keep-hair-de-img1 vs
+                // RECOLOR MANDATORY; keep-body-de-img1 vs "fuller than reference";
+                // only-edit-face vs follow-scene-EXACTLY) + 10 imperativos → el
+                // fuser promediaba (desproporción/cara pegada) y la escena quedaba
+                // en 249 chars (el [CLONE:] decapitado ANTES de los lentes). Reglas:
+                // (a) la lista keep NO incluye body/build (el físico es del avatar
+                // — principio de producto; la lista de Qwen tampoco lo lleva);
+                // (b) accesorios/lentes protegidos EN el ancla (el texto de escena
+                // era su único respaldo y moría en el cap); (c) pelo = COLOR del
+                // avatar + CORTE del lienzo (fin de la guerra de estilo); (d) cero
+                // órdenes de reshape comparativo en canvas; (e) el texto de escena
+                // se referencia como DESCRIPCIÓN del mismo foto, no como orden
+                // "EXACTLY" que contradiga el edit-in-place.
+                const keepListExact = `the SAME outfit (every garment piece, including any sunglasses, eyewear, hat, jewellery and accessories — NO restyling or merging), the same pose, hands, framing, camera angle, background, setting and its lighting, shadows and colour grade`
                 const cloneCanvasClause =
                     cw >= 75
-                        ? `The FIRST attached image is the original photo — keep it EXACTLY: the same body, build, outfit (every garment piece, NO restyling or merging), pose, hands, objects held, framing, camera angle, background, setting AND its lighting, shadows and colour. Do NOT redraw or re-imagine the scene; only edit the face. Keep her FULLY dressed as shown. REMOVE overlaid stickers/watermarks/emojis.`
-                        : `The FIRST attached image is the original photo — keep its outfit, pose, hands, framing, background, setting AND lighting close to it (minor natural variation allowed); only edit the face. REMOVE overlaid stickers/watermarks/emojis.`
-                // Swap SOLO la cara desde imagen 2 + RELIGHT a la luz del lienzo.
-                const faceIdentityClause = ` Swap ONLY the FACE: give her the SECOND attached image's face — exact features, bone structure, freckles, eye colour and likeness — NEVER the first image's original face. Keep her hair and body as in the first image, with her head at natural head-to-body proportion (a head that fits the shoulders and torso, not oversized).${faceFidelityClause} RELIGHT the swapped face to match the FIRST image's OWN light: the same direction, colour temperature, brightness and shadows as the scene casts on her — if her head is turned away from the light source, her face is correspondingly shadowed — so the face looks naturally photographed in that scene, not lit separately.`
+                        ? `The FIRST attached image is the original photo — reproduce it EXACTLY: keep ${keepListExact}. Do NOT re-imagine the scene. Keep her FULLY dressed as shown. REMOVE overlaid stickers/watermarks/emojis.`
+                        : `The FIRST attached image is the original photo — keep its outfit (with its accessories and eyewear), pose, framing, background and lighting close to it (minor natural variation allowed). Keep her FULLY dressed as shown. REMOVE overlaid stickers/watermarks/emojis.`
+                // Swap de cara COMPACTO: identidad + fidelidad + blend en UNA idea.
+                const faceIdentityClause = ` Swap ONLY the FACE: use the SECOND attached image's face — exact features, bone structure, freckles and likeness, NEVER the first image's face.${faceFidelityClause} Blend the swap invisibly: relight the face to the scene's own light direction and colour, with the same grain, sharpness and skin texture as the rest of the photo — no pasted-on look, the head at natural size for the body.`
+                // Silueta en UNA línea (solo el núcleo de medidas, sin la cola de
+                // curvas/nipples que es ruido con la ropa del lienzo puesta) y SIN
+                // comparativos "fuller than" que contradigan el keep.
+                const bodyCore = ctx.bodyEmphasis
+                    ? ctx.bodyEmphasis.split(';')[0].trim()
+                    : ''
                 const bodyTextClause =
-                    !wanHasBody && ctx.bodyEmphasis
-                        ? ` Her real body is: ${ctx.bodyEmphasis}. Render her hips, glutes and thighs visibly fuller than a slim reference; keep the bust true to the spec, do NOT inflate the chest.`
+                    !wanHasBody && bodyCore
+                        ? ` Her silhouette keeps her own real proportions (${bodyCore}).`
                         : ''
+                // Pelo: COLOR del avatar (identidad) + CORTE del lienzo (clon).
+                // getHairColorDescription devuelve compuestos con ESTILO ("long
+                // wavy hair in rich chocolate brown") — meter eso en el slot de
+                // color hacía que Wan obedeciera "long wavy" y perdiera el updo
+                // del clon (verificado live 2026-07-23). Se extrae SOLO el color
+                // (lo que sigue a "hair (in)"); si el patrón no está, va tal cual.
+                const hairColourOnly = ctx.hairEmphasis
+                    ? ctx.hairEmphasis
+                          .replace(/^.*?\bhair\b(?:\s+in)?\s*/i, '')
+                          .trim() || ctx.hairEmphasis
+                    : ''
+                const hairColourClause = hairColourOnly
+                    ? ` Her hair COLOUR is ${hairColourOnly} — recolor if needed; keep the exact hairstyle, cut and up/down styling from the first image.`
+                    : ''
+                const eyeShortClause = ctx.eyeEmphasis
+                    ? ` Eyes: ${ctx.eyeEmphasis}.`
+                    : ''
                 // Cláusulas de los extras restantes (body/asset/…), RE-INDEXADAS
                 // desde imagen 3 (clon=1, cara=2). Verbatim funcional de shared,
                 // duplicado a propósito porque shared asume cara=imagen 1.
@@ -155,7 +195,7 @@ async function build(ctx: ImageRouteContext): Promise<KieImageRequest> {
                     })
                     .filter(Boolean)
                     .join(' ')
-                wanAnchor = `${cloneCanvasClause}${faceIdentityClause}${hairClause}${eyeClause}${bodyTextClause}${otherClauses ? ' ' + otherClauses : ''} Render EXACTLY ONE person in ONE natural pose.${INTACT_BODY_CLAUSE} Follow the SCENE, POSE and ACTION described below EXACTLY.`
+                wanAnchor = `${cloneCanvasClause}${faceIdentityClause}${hairColourClause}${eyeShortClause}${bodyTextClause}${otherClauses ? ' ' + otherClauses : ''} ONE person only, her body complete with all limbs. The text after this describes the SAME photo — use it only to resolve fine details.`
                 logRoles = `clone(img1), face(img2)${otherExtras.length > 0 ? ', ' + otherExtras.map((r) => r.role).join(', ') : ''}`
             } else {
                 // ── Sin clone (o deepfake): cara = imagen 1 (byte-idéntico a antes) ──
@@ -232,7 +272,9 @@ async function build(ctx: ImageRouteContext): Promise<KieImageRequest> {
 
 export const wanRoute: ImageRoute = {
     label: 'wan',
-    matches: (m) => m === 'wan/2-7-image',
+    // Par EXPLÍCITO (no startsWith: 'wan/2-7-image-to-video' es un id de VIDEO
+    // que empezaría igual). El pro comparte schema (docs 2026-07-23) + seed/bbox.
+    matches: (m) => m === 'wan/2-7-image' || m === 'wan/2-7-image-pro',
     isPermissive: true,
     build,
 }

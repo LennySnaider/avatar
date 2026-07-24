@@ -246,6 +246,22 @@ export const DEFAULT_PROVIDERS: AIProvider[] = [
         api_key_env_var: 'KIE_API_KEY',
         created_at: null,
     },
+    {
+        // Descubierto 2026-07-23 (docs del usuario): mismo schema que el base +
+        // seed (0-2147483647), bbox_list (edición por región), thinking_mode y
+        // 4K t2i. Precio SIN medir aún — ver el primer recordInfo.creditsConsumed.
+        id: 'kie-wan-image-pro',
+        name: 'Wan 2.7 Image Pro · KIE',
+        type: 'KIE' as ProviderType,
+        model: 'wan/2-7-image-pro',
+        endpoint: 'https://api.kie.ai/api/v1',
+        is_active: true,
+        supports_image: true,
+        supports_video: false,
+        requires_api_key: true,
+        api_key_env_var: 'KIE_API_KEY',
+        created_at: null,
+    },
     // Video Providers
     {
         id: 'gemini-veo-3-1',
@@ -419,6 +435,7 @@ export const PROVIDER_COST: Record<string, string> = {
     'kie-grok-imagine': '~$0.02',
     // Medido live 2026-07-16: 4.8cr en 1K y en 2K (precio plano por imagen).
     'kie-wan-image': '~$0.024',
+    'kie-wan-image-pro': '~$?',
 }
 
 // Verified against the generation dispatch (AvatarStudioMain.handleGenerate):
@@ -453,6 +470,7 @@ export const PROVIDER_TRAITS: Record<
     // Unified t2i+edit; refs vía input_urls (cara + body). Sin moderación
     // upstream (edit NSFW verificado live) → el permisivo REAL de imagen.
     'kie-wan-image': { face: true, permissive: true },
+    'kie-wan-image-pro': { face: true, permissive: true },
 }
 
 // Descripción por provider — a nivel módulo para compartirla con la página
@@ -503,6 +521,8 @@ export const getProviderDescription = (provider: AIProvider): string => {
             return 'Nano Banana 2 Lite (Gemini 3.1 Flash-Lite) — el más RÁPIDO (~4s) y barato de Google, 1K, usa la cara del avatar (image_input). Filtro estricto de Google — para SFW con identidad y volumen'
         case 'kie-grok-imagine':
             return 'Grok Imagine (xAI) · image-to-image — usa la cara del avatar (la ref se recorta al aspect ratio pedido: su salida copia el ratio del input). OJO: su PROPIO filtro bloquea bikini/sensual aun con nsfw off — para sensual usa Seedream / FLUX.2. Para SFW con identidad'
+        case 'kie-wan-image-pro':
+            return 'Wan 2.7 Image PRO (Alibaba) — el tier alto del Wan sin censura: mismo flujo (input_urls hasta 9, genera+edita, nsfw off) + SEED reproducible (calibrar clones sin varianza), bbox por región y 4K t2i. Precio aún sin medir (ver Credits del primer run)'
         case 'kie-wan-image':
             return 'Wan 2.7 Image (Alibaba) — SIN CENSURA real de imagen: nsfw off y SIN moderación upstream (edit NSFW verificado live). Genera Y edita en el mismo modelo, usa la cara del avatar (input_urls, hasta 9 refs), 9:16 nativo, 2K, ~30s. El único que edita desnudos — Qwen/FLUX.2/Grok bloquean upstream'
         case 'kie-kling-3-0':
@@ -535,6 +555,7 @@ export const BODY_SHEET_MODEL_ORDER = [
     'seedream/5-lite-text-to-image',
     'seedream/4.5-text-to-image',
     'wan/2-7-image',
+    'wan/2-7-image-pro',
     'qwen2/text-to-image',
     'flux-2/pro-text-to-image',
 ]

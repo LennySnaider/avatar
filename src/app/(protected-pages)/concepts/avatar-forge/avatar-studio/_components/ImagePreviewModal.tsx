@@ -112,6 +112,7 @@ const ImagePreviewModal = ({
             m.startsWith('qwen') ||
             m.startsWith('seedream/') || // real i2i variants (4.5-edit / 5-lite i2i)
             m === 'wan/2-7-image' || // unified t2i+edit vía input_urls, NSFW real
+            m === 'wan/2-7-image-pro' || // mismo schema + seed/bbox (docs 2026-07-23)
             m.startsWith('grok-imagine/')
         )
     }
