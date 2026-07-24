@@ -501,9 +501,10 @@ const PhysicalAttributesEditor = ({
                     </span>
                 </label>
                 <div className="space-y-2">
-                    {/* Tono de pezón — gradiente estilo Skin Tone: fila de
-                        swatches clickeables + Slider 1..5 + botón Auto. Auto =
-                        sin regla (no empuja desnudez en escenas vestidas). */}
+                    {/* Tono de pezón — fila de swatches clickeables + botón
+                        Auto. Auto = sin regla (no empuja desnudez en escenas
+                        vestidas). El Slider era redundante con los swatches
+                        (mismo selector) → quitado a pedido del usuario. */}
                     <div>
                         <div className="flex items-center justify-between mb-1">
                             <span className="text-[10px] text-gray-400 w-12">
@@ -533,32 +534,7 @@ const PhysicalAttributesEditor = ({
                                 />
                             ))}
                         </div>
-                        <div className="flex items-center gap-2">
-                            <div className="flex-1">
-                                <Slider
-                                    value={
-                                        measurements.nippleColor
-                                            ? Math.max(
-                                                  1,
-                                                  NIPPLE_COLORS.indexOf(
-                                                      measurements.nippleColor,
-                                                  ) + 1,
-                                              )
-                                            : 3
-                                    }
-                                    onChange={(val) =>
-                                        set({
-                                            nippleColor:
-                                                NIPPLE_COLORS[
-                                                    (val as number) - 1
-                                                ],
-                                        })
-                                    }
-                                    min={1}
-                                    max={5}
-                                    step={1}
-                                />
-                            </div>
+                        <div className="flex items-center justify-end">
                             <button
                                 type="button"
                                 onClick={() =>
