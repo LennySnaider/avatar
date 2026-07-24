@@ -151,7 +151,7 @@ export interface AvatarEditorState {
 }
 
 // Quick style preset type
-export type StyleCategory = 'lighting' | 'mood' | 'film' | 'quality' | 'art' | 'color' | 'makeup'
+export type StyleCategory = 'lighting' | 'mood' | 'film' | 'quality' | 'art' | 'color' | 'expression' | 'makeup'
 
 export interface QuickStyleOption {
     value: string
@@ -225,6 +225,22 @@ export const QUICK_STYLES: QuickStyleOption[] = [
     { value: 'monochrome', label: 'Monochrome', description: 'Single color variations', category: 'color' },
 
     // Makeup
+    // Facial Expressions (la expresión es de la CARA — no toca pose/cuerpo)
+    { value: 'expr-warm-smile', label: 'Warm Smile', description: 'natural warm smile, relaxed friendly expression', category: 'expression' },
+    { value: 'expr-shy-smile', label: 'Shy Smile', description: 'soft shy smile, slightly lowered gaze, gentle blush', category: 'expression' },
+    { value: 'expr-laughing', label: 'Laughing', description: 'genuine open laugh, eyes crinkled with joy', category: 'expression' },
+    { value: 'expr-smirk', label: 'Smirk', description: 'playful confident smirk, one corner of the mouth raised', category: 'expression' },
+    { value: 'expr-lip-bite', label: 'Biting Lip', description: 'softly biting her lower lip, teasing look', category: 'expression' },
+    { value: 'expr-pensive', label: 'Pensive', description: 'thoughtful pensive expression, gaze drifting away', category: 'expression' },
+    { value: 'expr-sultry', label: 'Sultry Gaze', description: 'smoldering sultry gaze straight into the camera, lips softly parted', category: 'expression' },
+    { value: 'expr-flirty', label: 'Flirty', description: 'flirty teasing expression, raised eyebrow, hint of a smile', category: 'expression' },
+    { value: 'expr-wink', label: 'Wink', description: 'playful wink with a slight smile', category: 'expression' },
+    { value: 'expr-pouty', label: 'Pouty', description: 'pouty lips, soft sulky expression', category: 'expression' },
+    { value: 'expr-surprised', label: 'Surprised', description: 'surprised expression, raised eyebrows, lips slightly open', category: 'expression' },
+    { value: 'expr-serene', label: 'Serene', description: 'serene calm expression, eyes softly closed', category: 'expression' },
+    { value: 'expr-serious', label: 'Serious Editorial', description: 'strong serious editorial expression, intense direct gaze', category: 'expression' },
+    { value: 'expr-tongue', label: 'Playful Tongue', description: 'tongue sticking out slightly, fun candid vibe', category: 'expression' },
+
     { value: 'makeup-natural', label: 'Natural/No Makeup', description: 'Clean, bare-faced look with minimal enhancement', category: 'makeup' },
     { value: 'makeup-subtle', label: 'Subtle Glow', description: 'Light, barely-there makeup with soft enhancement', category: 'makeup' },
     { value: 'makeup-everyday', label: 'Everyday Casual', description: 'Polished but effortless daily makeup look', category: 'makeup' },
@@ -250,6 +266,7 @@ export const STYLE_CATEGORIES: { value: StyleCategory; label: string }[] = [
     { value: 'quality', label: 'Quality & Technical' },
     { value: 'art', label: 'Art Styles' },
     { value: 'color', label: 'Color Palettes' },
+    { value: 'expression', label: 'Expressions' },
     { value: 'makeup', label: 'Makeup' },
 ]
 

@@ -41,8 +41,11 @@ import {
     HiOutlineSave,
 } from 'react-icons/hi'
 import { PiLightningFill } from 'react-icons/pi'
-import { TbStack2 } from 'react-icons/tb'
-import { MODEL_ACTION_PRESETS } from '../_constants/modelActionPresets'
+import { TbStack2, TbDice5 } from 'react-icons/tb'
+import {
+    MODEL_ACTION_PRESETS,
+    getPresetsByMediaType,
+} from '../_constants/modelActionPresets'
 import {
     ASPECT_RATIOS,
     CAMERA_MOTIONS,
@@ -314,6 +317,23 @@ const BottomControlBar = ({
         useState(false)
 
     // AI looks at the video Input image and writes an i2v motion/camera prompt.
+    // Dice 🎲 — mete un prompt al azar de la librería CURADA
+    // (MODEL_ACTION_PRESETS) del modo actual: Imagen o Video. Los presets
+    // curados son SFW; para NSFW el usuario usa sus prompts guardados. Evita
+    // repetir el que ya está puesto (que un click "no haga nada").
+    const handleRandomPrompt = () => {
+        const pool = getPresetsByMediaType(
+            generationMode === 'VIDEO' ? 'VIDEO' : 'IMAGE',
+        )
+        if (pool.length === 0) return
+        let pick = pool[Math.floor(Math.random() * pool.length)]
+        let guard = 0
+        while (pool.length > 1 && pick.text === prompt && guard++ < 6) {
+            pick = pool[Math.floor(Math.random() * pool.length)]
+        }
+        setPrompt(pick.text)
+    }
+
     const handleGenerateVideoPrompt = async () => {
         if (!videoInputImage?.base64 || isGeneratingVideoPrompt) return
         setIsGeneratingVideoPrompt(true)
@@ -1005,6 +1025,17 @@ const BottomControlBar = ({
                                         className="p-1.5 text-gray-400 hover:text-primary transition-colors border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800"
                                     >
                                         <HiOutlineBookOpen className="w-4 h-4" />
+                                    </button>
+                                </Tooltip>
+                                <Tooltip
+                                    title={`Prompt al azar (${generationMode === 'VIDEO' ? 'video' : 'imagen'})`}
+                                >
+                                    <button
+                                        type="button"
+                                        onClick={handleRandomPrompt}
+                                        className="p-1.5 text-gray-400 hover:text-primary transition-all duration-150 active:scale-90 active:-rotate-12 motion-reduce:active:scale-100 motion-reduce:active:rotate-0 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800"
+                                    >
+                                        <TbDice5 className="w-4 h-4" />
                                     </button>
                                 </Tooltip>
                                 <Tooltip title="Save to Prompt Library">
@@ -1786,9 +1817,9 @@ const BottomControlBar = ({
                                         type="button"
                                         onClick={onOpenBatch}
                                         disabled={!canGenerate()}
-                                        className={`flex h-7 flex-1 items-center justify-center gap-1 rounded-lg border text-xs font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${
+                                        className={`flex h-7 flex-1 items-center justify-center gap-1 rounded-lg border text-xs font-medium transition-all duration-150 active:scale-[0.97] motion-reduce:active:scale-100 disabled:cursor-not-allowed disabled:opacity-40 ${
                                             n > 0
-                                                ? 'border-solid border-blue-400 text-blue-500 dark:border-blue-500'
+                                                ? 'border-solid border-blue-400 bg-blue-500/10 text-blue-500 shadow-[inset_0_1px_3px_rgb(0_0_0/0.22)] dark:border-blue-500 dark:bg-blue-500/15'
                                                 : 'border-dashed border-gray-300 text-gray-500 hover:border-blue-400 hover:text-blue-500 dark:border-gray-600 dark:text-gray-400'
                                         }`}
                                         title={
@@ -1812,9 +1843,9 @@ const BottomControlBar = ({
                                                 ? 'NSFW ON: Generate y Batch crean la versión explícita (escena spicificada) solo en Seedream/Wan/Qwen. Click para apagar.'
                                                 : 'Genera la versión NSFW explícita de la escena (misma locación/pose, sin ropa). Solo Seedream/Wan/Qwen la rinden. Para ambas versiones: un batch con 🌶️ OFF y otro con ON.'
                                         }
-                                        className={`flex h-7 shrink-0 items-center justify-center rounded-lg border px-2 text-xs font-medium transition-colors ${
+                                        className={`flex h-7 shrink-0 items-center justify-center rounded-lg border px-2 text-xs font-medium transition-all duration-150 active:scale-90 motion-reduce:active:scale-100 ${
                                             nsfwMode
-                                                ? 'border-solid border-red-500 bg-red-500/10 text-red-500'
+                                                ? 'border-solid border-red-500 bg-red-500/15 text-red-500 shadow-[inset_0_2px_5px_rgb(0_0_0/0.3)]'
                                                 : 'border-dashed border-gray-300 text-gray-500 hover:border-red-400 hover:text-red-500 dark:border-gray-600 dark:text-gray-400'
                                         }`}
                                     >
