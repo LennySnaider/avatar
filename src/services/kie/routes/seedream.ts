@@ -94,6 +94,23 @@ async function build(ctx: ImageRouteContext): Promise<KieImageRequest> {
             // sheet curvy adjunto, reporte 2026-07-22). El body ref canónico
             // ahora es la HOJA TURNAROUND de Body Lab (4 vistas) → se explicita
             // que es UNA sola mujer para que no la lea como lámina de estilo.
+            // DIETA DEL SPEC con sheet (2026-07-23, "cara/ojos raros"): el
+            // bodyEmphasis completo mide ~1,630 chars (660 de prosa
+            // describeBody + 886 de curvas) y con sheet esa prosa viaja
+            // TRIPLICADA (imagen 2 + cm + curveBoost) — el ancla llegaba a
+            // 2,292/2,700 y diluía la cara. Con sheet basta la señal DENSA:
+            // el paréntesis de medidas "(bust Xcm, waist Ycm, hips Zcm —
+            // ratio R)" — la forma la lleva la IMAGEN y el drama el boost.
+            const cmIdx = (ctx.bodyEmphasis ?? '').indexOf(' (bust')
+            const denseBodySpec = ctx.bodyEmphasis
+                ? cmIdx >= 0
+                    ? ctx.bodyEmphasis
+                          .slice(cmIdx + 1)
+                          .split(';')[0]
+                          .trim()
+                          .replace(/^\(|\)$/g, '')
+                    : capAtWordBoundary(ctx.bodyEmphasis, 300, model)
+                : ''
             const bodyClause = ctx.deepfakeMode
                 ? ''
                 : hasBody
@@ -105,8 +122,8 @@ async function build(ctx: ImageRouteContext): Promise<KieImageRequest> {
                         // del sheet — a0c2a56).
                         ''
                     } IGNORE the second image's clothing, pose, scene, lighting and background — her outfit, pose and the scene come ONLY from ${hasClone ? 'the CLONE image and the text description' : 'the text description'}.${
-                        ctx.bodyEmphasis
-                            ? ` Her exact body spec: ${ctx.bodyEmphasis} — render THAT body, matching the second image.`
+                        denseBodySpec
+                            ? ` Her exact measurements: ${denseBodySpec} — render THAT body, matching the second image.`
                             : ''
                     }${
                         // curveBoost (refuerzo por RATIO, d4ca3f4) también con
@@ -154,7 +171,10 @@ async function build(ctx: ImageRouteContext): Promise<KieImageRequest> {
             // "as they turn… then… concluding with…") que se cuelan al campo de
             // imagen hacían que Seedream renderizara al sujeto en varias poses =
             // 2 personas. Se fuerza UN solo sujeto en UNA pose.
-            const anchorTail = `${hairClause}${eyeClause}${extraClauses} Render EXACTLY ONE person — a single subject in ONE pose; do NOT duplicate the figure, show multiple poses side by side, or add any extra people.${INTACT_BODY_CLAUSE} Follow the SCENE, POSE and ACTION described below EXACTLY.`
+            // Face-recall al CIERRE del ancla (recency): con anclas grandes la
+            // instrucción de cara del head quedaba lejos y la identidad
+            // derivaba — se re-ancla justo antes de la escena.
+            const anchorTail = `${hairClause}${eyeClause}${extraClauses} Render EXACTLY ONE person — a single subject in ONE pose; do NOT duplicate the figure, show multiple poses side by side, or add any extra people.${INTACT_BODY_CLAUSE} Above all: her FACE and eyes must remain EXACTLY the woman in the FIRST image. Follow the SCENE, POSE and ACTION described below EXACTLY.`
             // RESERVA DINÁMICA (2026-07-22): el piso fijo reservaba 1300 chars
             // aunque la escena midiera 160 — y ese espacio VACÍO decapitaba el
             // bodyClause (MiaUltra: curveBoost cortado a media frase y guard
@@ -164,11 +184,21 @@ async function build(ctx: ImageRouteContext): Promise<KieImageRequest> {
                 SCENE_FLOOR,
                 String(input.prompt).length + 50,
             )
-            const bodyClauseMax =
+            // TECHO DURO del body clause (2026-07-23): la reserva dinámica
+            // liberaba presupuesto con escenas CORTAS y el texto de cuerpo se
+            // lo comía TODO — ancla de 2292/2700 con la cara diluida →
+            // "la cara/ojos se ven raros" (reporte MiaUltra, moto). Con sheet
+            // el clause ya nace denso (~980: intro+guard+cm+boost) y pasa
+            // entero (con margen); el techo protege el branch SIN sheet
+            // (emphasis completo ~2,200 — a 1100 sobreviven prosa y cm).
+            // Presupuesto libre NO usado = prompt más corto = más atención.
+            const bodyClauseMax = Math.min(
+                1100,
                 SEEDREAM_BUDGET -
-                sceneReserve -
-                anchorHead.length -
-                anchorTail.length
+                    sceneReserve -
+                    anchorHead.length -
+                    anchorTail.length,
+            )
             const fitBodyClause =
                 bodyClauseMax > 0 && bodyClause.length > bodyClauseMax
                     ? capAtWordBoundary(bodyClause, bodyClauseMax, model)
