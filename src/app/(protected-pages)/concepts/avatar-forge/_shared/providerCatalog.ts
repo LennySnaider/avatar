@@ -435,7 +435,7 @@ export const PROVIDER_COST: Record<string, string> = {
     'kie-grok-imagine': '~$0.02',
     // Medido live 2026-07-16: 4.8cr en 1K y en 2K (precio plano por imagen).
     'kie-wan-image': '~$0.024',
-    'kie-wan-image-pro': '~$?',
+    'kie-wan-image-pro': '~$0.06',
 }
 
 // Verified against the generation dispatch (AvatarStudioMain.handleGenerate):
@@ -522,7 +522,7 @@ export const getProviderDescription = (provider: AIProvider): string => {
         case 'kie-grok-imagine':
             return 'Grok Imagine (xAI) · image-to-image — usa la cara del avatar (la ref se recorta al aspect ratio pedido: su salida copia el ratio del input). OJO: su PROPIO filtro bloquea bikini/sensual aun con nsfw off — para sensual usa Seedream / FLUX.2. Para SFW con identidad'
         case 'kie-wan-image-pro':
-            return 'Wan 2.7 Image PRO (Alibaba) — el tier alto del Wan sin censura: mismo flujo (input_urls hasta 9, genera+edita, nsfw off) + SEED reproducible (calibrar clones sin varianza), bbox por región y 4K t2i. Precio aún sin medir (ver Credits del primer run)'
+            return 'Wan 2.7 Image PRO (Alibaba) — el tier alto del Wan sin censura: mismo flujo (input_urls hasta 9, genera+edita, nsfw off) + SEED reproducible (calibrar clones sin varianza), bbox por región y 4K t2i. 12cr ≈ $0.06 (2.5× el base — medido live)'
         case 'kie-wan-image':
             return 'Wan 2.7 Image (Alibaba) — SIN CENSURA real de imagen: nsfw off y SIN moderación upstream (edit NSFW verificado live). Genera Y edita en el mismo modelo, usa la cara del avatar (input_urls, hasta 9 refs), 9:16 nativo, 2K, ~30s. El único que edita desnudos — Qwen/FLUX.2/Grok bloquean upstream'
         case 'kie-kling-3-0':
