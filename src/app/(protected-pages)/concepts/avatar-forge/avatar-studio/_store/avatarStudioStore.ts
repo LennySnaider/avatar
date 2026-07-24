@@ -245,6 +245,14 @@ interface AvatarStudioState {
     setIdentityWeight: (weight: number) => void
     setMeasurements: (measurements: PhysicalMeasurements) => void
     setFaceDescription: (description: string) => void
+    /**
+     * Resetea SOLO la identidad del avatar (identityWeight/measurements/
+     * faceDescription) a sus defaults. Simétrico de `loadAvatarData`: al
+     * des-seleccionar hay que soltar el pelo/cara del avatar anterior o se
+     * filtran en las generaciones sin avatar (Grok pintaba puntas moradas de
+     * Nova aunque no estuviera elegida).
+     */
+    resetAvatarIdentity: () => void
 
     // Actions - Generation Settings
     setPrompt: (prompt: string) => void
@@ -998,6 +1006,12 @@ export const useAvatarStudioStore = create<AvatarStudioState>()(
                     faceDescription: avatar.face_description || '',
                     isAvatarLocked: true,
                     appState: AppState.AVATAR_DEFINED,
+                }),
+            resetAvatarIdentity: () =>
+                set({
+                    identityWeight: 85,
+                    measurements: initialMeasurements,
+                    faceDescription: '',
                 }),
         }),
         {

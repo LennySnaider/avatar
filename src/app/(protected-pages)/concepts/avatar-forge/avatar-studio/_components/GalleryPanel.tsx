@@ -32,8 +32,6 @@ import {
     HiArchive,
     HiOutlineArchive,
     HiArrowUp,
-    HiOutlineEye,
-    HiOutlineEyeOff,
 } from 'react-icons/hi'
 import { PiFlowArrowDuotone } from 'react-icons/pi'
 import { TbPepper } from 'react-icons/tb'
@@ -93,7 +91,6 @@ const GalleryPanel = ({
         galleryBarOpen,
         setGalleryBarOpen,
         galleryHideNsfw,
-        setGalleryHideNsfw,
     } = useAvatarStudioStore()
 
     // Prefer the parent-provided ref (header "Upload" button) so both trigger
@@ -261,11 +258,6 @@ const GalleryPanel = ({
 
     const favCount = gallery.filter((m) => m.favorite && !m.archived).length
     const archivedCount = gallery.filter((m) => m.archived).length
-    // Cuántas NSFW hay (no archivadas): alimenta el conteo del toggle y decide si
-    // el toggle se muestra (galería SFW-only → no aparece).
-    const nsfwCount = gallery.filter(
-        (m) => m.metadata?.nsfw && !m.archived,
-    ).length
 
     const detectAspectRatio = (width: number, height: number): AspectRatio => {
         const ratio = width / height
@@ -494,32 +486,6 @@ const GalleryPanel = ({
                                 </button>
                             ))}
                         </div>
-                        {nsfwCount > 0 && (
-                            <button
-                                type="button"
-                                onClick={() =>
-                                    setGalleryHideNsfw(!galleryHideNsfw)
-                                }
-                                title={
-                                    galleryHideNsfw
-                                        ? 'Mostrar contenido NSFW'
-                                        : 'Ocultar contenido NSFW'
-                                }
-                                className={`flex items-center gap-1 px-2.5 py-1 text-xs rounded-lg border transition-colors ${
-                                    galleryHideNsfw
-                                        ? 'border-pink-500 bg-pink-50 dark:bg-pink-500/20 text-pink-700 dark:text-pink-200 font-medium'
-                                        : 'border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'
-                                }`}
-                            >
-                                {galleryHideNsfw ? (
-                                    <HiOutlineEyeOff className="w-3.5 h-3.5" />
-                                ) : (
-                                    <HiOutlineEye className="w-3.5 h-3.5" />
-                                )}
-                                NSFW
-                                <span className="opacity-60">{nsfwCount}</span>
-                            </button>
-                        )}
                         <button
                             type="button"
                             onClick={() => setGalleryBarOpen(false)}

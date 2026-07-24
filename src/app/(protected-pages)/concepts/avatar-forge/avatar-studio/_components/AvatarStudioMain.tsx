@@ -125,6 +125,8 @@ import {
     HiChevronUp,
     HiOutlineUpload,
     HiOutlineSearch,
+    HiOutlineEye,
+    HiOutlineEyeOff,
 } from 'react-icons/hi'
 import { getPostedGenerationMap } from '@/services/SocialService'
 import { AppState } from '../types'
@@ -545,6 +547,7 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
         setFaceDescription,
         clearAvatarReferences,
         unlockAvatar,
+        resetAvatarIdentity,
         setAvatarDefaultVoice,
         setPrompt,
         setGenerationMode,
@@ -582,6 +585,8 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
         galleryMediaTypeFilter,
         galleryAvatarFilter,
         galleryView,
+        galleryHideNsfw,
+        setGalleryHideNsfw,
         setBatchProviderIds,
     } = useAvatarStudioStore()
 
@@ -3648,6 +3653,29 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                                 <span className="absolute top-0.5 right-0.5 w-2 h-2 rounded-full bg-blue-500" />
                             )}
                         </button>
+                        {/* Ocultar NSFW: toggle SIEMPRE visible (≠ del 🌶️ de
+                            generación). Esconde de la galería las cards con
+                            metadata.nsfw. Rosa cuando está activo (ojo tachado). */}
+                        <button
+                            type="button"
+                            onClick={() => setGalleryHideNsfw(!galleryHideNsfw)}
+                            title={
+                                galleryHideNsfw
+                                    ? 'Mostrar NSFW en la galería'
+                                    : 'Ocultar NSFW de la galería'
+                            }
+                            className={`p-1.5 rounded-lg transition-colors ${
+                                galleryHideNsfw
+                                    ? 'text-pink-600 bg-pink-500/10'
+                                    : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-200'
+                            }`}
+                        >
+                            {galleryHideNsfw ? (
+                                <HiOutlineEyeOff className="w-5 h-5" />
+                            ) : (
+                                <HiOutlineEye className="w-5 h-5" />
+                            )}
+                        </button>
                         {/* En móvil solo iconos: con texto, estos tres botones
                             comprimían el TabList y el tab Flow Editor
                             desaparecía de la fila. */}
@@ -3827,6 +3855,10 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                             setAvatarName('')
                             setCurrentAvatar(null)
                             clearAvatarReferences()
+                            // Soltar la identidad (pelo/cara/fidelidad) del avatar
+                            // anterior — si no, se filtra en las generaciones sin
+                            // avatar (Grok pintaba las puntas moradas de Nova).
+                            resetAvatarIdentity()
                             unlockAvatar()
                             setAvatarDefaultVoice(null)
                         }}
