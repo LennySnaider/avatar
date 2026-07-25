@@ -46,8 +46,19 @@ export function describeShapeAndBuild(m: PhysicalMeasurements): string {
             parts.push(
                 'EXTREME exaggerated wasp waist — dramatically, unnaturally cinched, far smaller than her hips (a deliberate exaggerated-hourglass look)',
             )
-        else if (whr <= 0.68)
+        // Buckets RECALIBRADOS (2026-07-25, prueba de playground con el spec
+        // crudo): el borde viejo whr<=0.68 regalaba "extremely/dramatically" a
+        // ratios moderados (Raven 60/90=0.667 → los motores literales pintaban
+        // wasp+ancha). La intensidad del TEXTO debe corresponder al NÚMERO —
+        // un prompt que se contradice jamás es consistente entre motores.
+        else if (whr <= 0.55)
+            // ratio >= ~1.8 (Emily 45/85=0.53): wasp dramática REAL.
             parts.push('extremely small, dramatically cinched waist')
+        else if (whr <= 0.68)
+            // ratio 1.47-1.8 (Raven 60/90): marcada, no dramática.
+            parts.push(
+                'sharply cinched waist, clearly narrower than bust and hips',
+            )
         else if (whr <= 0.78) parts.push('clearly defined narrow waist')
     }
     // Torso/piernas.
@@ -210,7 +221,10 @@ export const GLUTES_LEVEL_PHRASE: Record<number, string> = {
     1: 'subtle toned glutes',
     2: 'rounded firm glutes',
     3: 'full round lifted glutes',
-    4: 'large prominent round glutes, deep hip curve',
+    // Nivel 4 des-acoplado de la anchura (2026-07-25): "deep hip curve" leía
+    // como caderas ANCHAS en motores literales — el glúteo es PROYECCIÓN hacia
+    // atrás, la anchura la fijan los cm de cadera.
+    4: 'prominent round glutes with strong backward projection',
     5: 'very large prominent bubble butt, dramatic glute projection',
     6: 'MASSIVE exaggerated BBL-style glutes and hips, dramatically oversized beyond natural anatomy — hips far wider than her shoulders, extreme shelf-like glute projection',
 }
@@ -424,8 +438,11 @@ export function buildCurvesEmphasis(m: PhysicalMeasurements): string {
     // ser UNA sola — evita el mismatch "butt grande sobre piernas flacas"
     // aunque el legType diga slim.
     if (m.glutesLevel && m.glutesLevel >= 4) {
+        // Continuidad SIN mandato de grosor (2026-07-25): "full thighs — never
+        // slim legs" contradecía piernas atléticas/cm modestos y los motores
+        // literales engrosaban todo el tren inferior.
         parts.push(
-            'her full glutes flow into proportionally full thighs in one continuous natural curve — never slim or skinny legs under full glutes',
+            'her glutes taper smoothly into her thighs in one continuous natural line',
         )
     }
     // XXL (nivel 6 O medidas extremas) → candado anti-normalización: sin esta
