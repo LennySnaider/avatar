@@ -105,18 +105,25 @@ export function buildMuleRouterEditMaxPrompt(params: {
     const placeIdx = idxOf('place')
     const cw = params.cloneWeight ?? 100
 
-    // CLONE COMO LIENZO (Image 1) — lección ya probada en la ruta Qwen de KIE:
+    // CLONE COMO LIENZO (Image 1) — lección probada en la ruta Qwen de KIE:
     // "Qwen EDITA la primera imagen; con la CARA como imagen 1 anclaba la
-    // composición del RETRATO e ignoraba la pose/fondo del clone". Por eso,
-    // cuando el clone viaja, va PRIMERO y la cara entra por FACE-SWAP.
+    // composición del RETRATO e ignoraba la pose/fondo del clone".
+    //
+    // ORDEN (2026-07-25, reporte "al 100% no cambia la cara y el cuerpo no lo
+    // pone en ninguna"): el face-swap y el cuerpo van ANTES de la fidelidad.
+    // Con "Recreate Image 1 EXACTLY" al frente, el "exactly" arrastraba TAMBIÉN
+    // la cara (a 65% "closely" dejaba holgura y sí la cambiaba) y el lienzo
+    // pesaba más que la orden de cuerpo. Mismo orden que la ruta Qwen que sí
+    // funciona: swap → cuerpo → fidelidad → escena.
+    let pendingFidelity = ''
     if (cloneIdx === 1) {
-        const fidelity =
-            cw >= 75
-                ? 'Recreate Image 1 EXACTLY — same outfit, pose, hands, framing, lighting and setting'
-                : 'Follow Image 1 closely — its outfit, pose, framing and setting — with natural variation'
         parts.push(
-            `${fidelity}. The FACE SWAP is MANDATORY: the face and hair are the woman in Image ${faceIdx} (her exact features, freckles and hair colour) — NEVER keep the original face from Image 1. Do not copy Image 1's body proportions.`,
+            `Swap the face and hair: use the woman in Image ${faceIdx} — her exact facial features and her freckles — NEVER the original face in Image 1.`,
         )
+        pendingFidelity =
+            cw >= 75
+                ? `Keep Image 1's outfit, pose, hands, framing, lighting and setting EXACTLY as they are.`
+                : `Follow Image 1's outfit, pose, framing and setting closely, with natural variation.`
     } else {
         parts.push(
             `${camLine} of the woman in Image ${faceIdx} — her face, facial features, freckles and hair MUST match Image ${faceIdx} exactly; never use a face from any other image.`,
@@ -145,10 +152,13 @@ export function buildMuleRouterEditMaxPrompt(params: {
         // anatomía reales (lo que el texto no lograba: "no se ve natural").
         // Con la hoja VESTIDA hay que prohibir su ropa por nombre — el
         // "IGNORE clothing" genérico no bastaba y salía con la panti beige.
+        const notFromCanvas = cloneIdx === 1
+            ? ` Do NOT copy the body from Image 1 — it is slimmer than she really is.`
+            : ''
         parts.push(
             params.bodySheetNude
-                ? `Image ${bodyIdx} is a nude turnaround of the SAME woman — copy her exact body shape, proportions and natural skin${cmLine}; ignore its background and neutral pose.${hair ? ` Her hair: ${hair}.` : ''}`
-                : `Use Image ${bodyIdx} ONLY for her body shape and proportions${cmLine} — copy the FIGURE, never its sports bra, underwear, face or background.${hair ? ` Her hair: ${hair}.` : ''}`,
+                ? `Image ${bodyIdx} is a nude turnaround of the SAME woman — copy her exact body shape, proportions and natural skin${cmLine}; ignore its background and neutral pose.${notFromCanvas}${hair ? ` Her hair: ${hair}.` : ''}`
+                : `Use Image ${bodyIdx} ONLY for her body shape and proportions${cmLine} — copy the FIGURE, never its sports bra, underwear, face or background.${notFromCanvas}${hair ? ` Her hair: ${hair}.` : ''}`,
         )
     } else if (m?.waist && m?.hips && m?.bust) {
         const shape = (m.shape ?? m.bodyType ?? 'hourglass').replace(/-/g, ' ')
@@ -177,9 +187,14 @@ export function buildMuleRouterEditMaxPrompt(params: {
         // derrama al cuerpo). Los cm mandan en ambas direcciones, siempre.
         parts.push(
             bodyBits.join(', ') +
-                ' — exactly these proportions every time: never thicker or wider, never slimmer.',
+                ' — exactly these proportions every time: never thicker or wider, never slimmer.' +
+                (cloneIdx === 1
+                    ? ' Do NOT copy the body from Image 1 — it is slimmer than she really is.'
+                    : ''),
         )
     }
+
+    if (pendingFidelity) parts.push(pendingFidelity)
 
     if (params.nsfw) {
         // DESNUDEZ GARANTIZADA (2026-07-25, "salió vestida"): antes la orden
