@@ -86,8 +86,11 @@ export function buildMuleRouterEditMaxPrompt(params: {
         const hair = m
             ? getHairColorDescription(m.hairColor).split(',')[0]
             : ''
+        // Image 2 = SOLO proporciones. Su ROPA (top/panti beige del turnaround)
+        // se filtraba y salía vestida (2026-07-25) → se prohíbe explícito y
+        // compacto (la orden de desnudez vive UNA sola vez, en el bloque NSFW).
         parts.push(
-            `Image 2 shows her real BODY (a turnaround sheet of the SAME woman) — replicate its exact body shape, proportions, curves and build${cmLine}; IGNORE Image 2's clothing, face and background.${hair ? ` Her hair: ${hair}.` : ''}`,
+            `Use Image 2 ONLY for her body shape and proportions${cmLine} — copy the FIGURE, never Image 2's sports bra, underwear, face or background.${hair ? ` Her hair: ${hair}.` : ''}`,
         )
     } else if (m?.waist && m?.hips && m?.bust) {
         const shape = (m.shape ?? m.bodyType ?? 'hourglass').replace(/-/g, ' ')
@@ -126,8 +129,11 @@ export function buildMuleRouterEditMaxPrompt(params: {
         // se la comía (diff del usuario: cortaba justo antes) → Qwen la vestía.
         // La orden va AQUÍ (zona no truncable) + ropa prohibida en el negative.
         // Vulva con el anti-doll batallado en compacto.
+        // "vertical cleft line" (2026-07-25) → Edit Max lo dibujaba como una
+        // LÍNEA vertical literal en el torso/ropa. Se describe la anatomía SIN
+        // la palabra "line". Nudez reforzada (no top, no panti).
         parts.push(
-            'She is COMPLETELY NUDE, wearing nothing at all. Bare breasts with small compact skin-toned areolas. Her vulva clearly visible: a single delicate closed vertical cleft line in matte skin tone — never a smooth featureless doll-like mound.',
+            'She is COMPLETELY NUDE — no bra, top or underwear, bare skin all over. Realistic bare breasts with small skin-toned areolas and a natural vulva with soft closed labia, matte skin tone — real anatomy, not a smooth doll-like blank.',
         )
     }
 
