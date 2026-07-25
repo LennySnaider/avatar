@@ -3,10 +3,32 @@ import {
     getHairColorDescription,
     getSkinToneDescription,
 } from '@/utils/bodyDescriptors'
-import {
-    DIFFUSION_FRAMING,
-    DIFFUSION_ANGLE,
-} from '@/utils/avatarPromptBuilder'
+// Mapas COMPACTOS propios (los DIFFUSION_* de avatarPromptBuilder son
+// verbosos — aquí cada char compite contra el límite de 800 y una línea de
+// cámara de 200 chars dejó la desnudez fuera del presupuesto → salió VESTIDA).
+const MR_FRAMING: Record<string, string> = {
+    EXTREME_CLOSE_UP: 'Extreme close-up of her face',
+    CLOSE_UP: 'Close-up portrait, head and shoulders',
+    MEDIUM_CLOSE_UP: 'Medium close-up from the chest up',
+    MEDIUM_SHOT: 'Medium shot from the waist up',
+    MEDIUM_FULL: 'Medium-full shot from the knees up',
+    FULL_SHOT:
+        'Full-body shot, her whole body with head and feet fully in frame',
+    WIDE_SHOT:
+        'Wide full-body shot, whole body with head and feet in frame plus surroundings',
+    EXTREME_WIDE: 'Extreme wide shot, subject small in a vast environment',
+}
+const MR_ANGLE: Record<string, string> = {
+    LOW_ANGLE: 'from a low angle',
+    HIGH_ANGLE: 'from a high angle looking down',
+    DUTCH_ANGLE: 'dutch tilted angle',
+    BIRDS_EYE: "bird's-eye from above",
+    WORMS_EYE: "worm's-eye from below",
+    OVER_SHOULDER: 'over-the-shoulder',
+    POV: 'POV shot',
+    PROFILE: 'in profile view',
+    THREE_QUARTER: 'in three-quarter view',
+}
 
 /**
  * Prompt COMPACTO para MuleRouter Qwen Edit Max (límite duro: 800 chars,
@@ -34,19 +56,19 @@ export function buildMuleRouterEditMaxPrompt(params: {
     const m = params.measurements
     const parts: string[] = []
 
-    // CÁMARA PRIMERO (misma regla que buildDiffusionBodyPreamble: la
-    // composición pesa más al inicio). Respeta los chips del usuario; en AUTO
-    // cae a full-body con anti-corte ("corta el avatar" = piernas fuera).
+    // CÁMARA PRIMERO y COMPACTA (la composición pesa al inicio; la versión
+    // verbosa de 200 chars agotó el presupuesto y dejó la desnudez fuera).
+    // Respeta los chips; AUTO cae a full-body con anti-corte de cabeza/pies.
     const framing =
         params.cameraShot && params.cameraShot !== 'AUTO'
-            ? (DIFFUSION_FRAMING[params.cameraShot] ?? '')
-            : DIFFUSION_FRAMING.FULL_SHOT
+            ? (MR_FRAMING[params.cameraShot] ?? '')
+            : MR_FRAMING.FULL_SHOT
     const angle = params.cameraAngle
-        ? (DIFFUSION_ANGLE[params.cameraAngle] ?? '')
+        ? (MR_ANGLE[params.cameraAngle] ?? '')
         : ''
-    const camLine = [framing, angle].filter(Boolean).join(', ')
+    const camLine = [framing, angle].filter(Boolean).join(' ')
     parts.push(
-        `${camLine.charAt(0).toUpperCase()}${camLine.slice(1)} of the woman in Image 1 — keep her EXACT face, hair and identity unchanged.`,
+        `${camLine} of the woman in Image 1 — keep her EXACT face, hair and identity unchanged.`,
     )
 
     if (m?.waist && m?.hips && m?.bust) {
@@ -72,21 +94,22 @@ export function buildMuleRouterEditMaxPrompt(params: {
         if (hair) bodyBits.push(hair)
         const skin = getSkinToneDescription(m.skinTone).split(',')[0]
         if (skin) bodyBits.push(skin)
-        // Candado bidireccional COMPACTO (2026-07-25, varianza en el sistema:
-        // misma Raven salía gruesa en escena "power stance" y recta en otras —
-        // la semántica de la escena se derrama al cuerpo). Los cm mandan en
-        // ambas direcciones y en TODAS las gens.
+        // Candado bidireccional COMPACTO (varianza: la semántica de escena se
+        // derrama al cuerpo). Los cm mandan en ambas direcciones, siempre.
         parts.push(
             bodyBits.join(', ') +
-                ' — exactly these proportions in every image: never thicker, wider or more muscular than these numbers, never slimmer either.',
+                ' — exactly these proportions every time: never thicker or wider, never slimmer.',
         )
     }
 
     if (params.nsfw) {
-        // Vulva REFORZADA (2026-07-25, "barbie" en el sistema): la versión
-        // corta era débil — se recupera el anti-doll batallado en compacto.
+        // DESNUDEZ GARANTIZADA (2026-07-25, "salió vestida"): antes la orden
+        // "completely nude" vivía en la COLA de la escena y el truncado a 800
+        // se la comía (diff del usuario: cortaba justo antes) → Qwen la vestía.
+        // La orden va AQUÍ (zona no truncable) + ropa prohibida en el negative.
+        // Vulva con el anti-doll batallado en compacto.
         parts.push(
-            'Bare breasts with small compact skin-toned areolas. Her vulva clearly visible: a single delicate closed vertical cleft line in matte skin tone — never a smooth featureless doll-like mound.',
+            'She is COMPLETELY NUDE, wearing nothing at all. Bare breasts with small compact skin-toned areolas. Her vulva clearly visible: a single delicate closed vertical cleft line in matte skin tone — never a smooth featureless doll-like mound.',
         )
     }
 
@@ -113,7 +136,7 @@ export function buildMuleRouterEditMaxPrompt(params: {
     const FIXED_NEG =
         'watermark, text, logo, signature, extra fingers, deformed hands, missing limbs, amputated limbs'
     const NSFW_NEG =
-        'censored, censor bar, blurred crotch, smooth featureless crotch, doll-like genital area, pink areolas, blushed chest, open labia, gaping, oversized breasts'
+        'clothes, clothing, dress, corset, top, pants, bra, panties, underwear, covered body, censored, censor bar, blurred crotch, smooth featureless crotch, doll-like genital area, pink areolas, blushed chest, open labia, gaping, oversized breasts'
     const negativePrompt = (
         params.nsfw
             ? `${NSFW_NEG}, ${BODY_NEG}, ${FIXED_NEG}`
