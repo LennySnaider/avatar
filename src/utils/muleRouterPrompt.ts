@@ -317,3 +317,30 @@ export const MULEROUTER_SIZE: Record<string, string> = {
     '3:4': '1104*1472',
     '4:3': '1472*1104',
 }
+
+/**
+ * FASE 2 del clone: face-swap PURO sobre el resultado de la fase 1.
+ *
+ * POR QUÉ DOS FASES (2026-07-25): con el clone de lienzo, Edit Max clava la
+ * composición Y el cuerpo (verificado por el usuario: "al 100% puso el cuerpo
+ * perfecto") pero se queda con la CARA del lienzo — ninguna orden de texto la
+ * movió en 4 rondas. Separar el problema: la fase 1 arma la escena y la fase 2
+ * solo cambia la cara, que es justo el patrón del path DEEPFAKE de Qwen (el que
+ * el código documenta como "el que SÍ funciona").
+ *
+ * Prompt MÍNIMO a propósito: la escena ya está en la imagen, y describirla otra
+ * vez diluye la orden de swap (misma lección que la 2-fases de KIE).
+ */
+export function buildMuleRouterFaceSwapPrompt(hairDesc?: string): {
+    prompt: string
+    negativePrompt: string
+} {
+    const hair = hairDesc ? ` Keep her hair ${hairDesc.split(',')[0]}.` : ''
+    return {
+        prompt:
+            'The FIRST image is the photo to keep: reproduce it EXACTLY — same body, pose, outfit, hands, framing, lighting and background. The SECOND image shows the person whose FACE to use. The FACE SWAP is MANDATORY: replace the face in the FIRST image with the face from the SECOND image — her exact features, freckles and likeness — never keep the original face. Do NOT blend the two images.' +
+            hair,
+        negativePrompt:
+            'blended faces, different person, mannequin, doll, plastic skin, deformed hands, extra fingers, watermark, text, logo',
+    }
+}

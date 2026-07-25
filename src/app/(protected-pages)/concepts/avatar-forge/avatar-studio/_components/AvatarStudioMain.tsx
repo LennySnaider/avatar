@@ -99,6 +99,7 @@ import {
 } from '@/services/MuleRouterService'
 import {
     buildMuleRouterEditMaxPrompt,
+    buildMuleRouterFaceSwapPrompt,
     MULEROUTER_SIZE,
 } from '@/utils/muleRouterPrompt'
 import { generateImageViaGateway } from '@/services/GatewayService'
@@ -2261,9 +2262,97 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                                 throw new Error(
                                     'MuleRouter tardó demasiado (>3 min)',
                                 )
-                            resultUrl = mrUrl
-                            apiPrompt = sub.fullApiPrompt
-                            pendingStableUrl = persistKieImageResult(mrUrl)
+                            // ── FASE 2 (solo con clone de lienzo): FACE-SWAP ──
+                            // Con el clone de Image 1, Edit Max clava escena Y
+                            // cuerpo pero conserva la CARA del lienzo — ninguna
+                            // orden de texto la movió en 4 rondas. Se separa el
+                            // problema: fase 1 arma la escena, fase 2 SOLO cambia
+                            // la cara (el patrón del deepfake de Qwen, que sí
+                            // funciona). Cuesta 1 generación extra y solo aplica
+                            // a runs con clone ≥50 — el resto sigue en 1 fase.
+                            let mrFinalUrl = mrUrl
+                            let mrPrompt = sub.fullApiPrompt
+                            if (mrCloneSlot) {
+                                try {
+                                    const canvasBlob = await (
+                                        await fetch(mrUrl, {
+                                            signal: AbortSignal.timeout(30_000),
+                                        })
+                                    ).blob()
+                                    const canvasB64 = await new Promise<string>(
+                                        (resolve, reject) => {
+                                            const fr = new FileReader()
+                                            fr.onload = () =>
+                                                resolve(
+                                                    String(fr.result).split(
+                                                        ',',
+                                                    )[1] ?? '',
+                                                )
+                                            fr.onerror = () =>
+                                                reject(
+                                                    new Error(
+                                                        'No se pudo leer la fase 1',
+                                                    ),
+                                                )
+                                            fr.readAsDataURL(canvasBlob)
+                                        },
+                                    )
+                                    const swap = buildMuleRouterFaceSwapPrompt(
+                                        getHairColorDescription(
+                                            measurements?.hairColor,
+                                        ),
+                                    )
+                                    const sub2 =
+                                        await submitMuleRouterImageTask({
+                                            prompt: swap.prompt,
+                                            negativePrompt: swap.negativePrompt,
+                                            images: [
+                                                {
+                                                    base64: canvasB64,
+                                                    mimeType:
+                                                        canvasBlob.type ||
+                                                        'image/jpeg',
+                                                },
+                                                {
+                                                    base64: kieSingleRef.base64,
+                                                    mimeType:
+                                                        kieSingleRef.mimeType,
+                                                },
+                                            ],
+                                            size:
+                                                MULEROUTER_SIZE[aspectRatio] ??
+                                                '928*1664',
+                                            tier: mrTier,
+                                        })
+                                    if (sub2.success) {
+                                        const t2 = Date.now()
+                                        while (Date.now() - t2 < 180_000) {
+                                            await new Promise((r) =>
+                                                setTimeout(r, 6000),
+                                            )
+                                            const st2 =
+                                                await checkMuleRouterImageTask(
+                                                    sub2.taskId,
+                                                    mrTier,
+                                                )
+                                            if (st2.status === 'done') {
+                                                mrFinalUrl = st2.url
+                                                mrPrompt = `[FASE 1 · escena+cuerpo]\n${sub.fullApiPrompt}\n\n[FASE 2 · face-swap]\n${sub2.fullApiPrompt}`
+                                                break
+                                            }
+                                            if (st2.status === 'failed') break
+                                        }
+                                    }
+                                } catch (e) {
+                                    // Si el swap falla se conserva la fase 1
+                                    // (escena correcta, cara del lienzo) en vez
+                                    // de perder la generación entera.
+                                    console.warn('[MuleRouter] face-swap:', e)
+                                }
+                            }
+                            resultUrl = mrFinalUrl
+                            apiPrompt = mrPrompt
+                            pendingStableUrl = persistKieImageResult(mrFinalUrl)
                                 .then((r) => (r.success ? r.url : null))
                                 .catch(() => null)
                         } else if (qwenTwoPhase && kieSingleRef) {
