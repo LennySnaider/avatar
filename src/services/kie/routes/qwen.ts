@@ -105,7 +105,7 @@ async function build(ctx: ImageRouteContext): Promise<KieImageRequest> {
                     const cw = ctx.cloneWeight ?? 100
                     const fidelity =
                         cw >= 75
-                            ? `Keep EVERYTHING else EXACTLY as the FIRST image — the SAME outfit (all garment pieces, NO restyling or merging into a one-piece), pose, framing and FULL background/setting (NOT a plain, white or studio backdrop)`
+                            ? `Keep the SAME outfit (all garment pieces, NO restyling or merging into a one-piece), pose, framing and FULL background/setting (NOT a plain, white or studio backdrop) as the FIRST image`
                             : cw >= 50
                               ? `Keep the outfit, pose, framing and background close to the FIRST image (NOT a plain backdrop), minor natural variation allowed`
                               : cw >= 25
@@ -118,6 +118,14 @@ async function build(ctx: ImageRouteContext): Promise<KieImageRequest> {
                     // relocada, para ahorrar presupuesto) y sin corchetes (Qwen los
                     // renderiza literales). El face-swap va al FRENTE (sobrevive
                     // cualquier recorte); la cola de la descripción cede.
+                    // El CUERPO del avatar manda sobre el de la foto clonada
+                    // (reporte 2026-07-24: piernas flacas de la foto vs curvas del
+                    // avatar). ANTES el path de clone NO inyectaba NINGÚN body clause
+                    // → el cuerpo salía 100% de la foto. Mismo override que seedream:
+                    // el clone aporta outfit/pose/escena, el CUERPO viene del spec.
+                    const cloneBodyClause = ctx.bodyEmphasis
+                        ? ` Do NOT copy her body, build or leg/thigh thickness from the first image (it looks slimmer than she really is) — render THIS body instead: ${capAtWordBoundary(ctx.bodyEmphasis, 500, 'qwen-clone-body')}, with visibly fuller, curvier legs and thighs than the first image shows.`
+                        : ''
                     const cloneMatch = String(ctx.prompt).match(
                         /\[CLONE:\s*([^\]]*)\]/i,
                     )
@@ -128,7 +136,7 @@ async function build(ctx: ImageRouteContext): Promise<KieImageRequest> {
                     )
                         .replace(/\s{2,}/g, ' ')
                         .trim()
-                    input.prompt = `Swap ONLY the face — use the SECOND image's face (exact features, freckles, likeness), keep that person's hair and natural eye colour, NEVER the first image's original face.${hairClause} ${fidelity}: ${cloneDesc}`
+                    input.prompt = `Swap ONLY the face — use the SECOND image's face (exact features, freckles, likeness), keep that person's hair and natural eye colour, NEVER the first image's original face.${hairClause}${cloneBodyClause} ${fidelity}: ${cloneDesc}`
                     console.log(
                         `[KIE] qwen2/image-edit CLONE (clone canvas + face swap, weight ${cw})`,
                     )
