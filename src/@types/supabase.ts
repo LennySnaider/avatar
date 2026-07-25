@@ -398,6 +398,12 @@ export type ReferenceType =
     | 'face'
     | 'angle'
     | 'body'
+    // Hoja NUDE del Body Lab (2026-07-25): la hoja canónica `body` va vestida a
+    // propósito (se inyecta en motores NO permisivos, que un desnudo bloquea),
+    // pero en runs NSFW su ropa se FILTRA al resultado. Segunda hoja, gateada:
+    // solo viaja en NSFW + motor permisivo. Migración
+    // 20260725190000_body_nsfw_reference_type.sql (había un CHECK constraint).
+    | 'body_nsfw'
     | 'bust'
     | 'glutes'
 export type MediaType = 'IMAGE' | 'VIDEO'

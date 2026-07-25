@@ -46,7 +46,16 @@ export interface ReferenceImage {
     url: string
     mimeType: string
     base64: string
-    type: 'general' | 'face' | 'angle' | 'body' | 'bust' | 'glutes' | 'pose'
+    type:
+        | 'general'
+        | 'face'
+        | 'angle'
+        | 'body'
+        // Hoja NUDE del Body Lab — gateada a runs NSFW en motores permisivos.
+        | 'body_nsfw'
+        | 'bust'
+        | 'glutes'
+        | 'pose'
     storagePath?: string
     thumbnailUrl?: string // Optimized thumbnail for UI display
 }

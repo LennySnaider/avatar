@@ -56,6 +56,9 @@ export function buildMuleRouterEditMaxPrompt(params: {
      *  IMAGEN (la razón de ser del Body Lab) y el spec textual baja a cm
      *  compactos — libera ~150 chars para la escena. */
     hasBodySheet?: boolean
+    /** true → esa hoja es la variante NUDE: no hay ropa que prohibir y encima
+     *  aporta la piel/anatomía reales (fin del "no se ve natural"). */
+    bodySheetNude?: boolean
 }): { prompt: string; negativePrompt: string } {
     const m = params.measurements
     const parts: string[] = []
@@ -86,11 +89,14 @@ export function buildMuleRouterEditMaxPrompt(params: {
         const hair = m
             ? getHairColorDescription(m.hairColor).split(',')[0]
             : ''
-        // Image 2 = SOLO proporciones. Su ROPA (top/panti beige del turnaround)
-        // se filtraba y salía vestida (2026-07-25) → se prohíbe explícito y
-        // compacto (la orden de desnudez vive UNA sola vez, en el bloque NSFW).
+        // Image 2 = cuerpo. Con la hoja NUDE se copia además la PIEL y la
+        // anatomía reales (lo que el texto no lograba: "no se ve natural").
+        // Con la hoja VESTIDA hay que prohibir su ropa por nombre — el
+        // "IGNORE clothing" genérico no bastaba y salía con la panti beige.
         parts.push(
-            `Use Image 2 ONLY for her body shape and proportions${cmLine} — copy the FIGURE, never Image 2's sports bra, underwear, face or background.${hair ? ` Her hair: ${hair}.` : ''}`,
+            params.bodySheetNude
+                ? `Image 2 is a nude turnaround of the SAME woman — copy her exact body shape, proportions and natural skin${cmLine}; ignore its background and neutral pose.${hair ? ` Her hair: ${hair}.` : ''}`
+                : `Use Image 2 ONLY for her body shape and proportions${cmLine} — copy the FIGURE, never Image 2's sports bra, underwear, face or background.${hair ? ` Her hair: ${hair}.` : ''}`,
         )
     } else if (m?.waist && m?.hips && m?.bust) {
         const shape = (m.shape ?? m.bodyType ?? 'hourglass').replace(/-/g, ' ')

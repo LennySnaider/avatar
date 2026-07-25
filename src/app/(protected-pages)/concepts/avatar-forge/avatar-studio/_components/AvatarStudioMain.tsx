@@ -393,6 +393,35 @@ async function genMotionControlKie(
  * imagen ya generada y COBRADA en KIE (reporte 2026-07-24, verificado vía
  * recordInfo: state=success pero la app nunca la guardó).
  */
+/**
+ * Trae desde la BD la hoja MÁS RECIENTE de un tipo del Body Lab ('body'
+ * vestida / 'body_nsfw' desnuda). Devuelve null si no hay nada nuevo que
+ * aplicar (misma storagePath o sin fila) — el caller conserva lo que tenía.
+ */
+async function hydrateSheetFromDb(
+    avatarId: string,
+    type: 'body' | 'body_nsfw',
+    current: ReferenceImage | null,
+): Promise<ReferenceImage | null> {
+    const rows = await apiGetAvatarReferences(avatarId, type)
+    const row = rows?.[0]
+    if (!row?.storage_path || current?.storagePath === row.storage_path) {
+        return null
+    }
+    const signed = await getSignedUrl('avatars', row.storage_path)
+    const dataUrl = await urlToDataUrl(signed)
+    const mm = dataUrl.match(/^data:(.+);base64,(.+)$/)
+    if (!mm) return null
+    return {
+        id: row.id,
+        url: dataUrl,
+        mimeType: mm[1],
+        base64: mm[2],
+        type,
+        storagePath: row.storage_path,
+    }
+}
+
 function withDeadline<T>(p: Promise<T>, ms: number, label: string): Promise<T> {
     return Promise.race([
         p,
@@ -504,6 +533,7 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
         faceRef,
         angleRef,
         bodyRef,
+        bodyRefNsfw,
         assetImages,
         sceneImage,
         poseImage,
@@ -793,6 +823,14 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                         ...(fresh.bodyRef
                             ? [{ ...fresh.bodyRef, type: 'body' as const }]
                             : []),
+                        ...(fresh.bodyRefNsfw
+                            ? [
+                                  {
+                                      ...fresh.bodyRefNsfw,
+                                      type: 'body_nsfw' as const,
+                                  },
+                              ]
+                            : []),
                     ]
 
                     // Tipos SINGLETON: al re-guardar con una imagen nueva se
@@ -803,6 +841,7 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                         'face',
                         'angle',
                         'body',
+                        'body_nsfw',
                     ])
                     for (const ref of allRefs) {
                         if (!ref.storagePath) {
@@ -1296,53 +1335,70 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                 // undefined en el resto (Gemini/Gateway/video) → sin chip.
                 let generationMeta: GenerationMetadata | undefined
 
-                // Refrescar el body ref desde la BD → SIEMPRE se envía el último
-                // cuerpo guardado, sin depender de abrir el drawer de edit. No
-                // pisa una selección FRESCA sin guardar (sin storagePath).
+                // Refrescar las hojas del Body Lab desde la BD → SIEMPRE se
+                // envía la última guardada, sin depender de abrir el drawer de
+                // edit. No pisa una selección FRESCA sin guardar (sin
+                // storagePath). Dos hojas: `body` (vestida) y `body_nsfw`.
                 let effectiveBodyRef = bodyRef
+                let effectiveBodyRefNsfw = bodyRefNsfw
                 try {
                     if (avatarId && (!bodyRef || bodyRef.storagePath)) {
-                        const rows = await apiGetAvatarReferences(
+                        const fresh = await hydrateSheetFromDb(
                             avatarId,
                             'body',
+                            bodyRef,
                         )
-                        const row = rows?.[0]
-                        if (
-                            row?.storage_path &&
-                            bodyRef?.storagePath !== row.storage_path
-                        ) {
-                            const signed = await getSignedUrl(
-                                'avatars',
-                                row.storage_path,
-                            )
-                            const dataUrl = await urlToDataUrl(signed)
-                            const mm = dataUrl.match(/^data:(.+);base64,(.+)$/)
-                            if (mm) {
-                                effectiveBodyRef = {
-                                    id: row.id,
-                                    url: dataUrl,
-                                    mimeType: mm[1],
-                                    base64: mm[2],
-                                    type: 'body',
-                                    storagePath: row.storage_path,
-                                }
-                                // refleja también en el bottom bar (store)
-                                useAvatarStudioStore
-                                    .getState()
-                                    .setBodyRef(effectiveBodyRef)
-                            }
+                        if (fresh) {
+                            effectiveBodyRef = fresh
+                            // refleja también en el bottom bar (store)
+                            useAvatarStudioStore.getState().setBodyRef(fresh)
+                        }
+                    }
+                    if (
+                        avatarId &&
+                        (!bodyRefNsfw || bodyRefNsfw.storagePath)
+                    ) {
+                        const freshNsfw = await hydrateSheetFromDb(
+                            avatarId,
+                            'body_nsfw',
+                            bodyRefNsfw,
+                        )
+                        if (freshNsfw) {
+                            effectiveBodyRefNsfw = freshNsfw
+                            useAvatarStudioStore
+                                .getState()
+                                .setBodyRefNsfw(freshNsfw)
                         }
                     }
                 } catch {
-                    // si falla el refresh, se usa el body ref del store
+                    // si falla el refresh, se usan las hojas del store
                 }
+
+                // GATING DE LA HOJA (2026-07-25) — cada variante SOLO donde es
+                // segura: la hoja VESTIDA filtra su ropa al resultado en runs
+                // NSFW (bug live en Seedream+Wan+Qwen; en MuleRouter la panti
+                // sobrevivía a todo prompt), y la hoja NUDE rompe a los motores
+                // NO permisivos (bloqueo upstream). Si no hay hoja nude, el
+                // comportamiento es EXACTAMENTE el de antes (fallback vestida).
+                const permissiveEngine = isExplicitCapableModel(
+                    activeProvider?.model || '',
+                )
+                const usingNudeSheet = !!(
+                    nsfwRun &&
+                    permissiveEngine &&
+                    effectiveBodyRefNsfw
+                )
+                const sheetForRun = usingNudeSheet
+                    ? effectiveBodyRefNsfw
+                    : effectiveBodyRef
 
                 // Optimize images before sending to API (resize to 1024px max)
                 const optimizedPayload = await prepareAvatarPayload({
                     generalRefs: validGeneralRefs,
                     assetImages: validAssetRefs,
                     faceRef,
-                    bodyRef: effectiveBodyRef,
+                    // Hoja elegida por el gating (nude si NSFW+permisivo).
+                    bodyRef: sheetForRun,
                     sceneImage: sceneImage, // Scene Composite - literally places avatar in this scene
                 })
 
@@ -2066,7 +2122,10 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                                 (kieRefsToSend ?? []).find(
                                     (r) => r.role === 'body',
                                 ) ?? null
-                            const mrBodySheet = nsfwRun ? null : mrRawSheet
+                            // En NSFW la hoja solo viaja si es la NUDE
+                            // (la vestida filtraba su panti beige).
+                            const mrBodySheet =
+                                nsfwRun && !usingNudeSheet ? null : mrRawSheet
                             const mr = buildMuleRouterEditMaxPrompt({
                                 measurements,
                                 scene: fullPrompt,
@@ -2077,6 +2136,7 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                                 cameraShot,
                                 cameraAngle,
                                 hasBodySheet: !!mrBodySheet,
+                                bodySheetNude: usingNudeSheet,
                             })
                             const sub = await submitMuleRouterImageTask({
                                 prompt: mr.prompt,
@@ -3022,6 +3082,7 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
             sceneImage,
             faceRef,
             bodyRef,
+            bodyRefNsfw,
             angleRef,
             poseImage,
             cloneImage,

@@ -159,9 +159,20 @@ const AvatarStudioProvider = ({
                     const faceRef = loadedRefs.find((r) => r.type === 'face') || null
                     const angleRef = loadedRefs.find((r) => r.type === 'angle') || null
                     const bodyRef = loadedRefs.find((r) => r.type === 'body') || null
+                    // Hoja NUDE (2026-07-25): segunda hoja del Body Lab, solo
+                    // se envía en runs NSFW a motores permisivos.
+                    const bodyRefNsfw =
+                        loadedRefs.find((r) => r.type === 'body_nsfw') || null
                     const generalRefs = loadedRefs.filter((r) => r.type === 'general')
 
-                    loadAvatarData(avatar, generalRefs, faceRef, angleRef, bodyRef)
+                    loadAvatarData(
+                        avatar,
+                        generalRefs,
+                        faceRef,
+                        angleRef,
+                        bodyRef,
+                        bodyRefNsfw,
+                    )
                 })
                 .finally(() => {
                     setIsLoadingReferences(false)

@@ -73,6 +73,9 @@ interface AvatarStudioState {
     faceRef: ReferenceImage | null
     angleRef: ReferenceImage | null
     bodyRef: ReferenceImage | null
+    /** Hoja NUDE del Body Lab — solo viaja en runs NSFW a motores permisivos
+     *  (la hoja vestida contamina el resultado con su ropa). */
+    bodyRefNsfw: ReferenceImage | null
     assetImages: ReferenceImage[]
     cloneImage: ReferenceImage | null // Clone Ref - clones everything except face and body type
     cloneDescription: string // Text description of clone (analyzed from image)
@@ -225,6 +228,7 @@ interface AvatarStudioState {
     setFaceRef: (ref: ReferenceImage | null) => void
     setAngleRef: (ref: ReferenceImage | null) => void
     setBodyRef: (ref: ReferenceImage | null) => void
+    setBodyRefNsfw: (ref: ReferenceImage | null) => void
     setAssetImages: (images: ReferenceImage[]) => void
     addAssetImage: (image: ReferenceImage) => void
     removeAssetImage: (id: string) => void
@@ -387,6 +391,7 @@ interface AvatarStudioState {
         faceRef: ReferenceImage | null,
         angleRef: ReferenceImage | null,
         bodyRef: ReferenceImage | null,
+        bodyRefNsfw?: ReferenceImage | null,
     ) => void
 }
 
@@ -410,6 +415,7 @@ const initialState = {
     faceRef: null,
     angleRef: null,
     bodyRef: null,
+    bodyRefNsfw: null,
     assetImages: [],
     cloneImage: null,
     cloneDescription: '',
@@ -543,6 +549,7 @@ export const useAvatarStudioStore = create<AvatarStudioState>()(
             setFaceRef: (ref) => set({ faceRef: ref }),
             setAngleRef: (ref) => set({ angleRef: ref }),
             setBodyRef: (ref) => set({ bodyRef: ref }),
+            setBodyRefNsfw: (ref) => set({ bodyRefNsfw: ref }),
             setAssetImages: (images) => set({ assetImages: images }),
             addAssetImage: (image) =>
                 set((state) => ({
@@ -588,6 +595,7 @@ export const useAvatarStudioStore = create<AvatarStudioState>()(
                     faceRef: null,
                     angleRef: null,
                     bodyRef: null,
+                    bodyRefNsfw: null,
                 }),
             // Clears everything including session tools (full reset)
             clearAllReferences: () =>
@@ -596,6 +604,7 @@ export const useAvatarStudioStore = create<AvatarStudioState>()(
                     faceRef: null,
                     angleRef: null,
                     bodyRef: null,
+                    bodyRefNsfw: null,
                     assetImages: [],
                     cloneImage: null,
                     cloneDescription: '',
@@ -990,7 +999,14 @@ export const useAvatarStudioStore = create<AvatarStudioState>()(
 
             // Reset
             resetStore: () => set(initialState),
-            loadAvatarData: (avatar, references, faceRef, angleRef, bodyRef) =>
+            loadAvatarData: (
+                avatar,
+                references,
+                faceRef,
+                angleRef,
+                bodyRef,
+                bodyRefNsfw,
+            ) =>
                 set({
                     currentAvatar: avatar,
                     avatarId: avatar.id,
@@ -1001,6 +1017,7 @@ export const useAvatarStudioStore = create<AvatarStudioState>()(
                     faceRef,
                     angleRef,
                     bodyRef,
+                    bodyRefNsfw: bodyRefNsfw ?? null,
                     identityWeight: avatar.identity_weight || 85,
                     measurements: avatar.measurements || initialMeasurements,
                     faceDescription: avatar.face_description || '',
