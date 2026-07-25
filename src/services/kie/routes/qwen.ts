@@ -135,8 +135,12 @@ async function build(ctx: ImageRouteContext): Promise<KieImageRequest> {
                     // avatar). ANTES el path de clone NO inyectaba NINGÚN body clause
                     // → el cuerpo salía 100% de la foto. Mismo override que seedream:
                     // el clone aporta outfit/pose/escena, el CUERPO viene del spec.
+                    // Candado BIDIRECCIONAL (2026-07-24, "Qwen sale más ancha que
+                    // Seedream con las mismas medidas"): Qwen pesa las frases
+                    // cualitativas de curvas sobre los cm y EXAGERA. Los números
+                    // son la verdad — ni más flaca ni más ancha.
                     const cloneBodyClause = ctx.bodyEmphasis
-                        ? ` Do NOT copy her body, build or leg/thigh thickness from the first image (it looks slimmer than she really is) — render THIS body instead: ${capAtWordBoundary(ctx.bodyEmphasis, 500, 'qwen-clone-body')}, with visibly fuller, curvier legs and thighs than the first image shows.`
+                        ? ` Do NOT copy her body, build or leg/thigh thickness from the first image (it looks slimmer than she really is) — render THIS body instead: ${capAtWordBoundary(ctx.bodyEmphasis, 500, 'qwen-clone-body')}. Match the stated centimetre measurements EXACTLY — never slimmer, and never wider or curvier than the numbers say.`
                         : ''
                     const cloneMatch = String(ctx.prompt).match(
                         /\[CLONE:\s*([^\]]*)\]/i,
@@ -183,8 +187,13 @@ async function build(ctx: ImageRouteContext): Promise<KieImageRequest> {
                     // 119/45 salía slim). Qwen obedece el TEXTO sobre la
                     // imagen (caso "mujer coreana"), así que un spec COMPACTO
                     // (cap 200 — el presupuesto total es 800) sí ancla.
+                    // Candado BIDIRECCIONAL (2026-07-24): "NOT a slimmer one" solo
+                    // acotaba un lado y Qwen exageraba caderas/glúteos sobre las
+                    // frases cualitativas de curvas (misma Emily 86/45/85: Seedream
+                    // correcto, Qwen mucho más ancha). Los cm mandan en ambas
+                    // direcciones.
                     const qwenBodyClause = ctx.bodyEmphasis
-                        ? ` Her body (MANDATORY): ${capAtWordBoundary(ctx.bodyEmphasis, 700, 'qwen-body')} — render THAT body, NOT a slimmer one.${BODY_SPEC_NOT_WARDROBE_CLAUSE}`
+                        ? ` Her body (MANDATORY): ${capAtWordBoundary(ctx.bodyEmphasis, 700, 'qwen-body')} — render THAT body at its EXACT centimetre measurements: never slimmer, and never wider or curvier than the numbers say — hips, glutes and thighs must MATCH the stated centimetres, never exaggerated beyond them.${BODY_SPEC_NOT_WARDROBE_CLAUSE}`
                         : ''
                     // Lock de cara AUTORITATIVO y COMPACTO (cap 800): Qwen
                     // obedece el TEXTO por encima de la imagen — un prompt
