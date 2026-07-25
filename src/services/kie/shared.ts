@@ -373,3 +373,29 @@ export function flattenJsonPromptToProse(prompt: string): string {
  */
 export const BODY_SPEC_NOT_WARDROBE_CLAUSE =
     ' The body spec is PROPORTIONS only, never wardrobe or setting: do NOT default to plain underwear, a neutral two-piece or an empty studio backdrop. If the text names no outfit or location, invent ones that suit its mood, and give every garment a DEFINITE colour that reads clearly against her skin — never a nude, beige or skin-tone garment unless the text explicitly names that colour.'
+
+/**
+ * Guard-hardening (2026-07-24): cuando el prompt NO nombra NINGUNA prenda
+ * (prompt reusado/tipeado sin outfit), un motor LITERAL como Qwen rellena el
+ * vacío con nude/beige — el guard blando de arriba ("invent an outfit") no
+ * basta. Esto INYECTA un outfit concreto con color. Devuelve '' si el prompt ya
+ * nombra ropa o si hay intención NSFW (ahí NO se viste). En clone/deepfake el
+ * outfit viene de la IMAGEN, así que el dispatcher NO lo llama.
+ */
+const GARMENT_WORDS =
+    /\b(dress|gown|skirt|shirt|blouse|top|tee|t-shirt|sweater|cardigan|hoodie|jacket|coat|blazer|suit|trousers?|pants?|jeans?|shorts?|leggings?|bodysuit|swimsuit|bikini|lingerie|bra|bralette|corset|jumpsuit|romper|overalls?|uniform|robe|kimono|activewear|leotard|tank|crop|turtleneck|halter|camisole|slip|nightgown|pyjamas?|pajamas?|underwear|panties|briefs|thong|outfit|wearing|dressed|clad|garment|clothes|clothing|attire|costume|wardrobe|denim|leather|lace)\b/i
+const NUDITY_WORDS =
+    /\b(nude|naked|topless|bottomless|bare[- ]?(chest|breast|body|skin)|undressed|explicit|nsfw|see[- ]?through|sheer)\b/i
+const FALLBACK_OUTFITS = [
+    'a fitted emerald-green top and high-waisted dark-blue jeans',
+    'a burgundy wrap blouse and tailored charcoal trousers',
+    'a cobalt-blue knit top and black straight-leg jeans',
+    'a scarlet-red fitted midi dress',
+    'a black ribbed turtleneck and a mustard-yellow midi skirt',
+]
+export function concreteOutfitClause(prompt: string): string {
+    if (!prompt || NUDITY_WORDS.test(prompt) || GARMENT_WORDS.test(prompt))
+        return ''
+    const pick = FALLBACK_OUTFITS[prompt.length % FALLBACK_OUTFITS.length]
+    return ` No outfit is described, so dress her in ${pick} — in clearly defined colours, never nude, beige or skin-tone.`
+}

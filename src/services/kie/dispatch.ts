@@ -11,6 +11,7 @@
  */
 
 import type { ImageRoute, ImageRouteContext, KieImageRequest } from './context'
+import { concreteOutfitClause } from './shared'
 import { buildLegacyRequest } from './routes/legacy'
 import { zImageRoute } from './routes/zImage'
 import { ideogramRoute } from './routes/ideogram'
@@ -41,8 +42,17 @@ export const ROUTES: ImageRoute[] = [
 export async function buildImageRequest(
     ctx: ImageRouteContext,
 ): Promise<KieImageRequest> {
-    const route = ROUTES.find((r) => r.matches(ctx.model))
-    return route ? route.build(ctx) : buildLegacyRequest(ctx)
+    // Guard-hardening: en GENERACIÓN pura (sin clone/deepfake) y sin outfit
+    // nombrado, inyecta uno concreto con color — si no, el motor literal rellena
+    // el vacío con nude/beige. En clone/deepfake el outfit viene de la IMAGEN →
+    // no se toca. Se trabaja sobre una copia (no muta el ctx del caller).
+    const outfitFromImage =
+        ctx.deepfakeMode ||
+        (ctx.referenceImages ?? []).some((r) => r.role === 'clone')
+    const outfit = outfitFromImage ? '' : concreteOutfitClause(ctx.prompt)
+    const built = outfit ? { ...ctx, prompt: ctx.prompt + outfit } : ctx
+    const route = ROUTES.find((r) => r.matches(built.model))
+    return route ? route.build(built) : buildLegacyRequest(built)
 }
 
 /**
