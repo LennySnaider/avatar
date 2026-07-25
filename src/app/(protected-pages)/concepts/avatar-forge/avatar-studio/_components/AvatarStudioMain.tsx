@@ -2055,6 +2055,13 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                             const mrTier = kieModel.includes('plus')
                                 ? ('plus' as const)
                                 : ('max' as const)
+                            // Hoja del Body Lab (rol 'body') → Image 2: ancla
+                            // el CUERPO por imagen (la razón de ser del Body
+                            // Lab) y libera presupuesto de texto.
+                            const mrBodySheet =
+                                (kieRefsToSend ?? []).find(
+                                    (r) => r.role === 'body',
+                                ) ?? null
                             const mr = buildMuleRouterEditMaxPrompt({
                                 measurements,
                                 scene: fullPrompt,
@@ -2064,11 +2071,18 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                                 // 800 se los comía al final de la escena).
                                 cameraShot,
                                 cameraAngle,
+                                hasBodySheet: !!mrBodySheet,
                             })
                             const sub = await submitMuleRouterImageTask({
                                 prompt: mr.prompt,
                                 negativePrompt: mr.negativePrompt,
                                 faceRef: kieSingleRef,
+                                bodyRef: mrBodySheet
+                                    ? {
+                                          base64: mrBodySheet.base64,
+                                          mimeType: mrBodySheet.mimeType,
+                                      }
+                                    : null,
                                 size:
                                     MULEROUTER_SIZE[aspectRatio] ?? '928*1664',
                                 // Seed estable: mismo avatar → cuerpos más

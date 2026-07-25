@@ -52,6 +52,10 @@ export function buildMuleRouterEditMaxPrompt(params: {
      *  escena el truncado a 800 se los comía y el modelo los ignoraba. */
     cameraShot?: string
     cameraAngle?: string | null
+    /** true → la hoja del Body Lab viaja como Image 2: el cuerpo se ancla por
+     *  IMAGEN (la razón de ser del Body Lab) y el spec textual baja a cm
+     *  compactos — libera ~150 chars para la escena. */
+    hasBodySheet?: boolean
 }): { prompt: string; negativePrompt: string } {
     const m = params.measurements
     const parts: string[] = []
@@ -71,7 +75,21 @@ export function buildMuleRouterEditMaxPrompt(params: {
         `${camLine} of the woman in Image 1 — keep her EXACT face, hair and identity unchanged.`,
     )
 
-    if (m?.waist && m?.hips && m?.bust) {
+    if (params.hasBodySheet) {
+        // CUERPO POR IMAGEN (la razón de ser del Body Lab): la hoja turnaround
+        // viaja como Image 2 — receta ganadora de Seedream. El texto queda en
+        // cm compactos (cinturón y tirantes) + pelo/piel.
+        const cmLine =
+            m?.waist && m?.hips && m?.bust
+                ? ` (bust ${m.bust}cm, waist ${m.waist}cm, hips ${m.hips}cm)`
+                : ''
+        const hair = m
+            ? getHairColorDescription(m.hairColor).split(',')[0]
+            : ''
+        parts.push(
+            `Image 2 shows her real BODY (a turnaround sheet of the SAME woman) — replicate its exact body shape, proportions, curves and build${cmLine}; IGNORE Image 2's clothing, face and background.${hair ? ` Her hair: ${hair}.` : ''}`,
+        )
+    } else if (m?.waist && m?.hips && m?.bust) {
         const shape = (m.shape ?? m.bodyType ?? 'hourglass').replace(/-/g, ' ')
         const bodyBits: string[] = [
             `Her body: ${shape} figure, cinched ${m.waist}cm waist clearly narrower than her ${m.bust}cm bust and ${m.hips}cm hips`,

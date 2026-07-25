@@ -41,6 +41,10 @@ export async function submitMuleRouterImageTask(params: {
     negativePrompt?: string
     /** Face ref del avatar (base64) — se sube a Supabase y viaja como URL. */
     faceRef: { base64: string; mimeType: string }
+    /** Hoja del Body Lab (turnaround) — viaja como Image 2: ancla el CUERPO
+     *  por imagen (la razón de ser del Body Lab) y libera presupuesto de
+     *  texto. El API acepta 1-3 imágenes. */
+    bodyRef?: { base64: string; mimeType: string } | null
     /** "width*height", ambos en [512,2048]. Default 928*1664 (9:16). */
     size?: string
     /** Seed estable por avatar (consistencia corporal entre gens). */
@@ -56,9 +60,15 @@ export async function submitMuleRouterImageTask(params: {
             params.faceRef.base64,
             params.faceRef.mimeType,
         )
+        const bodyUrl = params.bodyRef
+            ? await uploadReferenceToSupabase(
+                  params.bodyRef.base64,
+                  params.bodyRef.mimeType,
+              )
+            : null
         const prompt = params.prompt.slice(0, 800)
         const body = {
-            images: [faceUrl],
+            images: bodyUrl ? [faceUrl, bodyUrl] : [faceUrl],
             prompt,
             ...(params.negativePrompt
                 ? { negative_prompt: params.negativePrompt.slice(0, 500) }
