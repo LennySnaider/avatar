@@ -52,6 +52,18 @@ async function build(ctx: ImageRouteContext): Promise<KieImageRequest> {
         promptText = stripIdentityRedundancy(promptText, true)
     }
     const capped = capAtWordBoundary(promptText, 4000, ctx.model)
+    // Lever 3 anatomía (2026-07-24, "no basta"): la oración "Her anatomy: …"
+    // viaja en la COLA de la escena (~char 3200 de 3400) y Qwen la ignoró DOS
+    // veces (v1 condicional y v2 imperativa — verificado por recordInfo que SÍ
+    // viajaba). En un editor literal el FRENTE manda (por eso el face-lock va
+    // ahí). Se EXTRAE de la cola y se re-inyecta en el ancla (tras el body
+    // clause) en los paths plain y clone. MOVE, no duplicate.
+    const anatMatch = capped.match(/\sHer anatomy:[\s\S]*$/)
+    const anatomySentence = anatMatch ? anatMatch[0].trim() : ''
+    const cappedSansAnatomy = anatMatch
+        ? capped.slice(0, anatMatch.index).trim()
+        : capped
+    const anatomyFront = anatomySentence ? ` ${anatomySentence}` : ''
     let resolvedModel = ctx.model
     const input: Record<string, unknown> = {
         prompt: capped,
@@ -136,7 +148,7 @@ async function build(ctx: ImageRouteContext): Promise<KieImageRequest> {
                     )
                         .replace(/\s{2,}/g, ' ')
                         .trim()
-                    input.prompt = `Swap ONLY the face — use the SECOND image's face (exact features, freckles, likeness), keep that person's hair and natural eye colour, NEVER the first image's original face.${hairClause}${cloneBodyClause} ${fidelity}: ${cloneDesc}`
+                    input.prompt = `Swap ONLY the face — use the SECOND image's face (exact features, freckles, likeness), keep that person's hair and natural eye colour, NEVER the first image's original face.${hairClause}${cloneBodyClause}${anatomyFront} ${fidelity}: ${cloneDesc}`
                     console.log(
                         `[KIE] qwen2/image-edit CLONE (clone canvas + face swap, weight ${cw})`,
                     )
@@ -187,7 +199,7 @@ async function build(ctx: ImageRouteContext): Promise<KieImageRequest> {
                     // el modelo "resolvía" recortando piernas/pies. Se le da la
                     // MISMA cláusula positiva que ya llevan seedream/wan/flux2/grok
                     // (el negative_prompt se conserva como defensa en profundidad).
-                    input.prompt = `Keep her EXACT face, hair and natural realistic eyes from the reference image — IGNORE any nationality, ethnicity or facial description in the text.${hairClause}${qwenBodyClause}${INTACT_BODY_CLAUSE} ${input.prompt}`
+                    input.prompt = `Keep her EXACT face, hair and natural realistic eyes from the reference image — IGNORE any nationality, ethnicity or facial description in the text.${hairClause}${qwenBodyClause}${INTACT_BODY_CLAUSE}${anatomyFront} ${cappedSansAnatomy}`
                 }
             }
         } catch (e) {
