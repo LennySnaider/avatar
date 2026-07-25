@@ -517,7 +517,7 @@ export function getSkinToneDescription(skinTone?: number): string {
     if (!skinTone) return ''
     const descriptions: Record<number, string> = {
         1: 'very fair porcelain skin, pale ivory complexion',
-        2: 'fair skin, light complexion with pink undertones',
+        2: 'fair skin, light porcelain complexion with cool undertones',
         3: 'light skin, cream colored complexion',
         4: 'light-medium skin, warm beige complexion',
         5: 'medium skin, golden warm complexion',
