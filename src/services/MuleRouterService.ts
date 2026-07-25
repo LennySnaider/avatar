@@ -41,14 +41,10 @@ export async function submitMuleRouterImageTask(params: {
     negativePrompt?: string
     /** Face ref del avatar (base64) — se sube a Supabase y viaja como URL. */
     faceRef: { base64: string; mimeType: string }
-    /** Hoja del Body Lab (turnaround) — viaja como Image 2: ancla el CUERPO
-     *  por imagen (la razón de ser del Body Lab) y libera presupuesto de
-     *  texto. El API acepta 1-3 imágenes. */
-    bodyRef?: { base64: string; mimeType: string } | null
-    /** Place Ref — Image 3: ancla la LOCACIÓN por imagen (antes solo viajaba
-     *  su texto [PLACE:], que el cap de 800 chars se comía). El API tope son 3
-     *  imágenes: cara + cuerpo + lugar es exactamente el máximo. */
-    placeRef?: { base64: string; mimeType: string } | null
+    /** Imágenes EXTRA en orden (la cara siempre es Image 1). El API acepta 3
+     *  en total → como mucho 2 extras; el caller decide la prioridad (clone >
+     *  hoja > lugar) y el prompt nombra el índice real de cada una. */
+    extras?: Array<{ base64: string; mimeType: string }>
     /** "width*height", ambos en [512,2048]. Default 928*1664 (9:16). */
     size?: string
     /** Seed estable por avatar (consistencia corporal entre gens). */
@@ -64,25 +60,16 @@ export async function submitMuleRouterImageTask(params: {
             params.faceRef.base64,
             params.faceRef.mimeType,
         )
-        const bodyUrl = params.bodyRef
-            ? await uploadReferenceToSupabase(
-                  params.bodyRef.base64,
-                  params.bodyRef.mimeType,
-              )
-            : null
-        const placeUrl = params.placeRef
-            ? await uploadReferenceToSupabase(
-                  params.placeRef.base64,
-                  params.placeRef.mimeType,
-              )
-            : null
+        const extraUrls = await Promise.all(
+            (params.extras ?? [])
+                .slice(0, 2) // cara + 2 extras = el tope de 3 del API
+                .map((e) => uploadReferenceToSupabase(e.base64, e.mimeType)),
+        )
         const prompt = params.prompt.slice(0, 800)
         // Orden = índice que el prompt referencia (Image 1/2/3). El AR de salida
         // lo fija `size` explícito, no la última imagen (verificado: la hoja es
         // 16:9 landscape y los outputs salían 9:16 portrait igual).
-        const images = [faceUrl, bodyUrl, placeUrl].filter(
-            (u): u is string => !!u,
-        )
+        const images = [faceUrl, ...extraUrls]
         const body = {
             images,
             prompt,

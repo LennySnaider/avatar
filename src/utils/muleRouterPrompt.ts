@@ -59,21 +59,30 @@ export function buildMuleRouterEditMaxPrompt(params: {
     /** true → esa hoja es la variante NUDE: no hay ropa que prohibir y encima
      *  aporta la piel/anatomía reales (fin del "no se ve natural"). */
     bodySheetNude?: boolean
-    /** true → el Place Ref viaja como imagen. Su índice depende de si hay hoja
-     *  (cara=1, hoja=2, lugar=3) o no (cara=1, lugar=2) — el prompt DEBE
-     *  nombrar el índice real o el modelo mira la imagen equivocada. */
-    hasPlaceRef?: boolean
+    /** Roles de las imágenes EXTRA en el mismo orden en que se envían (la cara
+     *  siempre es Image 1). El prompt nombra el índice REAL de cada una —
+     *  nombrar mal el índice hace que el modelo mire la imagen equivocada.
+     *  El API acepta 3 imágenes → como mucho 2 extras. */
+    extraRoles?: Array<'clone' | 'body' | 'place'>
 }): { prompt: string; negativePrompt: string } {
     const m = params.measurements
     const parts: string[] = []
 
     // CÁMARA PRIMERO y COMPACTA (la composición pesa al inicio; la versión
     // verbosa de 200 chars agotó el presupuesto y dejó la desnudez fuera).
-    // Respeta los chips; AUTO cae a full-body con anti-corte de cabeza/pies.
-    const framing =
-        params.cameraShot && params.cameraShot !== 'AUTO'
-            ? (MR_FRAMING[params.cameraShot] ?? '')
-            : MR_FRAMING.FULL_SHOT
+    // Respeta los chips del usuario. En AUTO: full-body con anti-corte… SALVO
+    // que viaje un CLONE — ahí el encuadre lo manda la foto clonada (forzar
+    // "full body" contradecía el "reproduce el framing de Image 2" y peleaba
+    // con escenas de medio cuerpo).
+    const explicitShot =
+        !!params.cameraShot && params.cameraShot !== 'AUTO'
+    const cloneDrivesFraming =
+        !explicitShot && (params.extraRoles ?? []).includes('clone')
+    const framing = explicitShot
+        ? (MR_FRAMING[params.cameraShot as string] ?? '')
+        : cloneDrivesFraming
+          ? 'Photo'
+          : MR_FRAMING.FULL_SHOT
     const angle = params.cameraAngle
         ? (MR_ANGLE[params.cameraAngle] ?? '')
         : ''
@@ -82,7 +91,25 @@ export function buildMuleRouterEditMaxPrompt(params: {
         `${camLine} of the woman in Image 1 — keep her EXACT face, hair and identity unchanged.`,
     )
 
-    if (params.hasBodySheet) {
+    // Índices REALES de cada extra (la cara es Image 1).
+    const roles = params.extraRoles ?? []
+    const idxOf = (r: 'clone' | 'body' | 'place') => {
+        const i = roles.indexOf(r)
+        return i === -1 ? 0 : i + 2
+    }
+    const bodyIdx = idxOf('body')
+    const cloneIdx = idxOf('clone')
+    const placeIdx = idxOf('place')
+
+    // CLONE como IMAGEN (2026-07-25): es lo que hace ganar a Seedream — la
+    // pose/outfit/setting se copian de la foto, no de un texto truncable.
+    if (cloneIdx) {
+        parts.push(
+            `Image ${cloneIdx} sets the OUTFIT, pose, framing and setting — reproduce them; its person is a faceless mannequin, the face comes ONLY from Image 1.`,
+        )
+    }
+
+    if (bodyIdx) {
         // CUERPO POR IMAGEN (la razón de ser del Body Lab): la hoja turnaround
         // viaja como Image 2 — receta ganadora de Seedream. El texto queda en
         // cm compactos (cinturón y tirantes) + pelo/piel.
@@ -99,8 +126,8 @@ export function buildMuleRouterEditMaxPrompt(params: {
         // "IGNORE clothing" genérico no bastaba y salía con la panti beige.
         parts.push(
             params.bodySheetNude
-                ? `Image 2 is a nude turnaround of the SAME woman — copy her exact body shape, proportions and natural skin${cmLine}; ignore its background and neutral pose.${hair ? ` Her hair: ${hair}.` : ''}`
-                : `Use Image 2 ONLY for her body shape and proportions${cmLine} — copy the FIGURE, never Image 2's sports bra, underwear, face or background.${hair ? ` Her hair: ${hair}.` : ''}`,
+                ? `Image ${bodyIdx} is a nude turnaround of the SAME woman — copy her exact body shape, proportions and natural skin${cmLine}; ignore its background and neutral pose.${hair ? ` Her hair: ${hair}.` : ''}`
+                : `Use Image ${bodyIdx} ONLY for her body shape and proportions${cmLine} — copy the FIGURE, never its sports bra, underwear, face or background.${hair ? ` Her hair: ${hair}.` : ''}`,
         )
     } else if (m?.waist && m?.hips && m?.bust) {
         const shape = (m.shape ?? m.bodyType ?? 'hourglass').replace(/-/g, ' ')
@@ -150,16 +177,20 @@ export function buildMuleRouterEditMaxPrompt(params: {
     // LOCACIÓN por imagen: el texto [PLACE: …] se elimina abajo con el resto de
     // tags (el cap de 800 no lo aguanta), así que sin esto la locación se perdía
     // por completo en MuleRouter. El índice depende de si viajó la hoja.
-    if (params.hasPlaceRef) {
-        const placeIdx = params.hasBodySheet ? 3 : 2
+    if (placeIdx) {
         parts.push(
             `Image ${placeIdx} is the LOCATION: place her in THAT exact environment (its architecture, furniture and lighting); ignore any person in it.`,
         )
     }
 
-    // Escena limpia: fuera tags [XXX] y la cláusula larga de watermark (esa
-    // prohibición vive en el negative), espacios colapsados.
+    // Escena limpia. CRÍTICO (2026-07-25, "todas las de Qwen salen iguales"):
+    // en runs con Clone/Place la descripción REAL de la escena (outfit, pose,
+    // setting) vive DENTRO de los tags [CLONE:…]/[PLACE:…]. Borrarlos enteros
+    // dejaba a MuleRouter SIN escena → siempre la misma pose neutra, y sin
+    // outfit copiaba el de la hoja (el bikini gris). Se PRESERVA su contenido y
+    // solo se tiran los tags de identidad (que ya viajan en la zona fija).
     const cleanScene = params.scene
+        .replace(/\[(?:CLONE|PLACE|POSE|SCENE):\s*([^\]]*)\]/gi, ' $1 ')
         .replace(/\[[^\]]*\]/g, ' ')
         .replace(/Do NOT add any watermark[^.]*\./gi, ' ')
         .replace(/Her anatomy:[\s\S]*$/i, ' ')

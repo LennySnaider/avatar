@@ -2126,6 +2126,42 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                             // (la vestida filtraba su panti beige).
                             const mrBodySheet =
                                 nsfwRun && !usingNudeSheet ? null : mrRawSheet
+                            // Slots de imagen (API: 3 en total = cara + 2).
+                            // PRIORIDAD: clone (outfit/pose/setting — lo que
+                            // hace ganar a Seedream) > hoja de cuerpo > lugar.
+                            // Con clone el lugar suele venir en la propia foto.
+                            const mrExtras: Array<{
+                                role: 'clone' | 'body' | 'place'
+                                ref: { base64: string; mimeType: string }
+                            }> = []
+                            if (optimizedCloneRef) {
+                                mrExtras.push({
+                                    role: 'clone',
+                                    ref: {
+                                        base64: optimizedCloneRef.base64,
+                                        mimeType: optimizedCloneRef.mimeType,
+                                    },
+                                })
+                            }
+                            if (mrBodySheet) {
+                                mrExtras.push({
+                                    role: 'body',
+                                    ref: {
+                                        base64: mrBodySheet.base64,
+                                        mimeType: mrBodySheet.mimeType,
+                                    },
+                                })
+                            }
+                            if (optimizedPlaceRef) {
+                                mrExtras.push({
+                                    role: 'place',
+                                    ref: {
+                                        base64: optimizedPlaceRef.base64,
+                                        mimeType: optimizedPlaceRef.mimeType,
+                                    },
+                                })
+                            }
+                            const mrSlots = mrExtras.slice(0, 2)
                             const mr = buildMuleRouterEditMaxPrompt({
                                 measurements,
                                 scene: fullPrompt,
@@ -2135,28 +2171,14 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                                 // 800 se los comía al final de la escena).
                                 cameraShot,
                                 cameraAngle,
-                                hasBodySheet: !!mrBodySheet,
                                 bodySheetNude: usingNudeSheet,
-                                hasPlaceRef: !!optimizedPlaceRef,
+                                extraRoles: mrSlots.map((e) => e.role),
                             })
                             const sub = await submitMuleRouterImageTask({
                                 prompt: mr.prompt,
                                 negativePrompt: mr.negativePrompt,
                                 faceRef: kieSingleRef,
-                                bodyRef: mrBodySheet
-                                    ? {
-                                          base64: mrBodySheet.base64,
-                                          mimeType: mrBodySheet.mimeType,
-                                      }
-                                    : null,
-                                // Image 3: la locación por IMAGEN (su texto
-                                // [PLACE:] no sobrevive al cap de 800).
-                                placeRef: optimizedPlaceRef
-                                    ? {
-                                          base64: optimizedPlaceRef.base64,
-                                          mimeType: optimizedPlaceRef.mimeType,
-                                      }
-                                    : null,
+                                extras: mrSlots.map((e) => e.ref),
                                 size:
                                     MULEROUTER_SIZE[aspectRatio] ?? '928*1664',
                                 // Seed estable: mismo avatar → cuerpos más
