@@ -2034,8 +2034,15 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                             !optimizedCloneRef &&
                             !optimizedDeepfakeRef
                         if (qwenTwoPhase && kieSingleRef) {
+                            // La fase 1 NO debe pre-pintar la cara del avatar:
+                            // el [FACE:] textual generaba una cara PARECIDA y el
+                            // swap de la fase 2 la daba por buena ("perdimos la
+                            // cara"). Canvas con cara GENÉRICA → el reemplazo es
+                            // inambiguo (claramente distinta = swap obligatorio).
                             const phase1 = await pollKieImageTask({
-                                prompt: kiePrompt,
+                                prompt: kiePrompt
+                                    .replace(/\s*\[FACE:[^\]]*\]/gi, ' ')
+                                    .replace(/\s{2,}/g, ' '),
                                 aspectRatio,
                                 model: 'qwen2/text-to-image',
                                 bodyEmphasis: curvesEmphasis
