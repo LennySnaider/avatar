@@ -14,6 +14,13 @@ interface ImageLightboxProps {
     imageUrl: string | null // null = cerrado
     onClose: () => void
     alt?: string
+    /**
+     * Variantes intercambiables DENTRO del visor (p.ej. hoja del Body Lab
+     * vestida ↔ NSFW). Si se pasan, aparece un toggle en la barra superior.
+     * El zoom/pan NO se resetean al cambiar: así se comparan en el mismo
+     * encuadre, que es justo para lo que sirve.
+     */
+    variants?: { label: string; url: string }[]
 }
 
 const ZOOM_MIN = 1
@@ -24,7 +31,15 @@ const ImageLightbox = ({
     imageUrl,
     onClose,
     alt = 'Preview',
+    variants,
 }: ImageLightboxProps) => {
+    // Variante activa (solo con `variants`). Se siembra con la imagen con que
+    // se abrió el visor, así el toggle arranca donde el usuario hizo click.
+    const [activeUrl, setActiveUrl] = useState<string | null>(imageUrl)
+    useEffect(() => {
+        setActiveUrl(imageUrl)
+    }, [imageUrl])
+    const shownUrl = variants?.length ? (activeUrl ?? imageUrl) : imageUrl
     const [zoom, setZoom] = useState(1)
     const [pan, setPan] = useState({ x: 0, y: 0 })
     const drag = useRef<{
@@ -83,8 +98,26 @@ const ImageLightbox = ({
         >
             {imageUrl && (
                 <div className="flex flex-col">
-                    {/* Zoom Controls */}
+                    {/* Zoom Controls + toggle de variantes */}
                     <div className="flex items-center justify-center gap-2 p-2 border-b">
+                        {variants && variants.length > 1 && (
+                            <div className="mr-3 flex items-center gap-1 rounded-lg border border-gray-200 dark:border-gray-700 p-0.5">
+                                {variants.map((v) => (
+                                    <button
+                                        key={v.url}
+                                        type="button"
+                                        onClick={() => setActiveUrl(v.url)}
+                                        className={`px-2.5 py-1 text-xs rounded-md transition-colors ${
+                                            shownUrl === v.url
+                                                ? 'bg-primary text-white font-medium'
+                                                : 'text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'
+                                        }`}
+                                    >
+                                        {v.label}
+                                    </button>
+                                ))}
+                            </div>
+                        )}
                         <button
                             onClick={() => zoomTo(zoom - ZOOM_STEP)}
                             disabled={zoom <= ZOOM_MIN}
@@ -127,7 +160,7 @@ const ImageLightbox = ({
                         }}
                     >
                         <img
-                            src={imageUrl}
+                            src={shownUrl ?? undefined}
                             alt={alt}
                             className="rounded-lg object-contain select-none"
                             style={{

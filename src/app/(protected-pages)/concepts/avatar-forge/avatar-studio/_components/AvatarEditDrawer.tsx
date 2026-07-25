@@ -1149,6 +1149,19 @@ const AvatarEditDrawer = ({
                           null
                         : null
                 }
+                // Toggle vestida ↔ NSFW dentro del visor (solo si el
+                // avatar tiene las dos hojas y se está viendo una de ellas).
+                variants={(() => {
+                    const c = bodySheet || bodyRef
+                    const n = bodySheetNude || bodyRefNsfw
+                    if (!c || !n) return undefined
+                    const shown = previewImage?.url
+                    if (shown !== c.url && shown !== n.url) return undefined
+                    return [
+                        { label: 'Vestida', url: c.url },
+                        { label: '🌶️ NSFW', url: n.url },
+                    ]
+                })()}
                 onClose={handlePreviewClose}
             />
         </>
