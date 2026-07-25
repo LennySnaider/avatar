@@ -255,9 +255,13 @@ export const BUST_SHAPE_PHRASE: Record<string, string> = {
 // patrón que hair/eyeClause: spec fija del avatar, frase CONDICIONAL para no
 // empujar desnudez en escenas vestidas. Solo viaja a permisivos (va dentro de
 // buildCurvesEmphasis, que ya tiene ese gating).
+// 'rosy' recalibrado (2026-07-24): 'natural rosy' seguía saliendo rosa
+// SATURADO/lipstick en Qwen — en un editor literal la palabra de color domina
+// sobre el guard suave del final. Fraseo RELATIVO A SU PIEL (mismo patrón que
+// la eyeClause 58a0957): describe el tono como mezcla con la piel, no un rosa.
 export const NIPPLE_COLOR_PHRASE: Record<string, string> = {
-    rosy: 'natural rosy',
-    peach: 'soft peach-toned',
+    rosy: 'pale pinkish-beige (barely a shade pinker than her surrounding skin)',
+    peach: 'soft peach-tan (gently warmer than her surrounding skin)',
     'light-brown': 'light brown',
     brown: 'medium brown',
     dark: 'deep dark-brown',
@@ -292,7 +296,7 @@ export function nippleClause(m: PhysicalMeasurements): string {
     const sizeLock = areola
         ? ' — areola size EXACTLY as stated, independent of her bust size'
         : ''
-    return `only when uncovered: ${spec}${sizeLock}, realistic soft tone not oversaturated candy-pink, always identical; when clothed nothing shows through fabric`
+    return `only when uncovered: ${spec}${sizeLock}, matte low-saturation tone that blends naturally with her skin — never bright pink, red or candy-coloured, always identical; when clothed nothing shows through fabric`
 }
 
 // Listas para los chips de la UI (orden de despliegue)
