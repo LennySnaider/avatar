@@ -2055,13 +2055,18 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                             const mrTier = kieModel.includes('plus')
                                 ? ('plus' as const)
                                 : ('max' as const)
-                            // Hoja del Body Lab (rol 'body') → Image 2: ancla
-                            // el CUERPO por imagen (la razón de ser del Body
-                            // Lab) y libera presupuesto de texto.
-                            const mrBodySheet =
+                            // Hoja del Body Lab (rol 'body') → Image 2: ancla el
+                            // CUERPO por imagen. PERO la hoja es una foto VESTIDA
+                            // (top/panti beige) y en NSFW su ropa se filtra (la
+                            // panti sobrevivía a todo prompt) → en runs NSFW NO se
+                            // manda la hoja; el cuerpo va por TEXTO (renderiza
+                            // desnuda de verdad con el spec coherente). SFW sí usa
+                            // la hoja (la ropa no estorba). Futuro: hoja NUDE.
+                            const mrRawSheet =
                                 (kieRefsToSend ?? []).find(
                                     (r) => r.role === 'body',
                                 ) ?? null
+                            const mrBodySheet = nsfwRun ? null : mrRawSheet
                             const mr = buildMuleRouterEditMaxPrompt({
                                 measurements,
                                 scene: fullPrompt,
