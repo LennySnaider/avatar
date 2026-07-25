@@ -543,7 +543,9 @@ const AvatarEditDrawer = ({
     }
 
     // Genera el body angle sheet (3 vistas, mini-bikini) desde los sliders.
-    const handleGenerateBody = async () => {
+    const handleGenerateBody = async (
+        only?: 'clothed' | 'nude',
+    ) => {
         if (!selectedBodyModel) return
         setIsGeneratingBody(true)
         try {
@@ -552,13 +554,17 @@ const AvatarEditDrawer = ({
             const pair = await generateBodySheetPair({
                 measurements: localMeasurements,
                 model: selectedBodyModel,
+                only,
             })
-            const sheet = await toBodyReferenceImage(pair.url, 'body')
-            setBodySheet(sheet)
+            if (pair.url) {
+                const sheet = await toBodyReferenceImage(pair.url, 'body')
+                setBodySheet(sheet)
+            }
             const nudeSheet = pair.nudeUrl
                 ? await toBodyReferenceImage(pair.nudeUrl, 'body_nsfw')
                 : null
-            setBodySheetNude(nudeSheet)
+            // Solo pisa la nude si se pidió (refresh selectivo).
+            if (nudeSheet || only !== 'clothed') setBodySheetNude(nudeSheet)
             setSheetMeasurements(localMeasurements)
             const selName =
                 BODY_LAB_MODELS.find(
@@ -994,6 +1000,9 @@ const AvatarEditDrawer = ({
                                               : undefined
                                     }
                                     onGenerate={handleGenerateBody}
+                                    onRegenerate={(only) =>
+                                        handleGenerateBody(only)
+                                    }
                                     onUseAsBody={handleUseAsBody}
                                     canUseAsBody={!!bodySheet}
                                     onPreview={() => {

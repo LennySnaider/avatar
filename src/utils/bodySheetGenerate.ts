@@ -13,8 +13,8 @@ import {
 
 export interface BodySheetPair {
     /** Hoja canónica VESTIDA — la que ven todos los motores (incl. los NO
-     *  permisivos, que un desnudo bloquearía). Siempre presente si hubo éxito. */
-    url: string
+     *  permisivos, que un desnudo bloquearía). null si se pidió solo la nude. */
+    url: string | null
     /** Hoja NUDE — solo viaja en runs NSFW a motores permisivos. null si el
      *  motor la rechazó: NO rompe el flujo, el avatar se queda sin variante
      *  NSFW y esos runs caen al cuerpo por texto (comportamiento previo). */
@@ -42,8 +42,13 @@ export async function generateBodySheetPair(params: {
     measurements: PhysicalMeasurements
     /** Modelo KIE elegido en el selector del Body Lab. */
     model: string
+    /** Qué generar: ambas (default) o SOLO una — el botón de refresh por hoja
+     *  evita pagar las dos cuando solo falló/no gusta una. */
+    only?: 'clothed' | 'nude'
 }): Promise<BodySheetPair> {
     const { measurements, model } = params
+    const wantClothed = params.only !== 'nude'
+    const wantNude = params.only !== 'clothed'
 
     // Preferido: plantilla FIJA de turnaround + i2i → poses/layout consistentes
     // de la plantilla + curvas del config. Fallback: t2i si no está o falla.
@@ -82,16 +87,27 @@ export async function generateBodySheetPair(params: {
               })
 
     const [clothed, nude] = await Promise.all([
-        run(false),
+        wantClothed
+            ? run(false)
+            : Promise.resolve({ success: false as const, error: 'skipped' }),
         // La nude puede rebotar (filtro del motor) sin tumbar la generación:
         // se captura aquí para que la vestida siempre llegue.
-        run(true).catch(() => ({ success: false as const, error: 'nude sheet failed' })),
+        wantNude
+            ? run(true).catch(() => ({
+                  success: false as const,
+                  error: 'nude sheet failed',
+              }))
+            : Promise.resolve({ success: false as const, error: 'skipped' }),
     ])
 
-    if (!clothed.success) throw new Error(clothed.error)
+    // Solo es error si falló lo que SÍ se pidió.
+    if (wantClothed && !clothed.success) throw new Error(clothed.error)
+    if (params.only === 'nude' && !nude.success) {
+        throw new Error('No se pudo generar la variante NSFW')
+    }
 
     return {
-        url: clothed.url,
+        url: clothed.success ? clothed.url : null,
         nudeUrl: nude.success ? nude.url : null,
         usedTemplate: !!tmpl,
     }

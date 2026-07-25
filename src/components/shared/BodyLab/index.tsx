@@ -54,6 +54,9 @@ export interface BodyLabProps {
     nudeSheet?: PhysicalRegionRef | null
     // Click en la miniatura NSFW → lightbox del host.
     onPreviewNude?: () => void
+    // Regenera SOLO una variante (evita pagar las dos). Si no se pasa, no se
+    // muestran los botones de refresh por hoja.
+    onRegenerate?: (only: 'clothed' | 'nude') => void
 }
 
 const BodyLab = (props: BodyLabProps) => {
@@ -112,6 +115,21 @@ const BodyLab = (props: BodyLabProps) => {
                             {props.sheetModel}
                         </span>
                     )}
+                    {/* Refresh SOLO de la vestida (no paga la nude). */}
+                    {props.onRegenerate && !props.stale && (
+                        <button
+                            type="button"
+                            disabled={props.isGenerating}
+                            title="Regenerar SOLO esta hoja (vestida)"
+                            onClick={(e) => {
+                                e.stopPropagation()
+                                props.onRegenerate?.('clothed')
+                            }}
+                            className="absolute top-2 right-2 flex items-center justify-center h-7 w-7 rounded-lg bg-black/60 text-white hover:bg-black/80 disabled:opacity-40"
+                        >
+                            <HiOutlineRefresh className="w-4 h-4" />
+                        </button>
+                    )}
                     {/* Overlay "desactualizado": cambiaste atributos → actualizar */}
                     {props.stale && (
                         <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-black/55 backdrop-blur-[1px] rounded-lg">
@@ -168,6 +186,21 @@ const BodyLab = (props: BodyLabProps) => {
                         <span className="absolute top-0.5 left-0.5 px-1 rounded bg-pink-600 text-white text-[9px] font-bold pointer-events-none">
                             🌶️
                         </span>
+                        {/* Refresh SOLO de la NSFW (no paga la vestida). */}
+                        {props.onRegenerate && (
+                            <button
+                                type="button"
+                                disabled={props.isGenerating}
+                                title="Regenerar SOLO la variante NSFW"
+                                onClick={(e) => {
+                                    e.stopPropagation()
+                                    props.onRegenerate?.('nude')
+                                }}
+                                className="absolute -top-1.5 -right-1.5 flex items-center justify-center h-6 w-6 rounded-full bg-pink-600 text-white hover:bg-pink-700 disabled:opacity-40 shadow"
+                            >
+                                <HiOutlineRefresh className="w-3.5 h-3.5" />
+                            </button>
+                        )}
                     </div>
                     <p className="text-[10px] text-gray-400 leading-snug">
                         Variante NSFW lista — se usa sola en generaciones 🌶️ con

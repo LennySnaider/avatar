@@ -168,7 +168,9 @@ const AvatarCreatorMain = ({
         }
     }
 
-    const handleGenerateBody = async () => {
+    const handleGenerateBody = async (
+        only?: 'clothed' | 'nude',
+    ) => {
         if (!selectedBodyModel) return
         setIsGeneratingBody(true)
         try {
@@ -176,13 +178,17 @@ const AvatarCreatorMain = ({
             const pair = await generateBodySheetPair({
                 measurements,
                 model: selectedBodyModel,
+                only,
             })
-            const sheet = await bodySheetToRef(pair.url, 'body')
-            setBodySheet(sheet)
+            if (pair.url) {
+                const sheet = await bodySheetToRef(pair.url, 'body')
+                setBodySheet(sheet)
+            }
             const nudeSheet = pair.nudeUrl
                 ? await bodySheetToRef(pair.nudeUrl, 'body_nsfw')
                 : null
-            setBodySheetNude(nudeSheet)
+            // Solo pisa la nude si se pidió (refresh selectivo).
+            if (nudeSheet || only !== 'clothed') setBodySheetNude(nudeSheet)
             setSheetMeasurements(measurements)
             toast.push(
                 <Notification type="success" title="Cuerpo generado">
@@ -1090,6 +1096,9 @@ const AvatarCreatorMain = ({
                                               : undefined
                                     }
                                     onGenerate={handleGenerateBody}
+                                    onRegenerate={(only) =>
+                                        handleGenerateBody(only)
+                                    }
                                     onUseAsBody={handleUseAsBody}
                                     canUseAsBody={!!bodySheet}
                                     onPreview={() => {
