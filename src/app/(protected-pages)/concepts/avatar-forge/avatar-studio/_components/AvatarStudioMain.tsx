@@ -2137,6 +2137,7 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                                 cameraAngle,
                                 hasBodySheet: !!mrBodySheet,
                                 bodySheetNude: usingNudeSheet,
+                                hasPlaceRef: !!optimizedPlaceRef,
                             })
                             const sub = await submitMuleRouterImageTask({
                                 prompt: mr.prompt,
@@ -2146,6 +2147,14 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                                     ? {
                                           base64: mrBodySheet.base64,
                                           mimeType: mrBodySheet.mimeType,
+                                      }
+                                    : null,
+                                // Image 3: la locación por IMAGEN (su texto
+                                // [PLACE:] no sobrevive al cap de 800).
+                                placeRef: optimizedPlaceRef
+                                    ? {
+                                          base64: optimizedPlaceRef.base64,
+                                          mimeType: optimizedPlaceRef.mimeType,
                                       }
                                     : null,
                                 size:

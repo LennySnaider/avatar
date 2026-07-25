@@ -48,6 +48,12 @@ export interface BodyLabProps {
     // true si los atributos físicos cambiaron desde que se generó/guardó el
     // sheet mostrado → overlay "desactualizado" + botón Actualizar + ojo.
     stale?: boolean
+    // Variante NUDE de la hoja (se genera en pareja con la vestida). Solo viaja
+    // a motores permisivos en runs NSFW; aquí se muestra como miniatura para
+    // confirmar que existe. null = este avatar no tiene variante NSFW.
+    nudeSheet?: PhysicalRegionRef | null
+    // Click en la miniatura NSFW → lightbox del host.
+    onPreviewNude?: () => void
 }
 
 const BodyLab = (props: BodyLabProps) => {
@@ -138,6 +144,35 @@ const BodyLab = (props: BodyLabProps) => {
                             </div>
                         </div>
                     )}
+                </div>
+            )}
+
+            {/* Variante NSFW: miniatura pequeña (la hoja de trabajo es la
+                vestida; esta solo confirma que el avatar tiene versión nude). */}
+            {props.nudeSheet && !props.stale && (
+                <div className="flex items-center gap-2">
+                    <div className="relative shrink-0">
+                        <img
+                            src={
+                                props.nudeSheet.thumbnailUrl ||
+                                props.nudeSheet.url
+                            }
+                            alt="Body sheet NSFW"
+                            onClick={props.onPreviewNude}
+                            className={`h-14 w-24 rounded-md border border-pink-500/40 object-cover${
+                                props.onPreviewNude
+                                    ? ' cursor-pointer hover:ring-2 hover:ring-pink-500'
+                                    : ''
+                            }`}
+                        />
+                        <span className="absolute top-0.5 left-0.5 px-1 rounded bg-pink-600 text-white text-[9px] font-bold pointer-events-none">
+                            🌶️
+                        </span>
+                    </div>
+                    <p className="text-[10px] text-gray-400 leading-snug">
+                        Variante NSFW lista — se usa sola en generaciones 🌶️ con
+                        motores permisivos (la vestida va al resto).
+                    </p>
                 </div>
             )}
 

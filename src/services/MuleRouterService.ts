@@ -45,6 +45,10 @@ export async function submitMuleRouterImageTask(params: {
      *  por imagen (la razón de ser del Body Lab) y libera presupuesto de
      *  texto. El API acepta 1-3 imágenes. */
     bodyRef?: { base64: string; mimeType: string } | null
+    /** Place Ref — Image 3: ancla la LOCACIÓN por imagen (antes solo viajaba
+     *  su texto [PLACE:], que el cap de 800 chars se comía). El API tope son 3
+     *  imágenes: cara + cuerpo + lugar es exactamente el máximo. */
+    placeRef?: { base64: string; mimeType: string } | null
     /** "width*height", ambos en [512,2048]. Default 928*1664 (9:16). */
     size?: string
     /** Seed estable por avatar (consistencia corporal entre gens). */
@@ -66,9 +70,21 @@ export async function submitMuleRouterImageTask(params: {
                   params.bodyRef.mimeType,
               )
             : null
+        const placeUrl = params.placeRef
+            ? await uploadReferenceToSupabase(
+                  params.placeRef.base64,
+                  params.placeRef.mimeType,
+              )
+            : null
         const prompt = params.prompt.slice(0, 800)
+        // Orden = índice que el prompt referencia (Image 1/2/3). El AR de salida
+        // lo fija `size` explícito, no la última imagen (verificado: la hoja es
+        // 16:9 landscape y los outputs salían 9:16 portrait igual).
+        const images = [faceUrl, bodyUrl, placeUrl].filter(
+            (u): u is string => !!u,
+        )
         const body = {
-            images: bodyUrl ? [faceUrl, bodyUrl] : [faceUrl],
+            images,
             prompt,
             ...(params.negativePrompt
                 ? { negative_prompt: params.negativePrompt.slice(0, 500) }

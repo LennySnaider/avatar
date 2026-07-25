@@ -168,6 +168,12 @@ const AvatarCard = ({ avatar }: AvatarCardProps) => {
                             storagePath: ref.storage_path,
                             thumbnailUrl: thumb,
                         }
+                        // `refIds` alimenta el borrado al guardar: todo lo que
+                        // esté aquí y no vuelva del drawer se ELIMINA. La hoja
+                        // NUDE (body_nsfw) la gestiona el Body Lab del Studio,
+                        // no este drawer → si entrara aquí, guardar desde My
+                        // Avatars la borraría en silencio (2026-07-25).
+                        if (ref.type === 'body_nsfw') continue
                         refIds.push(ref.id)
 
                         switch (ref.type) {

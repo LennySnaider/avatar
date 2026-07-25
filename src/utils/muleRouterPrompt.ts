@@ -59,6 +59,10 @@ export function buildMuleRouterEditMaxPrompt(params: {
     /** true → esa hoja es la variante NUDE: no hay ropa que prohibir y encima
      *  aporta la piel/anatomía reales (fin del "no se ve natural"). */
     bodySheetNude?: boolean
+    /** true → el Place Ref viaja como imagen. Su índice depende de si hay hoja
+     *  (cara=1, hoja=2, lugar=3) o no (cara=1, lugar=2) — el prompt DEBE
+     *  nombrar el índice real o el modelo mira la imagen equivocada. */
+    hasPlaceRef?: boolean
 }): { prompt: string; negativePrompt: string } {
     const m = params.measurements
     const parts: string[] = []
@@ -140,6 +144,16 @@ export function buildMuleRouterEditMaxPrompt(params: {
         // la palabra "line". Nudez reforzada (no top, no panti).
         parts.push(
             'She is COMPLETELY NUDE — no bra, top or underwear, bare skin all over. Realistic bare breasts with small skin-toned areolas and a natural vulva with soft closed labia, matte skin tone — real anatomy, not a smooth doll-like blank.',
+        )
+    }
+
+    // LOCACIÓN por imagen: el texto [PLACE: …] se elimina abajo con el resto de
+    // tags (el cap de 800 no lo aguanta), así que sin esto la locación se perdía
+    // por completo en MuleRouter. El índice depende de si viajó la hoja.
+    if (params.hasPlaceRef) {
+        const placeIdx = params.hasBodySheet ? 3 : 2
+        parts.push(
+            `Image ${placeIdx} is the LOCATION: place her in THAT exact environment (its architecture, furniture and lighting); ignore any person in it.`,
         )
     }
 

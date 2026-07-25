@@ -20,16 +20,8 @@ import {
     HiOutlineSparkles,
 } from 'react-icons/hi'
 import { generateAvatar, analyzeFaceFromImages } from '@/services/GeminiService'
-import { generateImageKie } from '@/services/KieService'
-import {
-    buildBodySheetPrompt,
-    buildBodySheetCurves,
-    buildTurnaroundRefinePrompt,
-    BODY_TURNAROUND_TEMPLATE_URL,
-    BODY_SHEET_REFINE_MODEL,
-    BODY_SHEET_NEGATIVE_PROMPT,
-    sameBodyShape,
-} from '@/utils/bodySheetPrompt'
+import { sameBodyShape } from '@/utils/bodySheetPrompt'
+import { generateBodySheetPair } from '@/utils/bodySheetGenerate'
 import { urlToDataUrl } from '@/utils/imageStitch'
 import {
     apiGetAvatarReferences,
@@ -70,6 +62,10 @@ const AvatarEditDrawer = ({
         null,
     )
     const [bodySheet, setBodySheet] = useState<ReferenceImage | null>(null)
+    // Hoja NUDE recién generada (aún sin fijar) — se fija junto con la vestida.
+    const [bodySheetNude, setBodySheetNude] = useState<ReferenceImage | null>(
+        null,
+    )
     const [bodySheetModel, setBodySheetModel] = useState('')
     // Snapshot de las medidas con que se generó/cargó el sheet mostrado — para
     // detectar si el usuario cambió atributos (→ sheet "desactualizado").
@@ -128,7 +124,9 @@ const AvatarEditDrawer = ({
         setMeasurements,
         setFaceDescription,
         bodyRef,
+        bodyRefNsfw,
         setBodyRef,
+        setBodyRefNsfw,
     } = useAvatarStudioStore()
 
     // Sync local state from store when drawer opens
@@ -192,6 +190,32 @@ const AvatarEditDrawer = ({
                     type: 'body',
                     storagePath: row.storage_path,
                 })
+                // Hoja NUDE (si el avatar la tiene) — misma lógica.
+                try {
+                    const nRefs = await apiGetAvatarReferences(
+                        avatarId,
+                        'body_nsfw',
+                    )
+                    const nRow = nRefs?.[0]
+                    if (!nRow?.storage_path || cancelled) return
+                    const nSigned = await getSignedUrl(
+                        'avatars',
+                        nRow.storage_path,
+                    )
+                    const nData = await urlToDataUrl(nSigned)
+                    const nm = nData.match(/^data:(.+);base64,(.+)$/)
+                    if (!nm || cancelled) return
+                    setBodyRefNsfw({
+                        id: nRow.id,
+                        url: nData,
+                        mimeType: nm[1],
+                        base64: nm[2],
+                        type: 'body_nsfw',
+                        storagePath: nRow.storage_path,
+                    })
+                } catch {
+                    // sin variante NSFW → se queda sin ella
+                }
             } catch {
                 // sin body ref o fallo de carga → se deja lo que haya
             }
@@ -560,50 +584,30 @@ const AvatarEditDrawer = ({
         if (!selectedBodyModel) return
         setIsGeneratingBody(true)
         try {
-            // Preferido: plantilla FIJA de turnaround + Seedream i2i → poses/
-            // layout consistentes de la plantilla + curvas del config (1 gen).
-            // Fallback: Wan t2i (una imagen) si la plantilla no está o falla.
-            let tmpl: { base64: string; mimeType: string } | null = null
-            try {
-                const dataUrl = await urlToDataUrl(BODY_TURNAROUND_TEMPLATE_URL)
-                const mt = dataUrl.match(/^data:(.+);base64,(.+)$/)
-                if (mt) tmpl = { mimeType: mt[1], base64: mt[2] }
-            } catch {
-                // plantilla ausente → fallback
-            }
-
-            // Sin plantilla no se puede t2i con Seedream (i2i-only) → cae a Wan.
-            const t2iFallbackModel =
-                selectedBodyModel === BODY_SHEET_REFINE_MODEL
-                    ? 'wan/2-7-image'
-                    : selectedBodyModel
-            const result = tmpl
-                ? await generateImageKie({
-                      prompt: buildTurnaroundRefinePrompt(localMeasurements),
-                      model: selectedBodyModel,
-                      aspectRatio: '16:9',
-                      referenceImage: tmpl,
-                      bodyEmphasis: buildBodySheetCurves(localMeasurements),
-                      negativePrompt: BODY_SHEET_NEGATIVE_PROMPT,
-                  })
-                : await generateImageKie({
-                      prompt: buildBodySheetPrompt(localMeasurements),
-                      model: t2iFallbackModel,
-                      aspectRatio: '16:9',
-                      negativePrompt: BODY_SHEET_NEGATIVE_PROMPT,
-                  })
-            if (!result.success) throw new Error(result.error)
-            const sheet = await toReferenceImage(result.url, 'body')
+            // Las DOS variantes de un golpe (vestida + nude): la vestida va a
+            // todos los motores y la nude solo a los permisivos en runs NSFW.
+            const pair = await generateBodySheetPair({
+                measurements: localMeasurements,
+                model: selectedBodyModel,
+            })
+            const sheet = await toReferenceImage(pair.url, 'body')
             setBodySheet(sheet)
+            const nudeSheet = pair.nudeUrl
+                ? await toReferenceImage(pair.nudeUrl, 'body_nsfw')
+                : null
+            setBodySheetNude(nudeSheet)
             setSheetMeasurements(localMeasurements) // sheet ↔ medidas actuales
             const selName =
                 bodyLabModels.find((p) => p.model === selectedBodyModel)
                     ?.name || selectedBodyModel
-            setBodySheetModel(tmpl ? `${selName} · plantilla` : selName)
+            setBodySheetModel(
+                pair.usedTemplate ? `${selName} · plantilla` : selName,
+            )
             toast.push(
                 <Notification type="success" title="Cuerpo generado">
-                    Sheet de 3 vistas listo. Revísalo y pulsa &quot;Usar como
-                    cuerpo&quot;.
+                    {nudeSheet
+                        ? 'Sheet de 3 vistas + variante NSFW listos. Revísalos y pulsa "Usar como cuerpo".'
+                        : 'Sheet de 3 vistas listo (la variante NSFW no se pudo generar). Revísalo y pulsa "Usar como cuerpo".'}
                 </Notification>,
             )
         } catch (error) {
@@ -622,6 +626,11 @@ const AvatarEditDrawer = ({
         if (!bodySheet) return
         setBodyRef(bodySheet)
         setBodySheet(null) // pasa a ser el "Cuerpo guardado" (feedback visible)
+        // La variante NSFW se fija junto con la vestida (se generan en pareja).
+        if (bodySheetNude) {
+            setBodyRefNsfw(bodySheetNude)
+            setBodySheetNude(null)
+        }
         toast.push(
             <Notification type="success" title="Cuerpo fijado">
                 Se guardará como el cuerpo del avatar al guardar los cambios.
@@ -1030,6 +1039,11 @@ const AvatarEditDrawer = ({
                                         if (s) setPreviewImage(s)
                                     }}
                                     stale={bodyStale}
+                                    nudeSheet={bodySheetNude || bodyRefNsfw}
+                                    onPreviewNude={() => {
+                                        const n = bodySheetNude || bodyRefNsfw
+                                        if (n) setPreviewImage(n)
+                                    }}
                                     disabledReason={
                                         bodyLabModels.length === 0
                                             ? 'No hay modelos KIE de imagen disponibles. Actívalos en AI Providers.'
