@@ -114,7 +114,8 @@ export function buildBodySheetCurves(m: PhysicalMeasurements): string {
 /**
  * Prompt para el BODY ANGLE SHEET del avatar: una sola imagen con 3 vistas
  * (frente / perfil / espalda) de la MISMA mujer, de cuerpo completo, en
- * sports bra + briefs beige (dos piezas), fondo de estudio neutro y luz pareja.
+ * sports bra + briefs gris carbón (dos piezas), fondo neutro y luz pareja — o
+ * DESNUDA si `opts.nude` (variante que solo viaja a motores permisivos).
  *
  * El PUNTO del sheet es que el cuerpo refleje FIELMENTE los sliders, así que la
  * spec física va explícita y MANDATORIA en el prompt (no solo por el ancla del
@@ -127,7 +128,10 @@ export function buildBodySheetCurves(m: PhysicalMeasurements): string {
  * bloquea el contexto swimwear con 431): el sheet se inyecta como body ref en
  * TODOS los motores, incl. no-permisivos — un ref desnudo los rompería.
  */
-export function buildBodySheetPrompt(m: PhysicalMeasurements): string {
+export function buildBodySheetPrompt(
+    m: PhysicalMeasurements,
+    opts?: { nude?: boolean },
+): string {
     const body = describeBody(m)
     const curves = buildBodySheetCurves(m)
     const skin = getSkinToneDescription(m.skinTone)
@@ -161,9 +165,9 @@ export function buildBodySheetPrompt(m: PhysicalMeasurements): string {
             : '',
         measurements,
         'Standing in a neutral relaxed A-pose, arms slightly away from the body, feet shoulder-width apart.',
-        // Tono piel/beige (NO "nude" — dispara el filtro NSFW de KIE) para leer la
-        // silueta. Dos piezas explícito: los editores tienden a sacar enterizo.
-        'She wears a simple beige sports bra and matching beige sport briefs (a modest TWO-PIECE athletic set, close to her own skin colour) so her full body shape — waist, hips, glutes and curves — reads clearly. NOT a one-piece swimsuit or bodysuit. No accessories, no props.',
+        // Dos piezas explícito: los editores tienden a sacar enterizo. Gris
+        // carbón (no beige/tono piel) — ver CLOTHED_SHEET_CLAUSE.
+        opts?.nude ? NUDE_SHEET_CLAUSE : CLOTHED_SHEET_CLAUSE,
         'Plain seamless light-gray studio background, soft even frontal lighting, no harsh shadows.',
         'The body shape, bust, waist, hips, glutes and thighs must be IDENTICAL across all three views and must match the measurements and body shape described above.',
         'Full body visible head-to-toe in every view, whole figure in frame, no cropping.',
@@ -182,6 +186,29 @@ export function buildBodySheetPrompt(m: PhysicalMeasurements): string {
  * renderiza el cuerpo del config encima. 1 sola generación. Si el archivo no
  * existe, el drawer cae a Wan t2i.
  */
+/**
+ * Vestuario de la hoja CANÓNICA (variante SFW). Gris carbón, NO beige
+ * (2026-07-25): la hoja beige era la fuente del bug "se ve desnuda" — su ropa
+ * color piel se filtraba al resultado en Seedream+Wan+Qwen (el mismo vacío que
+ * documenta BODY_SPEC_NOT_WARDROBE_CLAUSE, que prohíbe justo lo que la hoja
+ * mostraba). El gris cumple igual su función (leer la silueta, no romper a los
+ * motores no permisivos) y cuando se filtra es VISIBLE, no se disfraza de piel.
+ */
+const CLOTHED_SHEET_CLAUSE =
+    'She wears a simple charcoal-grey sports bra and matching charcoal-grey sport briefs (a modest TWO-PIECE athletic set in a clearly non-skin colour) so her full body shape — waist, hips, glutes and curves — reads clearly. NOT a one-piece swimsuit or bodysuit. No accessories, no props.'
+
+/**
+ * Variante NUDE de la hoja (solo se envía a motores permisivos en runs NSFW).
+ * Hereda las lecciones de la saga de anatomía (memoria del proyecto):
+ * - CERO palabras-pigmento en positivo (pink/rosy se PINTAN como rubor).
+ * - Nunca "line"/"vertical" para la vulva (se dibuja una línea literal).
+ * - Anti-doll explícito (si no, monte liso de muñeca).
+ * - Encuadre CLÍNICO: es una referencia anatómica, no una pose erótica — así
+ *   la hoja no inyecta "mood sensual" en las generaciones que la usan de ancla.
+ */
+const NUDE_SHEET_CLAUSE =
+    'She is COMPLETELY NUDE in every view — no bra, no briefs, no garments at all, bare skin from head to toe, so her full body shape reads with nothing covering it. Natural realistic anatomy: bare breasts with small skin-toned areolas, and a natural vulva with soft closed labia in matte skin tone — real anatomy, never a smooth featureless doll-like blank. This is a CLINICAL anatomical body reference: neutral expression, relaxed stance, no seduction and no erotic posing.'
+
 export const BODY_TURNAROUND_TEMPLATE_URL = '/body/turnaround-template.png'
 
 /**
@@ -197,7 +224,10 @@ export const BODY_SHEET_REFINE_MODEL = 'seedream/5-pro-image-to-image'
  * plantilla). La ruta de Seedream además inyecta, vía bodyEmphasis, la cláusula
  * "su cuerpo real es X, renderízalo más lleno que la referencia".
  */
-export function buildTurnaroundRefinePrompt(m: PhysicalMeasurements): string {
+export function buildTurnaroundRefinePrompt(
+    m: PhysicalMeasurements,
+    opts?: { nude?: boolean },
+): string {
     const body = describeBody(m)
     const curves = buildBodySheetCurves(m)
     const skin = getSkinToneDescription(m.skinTone)
@@ -215,13 +245,15 @@ export function buildTurnaroundRefinePrompt(m: PhysicalMeasurements): string {
     return [
         'The reference image is a full-body multi-view TURNAROUND of a woman on a plain beige studio background (four full-body views side by side: front, three-quarter, side, back).',
         'Recreate the EXACT same multi-view turnaround: same number of views, same poses, same camera angles, same framing and the same plain beige studio background.',
-        // VESTUARIO ANTES del spec (2026-07-23): iba al FINAL y los caps
-        // cortos (Grok 1800) lo decapitaban con specs XXL → sheet SIN
-        // instrucción de ropa (+nsfw_checker off = riesgo de desnudo, y el
-        // sheet alimenta también a motores NO permisivos que un ref desnudo
-        // rompe). Wording "sports bra" y no "bikini": xAI bloquea el contexto
-        // swimwear (431 aun sanitizado) y los sheets ya renderizan sporty.
-        'She wears a simple beige sports bra and matching beige sport briefs (a modest two-piece athletic set).',
+        // VESTUARIO/DESNUDO ANTES del spec (2026-07-23): iba al FINAL y los
+        // caps cortos (Grok 1800) lo decapitaban con specs XXL → sheet SIN
+        // instrucción de ropa. Wording "sports bra" y no "bikini": xAI bloquea
+        // el contexto swimwear (431 aun sanitizado).
+        // GRIS CARBÓN, no beige (2026-07-25): la hoja beige ERA la fuente del
+        // bug "se ve desnuda" — su ropa color piel se filtraba al resultado
+        // (BODY_SPEC_NOT_WARDROBE_CLAUSE prohíbe justo lo que la hoja mostraba).
+        // Si el gris se filtra, se ve y se corrige; el beige se disfrazaba de piel.
+        opts?.nude ? NUDE_SHEET_CLAUSE : CLOTHED_SHEET_CLAUSE,
         `Render a woman whose BODY matches this spec exactly — do NOT copy the reference body; make it: ${[body, curves, measurements].filter(Boolean).join(', ')}. ${skin}.`,
         // Consistencia ENTRE VISTAS: el sesgo frontal normalizaba el cuerpo en
         // la vista de FRENTE (caderas angostas + thigh gap) mientras lado/
@@ -286,7 +318,7 @@ export function buildBodyViewPrompt(
             : '',
         measurements,
         'Standing in a neutral relaxed pose, whole body head-to-toe in frame, centered, no cropping. Her body is COMPLETE and intact: both arms, both legs, both hands and both feet fully rendered — never amputated, truncated or cropped.',
-        'She wears a simple beige sports bra and matching beige sport briefs (a modest TWO-PIECE athletic set, close to her own skin colour). NOT a one-piece swimsuit or bodysuit. No accessories, no props.',
+        CLOTHED_SHEET_CLAUSE,
         'Plain seamless light-gray studio background, soft even lighting, no harsh shadows.',
         'Photorealistic raw photo, natural skin texture with visible pores, subtle imperfections, subsurface scattering, shot on a 50mm lens (no lens distortion), 8k, ultra high detail, sharp focus.',
         'ONE single woman only, one pose, no duplicated figures, no text, no watermark.',
@@ -313,3 +345,14 @@ export const BODY_SHEET_NEGATIVE_PROMPT = [
     // Anti-repetición: forzar 3 ángulos DISTINTOS (no la misma pose 3 veces).
     'same pose repeated, three identical views, three identical angles, all front views, all profile views, duplicated identical figure',
 ].join(', ')
+
+/**
+ * Negative de la variante NUDE: hereda todo el de calidad/anatomía pero cambia
+ * las prohibiciones de vestuario (en nude sobra "one-piece swimsuit…" y hay que
+ * prohibir la ROPA en sí) y añade el anti-censura/anti-doll que costó toda la
+ * saga de anatomía — más el anti-rubor (las palabras de color se pintan).
+ */
+export const BODY_SHEET_NUDE_NEGATIVE_PROMPT = BODY_SHEET_NEGATIVE_PROMPT.replace(
+    'one-piece swimsuit, bodysuit, dress, full clothing',
+    'clothes, clothing, sports bra, briefs, underwear, panties, bikini, swimsuit, bodysuit, dress, covered body, censored, censor bar, mosaic censoring, blurred crotch, smooth featureless crotch, doll-like genital area, pink areolas, blushed chest',
+)
