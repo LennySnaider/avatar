@@ -2143,7 +2143,14 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                             // en la ruta Qwen de KIE.
                             const mrCloneRef =
                                 optimizedCloneRawRef ?? optimizedCloneRef
-                            if (mrCloneRef) {
+                            // La IMAGEN del clone solo viaja en los tramos
+                            // altos (≥50 = EXACT/STRONG, donde SÍ se quiere
+                            // reproducir la foto). En MODERATE/LOOSE viaja solo
+                            // su TEXTO: el sentido del slider bajo es "más
+                            // libertad", y con la foto delante el editor la
+                            // calcaba entera — cara y cuerpo del original
+                            // incluidos (reporte 2026-07-25 al 15%).
+                            if (mrCloneRef && cloneWeight >= 50) {
                                 mrExtras.push({
                                     role: 'clone',
                                     ref: {

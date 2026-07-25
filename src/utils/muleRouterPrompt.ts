@@ -93,7 +93,7 @@ export function buildMuleRouterEditMaxPrompt(params: {
         : ''
     const camLine = [framing, angle].filter(Boolean).join(' ')
     parts.push(
-        `${camLine} of the woman in Image 1 — keep her EXACT face, hair and identity unchanged.`,
+        `${camLine} of the woman in Image 1 — her face, facial features, freckles and hair MUST match Image 1 exactly; never use a face from any other image.`,
     )
 
     // Índices REALES de cada extra (la cara es Image 1).
@@ -110,16 +110,20 @@ export function buildMuleRouterEditMaxPrompt(params: {
     // pose/outfit/setting se copian de la foto, no de un texto truncable.
     if (cloneIdx) {
         const cw = params.cloneWeight ?? 100
-        const mannequin =
-            ' Its person is a faceless mannequin — the face comes ONLY from Image 1.'
+        // NUNCA la palabra "mannequin"/"doll" en el POSITIVO: la difusión no
+        // niega, PINTA — el output salía como muñeca articulada con juntas
+        // visibles (reporte 2026-07-25 con imagen). Se expresa como qué SÍ
+        // hacer: la persona sale del avatar, la foto solo aporta escena.
+        const identityFromAvatar =
+            ' Take NOTHING of the person in it: replace her completely — the face, hair and body proportions come from Image 1 and the body spec, never from this photo.'
         parts.push(
             cw >= 75
-                ? `Image ${cloneIdx} is the CLONE source: recreate its EXACT outfit, pose, framing and setting.${mannequin}`
+                ? `Image ${cloneIdx} is the CLONE source: recreate its EXACT outfit, pose, framing and setting.${identityFromAvatar}`
                 : cw >= 50
-                  ? `Image ${cloneIdx} is a STRONG reference: follow its outfit, pose, framing and setting closely, with natural variation.${mannequin}`
+                  ? `Image ${cloneIdx} is a STRONG reference: follow its outfit, pose, framing and setting closely, with natural variation.${identityFromAvatar}`
                   : cw >= 25
-                    ? `Image ${cloneIdx} is a MODERATE reference: keep its outfit STYLE, general pose and setting but reinterpret the details freely — a variation, not a copy.${mannequin}`
-                    : `Image ${cloneIdx} is a LOOSE mood reference: take only its general vibe, outfit style and kind of setting — reinterpret pose, framing and details freely.${mannequin}`,
+                    ? `Image ${cloneIdx} is a MODERATE reference: keep its outfit STYLE, general pose and setting but reinterpret the details freely — a variation, not a copy.${identityFromAvatar}`
+                    : `Image ${cloneIdx} is a LOOSE mood reference: take only its general vibe, outfit style and kind of setting — reinterpret pose, framing and details freely.${identityFromAvatar}`,
         )
     }
 
@@ -184,7 +188,7 @@ export function buildMuleRouterEditMaxPrompt(params: {
         // LÍNEA vertical literal en el torso/ropa. Se describe la anatomía SIN
         // la palabra "line". Nudez reforzada (no top, no panti).
         parts.push(
-            'She is COMPLETELY NUDE — no bra, top or underwear, bare skin all over. Realistic bare breasts with small skin-toned areolas and a natural vulva with soft closed labia, matte skin tone — real anatomy, not a smooth doll-like blank.',
+            'She is COMPLETELY NUDE — no bra, top or underwear, bare skin all over. Realistic bare breasts with small skin-toned areolas and a natural vulva with soft closed labia, matte skin tone, anatomically real and softly detailed.',
         )
     }
 
@@ -220,6 +224,10 @@ export function buildMuleRouterEditMaxPrompt(params: {
 
     // Candado corporal SIEMPRE (antes solo NSFW → las gens SFW inflaban sin
     // freno). Acota ambos extremos: ni gruesa/musculosa ni esquelética.
+    // Anti-muñeca (2026-07-25): el output salía como doll articulada. Va en el
+    // NEGATIVE, nunca en el positivo.
+    const DOLL_NEG =
+        'mannequin, doll, ball-jointed doll, action figure, visible joint seams, plastic skin, vinyl skin, toy figure, waxwork'
     const BODY_NEG =
         'oversized hips, thick heavy thighs, plus-size body, muscular bodybuilder physique, exaggerated hourglass, obese, skinny emaciated body'
     const FIXED_NEG =
@@ -228,8 +236,8 @@ export function buildMuleRouterEditMaxPrompt(params: {
         'clothes, clothing, dress, corset, top, pants, bra, panties, underwear, covered body, censored, censor bar, blurred crotch, smooth featureless crotch, doll-like genital area, pink areolas, blushed chest, open labia, gaping, oversized breasts'
     const negativePrompt = (
         params.nsfw
-            ? `${NSFW_NEG}, ${BODY_NEG}, ${FIXED_NEG}`
-            : `${BODY_NEG}, ${FIXED_NEG}`
+            ? `${DOLL_NEG}, ${NSFW_NEG}, ${BODY_NEG}, ${FIXED_NEG}`
+            : `${DOLL_NEG}, ${BODY_NEG}, ${FIXED_NEG}`
     ).slice(0, 500)
 
     return { prompt: parts.join(' ').slice(0, 800), negativePrompt }
