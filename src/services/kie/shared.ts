@@ -386,16 +386,36 @@ const GARMENT_WORDS =
     /\b(dress|gown|skirt|shirt|blouse|top|tee|t-shirt|sweater|cardigan|hoodie|jacket|coat|blazer|suit|trousers?|pants?|jeans?|shorts?|leggings?|bodysuit|swimsuit|bikini|lingerie|bra|bralette|corset|jumpsuit|romper|overalls?|uniform|robe|kimono|activewear|leotard|tank|crop|turtleneck|halter|camisole|slip|nightgown|pyjamas?|pajamas?|underwear|panties|briefs|thong|outfit|wearing|dressed|clad|garment|clothes|clothing|attire|costume|wardrobe|denim|leather|lace)\b/i
 const NUDITY_WORDS =
     /\b(nude|naked|topless|bottomless|bare[- ]?(chest|breast|body|skin)|undressed|explicit|nsfw|see[- ]?through|sheer)\b/i
+// 12 outfits DIVERSOS (2026-07-25): con 5 y `length % 5` el reparto se
+// agrupaba brutal y el primero (verde + jeans) salía una y otra vez — el
+// usuario lo reportó como "contamina las generaciones con jeans y playera
+// verde". Más opciones + hash por CONTENIDO (no por longitud) = variedad real.
 const FALLBACK_OUTFITS = [
-    'a fitted emerald-green top and high-waisted dark-blue jeans',
     'a burgundy wrap blouse and tailored charcoal trousers',
-    'a cobalt-blue knit top and black straight-leg jeans',
     'a scarlet-red fitted midi dress',
     'a black ribbed turtleneck and a mustard-yellow midi skirt',
+    'a cobalt-blue knit top and black straight-leg jeans',
+    'a cream-free ivory-free deep-teal jumpsuit',
+    'a soft lilac blouse and dark plum wide-leg trousers',
+    'a rust-orange cardigan over a white tee with indigo denim',
+    'a forest-green silk shirt tucked into camel-free black tailored pants',
+    'a navy-blue slip dress with thin straps',
+    'an oversized grey wool coat over a black polo neck',
+    'a coral pink sundress with a cinched waist',
+    'a chocolate-brown leather jacket over a white ribbed tank and dark denim',
 ]
+
+/** Hash estable por CONTENIDO: el mismo prompt siempre elige el mismo outfit
+ *  (reproducible), pero prompts distintos se reparten de verdad. */
+function outfitHash(s: string): number {
+    let h = 0
+    for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) % 100000
+    return h
+}
 export function concreteOutfitClause(prompt: string): string {
     if (!prompt || NUDITY_WORDS.test(prompt) || GARMENT_WORDS.test(prompt))
         return ''
-    const pick = FALLBACK_OUTFITS[prompt.length % FALLBACK_OUTFITS.length]
-    return ` No outfit is described, so dress her in ${pick} — in clearly defined colours, never nude, beige or skin-tone.`
+    const pick =
+        FALLBACK_OUTFITS[outfitHash(prompt) % FALLBACK_OUTFITS.length]
+    return ` No outfit is described — dress her in ${pick}, or something similar that suits the scene, in clearly defined colours; never a nude, beige or skin-tone garment.`
 }

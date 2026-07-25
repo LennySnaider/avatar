@@ -2134,12 +2134,21 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                                 role: 'clone' | 'body' | 'place'
                                 ref: { base64: string; mimeType: string }
                             }> = []
-                            if (optimizedCloneRef) {
+                            // Clone RAW (SIN enmascarar): Edit Max es un editor
+                            // literal y copiaba el ÓVALO del difuminado de cara
+                            // como una mancha beige (reporte 2026-07-25) — el
+                            // mismo fallo que tuvo Wan. La identidad la cuida la
+                            // orden de texto ("su persona es un maniquí sin
+                            // rostro; la cara viene SOLO de Image 1"), igual que
+                            // en la ruta Qwen de KIE.
+                            const mrCloneRef =
+                                optimizedCloneRawRef ?? optimizedCloneRef
+                            if (mrCloneRef) {
                                 mrExtras.push({
                                     role: 'clone',
                                     ref: {
-                                        base64: optimizedCloneRef.base64,
-                                        mimeType: optimizedCloneRef.mimeType,
+                                        base64: mrCloneRef.base64,
+                                        mimeType: mrCloneRef.mimeType,
                                     },
                                 })
                             }
@@ -2173,6 +2182,7 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                                 cameraAngle,
                                 bodySheetNude: usingNudeSheet,
                                 extraRoles: mrSlots.map((e) => e.role),
+                                cloneWeight,
                             })
                             const sub = await submitMuleRouterImageTask({
                                 prompt: mr.prompt,

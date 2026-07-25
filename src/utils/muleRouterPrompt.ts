@@ -64,6 +64,11 @@ export function buildMuleRouterEditMaxPrompt(params: {
      *  nombrar mal el índice hace que el modelo mire la imagen equivocada.
      *  El API acepta 3 imágenes → como mucho 2 extras. */
     extraRoles?: Array<'clone' | 'body' | 'place'>
+    /** Peso del Clone Ref (0-100) — el slider del Studio. Escala la FUERZA de
+     *  la cláusula igual que planExtraRefs: ≥75 EXACT · 50-74 STRONG · 25-49
+     *  MODERATE · <25 LOOSE. Sin esto, un clone al 15% ("LOOSE" en el badge) se
+     *  reproducía exacto e ignoraba el slider. */
+    cloneWeight?: number
 }): { prompt: string; negativePrompt: string } {
     const m = params.measurements
     const parts: string[] = []
@@ -104,8 +109,17 @@ export function buildMuleRouterEditMaxPrompt(params: {
     // CLONE como IMAGEN (2026-07-25): es lo que hace ganar a Seedream — la
     // pose/outfit/setting se copian de la foto, no de un texto truncable.
     if (cloneIdx) {
+        const cw = params.cloneWeight ?? 100
+        const mannequin =
+            ' Its person is a faceless mannequin — the face comes ONLY from Image 1.'
         parts.push(
-            `Image ${cloneIdx} sets the OUTFIT, pose, framing and setting — reproduce them; its person is a faceless mannequin, the face comes ONLY from Image 1.`,
+            cw >= 75
+                ? `Image ${cloneIdx} is the CLONE source: recreate its EXACT outfit, pose, framing and setting.${mannequin}`
+                : cw >= 50
+                  ? `Image ${cloneIdx} is a STRONG reference: follow its outfit, pose, framing and setting closely, with natural variation.${mannequin}`
+                  : cw >= 25
+                    ? `Image ${cloneIdx} is a MODERATE reference: keep its outfit STYLE, general pose and setting but reinterpret the details freely — a variation, not a copy.${mannequin}`
+                    : `Image ${cloneIdx} is a LOOSE mood reference: take only its general vibe, outfit style and kind of setting — reinterpret pose, framing and details freely.${mannequin}`,
         )
     }
 
