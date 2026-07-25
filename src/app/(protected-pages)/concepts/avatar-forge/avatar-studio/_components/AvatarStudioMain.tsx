@@ -2083,8 +2083,14 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                                     fr.readAsDataURL(canvasBlob)
                                 },
                             )
+                            // FASE 2 con prompt MÍNIMO: la escena/cuerpo ya
+                            // están EN el canvas — re-describirlos (kiePrompt
+                            // ~3KB) diluía la orden de swap y Qwen conservaba
+                            // la cara de la fase 1 ("perdimos la cara"). La
+                            // instrucción de face-swap del route viaja SOLA,
+                            // concentrada — el patrón deepfake probado.
                             const phase2 = await pollKieImageTask({
-                                prompt: kiePrompt,
+                                prompt: '',
                                 referenceImage: kieSingleRef,
                                 referenceImages: [
                                     {
