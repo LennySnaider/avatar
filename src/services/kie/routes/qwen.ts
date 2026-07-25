@@ -196,7 +196,15 @@ async function build(ctx: ImageRouteContext): Promise<KieImageRequest> {
                     )
                         .replace(/\s{2,}/g, ' ')
                         .trim()
-                    input.prompt = `Swap ONLY the face — use the SECOND image's face (exact features, freckles, likeness), keep that person's hair and natural eye colour, NEVER the first image's original face.${hairClause}${cloneBodyClause}${anatomyFront} ${fidelity}: ${cloneDesc}`
+                    // Anti-amputación (2026-07-24, reporte: brazo amputado en un
+                    // Clone 100): el path de clone solo tenía el negative — y en un
+                    // editor literal el POSITIVO pesa mucho más (como el plain con
+                    // INTACT_BODY_CLAUSE). Versión CONSCIENTE DEL ENCUADRE: no fuerza
+                    // "feet fully rendered" (rompería un clone recortado) — solo pide
+                    // que los miembros QUE LA POSE MUESTRE salgan completos, y ataca
+                    // el modo de fallo real (esconder/cortar un brazo tras el cuerpo).
+                    const cloneIntactClause = ` Every limb the pose shows must be anatomically COMPLETE — both arms with both hands, and legs with feet wherever the framing includes them; never sever, amputate, truncate or tuck a limb out of sight behind her body.`
+                    input.prompt = `Swap ONLY the face — use the SECOND image's face (exact features, freckles, likeness), keep that person's hair and natural eye colour, NEVER the first image's original face.${hairClause}${cloneBodyClause}${cloneIntactClause}${anatomyFront} ${fidelity}: ${cloneDesc}`
                     console.log(
                         `[KIE] qwen2/image-edit CLONE (clone canvas + face swap, weight ${cw})`,
                     )
