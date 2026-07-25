@@ -260,8 +260,12 @@ export const BUST_SHAPE_PHRASE: Record<string, string> = {
 // sobre el guard suave del final. Fraseo RELATIVO A SU PIEL (mismo patrón que
 // la eyeClause 58a0957): describe el tono como mezcla con la piel, no un rosa.
 export const NIPPLE_COLOR_PHRASE: Record<string, string> = {
-    rosy: 'pale pinkish-beige (barely a shade pinker than her surrounding skin)',
-    peach: 'soft peach-tan (gently warmer than her surrounding skin)',
+    // v3 (2026-07-24): tras front-loadear la anatomía (lever 3) el color quedó al
+    // FRENTE del prompt y el "pinkish/pinker" se DERRAMABA sobre todo el seno
+    // (reporte "pinta rosa el busto"). Se baja a UNA referencia suave de tono, y
+    // el candado de contención (abajo) confina el color al pezón/areola.
+    rosy: 'a soft rosy-tan, just a shade deeper and warmer than her surrounding skin',
+    peach: 'a soft peach-tan, gently warmer than her surrounding skin',
     'light-brown': 'light brown',
     brown: 'medium brown',
     dark: 'deep dark-brown',
@@ -296,7 +300,7 @@ export function nippleClause(m: PhysicalMeasurements): string {
     const sizeLock = areola
         ? ' — areola size EXACTLY as stated, independent of her bust size'
         : ''
-    return `only when uncovered: ${spec}${sizeLock}, matte low-saturation tone that blends naturally with her skin — never bright pink, red or candy-coloured, always identical; when clothed nothing shows through fabric`
+    return `only when uncovered: ${spec}${sizeLock}, matte low-saturation tone that blends naturally with her skin — never bright pink, red or candy-coloured. This colour stays STRICTLY on the nipple and areola only; the surrounding breast skin keeps her normal even skin tone and is NEVER flushed, blushed or tinted pink. Always identical; when clothed nothing shows through fabric`
 }
 
 /** ¿La escena declara desnudez TOTAL explícita? Regex estricta a propósito:
