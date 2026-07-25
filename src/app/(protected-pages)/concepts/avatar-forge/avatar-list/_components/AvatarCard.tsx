@@ -24,6 +24,7 @@ import {
     apiUpdateAvatar,
     apiUploadReference,
     apiDeleteAvatarReference,
+    apiGetAvatarReferences,
     getSignedUrl,
 } from '@/services/AvatarForgeService'
 import { createThumbnail, resizeBase64Image } from '@/utils/imageOptimization'
@@ -127,6 +128,9 @@ const AvatarCard = ({ avatar }: AvatarCardProps) => {
         let faceRef: AvatarReferenceImage | null = null
         let angleRef: AvatarReferenceImage | null = null
         let bodyRef: AvatarReferenceImage | null = null
+        // Hoja NUDE: se CARGA para mostrarla y devolverla intacta al guardar,
+        // pero NO entra en refIds (el borrado la eliminaría — ver abajo).
+        let bodyRefNsfw: AvatarReferenceImage | null = null
         const refIds: string[] = []
 
         if (avatar.avatar_references?.length) {
@@ -173,7 +177,10 @@ const AvatarCard = ({ avatar }: AvatarCardProps) => {
                         // NUDE (body_nsfw) la gestiona el Body Lab del Studio,
                         // no este drawer → si entrara aquí, guardar desde My
                         // Avatars la borraría en silencio (2026-07-25).
-                        if (ref.type === 'body_nsfw') continue
+                        if (ref.type === 'body_nsfw') {
+                            bodyRefNsfw = refImage
+                            continue
+                        }
                         refIds.push(ref.id)
 
                         switch (ref.type) {
@@ -203,6 +210,7 @@ const AvatarCard = ({ avatar }: AvatarCardProps) => {
             faceRef,
             angleRef,
             bodyRef,
+            bodyRefNsfw,
             identityWeight: avatar.identity_weight || 85,
             measurements: (avatar.measurements as PhysicalMeasurements) || {
                 age: 25,
@@ -259,7 +267,28 @@ const AvatarCard = ({ avatar }: AvatarCardProps) => {
                 ...(data.bodyRef && !data.bodyRef.storagePath
                     ? [data.bodyRef]
                     : []),
+                // Hoja NUDE nueva (generada en pareja con la vestida).
+                ...(data.bodyRefNsfw && !data.bodyRefNsfw.storagePath
+                    ? [data.bodyRefNsfw]
+                    : []),
             ]
+
+            // SINGLETON de la hoja NUDE: si se subió una nueva, borra la fila
+            // previa (misma regla que el Studio — si no, se acumulan y el
+            // loader toma una arbitraria).
+            if (data.bodyRefNsfw && !data.bodyRefNsfw.storagePath) {
+                try {
+                    const prev = await apiGetAvatarReferences(
+                        avatar.id,
+                        'body_nsfw',
+                    )
+                    for (const row of prev ?? []) {
+                        await apiDeleteAvatarReference(row.id)
+                    }
+                } catch (err) {
+                    console.error('Failed to replace nude sheet:', err)
+                }
+            }
 
             const uploadedRefs: AvatarWithReferences['avatar_references'] = []
             const failedUploads: string[] = []

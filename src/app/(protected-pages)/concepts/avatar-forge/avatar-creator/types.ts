@@ -5,7 +5,7 @@ export interface ReferenceImage {
     url: string
     mimeType: string
     base64: string
-    type: 'general' | 'face' | 'angle' | 'body'
+    type: 'general' | 'face' | 'angle' | 'body' | 'body_nsfw'
     storagePath?: string
 }
 
@@ -27,6 +27,8 @@ export interface AvatarCreatorState {
     faceRef: ReferenceImage | null
     angleRef: ReferenceImage | null
     bodyRef: ReferenceImage | null
+    /** Hoja NUDE del Body Lab (pareja de la vestida). */
+    bodyRefNsfw: ReferenceImage | null
 
     // Settings
     identityWeight: number

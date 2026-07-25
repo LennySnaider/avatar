@@ -22,17 +22,8 @@ import { resizeBase64Image } from '@/utils/imageOptimization'
 import { cleanRefWatermarkInBackground } from '@/utils/refWatermarkClean'
 import PhysicalAttributesEditor from '@/components/shared/PhysicalAttributesEditor'
 import BodyLab from '@/components/shared/BodyLab'
-import { generateImageKie } from '@/services/KieService'
-import {
-    buildBodySheetPrompt,
-    buildBodySheetCurves,
-    buildTurnaroundRefinePrompt,
-    BODY_TURNAROUND_TEMPLATE_URL,
-    BODY_SHEET_REFINE_MODEL,
-    BODY_SHEET_NEGATIVE_PROMPT,
-    sameBodyShape,
-} from '@/utils/bodySheetPrompt'
-import { urlToDataUrl } from '@/utils/imageStitch'
+import { sameBodyShape } from '@/utils/bodySheetPrompt'
+import { generateBodySheetPair } from '@/utils/bodySheetGenerate'
 import {
     getBodyLabModels,
     DEFAULT_PROVIDERS,
@@ -112,6 +103,8 @@ const AvatarCreatorMain = ({
         setFaceRef,
         setAngleRef,
         setBodyRef,
+        setBodyRefNsfw,
+        bodyRefNsfw,
         setAvatarId,
         setAvatarName,
         setIdentityWeight,
@@ -129,6 +122,8 @@ const AvatarCreatorMain = ({
     const [selectedBodyModel, setSelectedBodyModel] = useState('')
     const [isGeneratingBody, setIsGeneratingBody] = useState(false)
     const [bodySheet, setBodySheet] = useState<ReferenceImage | null>(null)
+    const [bodySheetNude, setBodySheetNude] =
+        useState<ReferenceImage | null>(null)
     const [sheetMeasurements, setSheetMeasurements] = useState<
         typeof measurements | null
     >(null)
@@ -148,7 +143,10 @@ const AvatarCreatorMain = ({
     }, [bodyLabModels, selectedBodyModel])
 
     // URL (Supabase o data:) → ReferenceImage type 'body'.
-    const bodySheetToRef = async (url: string): Promise<ReferenceImage> => {
+    const bodySheetToRef = async (
+        url: string,
+        type: 'body' | 'body_nsfw' = 'body',
+    ): Promise<ReferenceImage> => {
         let dataUrl = url
         if (!url.startsWith('data:')) {
             const blob = await fetch(url).then((r) => r.blob())
@@ -166,7 +164,7 @@ const AvatarCreatorMain = ({
             url: dataUrl,
             mimeType: m[1],
             base64: m[2],
-            type: 'body',
+            type,
         }
     }
 
@@ -174,43 +172,23 @@ const AvatarCreatorMain = ({
         if (!selectedBodyModel) return
         setIsGeneratingBody(true)
         try {
-            // Preferido: plantilla FIJA de turnaround + i2i (poses/layout
-            // consistentes + curvas del config); fallback t2i si no está.
-            let tmpl: { base64: string; mimeType: string } | null = null
-            try {
-                const dataUrl = await urlToDataUrl(BODY_TURNAROUND_TEMPLATE_URL)
-                const mt = dataUrl.match(/^data:(.+);base64,(.+)$/)
-                if (mt) tmpl = { mimeType: mt[1], base64: mt[2] }
-            } catch {
-                // plantilla ausente → fallback t2i
-            }
-            const t2iFallbackModel =
-                selectedBodyModel === BODY_SHEET_REFINE_MODEL
-                    ? 'wan/2-7-image'
-                    : selectedBodyModel
-            const result = tmpl
-                ? await generateImageKie({
-                      prompt: buildTurnaroundRefinePrompt(measurements),
-                      model: selectedBodyModel,
-                      aspectRatio: '16:9',
-                      referenceImage: tmpl,
-                      bodyEmphasis: buildBodySheetCurves(measurements),
-                      negativePrompt: BODY_SHEET_NEGATIVE_PROMPT,
-                  })
-                : await generateImageKie({
-                      prompt: buildBodySheetPrompt(measurements),
-                      model: t2iFallbackModel,
-                      aspectRatio: '16:9',
-                      negativePrompt: BODY_SHEET_NEGATIVE_PROMPT,
-                  })
-            if (!result.success) throw new Error(result.error)
-            const sheet = await bodySheetToRef(result.url)
+            // Las DOS variantes de un golpe (vestida + nude).
+            const pair = await generateBodySheetPair({
+                measurements,
+                model: selectedBodyModel,
+            })
+            const sheet = await bodySheetToRef(pair.url, 'body')
             setBodySheet(sheet)
+            const nudeSheet = pair.nudeUrl
+                ? await bodySheetToRef(pair.nudeUrl, 'body_nsfw')
+                : null
+            setBodySheetNude(nudeSheet)
             setSheetMeasurements(measurements)
             toast.push(
                 <Notification type="success" title="Cuerpo generado">
-                    Sheet de 3 vistas listo. Revísalo y pulsa «Usar como
-                    cuerpo».
+                    {nudeSheet
+                        ? 'Sheet de 3 vistas + variante NSFW listos. Revísalos y pulsa «Usar como cuerpo».'
+                        : 'Sheet de 3 vistas listo (la variante NSFW no se pudo generar). Revísalo y pulsa «Usar como cuerpo».'}
                 </Notification>,
             )
         } catch (error) {
@@ -229,6 +207,10 @@ const AvatarCreatorMain = ({
         if (!bodySheet) return
         setBodyRef(bodySheet)
         setBodySheet(null) // pasa a "Cuerpo guardado" (se persiste con el avatar)
+        if (bodySheetNude) {
+            setBodyRefNsfw(bodySheetNude)
+            setBodySheetNude(null)
+        }
         toast.push(
             <Notification type="success" title="Cuerpo fijado">
                 Se guardará con el avatar al pulsar «Save Avatar».
@@ -662,6 +644,7 @@ const AvatarCreatorMain = ({
                 ...(faceRef ? [faceRef] : []),
                 ...(angleRef ? [angleRef] : []),
                 ...(bodyRef ? [bodyRef] : []),
+                ...(bodyRefNsfw ? [bodyRefNsfw] : []),
             ]
 
             for (const ref of allRefs) {
@@ -1096,6 +1079,9 @@ const AvatarCreatorMain = ({
                                     onSelectModel={setSelectedBodyModel}
                                     isGenerating={isGeneratingBody}
                                     sheet={bodySheet || bodyRef}
+                                    nudeSheet={
+                                        bodySheetNude || bodyRefNsfw
+                                    }
                                     sheetModel={
                                         bodySheet
                                             ? 'Nuevo'

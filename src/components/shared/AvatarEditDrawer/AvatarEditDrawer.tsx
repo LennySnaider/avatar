@@ -19,20 +19,11 @@ import {
     HiOutlineSparkles,
 } from 'react-icons/hi'
 import { generateAvatar, analyzeFaceFromImages } from '@/services/GeminiService'
-import { generateImageKie } from '@/services/KieService'
 import type { PhysicalMeasurements } from '@/@types/supabase'
 import { createThumbnail, resizeBase64Image } from '@/utils/imageOptimization'
 import { cleanRefWatermarkInBackground } from '@/utils/refWatermarkClean'
-import {
-    buildBodySheetPrompt,
-    buildBodySheetCurves,
-    buildTurnaroundRefinePrompt,
-    BODY_TURNAROUND_TEMPLATE_URL,
-    BODY_SHEET_REFINE_MODEL,
-    BODY_SHEET_NEGATIVE_PROMPT,
-    sameBodyShape,
-} from '@/utils/bodySheetPrompt'
-import { urlToDataUrl } from '@/utils/imageStitch'
+import { sameBodyShape } from '@/utils/bodySheetPrompt'
+import { generateBodySheetPair } from '@/utils/bodySheetGenerate'
 import {
     DEFAULT_PROVIDERS,
     getBodyLabModels,
@@ -55,7 +46,7 @@ export interface AvatarReferenceImage {
     url: string
     mimeType: string
     base64: string
-    type: 'general' | 'face' | 'angle' | 'body'
+    type: 'general' | 'face' | 'angle' | 'body' | 'body_nsfw'
     storagePath?: string
     thumbnailUrl?: string
 }
@@ -67,6 +58,9 @@ export interface AvatarEditData {
     faceRef: AvatarReferenceImage | null
     angleRef: AvatarReferenceImage | null
     bodyRef: AvatarReferenceImage | null
+    /** Hoja NUDE del Body Lab — se genera en pareja con la vestida y solo
+     *  viaja a motores permisivos en runs NSFW. */
+    bodyRefNsfw?: AvatarReferenceImage | null
     identityWeight: number
     measurements: PhysicalMeasurements
     faceDescription: string
@@ -141,6 +135,10 @@ const AvatarEditDrawer = ({
     // generado en preview (bodySheet, sin commitear hasta "Usar como cuerpo").
     const [localBodyRef, setLocalBodyRef] =
         useState<AvatarReferenceImage | null>(null)
+    const [localBodyRefNsfw, setLocalBodyRefNsfw] =
+        useState<AvatarReferenceImage | null>(null)
+    const [bodySheetNude, setBodySheetNude] =
+        useState<AvatarReferenceImage | null>(null)
     const [bodySheet, setBodySheet] = useState<AvatarReferenceImage | null>(
         null,
     )
@@ -157,6 +155,7 @@ const AvatarEditDrawer = ({
             setLocalFaceRef(initialData.faceRef)
             setLocalAngleRef(initialData.angleRef)
             setLocalBodyRef(initialData.bodyRef)
+            setLocalBodyRefNsfw(initialData.bodyRefNsfw ?? null)
             setBodySheet(null)
             setLocalIdentityWeight(initialData.identityWeight)
             const synced = initialData.measurements.shape
@@ -190,6 +189,7 @@ const AvatarEditDrawer = ({
         // El cuerpo canónico SÍ se guarda: AvatarCard.handleSaveFromDrawer sube
         // data.bodyRef como type:'body' cuando no tiene storagePath.
         bodyRef: localBodyRef,
+        bodyRefNsfw: localBodyRefNsfw,
         identityWeight: localIdentityWeight,
         measurements: localMeasurements,
         faceDescription: localFaceDescription,
@@ -512,6 +512,7 @@ const AvatarEditDrawer = ({
     // que es lo que necesita el guardado (resizeBase64Image) y el thumbnail.
     const toBodyReferenceImage = async (
         url: string,
+        type: 'body' | 'body_nsfw' = 'body',
     ): Promise<AvatarReferenceImage> => {
         let dataUrl = url
         if (!url.startsWith('data:')) {
@@ -536,7 +537,7 @@ const AvatarEditDrawer = ({
             url: dataUrl,
             mimeType: matches[1],
             base64: matches[2],
-            type: 'body',
+            type,
             thumbnailUrl,
         }
     }
@@ -546,51 +547,31 @@ const AvatarEditDrawer = ({
         if (!selectedBodyModel) return
         setIsGeneratingBody(true)
         try {
-            // Preferido: plantilla FIJA de turnaround + Seedream i2i (poses de la
-            // plantilla + curvas del config, 1 gen). Fallback: Wan t2i si la
-            // plantilla no está o falla.
-            let tmpl: { base64: string; mimeType: string } | null = null
-            try {
-                const dataUrl = await urlToDataUrl(BODY_TURNAROUND_TEMPLATE_URL)
-                const mt = dataUrl.match(/^data:(.+);base64,(.+)$/)
-                if (mt) tmpl = { mimeType: mt[1], base64: mt[2] }
-            } catch {
-                // plantilla ausente → fallback
-            }
-
-            // Sin plantilla no se puede t2i con Seedream (i2i-only) → cae a Wan.
-            const t2iFallbackModel =
-                selectedBodyModel === BODY_SHEET_REFINE_MODEL
-                    ? 'wan/2-7-image'
-                    : selectedBodyModel
-            const result = tmpl
-                ? await generateImageKie({
-                      prompt: buildTurnaroundRefinePrompt(localMeasurements),
-                      model: selectedBodyModel,
-                      aspectRatio: '16:9',
-                      referenceImage: tmpl,
-                      bodyEmphasis: buildBodySheetCurves(localMeasurements),
-                      negativePrompt: BODY_SHEET_NEGATIVE_PROMPT,
-                  })
-                : await generateImageKie({
-                      prompt: buildBodySheetPrompt(localMeasurements),
-                      model: t2iFallbackModel,
-                      aspectRatio: '16:9',
-                      negativePrompt: BODY_SHEET_NEGATIVE_PROMPT,
-                  })
-            if (!result.success) throw new Error(result.error)
-            const sheet = await toBodyReferenceImage(result.url)
+            // Las DOS variantes de un golpe (vestida + nude) — la vestida va
+            // a todos los motores, la nude solo a permisivos en runs NSFW.
+            const pair = await generateBodySheetPair({
+                measurements: localMeasurements,
+                model: selectedBodyModel,
+            })
+            const sheet = await toBodyReferenceImage(pair.url, 'body')
             setBodySheet(sheet)
+            const nudeSheet = pair.nudeUrl
+                ? await toBodyReferenceImage(pair.nudeUrl, 'body_nsfw')
+                : null
+            setBodySheetNude(nudeSheet)
             setSheetMeasurements(localMeasurements)
             const selName =
                 BODY_LAB_MODELS.find(
                     (p) => p.model === selectedBodyModel,
                 )?.name || selectedBodyModel
-            setBodySheetModel(tmpl ? `${selName} · plantilla` : selName)
+            setBodySheetModel(
+                pair.usedTemplate ? `${selName} · plantilla` : selName,
+            )
             toast.push(
                 <Notification type="success" title="Cuerpo generado">
-                    Sheet de 3 vistas listo. Revísalo y pulsa &quot;Usar como
-                    cuerpo&quot;.
+                    {nudeSheet
+                        ? 'Sheet de 3 vistas + variante NSFW listos. Revísalos y pulsa "Usar como cuerpo".'
+                        : 'Sheet de 3 vistas listo (la variante NSFW no se pudo generar). Revísalo y pulsa "Usar como cuerpo".'}
                 </Notification>,
             )
         } catch (error) {
@@ -609,6 +590,10 @@ const AvatarEditDrawer = ({
         if (!bodySheet) return
         setLocalBodyRef(bodySheet)
         setBodySheet(null) // pasa a ser el "Cuerpo guardado" (feedback visible)
+        if (bodySheetNude) {
+            setLocalBodyRefNsfw(bodySheetNude)
+            setBodySheetNude(null)
+        }
         toast.push(
             <Notification type="success" title="Cuerpo fijado">
                 Se guardará como el cuerpo del avatar al guardar los cambios.
@@ -993,6 +978,14 @@ const AvatarEditDrawer = ({
                                     onSelectModel={setSelectedBodyModel}
                                     isGenerating={isGeneratingBody}
                                     sheet={bodySheet || localBodyRef}
+                                    nudeSheet={
+                                        bodySheetNude || localBodyRefNsfw
+                                    }
+                                    onPreviewNude={() => {
+                                        const n =
+                                            bodySheetNude || localBodyRefNsfw
+                                        if (n) setPreviewImage(n)
+                                    }}
                                     sheetModel={
                                         bodySheet
                                             ? bodySheetModel
