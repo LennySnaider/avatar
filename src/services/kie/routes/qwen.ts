@@ -19,6 +19,43 @@ import {
     BODY_SPEC_NOT_WARDROBE_CLAUSE,
 } from '../shared'
 
+/**
+ * Cuerpo para Qwen: los cm son la verdad, pero un modelo de difusión NO puede
+ * medir centímetros — los cm son tokens débiles y las frases cualitativas
+ * fuertes. Los amplificadores ("; emphasized curves: …") están calibrados para
+ * pelear el slim-bias de SEEDREAM; Qwen obedece el texto sin pelear y con un
+ * cuerpo MODESTO por cm los convierte en caderas/glúteos/busto inflados
+ * (Emily 86/45/85: Seedream correcto, Qwen mucho más ancha — 2 rondas
+ * verificadas, el candado bidireccional de cm no bastó). Con busto<95 y
+ * caderas<100 (umbrales isCurvy) se RECORTA el tail amplificador y se NIEGA la
+ * inflación en el negative nativo; cuerpos curvy/XXL conservan todo (MiaUltra
+ * 119/45 salía slim sin los amplificadores).
+ */
+function qwenBodySpec(bodyEmphasis: string | undefined): {
+    spec: string
+    antiInflateNegative: string
+} {
+    const raw = bodyEmphasis ?? ''
+    if (!raw) return { spec: '', antiInflateNegative: '' }
+    const bust = parseInt(raw.match(/bust\s+(\d+)\s*cm/i)?.[1] ?? '', 10)
+    const hips = parseInt(raw.match(/hips\s+(\d+)\s*cm/i)?.[1] ?? '', 10)
+    const bustModest = Number.isFinite(bust) && bust < 95
+    const hipsModest = Number.isFinite(hips) && hips < 100
+    const spec =
+        bustModest && hipsModest
+            ? raw.split(/;\s*emphasized curves:/i)[0].trim()
+            : raw
+    const antiInflateNegative = [
+        hipsModest
+            ? 'oversized hips, extra wide hips, exaggerated hourglass, thick heavy thighs, oversized bubble glutes'
+            : '',
+        bustModest ? 'oversized breasts, huge breasts, inflated bust' : '',
+    ]
+        .filter(Boolean)
+        .join(', ')
+    return { spec, antiInflateNegative }
+}
+
 async function build(ctx: ImageRouteContext): Promise<KieImageRequest> {
     // PRESUPUESTO: los docs actuales de qwen2/image-edit dicen prompt ≤ 5000
     // chars (2026-07-23, aportados por el usuario) — el cap viejo de 800 era
@@ -71,8 +108,15 @@ async function build(ctx: ImageRouteContext): Promise<KieImageRequest> {
         enable_safety_checker: !!ctx.safeMode,
         nsfw_checker: !!ctx.safeMode,
     }
-    if (ctx.negativePrompt) {
-        input.negative_prompt = ctx.negativePrompt
+    // Spec de cuerpo medido + negative anti-inflación (ver qwenBodySpec).
+    const { spec: bodySpec, antiInflateNegative } = qwenBodySpec(
+        ctx.bodyEmphasis,
+    )
+    const negativeCombined = [ctx.negativePrompt, antiInflateNegative]
+        .filter(Boolean)
+        .join(', ')
+    if (negativeCombined) {
+        input.negative_prompt = negativeCombined
     }
 
     if (ctx.referenceImage) {
@@ -139,8 +183,8 @@ async function build(ctx: ImageRouteContext): Promise<KieImageRequest> {
                     // Seedream con las mismas medidas"): Qwen pesa las frases
                     // cualitativas de curvas sobre los cm y EXAGERA. Los números
                     // son la verdad — ni más flaca ni más ancha.
-                    const cloneBodyClause = ctx.bodyEmphasis
-                        ? ` Do NOT copy her body, build or leg/thigh thickness from the first image (it looks slimmer than she really is) — render THIS body instead: ${capAtWordBoundary(ctx.bodyEmphasis, 500, 'qwen-clone-body')}. Match the stated centimetre measurements EXACTLY — never slimmer, and never wider or curvier than the numbers say.`
+                    const cloneBodyClause = bodySpec
+                        ? ` Do NOT copy her body, build or leg/thigh thickness from the first image (it looks slimmer than she really is) — render THIS body instead: ${capAtWordBoundary(bodySpec, 500, 'qwen-clone-body')}. Match the stated centimetre measurements EXACTLY — never slimmer, and never wider or curvier than the numbers say.`
                         : ''
                     const cloneMatch = String(ctx.prompt).match(
                         /\[CLONE:\s*([^\]]*)\]/i,
@@ -192,8 +236,8 @@ async function build(ctx: ImageRouteContext): Promise<KieImageRequest> {
                     // frases cualitativas de curvas (misma Emily 86/45/85: Seedream
                     // correcto, Qwen mucho más ancha). Los cm mandan en ambas
                     // direcciones.
-                    const qwenBodyClause = ctx.bodyEmphasis
-                        ? ` Her body (MANDATORY): ${capAtWordBoundary(ctx.bodyEmphasis, 700, 'qwen-body')} — render THAT body at its EXACT centimetre measurements: never slimmer, and never wider or curvier than the numbers say — hips, glutes and thighs must MATCH the stated centimetres, never exaggerated beyond them.${BODY_SPEC_NOT_WARDROBE_CLAUSE}`
+                    const qwenBodyClause = bodySpec
+                        ? ` Her body (MANDATORY): ${capAtWordBoundary(bodySpec, 700, 'qwen-body')} — render THAT body at its EXACT centimetre measurements: never slimmer, and never wider or curvier than the numbers say — hips, glutes and thighs must MATCH the stated centimetres, never exaggerated beyond them.${BODY_SPEC_NOT_WARDROBE_CLAUSE}`
                         : ''
                     // Lock de cara AUTORITATIVO y COMPACTO (cap 800): Qwen
                     // obedece el TEXTO por encima de la imagen — un prompt
