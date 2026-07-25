@@ -217,7 +217,7 @@ async function checkTaskOnce(
  * generaciones siguientes hacen un HEAD (~100ms) y reutilizan la URL en vez de
  * re-subir 1-3MB por ref en cada generación (y otra vez en el retry).
  */
-async function uploadReferenceToSupabase(
+export async function uploadReferenceToSupabase(
     base64: string,
     mimeType: string,
 ): Promise<string> {

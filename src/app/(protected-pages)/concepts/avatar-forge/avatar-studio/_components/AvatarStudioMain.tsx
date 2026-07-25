@@ -93,6 +93,14 @@ import {
     submitLipsyncVideoKieTask,
     checkKieVideoTask,
 } from '@/services/KieService'
+import {
+    submitMuleRouterImageTask,
+    checkMuleRouterImageTask,
+} from '@/services/MuleRouterService'
+import {
+    buildMuleRouterEditMaxPrompt,
+    MULEROUTER_SIZE,
+} from '@/utils/muleRouterPrompt'
 import { generateImageViaGateway } from '@/services/GatewayService'
 import {
     buildAvatarPrompt,
@@ -250,7 +258,8 @@ const isExplicitCapableModel = (m: string): boolean =>
     m.startsWith('seedream/') ||
     m === 'wan/2-7-image' ||
     m === 'wan/2-7-image-pro' ||
-    m.startsWith('qwen')
+    m.startsWith('qwen') ||
+    m.startsWith('mulerouter/')
 
 const isKieAsyncImageModel = (m: string): boolean =>
     KIE_ASYNC_MODELS.includes(m) ||
@@ -2033,7 +2042,52 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                             !!kieSingleRef &&
                             !optimizedCloneRef &&
                             !optimizedDeepfakeRef
-                        if (qwenTwoPhase && kieSingleRef) {
+                        if (kieModel.startsWith('mulerouter/')) {
+                            // ⚡ MULEROUTER Qwen Edit Max — UNA fase (validado
+                            // live: retrato→cuerpo entero sin anclaje, cara
+                            // conservada, NSFW real, ~26s, $0.075). Prompt
+                            // COMPACTO (límite 800) + negative (500).
+                            if (!kieSingleRef)
+                                throw new Error(
+                                    'Qwen Edit Max necesita un avatar con face ref',
+                                )
+                            const mr = buildMuleRouterEditMaxPrompt({
+                                measurements,
+                                scene: fullPrompt,
+                                nsfw: nsfwRun,
+                            })
+                            const sub = await submitMuleRouterImageTask({
+                                prompt: mr.prompt,
+                                negativePrompt: mr.negativePrompt,
+                                faceRef: kieSingleRef,
+                                size:
+                                    MULEROUTER_SIZE[aspectRatio] ?? '928*1664',
+                            })
+                            if (!sub.success) throw new Error(sub.error)
+                            let mrUrl = ''
+                            const mrStart = Date.now()
+                            while (Date.now() - mrStart < 180_000) {
+                                await new Promise((r) => setTimeout(r, 6000))
+                                const st = await checkMuleRouterImageTask(
+                                    sub.taskId,
+                                )
+                                if (st.status === 'done') {
+                                    mrUrl = st.url
+                                    break
+                                }
+                                if (st.status === 'failed')
+                                    throw new Error(st.error)
+                            }
+                            if (!mrUrl)
+                                throw new Error(
+                                    'MuleRouter tardó demasiado (>3 min)',
+                                )
+                            resultUrl = mrUrl
+                            apiPrompt = sub.fullApiPrompt
+                            pendingStableUrl = persistKieImageResult(mrUrl)
+                                .then((r) => (r.success ? r.url : null))
+                                .catch(() => null)
+                        } else if (qwenTwoPhase && kieSingleRef) {
                             // La fase 1 NO debe pre-pintar la cara del avatar:
                             // el [FACE:] textual generaba una cara PARECIDA y el
                             // swap de la fase 2 la daba por buena ("perdimos la

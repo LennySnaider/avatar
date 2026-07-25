@@ -182,6 +182,23 @@ export const DEFAULT_PROVIDERS: AIProvider[] = [
         created_at: null,
     },
     {
+        // Qwen Edit Max DIRECTO vía MuleRouter — UNA fase: retrato → cuerpo
+        // entero sin anclaje al encuadre (validado live 2026-07-25 con Raven),
+        // NSFW real, ~26s. type 'KIE' es plumbing (mismo carril async del
+        // studio); el branch va por prefijo de modelo 'mulerouter/'.
+        id: 'mulerouter-qwen-edit-max',
+        name: 'Qwen Edit Max · MuleRouter',
+        type: 'KIE' as ProviderType,
+        model: 'mulerouter/qwen-image-edit-max',
+        endpoint: 'https://api.mulerouter.ai',
+        is_active: true,
+        supports_image: true,
+        supports_video: false,
+        requires_api_key: true,
+        api_key_env_var: 'MULEROUTER_API_KEY',
+        created_at: null,
+    },
+    {
         id: 'kie-ideogram-v3',
         name: 'Ideogram V3 · KIE',
         type: 'KIE' as ProviderType,
@@ -445,6 +462,7 @@ export const PROVIDER_COST: Record<string, string> = {
     'kie-seedream-5-lite': '~$0.028',
     'kie-seedream-5-pro': '~$0.035',
     'kie-qwen-image': '~$0.02',
+    'mulerouter-qwen-edit-max': '$0.075',
     'kie-ideogram-v3': '~$0.05',
     'kie-nano-banana-2': '~$0.06',
     'kie-nano-banana-2-lite': '~$0.034',
@@ -477,6 +495,7 @@ export const PROVIDER_TRAITS: Record<
     'kie-seedream-5-pro': { face: true, permissive: true },
     'kie-flux-2-pro': { permissive: true },
     'kie-qwen-image': { permissive: true },
+    'mulerouter-qwen-edit-max': { permissive: true },
     'kie-grok-imagine': { face: true },
     'kie-grok-imagine-video': { face: true },
     // Ambos reciben la cara vía image_input[] (mismo patrón que nano-banana-pro)
