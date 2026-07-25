@@ -305,7 +305,9 @@ export function buildIdentityNegative(
     }
     if (opts?.nsfw) {
         parts.push(
-            'censored, censor bar, mosaic censoring, blurred crotch, smooth featureless crotch, doll-like genital area, airbrushed blank skin between legs, missing genital anatomy, barbie-doll anatomy',
+            // Anti-censura (monte liso) Y anti-explícito (abierta/rosada) — la
+            // calibración "cerradito" acota los dos modos de fallo a la vez.
+            'censored, censor bar, mosaic censoring, blurred crotch, smooth featureless crotch, doll-like genital area, airbrushed blank skin between legs, missing genital anatomy, barbie-doll anatomy, open labia, spread labia, protruding inner labia, gaping, exaggerated genital detail, glossy pink genitals',
         )
     }
     parts.push(FIXED_NEGATIVE)

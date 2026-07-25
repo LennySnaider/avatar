@@ -318,7 +318,12 @@ const EXPLICIT_FULL_NUDE_RE =
  * IMPERATIVA (la escena manda, el hedge sobra); si no, conserva el condicional
  * para no empujar desnudez en escenas vestidas. */
 export function vulvaClause(scenePrompt?: string): string {
-    const spec = `a clearly defined natural cleft between soft outer labia, matte tone just a touch deeper than her surrounding skin (never bright pink or red), with the true anatomical detail of a real photograph — NEVER a smooth featureless doll-like mound or airbrushed blank skin, always the same anatomy`
+    // v3 "cerradito" (2026-07-24): lever 3 logró que Qwen renderice, pero salía
+    // ABIERTA y rosada = irreal. Calibración entre los dos modos de fallo:
+    // monte-liso-doll ←→ abierta/explícita. El punto medio: hendidura CERRADA
+    // de una sola línea, nada visible por dentro, tono piel mate (el rosa
+    // reapareció — prohibirlo sin matiz "bright").
+    const spec = `a small CLOSED compact cleft — a single delicate vertical line between full soft outer labia, inner labia fully tucked inside and not visible, nothing protruding, open or spread; matte tone matching her surrounding skin (never pink, red or glossy), neat, discreet and realistic as in a real photograph — yet never a featureless doll-like mound with no cleft at all, always the same exact anatomy`
     if (scenePrompt && EXPLICIT_FULL_NUDE_RE.test(scenePrompt)) {
         return `her vulva IS fully visible and anatomically real: ${spec}`
     }
