@@ -20,7 +20,11 @@
 import { uploadReferenceToSupabase } from './KieService'
 
 const MR_BASE = 'https://api.mulerouter.ai'
-const MR_EDIT_MAX = '/vendors/alibaba/v1/qwen-image-edit-max/generation'
+/** Tiers del mismo API (docs: Max $0.075 premium, Plus $0.03 económico). */
+const MR_EDIT_PATH: Record<'max' | 'plus', string> = {
+    max: '/vendors/alibaba/v1/qwen-image-edit-max/generation',
+    plus: '/vendors/alibaba/v1/qwen-image-edit-plus/generation',
+}
 
 function mrKey(): string {
     const key = process.env.MULEROUTER_API_KEY
@@ -41,6 +45,8 @@ export async function submitMuleRouterImageTask(params: {
     size?: string
     /** Seed estable por avatar (consistencia corporal entre gens). */
     seed?: number
+    /** Tier: 'max' ($0.075, default) o 'plus' ($0.03 económico). */
+    tier?: 'max' | 'plus'
 }): Promise<
     | { success: true; taskId: string; fullApiPrompt: string }
     | { success: false; error: string }
@@ -64,15 +70,18 @@ export async function submitMuleRouterImageTask(params: {
             size: params.size ?? '928*1664',
             ...(typeof params.seed === 'number' ? { seed: params.seed } : {}),
         }
-        const res = await fetch(`${MR_BASE}${MR_EDIT_MAX}`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                Authorization: `Bearer ${mrKey()}`,
+        const res = await fetch(
+            `${MR_BASE}${MR_EDIT_PATH[params.tier ?? 'max']}`,
+            {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    Authorization: `Bearer ${mrKey()}`,
+                },
+                body: JSON.stringify(body),
+                signal: AbortSignal.timeout(30_000),
             },
-            body: JSON.stringify(body),
-            signal: AbortSignal.timeout(30_000),
-        })
+        )
         if (!res.ok) {
             const text = await res.text().catch(() => '')
             return {
@@ -89,7 +98,7 @@ export async function submitMuleRouterImageTask(params: {
                 success: false,
                 error: 'MuleRouter no devolvió task_info.id',
             }
-        console.log(`[MuleRouter] Edit Max task: ${taskId}`)
+        console.log(`[MuleRouter] Edit ${params.tier ?? 'max'} task: ${taskId}`)
         return { success: true, taskId, fullApiPrompt: prompt }
     } catch (err) {
         const msg = err instanceof Error ? err.message : String(err)
@@ -97,12 +106,15 @@ export async function submitMuleRouterImageTask(params: {
     }
 }
 
-export async function checkMuleRouterImageTask(taskId: string): Promise<
+export async function checkMuleRouterImageTask(
+    taskId: string,
+    tier: 'max' | 'plus' = 'max',
+): Promise<
     | { status: 'processing' }
     | { status: 'done'; url: string }
     | { status: 'failed'; error: string }
 > {
-    const res = await fetch(`${MR_BASE}${MR_EDIT_MAX}/${taskId}`, {
+    const res = await fetch(`${MR_BASE}${MR_EDIT_PATH[tier]}/${taskId}`, {
         headers: { Authorization: `Bearer ${mrKey()}` },
         signal: AbortSignal.timeout(20_000),
         cache: 'no-store',

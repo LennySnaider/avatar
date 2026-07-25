@@ -2052,6 +2052,9 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                                 throw new Error(
                                     'Qwen Edit Max necesita un avatar con face ref',
                                 )
+                            const mrTier = kieModel.includes('plus')
+                                ? ('plus' as const)
+                                : ('max' as const)
                             const mr = buildMuleRouterEditMaxPrompt({
                                 measurements,
                                 scene: fullPrompt,
@@ -2066,6 +2069,7 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                                 // Seed estable: mismo avatar → cuerpos más
                                 // consistentes entre generaciones.
                                 seed: avatarStableSeed(avatarId),
+                                tier: mrTier,
                             })
                             if (!sub.success) throw new Error(sub.error)
                             let mrUrl = ''
@@ -2074,6 +2078,7 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                                 await new Promise((r) => setTimeout(r, 6000))
                                 const st = await checkMuleRouterImageTask(
                                     sub.taskId,
+                                    mrTier,
                                 )
                                 if (st.status === 'done') {
                                     mrUrl = st.url
