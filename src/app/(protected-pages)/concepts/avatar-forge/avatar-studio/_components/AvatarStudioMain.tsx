@@ -100,7 +100,6 @@ import {
 import {
     buildMuleRouterEditMaxPrompt,
     MULEROUTER_SIZE,
-    avatarStableSeed,
 } from '@/utils/muleRouterPrompt'
 import { generateImageViaGateway } from '@/services/GatewayService'
 import {
@@ -2234,9 +2233,12 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                                 images: mrSlots.map((e) => e.ref),
                                 size:
                                     MULEROUTER_SIZE[aspectRatio] ?? '928*1664',
-                                // Seed estable: mismo avatar → cuerpos más
-                                // consistentes entre generaciones.
-                                seed: avatarStableSeed(avatarId),
+                                // SIN seed fijo (2026-07-25): se puso para
+                                // consistencia corporal, pero ahora el cuerpo
+                                // viene de la HOJA (imagen) y el seed solo hacía
+                                // que regenerar el mismo prompt devolviera la
+                                // MISMA imagen — matando la exploración. El API
+                                // randomiza si no se manda.
                                 tier: mrTier,
                             })
                             if (!sub.success) throw new Error(sub.error)

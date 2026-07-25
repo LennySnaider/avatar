@@ -117,8 +117,13 @@ export function buildMuleRouterEditMaxPrompt(params: {
     // funciona: swap → cuerpo → fidelidad → escena.
     let pendingFidelity = ''
     if (cloneIdx === 1) {
+        // Wording del path DEEPFAKE de Qwen KIE (el que "SÍ funciona" según el
+        // comentario de esa ruta): nombra el MECANISMO (reemplazar la cara de
+        // la 1ª por la de la 2ª) y prohíbe MEZCLAR — sin eso el editor
+        // conservaba la cara del lienzo (reporte: 65% y 100% con la cara del
+        // original).
         parts.push(
-            `Swap the face and hair: use the woman in Image ${faceIdx} — her exact facial features and her freckles — NEVER the original face in Image 1.`,
+            `The SECOND image shows the person whose FACE to use. The FACE SWAP is MANDATORY: replace the face in the FIRST image with the face from Image ${faceIdx} — her exact features, freckles and likeness — never keep the original face. Do NOT blend the two images.`,
         )
         pendingFidelity =
             cw >= 75
@@ -134,6 +139,17 @@ export function buildMuleRouterEditMaxPrompt(params: {
     if (cloneIdx > 1) {
         parts.push(
             `Image ${cloneIdx} sets the outfit, pose, framing and setting. Take NOTHING of the person in it — face, hair and proportions come from Image ${faceIdx} and the body spec.`,
+        )
+    }
+
+    // El % TAMBIÉN manda cuando el clone viaja solo por TEXTO (<50). Sin esto
+    // el prompt de 15% y 40% era IDÉNTICO — y con el seed estable salía la
+    // MISMA imagen ("es como si no hubiera sistema de %", reporte 2026-07-25).
+    if (!cloneIdx && /\[CLONE:/i.test(params.scene)) {
+        parts.push(
+            cw >= 25
+                ? 'Use the outfit and setting described below as a general BASIS, reinterpreting the pose, framing and details freely — a clear variation, not a copy.'
+                : 'Take only the general VIBE of the outfit and setting described below; reinterpret the pose, framing, composition and details completely freely.',
         )
     }
 
