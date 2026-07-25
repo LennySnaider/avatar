@@ -689,6 +689,13 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                         providerName: (
                             gen.metadata as { providerName?: string } | null
                         )?.providerName,
+                        // Prompt REAL enviado (persistido) → el botón </> del
+                        // preview sobrevive el reload.
+                        fullApiPrompt: (
+                            gen.metadata as {
+                                full_api_prompt?: string
+                            } | null
+                        )?.full_api_prompt,
                         favorite:
                             (gen.metadata as { favorite?: boolean } | null)
                                 ?.favorite ?? false,
@@ -964,6 +971,11 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                                 {}),
                             ...(media.providerName
                                 ? { providerName: media.providerName }
+                                : {}),
+                            // Persistir el prompt REAL enviado: antes era dato
+                            // de sesión y el botón </> desaparecía al recargar.
+                            ...(media.fullApiPrompt
+                                ? { full_api_prompt: media.fullApiPrompt }
                                 : {}),
                         } as typeof media.metadata,
                     }),

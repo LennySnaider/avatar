@@ -516,7 +516,11 @@ export async function generateImageKie(
         })
         const resolvedModel = built.model
         const input = built.input
-        promptText = built.fullApiPrompt
+        // Observabilidad veraz (auditoría 2026-07-25): el `</>` del preview debe
+        // mostrar EXACTAMENTE lo que KIE recibe (input.prompt: ancla + body +
+        // anatomía + escena) — antes reportaba el intermedio PRE-ancla
+        // (built.fullApiPrompt) y el usuario auditaba un prompt que no era el real.
+        promptText = String(input.prompt ?? built.fullApiPrompt)
 
         console.log(
             `[KIE] Submitting generic image task: model=${resolvedModel}`,
