@@ -2177,7 +2177,44 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                                     },
                                 })
                             }
-                            const mrSlots = mrExtras.slice(0, 2)
+                            // ORDEN (lección de la ruta Qwen de KIE): Qwen EDITA
+                            // la primera imagen. Con la CARA de Image 1 anclaba
+                            // un RETRATO e ignoraba pose/fondo del clone ("no
+                            // toma la pose"); con el CLONE de lienzo la cara
+                            // entra por FACE-SWAP como imagen 2. Sin clone, la
+                            // cara es Image 1 (no hay composición que heredar).
+                            const mrCloneSlot = mrExtras.find(
+                                (e) => e.role === 'clone',
+                            )
+                            const mrRest = mrExtras.filter(
+                                (e) => e.role !== 'clone',
+                            )
+                            const mrSlots = (
+                                mrCloneSlot
+                                    ? [
+                                          mrCloneSlot,
+                                          {
+                                              role: 'face' as const,
+                                              ref: {
+                                                  base64: kieSingleRef.base64,
+                                                  mimeType:
+                                                      kieSingleRef.mimeType,
+                                              },
+                                          },
+                                          ...mrRest,
+                                      ]
+                                    : [
+                                          {
+                                              role: 'face' as const,
+                                              ref: {
+                                                  base64: kieSingleRef.base64,
+                                                  mimeType:
+                                                      kieSingleRef.mimeType,
+                                              },
+                                          },
+                                          ...mrRest,
+                                      ]
+                            ).slice(0, 3)
                             const mr = buildMuleRouterEditMaxPrompt({
                                 measurements,
                                 scene: fullPrompt,
@@ -2188,14 +2225,13 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                                 cameraShot,
                                 cameraAngle,
                                 bodySheetNude: usingNudeSheet,
-                                extraRoles: mrSlots.map((e) => e.role),
+                                imageRoles: mrSlots.map((e) => e.role),
                                 cloneWeight,
                             })
                             const sub = await submitMuleRouterImageTask({
                                 prompt: mr.prompt,
                                 negativePrompt: mr.negativePrompt,
-                                faceRef: kieSingleRef,
-                                extras: mrSlots.map((e) => e.ref),
+                                images: mrSlots.map((e) => e.ref),
                                 size:
                                     MULEROUTER_SIZE[aspectRatio] ?? '928*1664',
                                 // Seed estable: mismo avatar → cuerpos más

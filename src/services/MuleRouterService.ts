@@ -39,12 +39,11 @@ export async function submitMuleRouterImageTask(params: {
     /** Prompt FINAL (se capea defensivo a 800 — el caller ya comprime). */
     prompt: string
     negativePrompt?: string
-    /** Face ref del avatar (base64) — se sube a Supabase y viaja como URL. */
-    faceRef: { base64: string; mimeType: string }
-    /** Imágenes EXTRA en orden (la cara siempre es Image 1). El API acepta 3
-     *  en total → como mucho 2 extras; el caller decide la prioridad (clone >
-     *  hoja > lugar) y el prompt nombra el índice real de cada una. */
-    extras?: Array<{ base64: string; mimeType: string }>
+    /** Imágenes EN ORDEN — su posición ES el "Image N" que nombra el prompt.
+     *  El ORDEN IMPORTA: Qwen edita la PRIMERA (es su lienzo), así que con un
+     *  Clone Ref este va primero y la cara entra por face-swap; sin clone la
+     *  cara es la primera. Máximo 3 (tope del API). */
+    images: Array<{ base64: string; mimeType: string }>
     /** "width*height", ambos en [512,2048]. Default 928*1664 (9:16). */
     size?: string
     /** Seed estable por avatar (consistencia corporal entre gens). */
@@ -56,20 +55,17 @@ export async function submitMuleRouterImageTask(params: {
     | { success: false; error: string }
 > {
     try {
-        const faceUrl = await uploadReferenceToSupabase(
-            params.faceRef.base64,
-            params.faceRef.mimeType,
+        // El AR de salida lo fija `size` explícito, no la última imagen
+        // (verificado: la hoja es 16:9 y los outputs salían 9:16 igual).
+        const images = await Promise.all(
+            params.images
+                .slice(0, 3)
+                .map((i) => uploadReferenceToSupabase(i.base64, i.mimeType)),
         )
-        const extraUrls = await Promise.all(
-            (params.extras ?? [])
-                .slice(0, 2) // cara + 2 extras = el tope de 3 del API
-                .map((e) => uploadReferenceToSupabase(e.base64, e.mimeType)),
-        )
+        if (images.length === 0) {
+            return { success: false, error: 'MuleRouter necesita al menos una imagen' }
+        }
         const prompt = params.prompt.slice(0, 800)
-        // Orden = índice que el prompt referencia (Image 1/2/3). El AR de salida
-        // lo fija `size` explícito, no la última imagen (verificado: la hoja es
-        // 16:9 landscape y los outputs salían 9:16 portrait igual).
-        const images = [faceUrl, ...extraUrls]
         const body = {
             images,
             prompt,

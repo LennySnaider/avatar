@@ -63,7 +63,7 @@ export function buildMuleRouterEditMaxPrompt(params: {
      *  siempre es Image 1). El prompt nombra el índice REAL de cada una —
      *  nombrar mal el índice hace que el modelo mire la imagen equivocada.
      *  El API acepta 3 imágenes → como mucho 2 extras. */
-    extraRoles?: Array<'clone' | 'body' | 'place'>
+    imageRoles?: Array<'face' | 'clone' | 'body' | 'place'>
     /** Peso del Clone Ref (0-100) — el slider del Studio. Escala la FUERZA de
      *  la cláusula igual que planExtraRefs: ≥75 EXACT · 50-74 STRONG · 25-49
      *  MODERATE · <25 LOOSE. Sin esto, un clone al 15% ("LOOSE" en el badge) se
@@ -82,7 +82,7 @@ export function buildMuleRouterEditMaxPrompt(params: {
     const explicitShot =
         !!params.cameraShot && params.cameraShot !== 'AUTO'
     const cloneDrivesFraming =
-        !explicitShot && (params.extraRoles ?? []).includes('clone')
+        !explicitShot && (params.imageRoles ?? []).includes('clone')
     const framing = explicitShot
         ? (MR_FRAMING[params.cameraShot as string] ?? '')
         : cloneDrivesFraming
@@ -92,38 +92,41 @@ export function buildMuleRouterEditMaxPrompt(params: {
         ? (MR_ANGLE[params.cameraAngle] ?? '')
         : ''
     const camLine = [framing, angle].filter(Boolean).join(' ')
-    parts.push(
-        `${camLine} of the woman in Image 1 — her face, facial features, freckles and hair MUST match Image 1 exactly; never use a face from any other image.`,
-    )
 
-    // Índices REALES de cada extra (la cara es Image 1).
-    const roles = params.extraRoles ?? []
-    const idxOf = (r: 'clone' | 'body' | 'place') => {
+    // Índices REALES (1-based) de cada imagen enviada.
+    const roles = params.imageRoles ?? ['face']
+    const idxOf = (r: 'face' | 'clone' | 'body' | 'place') => {
         const i = roles.indexOf(r)
-        return i === -1 ? 0 : i + 2
+        return i === -1 ? 0 : i + 1
     }
+    const faceIdx = idxOf('face')
     const bodyIdx = idxOf('body')
     const cloneIdx = idxOf('clone')
     const placeIdx = idxOf('place')
+    const cw = params.cloneWeight ?? 100
 
-    // CLONE como IMAGEN (2026-07-25): es lo que hace ganar a Seedream — la
-    // pose/outfit/setting se copian de la foto, no de un texto truncable.
-    if (cloneIdx) {
-        const cw = params.cloneWeight ?? 100
-        // NUNCA la palabra "mannequin"/"doll" en el POSITIVO: la difusión no
-        // niega, PINTA — el output salía como muñeca articulada con juntas
-        // visibles (reporte 2026-07-25 con imagen). Se expresa como qué SÍ
-        // hacer: la persona sale del avatar, la foto solo aporta escena.
-        const identityFromAvatar =
-            ' Take NOTHING of the person in it: replace her completely — the face, hair and body proportions come from Image 1 and the body spec, never from this photo.'
-        parts.push(
+    // CLONE COMO LIENZO (Image 1) — lección ya probada en la ruta Qwen de KIE:
+    // "Qwen EDITA la primera imagen; con la CARA como imagen 1 anclaba la
+    // composición del RETRATO e ignoraba la pose/fondo del clone". Por eso,
+    // cuando el clone viaja, va PRIMERO y la cara entra por FACE-SWAP.
+    if (cloneIdx === 1) {
+        const fidelity =
             cw >= 75
-                ? `Image ${cloneIdx} is the CLONE source: recreate its EXACT outfit, pose, framing and setting.${identityFromAvatar}`
-                : cw >= 50
-                  ? `Image ${cloneIdx} is a STRONG reference: follow its outfit, pose, framing and setting closely, with natural variation.${identityFromAvatar}`
-                  : cw >= 25
-                    ? `Image ${cloneIdx} is a MODERATE reference: keep its outfit STYLE, general pose and setting but reinterpret the details freely — a variation, not a copy.${identityFromAvatar}`
-                    : `Image ${cloneIdx} is a LOOSE mood reference: take only its general vibe, outfit style and kind of setting — reinterpret pose, framing and details freely.${identityFromAvatar}`,
+                ? 'Recreate Image 1 EXACTLY — same outfit, pose, hands, framing, lighting and setting'
+                : 'Follow Image 1 closely — its outfit, pose, framing and setting — with natural variation'
+        parts.push(
+            `${fidelity}. The FACE SWAP is MANDATORY: the face and hair are the woman in Image ${faceIdx} (her exact features, freckles and hair colour) — NEVER keep the original face from Image 1. Do not copy Image 1's body proportions.`,
+        )
+    } else {
+        parts.push(
+            `${camLine} of the woman in Image ${faceIdx} — her face, facial features, freckles and hair MUST match Image ${faceIdx} exactly; never use a face from any other image.`,
+        )
+    }
+
+    // Si por alguna razón el clone NO quedó de lienzo, se describe indexado.
+    if (cloneIdx > 1) {
+        parts.push(
+            `Image ${cloneIdx} sets the outfit, pose, framing and setting. Take NOTHING of the person in it — face, hair and proportions come from Image ${faceIdx} and the body spec.`,
         )
     }
 
