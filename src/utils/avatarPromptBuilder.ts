@@ -185,7 +185,7 @@ function buildInlineBodyDescription(m: PhysicalMeasurements): string {
  * (which never reached these models anyway: getFullPrompt() carries no camera
  * info, so the UI's Framing selector was silently ignored outside Gemini/NBP).
  */
-const DIFFUSION_FRAMING: Record<string, string> = {
+export const DIFFUSION_FRAMING: Record<string, string> = {
     EXTREME_CLOSE_UP: 'extreme close-up shot of the face, eyes in sharp detail',
     CLOSE_UP: 'close-up portrait, head and shoulders framing',
     MEDIUM_CLOSE_UP: 'medium close-up, framed from the chest up',
@@ -196,7 +196,7 @@ const DIFFUSION_FRAMING: Record<string, string> = {
     EXTREME_WIDE: 'extreme wide shot, the subject small within a vast environment',
 }
 
-const DIFFUSION_ANGLE: Record<string, string> = {
+export const DIFFUSION_ANGLE: Record<string, string> = {
     LOW_ANGLE: 'shot from a low camera angle looking up at the subject',
     HIGH_ANGLE: 'shot from a high camera angle looking down at the subject',
     DUTCH_ANGLE: 'dutch angle, tilted camera',

@@ -3,6 +3,10 @@ import {
     getHairColorDescription,
     getSkinToneDescription,
 } from '@/utils/bodyDescriptors'
+import {
+    DIFFUSION_FRAMING,
+    DIFFUSION_ANGLE,
+} from '@/utils/avatarPromptBuilder'
 
 /**
  * Prompt COMPACTO para MuleRouter Qwen Edit Max (límite duro: 800 chars,
@@ -22,12 +26,27 @@ export function buildMuleRouterEditMaxPrompt(params: {
     /** Escena/pose del run (puede traer tags y cláusulas — se limpian). */
     scene: string
     nsfw: boolean
+    /** Chips de la UI (Framing/Angle) — la cámara va PRIMERO: al final de la
+     *  escena el truncado a 800 se los comía y el modelo los ignoraba. */
+    cameraShot?: string
+    cameraAngle?: string | null
 }): { prompt: string; negativePrompt: string } {
     const m = params.measurements
     const parts: string[] = []
 
+    // CÁMARA PRIMERO (misma regla que buildDiffusionBodyPreamble: la
+    // composición pesa más al inicio). Respeta los chips del usuario; en AUTO
+    // cae a full-body con anti-corte ("corta el avatar" = piernas fuera).
+    const framing =
+        params.cameraShot && params.cameraShot !== 'AUTO'
+            ? (DIFFUSION_FRAMING[params.cameraShot] ?? '')
+            : DIFFUSION_FRAMING.FULL_SHOT
+    const angle = params.cameraAngle
+        ? (DIFFUSION_ANGLE[params.cameraAngle] ?? '')
+        : ''
+    const camLine = [framing, angle].filter(Boolean).join(', ')
     parts.push(
-        'Keep the EXACT face, hair and identity of the woman in Image 1 unchanged. Generate a FULL BODY shot of her.',
+        `${camLine.charAt(0).toUpperCase()}${camLine.slice(1)} of the woman in Image 1 — keep her EXACT face, hair and identity unchanged.`,
     )
 
     if (m?.waist && m?.hips && m?.bust) {
@@ -64,8 +83,10 @@ export function buildMuleRouterEditMaxPrompt(params: {
     }
 
     if (params.nsfw) {
+        // Vulva REFORZADA (2026-07-25, "barbie" en el sistema): la versión
+        // corta era débil — se recupera el anti-doll batallado en compacto.
         parts.push(
-            'Bare breasts with small compact skin-toned areolas; her vulva a small closed delicate cleft, matte natural skin tone.',
+            'Bare breasts with small compact skin-toned areolas. Her vulva clearly visible: a single delicate closed vertical cleft line in matte skin tone — never a smooth featureless doll-like mound.',
         )
     }
 

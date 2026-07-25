@@ -2059,6 +2059,11 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                                 measurements,
                                 scene: fullPrompt,
                                 nsfw: nsfwRun,
+                                // Chips de Framing/Angle — la cámara va AL
+                                // FRENTE del prompt compacto (el truncado a
+                                // 800 se los comía al final de la escena).
+                                cameraShot,
+                                cameraAngle,
                             })
                             const sub = await submitMuleRouterImageTask({
                                 prompt: mr.prompt,
