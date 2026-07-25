@@ -47,6 +47,7 @@ import {
     NIPPLE_AREOLA_PHRASE,
 } from '@/utils/bodyDescriptors'
 import { BODY_SHAPES, SHAPE_LABEL, SHAPE_PRESETS } from '@/utils/bodyShapes'
+import { sizeLabelFor } from '@/utils/sizeChart'
 import type {
     PhysicalMeasurements,
     CurveLevel,
@@ -192,6 +193,7 @@ const PhysicalAttributesEditor = ({
                     unit="cm"
                     min={45}
                     max={100}
+                    hint={sizeLabelFor('waist', measurements.waist)}
                     value={measurements.waist}
                     onChange={(v) => set({ waist: v })}
                 />
@@ -200,6 +202,7 @@ const PhysicalAttributesEditor = ({
                     unit="cm"
                     min={70}
                     max={140}
+                    hint={sizeLabelFor('hips', measurements.hips)}
                     value={measurements.hips}
                     onChange={(v) => set({ hips: v })}
                 />
@@ -356,6 +359,17 @@ const PhysicalAttributesEditor = ({
                                     <div className="flex items-center justify-between">
                                         <span className="text-xs text-gray-500">
                                             {label}
+                                            {/* Talla EU/ES del cm (solo Bust —
+                                                glúteos es volumen, la cadera ya
+                                                muestra la suya arriba). */}
+                                            {key === 'bustLevel' && (
+                                                <span className="ml-2 text-[10px] text-gray-400">
+                                                    {sizeLabelFor(
+                                                        'bust',
+                                                        cmValue,
+                                                    )}
+                                                </span>
+                                            )}
                                         </span>
                                         <span className="text-xs font-mono text-primary">
                                             {measurements[key]

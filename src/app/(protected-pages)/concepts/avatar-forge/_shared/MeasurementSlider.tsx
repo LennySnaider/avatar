@@ -16,6 +16,7 @@ const MeasurementSlider = ({
     min,
     max,
     unit,
+    hint,
     onChange,
 }: {
     label: string
@@ -23,13 +24,22 @@ const MeasurementSlider = ({
     min: number
     max: number
     unit?: string
+    /** Texto contextual a la derecha del label (p.ej. talla EU/ES del cm). */
+    hint?: string
     onChange: (value: number) => void
 }) => (
     <div>
-        <label className="text-xs text-gray-500 block mb-0.5">
-            {label}
-            {unit ? <span className="text-gray-400"> ({unit})</span> : null}
-        </label>
+        <div className="flex items-center justify-between mb-0.5">
+            <label className="text-xs text-gray-500">
+                {label}
+                {unit ? (
+                    <span className="text-gray-400"> ({unit})</span>
+                ) : null}
+            </label>
+            {hint ? (
+                <span className="text-[10px] text-gray-400">{hint}</span>
+            ) : null}
+        </div>
         <div className="flex items-center gap-2">
             <div className="flex-1 min-w-0">
                 <Slider
