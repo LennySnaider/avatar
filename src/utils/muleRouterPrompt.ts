@@ -48,6 +48,10 @@ export function buildMuleRouterEditMaxPrompt(params: {
     /** Escena/pose del run (puede traer tags y cláusulas — se limpian). */
     scene: string
     nsfw: boolean
+    /** true → esta llamada es la FASE 1 de un run con clone: NO pide desnudez
+     *  ni face-swap (los hace la fase 2). Pedirlo todo a la vez hacía que el
+     *  editor eligiera lo más fácil: copiar el lienzo tal cual. */
+    deferToPhase2?: boolean
     /** Chips de la UI (Framing/Angle) — la cámara va PRIMERO: al final de la
      *  escena el truncado a 800 se los comía y el modelo los ignoraba. */
     cameraShot?: string
@@ -128,16 +132,47 @@ export function buildMuleRouterEditMaxPrompt(params: {
         // En NSFW el outfit del lienzo se EXCLUYE: pedir "keep the outfit
         // EXACTLY" contradecía "she is COMPLETELY NUDE" y ganaba el lienzo
         // (reporte 2026-07-25: al 100% NSFW salía vestida con la ropa del clon).
-        const keepOutfit = params.nsfw ? '' : 'outfit, '
+        const deferred = params.deferToPhase2
+        const keepOutfit = params.nsfw && !deferred ? '' : 'outfit, '
         pendingFidelity =
             cw >= 75
-                ? `Keep Image 1's ${keepOutfit}pose, hands, framing, lighting and setting EXACTLY as they are${params.nsfw ? ', but she wears NOTHING' : ''}.`
-                : `Follow Image 1's ${keepOutfit}pose, framing and setting closely, with natural variation${params.nsfw ? '; she wears NOTHING' : ''}.`
+                ? `Keep Image 1's ${keepOutfit}pose, hands, framing, lighting and setting EXACTLY as they are${params.nsfw && !deferred ? ', but she wears NOTHING' : ''}.`
+                : `Follow Image 1's ${keepOutfit}pose, framing and setting closely, with natural variation${params.nsfw && !deferred ? '; she wears NOTHING' : ''}.`
     } else {
         parts.push(
             `${camLine} of the woman in Image ${faceIdx} — her face, facial features, freckles and hair MUST match Image ${faceIdx} exactly; never use a face from any other image.`,
         )
     }
+
+    // La ESCENA va TEMPRANO cuando no hay lienzo de clone (2026-07-25, "en 40 y
+    // 15 super mal"): con cara(1)+hoja(2) y la escena al final, el modelo
+    // copiaba la composición de la HOJA (de pie, fondo de estudio). Delante de
+    // la hoja, la escena gana. Con lienzo NO hace falta (la composición ya
+    // viene de la imagen 1).
+    // Escena limpia. CRÍTICO (2026-07-25, "todas las de Qwen salen iguales"):
+    // en runs con Clone/Place la descripción REAL de la escena (outfit, pose,
+    // setting) vive DENTRO de los tags [CLONE:…]/[PLACE:…]. Borrarlos enteros
+    // dejaba a MuleRouter SIN escena → siempre la misma pose neutra, y sin
+    // outfit copiaba el de la hoja (el bikini gris). Se PRESERVA su contenido y
+    // solo se tiran los tags de identidad (que ya viajan en la zona fija).
+    const cleanScene = params.scene
+        .replace(/\[(?:CLONE|PLACE|POSE|SCENE):\s*([^\]]*)\]/gi, ' $1 ')
+        .replace(/\[[^\]]*\]/g, ' ')
+        .replace(/Do NOT add any watermark[^.]*\./gi, ' ')
+        .replace(/Her anatomy:[\s\S]*$/i, ' ')
+        .replace(/\s{2,}/g, ' ')
+        .trim()
+    // Reserva para lo que aún falta emitir (cuerpo/anatomía/fidelidad) cuando la
+    // escena va PRIMERO: sin esto se comería todo el presupuesto.
+    const pushScene = (reserve: number) => {
+        const room = 800 - parts.join(' ').length - reserve - 1
+        if (room > 40 && cleanScene) {
+            const hard = cleanScene.slice(0, room)
+            const cut = hard.lastIndexOf(' ')
+            parts.push(cut > room * 0.6 ? hard.slice(0, cut) : hard)
+        }
+    }
+    if (cloneIdx !== 1) pushScene(420)
 
     // Si por alguna razón el clone NO quedó de lienzo, se describe indexado.
     if (cloneIdx > 1) {
@@ -215,8 +250,9 @@ export function buildMuleRouterEditMaxPrompt(params: {
     }
 
     if (pendingFidelity) parts.push(pendingFidelity)
+    if (cloneIdx === 1) pushScene(0)
 
-    if (params.nsfw) {
+    if (params.nsfw && !params.deferToPhase2) {
         // DESNUDEZ GARANTIZADA (2026-07-25, "salió vestida"): antes la orden
         // "completely nude" vivía en la COLA de la escena y el truncado a 800
         // se la comía (diff del usuario: cortaba justo antes) → Qwen la vestía.
@@ -237,27 +273,6 @@ export function buildMuleRouterEditMaxPrompt(params: {
         parts.push(
             `Image ${placeIdx} is the LOCATION: place her in THAT exact environment (its architecture, furniture and lighting); ignore any person in it.`,
         )
-    }
-
-    // Escena limpia. CRÍTICO (2026-07-25, "todas las de Qwen salen iguales"):
-    // en runs con Clone/Place la descripción REAL de la escena (outfit, pose,
-    // setting) vive DENTRO de los tags [CLONE:…]/[PLACE:…]. Borrarlos enteros
-    // dejaba a MuleRouter SIN escena → siempre la misma pose neutra, y sin
-    // outfit copiaba el de la hoja (el bikini gris). Se PRESERVA su contenido y
-    // solo se tiran los tags de identidad (que ya viajan en la zona fija).
-    const cleanScene = params.scene
-        .replace(/\[(?:CLONE|PLACE|POSE|SCENE):\s*([^\]]*)\]/gi, ' $1 ')
-        .replace(/\[[^\]]*\]/g, ' ')
-        .replace(/Do NOT add any watermark[^.]*\./gi, ' ')
-        .replace(/Her anatomy:[\s\S]*$/i, ' ')
-        .replace(/\s{2,}/g, ' ')
-        .trim()
-    const used = parts.join(' ').length
-    const room = 800 - used - 1
-    if (room > 40 && cleanScene) {
-        const hard = cleanScene.slice(0, room)
-        const cut = hard.lastIndexOf(' ')
-        parts.push(cut > room * 0.6 ? hard.slice(0, cut) : hard)
     }
 
     // Candado corporal SIEMPRE (antes solo NSFW → las gens SFW inflaban sin
@@ -331,16 +346,31 @@ export const MULEROUTER_SIZE: Record<string, string> = {
  * Prompt MÍNIMO a propósito: la escena ya está en la imagen, y describirla otra
  * vez diluye la orden de swap (misma lección que la 2-fases de KIE).
  */
-export function buildMuleRouterFaceSwapPrompt(hairDesc?: string): {
+export function buildMuleRouterFaceSwapPrompt(
+    hairDesc?: string,
+    opts?: { undress?: boolean },
+): {
     prompt: string
     negativePrompt: string
 } {
     const hair = hairDesc ? ` Keep her hair ${hairDesc.split(',')[0]}.` : ''
+    // DESVESTIR en la fase 2 (2026-07-25): pedir desnudez en la fase 1 peleaba
+    // contra el lienzo VESTIDO del clone y ganaba el lienzo (salía con la ropa
+    // del clon pese a "COMPLETELY NUDE"). Quitar ropa es una edición LOCAL, que
+    // es justo lo que un editor hace bien — y aquí llega sin competencia.
+    const undress = opts?.undress
+        ? ' Also REMOVE all her clothing: she is completely nude, bare skin, with natural realistic breasts and a natural vulva — keep the exact same pose, hands, framing, lighting and background.'
+        : ''
+    const keepList = opts?.undress
+        ? 'same body, pose, hands, framing, lighting and background'
+        : 'same body, pose, outfit, hands, framing, lighting and background'
     return {
         prompt:
-            'The FIRST image is the photo to keep: reproduce it EXACTLY — same body, pose, outfit, hands, framing, lighting and background. The SECOND image shows the person whose FACE to use. The FACE SWAP is MANDATORY: replace the face in the FIRST image with the face from the SECOND image — her exact features, freckles and likeness — never keep the original face. Do NOT blend the two images.' +
+            `The FIRST image is the photo to keep: reproduce it EXACTLY — ${keepList}. The SECOND image shows the person whose FACE to use. The FACE SWAP is MANDATORY: replace the face in the FIRST image with the face from the SECOND image — her exact features, freckles and likeness — never keep the original face. Do NOT blend the two images.` +
+            undress +
             hair,
-        negativePrompt:
-            'blended faces, different person, mannequin, doll, plastic skin, deformed hands, extra fingers, watermark, text, logo',
+        negativePrompt: opts?.undress
+            ? 'blended faces, different person, clothes, bra, panties, underwear, censored, blurred crotch, smooth featureless crotch, mannequin, doll, plastic skin, deformed hands, watermark, text'
+            : 'blended faces, different person, mannequin, doll, plastic skin, deformed hands, extra fingers, watermark, text, logo',
     }
 }

@@ -2227,6 +2227,10 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                                 bodySheetNude: usingNudeSheet,
                                 imageRoles: mrSlots.map((e) => e.role),
                                 cloneWeight,
+                                // Con lienzo hay FASE 2: ahí se hace el swap y
+                                // el desvestido. Pedirlo todo junto aquí hacía
+                                // que el editor copiara el lienzo tal cual.
+                                deferToPhase2: !!mrCloneSlot,
                             })
                             const sub = await submitMuleRouterImageTask({
                                 prompt: mr.prompt,
@@ -2301,6 +2305,7 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                                         getHairColorDescription(
                                             measurements?.hairColor,
                                         ),
+                                        { undress: nsfwRun },
                                     )
                                     const sub2 =
                                         await submitMuleRouterImageTask({
