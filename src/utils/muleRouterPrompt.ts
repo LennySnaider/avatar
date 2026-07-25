@@ -245,18 +245,31 @@ export function buildMuleRouterEditMaxPrompt(params: {
     // Anti-muñeca (2026-07-25): el output salía como doll articulada. Va en el
     // NEGATIVE, nunca en el positivo.
     const DOLL_NEG =
-        'mannequin, doll, ball-jointed doll, action figure, visible joint seams, plastic skin, vinyl skin, toy figure, waxwork'
+        'mannequin, doll, visible joint seams, plastic skin, toy figure'
     const BODY_NEG =
-        'oversized hips, thick heavy thighs, plus-size body, muscular bodybuilder physique, exaggerated hourglass, obese, skinny emaciated body'
+        'oversized hips, plus-size body, bodybuilder physique, obese, emaciated'
     const FIXED_NEG =
         'watermark, text, logo, signature, extra fingers, deformed hands, missing limbs, amputated limbs'
     const NSFW_NEG =
-        'clothes, clothing, dress, corset, top, pants, bra, panties, underwear, covered body, censored, censor bar, blurred crotch, smooth featureless crotch, doll-like genital area, pink areolas, blushed chest, open labia, gaping, oversized breasts'
-    const negativePrompt = (
-        params.nsfw
-            ? `${DOLL_NEG}, ${NSFW_NEG}, ${BODY_NEG}, ${FIXED_NEG}`
-            : `${DOLL_NEG}, ${BODY_NEG}, ${FIXED_NEG}`
-    ).slice(0, 500)
+        'clothes, bra, panties, underwear, covered body, censored, censor bar, blurred crotch, smooth featureless crotch, doll-like genital area, pink areolas, blushed chest, open labia, gaping, oversized breasts'
+    // El API corta a 500 a MEDIA PALABRA: en NSFW la lista llegaba justo a 500 y
+    // se perdían los fijos del final (watermark, deformed hands, missing/
+    // amputated limbs — la red anti-mutilación que costó encontrar). Los
+    // términos van compactados por prioridad y se recorta por TÉRMINO COMPLETO,
+    // nunca a media palabra.
+    const rawNegative = params.nsfw
+        ? `${NSFW_NEG}, ${DOLL_NEG}, ${BODY_NEG}, ${FIXED_NEG}`
+        : `${DOLL_NEG}, ${BODY_NEG}, ${FIXED_NEG}`
+    let negativePrompt = rawNegative
+    if (negativePrompt.length > 500) {
+        const terms = negativePrompt.split(', ')
+        negativePrompt = ''
+        for (const t of terms) {
+            const next = negativePrompt ? `${negativePrompt}, ${t}` : t
+            if (next.length > 500) break
+            negativePrompt = next
+        }
+    }
 
     return { prompt: parts.join(' ').slice(0, 800), negativePrompt }
 }
