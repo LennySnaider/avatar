@@ -19,6 +19,28 @@ import {
     BODY_SPEC_NOT_WARDROBE_CLAUSE,
 } from '../shared'
 
+/**
+ * Templa la INTENSIDAD del spec de cuerpo SOLO para Qwen (2026-07-25, Raven
+ * 85/60/90 ratio 1.50 salía mucho más ancha que Seedream): Qwen sobre-obedece
+ * los intensificadores calibrados para el slim-bias de Seedream. QUITARLOS dejó
+ * flaca a Emily (lección 4c03e7b) — aquí se REBAJAN conservando cada forma
+ * (redondez sí, anchura no). Gated a caderas<100: los XXL (MiaUltra 119)
+ * necesitan la intensidad completa o regresan a slim.
+ */
+function temperBodyForQwen(spec: string): string {
+    const hips = parseInt(spec.match(/hips\s+(\d+)\s*cm/i)?.[1] ?? '', 10)
+    if (!Number.isFinite(hips) || hips >= 100) return spec
+    return spec
+        .replace(/extremely small,\s*/gi, '')
+        .replace(/dramatically cinched/gi, 'cinched')
+        .replace(/extreme wasp waist/gi, 'slim cinched waist')
+        .replace(/waist far narrower than natural proportions/gi, 'a clearly defined narrow waist')
+        .replace(/large prominent round glutes/gi, 'round lifted glutes')
+        .replace(/deep hip curve/gi, 'a smooth rounded hip line')
+        .replace(/perfectly round glutes — full and balanced in every direction/gi, 'round balanced glutes')
+        .replace(/her full glutes flow into proportionally full thighs in one continuous natural curve — never slim or skinny legs under full glutes/gi, 'her glutes flow smoothly into naturally toned thighs in one continuous line')
+}
+
 async function build(ctx: ImageRouteContext): Promise<KieImageRequest> {
     // PRESUPUESTO: los docs actuales de qwen2/image-edit dicen prompt ≤ 5000
     // chars (2026-07-23, aportados por el usuario) — el cap viejo de 800 era
@@ -71,8 +93,19 @@ async function build(ctx: ImageRouteContext): Promise<KieImageRequest> {
         enable_safety_checker: !!ctx.safeMode,
         nsfw_checker: !!ctx.safeMode,
     }
-    if (ctx.negativePrompt) {
-        input.negative_prompt = ctx.negativePrompt
+    // Cuerpo templado para Qwen (ver temperBodyForQwen) + anti-rubor: si viaja
+    // anatomía NSFW, niega el rosa en el seno por el canal nativo también.
+    const temperedBody = ctx.bodyEmphasis
+        ? temperBodyForQwen(ctx.bodyEmphasis)
+        : ctx.bodyEmphasis
+    const antiPinkNegative = anatomySentence
+        ? 'pink areolas, pink-tinted breast skin, blushed chest, sunburned chest'
+        : ''
+    const negativeCombined = [ctx.negativePrompt, antiPinkNegative]
+        .filter(Boolean)
+        .join(', ')
+    if (negativeCombined) {
+        input.negative_prompt = negativeCombined
     }
 
     if (ctx.referenceImage) {
@@ -139,8 +172,8 @@ async function build(ctx: ImageRouteContext): Promise<KieImageRequest> {
                     // Seedream con las mismas medidas"): Qwen pesa las frases
                     // cualitativas de curvas sobre los cm y EXAGERA. Los números
                     // son la verdad — ni más flaca ni más ancha.
-                    const cloneBodyClause = ctx.bodyEmphasis
-                        ? ` Take her body proportions from THIS description, not from the first image: ${capAtWordBoundary(ctx.bodyEmphasis, 500, 'qwen-clone-body')}. Keep her hip width, waist and overall frame EXACTLY at the stated centimetres (slim if the numbers are slim); her glutes' fullness is ROUND — projecting BACKWARD as a rounded bubble shape — NOT wide hips, thick thighs or a widened silhouette.`
+                    const cloneBodyClause = temperedBody
+                        ? ` Take her body proportions from THIS description, not from the first image: ${capAtWordBoundary(temperedBody, 500, 'qwen-clone-body')}. Keep her hip width, waist and overall frame EXACTLY at the stated centimetres (slim if the numbers are slim); her glutes' fullness is ROUND — projecting BACKWARD as a rounded bubble shape — NOT wide hips, thick thighs or a widened silhouette.`
                         : ''
                     const cloneMatch = String(ctx.prompt).match(
                         /\[CLONE:\s*([^\]]*)\]/i,
@@ -207,8 +240,8 @@ async function build(ctx: ImageRouteContext): Promise<KieImageRequest> {
                     // glúteo (proyecta atrás) de ANCHURA del cuerpo (cm mandan).
                     // General: avatares realmente anchos ya traen "wide hips" en su
                     // texto, así que "cm mandan" los respeta.
-                    const qwenBodyClause = ctx.bodyEmphasis
-                        ? ` Her body (MANDATORY): ${capAtWordBoundary(ctx.bodyEmphasis, 700, 'qwen-body')} — keep her hip width, waist and overall frame EXACTLY at the stated centimetres (slim if the numbers are slim); her glutes' fullness is ROUND, projecting BACKWARD as a rounded bubble shape, NOT wide hips, thick thighs or a widened silhouette.${BODY_SPEC_NOT_WARDROBE_CLAUSE}`
+                    const qwenBodyClause = temperedBody
+                        ? ` Her body (MANDATORY): ${capAtWordBoundary(temperedBody, 700, 'qwen-body')} — keep her hip width, waist and overall frame EXACTLY at the stated centimetres (slim if the numbers are slim); her glutes' fullness is ROUND, projecting BACKWARD as a rounded bubble shape, NOT wide hips, thick thighs or a widened silhouette.${BODY_SPEC_NOT_WARDROBE_CLAUSE}`
                         : ''
                     // Lock de cara AUTORITATIVO y COMPACTO (cap 800): Qwen
                     // obedece el TEXTO por encima de la imagen — un prompt

@@ -260,11 +260,11 @@ export const BUST_SHAPE_PHRASE: Record<string, string> = {
 // sobre el guard suave del final. Fraseo RELATIVO A SU PIEL (mismo patrón que
 // la eyeClause 58a0957): describe el tono como mezcla con la piel, no un rosa.
 export const NIPPLE_COLOR_PHRASE: Record<string, string> = {
-    // v3 (2026-07-24): tras front-loadear la anatomía (lever 3) el color quedó al
-    // FRENTE del prompt y el "pinkish/pinker" se DERRAMABA sobre todo el seno
-    // (reporte "pinta rosa el busto"). Se baja a UNA referencia suave de tono, y
-    // el candado de contención (abajo) confina el color al pezón/areola.
-    rosy: 'a soft rosy-tan, just a shade deeper and warmer than her surrounding skin',
+    // v4 (2026-07-25): NI 'rosy-tan' sobrevivió — con el front-load, CUALQUIER
+    // palabra de la familia rosa se pinta como rubor en el seno (Raven fair lo
+    // evidenció). Receta final = la que funcionó en piel/ojos: CERO color
+    // nombrable, solo relación con su piel.
+    rosy: 'light skin-toned (only a shade deeper and warmer than her surrounding skin)',
     peach: 'a soft peach-tan, gently warmer than her surrounding skin',
     'light-brown': 'light brown',
     brown: 'medium brown',
@@ -414,9 +414,12 @@ export function buildCurvesEmphasis(m: PhysicalMeasurements): string {
     if (thighs && THIGHS_LEVEL_PHRASE[thighs]) {
         parts.push(THIGHS_LEVEL_PHRASE[thighs])
     }
-    // Reglas de pezón del avatar (condicional — solo aplica descubierta).
-    const nipples = nippleClause(m)
-    if (nipples) parts.push(nipples)
+    // Pezón QUITADO de aquí (2026-07-25): viajaba DOBLE — aquí (dentro del
+    // bodyEmphasis) Y en el append "Her anatomy:" de AvatarStudioMain (nsfwRun).
+    // Tras el front-load de Qwen ambas copias quedaban AL FRENTE → doble señal
+    // de color = rubor rosa en el busto que la contención no frenaba. Fuente
+    // única: el append (gated a NSFW — en SFW el pezón no pinta nada y solo
+    // metía palabras de color al prompt).
     // Puente de continuidad: con glúteos llenos, la curva glúteo→muslo debe
     // ser UNA sola — evita el mismatch "butt grande sobre piernas flacas"
     // aunque el legType diga slim.
