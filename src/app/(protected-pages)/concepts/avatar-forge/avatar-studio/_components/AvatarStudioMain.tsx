@@ -2305,7 +2305,18 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                                         getHairColorDescription(
                                             measurements?.hairColor,
                                         ),
-                                        { undress: nsfwRun },
+                                        {
+                                            undress: nsfwRun,
+                                            // La fase 2 decide la CARA → los
+                                            // ojos del avatar viajan aquí.
+                                            eyeDesc: getEyeColorDescription(
+                                                measurements?.eyeColor,
+                                            ),
+                                            // Y el tamaño de areola del avatar
+                                            // (antes se perdía en runs con clone).
+                                            areolaDesc:
+                                                measurements?.nippleAreola,
+                                        },
                                     )
                                     const sub2 =
                                         await submitMuleRouterImageTask({

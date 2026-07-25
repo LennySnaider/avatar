@@ -1,5 +1,6 @@
 import type { PhysicalMeasurements } from '@/@types/supabase'
 import {
+    getEyeColorDescription,
     getHairColorDescription,
     getSkinToneDescription,
 } from '@/utils/bodyDescriptors'
@@ -252,6 +253,13 @@ export function buildMuleRouterEditMaxPrompt(params: {
     if (pendingFidelity) parts.push(pendingFidelity)
     if (cloneIdx === 1) pushScene(0)
 
+    // Ojos del avatar también en la ruta de 1 fase (sin clone la cara la decide
+    // este prompt, no hay fase 2 que la corrija).
+    if (!params.deferToPhase2 && m?.eyeColor) {
+        const eye = getEyeColorDescription(m.eyeColor).split(',')[0]
+        if (eye) parts.push(`Her eyes are ${eye}, natural and realistic.`)
+    }
+
     if (params.nsfw && !params.deferToPhase2) {
         // DESNUDEZ GARANTIZADA (2026-07-25, "salió vestida"): antes la orden
         // "completely nude" vivía en la COLA de la escena y el truncado a 800
@@ -262,7 +270,7 @@ export function buildMuleRouterEditMaxPrompt(params: {
         // LÍNEA vertical literal en el torso/ropa. Se describe la anatomía SIN
         // la palabra "line". Nudez reforzada (no top, no panti).
         parts.push(
-            'She is COMPLETELY NUDE — no bra, top or underwear, bare skin all over. Realistic bare breasts with small skin-toned areolas and a natural vulva with soft closed labia, matte skin tone, anatomically real and softly detailed.',
+            'She is COMPLETELY NUDE — no bra, top or underwear, bare skin all over. Realistic bare breasts with CLEARLY DEFINED nipples and small skin-toned areolas, and a natural vulva with soft closed labia, matte skin tone, anatomically real and softly detailed.',
         )
     }
 
@@ -348,27 +356,38 @@ export const MULEROUTER_SIZE: Record<string, string> = {
  */
 export function buildMuleRouterFaceSwapPrompt(
     hairDesc?: string,
-    opts?: { undress?: boolean },
+    opts?: { undress?: boolean; eyeDesc?: string; areolaDesc?: string },
 ): {
     prompt: string
     negativePrompt: string
 } {
     const hair = hairDesc ? ` Keep her hair ${hairDesc.split(',')[0]}.` : ''
+    // OJOS (2026-07-25, "los ojos se ven raros"): nunca viajaban a MuleRouter —
+    // Seedream sí los recibe vía eyeClause y por eso salían bien. La fase 2 es
+    // quien decide la cara, así que es SU sitio.
+    const eyes = opts?.eyeDesc
+        ? ` Her eyes are ${opts.eyeDesc.split(',')[0]} — natural realistic iris, not glowing or oversaturated.`
+        : ''
     // DESVESTIR en la fase 2 (2026-07-25): pedir desnudez en la fase 1 peleaba
     // contra el lienzo VESTIDO del clone y ganaba el lienzo (salía con la ropa
     // del clon pese a "COMPLETELY NUDE"). Quitar ropa es una edición LOCAL, que
     // es justo lo que un editor hace bien — y aquí llega sin competencia.
+    // PEZONES DEFINIDOS ("no están bien definidos"): la fase 1 difiere la
+    // anatomía a la 2… y la 2 solo decía "natural realistic breasts". El detalle
+    // del pezón/areola (y el de la vulva) tiene que viajar AQUÍ.
+    const areola = opts?.areolaDesc ?? 'small'
     const undress = opts?.undress
-        ? ' Also REMOVE all her clothing: she is completely nude, bare skin, with natural realistic breasts and a natural vulva — keep the exact same pose, hands, framing, lighting and background.'
+        ? ` Also REMOVE all her clothing — she is completely nude, bare skin, same pose and framing. Natural breasts with CLEARLY DEFINED nipples and ${areola} skin-toned areolas, and a natural vulva with soft closed labia, anatomically real.`
         : ''
     const keepList = opts?.undress
         ? 'same body, pose, hands, framing, lighting and background'
         : 'same body, pose, outfit, hands, framing, lighting and background'
     return {
         prompt:
-            `The FIRST image is the photo to keep: reproduce it EXACTLY — ${keepList}. The SECOND image shows the person whose FACE to use. The FACE SWAP is MANDATORY: replace the face in the FIRST image with the face from the SECOND image — her exact features, freckles and likeness — never keep the original face. Do NOT blend the two images.` +
+            `Keep the FIRST image EXACTLY — ${keepList}. The SECOND image shows the person whose FACE to use: replace the face in the FIRST image with hers — exact features, freckles and likeness — never keep the original face, never blend the two images.` +
             undress +
-            hair,
+            hair +
+            eyes,
         negativePrompt: opts?.undress
             ? 'blended faces, different person, clothes, bra, panties, underwear, censored, blurred crotch, smooth featureless crotch, mannequin, doll, plastic skin, deformed hands, watermark, text'
             : 'blended faces, different person, mannequin, doll, plastic skin, deformed hands, extra fingers, watermark, text, logo',
