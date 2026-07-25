@@ -32,6 +32,8 @@ import {
     HiArchive,
     HiOutlineArchive,
     HiArrowUp,
+    HiOutlineCheckCircle,
+    HiCheck,
 } from 'react-icons/hi'
 import { PiFlowArrowDuotone } from 'react-icons/pi'
 import { TbPepper } from 'react-icons/tb'
@@ -140,6 +142,23 @@ const GalleryPanel = ({
     // Toggle a favorite/archived flag: update the in-memory item AND merge-write
     // it into generations.metadata so it survives a reload (only once the item
     // has a DB row — session-only items flip locally and persist on auto-save).
+    // ── Multi-selección para acciones en lote ──────────────────────────────
+    const [selectMode, setSelectMode] = useState(false)
+    const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
+    const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false)
+    const [bulkBusy, setBulkBusy] = useState(false)
+    const exitSelect = () => {
+        setSelectMode(false)
+        setSelectedIds(new Set())
+    }
+    const toggleSelect = (id: string) =>
+        setSelectedIds((prev) => {
+            const next = new Set(prev)
+            if (next.has(id)) next.delete(id)
+            else next.add(id)
+            return next
+        })
+
     const setFlags = (
         media: GeneratedMedia,
         patch: { favorite?: boolean; archived?: boolean },
@@ -164,11 +183,8 @@ const GalleryPanel = ({
     // por eso no reusa setFlags: parcha metadata.nsfw en memoria y lo persiste en
     // la fila `generations` para etiquetar retroactivamente lo que el auto-tag no
     // captó (todo lo generado sin el 🌶️).
-    const toggleNsfw = (media: GeneratedMedia) => {
-        const nextMeta = {
-            ...(media.metadata ?? {}),
-            nsfw: !media.metadata?.nsfw,
-        }
+    const setNsfwFlag = (media: GeneratedMedia, value: boolean) => {
+        const nextMeta = { ...(media.metadata ?? {}), nsfw: value }
         updateGalleryItem(media.id, {
             metadata: nextMeta as typeof media.metadata,
         })
@@ -178,6 +194,8 @@ const GalleryPanel = ({
             )
         }
     }
+    const toggleNsfw = (media: GeneratedMedia) =>
+        setNsfwFlag(media, !media.metadata?.nsfw)
 
     // "Assign avatar" — decides which avatar's accounts can publish this media.
     const [assignTarget, setAssignTarget] = useState<GeneratedMedia | null>(
@@ -258,6 +276,51 @@ const GalleryPanel = ({
 
     const favCount = gallery.filter((m) => m.favorite && !m.archived).length
     const archivedCount = gallery.filter((m) => m.archived).length
+
+    // ── Selección: derivados + acciones en lote (toggle de grupo: si TODAS
+    //    ya tienen el flag, lo quita; si no, lo pone — intuitivo en cualquier
+    //    vista). Archivar en la vista Archivadas = Restaurar. ─────────────────
+    const selectedMedia = filteredGallery.filter((m) => selectedIds.has(m.id))
+    const allFav =
+        selectedMedia.length > 0 && selectedMedia.every((m) => m.favorite)
+    const allNsfw =
+        selectedMedia.length > 0 &&
+        selectedMedia.every((m) => m.metadata?.nsfw)
+    const inArchived = galleryView === 'archived'
+    const selectAllVisible = () =>
+        setSelectedIds(new Set(filteredGallery.map((m) => m.id)))
+    const bulkFavorite = () => {
+        selectedMedia.forEach((m) => setFlags(m, { favorite: !allFav }))
+        exitSelect()
+    }
+    const bulkArchive = () => {
+        selectedMedia.forEach((m) => setFlags(m, { archived: !inArchived }))
+        exitSelect()
+    }
+    const bulkNsfw = () => {
+        selectedMedia.forEach((m) => setNsfwFlag(m, !allNsfw))
+        exitSelect()
+    }
+    const bulkDelete = async () => {
+        setBulkBusy(true)
+        try {
+            for (const m of selectedMedia) {
+                if (m.generationId) await apiDeleteGeneration(m.generationId)
+                removeFromGallery(m.id)
+            }
+            setBulkDeleteOpen(false)
+            exitSelect()
+        } catch (err) {
+            console.error('Bulk delete failed:', err)
+            toast.push(
+                <Notification type="danger" title="Error al borrar">
+                    Algunas no se pudieron borrar. Intenta de nuevo.
+                </Notification>,
+            )
+        } finally {
+            setBulkBusy(false)
+        }
+    }
 
     const detectAspectRatio = (width: number, height: number): AspectRatio => {
         const ratio = width / height
@@ -488,6 +551,21 @@ const GalleryPanel = ({
                         </div>
                         <button
                             type="button"
+                            onClick={() =>
+                                selectMode ? exitSelect() : setSelectMode(true)
+                            }
+                            title="Seleccionar varias para borrar/archivar/favoritas/NSFW en lote"
+                            className={`flex items-center gap-1 px-2.5 py-1 text-xs rounded-lg border transition-colors ${
+                                selectMode
+                                    ? 'border-blue-500 bg-blue-50 dark:bg-blue-500/20 text-blue-700 dark:text-blue-200 font-medium'
+                                    : 'border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'
+                            }`}
+                        >
+                            <HiOutlineCheckCircle className="w-3.5 h-3.5" />
+                            Seleccionar
+                        </button>
+                        <button
+                            type="button"
                             onClick={() => setGalleryBarOpen(false)}
                             title="Cerrar filtros"
                             className="ml-auto shrink-0 p-2 rounded-lg border border-gray-300 dark:border-gray-600 text-gray-500 hover:text-gray-700 dark:hover:text-gray-200"
@@ -544,6 +622,68 @@ const GalleryPanel = ({
                         )}
 
                     {/* Gallery Grid */}
+                    {/* Barra de acciones en lote — sticky mientras se selecciona */}
+                    {selectMode && (
+                        <div className="sticky top-0 z-20 mb-3 flex flex-wrap items-center gap-2 rounded-lg border border-blue-500/40 bg-white/95 dark:bg-gray-900/95 backdrop-blur px-3 py-2 shadow">
+                            <span className="text-sm font-medium">
+                                {selectedMedia.length} seleccionada
+                                {selectedMedia.length === 1 ? '' : 's'}
+                            </span>
+                            <button
+                                type="button"
+                                onClick={selectAllVisible}
+                                className="text-xs px-2 py-1 rounded border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800"
+                            >
+                                Todas ({filteredGallery.length})
+                            </button>
+                            <div className="ml-auto flex flex-wrap items-center gap-1.5">
+                                <button
+                                    type="button"
+                                    disabled={selectedMedia.length === 0}
+                                    onClick={bulkFavorite}
+                                    className="flex items-center gap-1 text-xs px-2.5 py-1 rounded-lg border border-amber-300 text-amber-700 dark:text-amber-300 hover:bg-amber-50 dark:hover:bg-amber-500/10 disabled:opacity-40"
+                                >
+                                    <HiStar className="w-3.5 h-3.5" />
+                                    {allFav ? 'Quitar fav' : 'Favoritas'}
+                                </button>
+                                <button
+                                    type="button"
+                                    disabled={selectedMedia.length === 0}
+                                    onClick={bulkArchive}
+                                    className="flex items-center gap-1 text-xs px-2.5 py-1 rounded-lg border border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-800 disabled:opacity-40"
+                                >
+                                    <HiOutlineArchive className="w-3.5 h-3.5" />
+                                    {inArchived ? 'Restaurar' : 'Archivar'}
+                                </button>
+                                <button
+                                    type="button"
+                                    disabled={selectedMedia.length === 0}
+                                    onClick={bulkNsfw}
+                                    className="flex items-center gap-1 text-xs px-2.5 py-1 rounded-lg border border-pink-300 text-pink-700 dark:text-pink-300 hover:bg-pink-50 dark:hover:bg-pink-500/10 disabled:opacity-40"
+                                >
+                                    <TbPepper className="w-3.5 h-3.5" />
+                                    {allNsfw ? 'Quitar NSFW' : 'NSFW'}
+                                </button>
+                                <button
+                                    type="button"
+                                    disabled={selectedMedia.length === 0}
+                                    onClick={() => setBulkDeleteOpen(true)}
+                                    className="flex items-center gap-1 text-xs px-2.5 py-1 rounded-lg border border-red-400 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-500/10 disabled:opacity-40"
+                                >
+                                    <HiOutlineTrash className="w-3.5 h-3.5" />
+                                    Borrar
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={exitSelect}
+                                    className="flex items-center gap-1 text-xs px-2.5 py-1 rounded-lg border border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-800"
+                                >
+                                    <HiOutlineX className="w-3.5 h-3.5" />
+                                    Cancelar
+                                </button>
+                            </div>
+                        </div>
+                    )}
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                         {/* Generating Placeholder — el botón "En espera" vive
                             aquí, debajo del texto: manda esta generación a
@@ -604,9 +744,33 @@ const GalleryPanel = ({
                             return (
                                 <Card
                                     key={media.id}
-                                    className="relative group overflow-hidden cursor-pointer transition-all hover:shadow-lg"
-                                    onClick={() => setPreviewMedia(media)}
+                                    className={`relative group overflow-hidden cursor-pointer transition-all hover:shadow-lg ${
+                                        selectMode && selectedIds.has(media.id)
+                                            ? 'ring-2 ring-blue-500'
+                                            : ''
+                                    }`}
+                                    onClick={() =>
+                                        selectMode
+                                            ? toggleSelect(media.id)
+                                            : setPreviewMedia(media)
+                                    }
                                 >
+                                    {/* Checkbox de selección (modo lote) */}
+                                    {selectMode && (
+                                        <div className="absolute top-2 left-2 z-30">
+                                            <span
+                                                className={`flex items-center justify-center w-6 h-6 rounded-full border-2 ${
+                                                    selectedIds.has(media.id)
+                                                        ? 'bg-blue-500 border-blue-500 text-white'
+                                                        : 'bg-black/40 border-white/80'
+                                                }`}
+                                            >
+                                                {selectedIds.has(media.id) && (
+                                                    <HiCheck className="w-4 h-4" />
+                                                )}
+                                            </span>
+                                        </div>
+                                    )}
                                     {/* Media Content */}
                                     <div className="bg-gray-100 dark:bg-gray-800">
                                         {media.mediaType === 'VIDEO' ? (
@@ -720,7 +884,11 @@ const GalleryPanel = ({
                                     </div>
 
                                     {/* Provider/Model + owning-avatar badges */}
-                                    <div className="absolute top-2 left-2 flex flex-col items-start gap-1">
+                                    <div
+                                        className={`absolute left-2 flex flex-col items-start gap-1 ${
+                                            selectMode ? 'top-10' : 'top-2'
+                                        }`}
+                                    >
                                         {media.providerName && (
                                             <span className="px-2 py-1 text-[10px] font-medium rounded bg-black/70 text-white max-w-32 truncate inline-block">
                                                 {media.providerName}
@@ -784,8 +952,13 @@ const GalleryPanel = ({
                                         )}
                                     </div>
 
-                                    {/* Overlay Actions */}
-                                    <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-end">
+                                    {/* Overlay Actions (oculto en modo selección
+                                        para no chocar con el click de selección) */}
+                                    <div
+                                        className={`absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-end ${
+                                            selectMode ? 'hidden' : ''
+                                        }`}
+                                    >
                                         <div className="w-full p-3 space-y-2">
                                             {/* Prompt Preview */}
                                             <p className="text-xs text-white line-clamp-2">
@@ -990,6 +1163,23 @@ const GalleryPanel = ({
                         ? ' and deleted from the database'
                         : ''}
                     .
+                </p>
+            </ConfirmDialog>
+
+            {/* Borrado en LOTE (multi-selección) */}
+            <ConfirmDialog
+                isOpen={bulkDeleteOpen}
+                type="danger"
+                title={`¿Borrar ${selectedMedia.length} elemento${selectedMedia.length === 1 ? '' : 's'}?`}
+                onClose={() => setBulkDeleteOpen(false)}
+                onRequestClose={() => setBulkDeleteOpen(false)}
+                onCancel={() => setBulkDeleteOpen(false)}
+                onConfirm={bulkDelete}
+                confirmButtonProps={{ loading: bulkBusy }}
+            >
+                <p>
+                    Se eliminarán de tu galería (y de la base de datos las que ya
+                    estén guardadas). Esta acción no se puede deshacer.
                 </p>
             </ConfirmDialog>
 
