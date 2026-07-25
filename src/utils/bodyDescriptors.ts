@@ -314,7 +314,12 @@ export function nippleClause(m: PhysicalMeasurements): string {
     const sizeLock = areola
         ? ' — areola size EXACTLY as stated, independent of her bust size'
         : ''
-    return `only when uncovered: ${spec}${sizeLock}, matte low-saturation tone that blends naturally with her skin — never bright pink, red or candy-coloured. This colour stays STRICTLY on the nipple and areola only; the surrounding breast skin keeps her normal even skin tone and is NEVER flushed, blushed or tinted pink. Always identical; when clothed nothing shows through fabric`
+    // AUDITORÍA 2026-07-25 (F1, "negation blindness"): la difusión NO procesa
+    // negaciones en el prompt positivo — "never bright pink / NEVER flushed,
+    // blushed or tinted pink" ponía 8 palabras-pigmento AL FRENTE y Qwen las
+    // PINTABA (rubor rosa). El positivo solo dice QUÉ pintar; toda prohibición
+    // vive en el negative_prompt (antiPinkNegative de la ruta Qwen).
+    return `only when uncovered: ${spec}${sizeLock}, matte low-saturation tone that blends naturally with her skin. This colour stays STRICTLY on the nipple and areola only; the surrounding breast skin keeps her normal even, uniform skin tone all over. Always identical; when clothed nothing shows through fabric`
 }
 
 /** ¿La escena declara desnudez TOTAL explícita? Regex estricta a propósito:
@@ -341,7 +346,9 @@ export function vulvaClause(scenePrompt?: string): string {
     // monte-liso-doll ←→ abierta/explícita. El punto medio: hendidura CERRADA
     // de una sola línea, nada visible por dentro, tono piel mate (el rosa
     // reapareció — prohibirlo sin matiz "bright").
-    const spec = `a small CLOSED compact cleft — a single delicate vertical line between full soft outer labia, inner labia fully tucked inside and not visible, nothing protruding, open or spread; matte tone matching her surrounding skin (never pink, red or glossy), neat, discreet and realistic as in a real photograph — yet never a featureless doll-like mound with no cleft at all, always the same exact anatomy`
+    // F1 auditoría: "(never pink, red or glossy)" fuera del positivo — la
+    // difusión no niega, pinta. La prohibición vive en el negative de la ruta.
+    const spec = `a small CLOSED compact cleft — a single delicate vertical line between full soft outer labia, inner labia fully tucked inside and not visible, nothing protruding, open or spread; matte tone matching her surrounding skin, neat, discreet and realistic as in a real photograph — yet never a featureless doll-like mound with no cleft at all, always the same exact anatomy`
     if (scenePrompt && EXPLICIT_FULL_NUDE_RE.test(scenePrompt)) {
         return `her vulva IS fully visible and anatomically real: ${spec}`
     }

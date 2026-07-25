@@ -761,6 +761,7 @@ export async function spicifyScenePrompt(scenePrompt: string): Promise<string> {
                         text: `Rewrite this image-generation scene prompt into its EXPLICIT NSFW version for an adults-only platform.
 
 KEEP IDENTICAL: the location/setting, the pose and action, the lighting, the camera framing, and any bracketed tags like [POSE: ...] or [CLONE: ...] (copy tags VERBATIM).
+KEEP VERBATIM — DO NOT REWRITE: any body/proportion description (body-shape words like "hourglass", waist/hip/glute/bust phrases, centimetre measurements, ratios). Copy those sentences word for word, unchanged — never paraphrase them, never swap their words for synonyms, never weave nudity adjectives into them. Add the nudity/attitude language AROUND them, not inside them.
 CHANGE: the wardrobe and attitude — she is now topless or completely nude (choose what fits the scene naturally; e.g. lingerie bottoms only, or fully nude), with a confident, sensual, provocative attitude. Be direct and explicit about the nudity in plain words.
 
 OUTPUT: ONLY the rewritten prompt as flowing prose (same language as the input). No intro, no quotes, no commentary.

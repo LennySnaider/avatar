@@ -71,6 +71,11 @@ async function build(ctx: ImageRouteContext): Promise<KieImageRequest> {
         ? capped.slice(0, anatMatch.index).trim()
         : capped
     const anatomyFront = anatomySentence ? ` ${anatomySentence}` : ''
+    // AUDITORÍA 2026-07-25 (F2, spec DOBLE): si la ESCENA ya trae el spec
+    // corporal (usuario pegó el prompt del perfil / Reuse de una hoja del Body
+    // Lab), inyectar además el body clause del ancla lo DUPLICA → amplifica
+    // (salía más ancha). Huella inequívoca del spec: la línea de ratio.
+    const sceneCarriesSpec = /hip-to-waist ratio/i.test(cappedSansAnatomy)
     let resolvedModel = ctx.model
     const input: Record<string, unknown> = {
         prompt: capped,
@@ -154,7 +159,7 @@ async function build(ctx: ImageRouteContext): Promise<KieImageRequest> {
                     // Seedream con las mismas medidas"): Qwen pesa las frases
                     // cualitativas de curvas sobre los cm y EXAGERA. Los números
                     // son la verdad — ni más flaca ni más ancha.
-                    const cloneBodyClause = ctx.bodyEmphasis
+                    const cloneBodyClause = !sceneCarriesSpec && ctx.bodyEmphasis
                         ? ` Take her body proportions from THIS description, not from the first image: ${capAtWordBoundary(ctx.bodyEmphasis, 500, 'qwen-clone-body')}. Keep her hip width, waist and overall frame EXACTLY at the stated centimetres (slim if the numbers are slim); her glutes' fullness is ROUND — projecting BACKWARD as a rounded bubble shape — NOT wide hips, thick thighs or a widened silhouette.`
                         : ''
                     const cloneMatch = String(ctx.prompt).match(
@@ -222,7 +227,7 @@ async function build(ctx: ImageRouteContext): Promise<KieImageRequest> {
                     // glúteo (proyecta atrás) de ANCHURA del cuerpo (cm mandan).
                     // General: avatares realmente anchos ya traen "wide hips" en su
                     // texto, así que "cm mandan" los respeta.
-                    const qwenBodyClause = ctx.bodyEmphasis
+                    const qwenBodyClause = !sceneCarriesSpec && ctx.bodyEmphasis
                         ? ` Her body (MANDATORY): ${capAtWordBoundary(ctx.bodyEmphasis, 700, 'qwen-body')} — keep her hip width, waist and overall frame EXACTLY at the stated centimetres (slim if the numbers are slim); her glutes' fullness is ROUND, projecting BACKWARD as a rounded bubble shape, NOT wide hips, thick thighs or a widened silhouette.${BODY_SPEC_NOT_WARDROBE_CLAUSE}`
                         : ''
                     // Lock de cara AUTORITATIVO y COMPACTO (cap 800): Qwen
