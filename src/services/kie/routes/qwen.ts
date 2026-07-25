@@ -160,7 +160,7 @@ async function build(ctx: ImageRouteContext): Promise<KieImageRequest> {
                     // cualitativas de curvas sobre los cm y EXAGERA. Los números
                     // son la verdad — ni más flaca ni más ancha.
                     const cloneBodyClause = !sceneCarriesSpec && ctx.bodyEmphasis
-                        ? ` Take her body proportions from THIS description, not from the first image: ${capAtWordBoundary(ctx.bodyEmphasis, 500, 'qwen-clone-body')}. Keep her hip width, waist and overall frame EXACTLY at the stated centimetres (slim if the numbers are slim); her glutes' fullness is ROUND — projecting BACKWARD as a rounded bubble shape — NOT wide hips, thick thighs or a widened silhouette.`
+                        ? ` Take her body proportions from THIS description, not from the first image: ${capAtWordBoundary(ctx.bodyEmphasis, 1200, 'qwen-clone-body')}. Keep her hip width, waist and overall frame EXACTLY at the stated centimetres (slim if the numbers are slim); her glutes' fullness is ROUND — projecting BACKWARD as a rounded bubble shape — NOT wide hips, thick thighs or a widened silhouette.`
                         : ''
                     const cloneMatch = String(ctx.prompt).match(
                         /\[CLONE:\s*([^\]]*)\]/i,
@@ -228,7 +228,7 @@ async function build(ctx: ImageRouteContext): Promise<KieImageRequest> {
                     // General: avatares realmente anchos ya traen "wide hips" en su
                     // texto, así que "cm mandan" los respeta.
                     const qwenBodyClause = !sceneCarriesSpec && ctx.bodyEmphasis
-                        ? ` Her body (MANDATORY): ${capAtWordBoundary(ctx.bodyEmphasis, 700, 'qwen-body')} — keep her hip width, waist and overall frame EXACTLY at the stated centimetres (slim if the numbers are slim); her glutes' fullness is ROUND, projecting BACKWARD as a rounded bubble shape, NOT wide hips, thick thighs or a widened silhouette.${BODY_SPEC_NOT_WARDROBE_CLAUSE}`
+                        ? ` Her body (MANDATORY): ${capAtWordBoundary(ctx.bodyEmphasis, 1200, 'qwen-body')} — keep her hip width, waist and overall frame EXACTLY at the stated centimetres (slim if the numbers are slim); her glutes' fullness is ROUND, projecting BACKWARD as a rounded bubble shape, NOT wide hips, thick thighs or a widened silhouette.${anatomySentence ? '' : BODY_SPEC_NOT_WARDROBE_CLAUSE}`
                         : ''
                     // Lock de cara AUTORITATIVO y COMPACTO (cap 800): Qwen
                     // obedece el TEXTO por encima de la imagen — un prompt
