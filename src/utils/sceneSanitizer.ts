@@ -286,14 +286,26 @@ function isCurvy(m?: Partial<PhysicalMeasurements> | null): boolean {
  * (Qwen hoy). Anti-slimming si el avatar es curvy + fijos (watermark/manos).
  * En Seedream/Wan el anti-slimming ya lo cubre el [BODY:] autoritativo y el
  * anti-watermark va por ANTI_WATERMARK_CLAUSE in-prompt.
+ *
+ * opts.nsfw (2026-07-24): en runs NSFW añade anti-censura/anti-doll — Qwen
+ * suavizaba la zona íntima a un monte liso aunque la cláusula positiva viajara
+ * (verificado por recordInfo: el negative solo traía watermark+manos). El
+ * negativo nativo pesa distinto que el texto positivo y ataca el prior de
+ * censura directamente. Solo NSFW: en runs vestidos estos términos sobran.
  */
 export function buildIdentityNegative(
     m?: Partial<PhysicalMeasurements> | null,
+    opts?: { nsfw?: boolean },
 ): string {
     const parts: string[] = []
     if (isCurvy(m)) {
         parts.push(
             'small chest, flat chest, reduced bust volume, normalized anatomy, athletic slimness, slim hips',
+        )
+    }
+    if (opts?.nsfw) {
+        parts.push(
+            'censored, censor bar, mosaic censoring, blurred crotch, smooth featureless crotch, doll-like genital area, airbrushed blank skin between legs, missing genital anatomy, barbie-doll anatomy',
         )
     }
     parts.push(FIXED_NEGATIVE)

@@ -1628,7 +1628,9 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                             // 2026-07-24 "no se nota") — misma vía probada en vivo.
                             const anatomy = [
                                 nippleClause(measurements),
-                                vulvaClause(),
+                                // La escena decide el modo: desnudo total
+                                // explícito → imperativa; si no → condicional.
+                                vulvaClause(fullPrompt),
                             ]
                                 .filter(Boolean)
                                 .join('. Also ')
@@ -2031,7 +2033,9 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                                 // lienzo, no del config).
                                 negativePrompt: deepfakeActive
                                     ? undefined
-                                    : buildIdentityNegative(measurements),
+                                    : buildIdentityNegative(measurements, {
+                                          nsfw: nsfwRun,
+                                      }),
                                 // Escala la cláusula de fidelidad facial del
                                 // ancla (port condensado del identity harness).
                                 identityWeight,
