@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useRef, useState, type RefObject } from 'react'
+import { useEffect, useMemo, useRef, useState, type RefObject } from 'react'
 import { useAvatarStudioStore } from '../_store/avatarStudioStore'
 import { downloadMediaUrl } from '../../_utils/mediaDownload'
 import Button from '@/components/ui/Button'
@@ -118,6 +118,11 @@ const GalleryPanel = ({
             ?.getScrollElement()
             ?.scrollTo({ top: 0, behavior: 'smooth' })
     }
+
+    // Carga incremental: un sentinel al fondo dispara la siguiente página cuando
+    // entra al viewport (con 600px de margen — precarga suave). El root es el
+    // scroll de SimpleBar. Ver `visibleGallery` más abajo.
+    const loadMoreRef = useRef<HTMLDivElement>(null)
 
     // "Send to flow": drop the media into the Flow Editor as a preconfigured
     // From Gallery node and jump to that tab. Requires the item to be saved
@@ -241,38 +246,85 @@ const GalleryPanel = ({
     )
     const hasOrphanMedia = gallery.some((m) => !m.avatarId)
 
-    // Client-side filter — ports the search + media-type approach from
-    // ../../gallery/_components/GenerationGallery.tsx.
-    const filteredGallery = gallery.filter((media) => {
-        const matchesSearch =
-            !searchQuery ||
-            media.prompt.toLowerCase().includes(searchQuery.toLowerCase())
-        const matchesType =
-            mediaTypeFilter === 'ALL' || media.mediaType === mediaTypeFilter
-        const matchesAvatar =
-            avatarFilter === 'ALL'
-                ? true
-                : avatarFilter === 'NONE'
-                  ? !media.avatarId
-                  : media.avatarId === avatarFilter
-        // Archived items are hidden everywhere EXCEPT the Archivadas view.
-        const matchesView =
-            galleryView === 'archived'
-                ? !!media.archived
-                : galleryView === 'favorites'
-                  ? !!media.favorite && !media.archived
-                  : !media.archived
-        // Ocultar-NSFW: con el toggle ON, las cards con metadata.nsfw salen de la
-        // grilla (privacidad — "esconder el material picante").
-        const matchesNsfw = !galleryHideNsfw || !media.metadata?.nsfw
-        return (
-            matchesSearch &&
-            matchesType &&
-            matchesAvatar &&
-            matchesView &&
-            matchesNsfw
+    // Client-side filter — MEMOIZADO: con 1000+ items, recalcularlo en cada
+    // render (seleccionar, hover, tecla) era 1000 iteraciones de más. Solo
+    // depende de la galería y los filtros.
+    const filteredGallery = useMemo(
+        () =>
+            gallery.filter((media) => {
+                const matchesSearch =
+                    !searchQuery ||
+                    media.prompt
+                        .toLowerCase()
+                        .includes(searchQuery.toLowerCase())
+                const matchesType =
+                    mediaTypeFilter === 'ALL' ||
+                    media.mediaType === mediaTypeFilter
+                const matchesAvatar =
+                    avatarFilter === 'ALL'
+                        ? true
+                        : avatarFilter === 'NONE'
+                          ? !media.avatarId
+                          : media.avatarId === avatarFilter
+                // Archived items are hidden everywhere EXCEPT the Archivadas view.
+                const matchesView =
+                    galleryView === 'archived'
+                        ? !!media.archived
+                        : galleryView === 'favorites'
+                          ? !!media.favorite && !media.archived
+                          : !media.archived
+                // Ocultar-NSFW: con el toggle ON, las cards con metadata.nsfw
+                // salen de la grilla (privacidad).
+                const matchesNsfw = !galleryHideNsfw || !media.metadata?.nsfw
+                return (
+                    matchesSearch &&
+                    matchesType &&
+                    matchesAvatar &&
+                    matchesView &&
+                    matchesNsfw
+                )
+            }),
+        [
+            gallery,
+            searchQuery,
+            mediaTypeFilter,
+            avatarFilter,
+            galleryView,
+            galleryHideNsfw,
+        ],
+    )
+
+    // ── WINDOWING incremental (2026-07-25, "carga lento"): renderizar las
+    //    1000+ cards de golpe saturaba el DOM (1000 <img>/<video> + re-render
+    //    de todas en cada interacción). Se renderiza una VENTANA que crece al
+    //    scrollear cerca del fondo. Cae a 48 cuando cambia el set filtrado. ──
+    const PAGE = 48
+    const [visibleCount, setVisibleCount] = useState(PAGE)
+    // Reset al cambiar de filtro/vista/búsqueda (evita renderizar 1000 tras
+    // cambiar de vista) + al scroll-top.
+    useEffect(() => {
+        setVisibleCount(PAGE)
+        scrollBarRef.current?.getScrollElement()?.scrollTo({ top: 0 })
+    }, [searchQuery, mediaTypeFilter, avatarFilter, galleryView, galleryHideNsfw])
+    const visibleGallery = filteredGallery.slice(0, visibleCount)
+    const hasMore = visibleCount < filteredGallery.length
+
+    useEffect(() => {
+        const sentinel = loadMoreRef.current
+        const root = scrollBarRef.current?.getScrollElement()
+        if (!sentinel || !root) return
+        const io = new IntersectionObserver(
+            (entries) => {
+                if (entries[0]?.isIntersecting) {
+                    setVisibleCount((c) => Math.min(filteredGallery.length, c + PAGE))
+                }
+            },
+            { root, rootMargin: '600px' },
         )
-    })
+        io.observe(sentinel)
+        return () => io.disconnect()
+        // Re-observa cuando cambia el total (nuevo filtro) o aparece el sentinel.
+    }, [filteredGallery.length, hasMore])
 
     const favCount = gallery.filter((m) => m.favorite && !m.archived).length
     const archivedCount = gallery.filter((m) => m.archived).length
@@ -739,8 +791,8 @@ const GalleryPanel = ({
                             </Card>
                         ))}
 
-                        {/* Gallery Items */}
-                        {filteredGallery.map((media) => {
+                        {/* Gallery Items (solo la VENTANA visible) */}
+                        {visibleGallery.map((media) => {
                             return (
                                 <Card
                                     key={media.id}
@@ -1129,6 +1181,19 @@ const GalleryPanel = ({
                             )
                         })}
                     </div>
+
+                    {/* Sentinel de carga incremental — al entrar al viewport
+                        (600px antes) carga la siguiente página. */}
+                    {hasMore && (
+                        <div
+                            ref={loadMoreRef}
+                            className="flex items-center justify-center gap-2 py-6 text-xs text-gray-400"
+                        >
+                            <Spinner size={16} />
+                            Cargando más… ({visibleGallery.length} de{' '}
+                            {filteredGallery.length})
+                        </div>
+                    )}
                 </div>
             </ScrollBar>
 
