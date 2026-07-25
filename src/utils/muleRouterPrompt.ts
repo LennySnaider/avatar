@@ -53,7 +53,14 @@ export function buildMuleRouterEditMaxPrompt(params: {
         if (hair) bodyBits.push(hair)
         const skin = getSkinToneDescription(m.skinTone).split(',')[0]
         if (skin) bodyBits.push(skin)
-        parts.push(bodyBits.join(', ') + '.')
+        // Candado bidireccional COMPACTO (2026-07-25, varianza en el sistema:
+        // misma Raven salía gruesa en escena "power stance" y recta en otras —
+        // la semántica de la escena se derrama al cuerpo). Los cm mandan en
+        // ambas direcciones y en TODAS las gens.
+        parts.push(
+            bodyBits.join(', ') +
+                ' — exactly these proportions in every image: never thicker, wider or more muscular than these numbers, never slimmer either.',
+        )
     }
 
     if (params.nsfw) {
@@ -78,15 +85,36 @@ export function buildMuleRouterEditMaxPrompt(params: {
         parts.push(cut > room * 0.6 ? hard.slice(0, cut) : hard)
     }
 
+    // Candado corporal SIEMPRE (antes solo NSFW → las gens SFW inflaban sin
+    // freno). Acota ambos extremos: ni gruesa/musculosa ni esquelética.
+    const BODY_NEG =
+        'oversized hips, thick heavy thighs, plus-size body, muscular bodybuilder physique, exaggerated hourglass, obese, skinny emaciated body'
     const FIXED_NEG =
         'watermark, text, logo, signature, extra fingers, deformed hands, missing limbs, amputated limbs'
     const NSFW_NEG =
-        'censored, censor bar, blurred crotch, smooth featureless crotch, doll-like genital area, pink areolas, blushed chest, open labia, gaping, oversized hips, exaggerated hourglass, oversized breasts'
+        'censored, censor bar, blurred crotch, smooth featureless crotch, doll-like genital area, pink areolas, blushed chest, open labia, gaping, oversized breasts'
     const negativePrompt = (
-        params.nsfw ? `${NSFW_NEG}, ${FIXED_NEG}` : FIXED_NEG
+        params.nsfw
+            ? `${NSFW_NEG}, ${BODY_NEG}, ${FIXED_NEG}`
+            : `${BODY_NEG}, ${FIXED_NEG}`
     ).slice(0, 500)
 
     return { prompt: parts.join(' ').slice(0, 800), negativePrompt }
+}
+
+/**
+ * Seed ESTABLE por avatar: mismo avatar → mismo seed → el sampler parte del
+ * mismo punto y el CUERPO varía menos entre generaciones (la escena sigue
+ * mandando en pose/fondo). El API dice que el seed "ayuda a la consistencia"
+ * sin garantizar identidad exacta — es un estabilizador, no un candado.
+ */
+export function avatarStableSeed(avatarId?: string | null): number | undefined {
+    if (!avatarId) return undefined
+    let h = 0
+    for (let i = 0; i < avatarId.length; i++) {
+        h = (h * 31 + avatarId.charCodeAt(i)) % 2147483647
+    }
+    return h
 }
 
 /** Mapa aspectRatio → size de MuleRouter ("w*h", ambos [512,2048]). */

@@ -100,6 +100,7 @@ import {
 import {
     buildMuleRouterEditMaxPrompt,
     MULEROUTER_SIZE,
+    avatarStableSeed,
 } from '@/utils/muleRouterPrompt'
 import { generateImageViaGateway } from '@/services/GatewayService'
 import {
@@ -2062,6 +2063,9 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                                 faceRef: kieSingleRef,
                                 size:
                                     MULEROUTER_SIZE[aspectRatio] ?? '928*1664',
+                                // Seed estable: mismo avatar → cuerpos más
+                                // consistentes entre generaciones.
+                                seed: avatarStableSeed(avatarId),
                             })
                             if (!sub.success) throw new Error(sub.error)
                             let mrUrl = ''

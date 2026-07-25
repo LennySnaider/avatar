@@ -39,6 +39,8 @@ export async function submitMuleRouterImageTask(params: {
     faceRef: { base64: string; mimeType: string }
     /** "width*height", ambos en [512,2048]. Default 928*1664 (9:16). */
     size?: string
+    /** Seed estable por avatar (consistencia corporal entre gens). */
+    seed?: number
 }): Promise<
     | { success: true; taskId: string; fullApiPrompt: string }
     | { success: false; error: string }
@@ -60,6 +62,7 @@ export async function submitMuleRouterImageTask(params: {
             prompt_extend: false,
             safety_filter: false,
             size: params.size ?? '928*1664',
+            ...(typeof params.seed === 'number' ? { seed: params.seed } : {}),
         }
         const res = await fetch(`${MR_BASE}${MR_EDIT_MAX}`, {
             method: 'POST',
