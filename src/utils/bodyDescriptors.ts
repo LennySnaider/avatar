@@ -299,6 +299,17 @@ export function nippleClause(m: PhysicalMeasurements): string {
     return `only when uncovered: ${spec}${sizeLock}, matte low-saturation tone that blends naturally with her skin — never bright pink, red or candy-coloured, always identical; when clothed nothing shows through fabric`
 }
 
+/** Cláusula condicional de la zona íntima (2026-07-24, "no se nota"): la
+ * difusión suaviza la vulva a un monte LISO de muñeca sin hendidura. Mismos
+ * trucos validados con el pezón: condicional (solo descubierta — no empuja
+ * desnudez en escenas vestidas), tono RELATIVO a la piel (nada de palabras de
+ * color absolutas → Qwen literal las satura), prohibición explícita del rosa
+ * brillante, y consistencia per-avatar ("always the same"). Viaja SOLO en runs
+ * NSFW por el mismo gating que nippleClause (AvatarStudioMain). */
+export function vulvaClause(): string {
+    return `only when fully nude below the waist: her vulva is clearly defined and anatomically natural — a visible natural cleft with soft outer labia contours, matte tone just a touch deeper than her surrounding skin (never bright pink or red), softly detailed and realistic, NEVER a smooth featureless doll-like mound, always the same anatomy; when wearing bottoms the area stays smoothly covered with no explicit detail through fabric`
+}
+
 // Listas para los chips de la UI (orden de despliegue)
 export const GLUTES_SHAPES = [
     'square',

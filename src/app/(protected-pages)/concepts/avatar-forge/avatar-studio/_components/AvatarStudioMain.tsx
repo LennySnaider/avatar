@@ -107,6 +107,7 @@ import {
     getEyeColorDescription,
     buildCurvesEmphasis,
     nippleClause,
+    vulvaClause,
 } from '@/utils/bodyDescriptors'
 import { buildIdentityNegative } from '@/utils/sceneSanitizer'
 import {
@@ -1623,8 +1624,16 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                         // Contextualmente pertenecen aquí — solo aplican si el
                         // outfit descubre, y solo los runs NSFW pueden descubrir.
                         if (nsfwRun && !optimizedDeepfakeRef && measurements) {
-                            const nip = nippleClause(measurements)
-                            if (nip) kiePrompt = `${kiePrompt} Her anatomy: ${nip}.`
+                            // Pezón (per-avatar) + vulva (realismo anti-monte-liso,
+                            // 2026-07-24 "no se nota") — misma vía probada en vivo.
+                            const anatomy = [
+                                nippleClause(measurements),
+                                vulvaClause(),
+                            ]
+                                .filter(Boolean)
+                                .join('. Also ')
+                            if (anatomy)
+                                kiePrompt = `${kiePrompt} Her anatomy: ${anatomy}.`
                         }
                         let kieRefsToSend = kieReferenceImages
                         // DEEPFAKE puro: cara del avatar + la foto original como
