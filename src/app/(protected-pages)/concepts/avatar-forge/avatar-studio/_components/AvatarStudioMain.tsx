@@ -910,17 +910,21 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
         async (media: GeneratedMedia) => {
             if (!userId) return
             updateGalleryItem(media.id, { saveState: 'saving' })
+            // Timeouts POR TIPO (2026-07-24, AbortError en dev): el techo plano
+            // de 30s mataba descargas lentas-pero-VIVAS — un video de KIE pesa
+            // decenas de MB y puede tardar >30s legítimos. El deadline caza
+            // CUELGUES, no transferencias lentas → video con techo holgado.
+            const isVideo = media.mediaType === 'VIDEO'
             try {
                 // Timeouts en TODA la I/O de red: sin ellos un fetch/upload
                 // estancado deja el card en 'saving' eterno (imagen ya generada
                 // y cobrada en KIE, pero perdida). Con deadline, el cuelgue cae
                 // a saveState 'error' (badge de reintento) y se puede recuperar.
                 const response = await fetch(media.url, {
-                    signal: AbortSignal.timeout(30_000),
+                    signal: AbortSignal.timeout(isVideo ? 180_000 : 45_000),
                 })
                 const blob = await response.blob()
-                const contentType =
-                    media.mediaType === 'VIDEO' ? 'video/mp4' : 'image/jpeg'
+                const contentType = isVideo ? 'video/mp4' : 'image/jpeg'
 
                 const path = await withDeadline(
                     uploadGenerationWithRetry(
@@ -928,7 +932,7 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                         blob,
                         contentType,
                     ),
-                    90_000,
+                    isVideo ? 240_000 : 90_000,
                     'subida a galería',
                 )
 
@@ -982,7 +986,22 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                     publicUrl: getStoragePublicUrl('generations', path),
                 })
             } catch (error) {
-                console.error('Auto-save failed:', error)
+                // Un abort/timeout es el deadline HACIENDO su trabajo (card →
+                // 'error' con badge de reintento) — warn limpio, no el error
+                // crudo que el overlay de Next grita como "Console AbortError".
+                const isDeadline =
+                    (error instanceof DOMException &&
+                        (error.name === 'AbortError' ||
+                            error.name === 'TimeoutError')) ||
+                    (error instanceof Error &&
+                        error.message.includes('timeout tras'))
+                if (isDeadline) {
+                    console.warn(
+                        `[gallery] guardado agotó el tiempo (${media.mediaType}) — card en reintento`,
+                    )
+                } else {
+                    console.error('Auto-save failed:', error)
+                }
                 updateGalleryItem(media.id, { saveState: 'error' })
             }
         },
