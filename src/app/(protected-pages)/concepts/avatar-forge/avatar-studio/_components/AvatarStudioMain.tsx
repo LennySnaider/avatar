@@ -2015,7 +2015,93 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                             }
                         }
 
-                        if (isKieAsyncImageModel(kieModel)) {
+                        // ⚡ QWEN EN 2 FASES (2026-07-25, hallazgo del usuario:
+                        // "el log dice image-edit y NO es ese"): qwen2/image-edit
+                        // es un EDITOR — ancla la composición al RETRATO de la
+                        // cara e inventa el cuerpo alrededor (toda la saga de
+                        // inconsistencia corporal). El generador real es
+                        // qwen2/text-to-image (máxima adherencia al texto,
+                        // verificado por el usuario en el playground).
+                        // FASE 1: t2i puro (cuerpo+escena+anatomía por texto,
+                        // SIN cara). FASE 2: face-swap con el path de deepfake
+                        // PROBADO (canvas generado + cara del avatar).
+                        // Clone/deepfake/EDIT no cambian: ahí el editor ES el
+                        // modelo correcto. Costo ~1.5× — el precio de la
+                        // consistencia (principio rector de la plataforma).
+                        const qwenTwoPhase =
+                            kieModel.startsWith('qwen') &&
+                            !!kieSingleRef &&
+                            !optimizedCloneRef &&
+                            !optimizedDeepfakeRef
+                        if (qwenTwoPhase && kieSingleRef) {
+                            const phase1 = await pollKieImageTask({
+                                prompt: kiePrompt,
+                                aspectRatio,
+                                model: 'qwen2/text-to-image',
+                                bodyEmphasis: curvesEmphasis
+                                    ? `${baseBodyEmphasis}; emphasized curves: ${curvesEmphasis}`
+                                    : baseBodyEmphasis,
+                                hairEmphasis:
+                                    getHairColorDescription(
+                                        measurements?.hairColor,
+                                    ) || undefined,
+                                eyeEmphasis:
+                                    getEyeColorDescription(
+                                        measurements?.eyeColor,
+                                    ) || undefined,
+                                negativePrompt: buildIdentityNegative(
+                                    measurements,
+                                    { nsfw: nsfwRun },
+                                ),
+                                identityWeight,
+                            })
+                            // Canvas → base64 para el rol 'clone' de la fase 2.
+                            // La URL cruda de KIE no da CORS → esperar la copia
+                            // estable de Supabase (corre en paralelo desde que
+                            // terminó la fase 1).
+                            const stable = await phase1.stableUrl
+                            const canvasUrl = stable ?? phase1.url
+                            const canvasBlob = await (
+                                await fetch(canvasUrl, {
+                                    signal: AbortSignal.timeout(30_000),
+                                })
+                            ).blob()
+                            const canvasB64 = await new Promise<string>(
+                                (resolve, reject) => {
+                                    const fr = new FileReader()
+                                    fr.onload = () =>
+                                        resolve(
+                                            String(fr.result).split(',')[1] ??
+                                                '',
+                                        )
+                                    fr.onerror = () =>
+                                        reject(
+                                            new Error(
+                                                'No se pudo leer el canvas de la fase 1',
+                                            ),
+                                        )
+                                    fr.readAsDataURL(canvasBlob)
+                                },
+                            )
+                            const phase2 = await pollKieImageTask({
+                                prompt: kiePrompt,
+                                referenceImage: kieSingleRef,
+                                referenceImages: [
+                                    {
+                                        base64: canvasB64,
+                                        mimeType:
+                                            canvasBlob.type || 'image/jpeg',
+                                        role: 'clone' as const,
+                                    },
+                                ],
+                                aspectRatio,
+                                model: kieModel,
+                                deepfakeMode: true,
+                            })
+                            resultUrl = phase2.url
+                            apiPrompt = `[FASE 1 · qwen2/text-to-image — cuerpo/escena]\n${phase1.fullApiPrompt}\n\n[FASE 2 · qwen2/image-edit — face-swap]\n${phase2.fullApiPrompt}`
+                            pendingStableUrl = phase2.stableUrl
+                        } else if (isKieAsyncImageModel(kieModel)) {
                             // ASYNC submit + browser poll (see pollKieImageTask).
                             const polled = await pollKieImageTask({
                                 prompt: kiePrompt,

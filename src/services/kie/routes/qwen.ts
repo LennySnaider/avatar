@@ -249,6 +249,18 @@ async function build(ctx: ImageRouteContext): Promise<KieImageRequest> {
         } catch (e) {
             console.warn('[KIE] ref upload failed, staying text-only:', e)
         }
+    } else {
+        // GENERADOR PURO (t2i — fase 1 del 2-fases, o texto sin cara): no hay
+        // imagen que aporte pelo → el color va por TEXTO; y la anatomía al
+        // FRENTE (misma lección del editor: la cola se ignora). El cuerpo ya
+        // viaja en el kiePrompt (preamble — aquí no corre el strip).
+        input.prompt = [
+            hairClause.trim(),
+            anatomySentence,
+            anatomySentence ? cappedSansAnatomy : capped,
+        ]
+            .filter(Boolean)
+            .join(' ')
     }
 
     // Qwen impone prompt ≤ 800 chars (API qwen2/image-edit). El ancla (cara +
