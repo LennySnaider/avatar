@@ -125,10 +125,14 @@ export function buildMuleRouterEditMaxPrompt(params: {
         parts.push(
             `The SECOND image shows the person whose FACE to use. The FACE SWAP is MANDATORY: replace the face in the FIRST image with the face from Image ${faceIdx} — her exact features, freckles and likeness — never keep the original face. Do NOT blend the two images.`,
         )
+        // En NSFW el outfit del lienzo se EXCLUYE: pedir "keep the outfit
+        // EXACTLY" contradecía "she is COMPLETELY NUDE" y ganaba el lienzo
+        // (reporte 2026-07-25: al 100% NSFW salía vestida con la ropa del clon).
+        const keepOutfit = params.nsfw ? '' : 'outfit, '
         pendingFidelity =
             cw >= 75
-                ? `Keep Image 1's outfit, pose, hands, framing, lighting and setting EXACTLY as they are.`
-                : `Follow Image 1's outfit, pose, framing and setting closely, with natural variation.`
+                ? `Keep Image 1's ${keepOutfit}pose, hands, framing, lighting and setting EXACTLY as they are${params.nsfw ? ', but she wears NOTHING' : ''}.`
+                : `Follow Image 1's ${keepOutfit}pose, framing and setting closely, with natural variation${params.nsfw ? '; she wears NOTHING' : ''}.`
     } else {
         parts.push(
             `${camLine} of the woman in Image ${faceIdx} — her face, facial features, freckles and hair MUST match Image ${faceIdx} exactly; never use a face from any other image.`,
@@ -173,8 +177,8 @@ export function buildMuleRouterEditMaxPrompt(params: {
             : ''
         parts.push(
             params.bodySheetNude
-                ? `Image ${bodyIdx} is a nude turnaround of the SAME woman — copy her exact body shape, proportions and natural skin${cmLine}; ignore its background and neutral pose.${notFromCanvas}${hair ? ` Her hair: ${hair}.` : ''}`
-                : `Use Image ${bodyIdx} ONLY for her body shape and proportions${cmLine} — copy the FIGURE, never its sports bra, underwear, face or background.${notFromCanvas}${hair ? ` Her hair: ${hair}.` : ''}`,
+                ? `Image ${bodyIdx} is a body-shape CHART of the same woman: take ONLY her proportions and skin${cmLine} from it — never its pose, framing, background or lighting, which come from the scene below.${notFromCanvas}${hair ? ` Her hair: ${hair}.` : ''}`
+                : `Image ${bodyIdx} is a body-shape CHART: take ONLY her proportions${cmLine} — never its sports bra, underwear, face, pose or background.${notFromCanvas}${hair ? ` Her hair: ${hair}.` : ''}`,
         )
     } else if (m?.waist && m?.hips && m?.bust) {
         const shape = (m.shape ?? m.bodyType ?? 'hourglass').replace(/-/g, ' ')

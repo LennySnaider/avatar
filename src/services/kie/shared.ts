@@ -196,6 +196,39 @@ export function relocatePoseTag(promptText: string): string {
  * Recorte a límite de longitud por borde de palabra (los caps de KIE por
  * modelo). Verbatim de KieService:563-569 (incluye el warn).
  */
+/**
+ * Corta preferentemente en FIN DE FRASE (2026-07-25): `capAtWordBoundary` corta
+ * en palabra y dejaba clauses colgando a media idea — el usuario vio el ancla de
+ * Seedream terminando en "…which looks slimmer than she". Si no hay un punto
+ * razonablemente cerca del tope, cae al corte por palabra de siempre.
+ */
+export function capAtSentenceBoundary(
+    text: string,
+    promptCap: number,
+    model: string,
+): string {
+    if (text.length <= promptCap) return text
+    // 1) ¿La frase termina JUSTO después del tope? Completarla cuesta ≤80 chars
+    //    y evita dejar la idea colgando ("…looks slimmer than she"). Es el caso
+    //    real del ancla de Seedream, donde el clause es una frase larga.
+    const ahead = text.indexOf('. ', promptCap)
+    if (ahead !== -1 && ahead - promptCap <= 80) {
+        return text.slice(0, ahead + 1)
+    }
+    // 2) Si no, cerrar en la última frase completa (si no queda demasiado corto).
+    const slice = text.slice(0, promptCap)
+    const lastDot = slice.lastIndexOf('. ')
+    if (lastDot > promptCap * 0.6) {
+        const capped = slice.slice(0, lastDot + 1)
+        console.warn(
+            `[KIE] Prompt capped ${text.length}→${capped.length} for ${model} (sentence)`,
+        )
+        return capped
+    }
+    // 3) Último recurso: corte por palabra de siempre.
+    return capAtWordBoundary(text, promptCap, model)
+}
+
 export function capAtWordBoundary(
     text: string,
     promptCap: number,

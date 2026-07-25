@@ -17,6 +17,7 @@ import {
     stripIdentityRedundancy,
     relocatePoseTag,
     capAtWordBoundary,
+    capAtSentenceBoundary,
     INTACT_BODY_CLAUSE,
     BODY_SPEC_NOT_WARDROBE_CLAUSE,
     hairClause as buildHairClause,
@@ -202,7 +203,7 @@ async function build(ctx: ImageRouteContext): Promise<KieImageRequest> {
             )
             const fitBodyClause =
                 bodyClauseMax > 0 && bodyClause.length > bodyClauseMax
-                    ? capAtWordBoundary(bodyClause, bodyClauseMax, model)
+                    ? capAtSentenceBoundary(bodyClause, bodyClauseMax, model)
                     : bodyClause
             const seedreamAnchor = `${anchorHead}${fitBodyClause}${anchorTail}`
             const sceneRoom = Math.max(
