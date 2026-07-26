@@ -133,7 +133,21 @@ export function getBodyDescriptors(m: PhysicalMeasurements): string {
     } else if (m.hips >= 92) {
         descriptors.push('proportionate hips', 'balanced lower body')
     } else if (m.hips <= 85) {
-        descriptors.push('narrow hip width', 'slim lower frame')
+        // COHERENCIA con el slider de glúteos (2026-07-25, reporte con
+        // imagen): 'slim lower frame' contradecía frontalmente un glúteo
+        // grande — el spec pedía a la vez "narrow hip width, slim lower frame"
+        // y "very large prominent bubble butt", y el modelo tenía que elegir
+        // (Seedream seguía los cm y el glúteo salía chico). Con glúteos altos
+        // la cadera estrecha se expresa como ANCHURA FRONTAL, dejando el
+        // volumen en la PROYECCIÓN hacia atrás: así ambas cosas son
+        // anatómicamente compatibles y ninguna se pisa.
+        if ((m.glutesLevel ?? 0) >= 4) {
+            descriptors.push(
+                'narrow hip width seen from the front, with the lower-body volume concentrated in the glutes projecting BACKWARD rather than sideways',
+            )
+        } else {
+            descriptors.push('narrow hip width', 'slim lower frame')
+        }
     }
 
     // Overall figure type (derived from ratios)

@@ -440,6 +440,36 @@ const PhysicalAttributesEditor = ({
                                             {phrases[measurements[key]!]}
                                         </p>
                                     ) : null}
+                                    {/* Aviso de INCOHERENCIA glúteos↔cadera
+                                        (2026-07-25): la medida de cadera se toma
+                                        en la parte más llena del glúteo, así que
+                                        un nivel alto con cadera estrecha se
+                                        contradice y el modelo tiene que elegir
+                                        (Seedream seguía los cm y el glúteo salía
+                                        chico). El prompt ya lo resuelve como
+                                        PROYECCIÓN hacia atrás, pero conviene
+                                        avisar cuál sería la cadera coherente. */}
+                                    {key === 'glutesLevel' &&
+                                    measurements.glutesLevel &&
+                                    measurements.hips &&
+                                    GLUTES_LEVEL_TO_CM[
+                                        measurements.glutesLevel
+                                    ] -
+                                        measurements.hips >
+                                        10 ? (
+                                        <p className="text-[10px] text-amber-500 mt-0.5">
+                                            Nivel {measurements.glutesLevel}/6
+                                            sugiere cadera ≈
+                                            {
+                                                GLUTES_LEVEL_TO_CM[
+                                                    measurements.glutesLevel
+                                                ]
+                                            }
+                                            cm y tienes {measurements.hips}cm —
+                                            se renderizará como proyección hacia
+                                            ATRÁS, no como cadera ancha.
+                                        </p>
+                                    ) : null}
                                     <div className="flex flex-wrap gap-1 mt-1.5">
                                         {[
                                             undefined,
