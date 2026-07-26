@@ -10,14 +10,27 @@ import {
 } from '@/utils/bodyDescriptors'
 
 /**
- * Campos de APARIENCIA que el Body Sheet NO dibuja (turnaround de FORMA en
- * mini-bikini): los pezones no se ven, así que cambiarlos no altera el cuerpo
- * generado. Ignorarlos al detectar "desactualizado" evita regenerar el sheet
- * (y gastar tokens) por un cambio que no afecta la forma. NOTA: skinTone y
- * hairColor SÍ los usa el sheet → NO van aquí. (eyeColor tampoco lo consume el
- * sheet; se puede sumar si se quiere.)
+ * Campos que NO cambian la FORMA del cuerpo → cambiarlos NO debe marcar la hoja
+ * como desactualizada (regenerarla cuesta 2 generaciones: vestida + NSFW).
+ *
+ * - nipple*: el sheet vestido no los dibuja.
+ * - pelo (color/tonos/tipo) y ojos (2026-07-25, petición del usuario): la hoja
+ *   es una referencia de CUERPO. Su pelo y ojos son decorado — en la generación
+ *   la identidad viene del face ref y del hair/eye clause del avatar, que
+ *   sobrescriben lo que muestre la hoja. Antes, teñir a un avatar obligaba a
+ *   regenerar las dos hojas por nada.
+ *
+ * skinTone SÍ se queda fuera de esta lista: la hoja aporta la PIEL (la usamos
+ * como ancla de piel natural en NSFW), así que un cambio de tono sí la invalida.
  */
-const SHEET_IGNORED_KEYS = ['nippleColor', 'nippleAreola'] as const
+const SHEET_IGNORED_KEYS = [
+    'nippleColor',
+    'nippleAreola',
+    'hairColor',
+    'hairColors',
+    'hairStyle',
+    'eyeColor',
+] as const
 
 /**
  * True si dos configs producen el MISMO cuerpo en el sheet — ignora los campos

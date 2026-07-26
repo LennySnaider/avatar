@@ -213,8 +213,8 @@ export function buildMuleRouterEditMaxPrompt(params: {
             : ''
         parts.push(
             params.bodySheetNude
-                ? `Image ${bodyIdx} is a body-shape CHART of the same woman: take ONLY her proportions and skin${cmLine} from it — never its pose, framing, background or lighting, which come from the scene below.${notFromCanvas}${hair ? ` Her hair: ${hair}.` : ''}`
-                : `Image ${bodyIdx} is a body-shape CHART: take ONLY her proportions${cmLine} — never its sports bra, underwear, face, pose or background.${notFromCanvas}${hair ? ` Her hair: ${hair}.` : ''}`,
+                ? `Image ${bodyIdx} is a body-shape CHART of the same woman: take ONLY her proportions and skin${cmLine} from it — never its hair, eyes, pose, framing, background or lighting, which come from the scene below.${notFromCanvas}${hair ? ` Her hair: ${hair}.` : ''}`
+                : `Image ${bodyIdx} is a body-shape CHART: take ONLY her proportions${cmLine} — never its sports bra, underwear, face, hair, pose or background.${notFromCanvas}${hair ? ` Her hair: ${hair}.` : ''}`,
         )
     } else if (m?.waist && m?.hips && m?.bust) {
         const shape = (m.shape ?? m.bodyType ?? 'hourglass').replace(/-/g, ' ')
