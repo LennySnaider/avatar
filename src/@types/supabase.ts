@@ -553,6 +553,19 @@ export interface PhysicalMeasurements {
      * la que fija dónde caen las líneas para que no bailen entre imágenes.
      */
     tanLines?: boolean
+    /**
+     * VELLO PÚBICO. Tres ejes independientes, como pidió el usuario:
+     *  - `pubicStyle`  la FORMA (depilado / tira / triángulo / natural)
+     *  - `pubicAmount` la DENSIDAD dentro de esa forma (1 ralo … 5 espeso)
+     *  - `pubicColor`  'hair' = igual al cabello (lo normal) o un color propio
+     *
+     * Separados porque son cosas distintas: se puede llevar una tira MUY
+     * espesa o un triángulo ralo. Un solo control no podría expresarlo.
+     * Solo viaja en escenas con desnudo total (mismo gating que la vulva).
+     */
+    pubicStyle?: 'shaved' | 'strip' | 'triangle' | 'natural' | 'full'
+    pubicAmount?: 1 | 2 | 3 | 4 | 5
+    pubicColor?: 'hair' | HairColor
     hairColor?: HairColor
     /**
      * Tonos ordenados raíces→puntas para degradado/ombre (máx 3). Estado

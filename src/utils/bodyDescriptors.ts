@@ -411,6 +411,56 @@ export function tanLinesClause(m: PhysicalMeasurements): string {
     return 'natural bikini tan lines: the strips of skin normally covered by a bikini top and bottoms are a shade lighter than her surrounding tanned skin, with soft blended edges — visible ONLY where her skin is bare, never drawn over clothing'
 }
 
+/**
+ * VELLO PÚBICO. Tres ejes: forma, densidad y color.
+ *
+ * Lecciones ya pagadas, aplicadas de entrada:
+ *  - Color RELATIVO al cabello, nunca absoluto. Los motores literales saturan
+ *    las palabras de color (nos paso con el pezon y con "freckles"): decir
+ *    "matching the hair on her head" no puede sobresaturar nada.
+ *  - Alcance EXPLICITO ("only where she is bare below the waist"), o se dibuja
+ *    sobre la ropa — mismo fallo que las marcas de bronceado.
+ *  - En 'shaved' NO se nombra el vello: nombrarlo es invocarlo. Se describe la
+ *    piel, que es lo que de verdad debe salir.
+ */
+const PUBIC_STYLE_PHRASE: Record<string, string> = {
+    shaved: 'her pubic area is completely smooth and bare, clean-shaven skin with no stubble',
+    strip: 'a narrow vertical strip of pubic hair above her vulva, the sides bare and cleanly groomed',
+    triangle: 'a small neat triangle of pubic hair above her vulva, tidily trimmed at the edges',
+    natural: 'a natural, untrimmed patch of pubic hair above her vulva',
+    full: 'a full, thick and completely untrimmed bush of pubic hair',
+}
+const PUBIC_AMOUNT_PHRASE: Record<number, string> = {
+    1: 'very sparse and fine',
+    2: 'light',
+    3: 'moderate',
+    4: 'dense',
+    5: 'very dense and thick',
+}
+
+export function pubicHairClause(m: PhysicalMeasurements): string {
+    const style = m.pubicStyle
+    if (!style) return ''
+    const shape = PUBIC_STYLE_PHRASE[style]
+    if (!shape) return ''
+    // En rasurado no hay densidad ni color que describir: hablar de vello ahi
+    // solo puede invocarlo.
+    if (style === 'shaved') {
+        return `${shape} — visible ONLY where she is bare below the waist`
+    }
+    const density =
+        m.pubicAmount && PUBIC_AMOUNT_PHRASE[m.pubicAmount]
+            ? `, ${PUBIC_AMOUNT_PHRASE[m.pubicAmount]}`
+            : ''
+    // Color RELATIVO: 'hair' (lo normal) se ancla al pelo de la cabeza; un
+    // color propio se nombra pero SIEMPRE acotado a esa zona.
+    const color =
+        !m.pubicColor || m.pubicColor === 'hair'
+            ? ', the same colour as the hair on her head'
+            : `, ${String(m.pubicColor).replace(/-/g, ' ')} in colour`
+    return `${shape}${density}${color} — visible ONLY where she is bare below the waist, never drawn through clothing`
+}
+
 /** Cláusula de la zona íntima (2026-07-24, "no se nota"): la difusión suaviza
  * la vulva a un monte LISO de muñeca sin hendidura. Mismos trucos validados con
  * el pezón: tono RELATIVO a la piel (nada de palabras de color absolutas →

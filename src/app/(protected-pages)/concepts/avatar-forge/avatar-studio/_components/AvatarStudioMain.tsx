@@ -130,6 +130,7 @@ import {
     buildCurvesEmphasis,
     nippleClause,
     vulvaClause,
+    pubicHairClause,
 } from '@/utils/bodyDescriptors'
 import { buildIdentityNegative } from '@/utils/sceneSanitizer'
 import {
@@ -1791,6 +1792,13 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                                 // topless lleva bragas, así que describir la
                                 // vulva es una orden que no se puede cumplir.
                                 nsfwLevel >= SPICY_EXPLICIT_MIN ? vulvaClause(fullPrompt) : '',
+                                // Vello púbico: mismo gating que la vulva —
+                                // solo se ve con desnudo total, y describirlo
+                                // en topless (donde lleva bragas) seria una
+                                // orden imposible de cumplir.
+                                nsfwLevel >= SPICY_EXPLICIT_MIN
+                                    ? pubicHairClause(measurements)
+                                    : '',
                             ]
                                 .filter(Boolean)
                                 .join('. Also ')
@@ -2400,6 +2408,15 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                                             // (antes se perdía en runs con clone).
                                             areolaDesc:
                                                 measurements?.nippleAreola,
+                                            // Compactado: aquí el cap de 800
+                                            // es duro y la cláusula completa
+                                            // se comería la escena. Basta la
+                                            // forma; el color lo fija la hoja.
+                                            pubicDesc: measurements?.pubicStyle
+                                                ? pubicHairClause(
+                                                      measurements,
+                                                  ).split(' — ')[0]
+                                                : undefined,
                                         },
                                     )
                                     const sub2 =

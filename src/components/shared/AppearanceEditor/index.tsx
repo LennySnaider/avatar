@@ -50,6 +50,24 @@ const SKIN_TONE_HEX: Record<number, string> = {
     9: '#3D2314',
 }
 
+const PUBIC_STYLES: {
+    value: NonNullable<PhysicalMeasurements['pubicStyle']>
+    label: string
+}[] = [
+    { value: 'shaved', label: 'Rasurado' },
+    { value: 'strip', label: 'Tira' },
+    { value: 'triangle', label: 'Triángulo' },
+    { value: 'natural', label: 'Natural' },
+    { value: 'full', label: 'Frondoso' },
+]
+const PUBIC_AMOUNT_LABEL: Record<number, string> = {
+    1: 'muy ralo',
+    2: 'ligero',
+    3: 'moderado',
+    4: 'denso',
+    5: 'muy espeso',
+}
+
 const AppearanceEditor = ({
     measurements,
     onChange,
@@ -130,6 +148,110 @@ const AppearanceEditor = ({
                         onChange={(checked) => set({ tanLines: checked })}
                     />
                 </label>
+
+                {/* VELLO PÚBICO — tres ejes separados a propósito: se puede
+                    llevar una tira MUY espesa o un triángulo ralo, y un solo
+                    control no podría expresarlo. Solo se ve con desnudo total,
+                    así que el prompt lo gatea igual que la vulva. */}
+                <div className="space-y-1.5 pt-2">
+                    <div className="flex items-center justify-between">
+                        <label className="text-xs font-medium">
+                            Vello púbico
+                        </label>
+                        <span className="text-[10px] text-amber-500">
+                            solo en escenas de desnudo total
+                        </span>
+                    </div>
+                    <div className="flex flex-wrap gap-1">
+                        {PUBIC_STYLES.map((o) => (
+                            <button
+                                key={o.value}
+                                type="button"
+                                onClick={() =>
+                                    set({
+                                        pubicStyle:
+                                            measurements.pubicStyle === o.value
+                                                ? undefined
+                                                : o.value,
+                                    })
+                                }
+                                className={`px-2 py-1 text-xs rounded-lg border transition-colors ${
+                                    measurements.pubicStyle === o.value
+                                        ? 'bg-primary text-white border-primary'
+                                        : 'border-gray-300 dark:border-gray-600 hover:border-primary'
+                                }`}
+                            >
+                                {o.label}
+                            </button>
+                        ))}
+                    </div>
+                    {/* Densidad y color NO aplican a rasurado: mostrarlos ahí
+                        invita a describir vello que no debe existir. */}
+                    {measurements.pubicStyle &&
+                        measurements.pubicStyle !== 'shaved' && (
+                            <>
+                                <div className="flex items-center justify-between pt-1">
+                                    <label className="text-xs text-gray-500">
+                                        Densidad
+                                    </label>
+                                    <span className="text-[10px] text-gray-400">
+                                        {PUBIC_AMOUNT_LABEL[
+                                            measurements.pubicAmount ?? 3
+                                        ] ?? ''}
+                                    </span>
+                                </div>
+                                <Slider
+                                    value={measurements.pubicAmount ?? 3}
+                                    onChange={(v) =>
+                                        set({
+                                            pubicAmount: (Array.isArray(v)
+                                                ? v[0]
+                                                : v) as 1 | 2 | 3 | 4 | 5,
+                                        })
+                                    }
+                                    min={1}
+                                    max={5}
+                                    step={1}
+                                />
+                                <div className="flex items-center gap-2 pt-1">
+                                    <span className="text-xs text-gray-500">
+                                        Color
+                                    </span>
+                                    <button
+                                        type="button"
+                                        onClick={() =>
+                                            set({ pubicColor: 'hair' })
+                                        }
+                                        className={`px-2 py-0.5 text-[11px] rounded-lg border transition-colors ${
+                                            !measurements.pubicColor ||
+                                            measurements.pubicColor === 'hair'
+                                                ? 'bg-primary text-white border-primary'
+                                                : 'border-gray-300 dark:border-gray-600'
+                                        }`}
+                                    >
+                                        Igual al cabello
+                                    </button>
+                                    <input
+                                        type="text"
+                                        placeholder="u otro (p. ej. dark brown)"
+                                        value={
+                                            measurements.pubicColor &&
+                                            measurements.pubicColor !== 'hair'
+                                                ? measurements.pubicColor
+                                                : ''
+                                        }
+                                        onChange={(e) =>
+                                            set({
+                                                pubicColor: (e.target.value.trim() ||
+                                                    'hair') as typeof measurements.pubicColor,
+                                            })
+                                        }
+                                        className="flex-1 min-w-0 h-7 px-2 text-xs rounded-lg border border-gray-300 bg-transparent dark:border-gray-600"
+                                    />
+                                </div>
+                            </>
+                        )}
+                </div>
             </div>
 
             {/* Hair Type + Color (degradado 2-3 tonos) */}

@@ -412,7 +412,13 @@ export const MULEROUTER_SIZE: Record<string, string> = {
  */
 export function buildMuleRouterFaceSwapPrompt(
     hairDesc?: string,
-    opts?: { undress?: boolean; eyeDesc?: string; areolaDesc?: string },
+    opts?: {
+        undress?: boolean
+        eyeDesc?: string
+        areolaDesc?: string
+        /** Vello púbico ya COMPACTADO por el caller (el cap de 800 manda). */
+        pubicDesc?: string
+    },
 ): {
     prompt: string
     negativePrompt: string
@@ -442,7 +448,7 @@ export function buildMuleRouterFaceSwapPrompt(
     // integracion habia que hacer sitio, y estas frases decian lo mismo con
     // menos ("same pose and framing" ya lo repite el keepList del final).
     const undress = opts?.undress
-        ? ` Also REMOVE all clothing — completely nude. Natural breasts, CLEARLY DEFINED nipples, ${areola} skin-toned areolas, fully CLOSED vulva with plump outer labia concealing the inner ones.`
+        ? ` Also REMOVE all clothing — completely nude. Natural breasts, CLEARLY DEFINED nipples, ${areola} skin-toned areolas, fully CLOSED vulva with plump outer labia concealing the inner ones.${opts?.pubicDesc ? ` ${opts.pubicDesc}` : ''}`
         : ''
     const keepList = opts?.undress
         ? 'same body, pose, hands, framing, lighting and background'
