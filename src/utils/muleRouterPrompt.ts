@@ -192,7 +192,10 @@ export function buildMuleRouterEditMaxPrompt(params: {
                 : `Follow Image 1's ${keepOutfit}pose, framing and setting closely, with natural variation${params.nsfw && !deferred ? '; she wears NOTHING' : ''}.`
     } else {
         parts.push(
-            `${camLine} of the woman in Image ${faceIdx} — her face, facial features and hair MUST match Image ${faceIdx} exactly; never use a face from any other image.`,
+            // Sin negacion (2026-07-26): "never use a face from any other
+            // image" metia "face from any other image" en el positivo. Se
+            // enuncia como ATRIBUCION: cual es la unica fuente.
+            `${camLine} of the woman in Image ${faceIdx} — her face, facial features and hair MUST match Image ${faceIdx} exactly. Image ${faceIdx} is the ONLY source for her face.`,
         )
     }
 
@@ -262,8 +265,8 @@ export function buildMuleRouterEditMaxPrompt(params: {
             : ''
         parts.push(
             params.bodySheetNude
-                ? `Image ${bodyIdx} is a body-shape CHART of the same woman: take ONLY her proportions and skin${cmLine} from it — never its hair, eyes, pose, framing, background or lighting, which come from the scene below.${notFromCanvas}${hair ? ` Her hair is ${hair} — never the hair from any other image, and never a blend of two hairstyles.` : ''}`
-                : `Image ${bodyIdx} is a body-shape CHART: take ONLY her proportions${cmLine} — never its sports bra, underwear, face, hair, pose or background.${notFromCanvas}${hair ? ` Her hair is ${hair} — never the hair from any other image, and never a blend of two hairstyles.` : ''}`,
+                ? `Image ${bodyIdx} is a body-shape CHART of the same woman: take ONLY her proportions and skin${cmLine} from it. Its hair, eyes, pose, framing, background and lighting come from the scene below instead.${notFromCanvas}${hair ? ` Her hair is ${hair}, and that is its only description in this prompt.` : ''}`
+                : `Image ${bodyIdx} is a MEASUREMENT CHART: her proportions${cmLine} are the only thing it contributes — everything else in this image is irrelevant to the output.${notFromCanvas}${hair ? ` Her hair is ${hair}, and that is its only description in this prompt.` : ''}`,
         )
     } else if (m?.waist && m?.hips && m?.bust) {
         const shape = (m.shape ?? m.bodyType ?? 'hourglass').replace(/-/g, ' ')
@@ -476,7 +479,7 @@ export function buildMuleRouterFaceSwapPrompt(
     // avatar su color → mitad liso rubio, mitad rizado oscuro (reporte con
     // imagen). Se manda textura+color y se prohíbe la mezcla explícitamente.
     const hair = hairDesc
-        ? ` Hair: ${hairDesc} — replace the original completely, never two hairstyles blended.`
+        ? ` Hair: ${hairDesc} throughout — that single description replaces whatever hair the first image has.`
         : ''
     // OJOS (2026-07-25, "los ojos se ven raros"): nunca viajaban a MuleRouter —
     // Seedream sí los recibe vía eyeClause y por eso salían bien. La fase 2 es
@@ -522,7 +525,7 @@ export function buildMuleRouterFaceSwapPrompt(
     // igualar textura y fundir la costura. Y la orientacion de la CABEZA se
     // hereda del lienzo: la referencia de cara es un retrato frontal, asi que
     // sin decirlo el editor la pega frontal aunque el cuerpo mire al mar.
-    const swapClause = `Image 2 = her FACE: give the woman in Image 1 HER exact face and features — never the original, never a hybrid. Keep the head at the SAME angle and direction as Image 1 (turned away stays turned away). Relight the face to the scene's light and blend the neck seam — no pasted-on look.`
+    const swapClause = `Image 2 = her FACE: the output face is 100% the woman in Image 2 and 0% the one in Image 1, her exact features. Keep the head at the SAME angle and direction as Image 1 (turned away stays turned away). Relight the face to the scene's light and blend the neck seam so the swap reads as one seamless photograph.`
     // PRESUPUESTO DURO. El API corta a 800 con un slice ciego, o sea a media
     // frase y en silencio: lo ultimo que se añade es lo primero que se pierde,
     // sin aviso. Se compone por PRIORIDAD y se descarta la pieza entera que no

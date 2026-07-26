@@ -45,8 +45,24 @@ import {
 } from '../src/utils/bodyDescriptors'
 import type { PhysicalMeasurements } from '../src/@types/supabase'
 
-/** Sube este número SOLO si es deliberado y está justificado. Debe BAJAR. */
-const BASELINE = 23
+/**
+ * Sube este número SOLO si es deliberado y está justificado. Debe BAJAR.
+ *
+ * Las 7 que quedan son DEUDA CONSCIENTE, no descuido — cada una tiene una
+ * razón para seguir ahí:
+ *
+ *  · vulvaClause (2)        costó cuatro rondas de calibración hasta el "se ve
+ *                           perfecto" del usuario. Reescribirla arriesga algo
+ *                           que hoy funciona; se toca solo con evidencia.
+ *  · anti-mutilación (3)    INTACT_BODY / IN_FRAME / EDIT_ANCHOR. Se añadieron
+ *                           por un bug real (brazos escondidos, extremidades
+ *                           cortadas). Pasarlas a positivo es viable pero hay
+ *                           que MEDIRLO generando, no asumirlo.
+ *  · alcance de piel (2)    pubicHair y tanLines: el "never drawn through
+ *                           clothing" es lo que impide pintarlas sobre la ropa.
+ *                           Reciente y sin validar todavía.
+ */
+const BASELINE = 7
 
 const M = {
     age: 22,
