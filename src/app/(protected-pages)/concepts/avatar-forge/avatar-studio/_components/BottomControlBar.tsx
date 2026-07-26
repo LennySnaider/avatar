@@ -879,7 +879,7 @@ const BottomControlBar = ({
                                 <div className="flex items-center gap-2">
                                     <div className="relative group">
                                         <div
-                                            className="w-11 h-11 rounded-lg overflow-hidden bg-gray-100 dark:bg-gray-700 cursor-pointer hover:ring-2 hover:ring-primary transition-all"
+                                            className="w-16 h-16 rounded-lg overflow-hidden bg-gray-100 dark:bg-gray-700 cursor-pointer hover:ring-2 hover:ring-primary transition-all"
                                             onClick={onChangeAvatar}
                                         >
                                             {thumbnail ? (
@@ -890,7 +890,7 @@ const BottomControlBar = ({
                                                 />
                                             ) : (
                                                 <div className="w-full h-full flex items-center justify-center">
-                                                    <HiOutlineUser className="w-5 h-5 text-gray-400" />
+                                                    <HiOutlineUser className="w-7 h-7 text-gray-400" />
                                                 </div>
                                             )}
                                         </div>
@@ -899,14 +899,14 @@ const BottomControlBar = ({
                                                 e.stopPropagation()
                                                 onDeselectAvatar()
                                             }}
-                                            className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-gray-500/80 hover:bg-red-500 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                                            className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-gray-500/80 hover:bg-red-500 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
                                             title="Deselect avatar"
                                         >
                                             <HiOutlineX className="w-2.5 h-2.5" />
                                         </button>
                                     </div>
                                     <div className="hidden sm:block">
-                                        <p className="text-xs font-medium truncate max-w-[80px]">
+                                        <p className="text-sm font-medium truncate max-w-[104px]">
                                             {avatarName || 'Avatar'}
                                         </p>
                                         <div className="flex items-center gap-1 text-[10px] text-gray-500">
@@ -927,9 +927,9 @@ const BottomControlBar = ({
                             ) : (
                                 <button
                                     onClick={onChangeAvatar}
-                                    className="w-11 h-11 rounded-lg border-2 border-dashed border-gray-300 dark:border-gray-600 flex items-center justify-center hover:border-primary hover:text-primary transition-colors"
+                                    className="w-16 h-16 rounded-lg border-2 border-dashed border-gray-300 dark:border-gray-600 flex items-center justify-center hover:border-primary hover:text-primary transition-colors"
                                 >
-                                    <HiOutlineUser className="w-5 h-5" />
+                                    <HiOutlineUser className="w-7 h-7" />
                                 </button>
                             )}
                         </div>
@@ -1816,9 +1816,15 @@ const BottomControlBar = ({
                         // Antes eran 3 controles con estados distintos (botón +
                         // dos toggles con borde punteado) y no se entendía la
                         // combinación — ahora se lee de un vistazo.
+                        // Sufijos COMPACTOS (2026-07-26): "Generate · Batch 2 🌶️"
+                        // hacía crecer el botón (w-auto) y le robaba ancho al
+                        // avatar, que es el control principal de la barra. Los
+                        // switches de abajo ya dicen el modo con todas sus
+                        // letras, así que aquí basta el eco corto — y con ancho
+                        // fijo el botón deja de moverse al cambiar de modo.
                         const label = isGenerating
                             ? 'Generating...'
-                            : `Generate${isImage && batchMode ? ` · Batch${n ? ` ${n}` : ''}` : ''}${isImage && nsfwMode ? ' 🌶️' : ''}`
+                            : `Generate${isImage && batchMode ? ` ·${n || ''}` : ''}${isImage && nsfwMode ? ' 🌶️' : ''}`
                         return (
                             <>
                                 <Button
@@ -1835,7 +1841,7 @@ const BottomControlBar = ({
                                     }
                                     loading={isGenerating}
                                     disabled={!canGenerate()}
-                                    className="h-11 w-full md:w-auto"
+                                    className="h-11 w-full md:w-[122px]"
                                 >
                                     {label}
                                 </Button>
