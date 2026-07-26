@@ -123,8 +123,9 @@ import {
 import { buildIdentityNegative } from '@/utils/sceneSanitizer'
 import {
     readDefaultProviderId,
-    readBatchIds,
+    readBatchIdsFor,
     writeBatchIds,
+    writeBatchNsfwIds,
 } from '../../_shared/providerPrefs'
 import { PROVIDER_TRAITS } from '../../_shared/providerCatalog'
 import { createPortal } from 'react-dom'
@@ -631,6 +632,7 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
         galleryHideNsfw,
         setGalleryHideNsfw,
         setBatchProviderIds,
+        setBatchProviderIdsNsfw,
     } = useAvatarStudioStore()
 
     // Punto en el toggle cuando hay búsqueda/filtro activo (para no “perder”
@@ -4264,27 +4266,35 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                 the gallery above expands into the freed space. */}
             <div className="shrink-0 relative">
                 {isCreationCollapsed ? (
-                    // Collapsed: a normal centered pill in its OWN short bar so it's
-                    // always fully visible. The floating -top handle got clipped at
-                    // the viewport's bottom edge once the panel below was hidden.
-                    <div className="flex justify-center py-2 border-t border-gray-200 dark:border-gray-700">
-                        <button
-                            type="button"
-                            onClick={() => setIsCreationCollapsed((c) => !c)}
-                            title="Show creation panel"
-                            className="flex items-center gap-1 px-4 h-8 rounded-full bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-200 text-xs font-medium shadow-md ring-1 ring-gray-300 dark:ring-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700 hover:text-primary transition-colors"
-                        >
-                            <HiChevronUp /> Create
-                        </button>
-                    </div>
-                ) : (
+                    // COLAPSADO — barra COMPLETA, no una píldora (2026-07-26).
+                    // Reporte repetido: "perdimos toda la barra!!!!". El panel
+                    // se oculta por CSS y lo único que quedaba era una píldora
+                    // chica que decía "Create" — no se leía como "aquí está la
+                    // barra que desapareció", así que el estado colapsado era
+                    // indistinguible de un bug. Ahora ocupa el ancho entero,
+                    // va teñida de primary y DICE lo que hace.
                     <button
                         type="button"
                         onClick={() => setIsCreationCollapsed((c) => !c)}
-                        title="Hide creation panel"
+                        title="Mostrar el panel de creación"
+                        className="w-full flex items-center justify-center gap-2 py-3 border-t-2 border-dashed border-primary/40 bg-primary/5 text-primary text-sm font-semibold hover:bg-primary/10 transition-colors"
+                    >
+                        <HiChevronUp className="w-4 h-4" />
+                        Mostrar panel de creación
+                    </button>
+                ) : (
+                    // El handle de colapsar FLOTA sobre el borde de la galería y
+                    // era un chevron pelado: un click accidental al desplazarse
+                    // borraba el área de trabajo sin decir qué había pasado.
+                    // Con etiqueta, el click deja de ser una sorpresa.
+                    <button
+                        type="button"
+                        onClick={() => setIsCreationCollapsed((c) => !c)}
+                        title="Ocultar el panel de creación (podrás volver a mostrarlo abajo)"
                         className="absolute left-1/2 -translate-x-1/2 -top-3.5 z-20 flex items-center gap-1 px-4 h-7 rounded-full bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-200 text-xs font-medium shadow-md ring-1 ring-gray-300 dark:ring-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700 hover:text-primary transition-colors"
                     >
                         <HiChevronDown />
+                        Ocultar
                     </button>
                 )}
                 {/* Cap the creation panel + let it scroll internally so it can
@@ -4303,7 +4313,7 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                             // Modelos marcados con ☑ en el selector (persistidos).
                             // Si hay ≥1 → genera DIRECTO (sin abrir el dialog); si
                             // no hay ninguno → abre el dialog para elegir.
-                            const marked = readBatchIds().filter((id) =>
+                            const marked = readBatchIdsFor(nsfwMode).filter((id) =>
                                 providers.some(
                                     (p) => p.id === id && p.supports_image,
                                 ),
@@ -4506,8 +4516,16 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                             setBatchOpen(false)
                             // Persiste la selección del dialog → la próxima vez el
                             // botón Batch genera directo en estos, sin re-elegir.
-                            writeBatchIds(batchSelected)
-                            setBatchProviderIds(batchSelected)
+                            // Al SET DEL MODO: lo elegido en una tanda spicy no
+                            // debe pisar el batch SFW (ni al revés), que era el
+                            // motivo de separarlos.
+                            if (nsfwMode) {
+                                writeBatchNsfwIds(batchSelected)
+                                setBatchProviderIdsNsfw(batchSelected)
+                            } else {
+                                writeBatchIds(batchSelected)
+                                setBatchProviderIds(batchSelected)
+                            }
                             handleBatchGenerate(batchSelected)
                         }}
                     >

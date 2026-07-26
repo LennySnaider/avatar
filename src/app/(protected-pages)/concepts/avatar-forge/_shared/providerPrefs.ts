@@ -14,6 +14,11 @@ const ORDER_KEY = 'avatar-forge:provider-order'
 // Modelos marcados para el BATCH (☑ en cada card del selector). Persisten para
 // no re-elegir cada vez: el botón Batch genera directo en estos. Máx 3.
 const BATCH_KEY = 'avatar-studio:batch-providers'
+// Set de batch SEPARADO para 🌶️ Spicy: no todos los motores rinden NSFW (solo
+// los permissive), así que mezclar ambos sets en uno obligaba a re-marcar cada
+// vez que se cambiaba de modo — o peor, mandaba el batch spicy a motores que lo
+// bloquean upstream y se pagaba la llamada igual.
+const BATCH_NSFW_KEY = 'avatar-studio:batch-providers-nsfw'
 
 function readIds(key: string): string[] {
     if (typeof window === 'undefined') return []
@@ -50,6 +55,16 @@ export const BATCH_MAX = 3
 export const readBatchIds = () => readIds(BATCH_KEY).slice(0, BATCH_MAX)
 export const writeBatchIds = (ids: string[]) =>
     writeIds(BATCH_KEY, ids.slice(0, BATCH_MAX))
+
+// Set 🌶️: los modelos a los que se abanica cuando Spicy está ON.
+export const readBatchNsfwIds = () => readIds(BATCH_NSFW_KEY).slice(0, BATCH_MAX)
+export const writeBatchNsfwIds = (ids: string[]) =>
+    writeIds(BATCH_NSFW_KEY, ids.slice(0, BATCH_MAX))
+
+/** Set activo según el modo — una sola fuente para que la UI, el contador del
+ *  botón y el despacho no puedan discrepar. */
+export const readBatchIdsFor = (nsfw: boolean) =>
+    nsfw ? readBatchNsfwIds() : readBatchIds()
 
 // Default (pin 📌) POR MODO — el provider con el que arranca una sesión
 // fresca del Studio. Vivía en ProviderManagerDrawer; compartido aquí porque

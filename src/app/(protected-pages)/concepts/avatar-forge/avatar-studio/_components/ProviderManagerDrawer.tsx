@@ -30,6 +30,8 @@ import {
     writeDefaultProviderId,
     readBatchIds,
     writeBatchIds,
+    readBatchNsfwIds,
+    writeBatchNsfwIds,
     BATCH_MAX,
 } from '../../_shared/providerPrefs'
 import {
@@ -69,6 +71,8 @@ const ProviderManagerDrawer = () => {
         setGeminiAutoFallback,
         batchProviderIds,
         setBatchProviderIds,
+        batchProviderIdsNsfw,
+        setBatchProviderIdsNsfw,
     } = useAvatarStudioStore()
 
     // Default por modo (badge "Default") = último provider seleccionado.
@@ -90,7 +94,13 @@ const ProviderManagerDrawer = () => {
         setFavoriteIds(readFavoriteIds())
         setHiddenIds(readHiddenIds())
         setBatchProviderIds(readBatchIds())
-    }, [generationMode, showProviderManager, setBatchProviderIds])
+        setBatchProviderIdsNsfw(readBatchNsfwIds())
+    }, [
+        generationMode,
+        showProviderManager,
+        setBatchProviderIds,
+        setBatchProviderIdsNsfw,
+    ])
 
     // Initialize providers on mount - always sync with DEFAULT_PROVIDERS
     useEffect(() => {
@@ -220,15 +230,26 @@ const ProviderManagerDrawer = () => {
 
     // Batch (☑): marca este modelo para el Batch — el botón Batch genera directo
     // en los marcados. Tope BATCH_MAX; al llenar, un click a uno nuevo se ignora.
-    const handleToggleBatch = (e: React.MouseEvent, providerId: string) => {
+    const handleToggleBatch = (
+        e: React.MouseEvent,
+        providerId: string,
+        nsfw = false,
+    ) => {
         e.stopPropagation() // don't trigger the card's select
-        const inBatch = batchProviderIds.includes(providerId)
-        if (!inBatch && batchProviderIds.length >= BATCH_MAX) return
+        const current = nsfw ? batchProviderIdsNsfw : batchProviderIds
+        const inBatch = current.includes(providerId)
+        if (!inBatch && current.length >= BATCH_MAX) return
         const next = inBatch
-            ? batchProviderIds.filter((id) => id !== providerId)
-            : [...batchProviderIds, providerId]
-        writeBatchIds(next) // persistencia durable (localStorage)
-        setBatchProviderIds(next) // mirror reactivo (store)
+            ? current.filter((id) => id !== providerId)
+            : [...current, providerId]
+        // persistencia durable (localStorage) + mirror reactivo (store)
+        if (nsfw) {
+            writeBatchNsfwIds(next)
+            setBatchProviderIdsNsfw(next)
+        } else {
+            writeBatchIds(next)
+            setBatchProviderIds(next)
+        }
     }
 
     const getProviderIcon = (type: ProviderType) => {
@@ -364,6 +385,12 @@ const ProviderManagerDrawer = () => {
                         const batchDisabled =
                             !isInBatch && batchProviderIds.length >= BATCH_MAX
                         const tr = PROVIDER_TRAITS[provider.id]
+                        const isInBatchNsfw = batchProviderIdsNsfw.includes(
+                            provider.id,
+                        )
+                        const batchNsfwDisabled =
+                            !isInBatchNsfw &&
+                            batchProviderIdsNsfw.length >= BATCH_MAX
                         return (
                             <Card
                                 key={provider.id}
@@ -413,6 +440,49 @@ const ProviderManagerDrawer = () => {
                                             ) : (
                                                 <HiOutlineCollection className="w-4 h-4 text-gray-400" />
                                             )}
+                                        </button>
+                                    )}
+                                    {/* 🌶️ marca el modelo para el batch SPICY.
+                                        Solo en motores permisivos: el resto
+                                        bloquea NSFW upstream y la llamada se
+                                        cobra igual, asi que ofrecerlo seria
+                                        vender un fallo. */}
+                                    {provider.supports_image && tr?.permissive && (
+                                        <button
+                                            type="button"
+                                            disabled={batchNsfwDisabled}
+                                            onClick={(e) =>
+                                                handleToggleBatch(
+                                                    e,
+                                                    provider.id,
+                                                    true,
+                                                )
+                                            }
+                                            title={
+                                                isInBatchNsfw
+                                                    ? 'Quitar del Batch 🌶️'
+                                                    : batchNsfwDisabled
+                                                      ? `Batch 🌶️ lleno (máx ${BATCH_MAX})`
+                                                      : 'Añadir al Batch 🌶️ (se usa cuando Spicy está ON)'
+                                            }
+                                            aria-label={
+                                                isInBatchNsfw
+                                                    ? 'Quitar del Batch Spicy'
+                                                    : 'Añadir al Batch Spicy'
+                                            }
+                                            className={`p-1 rounded-lg text-xs leading-none transition-colors ${
+                                                batchNsfwDisabled
+                                                    ? 'opacity-30 cursor-not-allowed'
+                                                    : 'hover:bg-gray-200 dark:hover:bg-gray-700'
+                                            } ${
+                                                isInBatchNsfw
+                                                    ? 'opacity-100'
+                                                    : 'opacity-35 grayscale'
+                                            }`}
+                                        >
+                                            <span className="block w-4 h-4 text-center">
+                                                🌶️
+                                            </span>
                                         </button>
                                     )}
                                     {/* 📌 fija el DEFAULT de arranque del modo

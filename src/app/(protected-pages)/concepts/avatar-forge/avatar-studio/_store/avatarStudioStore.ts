@@ -154,6 +154,10 @@ interface AvatarStudioState {
     // persistencia durable vive en localStorage (providerPrefs); esto solo drive
     // el contador del botón Batch en vivo. Se hidrata desde localStorage al montar.
     batchProviderIds: string[]
+    // Set 🌶️ SEPARADO: no todos los motores rinden NSFW (solo permissive), asi
+    // que un unico set obligaba a re-marcar al cambiar de modo — o mandaba el
+    // batch spicy a motores que lo bloquean upstream y se pagaba igual.
+    batchProviderIdsNsfw: string[]
 
     // App State
     appState: AppState
@@ -325,6 +329,7 @@ interface AvatarStudioState {
     setShowProviderManager: (show: boolean) => void
     setGeminiAutoFallback: (enabled: boolean) => void
     setBatchProviderIds: (ids: string[]) => void
+    setBatchProviderIdsNsfw: (ids: string[]) => void
 
     // Actions - App State
     setAppState: (state: AppState) => void
@@ -486,6 +491,7 @@ const initialState = {
     activeProviderId: null,
     geminiAutoFallback: false,
     batchProviderIds: [],
+    batchProviderIdsNsfw: [],
 
     appState: AppState.IDLE,
     isAvatarLocked: false,
@@ -864,6 +870,8 @@ export const useAvatarStudioStore = create<AvatarStudioState>()(
             setGeminiAutoFallback: (enabled) =>
                 set({ geminiAutoFallback: enabled }),
             setBatchProviderIds: (ids) => set({ batchProviderIds: ids }),
+            setBatchProviderIdsNsfw: (ids) =>
+                set({ batchProviderIdsNsfw: ids }),
 
             // Actions - App State
             setAppState: (state) => set({ appState: state }),

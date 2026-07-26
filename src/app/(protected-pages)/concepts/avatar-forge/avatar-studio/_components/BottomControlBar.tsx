@@ -469,6 +469,7 @@ const BottomControlBar = ({
         clearDetectedTerms,
         getActiveProvider,
         batchProviderIds,
+        batchProviderIdsNsfw,
         nsfwMode,
         setNsfwMode,
         batchMode,
@@ -1810,7 +1811,13 @@ const BottomControlBar = ({
                 {/* Generate + Batch (móvil: CTA a ancho completo) */}
                 <div className="flex shrink-0 flex-col gap-2 w-full md:w-[236px] order-5 md:order-0">
                     {(() => {
-                        const n = batchProviderIds.length
+                        // El contador sigue al set ACTIVO: con Spicy ON el
+                        // batch abanica a los modelos marcados con 🌶️, no a
+                        // los normales. Una sola fuente para etiqueta y
+                        // despacho, si no el botón promete N y manda otros.
+                        const n = (
+                            nsfwMode ? batchProviderIdsNsfw : batchProviderIds
+                        ).length
                         const isImage = generationMode === 'IMAGE'
                         // El BOTÓN es uno solo; los switches deciden QUÉ hace.
                         // Antes eran 3 controles con estados distintos (botón +
