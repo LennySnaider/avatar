@@ -3201,6 +3201,25 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                                     'Wan 2.6 r2v necesita al menos un vídeo de referencia del personaje (2-30s). Súbelo en «Character Ref».',
                                 )
                             }
+                            // r2v NO tiene parámetro de imagen: la API ni la
+                            // valida, la ignora. Descartarla ademas en silencio
+                            // desde aqui deja al usuario creyendo que la mandó
+                            // (reporte: "pero si había enviado el input de
+                            // imagen"). Se dice, y se dice cual es el modelo
+                            // que si la usa.
+                            if (isR2V && videoInputImage) {
+                                toast.push(
+                                    <Notification
+                                        type="warning"
+                                        title="La imagen no se usará"
+                                    >
+                                        r2v construye la escena desde los vídeos
+                                        de referencia y el texto — no acepta
+                                        imagen de partida. Si quieres animar esa
+                                        foto, usa Wan 2.6 i2v.
+                                    </Notification>,
+                                )
+                            }
                             const sub = await submitMuleRouterVideoTask({
                                 model: isR2V ? 'wan2.6-r2v' : 'wan2.6-i2v',
                                 prompt: fullPrompt,
