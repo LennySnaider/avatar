@@ -545,6 +545,14 @@ export interface PhysicalMeasurements {
     bustShape?: BustShape
     glutesShape?: GlutesShape
     skinTone?: SkinTone // 1=very fair/porcelain, 9=very dark/ebony
+    /**
+     * Marcas de bronceado: la piel bajo el bikini queda MÁS CLARA que el resto.
+     * Rasgo de PIEL (como skinTone), no de vestuario — por eso vive aquí y no
+     * en la escena: define a la persona y debe ser igual en toda generación.
+     * Solo se nota donde hay piel descubierta, y es la hoja NUDE del Body Lab
+     * la que fija dónde caen las líneas para que no bailen entre imágenes.
+     */
+    tanLines?: boolean
     hairColor?: HairColor
     /**
      * Tonos ordenados raíces→puntas para degradado/ombre (máx 3). Estado

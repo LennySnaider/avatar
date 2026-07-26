@@ -3,6 +3,7 @@ import {
     describeHair,
     describeBody,
     getSkinToneDescription,
+    tanLinesClause,
     effectiveThighsLevel,
     isExaggeratedBody,
     BUST_SHAPE_PHRASE,
@@ -150,8 +151,13 @@ export function buildBodySheetPrompt(
     const curves = buildBodySheetCurves(m)
     const skin = getSkinToneDescription(m.skinTone)
     const hair = describeHair(m)
+    // Marcas de bronceado SOLO en la variante NUDE: en la vestida el sports bra
+    // cubre justo donde caen, asi que mencionarlas ahi solo invita a pintarlas
+    // ENCIMA de la ropa. La hoja nude es ademas la que FIJA donde van, para que
+    // no bailen entre generaciones.
+    const tan = opts?.nude ? tanLinesClause(m) : ''
 
-    const person = [`${m.age ?? 22}-year-old woman`, body, skin, hair]
+    const person = [`${m.age ?? 22}-year-old woman`, body, skin, hair, tan]
         .filter(Boolean)
         .join(', ')
 
@@ -277,7 +283,7 @@ export function buildTurnaroundRefinePrompt(
         // (BODY_SPEC_NOT_WARDROBE_CLAUSE prohíbe justo lo que la hoja mostraba).
         // Si el gris se filtra, se ve y se corrige; el beige se disfrazaba de piel.
         opts?.nude ? NUDE_SHEET_CLAUSE : CLOTHED_SHEET_CLAUSE,
-        `Render a woman whose BODY matches this spec exactly — do NOT copy the reference body; make it: ${[body, curves, measurements].filter(Boolean).join(', ')}. ${skin}.`,
+        `Render a woman whose BODY matches this spec exactly — do NOT copy the reference body; make it: ${[body, curves, measurements].filter(Boolean).join(', ')}. ${[skin, opts?.nude ? tanLinesClause(m) : ''].filter(Boolean).join('. ')}.`,
         // Consistencia ENTRE VISTAS: el sesgo frontal normalizaba el cuerpo en
         // la vista de FRENTE (caderas angostas + thigh gap) mientras lado/
         // espalda sí rendían el spec (reporte con imagen 2026-07-23). La vista

@@ -395,6 +395,22 @@ export function nippleClause(m: PhysicalMeasurements): string {
 const EXPLICIT_FULL_NUDE_RE =
     /\b(?:fully|completely|entirely|totally)\s+(?:nude|naked)\b|\bnaked\b|\bbottomless\b|\b(?:body|figure)\s+(?:fully\s+|explicitly\s+)?exposed\b|\bno\s+clothes\b/i
 
+/**
+ * MARCAS DE BRONCEADO. Rasgo de PIEL del avatar (como el tono), no de la
+ * escena: si baila entre generaciones deja de ser la misma persona.
+ *
+ * Tono RELATIVO, nunca absoluto — misma leccion que el pezon y la vulva: los
+ * motores literales saturan las palabras de color ("white", "pale") y pintan
+ * parches. Se describe como un CONTRASTE con su propia piel.
+ *
+ * El alcance va explicito ("solo donde la piel esta descubierta") porque sin
+ * el, los motores dibujaban las lineas ENCIMA de la ropa.
+ */
+export function tanLinesClause(m: PhysicalMeasurements): string {
+    if (!m.tanLines) return ''
+    return 'natural bikini tan lines: the strips of skin normally covered by a bikini top and bottoms are a shade lighter than her surrounding tanned skin, with soft blended edges — visible ONLY where her skin is bare, never drawn over clothing'
+}
+
 /** Cláusula de la zona íntima (2026-07-24, "no se nota"): la difusión suaviza
  * la vulva a un monte LISO de muñeca sin hendidura. Mismos trucos validados con
  * el pezón: tono RELATIVO a la piel (nada de palabras de color absolutas →

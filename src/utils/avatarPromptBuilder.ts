@@ -1,6 +1,6 @@
 import type { PhysicalMeasurements } from '@/@types/supabase'
 import {
-    describeHair, getBodyDescriptors, getLegDescriptor, getSkinToneDescription, getEyeColorDescription, isFashionHairColor } from '@/utils/bodyDescriptors'
+    describeHair, getBodyDescriptors, getLegDescriptor, getSkinToneDescription, getEyeColorDescription, isFashionHairColor, tanLinesClause } from '@/utils/bodyDescriptors'
 
 /**
  * Shared avatar prompt recipe — a faithful port of the harness in
@@ -173,7 +173,13 @@ function buildInlineBodyDescription(m: PhysicalMeasurements): string {
         : ''
 
     let fullDesc = `${m.age || 25} year old woman`
-    if (skinToneDesc) fullDesc += ` with ${skinToneDesc}`
+    // Marcas de bronceado pegadas al TONO — son el mismo rasgo (su piel), y
+    // juntas se leen como una sola descripcion en vez de dos ordenes sueltas.
+    // NO se limita a runs NSFW: tambien se ven con bikini, crop tops o tirantes.
+    const tanDesc = tanLinesClause(m)
+    if (skinToneDesc)
+        fullDesc += ` with ${skinToneDesc}${tanDesc ? `, ${tanDesc}` : ''}`
+    else if (tanDesc) fullDesc += ` with ${tanDesc}`
     if (hairColorDesc) fullDesc += skinToneDesc ? ` and ${hairColorDesc}` : ` with ${hairColorDesc}`
     if (eyeColorDesc) fullDesc += `, ${eyeColorDesc}`
     fullDesc += `, ${heightDesc}, with ${bodyTypeDesc}. Physical build: ${upperDesc}, ${waistDesc}, ${hipDesc}${legDesc ? `, ${legDesc}` : ''}. ${proportionDesc}${massAnchor}`

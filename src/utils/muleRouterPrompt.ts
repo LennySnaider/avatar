@@ -252,6 +252,10 @@ export function buildMuleRouterEditMaxPrompt(params: {
         if (hair) bodyBits.push(hair)
         const skin = getSkinToneDescription(m.skinTone).split(',')[0]
         if (skin) bodyBits.push(skin)
+        // Marcas de bronceado — version COMPACTA: aqui el prompt tiene un tope
+        // duro de 800 chars y la clausula completa se comeria la escena. Basta
+        // nombrar el rasgo y el contraste, que es lo que el motor necesita.
+        if (m.tanLines) bodyBits.push('visible bikini tan lines, the covered strips a shade lighter than her tanned skin')
         // Candado bidireccional COMPACTO (varianza: la semántica de escena se
         // derrama al cuerpo). Los cm mandan en ambas direcciones, siempre.
         parts.push(

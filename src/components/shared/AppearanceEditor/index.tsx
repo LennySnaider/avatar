@@ -8,6 +8,7 @@
  */
 
 import Slider from '@/components/ui/Slider'
+import Switcher from '@/components/ui/Switcher'
 import HairColorPicker from '@/components/shared/HairColorPicker'
 import EyeColorPicker from '@/components/shared/EyeColorPicker'
 import type { HairLength, PhysicalMeasurements } from '@/@types/supabase'
@@ -110,6 +111,25 @@ const AppearanceEditor = ({
                     max={9}
                     step={1}
                 />
+                {/* MARCAS DE BRONCEADO — rasgo de PIEL, junto al tono, no de
+                    vestuario: define a la persona y debe salir igual en toda
+                    generación. Va aquí para que se lea como "cómo es su piel",
+                    no como "qué lleva puesto". */}
+                <label className="flex cursor-pointer select-none items-center justify-between gap-2 pt-1">
+                    <span className="flex flex-col">
+                        <span className="text-xs font-medium">
+                            Marcas de bronceado
+                        </span>
+                        <span className="text-[10px] text-gray-400 leading-snug">
+                            La piel bajo el bikini queda más clara — solo se
+                            nota en escenas con piel descubierta.
+                        </span>
+                    </span>
+                    <Switcher
+                        checked={!!measurements.tanLines}
+                        onChange={(checked) => set({ tanLines: checked })}
+                    />
+                </label>
             </div>
 
             {/* Hair Type + Color (degradado 2-3 tonos) */}
