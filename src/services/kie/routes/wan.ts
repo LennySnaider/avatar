@@ -16,6 +16,7 @@ import {
     capAtWordBoundary,
     flattenJsonPromptToProse,
     INTACT_BODY_CLAUSE,
+    EDIT_ANCHOR_CLAUSE,
     BODY_SPEC_NOT_WARDROBE_CLAUSE,
     hairClause as buildHairClause,
     eyeClause as buildEyeClause,
@@ -226,7 +227,14 @@ async function build(ctx: ImageRouteContext): Promise<KieImageRequest> {
                       : ctx.bodyEmphasis
                         ? ` Use the reference image ONLY for the face and identity — do NOT copy the body proportions from it: the person in the photo looks SLIMMER than the character really is. Her real body is: ${ctx.bodyEmphasis}. Her hips, glutes and thighs must be visibly FULLER and WIDER than in the reference photo — the narrow waist makes the hip curve obvious. Keep the bust true to the spec: do NOT inflate the chest or add overall body mass beyond it.`
                         : ''
-                wanAnchor = `The person in the FIRST attached reference image is the subject — keep her EXACT face, facial features and likeness from that image.${faceFidelityClause}${wanBodyClause}${hairClause}${eyeClause}${wanExtraClauses}${INTACT_BODY_CLAUSE} Follow the SCENE, POSE and ACTION described below EXACTLY.`
+                // EDICION (2026-07-26): el ancla de generacion presenta la
+                // imagen como REFERENCIA DE CARA, re-especifica el cuerpo y
+                // exige "hands and feet fully rendered" — que obliga a alejar la
+                // camara hasta que quepan los pies. Al editar una foto recortada
+                // eso es un zoom out y se pierde el encuadre original.
+                wanAnchor = ctx.editMode
+                    ? EDIT_ANCHOR_CLAUSE
+                    : `The person in the FIRST attached reference image is the subject — keep her EXACT face, facial features and likeness from that image.${faceFidelityClause}${wanBodyClause}${hairClause}${eyeClause}${wanExtraClauses}${INTACT_BODY_CLAUSE} Follow the SCENE, POSE and ACTION described below EXACTLY.`
                 logRoles = `face${wanExtras.length > 0 ? ', ' + wanExtras.map((r) => r.role).join(', ') : ''}`
             }
             input.input_urls = wanUrls

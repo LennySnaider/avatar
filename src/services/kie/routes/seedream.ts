@@ -20,6 +20,7 @@ import {
     capAtWordBoundary,
     capAtSentenceBoundary,
     INTACT_BODY_CLAUSE,
+    EDIT_ANCHOR_CLAUSE,
     BODY_SPEC_NOT_WARDROBE_CLAUSE,
     hairClause as buildHairClause,
     eyeClause as buildEyeClause,
@@ -207,7 +208,14 @@ async function build(ctx: ImageRouteContext): Promise<KieImageRequest> {
                 bodyClauseMax > 0 && bodyClause.length > bodyClauseMax
                     ? capAtSentenceBoundary(bodyClause, bodyClauseMax, model)
                     : bodyClause
-            const seedreamAnchor = `${anchorHead}${fitBodyClause}${anchorTail}`
+            // EDICION: el ancla ENTERA sobra. Presenta la imagen como referencia
+            // de CARA, re-especifica el cuerpo (fitBodyClause) y exige cuerpo
+            // completo — al editar eso reencuadra y redibuja lo que deberia
+            // quedarse quieto. Solo se anteponia la cola y el cuerpo seguia
+            // colandose por la cabeza (lo pillo la prueba del dispatcher).
+            const seedreamAnchor = ctx.editMode
+                ? EDIT_ANCHOR_CLAUSE
+                : `${anchorHead}${fitBodyClause}${anchorTail}`
             const sceneRoom = Math.max(
                 SCENE_FLOOR,
                 SEEDREAM_BUDGET - seedreamAnchor.length,

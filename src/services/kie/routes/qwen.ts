@@ -16,6 +16,7 @@ import {
     flattenJsonPromptToProse,
     hairClauseCompact as buildHairClause,
     INTACT_BODY_CLAUSE,
+    EDIT_ANCHOR_CLAUSE,
     BODY_SPEC_NOT_WARDROBE_CLAUSE,
 } from '../shared'
 
@@ -243,7 +244,14 @@ async function build(ctx: ImageRouteContext): Promise<KieImageRequest> {
                     // el modelo "resolvía" recortando piernas/pies. Se le da la
                     // MISMA cláusula positiva que ya llevan seedream/wan/flux2/grok
                     // (el negative_prompt se conserva como defensa en profundidad).
-                    input.prompt = `Keep her EXACT face, hair and natural realistic eyes from the reference image — IGNORE any nationality, ethnicity or facial description in the text.${hairClause}${qwenBodyClause}${INTACT_BODY_CLAUSE}${anatomyFront} ${cappedSansAnatomy}`
+                // EDICION (2026-07-26): el ancla de generacion presenta la
+                // imagen como REFERENCIA DE CARA, re-especifica el cuerpo y
+                // exige "hands and feet fully rendered" — que obliga a alejar la
+                // camara hasta que quepan los pies. Al editar una foto recortada
+                // eso es un zoom out y se pierde el encuadre original.
+                    input.prompt = ctx.editMode
+                        ? `${EDIT_ANCHOR_CLAUSE} ${cappedSansAnatomy}`
+                        : `Keep her EXACT face, hair and natural realistic eyes from the reference image — IGNORE any nationality, ethnicity or facial description in the text.${hairClause}${qwenBodyClause}${INTACT_BODY_CLAUSE}${anatomyFront} ${cappedSansAnatomy}`
                 }
             }
         } catch (e) {

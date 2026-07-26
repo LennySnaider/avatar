@@ -16,6 +16,7 @@ import {
     capAtWordBoundary,
     stripIdentityRedundancy,
     INTACT_BODY_CLAUSE,
+    EDIT_ANCHOR_CLAUSE,
     hairClause as buildHairClause,
     faceFidelityClause as buildFaceFidelityClause,
 } from '../shared'
@@ -64,7 +65,7 @@ async function build(ctx: ImageRouteContext): Promise<KieImageRequest> {
                 //
                 // Al editar, la referencia ES la foto: la anatomia ya es
                 // correcta (no hace falta el guard) y la pose debe conservarse.
-                input.prompt = `This image IS the photo to edit: keep its pose, body position, framing, crop, lighting and background exactly as they are, and the same person. Apply ONLY this change: ${input.prompt}`
+                input.prompt = `${EDIT_ANCHOR_CLAUSE} ${input.prompt}`
             } else {
                 if (hairClause || faceFidelityClause) {
                     input.prompt = `Keep the EXACT face and likeness of the person in the reference image.${faceFidelityClause}${hairClause} ${input.prompt}`

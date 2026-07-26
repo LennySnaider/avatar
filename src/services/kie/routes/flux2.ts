@@ -13,6 +13,7 @@ import {
     relocatePoseTag,
     capAtWordBoundary,
     INTACT_BODY_CLAUSE,
+    EDIT_ANCHOR_CLAUSE,
     BODY_SPEC_NOT_WARDROBE_CLAUSE,
     hairClause as buildHairClause,
     eyeClause as buildEyeClause,
@@ -72,7 +73,14 @@ async function build(ctx: ImageRouteContext): Promise<KieImageRequest> {
                     .replace(/\s{2,}/g, ' ')
                     .trim()
             }
-            input.prompt = `The person in the FIRST attached image is the subject — keep her EXACT face, facial features and likeness from that image.${faceFidelityClause}${fluxBodyClause}${hairClause}${eyeClause}${fluxClauses}${INTACT_BODY_CLAUSE} Follow the SCENE, POSE and ACTION described below EXACTLY. ${input.prompt}`
+                // EDICION (2026-07-26): el ancla de generacion presenta la
+                // imagen como REFERENCIA DE CARA, re-especifica el cuerpo y
+                // exige "hands and feet fully rendered" — que obliga a alejar la
+                // camara hasta que quepan los pies. Al editar una foto recortada
+                // eso es un zoom out y se pierde el encuadre original.
+            input.prompt = ctx.editMode
+                ? `${EDIT_ANCHOR_CLAUSE} ${input.prompt}`
+                : `The person in the FIRST attached image is the subject — keep her EXACT face, facial features and likeness from that image.${faceFidelityClause}${fluxBodyClause}${hairClause}${eyeClause}${fluxClauses}${INTACT_BODY_CLAUSE} Follow the SCENE, POSE and ACTION described below EXACTLY. ${input.prompt}`
             console.log(
                 `[KIE] FLUX.2 i2i with ${urls.length} ref(s) (roles: face${fluxExtras.length > 0 ? ', ' + fluxExtras.map((r) => r.role).join(', ') : ''})`,
             )

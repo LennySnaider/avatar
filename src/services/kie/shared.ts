@@ -301,6 +301,33 @@ export const INTACT_BODY_CLAUSE =
     ' Her body is COMPLETE and intact — both arms, both legs, hands and feet fully rendered; never amputated, truncated or cropped limbs.'
 
 /**
+ * Variante CONSCIENTE DEL ENCUADRE del anti-mutilacion. Nacio en la ruta de
+ * clone de Qwen y se eleva aqui (2026-07-26) porque hacia falta en TODAS las
+ * rutas al editar.
+ *
+ * El clause de arriba exige "hands and feet fully rendered": eso no describe,
+ * ORDENA — para cumplirlo el motor tiene que alejar la camara hasta que quepan
+ * los pies. Al generar da igual (el encuadre lo decide el prompt), pero al
+ * EDITAR una foto recortada obliga a un zoom out y se pierde el encuadre
+ * original (reporte: "hacen zoom out, se ve el cuerpo completo en lugar del
+ * encuadre de la imagen"). Esta version ataca el modo de fallo REAL —esconder o
+ * cortar un miembro— sin tocar el encuadre.
+ */
+export const INTACT_BODY_IN_FRAME_CLAUSE =
+    ' Every limb the pose shows must be anatomically COMPLETE — both arms with both hands, and legs with feet wherever the framing includes them; never sever, amputate, truncate or tuck a limb out of sight behind her body.'
+
+/**
+ * Ancla de EDICION. Sustituye al ancla de generacion (que presenta la imagen
+ * como "referencia de cara", re-especifica el cuerpo y exige cuerpo entero):
+ * al editar, la imagen ES la foto y todo eso reencuadra o redibuja lo que
+ * deberia quedarse quieto.
+ */
+export const EDIT_ANCHOR_CLAUSE =
+    'This image IS the photo to edit: keep the SAME person, pose, body position, framing, crop, camera distance, lighting and background exactly as they are.' +
+    INTACT_BODY_IN_FRAME_CLAUSE +
+    ' Apply ONLY this change:'
+
+/**
  * Override de ojos con guard anti-saturación (los editores single-image
  * qwen/grok NO lo envían). Verbatim de KieService:475-477.
  */
