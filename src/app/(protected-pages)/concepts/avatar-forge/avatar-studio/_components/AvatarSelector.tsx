@@ -27,6 +27,40 @@ interface AvatarSelectorProps {
     onClose: () => void
 }
 
+/**
+ * Calienta la caché del navegador con las caras de los avatares.
+ *
+ * Sin esto, las peticiones no arrancan hasta que el modal se monta y la rejilla
+ * se pinta vacía mientras bajan. PERO estas son las imágenes a RESOLUCIÓN
+ * COMPLETA (326 KB - 1.4 MB cada una): el transformador de imágenes de Supabase
+ * responde 403 en este plan, así que no hay version ligera que pedir. Por eso
+ * la precarga:
+ *
+ *  - espera a que el navegador esté OCIOSO (requestIdleCallback), para no
+ *    competir con la galería, que es lo que el usuario mira primero; y
+ *  - se limita a las primeras 12, que es cuanto cabe sin desplazar en la
+ *    rejilla — el resto llega al abrir, ya con la red libre.
+ */
+const WARM_LIMIT = 12
+const warmThumbnails = (list: { thumbnailUrl?: string | null }[]) => {
+    if (typeof window === 'undefined') return
+    const run = () => {
+        for (const a of list.slice(0, WARM_LIMIT)) {
+            if (!a.thumbnailUrl) continue
+            const img = new window.Image()
+            img.decoding = 'async'
+            img.src = a.thumbnailUrl
+        }
+    }
+    const ric = (
+        window as Window & {
+            requestIdleCallback?: (cb: () => void, o?: { timeout: number }) => void
+        }
+    ).requestIdleCallback
+    if (ric) ric(run, { timeout: 4000 })
+    else setTimeout(run, 1500)
+}
+
 const AvatarSelector = ({ userId, isOpen, onClose }: AvatarSelectorProps) => {
     const router = useRouter()
     const [avatars, setAvatars] = useState<AvatarWithRefs[]>([])
@@ -52,8 +86,15 @@ const AvatarSelector = ({ userId, isOpen, onClose }: AvatarSelectorProps) => {
         clearAvatarReferences,
     } = useAvatarStudioStore()
 
-    const loadAvatars = async () => {
-        setIsLoading(true)
+    // Ya cargado alguna vez → al reabrir se revalida SIN spinner (los datos
+    // viejos se pintan al instante y se refrescan por debajo).
+    const hasLoadedRef = useRef(false)
+
+    const loadAvatars = async (opts?: { background?: boolean }) => {
+        // El spinner solo cuando no hay NADA que enseñar. Con datos en mano,
+        // mostrarlos y refrescar callado gana siempre a un spinner sobre
+        // contenido que ya era correcto.
+        if (!opts?.background) setIsLoading(true)
         try {
             // ONE round trip: apiGetAvatars already joins avatar_references(*).
             // The old flow re-queried references PER avatar and then DOWNLOADED
@@ -75,6 +116,8 @@ const AvatarSelector = ({ userId, isOpen, onClose }: AvatarSelectorProps) => {
                 }
             })
             setAvatars(avatarsWithThumbnails)
+            hasLoadedRef.current = true
+            warmThumbnails(avatarsWithThumbnails)
         } catch (error) {
             console.error('Failed to load avatars:', error)
         } finally {
@@ -82,12 +125,20 @@ const AvatarSelector = ({ userId, isOpen, onClose }: AvatarSelectorProps) => {
         }
     }
 
-    // Load avatars when dialog opens
+    // PRECARGA al MONTAR, no al abrir. El componente vive montado con el
+    // Studio, así que para cuando el usuario pulsa el avatar la lista y sus
+    // miniaturas ya están; abrir el modal deja de costar un viaje de red.
+    useEffect(() => {
+        if (!userId) return
+        void loadAvatars({ background: true })
+    }, [userId])
+
+    // Al ABRIR: revalida. Si ya hay datos va en segundo plano (sin spinner);
+    // si la precarga aún no terminó, este sí muestra el spinner.
     useEffect(() => {
         if (isOpen && userId) {
-            loadAvatars()
+            void loadAvatars({ background: hasLoadedRef.current })
         }
-         
     }, [isOpen, userId])
 
     // Helper to download and convert to base64 with thumbnail. Goes through a
