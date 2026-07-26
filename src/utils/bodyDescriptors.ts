@@ -197,18 +197,39 @@ export function getBodyDescriptors(m: PhysicalMeasurements): string {
         )
     }
 
-    // Body-mass anchor — fights the diffusion-model default of rendering a tiny
-    // waist as an underweight fashion body. Only added when the specs imply a
-    // fuller figure (full bust OR full hips OR a curvy/plus body type); slim /
-    // petite / athletic avatars are intentionally left lean.
-    const wantsFuller = m.bust >= 90 || m.hips >= 95 || (m.build ?? 3) >= 4
-    if (wantsFuller) {
+    // Ancla de MASA CORPORAL — pelea el default del difusor de renderizar una
+    // cintura minima como un cuerpo de pasarela desnutrido.
+    //
+    // RECALIBRADA (2026-07-26, reporte "ya no hacen match las generaciones de
+    // Body Lab"): el gate era `bust >= 90 || hips >= 95 || build >= 4`, pero
+    // bust 90 es el nivel 3 —el CENTRO exacto de la escala (BUST_LEVEL_TO_CM[3]
+    // = 90)— y hips 95 esta por DEBAJO del nivel 3 (97). Es decir disparaba en
+    // cuerpos promedio, justo lo contrario de lo que dice su propio comentario.
+    // Solo era inofensivo porque el relleno neutro de las bandas de cm lo
+    // contrapesaba; al quitarlo quedo suelto y engordo la hoja entera.
+    //
+    // La masa GLOBAL debe seguir al control GLOBAL: `build` (que el usuario
+    // dejo en 3 · balanced). Un busto o un gluteo grandes son rasgos LOCALES y
+    // ya se expresan en sus propias frases — no implican un cuerpo pesado, y
+    // tomarlos como tal es lo que contradecia una cintura de 45cm.
+    const build = m.build ?? 3
+    const localFullness =
+        (m.bustLevel ?? 0) >= 4 || (m.glutesLevel ?? 0) >= 4 || m.hips >= 106
+    if (build >= 4) {
+        // El usuario PIDIO un cuerpo mas lleno: ancla completa.
         descriptors.push(
             'healthy natural body weight',
             'soft feminine curves with natural body fat',
-            'NOT skinny or underweight',
         )
+    } else if (localFullness) {
+        // Curvas locales sobre un build balanceado: basta el guard minimo
+        // anti-esqueletico, sin mandato de grasa corporal.
+        descriptors.push('healthy natural body weight')
     }
+    // "NOT skinny or underweight" SALE del positivo: la difusion no procesa
+    // negaciones —regla propia del proyecto, aprendida con mannequin/doll— y
+    // aqui solo aportaba las palabras "skinny"/"underweight". La prohibicion
+    // vive en el negative de cada ruta.
 
     // Leg shape (explicit selector wins; otherwise nothing is added here).
     const legs = getLegDescriptor(m.legType)

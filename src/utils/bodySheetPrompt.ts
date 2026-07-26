@@ -358,6 +358,11 @@ export function buildBodyViewPrompt(
 export const BODY_SHEET_NEGATIVE_PROMPT = [
     'cartoon, illustration, drawing, sketch, concept art, character sheet, line art, vector art, comic, cel-shaded, painting, anime, 3d render, cgi, stylized, airbrushed',
     'plastic skin, doll-like, over-smoothed skin, heavy makeup',
+    // Anti-esqueletico (2026-07-26): sustituye al "NOT skinny or underweight"
+    // que vivia en el POSITIVO, donde la difusion no procesa la negacion y solo
+    // aportaba las palabras "skinny"/"underweight". Solo extremos — "slim" o
+    // "thin" son legitimos y no se prohiben, o se peleaba con los builds bajos.
+    'emaciated, anorexic, skeletal, visible ribcage, gaunt',
     'deformed anatomy, extra limbs, extra legs, extra arms, extra fingers, fused limbs, malformed hands',
     // Anti-mutilación (2026-07-23): con cuerpos XXL el modelo "resuelve"
     // recortando/amputando — prohibirlo explícito.
