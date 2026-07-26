@@ -170,7 +170,7 @@ export function buildMuleRouterEditMaxPrompt(params: {
         // prohibia reiluminar y fundir la costura (mismo fix que la fase 2).
         // Se sustituye por la prohibicion precisa: "never a hybrid".
         parts.push(
-            `Image ${faceIdx} = her FACE: swap it onto the woman in Image 1 — exact features and freckles, never the original face, never a hybrid. If her face is NOT visible in Image 1 (turned away, in profile or hidden), keep it that way — never turn her head toward the camera.`,
+            `Image ${faceIdx} = her FACE: swap it onto the woman in Image 1 — exact features and only the skin markings she actually has, never the original face, never a hybrid. If her face is NOT visible in Image 1 (turned away, in profile or hidden), keep it that way — never turn her head toward the camera.`,
         )
         // En NSFW el outfit del lienzo se EXCLUYE: pedir "keep the outfit
         // EXACTLY" contradecía "she is COMPLETELY NUDE" y ganaba el lienzo
@@ -183,7 +183,7 @@ export function buildMuleRouterEditMaxPrompt(params: {
                 : `Follow Image 1's ${keepOutfit}pose, framing and setting closely, with natural variation${params.nsfw && !deferred ? '; she wears NOTHING' : ''}.`
     } else {
         parts.push(
-            `${camLine} of the woman in Image ${faceIdx} — her face, facial features, freckles and hair MUST match Image ${faceIdx} exactly; never use a face from any other image.`,
+            `${camLine} of the woman in Image ${faceIdx} — her face, facial features, skin markings and hair MUST match Image ${faceIdx} exactly; never use a face from any other image.`,
         )
     }
 
@@ -467,7 +467,7 @@ export function buildMuleRouterFaceSwapPrompt(
     // igualar textura y fundir la costura. Y la orientacion de la CABEZA se
     // hereda del lienzo: la referencia de cara es un retrato frontal, asi que
     // sin decirlo el editor la pega frontal aunque el cuerpo mire al mar.
-    const swapClause = `Image 2 = her FACE: give the woman in Image 1 HER exact face and freckles — never the original, never a hybrid. Keep the head at the SAME angle and direction as Image 1 (turned away stays turned away). Relight the face to the scene's light and blend the neck seam — no pasted-on look.`
+    const swapClause = `Image 2 = her FACE: give the woman in Image 1 HER exact face and only the skin markings she actually has — never the original, never a hybrid. Keep the head at the SAME angle and direction as Image 1 (turned away stays turned away). Relight the face to the scene's light and blend the neck seam — no pasted-on look.`
     // PRESUPUESTO DURO. El API corta a 800 con un slice ciego, o sea a media
     // frase y en silencio: lo ultimo que se añade es lo primero que se pierde,
     // sin aviso. Se compone por PRIORIDAD y se descarta la pieza entera que no

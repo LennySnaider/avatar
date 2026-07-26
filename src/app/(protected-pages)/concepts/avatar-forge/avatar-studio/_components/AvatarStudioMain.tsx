@@ -2861,7 +2861,12 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                                 )
                                 if (st.status === 'done') {
                                     wanUrl = st.url
-                                    void apiClearPendingGeneration(sub.taskId)
+                                    // OJO: la baja del rastro NO va aquí. El
+                                    // vídeo aún no está guardado, y darlo de
+                                    // baja al terminar el POLL abre una ventana
+                                    // en la que la tarea ya no es reclamable
+                                    // pero tampoco está persistida — que es
+                                    // justo donde se perdió el vídeo de prueba.
                                     break
                                 }
                                 if (st.status === 'failed') {
@@ -2880,6 +2885,10 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                             // hacían las imágenes de MuleRouter.
                             const wanStable =
                                 await persistRemoteVideoResult(wanUrl)
+                            // Baja del rastro SOLO con el vídeo ya en Storage:
+                            // hasta este punto sigue siendo reclamable con 🔄.
+                            if (wanStable.success)
+                                void apiClearPendingGeneration(sub.taskId)
                             if (!wanStable.success)
                                 throw new Error(
                                     `El vídeo se generó pero no se pudo guardar: ${wanStable.error}. URL original: ${wanUrl}`,
@@ -3210,7 +3219,12 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                                 )
                                 if (st.status === 'done') {
                                     wanUrl = st.url
-                                    void apiClearPendingGeneration(sub.taskId)
+                                    // OJO: la baja del rastro NO va aquí. El
+                                    // vídeo aún no está guardado, y darlo de
+                                    // baja al terminar el POLL abre una ventana
+                                    // en la que la tarea ya no es reclamable
+                                    // pero tampoco está persistida — que es
+                                    // justo donde se perdió el vídeo de prueba.
                                     break
                                 }
                                 if (st.status === 'failed') {
@@ -3229,6 +3243,10 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                             // hacían las imágenes de MuleRouter.
                             const wanStable =
                                 await persistRemoteVideoResult(wanUrl)
+                            // Baja del rastro SOLO con el vídeo ya en Storage:
+                            // hasta este punto sigue siendo reclamable con 🔄.
+                            if (wanStable.success)
+                                void apiClearPendingGeneration(sub.taskId)
                             if (!wanStable.success)
                                 throw new Error(
                                     `El vídeo se generó pero no se pudo guardar: ${wanStable.error}. URL original: ${wanUrl}`,

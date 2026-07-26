@@ -350,7 +350,7 @@ export function faceFidelityClause(identityWeight?: number): string {
     return identityWeight === undefined
         ? ''
         : identityWeight >= 85
-          ? ' FACE FIDELITY: match the reference face EXACTLY — same bone structure, nose, eye shape and spacing, lips, jawline, freckles/moles; do NOT beautify or genericize it.'
+          ? ' FACE FIDELITY: match the reference face EXACTLY — same bone structure, nose, eye shape and spacing, lips, jawline, and only the skin markings she actually has; do NOT beautify or genericize it, and never ADD marks she does not have.'
           : identityWeight > 50
             ? ' Keep her face strongly consistent with the reference — no drift.'
             : ''
