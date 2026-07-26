@@ -280,15 +280,21 @@ export function hairClause(hairEmphasis?: string): string {
     // volumen (Wan/Qwen salían rubios cuando el avatar no lo es). Se declara
     // MANDATORIO y que ANULA cualquier otro color, negando explícitamente los
     // colores que la escena pueda pedir.
+    // 2026-07-26: la frase hablaba SOLO de "colour" (tres veces) y enumeraba
+    // colores. El emphasis trae ademas LARGO y TEXTURA ("very long waist-length
+    // straight black hair"), pero al ir envueltos en una orden declarada de
+    // color viajaban de polizon: el modelo honraba el color y descartaba el
+    // resto (reporte: se pidio pelo hasta la cintura y salio a media espalda).
+    // Ahora la orden reclama la descripcion ENTERA y niega los tres ejes.
     return hairEmphasis
-        ? ` Her hair colour is MANDATORY: ${hairEmphasis}. This OVERRIDES any other hair colour anywhere in this prompt — ignore any "blonde", "brunette", "red", "black" etc. stated in the scene description; if the reference photo or the scene suggests a different colour, RECOLOR her hair to exactly this.`
+        ? ` Her hair is MANDATORY and must match this description EXACTLY: ${hairEmphasis} — its LENGTH, its texture and its colour, all three. This OVERRIDES anything else in this prompt about her hair: ignore any "blonde", "brunette", "red", "black", any "short"/"long"/"bob", and any "straight"/"wavy"/"curly" stated in the scene description. If the reference photo or the scene shows different hair, change it to match this exactly — including growing or shortening it to the stated length.`
         : ''
 }
 
 /** Variante compacta del override de pelo para Qwen (cap 800 chars). */
 export function hairClauseCompact(hairEmphasis?: string): string {
     return hairEmphasis
-        ? ` Her hair MUST be ${hairEmphasis} — ignore any other hair colour stated in the scene.`
+        ? ` Her hair MUST be ${hairEmphasis} — that exact LENGTH, texture and colour; ignore any other hair stated in the scene.`
         : ''
 }
 
