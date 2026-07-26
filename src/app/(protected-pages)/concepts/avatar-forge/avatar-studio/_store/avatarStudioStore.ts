@@ -145,6 +145,18 @@ interface AvatarStudioState {
     // generation. Valid range depends on the active provider — see
     // getDurationOptionsForProvider() in providerCapabilities.ts.
     videoDuration: number
+    /**
+     * AUDIO del vídeo (Wan 2.6). El API lo trae en `true` por DEFECTO: si no se
+     * apaga, INVENTA una pista en cada generación. Aquí arranca en false para
+     * que la decisión sea del usuario y no una sorpresa cobrada.
+     */
+    videoAudio: boolean
+    /**
+     * Voz clonada que CONDUCE el vídeo (`audio_url` de Wan 2.6, wav/mp3 3-30s).
+     * Con esto el lip-sync sale del propio generador — sin pasar por un modelo
+     * aparte. null = audio generado por el modelo (si videoAudio está on).
+     */
+    videoVoiceUrl: string | null
 
     // Provider
     providers: AIProvider[]
@@ -298,6 +310,8 @@ interface AvatarStudioState {
     setSpeakAudioUrl: (url: string | null) => void
     setAspectRatio: (ratio: AspectRatio) => void
     setVideoResolution: (resolution: VideoResolution) => void
+    setVideoAudio: (on: boolean) => void
+    setVideoVoiceUrl: (url: string | null) => void
     setCameraMotion: (motion: CameraMotion) => void
     setCameraShot: (shot: CameraShot) => void
     setCameraAngle: (angle: CameraShot | null) => void
@@ -500,6 +514,8 @@ const initialState = {
     klingMotionDuration: '5' as '5' | '10',
     klingNativeAudioEnabled: false,
     videoDuration: 5,
+    videoAudio: false,
+    videoVoiceUrl: null as string | null,
 
     providers: [],
     activeProviderId: null,
@@ -787,6 +803,8 @@ export const useAvatarStudioStore = create<AvatarStudioState>()(
             setAspectRatio: (ratio) => set({ aspectRatio: ratio }),
             setVideoResolution: (resolution) =>
                 set({ videoResolution: resolution }),
+            setVideoAudio: (on) => set({ videoAudio: on }),
+            setVideoVoiceUrl: (url) => set({ videoVoiceUrl: url }),
             setCameraMotion: (motion) => set({ cameraMotion: motion }),
             setCameraShot: (shot) => set({ cameraShot: shot }),
             setCameraAngle: (angle) => set({ cameraAngle: angle }),

@@ -199,6 +199,39 @@ export const DEFAULT_PROVIDERS: AIProvider[] = [
         created_at: null,
     },
     {
+        // Wan 2.6 i2v vía MuleRouter — ANIMA una imagen de la galería.
+        // Slug verificado contra la API (POST vacío → 400 pidiendo `image`).
+        // NO existe variante "spark"/"flash" en 2.6: ambas dan 404.
+        // Lo interesante para la plataforma: `audio_url` acepta un wav/mp3 de
+        // 3-30s, así que la VOZ CLONADA del avatar puede conducir el vídeo sin
+        // pasar por un modelo de lip-sync aparte.
+        id: 'mulerouter-wan26-i2v',
+        name: 'Wan 2.6 i2v · MuleRouter',
+        type: 'KIE' as ProviderType,
+        model: 'mulerouter/wan2.6-i2v',
+        endpoint: 'https://api.mulerouter.ai',
+        is_active: true,
+        supports_image: false,
+        supports_video: true,
+        requires_api_key: true,
+        api_key_env_var: 'MULEROUTER_API_KEY',
+        created_at: null,
+    },
+    {
+        // Wan 2.6 t2v — vídeo desde TEXTO, sin imagen de partida.
+        id: 'mulerouter-wan26-t2v',
+        name: 'Wan 2.6 t2v · MuleRouter',
+        type: 'KIE' as ProviderType,
+        model: 'mulerouter/wan2.6-t2v',
+        endpoint: 'https://api.mulerouter.ai',
+        is_active: true,
+        supports_image: false,
+        supports_video: true,
+        requires_api_key: true,
+        api_key_env_var: 'MULEROUTER_API_KEY',
+        created_at: null,
+    },
+    {
         id: 'kie-ideogram-v3',
         name: 'Ideogram V3 · KIE',
         type: 'KIE' as ProviderType,
@@ -463,6 +496,9 @@ export const PROVIDER_COST: Record<string, string> = {
     'kie-seedream-5-pro': '~$0.035',
     'kie-qwen-image': '~$0.02',
     'mulerouter-qwen-edit-max': '$0.075',
+    // Wan 2.6: $0.05/s a 480P … $0.15/s a 1080P segun su web. A 720P/5s ~ $0.5.
+    'mulerouter-wan26-i2v': '~$0.50 / 5s',
+    'mulerouter-wan26-t2v': '~$0.50 / 5s',
     'kie-ideogram-v3': '~$0.05',
     'kie-nano-banana-2': '~$0.06',
     'kie-nano-banana-2-lite': '~$0.034',
@@ -496,6 +532,8 @@ export const PROVIDER_TRAITS: Record<
     'kie-flux-2-pro': { permissive: true },
     'kie-qwen-image': { permissive: true },
     'mulerouter-qwen-edit-max': { permissive: true },
+    'mulerouter-wan26-i2v': { permissive: true },
+    'mulerouter-wan26-t2v': { permissive: true },
     'kie-grok-imagine': { face: true },
     'kie-grok-imagine-video': { face: true },
     // Ambos reciben la cara vía image_input[] (mismo patrón que nano-banana-pro)

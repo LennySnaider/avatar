@@ -154,3 +154,176 @@ export async function checkMuleRouterImageTask(
     }
     return { status: 'processing' }
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// VÍDEO — Wan 2.6 (Alibaba) vía MuleRouter
+//
+// Slugs VERIFICADOS contra la API (POST vacío → 400 "expected to be provided"
+// = la ruta existe; 404 = no existe). NO hay variante "spark" ni "flash" en
+// 2.6: ambas dan 404, solo existieron en 2.2.
+//
+// Mismo patrón que el editor de imagen: POST devuelve `task_info.id` (202) y se
+// sondea con GET a la MISMA ruta + /{id}. Verificado: con un uuid inexistente
+// responde "Task with ID … does not exist" (búsqueda real), no un 404 de ruta.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** Modelos de vídeo Wan 2.6 disponibles. */
+export type MuleRouterVideoModel =
+    /** Anima una IMAGEN (la vía natural desde la galería del Studio). */
+    | 'wan2.6-i2v'
+    /** Vídeo desde TEXTO, sin imagen de partida. */
+    | 'wan2.6-t2v'
+    /** REFERENCIA: toma vídeos del personaje para mantener su identidad. */
+    | 'wan2.6-r2v'
+
+const MR_VIDEO_PATH = (model: MuleRouterVideoModel) =>
+    `/vendors/alibaba/v1/${model}/generation`
+
+export interface MuleRouterVideoParams {
+    model: MuleRouterVideoModel
+    /** Movimiento/acción. Tope del API: 2000 chars (10× el del editor). */
+    prompt: string
+    negativePrompt?: string
+    /** i2v: imagen de partida (base64 → se sube y viaja como URL). */
+    image?: { base64: string; mimeType: string }
+    /** r2v: vídeos del personaje ya accesibles por URL. */
+    videoUrls?: string[]
+    resolution?: '720P' | '1080P'
+    /** El API solo acepta 5, 10 o 15. */
+    duration?: 5 | 10 | 15
+    /**
+     * AUDIO. El API lo trae en `true` por DEFECTO: si no se apaga, inventa una
+     * pista en cada generación. Aquí el default es EXPLÍCITO para que la
+     * decisión sea del usuario, no de la API.
+     */
+    audio?: boolean
+    /** Voz clonada del avatar (wav/mp3, 3-30s, ≤15MB) — conduce el vídeo. */
+    audioUrl?: string
+    /** Multi-plano: solo surte efecto con prompt_extend activo. */
+    shotType?: 'single' | 'multi'
+    /** Reescritura inteligente del prompt por parte del API. */
+    promptExtend?: boolean
+    seed?: number
+}
+
+export async function submitMuleRouterVideoTask(
+    params: MuleRouterVideoParams,
+): Promise<
+    | { success: true; taskId: string; fullApiPrompt: string }
+    | { success: false; error: string }
+> {
+    try {
+        const prompt = params.prompt.slice(0, 2000)
+        const body: Record<string, unknown> = {
+            prompt,
+            ...(params.negativePrompt
+                ? { negative_prompt: params.negativePrompt.slice(0, 500) }
+                : {}),
+            resolution: params.resolution ?? '720P',
+            ...(params.duration ? { duration: params.duration } : {}),
+            // Nuestro prompt ya es deliberado; el rewriter además puede
+            // suavizar el NSFW. Off salvo que se pida multi-plano, que SOLO
+            // funciona con el rewriter encendido (regla del API).
+            prompt_extend: params.promptExtend ?? params.shotType === 'multi',
+            ...(params.shotType ? { shot_type: params.shotType } : {}),
+            safety_filter: false,
+            audio: params.audio ?? false,
+            ...(params.audioUrl ? { audio_url: params.audioUrl } : {}),
+            ...(typeof params.seed === 'number' ? { seed: params.seed } : {}),
+        }
+
+        if (params.model === 'wan2.6-i2v') {
+            if (!params.image)
+                return {
+                    success: false,
+                    error: 'wan2.6-i2v necesita una imagen de partida',
+                }
+            body.image = await uploadReferenceToSupabase(
+                params.image.base64,
+                params.image.mimeType,
+            )
+        }
+        if (params.model === 'wan2.6-r2v') {
+            if (!params.videoUrls?.length)
+                return {
+                    success: false,
+                    error: 'wan2.6-r2v necesita al menos un vídeo de referencia',
+                }
+            body.video_urls = params.videoUrls
+        }
+
+        const res = await fetch(`${MR_BASE}${MR_VIDEO_PATH(params.model)}`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                Authorization: `Bearer ${mrKey()}`,
+            },
+            body: JSON.stringify(body),
+            signal: AbortSignal.timeout(60_000),
+        })
+        if (!res.ok) {
+            const text = await res.text().catch(() => '')
+            return {
+                success: false,
+                error: `MuleRouter ${params.model} ${res.status}: ${text.slice(0, 300)}`,
+            }
+        }
+        const data = (await res.json()) as {
+            task_info?: { id?: string; status?: string }
+        }
+        const taskId = data.task_info?.id
+        if (!taskId)
+            return { success: false, error: 'MuleRouter no devolvió task_info.id' }
+        console.log(`[MuleRouter] ${params.model} task: ${taskId}`)
+        return { success: true, taskId, fullApiPrompt: prompt }
+    } catch (err) {
+        return {
+            success: false,
+            error: err instanceof Error ? err.message : String(err),
+        }
+    }
+}
+
+export async function checkMuleRouterVideoTask(
+    taskId: string,
+    model: MuleRouterVideoModel = 'wan2.6-i2v',
+): Promise<
+    | { status: 'processing' }
+    | { status: 'done'; url: string }
+    | { status: 'failed'; error: string }
+> {
+    const res = await fetch(
+        `${MR_BASE}${MR_VIDEO_PATH(model)}/${taskId}`,
+        {
+            headers: { Authorization: `Bearer ${mrKey()}` },
+            signal: AbortSignal.timeout(20_000),
+            cache: 'no-store',
+        },
+    )
+    // Un check fallido NO mata la tarea — el poller reintenta.
+    if (!res.ok) return { status: 'processing' }
+    const data = (await res.json()) as {
+        task_info?: { status?: string; error?: unknown }
+        videos?: string[]
+        video?: string
+        images?: string[]
+    }
+    const st = data.task_info?.status ?? ''
+    if (st === 'completed' || st === 'succeeded') {
+        // El campo de salida no está documentado para vídeo: se aceptan las
+        // tres formas plausibles en vez de asumir una y fallar en silencio.
+        const url = data.videos?.[0] ?? data.video ?? data.images?.[0]
+        if (!url)
+            return {
+                status: 'failed',
+                error: `MuleRouter completó sin vídeo (claves: ${Object.keys(data).join(', ')})`,
+            }
+        return { status: 'done', url }
+    }
+    if (st === 'failed')
+        return {
+            status: 'failed',
+            error: `MuleRouter ${model} falló: ${JSON.stringify(data.task_info?.error ?? '').slice(0, 300)}`,
+        }
+    return { status: 'processing' }
+}

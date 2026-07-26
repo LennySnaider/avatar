@@ -492,6 +492,10 @@ const BottomControlBar = ({
         speakModel,
         setShowProviderManager,
         avatarDefaultVoice,
+        videoAudio,
+        setVideoAudio,
+        videoVoiceUrl,
+        setVideoVoiceUrl,
         aspectRatio,
         setAspectRatio,
         videoResolution,
@@ -575,6 +579,12 @@ const BottomControlBar = ({
     // the dropdown entirely instead of showing values that get ignored.
     const durationOptions = getDurationOptionsForProvider(activeProvider)
     const resolutionOptions = getResolutionOptionsForProvider(activeProvider)
+    // Solo Wan 2.6 expone el control de audio: los demas motores de video no
+    // tienen `audio_url` ni generan pista propia, y ofrecerlo ahi seria vender
+    // algo que no existe.
+    const isMuleRouterVideo = !!activeProvider?.model?.startsWith(
+        'mulerouter/wan2.6',
+    )
 
     // Snap stale store values when the active provider changes so we never
     // submit a duration / resolution the model rejects.
@@ -2288,6 +2298,39 @@ const BottomControlBar = ({
                                         </Dropdown.Item>
                                     ))}
                                 </Dropdown>
+                            )}
+
+                            {/* AUDIO de Wan 2.6. El API lo trae en `true` por
+                                DEFECTO y INVENTA una pista en cada generación
+                                si no se apaga — por eso el control es
+                                explícito y arranca apagado: una pista sorpresa
+                                se cobra igual.
+
+                                Con voz clonada del avatar, esa voz CONDUCE el
+                                vídeo (audio_url): el lip-sync sale del propio
+                                generador, sin pasar por un modelo aparte. */}
+                            {isMuleRouterVideo && (
+                                <div className="flex items-center gap-1.5 rounded-lg border-2 border-dashed border-gray-300 px-2 py-1 dark:border-gray-600">
+                                    <span
+                                        className={`text-xs font-medium ${videoAudio || videoVoiceUrl ? 'text-primary' : 'text-gray-500'}`}
+                                    >
+                                        {videoVoiceUrl
+                                            ? `🎤 ${avatarDefaultVoice?.name ?? 'Voz'}`
+                                            : '🔊 Audio'}
+                                    </span>
+                                    <Switcher
+                                        checked={
+                                            videoAudio || !!videoVoiceUrl
+                                        }
+                                        onChange={(checked) => {
+                                            setVideoAudio(checked)
+                                            // Apagar el audio suelta también la
+                                            // voz: dejarla puesta con el audio
+                                            // off es un estado que miente.
+                                            if (!checked) setVideoVoiceUrl(null)
+                                        }}
+                                    />
+                                </div>
                             )}
 
                             {/* Duration — options adapt to the selected model. Dictated by the audio in Speak mode. */}

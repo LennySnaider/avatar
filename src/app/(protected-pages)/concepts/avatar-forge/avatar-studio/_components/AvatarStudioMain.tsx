@@ -104,6 +104,8 @@ import {
 import {
     submitMuleRouterImageTask,
     checkMuleRouterImageTask,
+    submitMuleRouterVideoTask,
+    checkMuleRouterVideoTask,
 } from '@/services/MuleRouterService'
 import {
     buildMuleRouterEditMaxPrompt,
@@ -589,6 +591,8 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
         avatarDefaultVoice,
         aspectRatio,
         videoResolution,
+        videoAudio,
+        videoVoiceUrl,
         videoDuration,
         cameraMotion,
         cameraShot,
@@ -2791,6 +2795,86 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                             durationMs = ttsJson.durationMs
                         }
 
+                        // ── WAN 2.6: la VOZ CLONADA conduce el vídeo ──
+                        // Wan acepta `audio_url` (wav/mp3, 3-30s) y hace el
+                        // lip-sync ÉL MISMO. Con el TTS ya generado arriba, eso
+                        // sustituye al talking-head de dos pasos: una sola
+                        // llamada en vez de generar vídeo y luego sincronizar
+                        // con otro modelo. Menos coste, menos latencia y sin el
+                        // salto de calidad entre los dos motores.
+                        if (
+                            activeProvider?.model?.startsWith(
+                                'mulerouter/wan2.6',
+                            )
+                        ) {
+                            if (!videoInputImage?.base64) {
+                                throw new Error(
+                                    'Wan 2.6 necesita una imagen de partida para el vídeo hablado — súbela en Input.',
+                                )
+                            }
+                            const wanImg = await optimizeImage(
+                                {
+                                    base64: videoInputImage.base64,
+                                    mimeType: videoInputImage.mimeType,
+                                },
+                                'API_FULL',
+                            )
+                            if (!wanImg)
+                                throw new Error(
+                                    'No se pudo optimizar la imagen de partida',
+                                )
+                            const sub = await submitMuleRouterVideoTask({
+                                model: 'wan2.6-i2v',
+                                prompt: fullPrompt,
+                                image: wanImg,
+                                resolution:
+                                    videoResolution === '1080p'
+                                        ? '1080P'
+                                        : '720P',
+                                // La duración la manda el AUDIO, no el chip:
+                                // un vídeo más corto que la voz la corta a
+                                // media frase.
+                                duration: ([5, 10, 15] as const).find(
+                                    (d) => d * 1000 >= (durationMs ?? 0),
+                                ) ?? 15,
+                                audio: true,
+                                audioUrl,
+                            })
+                            if (!sub.success) throw new Error(sub.error)
+                            void apiTrackPendingGeneration({
+                                provider: 'mulerouter',
+                                taskId: sub.taskId,
+                                avatarId: avatarId ?? null,
+                                mediaType: 'VIDEO',
+                                prompt,
+                                aspectRatio,
+                                metadata: { model: 'wan2.6-i2v', speak: true },
+                            })
+                            let wanUrl = ''
+                            const t0 = Date.now()
+                            while (Date.now() - t0 < 12 * 60 * 1000) {
+                                await new Promise((r) => setTimeout(r, 8000))
+                                const st = await checkMuleRouterVideoTask(
+                                    sub.taskId,
+                                    'wan2.6-i2v',
+                                )
+                                if (st.status === 'done') {
+                                    wanUrl = st.url
+                                    void apiClearPendingGeneration(sub.taskId)
+                                    break
+                                }
+                                if (st.status === 'failed') {
+                                    void apiClearPendingGeneration(sub.taskId)
+                                    throw new Error(st.error)
+                                }
+                            }
+                            if (!wanUrl)
+                                throw new Error(
+                                    `Wan 2.6 tardó demasiado (>12 min). El audio quedó generado: ${audioUrl}. Pulsa 🔄 en la galería para reclamar el vídeo.`,
+                                )
+                            resultUrl = wanUrl
+                        } else {
+
                         // 2. Talking-head con el motor elegido (InfiniteTalk / OmniHuman /
                         // Kling 3.0 con audio element) — submit async + poll desde el
                         // navegador, los jobs tardan 10-20 min.
@@ -2879,6 +2963,7 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                             throw new Error(
                                 `Talking video failed: ${msg}. The audio was generated: ${audioUrl}`,
                             )
+                        }
                         }
                     } else if (videoSubMode === 'ANIMATE') {
                         if (!videoInputImage || !videoInputImage.base64) {
@@ -3053,6 +3138,79 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                                     'MiniMax-Hailuo-2.3',
                                 resolution: videoResolution,
                             })
+                        } else if (
+                            activeProvider?.model?.startsWith(
+                                'mulerouter/wan2.6',
+                            )
+                        ) {
+                            // ── WAN 2.6 vía MULEROUTER ──
+                            // Submit + poll desde el NAVEGADOR, mismo carril
+                            // async que la imagen: el vídeo tarda minutos y una
+                            // server action abierta se comería el timeout.
+                            const sub = await submitMuleRouterVideoTask({
+                                model: 'wan2.6-i2v',
+                                prompt: fullPrompt,
+                                image: optimizedVideoInput,
+                                resolution:
+                                    videoResolution === '1080p'
+                                        ? '1080P'
+                                        : '720P',
+                                // El API SOLO acepta 5, 10 o 15: se redondea al
+                                // permitido más cercano en vez de dejar que
+                                // rechace la petición.
+                                duration: ([5, 10, 15] as const).reduce(
+                                    (best, d) =>
+                                        Math.abs(d - videoDuration) <
+                                        Math.abs(best - videoDuration)
+                                            ? d
+                                            : best,
+                                    5 as 5 | 10 | 15,
+                                ),
+                                // La VOZ CLONADA conduce el vídeo: con audio_url
+                                // el lip-sync sale del propio generador, sin
+                                // pasar por un modelo aparte. Si hay voz, el
+                                // audio va encendido aunque el switch esté off
+                                // — mandar una pista y silenciarla no tiene
+                                // sentido.
+                                audio: videoAudio || !!videoVoiceUrl,
+                                audioUrl: videoVoiceUrl ?? undefined,
+                            })
+                            if (!sub.success) throw new Error(sub.error)
+                            // RASTRO DE RESCATE: el vídeo tarda minutos, o sea
+                            // es donde más fácil se pierde una generación ya
+                            // pagada si la pestaña se cierra.
+                            void apiTrackPendingGeneration({
+                                provider: 'mulerouter',
+                                taskId: sub.taskId,
+                                avatarId: avatarId ?? null,
+                                mediaType: 'VIDEO',
+                                prompt,
+                                aspectRatio,
+                                metadata: { model: 'wan2.6-i2v' },
+                            })
+                            let wanUrl = ''
+                            const wanStart = Date.now()
+                            while (Date.now() - wanStart < 12 * 60 * 1000) {
+                                await new Promise((r) => setTimeout(r, 8000))
+                                const st = await checkMuleRouterVideoTask(
+                                    sub.taskId,
+                                    'wan2.6-i2v',
+                                )
+                                if (st.status === 'done') {
+                                    wanUrl = st.url
+                                    void apiClearPendingGeneration(sub.taskId)
+                                    break
+                                }
+                                if (st.status === 'failed') {
+                                    void apiClearPendingGeneration(sub.taskId)
+                                    throw new Error(st.error)
+                                }
+                            }
+                            if (!wanUrl)
+                                throw new Error(
+                                    'Wan 2.6 tardó demasiado (>12 min). La tarea sigue viva en MuleRouter — pulsa 🔄 en la galería para reclamarla.',
+                                )
+                            resultUrl = wanUrl
                         } else if (activeProvider?.type === 'KIE') {
                             const isKieKling =
                                 activeProvider.model === 'kling-3.0/video'
@@ -3371,6 +3529,8 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
             videoInputImage,
             nsfwMode,
             nsfwLevel,
+            videoAudio,
+            videoVoiceUrl,
             aspectRatio,
             videoDuration,
             cameraShot,
