@@ -338,10 +338,21 @@ export const EDIT_ANCHOR_CLAUSE =
  * qwen/grok NO lo envían). Verbatim de KieService:475-477.
  */
 export function eyeClause(eyeEmphasis?: string): string {
+    // 2026-07-26: llevaba "NOT oversaturated, NOT glowing, no contact-lens
+    // look" en el POSITIVO. La difusión no procesa negaciones ahi — solo ve
+    // "oversaturated", "glowing", "contact-lens", o sea que invocaba justo el
+    // artefacto que pretendia evitar (reporte: ojos verdes fosforescentes en
+    // Qwen). Misma leccion que mannequin/doll, el rosa del pezon y freckles.
+    // El positivo describe lo que SI queremos; las prohibiciones viven en
+    // EYE_NEGATIVE_TERMS, que va por el canal de negative_prompt.
     return eyeEmphasis
-        ? ` Her eyes are ${eyeEmphasis} — natural realistic iris with subtle color variation, NOT oversaturated, NOT glowing, no contact-lens look.`
+        ? ` Her eyes are ${eyeEmphasis} — natural realistic iris with subtle colour variation and soft catchlights, the tone muted and true to life.`
         : ''
 }
+
+/** Prohibiciones del ojo — van al NEGATIVE, nunca al positivo. */
+export const EYE_NEGATIVE_TERMS =
+    'glowing eyes, neon eyes, oversaturated iris, radioactive eye colour, contact-lens look, unnatural eye colour'
 
 /**
  * Fidelidad facial escalada por el slider de identidad. Verbatim de

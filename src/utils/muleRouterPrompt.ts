@@ -433,7 +433,7 @@ export function buildMuleRouterFaceSwapPrompt(
     // Seedream sí los recibe vía eyeClause y por eso salían bien. La fase 2 es
     // quien decide la cara, así que es SU sitio.
     const eyes = opts?.eyeDesc
-        ? ` Eyes: ${opts.eyeDesc.split(',')[0]}, natural iris, not glowing.`
+        ? ` Eyes: ${opts.eyeDesc.split(',')[0]}, natural iris with soft catchlights, muted and true to life.`
         : ''
     // DESVESTIR en la fase 2 (2026-07-25): pedir desnudez en la fase 1 peleaba
     // contra el lienzo VESTIDO del clone y ganaba el lienzo (salía con la ropa
@@ -493,7 +493,7 @@ export function buildMuleRouterFaceSwapPrompt(
     return {
         prompt,
         negativePrompt: opts?.undress
-            ? 'hybrid face, different person, pasted-on face, visible seam, collage, mismatched face lighting, head turned to camera, clothes, bra, panties, underwear, censored, blurred crotch, smooth featureless crotch, mannequin, doll, plastic skin, deformed hands, watermark, text'
-            : 'hybrid face, different person, pasted-on face, visible seam, collage, mismatched face lighting, head turned to camera, mannequin, doll, plastic skin, deformed hands, extra fingers, watermark, text',
+            ? 'hybrid face, different person, pasted-on face, visible seam, collage, mismatched face lighting, head turned to camera, glowing eyes, oversaturated iris, clothes, bra, panties, underwear, censored, blurred crotch, smooth featureless crotch, mannequin, doll, plastic skin, deformed hands, watermark, text'
+            : 'hybrid face, different person, pasted-on face, visible seam, collage, mismatched face lighting, head turned to camera, glowing eyes, oversaturated iris, mannequin, doll, plastic skin, deformed hands, extra fingers, watermark, text',
     }
 }

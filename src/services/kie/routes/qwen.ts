@@ -16,6 +16,7 @@ import {
     flattenJsonPromptToProse,
     hairClauseCompact as buildHairClause,
     INTACT_BODY_CLAUSE,
+    EYE_NEGATIVE_TERMS,
     EDIT_ANCHOR_CLAUSE,
     BODY_SPEC_NOT_WARDROBE_CLAUSE,
 } from '../shared'
@@ -89,7 +90,13 @@ async function build(ctx: ImageRouteContext): Promise<KieImageRequest> {
     const antiPinkNegative = anatomySentence
         ? 'pink areolas, pink-tinted breast skin, blushed chest, sunburned chest'
         : ''
-    const negativeCombined = [ctx.negativePrompt, antiPinkNegative]
+    // Si el avatar impone color de ojos, la prohibicion del brillo viaja por
+    // el canal NEGATIVO — en el positivo solo lo invocaria.
+    const negativeCombined = [
+        ctx.negativePrompt,
+        antiPinkNegative,
+        ctx.eyeEmphasis ? EYE_NEGATIVE_TERMS : '',
+    ]
         .filter(Boolean)
         .join(', ')
     if (negativeCombined) {
