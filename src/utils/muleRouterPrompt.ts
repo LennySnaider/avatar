@@ -152,6 +152,10 @@ export function buildMuleRouterEditMaxPrompt(params: {
     // pesaba más que la orden de cuerpo. Mismo orden que la ruta Qwen que sí
     // funciona: swap → cuerpo → fidelidad → escena.
     let pendingFidelity = ''
+    // Indice y version comprimida del bloque de cuerpo — para poder cederle
+    // espacio a la escena si no cabe (ver PISO DE ESCENA mas abajo).
+    let bodyPartIdx = -1
+    let bodyPartCompact: string | null = null
     if (cloneIdx === 1) {
         // Wording del path DEEPFAKE de Qwen KIE (el que "SÍ funciona" según el
         // comentario de esa ruta): nombra el MECANISMO (reemplazar la cara de
@@ -290,6 +294,7 @@ export function buildMuleRouterEditMaxPrompt(params: {
         if (m.tanLines) bodyBits.push('visible bikini tan lines, the covered strips a shade lighter than her tanned skin')
         // Candado bidireccional COMPACTO (varianza: la semántica de escena se
         // derrama al cuerpo). Los cm mandan en ambas direcciones, siempre.
+        bodyPartIdx = parts.length
         parts.push(
             bodyBits.join(', ') +
                 ' — these exact proportions every time, same width and same volume.' +
@@ -297,10 +302,49 @@ export function buildMuleRouterEditMaxPrompt(params: {
                     ? ' Her body comes from that spec; Image 1 supplies only pose, outfit and setting.'
                     : ''),
         )
+        // Version MINIMA del cuerpo, por si hay que hacer sitio a la escena.
+        // Se conserva lo que es IDENTIDAD —cm, pelo y piel— y cae lo que es
+        // refuerzo: la prosa de curvas, el tipo de pierna y las marcas de
+        // bronceado. El pelo NO puede caer: es identidad y ademas acabamos de
+        // arreglar que el largo llegara (2026-07-26).
+        const compactBits = [
+            m?.bust && m?.waist && m?.hips
+                ? `bust ${m.bust}cm, waist ${m.waist}cm, hips ${m.hips}cm`
+                : '',
+            hair,
+            skin,
+        ].filter(Boolean)
+        bodyPartCompact = compactBits.length
+            ? `Her body: ${compactBits.join(', ')} — these exact proportions every time.`
+            : null
     }
 
     if (pendingFidelity) parts.push(pendingFidelity)
-    if (cloneIdx === 1) pushScene(0)
+    if (cloneIdx === 1) {
+        // PISO DE ESCENA (2026-07-26, reporte "Seedream pone la pose y Qwen
+        // no"): la escena iba la ULTIMA y con reserva 0, asi que se llevaba lo
+        // que sobrara del cap de 800 — unos 190 chars. Y la POSE vive en la
+        // escena ("looking over their left shoulder while partially
+        // submerged"), o sea que era siempre lo primero en perderse. Seedream
+        // acierta la pose porque tiene 2750 de presupuesto, no porque su
+        // prompt sea mejor: a Qwen se la estabamos cortando nosotros.
+        //
+        // Mismo remedio que ya se aplico a Seedream en su dia (piso de
+        // escena): si no cabe el minimo, el CUERPO cede — su prosa de curvas
+        // es refuerzo y los cm sobreviven en la version compacta. La pose no
+        // tiene version compacta: o esta o no esta.
+        const SCENE_FLOOR = 300
+        const anchorLen = parts.join(' ').length
+        if (
+            cleanScene.length > 0 &&
+            800 - anchorLen - 1 < Math.min(SCENE_FLOOR, cleanScene.length) &&
+            bodyPartIdx >= 0 &&
+            bodyPartCompact
+        ) {
+            parts[bodyPartIdx] = bodyPartCompact
+        }
+        pushScene(0)
+    }
 
     // Ojos del avatar también en la ruta de 1 fase (sin clone la cara la decide
     // este prompt, no hay fase 2 que la corrija).
