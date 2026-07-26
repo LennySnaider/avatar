@@ -16,6 +16,7 @@
 import type { ImageRouteContext, KieImageRequest } from '../context'
 import {
     planExtraRefs,
+    hasNudityIntent,
     stripIdentityRedundancy,
     relocatePoseTag,
     capAtWordBoundary,
@@ -149,7 +150,13 @@ export async function buildLegacyRequest(
                     clauses: extraClauses,
                     hasBody,
                     hasClone,
-                } = planExtraRefs(referenceImages, 9, deepfakeMode, cloneWeight)
+                } = planExtraRefs(
+                    referenceImages,
+                    9,
+                    deepfakeMode,
+                    cloneWeight,
+                    hasNudityIntent(promptText),
+                )
                 const urls: string[] = [
                     await uploadRef(
                         referenceImage.base64,
@@ -223,7 +230,13 @@ export async function buildLegacyRequest(
                     clauses: wanExtraClauses,
                     hasBody: wanHasBody,
                     hasClone: wanHasClone,
-                } = planExtraRefs(referenceImages, 8, deepfakeMode, cloneWeight)
+                } = planExtraRefs(
+                    referenceImages,
+                    8,
+                    deepfakeMode,
+                    cloneWeight,
+                    hasNudityIntent(promptText),
+                )
                 const wanUrls: string[] = [
                     await uploadRef(
                         referenceImage.base64,
@@ -269,7 +282,13 @@ export async function buildLegacyRequest(
                     clauses: fluxClauses,
                     hasBody: fluxHasBody,
                     hasClone: fluxHasClone,
-                } = planExtraRefs(referenceImages, 7, deepfakeMode, cloneWeight)
+                } = planExtraRefs(
+                    referenceImages,
+                    7,
+                    deepfakeMode,
+                    cloneWeight,
+                    hasNudityIntent(promptText),
+                )
                 const urls: string[] = [
                     await uploadRef(
                         referenceImage.base64,

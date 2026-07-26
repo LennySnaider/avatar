@@ -42,6 +42,13 @@ export function planExtraRefs(
     // (fiel con variación natural) · 25-49 MODERATE (misma base, reinterpreta
     // detalles) · <25 LOOSE (solo el vibe). Solo afecta al clause del clone.
     cloneWeight = 100,
+    // ¿La escena pide desnudo? El clause del clone ordenaba "Keep her FULLY
+    // dressed" SIEMPRE — en un run NSFW eso contradecia frontalmente a la
+    // escena dentro del MISMO prompt (reporte con evidencia: "Keep her fully
+    // dressed." conviviendo con "standing topless… bare breasts and nipples
+    // are clearly visible"). El modelo tenia que elegir, y elegir mal era
+    // gratis. El outfit del clone solo se conserva cuando NO hay desnudo.
+    nsfwIntent = false,
 ): {
     extras: KieRefWithRole[]
     clauses: string
@@ -117,12 +124,12 @@ export function planExtraRefs(
                 const cloneClause = deepfakeMode
                     ? `Image ${n} = the ORIGINAL photo: reproduce it EXACTLY (body, outfit, pose, hands, framing, lighting, background). MANDATORY face swap: the output face MUST be the person from image 1 — never keep the original face. Do NOT alter clothing. REMOVE overlaid stickers/watermarks/emojis — output a clean photo.`
                     : cloneWeight >= 75
-                      ? `Image ${n} = the CLONE source: recreate its EXACT pose, body position, outfit, hands, objects held, framing, camera angle, lighting and setting. Its person is a FACELESS MANNEQUIN — the face comes ONLY from image 1. Keep her FULLY dressed as shown; do NOT remove or reduce clothing. REMOVE overlaid stickers/watermarks/emojis — output a clean photo.`
+                      ? `Image ${n} = the CLONE source: recreate its EXACT pose, body position, ${nsfwIntent ? '' : 'outfit, '}hands, objects held, framing, camera angle, lighting and setting. Its person is a FACELESS MANNEQUIN — the face comes ONLY from image 1. ${nsfwIntent ? 'IGNORE its clothing — follow the nudity described in the scene below.' : 'Keep her FULLY dressed as shown; do NOT remove or reduce clothing.'} REMOVE overlaid stickers/watermarks/emojis — output a clean photo.`
                       : cloneWeight >= 50
-                        ? `Image ${n} = a STRONG reference: follow its outfit, pose, framing and setting closely but allow natural variation (it need not be pixel-identical). Its person is a FACELESS MANNEQUIN — the face comes ONLY from image 1. Keep her fully dressed. REMOVE overlaid stickers/watermarks/emojis.`
+                        ? `Image ${n} = a STRONG reference: follow its ${nsfwIntent ? '' : 'outfit, '}pose, framing and setting closely but allow natural variation (it need not be pixel-identical). Its person is a FACELESS MANNEQUIN — the face comes ONLY from image 1. ${nsfwIntent ? 'IGNORE its clothing — follow the nudity described in the scene below.' : 'Keep her fully dressed.'} REMOVE overlaid stickers/watermarks/emojis.`
                         : cloneWeight >= 25
-                          ? `Image ${n} = a MODERATE reference: keep its overall outfit STYLE, general pose and setting, but freely reinterpret the exact details, framing and composition — a clear variation, NOT a copy. Its person is a FACELESS MANNEQUIN — the face comes ONLY from image 1. Keep her dressed.`
-                          : `Image ${n} = a LOOSE style/mood reference: take only the general vibe, outfit style and setting cues — freely reinterpret the pose, framing and details. Its person is a FACELESS MANNEQUIN — the face comes ONLY from image 1.`
+                          ? `Image ${n} = a MODERATE reference: keep its ${nsfwIntent ? 'general pose and setting' : 'overall outfit STYLE, general pose and setting'}, but freely reinterpret the exact details, framing and composition — a clear variation, NOT a copy. Its person is a FACELESS MANNEQUIN — the face comes ONLY from image 1. ${nsfwIntent ? 'IGNORE its clothing — follow the nudity described in the scene below.' : 'Keep her dressed.'}`
+                          : `Image ${n} = a LOOSE style/mood reference: take only the general vibe, ${nsfwIntent ? '' : 'outfit style and '}setting cues — freely reinterpret the pose, framing and details. Its person is a FACELESS MANNEQUIN — the face comes ONLY from image 1.`
                 parts.push(cloneClause)
                 break
             }
@@ -417,6 +424,8 @@ export const BODY_SPEC_NOT_WARDROBE_CLAUSE =
  */
 const GARMENT_WORDS =
     /\b(dress|gown|skirt|shirt|blouse|top|tee|t-shirt|sweater|cardigan|hoodie|jacket|coat|blazer|suit|trousers?|pants?|jeans?|shorts?|leggings?|bodysuit|swimsuit|bikini|lingerie|bra|bralette|corset|jumpsuit|romper|overalls?|uniform|robe|kimono|activewear|leotard|tank|crop|turtleneck|halter|camisole|slip|nightgown|pyjamas?|pajamas?|underwear|panties|briefs|thong|outfit|wearing|dressed|clad|garment|clothes|clothing|attire|costume|wardrobe|denim|leather|lace)\b/i
+export const hasNudityIntent = (prompt?: string) =>
+    !!prompt && NUDITY_WORDS.test(prompt)
 const NUDITY_WORDS =
     /\b(nude|naked|topless|bottomless|bare[- ]?(chest|breast|body|skin)|undressed|explicit|nsfw|see[- ]?through|sheer)\b/i
 // 12 outfits DIVERSOS (2026-07-25): con 5 y `length % 5` el reparto se

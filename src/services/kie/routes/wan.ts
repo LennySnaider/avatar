@@ -10,6 +10,7 @@
 import type { ImageRoute, ImageRouteContext, KieImageRequest } from '../context'
 import {
     planExtraRefs,
+    hasNudityIntent,
     stripIdentityRedundancy,
     relocatePoseTag,
     capAtWordBoundary,
@@ -66,6 +67,7 @@ async function build(ctx: ImageRouteContext): Promise<KieImageRequest> {
                 8,
                 ctx.deepfakeMode,
                 ctx.cloneWeight,
+                hasNudityIntent(ctx.prompt),
             )
             // CLONE en Wan = método de QWEN (su luz sale PERFECTA, ref del usuario):
             // Wan 2.7 con imágenes es un FUSOR sobre lienzo. Con la cara de img1 salía

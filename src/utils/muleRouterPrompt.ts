@@ -400,12 +400,25 @@ export function buildMuleRouterFaceSwapPrompt(
     const keepList = opts?.undress
         ? 'same body, pose, hands, framing, lighting and background'
         : 'same body, pose, outfit, hands, framing, lighting and background'
+    // ORDEN (2026-07-26, reporte "fallo garrafal": salio VESTIDA con el top del
+    // original en un run NSFW). El prompt abria con "Keep the FIRST image
+    // EXACTLY" y la orden de desvestir venia DESPUES: el "EXACTLY" ya habia
+    // anclado todo —ropa incluida— y quitarla se leia como una excepcion tardia
+    // a una regla absoluta. Es el MISMO fallo de orden que ya se corrigio en la
+    // fase 1 ("Recreate Image 1 EXACTLY" arrastraba la cara). Con desnudo las
+    // EDICIONES van primero (swap + desvestir) y la fidelidad al final, acotada
+    // a lo que si debe conservarse.
+    const swapClause = `The SECOND image shows the person whose FACE to use: replace the face in the FIRST image with hers — exact features, freckles and likeness — never keep the original face, never blend the two images.`
     return {
-        prompt:
-            `Keep the FIRST image EXACTLY — ${keepList}. The SECOND image shows the person whose FACE to use: replace the face in the FIRST image with hers — exact features, freckles and likeness — never keep the original face, never blend the two images.` +
-            undress +
-            hair +
-            eyes,
+        prompt: opts?.undress
+            ? swapClause +
+              undress +
+              ` Everything else stays as in the FIRST image: ${keepList}.` +
+              hair +
+              eyes
+            : `Keep the FIRST image EXACTLY — ${keepList}. ${swapClause}` +
+              hair +
+              eyes,
         negativePrompt: opts?.undress
             ? 'blended faces, different person, clothes, bra, panties, underwear, censored, blurred crotch, smooth featureless crotch, mannequin, doll, plastic skin, deformed hands, watermark, text'
             : 'blended faces, different person, mannequin, doll, plastic skin, deformed hands, extra fingers, watermark, text, logo',

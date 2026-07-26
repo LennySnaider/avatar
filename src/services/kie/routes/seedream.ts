@@ -14,6 +14,7 @@
 import type { ImageRoute, ImageRouteContext, KieImageRequest } from '../context'
 import {
     planExtraRefs,
+    hasNudityIntent,
     stripIdentityRedundancy,
     relocatePoseTag,
     capAtWordBoundary,
@@ -74,6 +75,7 @@ async function build(ctx: ImageRouteContext): Promise<KieImageRequest> {
                 9,
                 ctx.deepfakeMode,
                 ctx.cloneWeight,
+                hasNudityIntent(ctx.prompt),
             )
             // En PARALELO (antes: secuencial — cara + N extras en fila sumaban
             // segundos antes del submit). El orden se preserva: cara primero.
