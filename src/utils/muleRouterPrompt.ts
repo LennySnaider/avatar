@@ -498,7 +498,7 @@ export function buildMuleRouterFaceSwapPrompt(
     return {
         prompt,
         negativePrompt: opts?.undress
-            ? 'hybrid face, different person, pasted-on face, visible seam, collage, mismatched face lighting, head turned to camera, glowing eyes, oversaturated iris, blotchy skin, red blotches on body, spots all over the body, clothes, bra, panties, underwear, censored, blurred crotch, smooth featureless crotch, mannequin, doll, plastic skin, deformed hands, watermark, text'
-            : 'hybrid face, different person, pasted-on face, visible seam, collage, mismatched face lighting, head turned to camera, glowing eyes, oversaturated iris, blotchy skin, red blotches on body, spots all over the body, mannequin, doll, plastic skin, deformed hands, extra fingers, watermark, text',
+            ? 'hybrid face, different person, pasted-on face, visible seam, collage, mismatched face lighting, head turned to camera, glowing eyes, oversaturated iris, blotchy skin, red blotches on body, spots all over the body, freckles on chest, freckles on shoulders, speckled chest, clothes, bra, panties, underwear, censored, blurred crotch, smooth featureless crotch, mannequin, doll, plastic skin, deformed hands, watermark, text'
+            : 'hybrid face, different person, pasted-on face, visible seam, collage, mismatched face lighting, head turned to camera, glowing eyes, oversaturated iris, blotchy skin, red blotches on body, spots all over the body, freckles on chest, freckles on shoulders, speckled chest, mannequin, doll, plastic skin, deformed hands, extra fingers, watermark, text',
     }
 }

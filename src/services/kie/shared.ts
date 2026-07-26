@@ -359,7 +359,16 @@ export function eyeClause(eyeEmphasis?: string): string {
  * los borraria. Solo se niegan los artefactos que no son de nadie.
  */
 export const SKIN_ARTIFACT_NEGATIVE_TERMS =
-    'blotchy skin, skin rash, red blotches on body, spots all over the body, skin blemishes, mottled skin, acne'
+    'blotchy skin, skin rash, red blotches on body, spots all over the body, skin blemishes, mottled skin, acne, ' +
+    // FUGA DE PECAS (2026-07-26, segundo reporte): la fuente ya no es nuestro
+    // codigo sino el `face_description` del avatar, que el Auto-Analyze escribe
+    // con "prominent freckles" o "freckles on nose/cheeks". Es correcto —las
+    // tienen de verdad— pero el modelo ignora el ambito anatomico y las
+    // reparte al escote y los hombros.
+    //
+    // Por eso NO se prohiben las pecas: se prohibe su UBICACION equivocada.
+    // Prohibirlas a secas borraria las de la cara, que si son de la persona.
+    'freckles on chest, freckles on décolletage, freckles on shoulders, freckles on body, spots on chest, speckled chest'
 
 /** Prohibiciones del ojo — van al NEGATIVE, nunca al positivo. */
 export const EYE_NEGATIVE_TERMS =
