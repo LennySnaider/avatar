@@ -308,10 +308,10 @@ const KlingMotionControlEditor = ({ disabled = false, allowPresets = true }: Kli
                                             detected" y la generacion se pierde.
                                             Se dice ANTES, y se dice el porque. */}
                                         <p className="text-[11px] text-amber-400 mt-1 max-w-[15rem] mx-auto leading-snug">
-                                            Debe verse una persona de cuerpo o
-                                            medio cuerpo. Con planos de detalle
-                                            (solo piernas, manos) Kling no
-                                            detecta el personaje y falla.
+                                            Debe verse el CUERPO: hombros,
+                                            brazos y torso. Kling copia la POSE,
+                                            así que un primer plano de cara no
+                                            le sirve aunque se vea a la persona.
                                         </p>
                                     </div>
                                 )}

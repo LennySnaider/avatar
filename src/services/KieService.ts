@@ -219,7 +219,12 @@ function explainKieFailure(raw: string): string {
     // Kling motion-control necesita ver a una PERSONA en el vídeo que conduce
     // el movimiento. Caso real: se uso un clip que solo mostraba las piernas.
     if (/no valid characters detected/i.test(raw)) {
-        return `El vídeo de movimiento no muestra una persona reconocible. Kling necesita ver el cuerpo (al menos torso y cabeza) para copiar el movimiento — un plano de detalle, solo piernas o una escena sin gente no le sirve. Usa un clip con la persona entera y bien visible. (${raw})`
+        // Mensaje REESCRITO (2026-07-26): decia "no muestra una persona
+        // reconocible", y el usuario lo recibio con una cara en pantalla —
+        // sonaba a mentira. Kling no busca "que se vea alguien": busca un
+        // CUERPO del que extraer un esqueleto de movimiento. Un primer plano
+        // de cara tiene persona pero no tiene de donde sacar movimiento.
+        return `Kling no encontró un CUERPO del que copiar el movimiento en ese vídeo. No basta con que se vea a la persona: necesita hombros, brazos y torso para rastrear la pose. Un primer plano de cara, un plano de detalle (solo piernas o manos) o una toma muy cerrada no le sirven, aunque se vea perfectamente a alguien. Usa un clip de medio cuerpo o cuerpo entero. (${raw})`
     }
     if (/face|no face detected/i.test(raw) && /detect/i.test(raw)) {
         return `El modelo no detectó una cara utilizable en la imagen de referencia. Usa una foto donde la cara se vea de frente, nítida y sin tapar. (${raw})`
