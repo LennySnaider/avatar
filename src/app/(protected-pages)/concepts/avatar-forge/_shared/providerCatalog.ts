@@ -218,6 +218,22 @@ export const DEFAULT_PROVIDERS: AIProvider[] = [
         created_at: null,
     },
     {
+        // Wan 2.6 r2v — REFERENCIA DE PERSONAJE: toma vídeos donde ya sale el
+        // avatar y mantiene su identidad en la escena nueva. Hasta 3 refs
+        // (permite varios personajes). Duración de salida: 5 o 10 (NO 15).
+        id: 'mulerouter-wan26-r2v',
+        name: 'Wan 2.6 r2v · MuleRouter',
+        type: 'KIE' as ProviderType,
+        model: 'mulerouter/wan2.6-r2v',
+        endpoint: 'https://api.mulerouter.ai',
+        is_active: true,
+        supports_image: false,
+        supports_video: true,
+        requires_api_key: true,
+        api_key_env_var: 'MULEROUTER_API_KEY',
+        created_at: null,
+    },
+    {
         // Wan 2.6 t2v — vídeo desde TEXTO, sin imagen de partida.
         id: 'mulerouter-wan26-t2v',
         name: 'Wan 2.6 t2v · MuleRouter',
@@ -499,6 +515,7 @@ export const PROVIDER_COST: Record<string, string> = {
     // Wan 2.6: $0.05/s a 480P … $0.15/s a 1080P segun su web. A 720P/5s ~ $0.5.
     'mulerouter-wan26-i2v': '~$0.50 / 5s',
     'mulerouter-wan26-t2v': '~$0.50 / 5s',
+    'mulerouter-wan26-r2v': '~$0.50 / 5s',
     'kie-ideogram-v3': '~$0.05',
     'kie-nano-banana-2': '~$0.06',
     'kie-nano-banana-2-lite': '~$0.034',
@@ -534,6 +551,7 @@ export const PROVIDER_TRAITS: Record<
     'mulerouter-qwen-edit-max': { permissive: true },
     'mulerouter-wan26-i2v': { permissive: true },
     'mulerouter-wan26-t2v': { permissive: true },
+    'mulerouter-wan26-r2v': { permissive: true },
     'kie-grok-imagine': { face: true },
     'kie-grok-imagine-video': { face: true },
     // Ambos reciben la cara vía image_input[] (mismo patrón que nano-banana-pro)

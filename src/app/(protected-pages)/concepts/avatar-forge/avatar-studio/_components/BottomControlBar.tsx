@@ -14,6 +14,8 @@ import Button from '@/components/ui/Button'
 import Switcher from '@/components/ui/Switcher'
 import Slider from '@/components/ui/Slider'
 import { spicyTier } from '@/utils/spicyTiers'
+import { uploadToSignedStorageUrl } from '@/lib/storageUpload'
+import { createMotionVideoUploadUrl } from '@/services/KieService'
 import Dialog from '@/components/ui/Dialog'
 import Notification from '@/components/ui/Notification'
 import Spinner from '@/components/ui/Spinner'
@@ -496,6 +498,8 @@ const BottomControlBar = ({
         setVideoAudio,
         videoVoiceUrl,
         setVideoVoiceUrl,
+        videoRefUrls,
+        setVideoRefUrls,
         aspectRatio,
         setAspectRatio,
         videoResolution,
@@ -585,6 +589,55 @@ const BottomControlBar = ({
     const isMuleRouterVideo = !!activeProvider?.model?.startsWith(
         'mulerouter/wan2.6',
     )
+    // r2v: la identidad sale de VÍDEOS del personaje, no de una imagen.
+    const isR2V = activeProvider?.model === 'mulerouter/wan2.6-r2v'
+    const [isUploadingRef, setIsUploadingRef] = useState(false)
+    const refVideoInputRef = useRef<HTMLInputElement>(null)
+
+    const handleRefVideoUpload = async (
+        e: React.ChangeEvent<HTMLInputElement>,
+    ) => {
+        const file = e.target.files?.[0]
+        e.target.value = ''
+        if (!file) return
+        if (!file.type.startsWith('video/')) {
+            toast.push(
+                <Notification type="warning" title="Archivo no válido">
+                    La referencia de personaje debe ser un vídeo.
+                </Notification>,
+            )
+            return
+        }
+        // 50MB es el tope de la subida firmada que ya usa el motion control.
+        if (file.size > 50 * 1024 * 1024) {
+            toast.push(
+                <Notification type="warning" title="Vídeo demasiado grande">
+                    Máximo 50MB.
+                </Notification>,
+            )
+            return
+        }
+        setIsUploadingRef(true)
+        try {
+            const ticket = await createMotionVideoUploadUrl(file.type)
+            await uploadToSignedStorageUrl(
+                'generations',
+                ticket.path,
+                ticket.token,
+                file,
+                file.type,
+            )
+            setVideoRefUrls([...videoRefUrls, ticket.publicUrl])
+        } catch (err) {
+            toast.push(
+                <Notification type="danger" title="Falló la subida">
+                    {err instanceof Error ? err.message : String(err)}
+                </Notification>,
+            )
+        } finally {
+            setIsUploadingRef(false)
+        }
+    }
 
     // Snap stale store values when the active provider changes so we never
     // submit a duration / resolution the model rejects.
@@ -2309,6 +2362,56 @@ const BottomControlBar = ({
                                 Con voz clonada del avatar, esa voz CONDUCE el
                                 vídeo (audio_url): el lip-sync sale del propio
                                 generador, sin pasar por un modelo aparte. */}
+                            {/* CHARACTER REF (r2v) — vídeos donde ya sale el
+                                personaje. El modelo toma de ahí su identidad y
+                                la lleva a la escena nueva, que es justo la
+                                consistencia que buscamos. Máx 3 (el API acepta
+                                varios para escenas multi-personaje) y cada uno
+                                debe durar 2-30s. */}
+                            {isR2V && (
+                                <div className="flex items-center gap-1.5 rounded-lg border-2 border-dashed border-purple-400 px-2 py-1">
+                                    <span className="text-xs font-medium text-purple-400">
+                                        🎭 Character Ref
+                                    </span>
+                                    {videoRefUrls.map((u, i) => (
+                                        <button
+                                            key={u}
+                                            type="button"
+                                            title="Quitar esta referencia"
+                                            onClick={() =>
+                                                setVideoRefUrls(
+                                                    videoRefUrls.filter(
+                                                        (x) => x !== u,
+                                                    ),
+                                                )
+                                            }
+                                            className="px-1.5 py-0.5 text-[10px] rounded bg-purple-500/20 text-purple-300 hover:bg-red-500/30"
+                                        >
+                                            #{i + 1} ✕
+                                        </button>
+                                    ))}
+                                    {videoRefUrls.length < 3 && (
+                                        <button
+                                            type="button"
+                                            disabled={isUploadingRef}
+                                            onClick={() =>
+                                                refVideoInputRef.current?.click()
+                                            }
+                                            className="px-1.5 py-0.5 text-[10px] rounded bg-gray-200 text-gray-700 hover:bg-gray-300 disabled:opacity-40 dark:bg-gray-700 dark:text-gray-200"
+                                        >
+                                            {isUploadingRef ? '…' : '+ Vídeo'}
+                                        </button>
+                                    )}
+                                    <input
+                                        ref={refVideoInputRef}
+                                        type="file"
+                                        accept="video/*"
+                                        className="hidden"
+                                        onChange={handleRefVideoUpload}
+                                    />
+                                </div>
+                            )}
+
                             {isMuleRouterVideo && (
                                 <div className="flex items-center gap-1.5 rounded-lg border-2 border-dashed border-gray-300 px-2 py-1 dark:border-gray-600">
                                     <span

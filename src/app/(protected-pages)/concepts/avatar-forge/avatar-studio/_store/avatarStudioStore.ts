@@ -152,6 +152,13 @@ interface AvatarStudioState {
      */
     videoAudio: boolean
     /**
+     * Vídeos de REFERENCIA de personaje para wan2.6-r2v. El modelo toma de
+     * ellos la identidad (y la voz) y la lleva a la escena nueva. Máx 3 — el
+     * API acepta varios para escenas multi-personaje. Cada ref debe durar
+     * 2-30s.
+     */
+    videoRefUrls: string[]
+    /**
      * Voz clonada que CONDUCE el vídeo (`audio_url` de Wan 2.6, wav/mp3 3-30s).
      * Con esto el lip-sync sale del propio generador — sin pasar por un modelo
      * aparte. null = audio generado por el modelo (si videoAudio está on).
@@ -311,6 +318,7 @@ interface AvatarStudioState {
     setAspectRatio: (ratio: AspectRatio) => void
     setVideoResolution: (resolution: VideoResolution) => void
     setVideoAudio: (on: boolean) => void
+    setVideoRefUrls: (urls: string[]) => void
     setVideoVoiceUrl: (url: string | null) => void
     setCameraMotion: (motion: CameraMotion) => void
     setCameraShot: (shot: CameraShot) => void
@@ -515,6 +523,7 @@ const initialState = {
     klingNativeAudioEnabled: false,
     videoDuration: 5,
     videoAudio: false,
+    videoRefUrls: [] as string[],
     videoVoiceUrl: null as string | null,
 
     providers: [],
@@ -804,6 +813,7 @@ export const useAvatarStudioStore = create<AvatarStudioState>()(
             setVideoResolution: (resolution) =>
                 set({ videoResolution: resolution }),
             setVideoAudio: (on) => set({ videoAudio: on }),
+            setVideoRefUrls: (urls) => set({ videoRefUrls: urls.slice(0, 3) }),
             setVideoVoiceUrl: (url) => set({ videoVoiceUrl: url }),
             setCameraMotion: (motion) => set({ cameraMotion: motion }),
             setCameraShot: (shot) => set({ cameraShot: shot }),

@@ -594,6 +594,7 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
         videoResolution,
         videoAudio,
         videoVoiceUrl,
+        videoRefUrls,
         videoDuration,
         cameraMotion,
         cameraShot,
@@ -3168,10 +3169,23 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                             // Submit + poll desde el NAVEGADOR, mismo carril
                             // async que la imagen: el vídeo tarda minutos y una
                             // server action abierta se comería el timeout.
+                            // r2v toma la identidad de VÍDEOS de referencia;
+                            // el resto parte de una imagen. Eso decide qué se
+                            // envía y también la duración: r2v NO acepta 15s
+                            // (solo 5 o 10) y pedirlo lo rechaza.
+                            const isR2V =
+                                activeProvider.model === 'mulerouter/wan2.6-r2v'
+                            if (isR2V && videoRefUrls.length === 0) {
+                                throw new Error(
+                                    'Wan 2.6 r2v necesita al menos un vídeo de referencia del personaje (2-30s). Súbelo en «Character Ref».',
+                                )
+                            }
                             const sub = await submitMuleRouterVideoTask({
-                                model: 'wan2.6-i2v',
+                                model: isR2V ? 'wan2.6-r2v' : 'wan2.6-i2v',
                                 prompt: fullPrompt,
-                                image: optimizedVideoInput,
+                                ...(isR2V
+                                    ? { videoUrls: videoRefUrls }
+                                    : { image: optimizedVideoInput }),
                                 resolution:
                                     videoResolution === '1080p'
                                         ? '1080P'
@@ -3179,13 +3193,17 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                                 // El API SOLO acepta 5, 10 o 15: se redondea al
                                 // permitido más cercano en vez de dejar que
                                 // rechace la petición.
-                                duration: ([5, 10, 15] as const).reduce(
+                                duration: (
+                                    isR2V
+                                        ? ([5, 10] as const)
+                                        : ([5, 10, 15] as const)
+                                ).reduce<5 | 10 | 15>(
                                     (best, d) =>
                                         Math.abs(d - videoDuration) <
                                         Math.abs(best - videoDuration)
                                             ? d
                                             : best,
-                                    5 as 5 | 10 | 15,
+                                    5,
                                 ),
                                 // La VOZ CLONADA conduce el vídeo: con audio_url
                                 // el lip-sync sale del propio generador, sin
@@ -3207,7 +3225,9 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                                 mediaType: 'VIDEO',
                                 prompt,
                                 aspectRatio,
-                                metadata: { model: 'wan2.6-i2v' },
+                                metadata: {
+                                    model: isR2V ? 'wan2.6-r2v' : 'wan2.6-i2v',
+                                },
                             })
                             let wanUrl = ''
                             const wanStart = Date.now()
@@ -3215,7 +3235,7 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                                 await new Promise((r) => setTimeout(r, 8000))
                                 const st = await checkMuleRouterVideoTask(
                                     sub.taskId,
-                                    'wan2.6-i2v',
+                                    isR2V ? 'wan2.6-r2v' : 'wan2.6-i2v',
                                 )
                                 if (st.status === 'done') {
                                     wanUrl = st.url
@@ -3572,6 +3592,7 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
             nsfwLevel,
             videoAudio,
             videoVoiceUrl,
+            videoRefUrls,
             aspectRatio,
             videoDuration,
             cameraShot,

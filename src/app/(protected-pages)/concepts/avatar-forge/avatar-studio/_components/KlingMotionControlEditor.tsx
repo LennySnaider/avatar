@@ -3,6 +3,8 @@
 import { useRef, useState } from 'react'
 import { useAvatarStudioStore } from '../_store/avatarStudioStore'
 import { uploadToSignedStorageUrl } from '@/lib/storageUpload'
+import Notification from '@/components/ui/Notification'
+import toast from '@/components/ui/toast'
 import { createMotionVideoUploadUrl } from '@/services/KieService'
 import Checkbox from '@/components/ui/Checkbox'
 import Card from '@/components/ui/Card'
@@ -65,13 +67,21 @@ const KlingMotionControlEditor = ({ disabled = false, allowPresets = true }: Kli
 
         // Check file type
         if (!file.type.startsWith('video/')) {
-            alert('Please select a video file')
+            toast.push(
+                <Notification type="warning" title="Archivo no válido">
+                    Selecciona un archivo de vídeo.
+                </Notification>,
+            )
             return
         }
 
         // Check file size (max 50MB)
         if (file.size > 50 * 1024 * 1024) {
-            alert('Video file must be less than 50MB')
+            toast.push(
+                <Notification type="warning" title="Vídeo demasiado grande">
+                    Máximo 50MB.
+                </Notification>,
+            )
             return
         }
 
@@ -85,7 +95,11 @@ const KlingMotionControlEditor = ({ disabled = false, allowPresets = true }: Kli
             setKlingPresetMotion(null) // Clear preset when custom video is uploaded
             setUrlInput('') // Clear URL input
         } catch (err) {
-            alert(`Video upload failed: ${err instanceof Error ? err.message : String(err)}`)
+            toast.push(
+                <Notification type="danger" title="Falló la subida">
+                    {err instanceof Error ? err.message : String(err)}
+                </Notification>,
+            )
         } finally {
             setIsUploadingVideo(false)
             if (videoInputRef.current) videoInputRef.current.value = ''
