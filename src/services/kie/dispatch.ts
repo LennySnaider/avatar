@@ -46,8 +46,18 @@ export async function buildImageRequest(
     // nombrado, inyecta uno concreto con color — si no, el motor literal rellena
     // el vacío con nude/beige. En clone/deepfake el outfit viene de la IMAGEN →
     // no se toca. Se trabaja sobre una copia (no muta el ctx del caller).
+    // La pregunta REAL no es "en que modo estamos" sino "¿ya hay una imagen que
+    // trae la ropa puesta?". Enumerar modos dejo fuera la EDICION (2026-07-26,
+    // reporte "mande a editar la foto y mando nada que ver"): la foto fuente
+    // viaja como `referenceImage` sin rol 'clone', asi que la guarda no la veia
+    // y el prompt recibia "dress her in a burgundy wrap blouse…". Qwen es un
+    // editor literal: obedecio, la vistio y rehizo la escena entera.
+    //
+    // No vale con "¿hay referenceImage?": en generacion normal esa imagen es la
+    // CARA del avatar, que no lleva ropa — ahi el fallback SI debe actuar.
     const outfitFromImage =
         ctx.deepfakeMode ||
+        ctx.editMode ||
         (ctx.referenceImages ?? []).some((r) => r.role === 'clone')
     const outfit = outfitFromImage ? '' : concreteOutfitClause(ctx.prompt)
     const built = outfit ? { ...ctx, prompt: ctx.prompt + outfit } : ctx

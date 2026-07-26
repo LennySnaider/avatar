@@ -400,6 +400,9 @@ export interface GenerateImageKieParams {
     // outfit, pose, escena intactos) y SOLO cambia la cara por la del avatar.
     // Apaga bodyClause/curvas; la cláusula de clone cambia a face-swap total.
     deepfakeMode?: boolean
+    // EDICION de una foto existente (la fuente va en referenceImage). Apaga el
+    // fallback de outfit: la foto que se edita ya lleva su ropa puesta.
+    editMode?: boolean
     // Refuerzo de curvas EXCLUSIVO de Seedream (Pro aplana el hourglass cuando
     // describeBody describe la cadera por cm absolutos en vez de por ratio).
     // Solo la rama seedream/ lo inyecta; los demás modelos lo ignoran. Vacío
@@ -448,6 +451,7 @@ export async function generateImageKie(
         eyeEmphasis,
         identityWeight,
         deepfakeMode,
+        editMode,
         curveBoost,
         cloneWeight,
         negativePrompt,
@@ -506,6 +510,7 @@ export async function generateImageKie(
             eyeEmphasis,
             identityWeight,
             deepfakeMode,
+            editMode,
             curveBoost,
             cloneWeight,
             negativePrompt,

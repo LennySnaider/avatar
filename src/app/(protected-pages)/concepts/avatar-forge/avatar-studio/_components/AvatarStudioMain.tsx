@@ -3825,6 +3825,9 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                                 referenceImages: editKieAssets,
                                 aspectRatio: targetAspectRatio,
                                 model: editModel,
+                                // La foto que se edita YA lleva su ropa: sin
+                                // esto el dispatcher inyectaba un outfit.
+                                editMode: true,
                             })
                             resultUrl = polled.url
                             pendingStableUrl = polled.stableUrl
@@ -3835,6 +3838,7 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                                 referenceImages: editKieAssets,
                                 aspectRatio: targetAspectRatio,
                                 model: editModel,
+                                editMode: true,
                             })
                             if (!r.success) {
                                 throw new Error(r.error)

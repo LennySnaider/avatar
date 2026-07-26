@@ -38,6 +38,13 @@ export interface ImageRouteContext {
     eyeEmphasis?: string
     identityWeight?: number
     deepfakeMode?: boolean
+    /**
+     * true = se esta EDITANDO una foto existente (la fuente viaja como
+     * `referenceImage`), no generando desde cero. El contexto no podia
+     * distinguirlo, y por eso el fallback de outfit se colaba en las ediciones:
+     * la foto que se edita YA lleva su ropa puesta.
+     */
+    editMode?: boolean
     curveBoost?: string
     /**
      * Peso del Clone Ref (0-100). 100 = recrear la foto EXACTA (default);

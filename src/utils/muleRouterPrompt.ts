@@ -382,13 +382,13 @@ export function buildMuleRouterFaceSwapPrompt(
     // avatar su color → mitad liso rubio, mitad rizado oscuro (reporte con
     // imagen). Se manda textura+color y se prohíbe la mezcla explícitamente.
     const hair = hairDesc
-        ? ` Her hair is ${hairDesc} — replace the original hair completely; never blend two hairstyles or two hair colours.`
+        ? ` Hair: ${hairDesc} — replace the original completely, never two hairstyles blended.`
         : ''
     // OJOS (2026-07-25, "los ojos se ven raros"): nunca viajaban a MuleRouter —
     // Seedream sí los recibe vía eyeClause y por eso salían bien. La fase 2 es
     // quien decide la cara, así que es SU sitio.
     const eyes = opts?.eyeDesc
-        ? ` Her eyes are ${opts.eyeDesc.split(',')[0]} — natural realistic iris, not glowing or oversaturated.`
+        ? ` Eyes: ${opts.eyeDesc.split(',')[0]}, natural iris, not glowing.`
         : ''
     // DESVESTIR en la fase 2 (2026-07-25): pedir desnudez en la fase 1 peleaba
     // contra el lienzo VESTIDO del clone y ganaba el lienzo (salía con la ropa
@@ -398,8 +398,12 @@ export function buildMuleRouterFaceSwapPrompt(
     // anatomía a la 2… y la 2 solo decía "natural realistic breasts". El detalle
     // del pezón/areola (y el de la vulva) tiene que viajar AQUÍ.
     const areola = opts?.areolaDesc ?? 'small'
+    // Comprimido (2026-07-26): el prompt de fase 2 rozaba el cap de 800 (752) y
+    // ahi el API TRUNCA en seco a media frase. Al añadir las ordenes de
+    // integracion habia que hacer sitio, y estas frases decian lo mismo con
+    // menos ("same pose and framing" ya lo repite el keepList del final).
     const undress = opts?.undress
-        ? ` Also REMOVE all her clothing — she is completely nude, bare skin, same pose and framing. Natural breasts with CLEARLY DEFINED nipples and ${areola} skin-toned areolas, and a fully CLOSED vulva, plump outer labia concealing the inner ones, anatomically real.`
+        ? ` Also REMOVE all clothing — completely nude. Natural breasts, CLEARLY DEFINED nipples, ${areola} skin-toned areolas, fully CLOSED vulva with plump outer labia concealing the inner ones.`
         : ''
     const keepList = opts?.undress
         ? 'same body, pose, hands, framing, lighting and background'
@@ -412,19 +416,39 @@ export function buildMuleRouterFaceSwapPrompt(
     // fase 1 ("Recreate Image 1 EXACTLY" arrastraba la cara). Con desnudo las
     // EDICIONES van primero (swap + desvestir) y la fidelidad al final, acotada
     // a lo que si debe conservarse.
-    const swapClause = `The SECOND image shows the person whose FACE to use: replace the face in the FIRST image with hers — exact features, freckles and likeness — never keep the original face, never blend the two images.`
+    // INTEGRACION (2026-07-26, reporte con 4 imagenes: cara frontal sobre cuerpo
+    // de espaldas, sobreiluminada, con costura recta, y en el peor caso silueta
+    // negra). El clause decia `never blend the two images` — puesto para que no
+    // PROMEDIARA dos caras, pero el editor lee "blend" como INTEGRAR y le
+    // estabamos prohibiendo justo el trabajo que hace que un swap parezca real.
+    // Le ordenabamos pegar una cara y le prohibiamos disimular el pegado.
+    //
+    // Se reusa la formula ya validada de la ruta Wan (faceIdentityClause):
+    // prohibicion PRECISA del hibrido + exigencia explicita de reiluminar,
+    // igualar textura y fundir la costura. Y la orientacion de la CABEZA se
+    // hereda del lienzo: la referencia de cara es un retrato frontal, asi que
+    // sin decirlo el editor la pega frontal aunque el cuerpo mire al mar.
+    const swapClause = `Image 2 = her FACE: give the woman in Image 1 HER exact face and freckles — never the original, never a hybrid. Keep the head at the SAME angle and direction as Image 1 (turned away stays turned away). Relight the face to the scene's light and blend the neck seam — no pasted-on look.`
+    // PRESUPUESTO DURO. El API corta a 800 con un slice ciego, o sea a media
+    // frase y en silencio: lo ultimo que se añade es lo primero que se pierde,
+    // sin aviso. Se compone por PRIORIDAD y se descarta la pieza entera que no
+    // quepa, en vez de dejar que el corte deje una orden a medias (que ademas
+    // puede leerse como otra cosa). Orden: la identidad y las ordenes de
+    // edicion primero; ojos al final porque es lo unico prescindible.
+    const head = opts?.undress
+        ? swapClause + undress
+        : `Keep Image 1 — ${keepList}. ${swapClause}`
+    const optional = opts?.undress
+        ? [` Everything else as in Image 1: ${keepList}.`, hair, eyes]
+        : [hair, eyes]
+    let prompt = head
+    for (const piece of optional) {
+        if (piece && prompt.length + piece.length <= 800) prompt += piece
+    }
     return {
-        prompt: opts?.undress
-            ? swapClause +
-              undress +
-              ` Everything else stays as in the FIRST image: ${keepList}.` +
-              hair +
-              eyes
-            : `Keep the FIRST image EXACTLY — ${keepList}. ${swapClause}` +
-              hair +
-              eyes,
+        prompt,
         negativePrompt: opts?.undress
-            ? 'blended faces, different person, clothes, bra, panties, underwear, censored, blurred crotch, smooth featureless crotch, mannequin, doll, plastic skin, deformed hands, watermark, text'
-            : 'blended faces, different person, mannequin, doll, plastic skin, deformed hands, extra fingers, watermark, text, logo',
+            ? 'hybrid face, different person, pasted-on face, visible seam, collage, mismatched face lighting, head turned to camera, clothes, bra, panties, underwear, censored, blurred crotch, smooth featureless crotch, mannequin, doll, plastic skin, deformed hands, watermark, text'
+            : 'hybrid face, different person, pasted-on face, visible seam, collage, mismatched face lighting, head turned to camera, mannequin, doll, plastic skin, deformed hands, extra fingers, watermark, text',
     }
 }
