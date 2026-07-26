@@ -181,6 +181,75 @@ const ImageDropzone = ({
 }) => {
     const inputRef = useRef<HTMLInputElement>(null)
     const [isDragOver, setIsDragOver] = useState(false)
+    // "Caliente" = el ratón está encima o el slot tiene el foco. Sin esto, con
+    // ocho dropzones a la vez, un ⌘V pegaría en todos.
+    const [isHot, setIsHot] = useState(false)
+
+    // ⌘/Ctrl+V — la via FIABLE: el evento `paste` trae el archivo en
+    // clipboardData sin pedir permisos y funciona en todos los navegadores.
+    useEffect(() => {
+        if (!isHot) return
+        const onPaste = (e: ClipboardEvent) => {
+            const items = Array.from(e.clipboardData?.items ?? [])
+            const img = items.find((i) => i.type.startsWith('image/'))
+            const file = img?.getAsFile()
+            if (!file) return
+            e.preventDefault()
+            onUpload(file)
+        }
+        document.addEventListener('paste', onPaste)
+        return () => document.removeEventListener('paste', onPaste)
+    }, [isHot, onUpload])
+
+    // CLIC DERECHO. El menú NATIVO no ofrece "Pegar" sobre un div (solo sobre
+    // campos editables), así que se sustituye por la acción directa: leer el
+    // portapapeles. Requiere la Clipboard API y permiso del navegador — si no
+    // está, se dice por qué en vez de no hacer nada.
+    const handleContextMenu = useCallback(
+        async (e: React.MouseEvent) => {
+            e.preventDefault()
+            try {
+                const items = await navigator.clipboard.read()
+                for (const item of items) {
+                    const type = item.types.find((t) =>
+                        t.startsWith('image/'),
+                    )
+                    if (!type) continue
+                    const blob = await item.getType(type)
+                    onUpload(
+                        new File(
+                            [blob],
+                            `pegado.${type.split('/')[1] || 'png'}`,
+                            { type },
+                        ),
+                    )
+                    return
+                }
+                toast.push(
+                    <Notification type="info" title="Nada que pegar">
+                        No hay ninguna imagen en el portapapeles.
+                    </Notification>,
+                )
+            } catch {
+                toast.push(
+                    <Notification type="info" title="Usa ⌘V">
+                        El navegador no dejó leer el portapapeles. Pon el ratón
+                        sobre el slot y pulsa ⌘V (Ctrl+V).
+                    </Notification>,
+                )
+            }
+        },
+        [onUpload],
+    )
+
+    const hotProps = {
+        onMouseEnter: () => setIsHot(true),
+        onMouseLeave: () => setIsHot(false),
+        onFocus: () => setIsHot(true),
+        onBlur: () => setIsHot(false),
+        onContextMenu: handleContextMenu,
+        tabIndex: 0,
+    }
 
     const handleDrop = useCallback(
         (e: React.DragEvent) => {
@@ -203,11 +272,13 @@ const ImageDropzone = ({
     const body = (
         <div className="flex flex-col items-center gap-0.5">
             {image ? (
-                <div className="relative group">
+                <div className="relative group" {...hotProps}>
                     <img
                         src={image.url}
                         alt={label}
-                        className="w-11 h-11 object-cover rounded-lg cursor-pointer hover:ring-2 hover:ring-primary transition-all"
+                        className={`w-11 h-11 object-cover rounded-lg cursor-pointer transition-all ${
+                            isHot ? 'ring-2 ring-primary' : ''
+                        }`}
                         onClick={() => inputRef.current?.click()}
                     />
                     <button
@@ -222,6 +293,7 @@ const ImageDropzone = ({
                 </div>
             ) : (
                 <div
+                    {...hotProps}
                     onDragOver={(e) => {
                         e.preventDefault()
                         setIsDragOver(true)
@@ -252,7 +324,12 @@ const ImageDropzone = ({
             />
         </div>
     )
-    return tooltip ? <Tooltip title={tooltip}>{body}</Tooltip> : body
+    // El pegado no se ve por ningún sitio, así que se anuncia en el tooltip —
+    // una función que nadie descubre es una función que no existe.
+    const hint = 'Arrastra, o ⌘V / clic derecho para pegar del portapapeles'
+    return (
+        <Tooltip title={tooltip ? `${tooltip} — ${hint}` : hint}>{body}</Tooltip>
+    )
 }
 
 const BottomControlBar = ({
