@@ -94,6 +94,10 @@ import {
     checkKieVideoTask,
 } from '@/services/KieService'
 import {
+    apiTrackPendingGeneration,
+    apiClearPendingGeneration,
+} from '@/services/PendingGenerationService'
+import {
     submitMuleRouterImageTask,
     checkMuleRouterImageTask,
 } from '@/services/MuleRouterService'
@@ -166,6 +170,14 @@ interface AvatarStudioMainProps {
  */
 async function pollKieImageTask(
     params: Parameters<typeof submitKieImageTask>[0],
+    // Lo que hace falta para reconstruir la fila de `generations` al reclamar
+    // la tarea SIN el estado del cliente (que para entonces ya no existe).
+    pendingCtx?: {
+        avatarId?: string | null
+        prompt?: string
+        aspectRatio?: string
+        metadata?: Record<string, unknown>
+    },
 ): Promise<{
     url: string
     fullApiPrompt: string
@@ -186,6 +198,19 @@ async function pollKieImageTask(
         if (!sub.success) {
             throw new Error(sub.error)
         }
+        // RASTRO DE RESCATE: el taskId ya existe en KIE (y la generación se
+        // cobra) pero solo vivía en esta variable. Si el componente se
+        // desmonta —navegar, recargar, cerrar la pestaña— el bucle de abajo
+        // muere y el resultado queda huérfano. Registrarlo AQUÍ, antes de
+        // empezar a sondear, es lo que permite reclamarlo después.
+        void apiTrackPendingGeneration({
+            provider: 'kie',
+            taskId: sub.taskId,
+            avatarId: pendingCtx?.avatarId ?? null,
+            prompt: pendingCtx?.prompt,
+            aspectRatio: pendingCtx?.aspectRatio,
+            metadata: pendingCtx?.metadata ?? {},
+        })
         let failMsg = ''
         const startedAt = Date.now()
         const deadlineMs = startedAt + 18 * 60 * 1000
@@ -211,6 +236,8 @@ async function pollKieImageTask(
                 const stableUrl = persistKieImageResult(st.url)
                     .then((r) => (r.success ? r.url : null))
                     .catch(() => null)
+                // Ya está en manos del cliente: deja de ser reclamable.
+                void apiClearPendingGeneration(sub.taskId)
                 return {
                     url: st.url,
                     fullApiPrompt: sub.fullApiPrompt,
@@ -219,6 +246,8 @@ async function pollKieImageTask(
             }
             if (st.status === 'failed') {
                 failMsg = st.error
+                // Fallo terminal: no hay nada que reclamar.
+                void apiClearPendingGeneration(sub.taskId)
                 break
             }
         }
@@ -626,6 +655,7 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
         galleryBarOpen,
         setGalleryBarOpen,
         gallerySearchQuery,
+        galleryReloadKey,
         galleryMediaTypeFilter,
         galleryAvatarFilter,
         galleryView,
@@ -762,7 +792,7 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
             cancelled = true
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [userId])
+    }, [userId, galleryReloadKey])
 
     // Save Avatar Handler
     const handleSaveAvatar = useCallback(
@@ -2251,6 +2281,14 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                                 tier: mrTier,
                             })
                             if (!sub.success) throw new Error(sub.error)
+                            void apiTrackPendingGeneration({
+                                provider: 'mulerouter',
+                                taskId: sub.taskId,
+                                avatarId: avatarId ?? null,
+                                prompt,
+                                aspectRatio,
+                                metadata: { tier: mrTier },
+                            })
                             let mrUrl = ''
                             const mrStart = Date.now()
                             while (Date.now() - mrStart < 180_000) {
@@ -2261,10 +2299,13 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                                 )
                                 if (st.status === 'done') {
                                     mrUrl = st.url
+                                    void apiClearPendingGeneration(sub.taskId)
                                     break
                                 }
-                                if (st.status === 'failed')
+                                if (st.status === 'failed') {
+                                    void apiClearPendingGeneration(sub.taskId)
                                     throw new Error(st.error)
+                                }
                             }
                             if (!mrUrl)
                                 throw new Error(
@@ -2452,7 +2493,12 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                                 aspectRatio,
                                 model: kieModel,
                                 deepfakeMode: true,
-                            })
+                            }, {
+                                    avatarId,
+                                    prompt,
+                                    aspectRatio,
+                                    metadata: { model: kieModel },
+                                })
                             resultUrl = phase2.url
                             apiPrompt = `[FASE 1 · qwen2/text-to-image — cuerpo/escena]\n${phase1.fullApiPrompt}\n\n[FASE 2 · qwen2/image-edit — face-swap]\n${phase2.fullApiPrompt}`
                             pendingStableUrl = phase2.stableUrl
@@ -2510,7 +2556,12 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                                 // Escala la cláusula de fidelidad facial del
                                 // ancla (port condensado del identity harness).
                                 identityWeight,
-                            })
+                            }, {
+                                    avatarId,
+                                    prompt,
+                                    aspectRatio,
+                                    metadata: { model: kieModel },
+                                })
                             resultUrl = polled.url
                             apiPrompt = polled.fullApiPrompt
                             pendingStableUrl = polled.stableUrl

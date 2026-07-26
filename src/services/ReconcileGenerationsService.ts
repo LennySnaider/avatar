@@ -1,0 +1,127 @@
+'use server'
+
+/**
+ * Reclama las generaciones HUÉRFANAS: tareas que el proveedor completó pero
+ * que nadie guardó porque el navegador dejó de sondear (navegación, recarga,
+ * pestaña cerrada, equipo suspendido). Están pagadas y su imagen sigue viva
+ * en el CDN del proveedor durante un rato — esto las rescata antes de que
+ * caduque esa URL.
+ *
+ * Todo ocurre en el SERVIDOR: bajar la imagen del CDN y volver a subirla son
+ * megabytes que no tienen por qué pasar por el navegador, y así el rescate no
+ * depende de que la pestaña siga abierta (el mismo fallo que lo causó).
+ */
+import { getOrgContext } from '@/lib/tenant/getOrgContext'
+import { orgSupabase } from '@/lib/org/orgTable'
+import { checkKieImageTask } from '@/services/KieService'
+import { checkMuleRouterImageTask } from '@/services/MuleRouterService'
+import {
+    apiListPendingGenerations,
+    apiPurgeExpiredPendingGenerations,
+} from '@/services/PendingGenerationService'
+
+export interface ReconcileResult {
+    recovered: number
+    running: number
+    failed: number
+    /** Motivos legibles de lo que no se pudo rescatar, para el toast. */
+    notes: string[]
+}
+
+/** Descarga el resultado del CDN del proveedor y lo deja en Storage. */
+async function persistRemoteImage(
+    userId: string,
+    url: string,
+): Promise<string> {
+    const res = await fetch(url, { signal: AbortSignal.timeout(60_000) })
+    if (!res.ok) {
+        throw new Error(`descarga ${res.status}`)
+    }
+    const buffer = Buffer.from(await res.arrayBuffer())
+    // Mismo layout que el auto-save del Studio: <userId>/images/<epoch>.jpg
+    const path = `${userId}/images/${Date.now()}.jpg`
+    const { error } = await orgSupabase()
+        .storage.from('generations')
+        .upload(path, buffer, {
+            contentType: 'image/jpeg',
+            cacheControl: '3600',
+            upsert: false,
+        })
+    if (error) throw new Error(error.message)
+    return path
+}
+
+export async function apiReconcilePendingGenerations(): Promise<ReconcileResult> {
+    const ctx = await getOrgContext()
+    const out: ReconcileResult = {
+        recovered: 0,
+        running: 0,
+        failed: 0,
+        notes: [],
+    }
+
+    const pending = await apiListPendingGenerations()
+    for (const row of pending) {
+        try {
+            const status =
+                row.provider === 'mulerouter'
+                    ? await checkMuleRouterImageTask(
+                          row.task_id,
+                          (row.metadata?.tier as 'max' | 'plus') ?? 'max',
+                      )
+                    : await checkKieImageTask(row.task_id)
+
+            // 'running' (KIE) y 'processing' (MuleRouter) son el mismo estado:
+            // sigue viva, se deja en la tabla para el próximo intento.
+            if (status.status !== 'done' && status.status !== 'failed') {
+                out.running++
+                continue
+            }
+
+            if (status.status === 'failed') {
+                out.failed++
+                await orgSupabase()
+                    .from('pending_generations')
+                    .delete()
+                    .eq('id', row.id)
+                continue
+            }
+
+            const path = await persistRemoteImage(ctx.userId, status.url)
+            await orgSupabase()
+                .from('generations')
+                .insert({
+                    user_id: ctx.userId,
+                    organization_id: ctx.organizationId,
+                    avatar_id: row.avatar_id,
+                    media_type: row.media_type,
+                    storage_path: path,
+                    prompt: row.prompt,
+                    aspect_ratio: row.aspect_ratio,
+                    metadata: {
+                        ...row.metadata,
+                        // Marca de origen: se rescató, no se generó en vivo.
+                        recovered: true,
+                        recoveredFrom: row.provider,
+                    },
+                } as never)
+            await orgSupabase()
+                .from('pending_generations')
+                .delete()
+                .eq('id', row.id)
+            out.recovered++
+        } catch (e) {
+            // Una huérfana irrecuperable no debe abortar el barrido: lo más
+            // común es que su URL del CDN ya caducó, y las demás sí sirven.
+            out.failed++
+            out.notes.push(
+                `${row.provider}/${row.task_id.slice(0, 8)}: ${
+                    e instanceof Error ? e.message : 'error'
+                }`,
+            )
+        }
+    }
+
+    await apiPurgeExpiredPendingGenerations()
+    return out
+}

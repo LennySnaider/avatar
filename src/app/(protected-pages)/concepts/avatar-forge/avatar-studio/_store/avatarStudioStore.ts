@@ -158,6 +158,10 @@ interface AvatarStudioState {
     // que un unico set obligaba a re-marcar al cambiar de modo — o mandaba el
     // batch spicy a motores que lo bloquean upstream y se pagaba igual.
     batchProviderIdsNsfw: string[]
+    // Contador que fuerza re-sembrar la galería desde la BD. El seeding vive en
+    // un useEffect([userId]) y no habia forma de repetirlo sin recargar la
+    // pagina; el rescate de huerfanas necesita justamente eso.
+    galleryReloadKey: number
 
     // App State
     appState: AppState
@@ -330,6 +334,7 @@ interface AvatarStudioState {
     setGeminiAutoFallback: (enabled: boolean) => void
     setBatchProviderIds: (ids: string[]) => void
     setBatchProviderIdsNsfw: (ids: string[]) => void
+    reloadGallery: () => void
 
     // Actions - App State
     setAppState: (state: AppState) => void
@@ -492,6 +497,7 @@ const initialState = {
     geminiAutoFallback: false,
     batchProviderIds: [],
     batchProviderIdsNsfw: [],
+    galleryReloadKey: 0,
 
     appState: AppState.IDLE,
     isAvatarLocked: false,
@@ -872,6 +878,8 @@ export const useAvatarStudioStore = create<AvatarStudioState>()(
             setBatchProviderIds: (ids) => set({ batchProviderIds: ids }),
             setBatchProviderIdsNsfw: (ids) =>
                 set({ batchProviderIdsNsfw: ids }),
+            reloadGallery: () =>
+                set((st) => ({ galleryReloadKey: st.galleryReloadKey + 1 })),
 
             // Actions - App State
             setAppState: (state) => set({ appState: state }),

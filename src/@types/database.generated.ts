@@ -10,6 +10,7 @@
  * porque enriquece columnas jsonb (measurements: PhysicalMeasurements, etc.).
  * Para tablas nuevas del multitenant usar estos tipos directamente.
  */
+
 export type Json =
   | string
   | number
@@ -217,7 +218,6 @@ export type Database = {
       }
       ai_providers: {
         Row: {
-          organization_id: string | null
           api_key: string | null
           api_key_env_var: string | null
           created_at: string | null
@@ -226,13 +226,13 @@ export type Database = {
           is_active: boolean | null
           model: string
           name: string
+          organization_id: string | null
           requires_api_key: boolean | null
           supports_image: boolean | null
           supports_video: boolean | null
           type: string
         }
         Insert: {
-          organization_id?: string | null
           api_key?: string | null
           api_key_env_var?: string | null
           created_at?: string | null
@@ -241,13 +241,13 @@ export type Database = {
           is_active?: boolean | null
           model: string
           name: string
+          organization_id?: string | null
           requires_api_key?: boolean | null
           supports_image?: boolean | null
           supports_video?: boolean | null
           type: string
         }
         Update: {
-          organization_id?: string | null
           api_key?: string | null
           api_key_env_var?: string | null
           created_at?: string | null
@@ -256,22 +256,31 @@ export type Database = {
           is_active?: boolean | null
           model?: string
           name?: string
+          organization_id?: string | null
           requires_api_key?: boolean | null
           supports_image?: boolean | null
           supports_video?: boolean | null
           type?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "ai_providers_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       audio_scripts: {
         Row: {
-          organization_id: string
           context: Json
           created_at: string
           duration_target_seconds: number
           generation_id: string | null
           id: string
           language: string
+          organization_id: string
           script_text: string
           template_type: string
           title: string
@@ -279,13 +288,13 @@ export type Database = {
           user_id: string
         }
         Insert: {
-          organization_id?: string
           context?: Json
           created_at?: string
           duration_target_seconds?: number
           generation_id?: string | null
           id?: string
           language?: string
+          organization_id?: string
           script_text: string
           template_type?: string
           title: string
@@ -293,13 +302,13 @@ export type Database = {
           user_id: string
         }
         Update: {
-          organization_id?: string
           context?: Json
           created_at?: string
           duration_target_seconds?: number
           generation_id?: string | null
           id?: string
           language?: string
+          organization_id?: string
           script_text?: string
           template_type?: string
           title?: string
@@ -312,6 +321,13 @@ export type Database = {
             columns: ["generation_id"]
             isOneToOne: false
             referencedRelation: "generations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "audio_scripts_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
             referencedColumns: ["id"]
           },
         ]
@@ -519,29 +535,29 @@ export type Database = {
       }
       avatar_references: {
         Row: {
-          organization_id: string
           avatar_id: string | null
           created_at: string | null
           id: string
           mime_type: string
+          organization_id: string
           storage_path: string
           type: string
         }
         Insert: {
-          organization_id?: string
           avatar_id?: string | null
           created_at?: string | null
           id?: string
           mime_type: string
+          organization_id?: string
           storage_path: string
           type: string
         }
         Update: {
-          organization_id?: string
           avatar_id?: string | null
           created_at?: string | null
           id?: string
           mime_type?: string
+          organization_id?: string
           storage_path?: string
           type?: string
         }
@@ -553,11 +569,17 @@ export type Database = {
             referencedRelation: "avatars"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "avatar_references_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
         ]
       }
       avatars: {
         Row: {
-          organization_id: string
           created_at: string | null
           default_voice_id: string | null
           face_description: string | null
@@ -566,11 +588,11 @@ export type Database = {
           identity_weight: number | null
           measurements: Json | null
           name: string
+          organization_id: string
           updated_at: string | null
           user_id: string | null
         }
         Insert: {
-          organization_id?: string
           created_at?: string | null
           default_voice_id?: string | null
           face_description?: string | null
@@ -579,11 +601,11 @@ export type Database = {
           identity_weight?: number | null
           measurements?: Json | null
           name: string
+          organization_id?: string
           updated_at?: string | null
           user_id?: string | null
         }
         Update: {
-          organization_id?: string
           created_at?: string | null
           default_voice_id?: string | null
           face_description?: string | null
@@ -592,6 +614,7 @@ export type Database = {
           identity_weight?: number | null
           measurements?: Json | null
           name?: string
+          organization_id?: string
           updated_at?: string | null
           user_id?: string | null
         }
@@ -603,16 +626,23 @@ export type Database = {
             referencedRelation: "cloned_voices"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "avatars_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
         ]
       }
       cloned_voices: {
         Row: {
-          organization_id: string
           avatar_id: string | null
           created_at: string
           id: string
           language: string
           name: string
+          organization_id: string
           preview_audio_url: string | null
           provider: string
           provider_voice_id: string
@@ -623,12 +653,12 @@ export type Database = {
           user_id: string
         }
         Insert: {
-          organization_id?: string
           avatar_id?: string | null
           created_at?: string
           id?: string
           language?: string
           name: string
+          organization_id?: string
           preview_audio_url?: string | null
           provider?: string
           provider_voice_id: string
@@ -639,12 +669,12 @@ export type Database = {
           user_id: string
         }
         Update: {
-          organization_id?: string
           avatar_id?: string | null
           created_at?: string
           id?: string
           language?: string
           name?: string
+          organization_id?: string
           preview_audio_url?: string | null
           provider?: string
           provider_voice_id?: string
@@ -662,15 +692,22 @@ export type Database = {
             referencedRelation: "avatars"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "cloned_voices_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
         ]
       }
       fanvue_connections: {
         Row: {
-          organization_id: string
           access_token: string | null
           created_at: string
           fanvue_account_uuid: string | null
           id: string
+          organization_id: string
           refresh_token: string | null
           scopes: string[] | null
           token_expires_at: string | null
@@ -678,11 +715,11 @@ export type Database = {
           user_id: string
         }
         Insert: {
-          organization_id?: string
           access_token?: string | null
           created_at?: string
           fanvue_account_uuid?: string | null
           id?: string
+          organization_id?: string
           refresh_token?: string | null
           scopes?: string[] | null
           token_expires_at?: string | null
@@ -690,48 +727,56 @@ export type Database = {
           user_id: string
         }
         Update: {
-          organization_id?: string
           access_token?: string | null
           created_at?: string
           fanvue_account_uuid?: string | null
           id?: string
+          organization_id?: string
           refresh_token?: string | null
           scopes?: string[] | null
           token_expires_at?: string | null
           updated_at?: string
           user_id?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "fanvue_connections_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       fanvue_creators: {
         Row: {
-          organization_id: string
           avatar_url: string | null
           connection_id: string
           creator_user_uuid: string
           display_name: string | null
           handle: string | null
           id: string
+          organization_id: string
           updated_at: string
         }
         Insert: {
-          organization_id?: string
           avatar_url?: string | null
           connection_id: string
           creator_user_uuid: string
           display_name?: string | null
           handle?: string | null
           id?: string
+          organization_id?: string
           updated_at?: string
         }
         Update: {
-          organization_id?: string
           avatar_url?: string | null
           connection_id?: string
           creator_user_uuid?: string
           display_name?: string | null
           handle?: string | null
           id?: string
+          organization_id?: string
           updated_at?: string
         }
         Relationships: [
@@ -742,11 +787,17 @@ export type Database = {
             referencedRelation: "fanvue_connections"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "fanvue_creators_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
         ]
       }
       fanvue_posts: {
         Row: {
-          organization_id: string
           audience: string | null
           caption: string | null
           created_at: string
@@ -756,6 +807,7 @@ export type Database = {
           generation_id: string | null
           id: string
           media_uuids: string[] | null
+          organization_id: string
           price: number | null
           published_at: string | null
           scheduled_at: string | null
@@ -764,7 +816,6 @@ export type Database = {
           user_id: string | null
         }
         Insert: {
-          organization_id?: string
           audience?: string | null
           caption?: string | null
           created_at?: string
@@ -774,6 +825,7 @@ export type Database = {
           generation_id?: string | null
           id?: string
           media_uuids?: string[] | null
+          organization_id?: string
           price?: number | null
           published_at?: string | null
           scheduled_at?: string | null
@@ -782,7 +834,6 @@ export type Database = {
           user_id?: string | null
         }
         Update: {
-          organization_id?: string
           audience?: string | null
           caption?: string | null
           created_at?: string
@@ -792,6 +843,7 @@ export type Database = {
           generation_id?: string | null
           id?: string
           media_uuids?: string[] | null
+          organization_id?: string
           price?: number | null
           published_at?: string | null
           scheduled_at?: string | null
@@ -799,41 +851,49 @@ export type Database = {
           updated_at?: string
           user_id?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "fanvue_posts_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       generations: {
         Row: {
-          organization_id: string
           aspect_ratio: string | null
           avatar_id: string | null
           created_at: string | null
           id: string
           media_type: string
           metadata: Json | null
+          organization_id: string
           prompt: string
           storage_path: string
           user_id: string | null
         }
         Insert: {
-          organization_id?: string
           aspect_ratio?: string | null
           avatar_id?: string | null
           created_at?: string | null
           id?: string
           media_type: string
           metadata?: Json | null
+          organization_id?: string
           prompt: string
           storage_path: string
           user_id?: string | null
         }
         Update: {
-          organization_id?: string
           aspect_ratio?: string | null
           avatar_id?: string | null
           created_at?: string | null
           id?: string
           media_type?: string
           metadata?: Json | null
+          organization_id?: string
           prompt?: string
           storage_path?: string
           user_id?: string | null
@@ -844,6 +904,13 @@ export type Database = {
             columns: ["avatar_id"]
             isOneToOne: false
             referencedRelation: "avatars"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "generations_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
             referencedColumns: ["id"]
           },
         ]
@@ -904,45 +971,102 @@ export type Database = {
         }
         Relationships: []
       }
+      pending_generations: {
+        Row: {
+          aspect_ratio: string | null
+          avatar_id: string | null
+          created_at: string
+          id: string
+          media_type: string
+          metadata: Json
+          organization_id: string | null
+          prompt: string | null
+          provider: string
+          task_id: string
+          user_id: string
+        }
+        Insert: {
+          aspect_ratio?: string | null
+          avatar_id?: string | null
+          created_at?: string
+          id?: string
+          media_type?: string
+          metadata?: Json
+          organization_id?: string | null
+          prompt?: string | null
+          provider: string
+          task_id: string
+          user_id: string
+        }
+        Update: {
+          aspect_ratio?: string | null
+          avatar_id?: string | null
+          created_at?: string
+          id?: string
+          media_type?: string
+          metadata?: Json
+          organization_id?: string | null
+          prompt?: string | null
+          provider?: string
+          task_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "pending_generations_avatar_id_fkey"
+            columns: ["avatar_id"]
+            isOneToOne: false
+            referencedRelation: "avatars"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       prompts: {
         Row: {
-          organization_id: string
           category: string | null
           created_at: string | null
           id: string
           is_pinned: boolean | null
           media_type: string
           name: string
+          organization_id: string
           text: string
           user_id: string | null
         }
         Insert: {
-          organization_id?: string
           category?: string | null
           created_at?: string | null
           id?: string
           is_pinned?: boolean | null
           media_type: string
           name: string
+          organization_id?: string
           text: string
           user_id?: string | null
         }
         Update: {
-          organization_id?: string
           category?: string | null
           created_at?: string | null
           id?: string
           is_pinned?: boolean | null
           media_type?: string
           name?: string
+          organization_id?: string
           text?: string
           user_id?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "prompts_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       social_posts: {
         Row: {
-          organization_id: string
           caption: string
           content_type: string
           created_at: string
@@ -951,6 +1075,7 @@ export type Database = {
           hashtags: string[]
           id: string
           media_urls: string[]
+          organization_id: string
           platforms: Json
           published_at: string | null
           scheduled_at: string | null
@@ -963,7 +1088,6 @@ export type Database = {
           user_id: string | null
         }
         Insert: {
-          organization_id?: string
           caption?: string
           content_type: string
           created_at?: string
@@ -972,6 +1096,7 @@ export type Database = {
           hashtags?: string[]
           id?: string
           media_urls?: string[]
+          organization_id?: string
           platforms?: Json
           published_at?: string | null
           scheduled_at?: string | null
@@ -984,7 +1109,6 @@ export type Database = {
           user_id?: string | null
         }
         Update: {
-          organization_id?: string
           caption?: string
           content_type?: string
           created_at?: string
@@ -993,6 +1117,7 @@ export type Database = {
           hashtags?: string[]
           id?: string
           media_urls?: string[]
+          organization_id?: string
           platforms?: Json
           published_at?: string | null
           scheduled_at?: string | null
@@ -1013,6 +1138,13 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "social_posts_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "social_posts_social_profile_id_fkey"
             columns: ["social_profile_id"]
             isOneToOne: false
@@ -1023,37 +1155,37 @@ export type Database = {
       }
       social_profiles: {
         Row: {
-          organization_id: string
           api_key: string | null
           avatar_id: string | null
           connected_platforms: Json
           created_at: string
           id: string
           last_synced_at: string | null
+          organization_id: string
           status: string
           upload_post_metadata: Json | null
           upload_post_username: string
         }
         Insert: {
-          organization_id?: string
           api_key?: string | null
           avatar_id?: string | null
           connected_platforms?: Json
           created_at?: string
           id?: string
           last_synced_at?: string | null
+          organization_id?: string
           status?: string
           upload_post_metadata?: Json | null
           upload_post_username: string
         }
         Update: {
-          organization_id?: string
           api_key?: string | null
           avatar_id?: string | null
           connected_platforms?: Json
           created_at?: string
           id?: string
           last_synced_at?: string | null
+          organization_id?: string
           status?: string
           upload_post_metadata?: Json | null
           upload_post_username?: string
@@ -1064,6 +1196,13 @@ export type Database = {
             columns: ["avatar_id"]
             isOneToOne: false
             referencedRelation: "avatars"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "social_profiles_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
             referencedColumns: ["id"]
           },
         ]
@@ -1166,7 +1305,6 @@ export type Database = {
       }
       video_flows: {
         Row: {
-          organization_id: string
           created_at: string | null
           description: string | null
           edges: Json
@@ -1174,12 +1312,12 @@ export type Database = {
           is_template: boolean | null
           name: string
           nodes: Json
+          organization_id: string
           thumbnail_url: string | null
           updated_at: string | null
           user_id: string
         }
         Insert: {
-          organization_id?: string
           created_at?: string | null
           description?: string | null
           edges?: Json
@@ -1187,12 +1325,12 @@ export type Database = {
           is_template?: boolean | null
           name: string
           nodes?: Json
+          organization_id?: string
           thumbnail_url?: string | null
           updated_at?: string | null
           user_id: string
         }
         Update: {
-          organization_id?: string
           created_at?: string | null
           description?: string | null
           edges?: Json
@@ -1200,11 +1338,20 @@ export type Database = {
           is_template?: boolean | null
           name?: string
           nodes?: Json
+          organization_id?: string
           thumbnail_url?: string | null
           updated_at?: string | null
           user_id?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "video_flows_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
       }
     }
     Views: {

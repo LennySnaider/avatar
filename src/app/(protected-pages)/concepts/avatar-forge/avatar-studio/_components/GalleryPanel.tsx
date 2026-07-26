@@ -17,6 +17,7 @@ import {
     apiGetAvatars,
     apiUpdateGenerationMetadata,
 } from '@/services/AvatarForgeService'
+import { apiReconcilePendingGenerations } from '@/services/ReconcileGenerationsService'
 import {
     HiOutlineTrash,
     HiOutlineDownload,
@@ -34,6 +35,7 @@ import {
     HiArrowUp,
     HiOutlineCheckCircle,
     HiCheck,
+    HiOutlineRefresh,
 } from 'react-icons/hi'
 import { PiFlowArrowDuotone } from 'react-icons/pi'
 import { TbPepper } from 'react-icons/tb'
@@ -82,6 +84,7 @@ const GalleryPanel = ({
         updateGalleryItem,
         // Search/filter/view state lives in the store so it survives remounts
         // (the dev error overlay / Fast Refresh used to wipe the typed search).
+        reloadGallery,
         gallerySearchQuery: searchQuery,
         setGallerySearchQuery: setSearchQuery,
         galleryMediaTypeFilter: mediaTypeFilter,
@@ -104,6 +107,10 @@ const GalleryPanel = ({
     // down past ~one viewport of cards. SimpleBar owns the scroll element.
     const scrollBarRef = useRef<ScrollBarRef>(null)
     const [showScrollTop, setShowScrollTop] = useState(false)
+    // Rescate de huerfanas: tareas que el proveedor completo pero que nadie
+    // guardo porque el navegador dejo de sondear (navegar, recargar, cerrar la
+    // pestana). Estan pagadas y su imagen sigue viva un rato en el CDN.
+    const [isReconciling, setIsReconciling] = useState(false)
 
     useEffect(() => {
         const el = scrollBarRef.current?.getScrollElement()
@@ -495,6 +502,45 @@ const GalleryPanel = ({
     // see src/app/.../video-editor/_components/VideoEditorMain.tsx.
     // The gallery no longer manages selection or processing state.
 
+    const handleReconcile = async () => {
+        if (isReconciling) return
+        setIsReconciling(true)
+        try {
+            const r = await apiReconcilePendingGenerations()
+            if (r.recovered > 0) reloadGallery()
+            const parts: string[] = []
+            if (r.recovered)
+                parts.push(
+                    `${r.recovered} recuperada${r.recovered === 1 ? '' : 's'}`,
+                )
+            if (r.running)
+                parts.push(`${r.running} aún generando`)
+            if (r.failed) parts.push(`${r.failed} sin rescate`)
+            toast.push(
+                <Notification
+                    type={r.recovered ? 'success' : 'info'}
+                    title={
+                        r.recovered
+                            ? 'Generaciones recuperadas'
+                            : 'Nada que recuperar'
+                    }
+                >
+                    {parts.length
+                        ? parts.join(' · ')
+                        : 'No hay tareas pendientes de KIE ni MuleRouter.'}
+                </Notification>,
+            )
+        } catch (e) {
+            toast.push(
+                <Notification type="danger" title="Falló la revisión">
+                    {e instanceof Error ? e.message : 'Error desconocido'}
+                </Notification>,
+            )
+        } finally {
+            setIsReconciling(false)
+        }
+    }
+
     return (
         <div className="h-full flex flex-col relative">
             {/* Hidden Upload Input */}
@@ -521,6 +567,21 @@ const GalleryPanel = ({
                             onChange={(e) => setSearchQuery(e.target.value)}
                             className="flex-1 min-w-40"
                         />
+                        {/* Rescate de huerfanas. Discreto a proposito: en
+                            estado sano no hay nada que recuperar, asi que no
+                            merece jerarquia — pero cuando hace falta, evita
+                            perder una generacion ya pagada. */}
+                        <button
+                            type="button"
+                            onClick={handleReconcile}
+                            disabled={isReconciling}
+                            title="Buscar generaciones terminadas en KIE / MuleRouter que no se guardaron"
+                            className="shrink-0 flex items-center justify-center h-8 w-8 rounded-lg border border-gray-300 dark:border-gray-600 text-gray-500 hover:text-primary hover:border-primary disabled:opacity-40 transition-colors"
+                        >
+                            <HiOutlineRefresh
+                                className={`w-4 h-4 ${isReconciling ? 'animate-spin' : ''}`}
+                            />
+                        </button>
                         {(filterableAvatars.length > 0 || hasOrphanMedia) && (
                             <select
                                 value={avatarFilter}
