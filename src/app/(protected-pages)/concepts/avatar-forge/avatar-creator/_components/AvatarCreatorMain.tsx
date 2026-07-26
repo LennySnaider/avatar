@@ -11,7 +11,6 @@ import ScrollBar from '@/components/ui/ScrollBar'
 import Notification from '@/components/ui/Notification'
 import toast from '@/components/ui/toast'
 import Tooltip from '@/components/ui/Tooltip'
-import Dialog from '@/components/ui/Dialog'
 import {
     apiCreateAvatar,
     apiUpdateAvatar,
@@ -20,7 +19,9 @@ import {
 import { analyzeFaceFromImages, generateAvatar } from '@/services/GeminiService'
 import { resizeBase64Image } from '@/utils/imageOptimization'
 import { cleanRefWatermarkInBackground } from '@/utils/refWatermarkClean'
+import ImageLightbox from '@/components/shared/ImageLightbox'
 import PhysicalAttributesEditor from '@/components/shared/PhysicalAttributesEditor'
+import AppearanceEditor from '@/components/shared/AppearanceEditor'
 import BodyLab from '@/components/shared/BodyLab'
 import { sameBodyShape } from '@/utils/bodySheetPrompt'
 import { generateBodySheetPair } from '@/utils/bodySheetGenerate'
@@ -35,8 +36,6 @@ import {
     HiOutlineUser,
     HiOutlineSparkles,
     HiOutlineArrowRight,
-    HiOutlineZoomIn,
-    HiOutlineZoomOut,
 } from 'react-icons/hi'
 import type { ReferenceImage, AvatarWithReferences } from '../types'
 
@@ -62,29 +61,8 @@ const AvatarCreatorMain = ({
     const [previewImage, setPreviewImage] = useState<ReferenceImage | null>(
         null,
     )
-    const [previewZoom, setPreviewZoom] = useState(1)
-
-    const handlePreviewClose = useCallback(() => {
-        setPreviewImage(null)
-        setPreviewZoom(1)
-    }, [])
-
-    const handlePreviewZoomIn = useCallback(() => {
-        setPreviewZoom((prev) => Math.min(prev + 0.25, 3))
-    }, [])
-
-    const handlePreviewZoomOut = useCallback(() => {
-        setPreviewZoom((prev) => Math.max(prev - 0.25, 1))
-    }, [])
-
-    const handlePreviewWheel = useCallback((e: React.WheelEvent) => {
-        e.preventDefault()
-        if (e.deltaY < 0) {
-            setPreviewZoom((prev) => Math.min(prev + 0.25, 3))
-        } else {
-            setPreviewZoom((prev) => Math.max(prev - 0.25, 1))
-        }
-    }, [])
+    // El zoom/arrastre los aporta ImageLightbox — aqui estaban reimplementados.
+    const handlePreviewClose = useCallback(() => setPreviewImage(null), [])
 
     const {
         avatarId,
@@ -1122,6 +1100,27 @@ const AvatarCreatorMain = ({
                             </Card>
                             </div>
 
+                            {/* APARIENCIA — piel, marcas de bronceado, pelo
+                                (tipo/color/largo) y ojos. FALTABA aquí
+                                (2026-07-26): AppearanceEditor se extrajo de
+                                PhysicalAttributesEditor y se actualizaron los
+                                dos drawers, pero el CREADOR se quedó atrás.
+                                Consecuencia real: un avatar creado aquí nacía
+                                sin color de pelo, y como no hay nada que
+                                sobrescriba, el motor se lo inventaba (reporte:
+                                Seedream sacó castaño donde el clon era
+                                pelirroja). La identidad debe quedar completa
+                                DESDE que se crea, no al editarla después. */}
+                            <Card className="p-4">
+                                <h3 className="text-sm font-semibold mb-3">
+                                    Appearance
+                                </h3>
+                                <AppearanceEditor
+                                    measurements={measurements}
+                                    onChange={setMeasurements}
+                                />
+                            </Card>
+
                             <Card className="p-4">
                                 <h3 className="text-sm font-semibold mb-3">
                                     Physical Attributes
@@ -1171,64 +1170,32 @@ const AvatarCreatorMain = ({
                 </ScrollBar>
             </div>
 
-            {/* Image Preview Dialog */}
-            <Dialog
-                isOpen={!!previewImage}
+            {/* Preview: el lightbox COMPARTIDO (2026-07-26). El creador
+                arrastraba su propia copia del diálogo —zoom y arrastre
+                reimplementados— y por eso se quedó sin el toggle Vestida/NSFW
+                de las hojas del Body Lab, que sí tienen los dos drawers. Dos
+                copias de lo mismo divergen siempre; esta ya lo había hecho. */}
+            <ImageLightbox
+                imageUrl={
+                    previewImage
+                        ? previewImage.url ||
+                          previewImage.storagePath ||
+                          null
+                        : null
+                }
+                variants={(() => {
+                    const c = bodySheet || bodyRef
+                    const n = bodySheetNude || bodyRefNsfw
+                    if (!c || !n) return undefined
+                    const shown = previewImage?.url
+                    if (shown !== c.url && shown !== n.url) return undefined
+                    return [
+                        { label: 'Vestida', url: c.url },
+                        { label: '🌶️ NSFW', url: n.url },
+                    ]
+                })()}
                 onClose={handlePreviewClose}
-                onRequestClose={handlePreviewClose}
-                width={700}
-            >
-                {previewImage && (
-                    <div className="flex flex-col">
-                        {/* Zoom Controls */}
-                        <div className="flex items-center justify-center gap-2 p-2 border-b">
-                            <button
-                                onClick={handlePreviewZoomOut}
-                                disabled={previewZoom <= 1}
-                                className="p-2 bg-gray-100 dark:bg-gray-700 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                                title="Zoom Out"
-                            >
-                                <HiOutlineZoomOut className="w-4 h-4" />
-                            </button>
-                            <button
-                                onClick={() => setPreviewZoom(1)}
-                                className="px-3 py-1 text-sm text-gray-600 dark:text-gray-300 hover:text-gray-800 dark:hover:text-white min-w-14 text-center"
-                                title="Reset Zoom"
-                            >
-                                {Math.round(previewZoom * 100)}%
-                            </button>
-                            <button
-                                onClick={handlePreviewZoomIn}
-                                disabled={previewZoom >= 3}
-                                className="p-2 bg-gray-100 dark:bg-gray-700 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                                title="Zoom In"
-                            >
-                                <HiOutlineZoomIn className="w-4 h-4" />
-                            </button>
-                        </div>
-                        {/* Image */}
-                        <div
-                            className="p-2 overflow-auto max-h-[70vh] flex items-center justify-center"
-                            onWheel={handlePreviewWheel}
-                        >
-                            <img
-                                src={
-                                    previewImage.url || previewImage.storagePath
-                                }
-                                alt="Preview"
-                                className="rounded-lg object-contain select-none"
-                                style={{
-                                    transform: `scale(${previewZoom})`,
-                                    transition: 'transform 0.2s ease-out',
-                                    maxHeight:
-                                        previewZoom === 1 ? '65vh' : 'none',
-                                }}
-                                draggable={false}
-                            />
-                        </div>
-                    </div>
-                )}
-            </Dialog>
+            />
         </div>
     )
 }
