@@ -165,61 +165,49 @@ const AvatarEditDrawer = ({
     useEffect(() => {
         if (!isOpen || !avatarId) return
         let cancelled = false
-        ;(async () => {
+        // Las DOS hojas se hidratan INDEPENDIENTES (2026-07-26). Antes la nude
+        // vivía anidada dentro de los early-return de la vestida, así que el
+        // caso normal —vestida ya fresca en el store→ return— saltaba la nude
+        // para siempre: estaba guardada en la BD y el drawer la pintaba como
+        // inexistente. Acoplar dos cargas independientes hace que el atajo de
+        // una cancele la otra.
+        const hydrate = async (
+            type: 'body' | 'body_nsfw',
+            current: typeof bodyRef,
+            apply: (ref: NonNullable<typeof bodyRef>) => void,
+        ) => {
             try {
-                const refs = await apiGetAvatarReferences(avatarId, 'body')
-                const row = refs?.[0]
+                const rows = await apiGetAvatarReferences(avatarId, type)
+                const row = rows?.[0]
                 if (!row?.storage_path) return
                 // No pisar: (a) una selección FRESCA sin guardar (sin
                 // storagePath), ni (b) si ya está fresco (mismo storagePath).
                 if (
-                    bodyRef &&
-                    (!bodyRef.storagePath ||
-                        bodyRef.storagePath === row.storage_path)
+                    current &&
+                    (!current.storagePath ||
+                        current.storagePath === row.storage_path)
                 )
                     return
                 const signed = await getSignedUrl('avatars', row.storage_path)
                 const dataUrl = await urlToDataUrl(signed)
                 const m = dataUrl.match(/^data:(.+);base64,(.+)$/)
                 if (!m || cancelled) return
-                setBodyRef({
+                apply({
                     id: row.id,
                     url: dataUrl,
                     mimeType: m[1],
                     base64: m[2],
-                    type: 'body',
+                    type,
                     storagePath: row.storage_path,
                 })
-                // Hoja NUDE (si el avatar la tiene) — misma lógica.
-                try {
-                    const nRefs = await apiGetAvatarReferences(
-                        avatarId,
-                        'body_nsfw',
-                    )
-                    const nRow = nRefs?.[0]
-                    if (!nRow?.storage_path || cancelled) return
-                    const nSigned = await getSignedUrl(
-                        'avatars',
-                        nRow.storage_path,
-                    )
-                    const nData = await urlToDataUrl(nSigned)
-                    const nm = nData.match(/^data:(.+);base64,(.+)$/)
-                    if (!nm || cancelled) return
-                    setBodyRefNsfw({
-                        id: nRow.id,
-                        url: nData,
-                        mimeType: nm[1],
-                        base64: nm[2],
-                        type: 'body_nsfw',
-                        storagePath: nRow.storage_path,
-                    })
-                } catch {
-                    // sin variante NSFW → se queda sin ella
-                }
             } catch {
-                // sin body ref o fallo de carga → se deja lo que haya
+                // sin esa hoja o fallo de carga → se deja lo que haya
             }
-        })()
+        }
+        void Promise.all([
+            hydrate('body', bodyRef, setBodyRef),
+            hydrate('body_nsfw', bodyRefNsfw, setBodyRefNsfw),
+        ])
         return () => {
             cancelled = true
         }
@@ -629,10 +617,16 @@ const AvatarEditDrawer = ({
     }
 
     const handleUseAsBody = () => {
-        if (!bodySheet) return
-        setBodyRef(bodySheet)
-        setBodySheet(null) // pasa a ser el "Cuerpo guardado" (feedback visible)
-        // La variante NSFW se fija junto con la vestida (se generan en pareja).
+        // Cada hoja se fija por SEPARADO (2026-07-26). Con el refresh selectivo
+        // puedes haber regenerado SOLO la NSFW; el `if (!bodySheet) return` de
+        // antes daba por hecho que las dos venían en pareja, así que ese caso
+        // no se podía fijar — y el botón ni siquiera aparecía porque
+        // `canUseAsBody` también miraba solo la vestida.
+        if (!bodySheet && !bodySheetNude) return
+        if (bodySheet) {
+            setBodyRef(bodySheet)
+            setBodySheet(null) // pasa a ser el "Cuerpo guardado"
+        }
         if (bodySheetNude) {
             setBodyRefNsfw(bodySheetNude)
             setBodySheetNude(null)
@@ -1042,7 +1036,7 @@ const AvatarEditDrawer = ({
                                         handleGenerateBody(only)
                                     }
                                     onUseAsBody={handleUseAsBody}
-                                    canUseAsBody={!!bodySheet}
+                                    canUseAsBody={!!bodySheet || !!bodySheetNude}
                                     onPreview={() => {
                                         const s = bodySheet || bodyRef
                                         if (s) setPreviewImage(s)

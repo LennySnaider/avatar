@@ -44,6 +44,7 @@ const AvatarSelector = ({ userId, isOpen, onClose }: AvatarSelectorProps) => {
         setFaceRef,
         setAngleRef,
         setBodyRef,
+        setBodyRefNsfw,
         setIdentityWeight,
         setMeasurements,
         setFaceDescription,
@@ -175,6 +176,15 @@ const AvatarSelector = ({ userId, isOpen, onClose }: AvatarSelectorProps) => {
                     // abrir/cerrar el Edit", porque el drawer re-hidrata).
                     case 'body':
                         setBodyRef(refImage)
+                        break
+                    // Hoja NUDE del Body Lab. FALTABA (2026-07-26): este switch
+                    // no tiene `default`, así que la fila se descargaba y se
+                    // tiraba en silencio — el avatar SÍ la tenía en la BD pero
+                    // el store quedaba en null y el Body Lab la pintaba como
+                    // inexistente ("no persiste"). Un case ausente no da error
+                    // de tipos, solo deja de hacer nada.
+                    case 'body_nsfw':
+                        setBodyRefNsfw(refImage)
                         break
                     // Bust/Glutes refs (imagen por región) están retirados —
                     // superados por el body ref canónico de Body Lab. Filas

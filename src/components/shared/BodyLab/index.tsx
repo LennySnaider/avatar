@@ -1,5 +1,6 @@
 'use client'
 
+import { useEffect, useState } from 'react'
 import { HiOutlineEye, HiOutlineRefresh } from 'react-icons/hi'
 
 /**
@@ -59,7 +60,34 @@ export interface BodyLabProps {
     onRegenerate?: (only: 'clothed' | 'nude') => void
 }
 
+/** Overlay de "generando" sobre una hoja. Sin esto la miniatura se quedaba
+ *  idéntica durante todo el request (30-90s) y el único feedback era el botón
+ *  de refresh atenuado: parecía que el click no había hecho nada y el usuario
+ *  volvía a pulsar (= pagar dos veces). */
+const GeneratingOverlay = ({ compact }: { compact?: boolean }) => (
+    <div className="absolute inset-0 flex flex-col items-center justify-center gap-1 bg-black/60 backdrop-blur-[2px] rounded-lg z-10">
+        <HiOutlineRefresh
+            className={`animate-spin text-white ${compact ? 'w-4 h-4' : 'w-6 h-6'}`}
+        />
+        {!compact && (
+            <span className="text-xs text-white">Generando…</span>
+        )}
+    </div>
+)
+
 const BodyLab = (props: BodyLabProps) => {
+    // QUÉ hoja se está regenerando. El host solo expone un `isGenerating`
+    // global, así que sin esto un refresh de la NSFW bloquearía también la
+    // vestida (y al revés). null = generación completa → bloquea ambas.
+    const [pending, setPending] = useState<'clothed' | 'nude' | null>(null)
+    const { isGenerating } = props
+    useEffect(() => {
+        if (!isGenerating) setPending(null)
+    }, [isGenerating])
+
+    const busyClothed = isGenerating && pending !== 'nude'
+    const busyNude = isGenerating && pending !== 'clothed'
+
     return (
         <div className="space-y-3">
             <div>
@@ -123,6 +151,7 @@ const BodyLab = (props: BodyLabProps) => {
                             title="Regenerar SOLO esta hoja (vestida)"
                             onClick={(e) => {
                                 e.stopPropagation()
+                                setPending('clothed')
                                 props.onRegenerate?.('clothed')
                             }}
                             className="absolute top-2 right-2 flex items-center justify-center h-7 w-7 rounded-lg bg-black/60 text-white hover:bg-black/80 disabled:opacity-40"
@@ -130,6 +159,7 @@ const BodyLab = (props: BodyLabProps) => {
                             <HiOutlineRefresh className="w-4 h-4" />
                         </button>
                     )}
+                    {busyClothed && <GeneratingOverlay />}
                     {/* Overlay "desactualizado": cambiaste atributos → actualizar */}
                     {props.stale && (
                         <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-black/55 backdrop-blur-[1px] rounded-lg">
@@ -140,7 +170,10 @@ const BodyLab = (props: BodyLabProps) => {
                             <div className="flex items-center gap-2">
                                 <button
                                     type="button"
-                                    onClick={props.onGenerate}
+                                    onClick={() => {
+                                        setPending(null)
+                                        props.onGenerate()
+                                    }}
                                     disabled={props.isGenerating}
                                     className="flex items-center gap-1 px-3 h-8 rounded-lg bg-primary text-white text-xs disabled:opacity-50"
                                 >
@@ -186,6 +219,7 @@ const BodyLab = (props: BodyLabProps) => {
                         <span className="absolute top-0.5 left-0.5 px-1 rounded bg-pink-600 text-white text-[9px] font-bold pointer-events-none">
                             🌶️
                         </span>
+                        {busyNude && <GeneratingOverlay compact />}
                         {/* Refresh SOLO de la NSFW (no paga la vestida). */}
                         {props.onRegenerate && (
                             <button
@@ -194,6 +228,7 @@ const BodyLab = (props: BodyLabProps) => {
                                 title="Regenerar SOLO la variante NSFW"
                                 onClick={(e) => {
                                     e.stopPropagation()
+                                    setPending('nude')
                                     props.onRegenerate?.('nude')
                                 }}
                                 className="absolute -top-1.5 -right-1.5 flex items-center justify-center h-6 w-6 rounded-full bg-pink-600 text-white hover:bg-pink-700 disabled:opacity-40 shadow"
@@ -212,7 +247,10 @@ const BodyLab = (props: BodyLabProps) => {
             <div className="flex gap-2">
                 <button
                     type="button"
-                    onClick={props.onGenerate}
+                    onClick={() => {
+                        setPending(null)
+                        props.onGenerate()
+                    }}
                     disabled={!!props.disabledReason || props.isGenerating}
                     className="flex-1 h-9 rounded-lg bg-primary text-white text-sm disabled:opacity-50"
                 >

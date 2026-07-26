@@ -593,9 +593,16 @@ const AvatarEditDrawer = ({
     }
 
     const handleUseAsBody = () => {
-        if (!bodySheet) return
-        setLocalBodyRef(bodySheet)
-        setBodySheet(null) // pasa a ser el "Cuerpo guardado" (feedback visible)
+        // Cada hoja se fija por SEPARADO (2026-07-26). Con el refresh selectivo
+        // puedes haber regenerado SOLO la NSFW; el `if (!bodySheet) return` de
+        // antes daba por hecho que las dos venían en pareja, así que ese caso
+        // no se podía fijar — y el botón ni siquiera aparecía porque
+        // `canUseAsBody` también miraba solo la vestida.
+        if (!bodySheet && !bodySheetNude) return
+        if (bodySheet) {
+            setLocalBodyRef(bodySheet)
+            setBodySheet(null) // pasa a ser el "Cuerpo guardado"
+        }
         if (bodySheetNude) {
             setLocalBodyRefNsfw(bodySheetNude)
             setBodySheetNude(null)
@@ -1004,7 +1011,7 @@ const AvatarEditDrawer = ({
                                         handleGenerateBody(only)
                                     }
                                     onUseAsBody={handleUseAsBody}
-                                    canUseAsBody={!!bodySheet}
+                                    canUseAsBody={!!bodySheet || !!bodySheetNude}
                                     onPreview={() => {
                                         const s = bodySheet || localBodyRef
                                         if (s) setPreviewImage(s)
