@@ -142,8 +142,19 @@ export function buildMuleRouterEditMaxPrompt(params: {
         // la 1ª por la de la 2ª) y prohíbe MEZCLAR — sin eso el editor
         // conservaba la cara del lienzo (reporte: 65% y 100% con la cara del
         // original).
+        // PRECONDICION DE LA CARA (2026-07-26, reporte "qwen sigue mal en las
+        // poses de espaldas"). Esta orden abre el prompt y es IMPERATIVA:
+        // "replace the face… never keep the original face". En un lienzo de
+        // espaldas NO HAY cara que reemplazar, y la unica forma de obedecer es
+        // girarle la cabeza — que es exactamente lo que hacia. Ahora la orden
+        // lleva su condicion: si la cara no se ve, se queda como esta.
+        //
+        // Ademas cae `Do NOT blend the two images`: se puso para que no
+        // PROMEDIARA dos caras, pero el editor lee "blend" como INTEGRAR y le
+        // prohibia reiluminar y fundir la costura (mismo fix que la fase 2).
+        // Se sustituye por la prohibicion precisa: "never a hybrid".
         parts.push(
-            `The SECOND image shows the person whose FACE to use. The FACE SWAP is MANDATORY: replace the face in the FIRST image with the face from Image ${faceIdx} — her exact features, freckles and likeness — never keep the original face. Do NOT blend the two images.`,
+            `Image ${faceIdx} = her FACE: swap it onto the woman in Image 1 — exact features and freckles, never the original face, never a hybrid. If her face is NOT visible in Image 1 (turned away, in profile or hidden), keep it that way — never turn her head toward the camera.`,
         )
         // En NSFW el outfit del lienzo se EXCLUYE: pedir "keep the outfit
         // EXACTLY" contradecía "she is COMPLETELY NUDE" y ganaba el lienzo
@@ -331,7 +342,19 @@ export function buildMuleRouterEditMaxPrompt(params: {
         }
     }
 
-    return { prompt: parts.join(' ').slice(0, 800), negativePrompt }
+    // CORTE POR LIMITE DE PALABRA (2026-07-26). Era un `.slice(0, 800)` ciego y
+    // partia la escena a media frase — en el caso reportado se perdio ", seen
+    // from behind, looking away toward the horizon", que es justo lo que le
+    // decia a Qwen que estaba de espaldas. Peor aun, un corte a media PALABRA
+    // deja un token que puede leerse como otra cosa. Mismo criterio que ya usa
+    // el negative prompt (recorte por termino completo) y capAtWordBoundary en
+    // las rutas de KIE.
+    const joined = parts.join(' ')
+    const prompt =
+        joined.length <= 800
+            ? joined
+            : joined.slice(0, joined.lastIndexOf(' ', 800)).trimEnd()
+    return { prompt, negativePrompt }
 }
 
 /**
