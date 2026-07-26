@@ -100,6 +100,7 @@ import {
 import {
     buildMuleRouterEditMaxPrompt,
     buildMuleRouterFaceSwapPrompt,
+    mrHairDesc,
     MULEROUTER_SIZE,
 } from '@/utils/muleRouterPrompt'
 import { generateImageViaGateway } from '@/services/GatewayService'
@@ -2302,9 +2303,9 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                                         },
                                     )
                                     const swap = buildMuleRouterFaceSwapPrompt(
-                                        getHairColorDescription(
-                                            measurements?.hairColor,
-                                        ),
+                                        // textura + color (sin la textura el
+                                        // editor tomaba los rizos del lienzo)
+                                        mrHairDesc(measurements),
                                         {
                                             undress: nsfwRun,
                                             // La fase 2 decide la CARA → los

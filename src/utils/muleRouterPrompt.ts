@@ -19,6 +19,28 @@ const MR_FRAMING: Record<string, string> = {
         'Wide full-body shot, whole body with head and feet in frame plus surroundings',
     EXTREME_WIDE: 'Extreme wide shot, subject small in a vast environment',
 }
+/**
+ * Descriptor de pelo COMPLETO: TEXTURA + color (2026-07-25, "combinó el cabello
+ * straight del avatar con el curly del origen"). `hairStyle` existía como campo
+ * pero NO viajaba a ningún prompt — le decíamos el color y nunca la textura, así
+ * que el editor tomaba los rizos del lienzo y los mezclaba con el color del
+ * avatar. Además hay que PROHIBIR mezclar: un editor promedia si no se le dice.
+ */
+export function mrHairDesc(m?: {
+    hairColor?: string
+    hairStyle?: string
+} | null): string {
+    if (!m) return ''
+    const color = getHairColorDescription(m.hairColor).split(',')[0]
+    if (!color) return m.hairStyle ? `${m.hairStyle} hair` : ''
+    // Evita "straight straight blonde hair" si la textura ya está en el color.
+    const tex =
+        m.hairStyle && !color.toLowerCase().includes(m.hairStyle.toLowerCase())
+            ? `${m.hairStyle} `
+            : ''
+    return `${tex}${color}`
+}
+
 const MR_ANGLE: Record<string, string> = {
     LOW_ANGLE: 'from a low angle',
     HIGH_ANGLE: 'from a high angle looking down',
@@ -201,9 +223,7 @@ export function buildMuleRouterEditMaxPrompt(params: {
             m?.waist && m?.hips && m?.bust
                 ? ` (bust ${m.bust}cm, waist ${m.waist}cm, hips ${m.hips}cm)`
                 : ''
-        const hair = m
-            ? getHairColorDescription(m.hairColor).split(',')[0]
-            : ''
+        const hair = mrHairDesc(m)
         // Image 2 = cuerpo. Con la hoja NUDE se copia además la PIEL y la
         // anatomía reales (lo que el texto no lograba: "no se ve natural").
         // Con la hoja VESTIDA hay que prohibir su ropa por nombre — el
@@ -213,8 +233,8 @@ export function buildMuleRouterEditMaxPrompt(params: {
             : ''
         parts.push(
             params.bodySheetNude
-                ? `Image ${bodyIdx} is a body-shape CHART of the same woman: take ONLY her proportions and skin${cmLine} from it — never its hair, eyes, pose, framing, background or lighting, which come from the scene below.${notFromCanvas}${hair ? ` Her hair: ${hair}.` : ''}`
-                : `Image ${bodyIdx} is a body-shape CHART: take ONLY her proportions${cmLine} — never its sports bra, underwear, face, hair, pose or background.${notFromCanvas}${hair ? ` Her hair: ${hair}.` : ''}`,
+                ? `Image ${bodyIdx} is a body-shape CHART of the same woman: take ONLY her proportions and skin${cmLine} from it — never its hair, eyes, pose, framing, background or lighting, which come from the scene below.${notFromCanvas}${hair ? ` Her hair is ${hair} — never the hair from any other image, and never a blend of two hairstyles.` : ''}`
+                : `Image ${bodyIdx} is a body-shape CHART: take ONLY her proportions${cmLine} — never its sports bra, underwear, face, hair, pose or background.${notFromCanvas}${hair ? ` Her hair is ${hair} — never the hair from any other image, and never a blend of two hairstyles.` : ''}`,
         )
     } else if (m?.waist && m?.hips && m?.bust) {
         const shape = (m.shape ?? m.bodyType ?? 'hourglass').replace(/-/g, ' ')
@@ -361,7 +381,12 @@ export function buildMuleRouterFaceSwapPrompt(
     prompt: string
     negativePrompt: string
 } {
-    const hair = hairDesc ? ` Keep her hair ${hairDesc.split(',')[0]}.` : ''
+    // El pelo se BLENDEA si no se prohíbe: el lienzo aporta su textura y el
+    // avatar su color → mitad liso rubio, mitad rizado oscuro (reporte con
+    // imagen). Se manda textura+color y se prohíbe la mezcla explícitamente.
+    const hair = hairDesc
+        ? ` Her hair is ${hairDesc} — replace the original hair completely; never blend two hairstyles or two hair colours.`
+        : ''
     // OJOS (2026-07-25, "los ojos se ven raros"): nunca viajaban a MuleRouter —
     // Seedream sí los recibe vía eyeClause y por eso salían bien. La fase 2 es
     // quien decide la cara, así que es SU sitio.
