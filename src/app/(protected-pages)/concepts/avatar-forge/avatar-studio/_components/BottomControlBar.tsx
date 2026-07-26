@@ -11,6 +11,7 @@ import {
 import { apiCreatePrompt } from '@/services/AvatarForgeService'
 import { resizeBase64Image } from '@/utils/imageOptimization'
 import Button from '@/components/ui/Button'
+import Switcher from '@/components/ui/Switcher'
 import Dialog from '@/components/ui/Dialog'
 import Notification from '@/components/ui/Notification'
 import Spinner from '@/components/ui/Spinner'
@@ -470,6 +471,8 @@ const BottomControlBar = ({
         batchProviderIds,
         nsfwMode,
         setNsfwMode,
+        batchMode,
+        setBatchMode,
     } = useAvatarStudioStore()
 
     // Get avatar thumbnail
@@ -1806,62 +1809,84 @@ const BottomControlBar = ({
 
                 {/* Generate + Batch (móvil: CTA a ancho completo) */}
                 <div className="flex shrink-0 flex-col gap-1 w-full md:w-auto order-5 md:order-0">
-                    <Button
-                        variant="solid"
-                        color={generationMode === 'VIDEO' ? 'purple' : 'blue'}
-                        onClick={onGenerate}
-                        loading={isGenerating}
-                        disabled={!canGenerate()}
-                        className="h-11 w-full md:w-auto"
-                    >
-                        {isGenerating ? 'Generating...' : 'Generate'}
-                    </Button>
-                    {generationMode === 'IMAGE' &&
-                        (() => {
-                            const n = batchProviderIds.length
-                            return (
-                                <div className="flex gap-1">
-                                    <button
-                                        type="button"
-                                        onClick={onOpenBatch}
-                                        disabled={!canGenerate()}
-                                        className={`flex h-7 flex-1 items-center justify-center gap-1 rounded-lg border text-xs font-medium transition-all duration-150 active:scale-[0.97] motion-reduce:active:scale-100 disabled:cursor-not-allowed disabled:opacity-40 ${
-                                            n > 0
-                                                ? 'border-solid border-blue-400 bg-blue-500/10 text-blue-500 shadow-[inset_0_1px_3px_rgb(0_0_0/0.22)] dark:border-blue-500 dark:bg-blue-500/15'
-                                                : 'border-dashed border-gray-300 text-gray-500 hover:border-blue-400 hover:text-blue-500 dark:border-gray-600 dark:text-gray-400'
-                                        }`}
-                                        title={
-                                            n > 0
-                                                ? nsfwMode
-                                                    ? `Batch NSFW: la versión explícita SOLO a los marcados que la rinden (Seedream/Wan/Qwen). Apaga 🌶️ para el batch SFW.`
-                                                    : `Batch directo en ${n} modelo${n === 1 ? '' : 's'} marcado${n === 1 ? '' : 's'} (☑ en el selector para cambiarlos)`
-                                                : 'Marca modelos con ☑ en el selector, o elige aquí — mismo prompt a varios a la vez'
-                                        }
-                                    >
-                                        <TbStack2 className="text-sm" />
-                                        {n > 0
-                                            ? `Batch${nsfwMode ? ' 🌶️' : ''} · ${n}`
-                                            : 'Batch'}
-                                    </button>
-                                    <button
-                                        type="button"
-                                        onClick={() => setNsfwMode(!nsfwMode)}
-                                        title={
-                                            nsfwMode
-                                                ? 'NSFW ON: Generate y Batch crean la versión explícita (escena spicificada) solo en Seedream/Wan/Qwen. Click para apagar.'
-                                                : 'Genera la versión NSFW explícita de la escena (misma locación/pose, sin ropa). Solo Seedream/Wan/Qwen la rinden. Para ambas versiones: un batch con 🌶️ OFF y otro con ON.'
-                                        }
-                                        className={`flex h-7 shrink-0 items-center justify-center rounded-lg border px-2 text-xs font-medium transition-all duration-150 active:scale-90 motion-reduce:active:scale-100 ${
-                                            nsfwMode
-                                                ? 'border-solid border-red-500 bg-red-500/15 text-red-500 shadow-[inset_0_2px_5px_rgb(0_0_0/0.3)]'
-                                                : 'border-dashed border-gray-300 text-gray-500 hover:border-red-400 hover:text-red-500 dark:border-gray-600 dark:text-gray-400'
-                                        }`}
-                                    >
-                                        🌶️
-                                    </button>
-                                </div>
-                            )
-                        })()}
+                    {(() => {
+                        const n = batchProviderIds.length
+                        const isImage = generationMode === 'IMAGE'
+                        // El BOTÓN es uno solo; los switches deciden QUÉ hace.
+                        // Antes eran 3 controles con estados distintos (botón +
+                        // dos toggles con borde punteado) y no se entendía la
+                        // combinación — ahora se lee de un vistazo.
+                        const label = isGenerating
+                            ? 'Generating...'
+                            : `Generate${isImage && batchMode ? ` · Batch${n ? ` ${n}` : ''}` : ''}${isImage && nsfwMode ? ' 🌶️' : ''}`
+                        return (
+                            <>
+                                <Button
+                                    variant="solid"
+                                    color={
+                                        generationMode === 'VIDEO'
+                                            ? 'purple'
+                                            : 'blue'
+                                    }
+                                    onClick={
+                                        isImage && batchMode
+                                            ? onOpenBatch
+                                            : onGenerate
+                                    }
+                                    loading={isGenerating}
+                                    disabled={!canGenerate()}
+                                    className="h-11 w-full md:w-auto"
+                                >
+                                    {label}
+                                </Button>
+                                {isImage && (
+                                    <div className="flex items-center justify-between gap-3 px-0.5">
+                                        <label
+                                            className="flex cursor-pointer select-none items-center gap-1.5"
+                                            title={
+                                                nsfwMode
+                                                    ? 'Spicy ON: genera la versión explícita (misma escena, sin ropa). Solo Seedream/Wan/Qwen la rinden.'
+                                                    : 'Genera la versión NSFW explícita de la escena. Solo Seedream/Wan/Qwen la rinden.'
+                                            }
+                                        >
+                                            <span
+                                                className={`text-xs font-medium ${nsfwMode ? 'text-red-500' : 'text-gray-500 dark:text-gray-400'}`}
+                                            >
+                                                🌶️ Spicy
+                                            </span>
+                                            <Switcher
+                                                checked={nsfwMode}
+                                                onChange={(checked) =>
+                                                    setNsfwMode(checked)
+                                                }
+                                            />
+                                        </label>
+                                        <label
+                                            className="flex cursor-pointer select-none items-center gap-1.5"
+                                            title={
+                                                n > 0
+                                                    ? `Batch ON: Generate manda el mismo prompt a los ${n} modelo${n === 1 ? '' : 's'} marcados (☑ en el selector).`
+                                                    : 'Batch ON: al generar podrás elegir a qué modelos mandar el mismo prompt (o márcalos con ☑ en el selector).'
+                                            }
+                                        >
+                                            <span
+                                                className={`flex items-center gap-1 text-xs font-medium ${batchMode ? 'text-blue-500' : 'text-gray-500 dark:text-gray-400'}`}
+                                            >
+                                                <TbStack2 className="text-sm" />
+                                                Batch{n > 0 ? ` · ${n}` : ''}
+                                            </span>
+                                            <Switcher
+                                                checked={batchMode}
+                                                onChange={(checked) =>
+                                                    setBatchMode(checked)
+                                                }
+                                            />
+                                        </label>
+                                    </div>
+                                )}
+                            </>
+                        )
+                    })()}
                 </div>
             </div>
 

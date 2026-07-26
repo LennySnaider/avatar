@@ -270,7 +270,12 @@ interface AvatarStudioState {
     // Toggle 🌶️ NSFW (sesión): Generate spicifica la escena y exige modelo
     // explícito-capaz; Batch pasa a modo DUAL (SFW + NSFW).
     nsfwMode: boolean
+    /** Batch ON → Generate abanica a los modelos marcados en vez de generar
+     *  en uno solo. Combinado con nsfwMode da las 4 variantes (normal, spicy,
+     *  batch, batch+spicy) desde un mismo botón. */
+    batchMode: boolean
     setNsfwMode: (on: boolean) => void
+    setBatchMode: (on: boolean) => void
     setVideoSubMode: (mode: VideoSubMode) => void
     setAvatarDefaultVoice: (voice: ClonedVoice | null) => void
     setSpeakModel: (model: SpeakModel) => void
@@ -436,6 +441,7 @@ const initialState = {
     detectedTerms: [] as DetectedTerm[],
     generationMode: 'IMAGE' as MediaType,
     nsfwMode: false,
+    batchMode: false,
     videoSubMode: 'ANIMATE' as VideoSubMode,
     avatarDefaultVoice: null as ClonedVoice | null,
     speakModel: 'infinitalk' as SpeakModel,
@@ -744,6 +750,7 @@ export const useAvatarStudioStore = create<AvatarStudioState>()(
                 return `${stripNegatedTattoos(assembled)} ${ANTI_WATERMARK_CLAUSE}`
             },
             setNsfwMode: (on) => set({ nsfwMode: on }),
+            setBatchMode: (on) => set({ batchMode: on }),
             setGenerationMode: (mode) =>
                 set((state) => ({
                     generationMode: mode,
