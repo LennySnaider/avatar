@@ -179,6 +179,32 @@ export type MuleRouterVideoModel =
 const MR_VIDEO_PATH = (model: MuleRouterVideoModel) =>
     `/vendors/alibaba/v1/${model}/generation`
 
+/**
+ * Tamaño de salida — CADA MODELO USA UN PARÁMETRO DISTINTO (verificado contra
+ * la API mandando valores inválidos, que devuelven el enum aceptado):
+ *
+ *   i2v       `resolution`: '480P' | '720P' | '1080P' | '2K' | '4K'
+ *             (el AR lo hereda de la imagen de partida)
+ *   t2v/r2v   `size`: 'ancho*alto' de un enum cerrado
+ *
+ * Mandarles `resolution` a t2v/r2v NO da error: es un parámetro DESCONOCIDO y
+ * lo ignoran en silencio — así que salían en horizontal por defecto aunque el
+ * chip dijera 9:16 (reporte: "no respetó aspect ratio").
+ */
+const MR_VIDEO_SIZE: Record<string, { sd: string; hd: string }> = {
+    '9:16': { sd: '480*832', hd: '720*1280' },
+    '16:9': { sd: '832*480', hd: '1280*720' },
+    '1:1': { sd: '624*624', hd: '960*960' },
+    '3:4': { sd: '832*1088', hd: '832*1088' },
+    '4:3': { sd: '1088*832', hd: '1088*832' },
+}
+
+/** AR + calidad → `size` del enum. Cae a 9:16 HD, que es el formato del Studio. */
+function mrVideoSize(aspectRatio?: string, resolution?: '720P' | '1080P') {
+    const pair = MR_VIDEO_SIZE[aspectRatio ?? '9:16'] ?? MR_VIDEO_SIZE['9:16']
+    return resolution === '1080P' ? pair.hd : pair.hd
+}
+
 export interface MuleRouterVideoParams {
     model: MuleRouterVideoModel
     /** Movimiento/acción. Tope del API: 2000 chars (10× el del editor). */
@@ -189,6 +215,8 @@ export interface MuleRouterVideoParams {
     /** r2v: vídeos del personaje ya accesibles por URL. */
     videoUrls?: string[]
     resolution?: '720P' | '1080P'
+    /** AR del Studio ('9:16', '16:9', …). Solo lo usan t2v y r2v, vía `size`. */
+    aspectRatio?: string
     /** El API solo acepta 5, 10 o 15. */
     duration?: 5 | 10 | 15
     /**
@@ -219,7 +247,16 @@ export async function submitMuleRouterVideoTask(
             ...(params.negativePrompt
                 ? { negative_prompt: params.negativePrompt.slice(0, 500) }
                 : {}),
-            resolution: params.resolution ?? '720P',
+            // i2v habla de `resolution`; t2v/r2v de `size`. Mandar el que no
+            // toca no da error, simplemente se ignora — y ahí estaba el bug.
+            ...(params.model === 'wan2.6-i2v'
+                ? { resolution: params.resolution ?? '720P' }
+                : {
+                      size: mrVideoSize(
+                          params.aspectRatio,
+                          params.resolution,
+                      ),
+                  }),
             ...(params.duration ? { duration: params.duration } : {}),
             // Nuestro prompt ya es deliberado; el rewriter además puede
             // suavizar el NSFW. Off salvo que se pida multi-plano, que SOLO

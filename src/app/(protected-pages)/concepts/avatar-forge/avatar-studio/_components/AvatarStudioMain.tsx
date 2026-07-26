@@ -2850,6 +2850,10 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                                     videoResolution === '1080p'
                                         ? '1080P'
                                         : '720P',
+                                // r2v/t2v no tienen imagen de la que
+                                // heredar el encuadre: el AR viaja
+                                // explícito o salen en horizontal.
+                                aspectRatio,
                                 // La duración la manda el AUDIO, no el chip:
                                 // un vídeo más corto que la voz la corta a
                                 // media frase.
@@ -3207,6 +3211,10 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                                     videoResolution === '1080p'
                                         ? '1080P'
                                         : '720P',
+                                // r2v/t2v no tienen imagen de la que
+                                // heredar el encuadre: el AR viaja
+                                // explícito o salen en horizontal.
+                                aspectRatio,
                                 // El API SOLO acepta 5, 10 o 15: se redondea al
                                 // permitido más cercano en vez de dejar que
                                 // rechace la petición.
