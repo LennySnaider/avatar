@@ -2135,6 +2135,10 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                             generationMeta = {
                                 ...(generationMeta ?? {}),
                                 nsfw: true,
+                                // El NIVEL, no solo el on/off: sin esto, al
+                                // depurar un reporte no hay forma de saber con
+                                // que intensidad salio (me paso justo hoy).
+                                nsfwLevel,
                             }
                         }
 

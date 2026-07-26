@@ -101,8 +101,24 @@ export function buildMuleRouterEditMaxPrompt(params: {
     // con escenas de medio cuerpo).
     const explicitShot =
         !!params.cameraShot && params.cameraShot !== 'AUTO'
+    // La ESCENA ya dice el encuadre? Entonces el default sobra (2026-07-26,
+    // reporte "qwen no puso la pose" a Clone 40%): `cloneDrivesFraming` exigia
+    // que el clon viajara como IMAGEN, y por debajo de 50 solo viaja su TEXTO
+    // — asi que se colaba "Full-body shot, her whole body with head and feet
+    // fully in frame" AL FRENTE (posicion de maxima prioridad) contra una
+    // escena que decia "a medium shot from a slightly high angle". Con la hoja
+    // del Body Lab de imagen (figura de PIE sobre fondo liso), Qwen tenia todo
+    // para plantarla de pie en un estudio, que es justo lo que hizo.
+    //
+    // Un default no puede pisar algo explicito. Si la escena nombra un tipo de
+    // plano, manda ella.
+    const sceneStatesFraming =
+        /\b(close[- ]?up|medium (?:shot|close)|full[- ]?body|full shot|wide shot|long shot|portrait|headshot|head shot|waist[- ]?up|knee[- ]?up|cowboy shot|bust shot|selfie|from the (?:waist|chest|knees) up)\b/i.test(
+            params.scene ?? '',
+        )
     const cloneDrivesFraming =
-        !explicitShot && (params.imageRoles ?? []).includes('clone')
+        !explicitShot &&
+        ((params.imageRoles ?? []).includes('clone') || sceneStatesFraming)
     const framing = explicitShot
         ? (MR_FRAMING[params.cameraShot as string] ?? '')
         : cloneDrivesFraming
