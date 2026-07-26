@@ -1,5 +1,6 @@
 import type { PhysicalMeasurements } from '@/@types/supabase'
-import { getBodyDescriptors, getLegDescriptor, getSkinToneDescription, getHairColorDescription, getEyeColorDescription, isFashionHairColor } from '@/utils/bodyDescriptors'
+import {
+    describeHair, getBodyDescriptors, getLegDescriptor, getSkinToneDescription, getEyeColorDescription, isFashionHairColor } from '@/utils/bodyDescriptors'
 
 /**
  * Shared avatar prompt recipe — a faithful port of the harness in
@@ -157,7 +158,7 @@ function buildInlineBodyDescription(m: PhysicalMeasurements): string {
     const hipDesc = m.hips >= 100 ? 'very wide, full hips and thighs' : m.hips >= 95 ? 'wide, shapely hips with full glutes' : m.hips >= 90 ? 'full, curvy rounded hips' : m.hips >= 84 ? 'proportionate hips' : 'slim hips'
     const heightDesc = getHeightDesc(height)
     const skinToneDesc = getSkinToneDescription(m.skinTone)
-    const hairColorDesc = getHairColorDescription(m.hairColor)
+    const hairColorDesc = describeHair(m)
     const eyeColorDesc = getEyeColorDescription(m.eyeColor)
     const legDesc = getLegDescriptor(m.legType)
 
@@ -252,7 +253,7 @@ function buildBodySpecification(m: PhysicalMeasurements): string {
     const legShape = getLegDescriptor(m.legType)
     const wantsFuller = m.bust >= 90 || m.hips >= 90 || ['curvy', 'hourglass', 'plus-size'].includes(selectedBodyType)
     const skin = getSkinToneDescription(m.skinTone)
-    const hair = getHairColorDescription(m.hairColor)
+    const hair = describeHair(m)
     const whr = (m.hips / m.waist).toFixed(2)
 
     return `╔═══════════════════════════════════════════════════════════════════════════════╗
@@ -411,7 +412,7 @@ export function buildAvatarPrompt(opts: AvatarPromptOptions): { systemPreamble: 
     // A UI-set hair color must beat the reference images / face description,
     // which otherwise show the original color and win by default (identity
     // bleed). Highest-priority override, injected last; keeps face identity.
-    const hairColorSpecDesc = getHairColorDescription(measurements.hairColor)
+    const hairColorSpecDesc = describeHair(measurements)
     const eyeColorSpecDesc = getEyeColorDescription(measurements.eyeColor)
     const eyeColorOverride = eyeColorSpecDesc ? `
 ╔═══════════════════════════════════════════════════════════════╗

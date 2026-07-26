@@ -1,8 +1,8 @@
 import type { PhysicalMeasurements } from '@/@types/supabase'
 import {
+    describeHair,
     describeBody,
     getSkinToneDescription,
-    getHairColorDescription,
     effectiveThighsLevel,
     isExaggeratedBody,
     BUST_SHAPE_PHRASE,
@@ -14,7 +14,7 @@ import {
  * como desactualizada (regenerarla cuesta 2 generaciones: vestida + NSFW).
  *
  * - nipple*: el sheet vestido no los dibuja.
- * - pelo (color/tonos/tipo) y ojos (2026-07-25, petición del usuario): la hoja
+ * - pelo (color/tonos/tipo/LARGO) y ojos (2026-07-25, petición del usuario): la hoja
  *   es una referencia de CUERPO. Su pelo y ojos son decorado — en la generación
  *   la identidad viene del face ref y del hair/eye clause del avatar, que
  *   sobrescriben lo que muestre la hoja. Antes, teñir a un avatar obligaba a
@@ -29,6 +29,7 @@ const SHEET_IGNORED_KEYS = [
     'hairColor',
     'hairColors',
     'hairStyle',
+    'hairLength',
     'eyeColor',
 ] as const
 
@@ -148,7 +149,7 @@ export function buildBodySheetPrompt(
     const body = describeBody(m)
     const curves = buildBodySheetCurves(m)
     const skin = getSkinToneDescription(m.skinTone)
-    const hair = getHairColorDescription(m.hairColor)
+    const hair = describeHair(m)
 
     const person = [`${m.age ?? 22}-year-old woman`, body, skin, hair]
         .filter(Boolean)
@@ -312,7 +313,7 @@ export function buildBodyViewPrompt(
     const body = describeBody(m)
     const curves = buildBodySheetCurves(m)
     const skin = getSkinToneDescription(m.skinTone)
-    const hair = getHairColorDescription(m.hairColor)
+    const hair = describeHair(m)
     const person = [`${m.age ?? 22}-year-old woman`, body, skin, hair]
         .filter(Boolean)
         .join(', ')

@@ -113,6 +113,7 @@ import {
 } from '@/utils/avatarPromptBuilder'
 import {
     describeBody,
+    describeHair,
     getHairColorDescription,
     getEyeColorDescription,
     buildCurvesEmphasis,
@@ -2488,9 +2489,8 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                                 // usuario puede estar recoloreando a propósito.
                                 hairEmphasis: deepfakeActive
                                     ? undefined
-                                    : getHairColorDescription(
-                                          measurements?.hairColor,
-                                      ) || undefined,
+                                    : describeHair(measurements ?? {}) ||
+                                      undefined,
                                 eyeEmphasis: deepfakeActive
                                     ? undefined
                                     : getEyeColorDescription(

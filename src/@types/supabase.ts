@@ -475,6 +475,9 @@ export type BodyShape =
 // description (auto-analyzed from the reference photos).
 export type HairStyle = 'straight' | 'wavy' | 'curly' | 'coily' | (string & {})
 
+/** Largo de cabello 1-7: 1 rapado … 7 pasando la cintura. */
+export type HairLength = 1 | 2 | 3 | 4 | 5 | 6 | 7
+
 // Skin tone scale (1-9 loosely based on Fitzpatrick scale)
 export type SkinTone = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9
 
@@ -552,6 +555,8 @@ export interface PhysicalMeasurements {
     hairColors?: HairColor[]
     /** Textura del cabello (straight/wavy/curly/coily). También se compone dentro de `hairColor`. */
     hairStyle?: HairStyle
+    /** Largo del cabello (1 rapado … 7 pasando la cintura). */
+    hairLength?: HairLength
     eyeColor?: EyeColor
     // ── Modelo de cuerpo (rediseño): medidas = verdad, forma = preset ──
     /** Ancho de hombros (cm). Necesario para distinguir formas (inverted/pear/rect). */

@@ -76,10 +76,10 @@ import {
     aggressiveSanitize,
 } from '@/utils/promptSanitizer'
 import {
+    describeHair,
     getBodyDescriptors,
     getLegDescriptor,
     getSkinToneDescription,
-    getHairColorDescription,
     getEyeColorDescription,
     isFashionHairColor,
 } from '@/utils/bodyDescriptors'
@@ -2019,7 +2019,7 @@ export async function generateAvatar(params: {
 
         // Get skin tone and hair color descriptions
         const skinToneDesc = getSkinToneDescription(measurements.skinTone)
-        const hairColorDesc = getHairColorDescription(measurements.hairColor)
+        const hairColorDesc = describeHair(measurements)
 
         // Build the full description with skin and hair
         let fullDesc = `${measurements.age || 25} year old woman`
@@ -2099,7 +2099,7 @@ export async function generateAvatar(params: {
 
     // Get skin and hair descriptions for body spec
     const skinToneSpecDesc = getSkinToneDescription(measurements.skinTone)
-    const hairColorSpecDesc = getHairColorDescription(measurements.hairColor)
+    const hairColorSpecDesc = describeHair(measurements)
     const eyeColorSpecDesc = getEyeColorDescription(measurements.eyeColor)
 
     // Same image-beats-text problem as hair: the face_description states an eye

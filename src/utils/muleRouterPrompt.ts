@@ -1,7 +1,7 @@
 import type { PhysicalMeasurements } from '@/@types/supabase'
 import {
+    describeHair,
     getEyeColorDescription,
-    getHairColorDescription,
     getSkinToneDescription,
 } from '@/utils/bodyDescriptors'
 // Mapas COMPACTOS propios (los DIFFUSION_* de avatarPromptBuilder son
@@ -29,16 +29,9 @@ const MR_FRAMING: Record<string, string> = {
 export function mrHairDesc(m?: {
     hairColor?: string
     hairStyle?: string
+    hairLength?: number
 } | null): string {
-    if (!m) return ''
-    const color = getHairColorDescription(m.hairColor).split(',')[0]
-    if (!color) return m.hairStyle ? `${m.hairStyle} hair` : ''
-    // Evita "straight straight blonde hair" si la textura ya está en el color.
-    const tex =
-        m.hairStyle && !color.toLowerCase().includes(m.hairStyle.toLowerCase())
-            ? `${m.hairStyle} `
-            : ''
-    return `${tex}${color}`
+    return m ? describeHair(m) : ''
 }
 
 const MR_ANGLE: Record<string, string> = {
@@ -223,7 +216,7 @@ export function buildMuleRouterEditMaxPrompt(params: {
             m?.waist && m?.hips && m?.bust
                 ? ` (bust ${m.bust}cm, waist ${m.waist}cm, hips ${m.hips}cm)`
                 : ''
-        const hair = mrHairDesc(m)
+        const hair = m ? describeHair(m) : ''
         // Image 2 = cuerpo. Con la hoja NUDE se copia además la PIEL y la
         // anatomía reales (lo que el texto no lograba: "no se ve natural").
         // Con la hoja VESTIDA hay que prohibir su ropa por nombre — el
@@ -255,7 +248,7 @@ export function buildMuleRouterEditMaxPrompt(params: {
         }
         if (m.legType && legShort[m.legType])
             bodyBits.push(legShort[m.legType])
-        const hair = getHairColorDescription(m.hairColor).split(',')[0]
+        const hair = describeHair(m)
         if (hair) bodyBits.push(hair)
         const skin = getSkinToneDescription(m.skinTone).split(',')[0]
         if (skin) bodyBits.push(skin)

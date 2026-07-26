@@ -17,7 +17,7 @@ import type {
 } from '../types'
 import type { Avatar, AIProvider, Prompt, SkinTone } from '@/@types/supabase'
 import type { ClonedVoice } from '@/@types/voice'
-import { describeBody, getHairColorDescription } from '@/utils/bodyDescriptors'
+import { describeBody, describeHair } from '@/utils/bodyDescriptors'
 import { stripNegatedTattoos } from '@/utils/promptSanitizer'
 import { stripSceneIdentity, ANTI_WATERMARK_CLAUSE } from '@/utils/sceneSanitizer'
 import type {
@@ -698,7 +698,7 @@ export const useAvatarStudioStore = create<AvatarStudioState>()(
                     // color, pero los valores canónicos perdían la redundancia que sí
                     // pesa en modelos de difusión.
                     bodyParts.push(
-                        getHairColorDescription(measurements.hairColor),
+                        describeHair(measurements),
                     )
                 }
                 // Exact measurements kept as a parenthetical suffix — no info lost.

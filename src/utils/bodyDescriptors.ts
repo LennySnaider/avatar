@@ -598,6 +598,64 @@ export function getHairColorDescription(hairColor?: string): string {
  * fashion/colored-contact values, and any free-text color via the `"<name> eyes"`
  * fallback. Shared by both prompt builders so they stay in sync.
  */
+/**
+ * Largo de cabello 1-7 → frase de prompt. Escala pedida por el usuario
+ * (2026-07-25): de rapado a pasando la cintura. 4 = por los hombros (default
+ * implícito cuando el avatar no lo define, para no imponer un largo).
+ */
+export const HAIR_LENGTH_PHRASE: Record<number, string> = {
+    1: 'buzz-cut shaved',
+    2: 'very short pixie-cut',
+    3: 'short chin-length',
+    4: 'shoulder-length',
+    5: 'long chest-length',
+    6: 'very long waist-length',
+    7: 'extremely long past-the-waist',
+}
+
+/** Etiqueta corta para el slider de la UI. */
+export const HAIR_LENGTH_LABEL: Record<number, string> = {
+    1: 'Rapado',
+    2: 'Pixie',
+    3: 'Corto (mentón)',
+    4: 'Hombros',
+    5: 'Largo (pecho)',
+    6: 'Muy largo (cintura)',
+    7: 'Extralargo',
+}
+
+/**
+ * Descriptor de cabello COMPLETO: largo + textura + color, en una frase.
+ *
+ * Fuente ÚNICA (2026-07-25): antes cada sitio componía el pelo a su manera y
+ * `hairStyle` no llegaba a NINGÚN prompt — el editor tomaba la textura del
+ * lienzo y la fundía con el color del avatar (pelo mitad liso, mitad rizado).
+ * El largo se suma aquí para que viaje por el mismo carril.
+ */
+export function describeHair(m: {
+    hairColor?: string
+    hairStyle?: string
+    hairLength?: number
+}): string {
+    const color = getHairColorDescription(m.hairColor).split(',')[0]
+    const lower = color.toLowerCase()
+    // No duplicar si el color compuesto ya trae textura/largo.
+    const tex =
+        m.hairStyle && !lower.includes(m.hairStyle.toLowerCase())
+            ? m.hairStyle
+            : ''
+    const len =
+        m.hairLength && HAIR_LENGTH_PHRASE[m.hairLength]
+            ? HAIR_LENGTH_PHRASE[m.hairLength]
+            : ''
+    if (!color) {
+        const bare = [len, tex].filter(Boolean).join(' ')
+        return bare ? `${bare} hair` : ''
+    }
+    // "shoulder-length straight blonde hair"
+    return [len, tex, color].filter(Boolean).join(' ')
+}
+
 export function getEyeColorDescription(eyeColor?: string): string {
     if (!eyeColor) return ''
     const descriptions: Record<string, string> = {

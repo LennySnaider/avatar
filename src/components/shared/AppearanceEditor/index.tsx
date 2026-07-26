@@ -10,7 +10,8 @@
 import Slider from '@/components/ui/Slider'
 import HairColorPicker from '@/components/shared/HairColorPicker'
 import EyeColorPicker from '@/components/shared/EyeColorPicker'
-import type { PhysicalMeasurements } from '@/@types/supabase'
+import type { HairLength, PhysicalMeasurements } from '@/@types/supabase'
+import { HAIR_LENGTH_LABEL } from '@/utils/bodyDescriptors'
 
 interface AppearanceEditorProps {
     measurements: PhysicalMeasurements
@@ -119,6 +120,33 @@ const AppearanceEditor = ({
                 onChange={(c) => set({ hairColor: c })}
                 onGradientChange={(p) => set({ ...p })}
             />
+
+            {/* Largo de cabello (1 rapado … 7 pasando la cintura). Va junto al
+                color/tipo: los tres componen el descriptor de pelo que viaja a
+                los prompts (describeHair). */}
+            <div>
+                <div className="flex items-center justify-between">
+                    <span className="text-xs text-gray-500">
+                        Largo de cabello
+                    </span>
+                    <span className="text-xs font-mono text-primary">
+                        {HAIR_LENGTH_LABEL[measurements.hairLength ?? 4]}
+                    </span>
+                </div>
+                <Slider
+                    value={measurements.hairLength ?? 4}
+                    onChange={(val) =>
+                        set({ hairLength: val as number as HairLength })
+                    }
+                    min={1}
+                    max={7}
+                    step={1}
+                />
+                <div className="flex justify-between text-[10px] text-gray-400 mt-0.5">
+                    <span>Rapado</span>
+                    <span>Pasando la cintura</span>
+                </div>
+            </div>
 
             {/* Eye Color */}
             <EyeColorPicker
