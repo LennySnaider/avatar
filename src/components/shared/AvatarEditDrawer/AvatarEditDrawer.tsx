@@ -72,7 +72,6 @@ interface AvatarEditDrawerProps {
     title?: string
     avatarName?: string
     initialData?: AvatarEditData
-    onApply?: (data: AvatarEditData) => void
     onSave?: (name: string, data: AvatarEditData) => Promise<void>
     showSaveToDb?: boolean
     isSaving?: boolean
@@ -97,7 +96,6 @@ const AvatarEditDrawer = ({
     title,
     avatarName,
     initialData,
-    onApply,
     onSave,
     showSaveToDb = true,
     isSaving = false,
@@ -107,7 +105,6 @@ const AvatarEditDrawer = ({
     const faceInputRef = useRef<HTMLInputElement>(null)
     const angleInputRef = useRef<HTMLInputElement>(null)
 
-    const [showSaveInput, setShowSaveInput] = useState(false)
     const [saveAvatarName, setSaveAvatarName] = useState('')
     const [isAnalyzingFace, setIsAnalyzingFace] = useState(false)
     const [isGeneratingAngle, setIsGeneratingAngle] = useState(false)
@@ -338,24 +335,13 @@ const AvatarEditDrawer = ({
     }
 
     // Apply changes
-    const handleApplyChanges = () => {
-        if (onApply) {
-            onApply(getCurrentData())
-        }
-        toast.push(
-            <Notification type="success" title="Changes Applied">
-                Avatar settings updated
-            </Notification>,
-        )
-        onClose()
-    }
-
     // Save to database
     const handleSave = async () => {
         if (onSave && saveAvatarName.trim()) {
             await onSave(saveAvatarName.trim(), getCurrentData())
-            setShowSaveInput(false)
-            setSaveAvatarName('')
+            // Guardar es el final natural de editar — antes cerraba «Apply
+            // Changes» y el flujo de guardar dejaba el drawer abierto.
+            onClose()
         }
     }
 
@@ -1027,78 +1013,47 @@ const AvatarEditDrawer = ({
                         </div>
                     </ScrollBar>
 
-                    {/* Footer Actions */}
-                    <div className="shrink-0 p-4 border-t border-gray-200 dark:border-gray-700 space-y-3">
-                        {/* Apply Changes */}
-                        {onApply && (
-                            <Button
-                                variant="solid"
-                                className="w-full"
-                                onClick={handleApplyChanges}
-                            >
-                                Apply Changes
-                            </Button>
-                        )}
-
-                        {/* Save to Database */}
-                        {showSaveToDb && onSave && hasLocalRefs && (
+                    {/* Footer: UN solo boton (2026-07-26). Habia dos —«Apply
+                        Changes» (solo memoria) y «Save to Database» (persistia)—
+                        y la diferencia no se leia: lo «aplicado» se perdia al
+                        recargar sin aviso. Guardar YA aplicaba ademas de
+                        persistir, o sea el azul era un subconjunto del verde.
+                        Aqui el de Apply ni siquiera llegaba a pintarse: su
+                        unico consumidor (AvatarCard) no pasa `onApply`. */}
+                    <div className="shrink-0 p-4 border-t border-gray-200 dark:border-gray-700 space-y-2">
+                        {showSaveToDb && onSave && (
                             <>
-                                {showSaveInput ? (
-                                    <div className="space-y-2">
-                                        <Input
-                                            placeholder="Avatar name..."
-                                            value={saveAvatarName}
-                                            onChange={(e) =>
-                                                setSaveAvatarName(
-                                                    e.target.value,
-                                                )
-                                            }
-                                            onKeyDown={(e) =>
-                                                e.key === 'Enter' &&
-                                                handleSave()
-                                            }
-                                        />
-                                        <div className="flex gap-2">
-                                            <Button
-                                                variant="solid"
-                                                color="green"
-                                                icon={<HiOutlineSave />}
-                                                onClick={handleSave}
-                                                loading={isSaving}
-                                                className="flex-1"
-                                                disabled={
-                                                    !saveAvatarName.trim() ||
-                                                    // No guardar la versión CON
-                                                    // marca mientras se limpia.
-                                                    cleaningRefs.face ||
-                                                    cleaningRefs.angle
-                                                }
-                                            >
-                                                {cleaningRefs.face ||
-                                                cleaningRefs.angle
-                                                    ? 'Limpiando marca…'
-                                                    : 'Save Avatar'}
-                                            </Button>
-                                            <Button
-                                                variant="plain"
-                                                onClick={() =>
-                                                    setShowSaveInput(false)
-                                                }
-                                            >
-                                                Cancel
-                                            </Button>
-                                        </div>
-                                    </div>
-                                ) : (
+                                <Input
+                                    placeholder="Nombre del avatar..."
+                                    value={saveAvatarName}
+                                    onChange={(e) =>
+                                        setSaveAvatarName(e.target.value)
+                                    }
+                                    onKeyDown={(e) =>
+                                        e.key === 'Enter' && handleSave()
+                                    }
+                                />
+                                <div className="flex gap-2">
                                     <Button
-                                        variant="default"
+                                        variant="solid"
                                         icon={<HiOutlineSave />}
-                                        className="w-full"
-                                        onClick={() => setShowSaveInput(true)}
+                                        onClick={handleSave}
+                                        loading={isSaving}
+                                        className="flex-1"
+                                        disabled={
+                                            !saveAvatarName.trim() ||
+                                            cleaningRefs.face ||
+                                            cleaningRefs.angle
+                                        }
                                     >
-                                        Save to Database
+                                        {cleaningRefs.face || cleaningRefs.angle
+                                            ? 'Limpiando marca…'
+                                            : 'Save Avatar'}
                                     </Button>
-                                )}
+                                    <Button variant="plain" onClick={onClose}>
+                                        Cancel
+                                    </Button>
+                                </div>
                             </>
                         )}
                     </div>

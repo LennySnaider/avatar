@@ -54,7 +54,6 @@ const AvatarEditDrawer = ({
     const faceInputRef = useRef<HTMLInputElement>(null)
     const angleInputRef = useRef<HTMLInputElement>(null)
 
-    const [showSaveInput, setShowSaveInput] = useState(false)
     const [saveAvatarName, setSaveAvatarName] = useState('')
     const [isAnalyzingFace, setIsAnalyzingFace] = useState(false)
     const [isGeneratingAngle, setIsGeneratingAngle] = useState(false)
@@ -360,22 +359,6 @@ const AvatarEditDrawer = ({
     }
 
     // Apply changes to store
-    const handleApplyChanges = () => {
-        setGeneralReferences(localGeneralRefs)
-        setFaceRef(localFaceRef)
-        setAngleRef(localAngleRef)
-        setIdentityWeight(localIdentityWeight)
-        setMeasurements(localMeasurements)
-        setFaceDescription(localFaceDescription)
-
-        toast.push(
-            <Notification type="success" title="Changes Applied">
-                Avatar settings updated
-            </Notification>,
-        )
-        onClose()
-    }
-
     const handleSave = async () => {
         setGeneralReferences(localGeneralRefs)
         setFaceRef(localFaceRef)
@@ -386,8 +369,10 @@ const AvatarEditDrawer = ({
 
         if (onSaveAvatar && saveAvatarName.trim()) {
             await onSaveAvatar(saveAvatarName.trim())
-            setShowSaveInput(false)
-            setSaveAvatarName('')
+            // Cerrar al guardar: era lo que hacia «Apply Changes», y guardar
+            // es el final natural de editar. Sin esto el drawer se quedaba
+            // abierto sin nada mas que hacer.
+            onClose()
         }
     }
 
@@ -1057,78 +1042,43 @@ const AvatarEditDrawer = ({
                         </div>
                     </ScrollBar>
 
-                    {/* Footer Actions */}
-                    <div className="shrink-0 p-4 border-t border-gray-200 dark:border-gray-700 space-y-3">
-                        {/* Apply Changes */}
-                        <Button
-                            variant="solid"
-                            className="w-full"
-                            onClick={handleApplyChanges}
-                        >
-                            Apply Changes
-                        </Button>
-
-                        {/* Save to Database */}
-                        {hasLocalRefs && (
-                            <>
-                                {showSaveInput ? (
-                                    <div className="space-y-2">
-                                        <Input
-                                            placeholder="Avatar name..."
-                                            value={saveAvatarName}
-                                            onChange={(e) =>
-                                                setSaveAvatarName(
-                                                    e.target.value,
-                                                )
-                                            }
-                                            onKeyDown={(e) =>
-                                                e.key === 'Enter' &&
-                                                handleSave()
-                                            }
-                                        />
-                                        <div className="flex gap-2">
-                                            <Button
-                                                variant="solid"
-                                                color="green"
-                                                icon={<HiOutlineSave />}
-                                                onClick={handleSave}
-                                                loading={isSavingAvatar}
-                                                className="flex-1"
-                                                disabled={
-                                                    !saveAvatarName.trim() ||
-                                                    // No guardar la versión CON
-                                                    // marca mientras se limpia.
-                                                    cleaningRefs.face ||
-                                                    cleaningRefs.angle
-                                                }
-                                            >
-                                                {cleaningRefs.face ||
-                                                cleaningRefs.angle
-                                                    ? 'Limpiando marca…'
-                                                    : 'Save Avatar'}
-                                            </Button>
-                                            <Button
-                                                variant="plain"
-                                                onClick={() =>
-                                                    setShowSaveInput(false)
-                                                }
-                                            >
-                                                Cancel
-                                            </Button>
-                                        </div>
-                                    </div>
-                                ) : (
-                                    <Button
-                                        variant="default"
-                                        icon={<HiOutlineSave />}
-                                        className="w-full"
-                                        onClick={() => setShowSaveInput(true)}
-                                    >
-                                        Save to Database
-                                    </Button>
-                                )}
-                            </>
-                        )}
+                    {/* Footer: UN solo boton (2026-07-26). Habia dos —«Apply
+                        Changes» (solo memoria) y «Save to Database» (persistia)—
+                        y la diferencia no se leia: los cambios «aplicados» se
+                        perdian al recargar sin que nada lo advirtiera. Como
+                        guardar YA aplicaba al store ademas de persistir, el
+                        azul era un subconjunto del verde. Queda el que no
+                        pierde trabajo. */}
+                    <div className="shrink-0 p-4 border-t border-gray-200 dark:border-gray-700 space-y-2">
+                        <Input
+                            placeholder="Nombre del avatar..."
+                            value={saveAvatarName}
+                            onChange={(e) => setSaveAvatarName(e.target.value)}
+                            onKeyDown={(e) => e.key === 'Enter' && handleSave()}
+                        />
+                        <div className="flex gap-2">
+                            <Button
+                                variant="solid"
+                                icon={<HiOutlineSave />}
+                                onClick={handleSave}
+                                loading={isSavingAvatar}
+                                className="flex-1"
+                                disabled={
+                                    !saveAvatarName.trim() ||
+                                    // No guardar la version CON marca de agua
+                                    // mientras se esta limpiando.
+                                    cleaningRefs.face ||
+                                    cleaningRefs.angle
+                                }
+                            >
+                                {cleaningRefs.face || cleaningRefs.angle
+                                    ? 'Limpiando marca…'
+                                    : 'Save Avatar'}
+                            </Button>
+                            <Button variant="plain" onClick={onClose}>
+                                Cancel
+                            </Button>
+                        </div>
                     </div>
                 </div>
             </Drawer>
