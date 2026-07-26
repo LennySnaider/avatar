@@ -142,6 +142,13 @@ export class UploadPostProvider implements SocialProvider {
     }
 
     if (!res.ok) {
+      // Log del cuerpo CRUDO: el mensaje que ve el usuario esta resumido, y
+      // cuando el proveedor cambia el formato del error esto es lo unico que
+      // permite saber que dijo de verdad.
+      console.warn(
+        `[upload-post] ${method} ${path} -> ${res.status}`,
+        typeof parsed === 'string' ? parsed.slice(0, 500) : parsed,
+      )
       throw new UploadPostProviderError(
         this.mapErrorMessage(res.status, parsed),
         res.status,
@@ -200,10 +207,20 @@ export class UploadPostProvider implements SocialProvider {
   }
 
   private mapErrorMessage(status: number, body: unknown): string {
-    const apiError =
-      body && typeof body === 'object' && body !== null && 'error' in body
-        ? String((body as { error: unknown }).error)
-        : null
+    // El motivo REAL viene en el cuerpo, y solo se leia `body.error` de un
+    // objeto JSON: un 429 con cuerpo de TEXTO PLANO —o con la clave `message`/
+    // `detail`— se perdia entero y el usuario veia "Upload-Post API error
+    // (429)", que no dice si es cuota agotada, limite por minuto o que.
+    const apiError = ((): string | null => {
+      if (typeof body === 'string') return body.trim() || null
+      if (body && typeof body === 'object') {
+        for (const k of ['error', 'message', 'detail', 'msg'] as const) {
+          const v = (body as Record<string, unknown>)[k]
+          if (typeof v === 'string' && v.trim()) return v.trim()
+        }
+      }
+      return null
+    })()
 
     switch (status) {
       case 401:
@@ -212,8 +229,17 @@ export class UploadPostProvider implements SocialProvider {
         return 'Profile limit reached — upgrade your Upload-Post plan to add more profiles.'
       case 404:
         return 'Resource not found'
+      case 429:
+        // 429 al publicar = limite de Upload-Post, no un fallo nuestro:
+        // o el cupo del plan se agoto, o se esta publicando demasiado
+        // seguido. Se dice, para no perseguir un bug que no existe.
+        return apiError
+          ? `Upload-Post rejected the post (429): ${apiError}`
+          : 'Upload-Post rate limit (429) — either the plan\'s upload quota is used up or posts are going out too fast. Check your Upload-Post plan usage and retry in a few minutes.'
       default:
-        return apiError ?? `Upload-Post API error (${status})`
+        return apiError
+          ? `Upload-Post error (${status}): ${apiError}`
+          : `Upload-Post API error (${status})`
     }
   }
 
