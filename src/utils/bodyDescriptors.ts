@@ -85,14 +85,33 @@ export function getBodyDescriptors(m: PhysicalMeasurements): string {
     const hipWaistRatio = m.hips / m.waist
     const bustWaistRatio = m.bust / m.waist
 
-    // Upper torso proportions
+    // Upper torso proportions.
+    //
+    // DILUCIÓN DEL RELLENO NEUTRO (2026-07-26, reporte "el busto de la hoja no
+    // corresponde al del avatar"): estas bandas de cm y las frases de NIVEL
+    // (buildCurvesEmphasis) describen la MISMA zona, y el nivel se deriva de
+    // los cm — son dos codificaciones del mismo número con vocabularios de
+    // intensidad distintos. En el prompt real de MiaUltra viajaban juntas
+    // "balanced upper proportions, well-defined torso" (banda) y "full rounded
+    // bust" (nivel 3): el difusor promedia y gana la palabra NEUTRA, porque
+    // "balanced" es su render por defecto. El glúteo sobrevivía al mismo choque
+    // solo porque su frase grita ("very large, dramatic"); el busto en nivel
+    // medio no.
+    //
+    // Las bandas EXTREMAS sí se conservan: refuerzan al nivel en la misma
+    // dirección (bust>=100 ↔ nivel 4+, bust<=80 ↔ nivel 1-2). Solo se calla la
+    // banda MEDIA, que no aporta información de ningún cuerpo —describe "el
+    // promedio"— y es la única que puede contradecir. Sin nivel explícito el
+    // comportamiento es exactamente el de antes.
     if (m.bust >= 100) {
         descriptors.push(
             'fuller upper silhouette',
             'generous torso proportions',
         )
     } else if (m.bust >= 90) {
-        descriptors.push('balanced upper proportions', 'well-defined torso')
+        if (!m.bustLevel) {
+            descriptors.push('balanced upper proportions', 'well-defined torso')
+        }
     } else if (m.bust <= 80) {
         descriptors.push('slender upper frame', 'petite torso')
     }
@@ -131,7 +150,12 @@ export function getBodyDescriptors(m: PhysicalMeasurements): string {
             'full lower silhouette',
         )
     } else if (m.hips >= 92) {
-        descriptors.push('proportionate hips', 'balanced lower body')
+        // Mismo relleno neutro que arriba: "proportionate hips, balanced lower
+        // body" viajaba pegado a "very large prominent bubble butt" del nivel 5.
+        // Con glutesLevel explícito manda el nivel.
+        if (!m.glutesLevel) {
+            descriptors.push('proportionate hips', 'balanced lower body')
+        }
     } else if (m.hips <= 85) {
         // COHERENCIA con el slider de glúteos (2026-07-25, reporte con
         // imagen): 'slim lower frame' contradecía frontalmente un glúteo
@@ -224,7 +248,14 @@ export function getLegDescriptor(legType?: string): string {
 export const BUST_LEVEL_PHRASE: Record<number, string> = {
     1: 'small perky bust',
     2: 'modest natural bust',
-    3: 'full rounded bust',
+    // HUECO DE LA ESCALA (2026-07-26): era 'full rounded bust' — el ÚNICO
+    // peldaño sin palabra de TAMAÑO (los demás dicen small / modest / large /
+    // very large / ENORMOUS). "rounded" es forma y "full" es ambiguo, así que
+    // el nivel medio no anclaba nada y en cuerpos de cintura extrema el busto
+    // se renderizaba pequeño: compite contra media docena de superlativos de
+    // cintura y pierde por no tener con qué. Ahora lleva tamaño explícito,
+    // calibrado ENTRE modest y large — sin negaciones ("not large" se pinta).
+    3: 'medium-full rounded bust with clear natural projection',
     4: 'large heavy full bust, deep cleavage',
     5: 'very large voluptuous heavy bust, dramatic deep cleavage',
     // 6 = XXL (más allá de lo natural — pedido multitenant 2026-07-23).
