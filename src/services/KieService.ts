@@ -199,12 +199,32 @@ async function checkTaskOnce(
         return { state: 'success', urls }
     }
     if (state === 'fail') {
-        return {
-            state: 'fail',
-            error: `${json.data.failCode || ''} ${json.data.failMsg || 'Unknown error'}`.trim(),
-        }
+        const raw = `${json.data.failCode || ''} ${json.data.failMsg || 'Unknown error'}`.trim()
+        return { state: 'fail', error: explainKieFailure(raw) }
     }
     return { state: 'running' }
+}
+
+/**
+ * Traduce los fallos de KIE que tienen una CAUSA accionable. El mensaje crudo
+ * dice QUE pasó pero no qué hacer, y el usuario acaba reportándolo como bug
+ * cuando en realidad es un requisito del modelo que no le contamos.
+ *
+ * Se conserva SIEMPRE el texto original al final: si mañana cambian el
+ * wording, el mensaje sigue siendo diagnosticable.
+ */
+// NO se exporta: en un archivo `'use server'` TODO export debe ser async, y
+// esto es una funcion pura. Solo la usa este modulo.
+function explainKieFailure(raw: string): string {
+    // Kling motion-control necesita ver a una PERSONA en el vídeo que conduce
+    // el movimiento. Caso real: se uso un clip que solo mostraba las piernas.
+    if (/no valid characters detected/i.test(raw)) {
+        return `El vídeo de movimiento no muestra una persona reconocible. Kling necesita ver el cuerpo (al menos torso y cabeza) para copiar el movimiento — un plano de detalle, solo piernas o una escena sin gente no le sirve. Usa un clip con la persona entera y bien visible. (${raw})`
+    }
+    if (/face|no face detected/i.test(raw) && /detect/i.test(raw)) {
+        return `El modelo no detectó una cara utilizable en la imagen de referencia. Usa una foto donde la cara se vea de frente, nítida y sin tapar. (${raw})`
+    }
+    return raw
 }
 
 /**

@@ -299,7 +299,20 @@ const KlingMotionControlEditor = ({ disabled = false, allowPresets = true }: Kli
                                     >
                                         <HiOutlineUpload className="w-8 h-8 mx-auto text-gray-400 mb-2" />
                                         <p className="text-sm text-gray-400">Click to upload video</p>
-                                        <p className="text-xs text-gray-500 mt-1">Max 50MB · upper body fully visible, 3–30s</p>
+                                        <p className="text-xs text-gray-500 mt-1">
+                                            Max 50MB · 3–30s
+                                        </p>
+                                        {/* El requisito NO es cosmetico: si
+                                            Kling no detecta persona, la tarea
+                                            falla con "No valid characters
+                                            detected" y la generacion se pierde.
+                                            Se dice ANTES, y se dice el porque. */}
+                                        <p className="text-[11px] text-amber-400 mt-1 max-w-[15rem] mx-auto leading-snug">
+                                            Debe verse una persona de cuerpo o
+                                            medio cuerpo. Con planos de detalle
+                                            (solo piernas, manos) Kling no
+                                            detecta el personaje y falla.
+                                        </p>
                                     </div>
                                 )}
                             </div>
