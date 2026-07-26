@@ -17,6 +17,7 @@ import {
     hairClauseCompact as buildHairClause,
     INTACT_BODY_CLAUSE,
     EYE_NEGATIVE_TERMS,
+    SKIN_ARTIFACT_NEGATIVE_TERMS,
     EDIT_ANCHOR_CLAUSE,
     BODY_SPEC_NOT_WARDROBE_CLAUSE,
 } from '../shared'
@@ -96,6 +97,9 @@ async function build(ctx: ImageRouteContext): Promise<KieImageRequest> {
         ctx.negativePrompt,
         antiPinkNegative,
         ctx.eyeEmphasis ? EYE_NEGATIVE_TERMS : '',
+        // Qwen es el que mas los saca (reporte con imagen: manchas rojas por
+        // pecho y muslos). El positivo ya no nombra marcas; esto es la red.
+        SKIN_ARTIFACT_NEGATIVE_TERMS,
     ]
         .filter(Boolean)
         .join(', ')
@@ -120,7 +124,7 @@ async function build(ctx: ImageRouteContext): Promise<KieImageRequest> {
                     qwenDeepfakeCanvas.mimeType,
                 )
                 input.image_url = [canvasUrl, refUrl]
-                input.prompt = `REMOVE any overlaid stickers, watermarks, emojis or UI graphics pasted on the photo — the output must be a clean photograph. The FIRST image is the ORIGINAL photo — reproduce it EXACTLY: same body, build, outfit, pose, hands, framing, lighting, background and setting; do NOT blend the two images. The SECOND image shows the person whose FACE to use. The FACE SWAP is MANDATORY: replace the face in the first image with the face from the second image (exact features, likeness, and only the skin markings she actually has) — never keep the original face. Do NOT alter or remove any clothing. ${input.prompt}`
+                input.prompt = `REMOVE any overlaid stickers, watermarks, emojis or UI graphics pasted on the photo — the output must be a clean photograph. The FIRST image is the ORIGINAL photo — reproduce it EXACTLY: same body, build, outfit, pose, hands, framing, lighting, background and setting; do NOT blend the two images. The SECOND image shows the person whose FACE to use. The FACE SWAP is MANDATORY: replace the face in the first image with the face from the second image (exact features and likeness) — never keep the original face. Do NOT alter or remove any clothing. ${input.prompt}`
                 console.log('[KIE] qwen2/image-edit DEEPFAKE (canvas + face)')
             } else {
                 const qwenClone = (ctx.referenceImages ?? []).find(
@@ -188,7 +192,7 @@ async function build(ctx: ImageRouteContext): Promise<KieImageRequest> {
                     // que los miembros QUE LA POSE MUESTRE salgan completos, y ataca
                     // el modo de fallo real (esconder/cortar un brazo tras el cuerpo).
                     const cloneIntactClause = ` Every limb the pose shows must be anatomically COMPLETE — both arms with both hands, and legs with feet wherever the framing includes them; never sever, amputate, truncate or tuck a limb out of sight behind her body.`
-                    input.prompt = `Swap ONLY the face — use the SECOND image's face (exact features, likeness, and only the skin markings she actually has), keep that person's hair and natural eye colour, NEVER the first image's original face.${hairClause}${cloneBodyClause}${cloneIntactClause}${anatomyFront} ${fidelity}: ${cloneDesc}`
+                    input.prompt = `Swap ONLY the face — use the SECOND image's face (exact features and likeness), keep that person's hair and natural eye colour, NEVER the first image's original face.${hairClause}${cloneBodyClause}${cloneIntactClause}${anatomyFront} ${fidelity}: ${cloneDesc}`
                     console.log(
                         `[KIE] qwen2/image-edit CLONE (clone canvas + face swap, weight ${cw})`,
                     )

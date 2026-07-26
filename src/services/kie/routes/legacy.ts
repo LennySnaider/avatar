@@ -331,7 +331,7 @@ export async function buildLegacyRequest(
                         qwenDeepfakeCanvas.mimeType,
                     )
                     input.image_url = [canvasUrl, refUrl]
-                    input.prompt = `REMOVE any overlaid stickers, watermarks, emojis or UI graphics pasted on the photo — the output must be a clean photograph. The FIRST image is the ORIGINAL photo — reproduce it EXACTLY: same body, build, outfit, pose, hands, framing, lighting, background and setting; do NOT blend the two images. The SECOND image shows the person whose FACE to use. The FACE SWAP is MANDATORY: replace the face in the first image with the face from the second image (exact features, likeness, and only the skin markings she actually has) — never keep the original face. Do NOT alter or remove any clothing. ${input.prompt}`
+                    input.prompt = `REMOVE any overlaid stickers, watermarks, emojis or UI graphics pasted on the photo — the output must be a clean photograph. The FIRST image is the ORIGINAL photo — reproduce it EXACTLY: same body, build, outfit, pose, hands, framing, lighting, background and setting; do NOT blend the two images. The SECOND image shows the person whose FACE to use. The FACE SWAP is MANDATORY: replace the face in the first image with the face from the second image (exact features and likeness) — never keep the original face. Do NOT alter or remove any clothing. ${input.prompt}`
                     console.log(
                         '[KIE] qwen2/image-edit DEEPFAKE (canvas + face)',
                     )

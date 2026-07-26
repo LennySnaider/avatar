@@ -350,6 +350,17 @@ export function eyeClause(eyeEmphasis?: string): string {
         : ''
 }
 
+/**
+ * Artefactos de PIEL que nunca se quieren: manchas, sarpullidos, moteado por
+ * el cuerpo. Van al NEGATIVE.
+ *
+ * OJO con lo que NO esta aqui: no se prohiben "freckles" ni "moles". Si el
+ * avatar los tiene de verdad, vienen en su foto de referencia y prohibirlos
+ * los borraria. Solo se niegan los artefactos que no son de nadie.
+ */
+export const SKIN_ARTIFACT_NEGATIVE_TERMS =
+    'blotchy skin, skin rash, red blotches on body, spots all over the body, skin blemishes, mottled skin, acne'
+
 /** Prohibiciones del ojo — van al NEGATIVE, nunca al positivo. */
 export const EYE_NEGATIVE_TERMS =
     'glowing eyes, neon eyes, oversaturated iris, radioactive eye colour, contact-lens look, unnatural eye colour'
@@ -367,7 +378,7 @@ export function faceFidelityClause(identityWeight?: number): string {
     return identityWeight === undefined
         ? ''
         : identityWeight >= 85
-          ? ' FACE FIDELITY: match the reference face EXACTLY — same bone structure, nose, eye shape and spacing, lips, jawline, and only the skin markings she actually has; do NOT beautify or genericize it, and never ADD marks she does not have.'
+          ? ' FACE FIDELITY: match the reference face EXACTLY — same bone structure, nose, eye shape and spacing, lips, jawline, ; do NOT beautify or genericize it.'
           : identityWeight > 50
             ? ' Keep her face strongly consistent with the reference — no drift.'
             : ''
