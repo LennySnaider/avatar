@@ -878,6 +878,29 @@ export async function persistKieImageResult(
 }
 
 /**
+ * Igual que persistKieImageResult pero para VÍDEO. Existe porque el navegador
+ * NO puede bajar el resultado de algunos proveedores: el auto-save del Studio
+ * hace `fetch(media.url)` desde el cliente y con la URL cruda de MuleRouter
+ * revienta con "Failed to fetch" (CORS). Las imágenes de MuleRouter ya pasaban
+ * por el persist de servidor — el vídeo se quedó sin él al integrarlo.
+ *
+ * Bajar y re-subir en SERVIDOR no tiene ese límite, y de paso la URL resultante
+ * es estable (las de los proveedores caducan).
+ */
+export async function persistRemoteVideoResult(
+    sourceUrl: string,
+): Promise<{ success: true; url: string } | { success: false; error: string }> {
+    try {
+        const url = await persistToSupabase(sourceUrl, 'mp4', 'kie-videos')
+        return { success: true, url }
+    } catch (err) {
+        const message = err instanceof Error ? err.message : String(err)
+        console.error('[KIE] persistRemoteVideoResult failed:', message)
+        return { success: false, error: message }
+    }
+}
+
+/**
  * Flux Kontext uses a dedicated endpoint with camelCase fields and a different
  * polling response shape (successFlag + resultImageUrl instead of state +
  * resultJson). It supports text-to-image and image-to-image in the same

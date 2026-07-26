@@ -14,7 +14,11 @@
 import { getOrgContext } from '@/lib/tenant/getOrgContext'
 import { orgSupabase } from '@/lib/org/orgTable'
 import { checkKieImageTask } from '@/services/KieService'
-import { checkMuleRouterImageTask } from '@/services/MuleRouterService'
+import {
+    checkMuleRouterImageTask,
+    checkMuleRouterVideoTask,
+    type MuleRouterVideoModel,
+} from '@/services/MuleRouterService'
 import {
     apiListPendingGenerations,
     apiPurgeExpiredPendingGenerations,
@@ -28,22 +32,33 @@ export interface ReconcileResult {
     notes: string[]
 }
 
-/** Descarga el resultado del CDN del proveedor y lo deja en Storage. */
-async function persistRemoteImage(
+/**
+ * Descarga el resultado del CDN del proveedor y lo deja en Storage.
+ *
+ * Distingue VÍDEO de imagen: al añadir Wan 2.6 se empezaron a registrar tareas
+ * con media_type VIDEO, y guardarlas como .jpg con content-type de imagen
+ * dejaba un archivo que ningún reproductor abre — un rescate que "funciona" y
+ * entrega basura es peor que uno que falla.
+ */
+async function persistRemoteMedia(
     userId: string,
     url: string,
+    mediaType: string,
 ): Promise<string> {
-    const res = await fetch(url, { signal: AbortSignal.timeout(60_000) })
+    const res = await fetch(url, { signal: AbortSignal.timeout(180_000) })
     if (!res.ok) {
         throw new Error(`descarga ${res.status}`)
     }
     const buffer = Buffer.from(await res.arrayBuffer())
-    // Mismo layout que el auto-save del Studio: <userId>/images/<epoch>.jpg
-    const path = `${userId}/images/${Date.now()}.jpg`
+    const isVideo = mediaType === 'VIDEO'
+    // Mismo layout que el auto-save del Studio.
+    const path = `${userId}/${isVideo ? 'videos' : 'images'}/${Date.now()}.${
+        isVideo ? 'mp4' : 'jpg'
+    }`
     const { error } = await orgSupabase()
         .storage.from('generations')
         .upload(path, buffer, {
-            contentType: 'image/jpeg',
+            contentType: isVideo ? 'video/mp4' : 'image/jpeg',
             cacheControl: '3600',
             upsert: false,
         })
@@ -63,12 +78,22 @@ export async function apiReconcilePendingGenerations(): Promise<ReconcileResult>
     const pending = await apiListPendingGenerations()
     for (const row of pending) {
         try {
+            // El endpoint de consulta depende del MEDIO: preguntar por un
+            // vídeo en la ruta de imagen devuelve 404 y la huérfana se
+            // quedaría colgada para siempre.
+            const isVideo = row.media_type === 'VIDEO'
             const status =
                 row.provider === 'mulerouter'
-                    ? await checkMuleRouterImageTask(
-                          row.task_id,
-                          (row.metadata?.tier as 'max' | 'plus') ?? 'max',
-                      )
+                    ? isVideo
+                        ? await checkMuleRouterVideoTask(
+                              row.task_id,
+                              (row.metadata?.model as MuleRouterVideoModel) ??
+                                  'wan2.6-i2v',
+                          )
+                        : await checkMuleRouterImageTask(
+                              row.task_id,
+                              (row.metadata?.tier as 'max' | 'plus') ?? 'max',
+                          )
                     : await checkKieImageTask(row.task_id)
 
             // 'running' (KIE) y 'processing' (MuleRouter) son el mismo estado:
@@ -87,7 +112,11 @@ export async function apiReconcilePendingGenerations(): Promise<ReconcileResult>
                 continue
             }
 
-            const path = await persistRemoteImage(ctx.userId, status.url)
+            const path = await persistRemoteMedia(
+                ctx.userId,
+                status.url,
+                row.media_type,
+            )
             await orgSupabase()
                 .from('generations')
                 .insert({

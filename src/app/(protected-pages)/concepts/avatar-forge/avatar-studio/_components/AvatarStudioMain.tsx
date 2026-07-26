@@ -93,6 +93,7 @@ import {
     submitKieImageTask,
     checkKieImageTask,
     persistKieImageResult,
+    persistRemoteVideoResult,
     submitTalkingVideoKieTask,
     submitLipsyncVideoKieTask,
     checkKieVideoTask,
@@ -2872,7 +2873,18 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                                 throw new Error(
                                     `Wan 2.6 tardó demasiado (>12 min). El audio quedó generado: ${audioUrl}. Pulsa 🔄 en la galería para reclamar el vídeo.`,
                                 )
-                            resultUrl = wanUrl
+                            // El navegador NO puede bajar la URL de
+                            // MuleRouter (CORS): el auto-save hace
+                            // fetch(media.url) y revienta con "Failed to
+                            // fetch". Se persiste en SERVIDOR, igual que ya
+                            // hacían las imágenes de MuleRouter.
+                            const wanStable =
+                                await persistRemoteVideoResult(wanUrl)
+                            if (!wanStable.success)
+                                throw new Error(
+                                    `El vídeo se generó pero no se pudo guardar: ${wanStable.error}. URL original: ${wanUrl}`,
+                                )
+                            resultUrl = wanStable.url
                         } else {
 
                         // 2. Talking-head con el motor elegido (InfiniteTalk / OmniHuman /
@@ -3210,7 +3222,18 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                                 throw new Error(
                                     'Wan 2.6 tardó demasiado (>12 min). La tarea sigue viva en MuleRouter — pulsa 🔄 en la galería para reclamarla.',
                                 )
-                            resultUrl = wanUrl
+                            // El navegador NO puede bajar la URL de
+                            // MuleRouter (CORS): el auto-save hace
+                            // fetch(media.url) y revienta con "Failed to
+                            // fetch". Se persiste en SERVIDOR, igual que ya
+                            // hacían las imágenes de MuleRouter.
+                            const wanStable =
+                                await persistRemoteVideoResult(wanUrl)
+                            if (!wanStable.success)
+                                throw new Error(
+                                    `El vídeo se generó pero no se pudo guardar: ${wanStable.error}. URL original: ${wanUrl}`,
+                                )
+                            resultUrl = wanStable.url
                         } else if (activeProvider?.type === 'KIE') {
                             const isKieKling =
                                 activeProvider.model === 'kling-3.0/video'
