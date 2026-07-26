@@ -137,8 +137,13 @@ async function pollTask(
             return urls
         }
         if (state === 'fail') {
+            // MISMA traduccion que el check async: hay DOS superficies de
+            // fallo y parchear solo una deja el mensaje crudo por el otro
+            // camino — que es justo por donde salio el reporte.
             throw new Error(
-                `KIE task failed: ${json.data.failCode || ''} ${json.data.failMsg || 'Unknown error'}`,
+                explainKieFailure(
+                    `${json.data.failCode || ''} ${json.data.failMsg || 'Unknown error'}`.trim(),
+                ),
             )
         }
         await new Promise((resolve) => setTimeout(resolve, intervalMs))
