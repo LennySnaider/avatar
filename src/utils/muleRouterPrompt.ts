@@ -170,7 +170,12 @@ export function buildMuleRouterEditMaxPrompt(params: {
         // prohibia reiluminar y fundir la costura (mismo fix que la fase 2).
         // Se sustituye por la prohibicion precisa: "never a hybrid".
         parts.push(
-            `Image ${faceIdx} = her FACE: swap it onto the woman in Image 1 — her exact face and features, never the original face, never a hybrid. If her face is NOT visible in Image 1 (turned away, in profile or hidden), keep it that way — never turn her head toward the camera.`,
+            // Reescrito SIN negaciones (2026-07-26): Qwen es el editor mas
+            // LITERAL que usamos y esta frase llevaba cuatro. "never a hybrid"
+            // mete "hybrid"; "never turn her head toward the camera" mete
+            // "head toward the camera". Se enuncia en POSITIVO —el 100%/0% ya
+            // validado en avatarPromptBuilder— y lo prohibido va al negative.
+            `Image ${faceIdx} = her FACE: swap it onto the woman in Image 1 — the output face is 100% the woman in Image ${faceIdx} and 0% the one in Image 1, her exact features. Match the head angle and direction of Image 1: if she is turned away or in profile, she stays that way.`,
         )
         // En NSFW el outfit del lienzo se EXCLUYE: pedir "keep the outfit
         // EXACTLY" contradecía "she is COMPLETELY NUDE" y ganaba el lienzo
@@ -249,7 +254,7 @@ export function buildMuleRouterEditMaxPrompt(params: {
         // Con la hoja VESTIDA hay que prohibir su ropa por nombre — el
         // "IGNORE clothing" genérico no bastaba y salía con la panti beige.
         const notFromCanvas = cloneIdx === 1
-            ? ` Do NOT copy the body from Image 1 — it is slimmer than she really is.`
+            ? ` Her body comes from that spec; Image 1 supplies only pose, outfit and setting.`
             : ''
         parts.push(
             params.bodySheetNude
@@ -287,9 +292,9 @@ export function buildMuleRouterEditMaxPrompt(params: {
         // derrama al cuerpo). Los cm mandan en ambas direcciones, siempre.
         parts.push(
             bodyBits.join(', ') +
-                ' — exactly these proportions every time: never thicker or wider, never slimmer.' +
+                ' — these exact proportions every time, same width and same volume.' +
                 (cloneIdx === 1
-                    ? ' Do NOT copy the body from Image 1 — it is slimmer than she really is.'
+                    ? ' Her body comes from that spec; Image 1 supplies only pose, outfit and setting.'
                     : ''),
         )
     }
@@ -336,7 +341,7 @@ export function buildMuleRouterEditMaxPrompt(params: {
     const BODY_NEG =
         'oversized hips, plus-size body, bodybuilder physique, obese, emaciated'
     const FIXED_NEG =
-        'watermark, text, logo, signature, extra fingers, deformed hands, missing limbs, amputated limbs'
+        'watermark, text, logo, signature, extra fingers, deformed hands, missing limbs, amputated limbs, hybrid face, different person, head turned to camera'
     const NSFW_NEG =
         'clothes, bra, panties, underwear, covered body, censored, censor bar, blurred crotch, smooth featureless crotch, doll-like genital area, pink areolas, blushed chest, open labia, protruding inner labia, gaping, oversized breasts'
     // El API corta a 500 a MEDIA PALABRA: en NSFW la lista llegaba justo a 500 y
