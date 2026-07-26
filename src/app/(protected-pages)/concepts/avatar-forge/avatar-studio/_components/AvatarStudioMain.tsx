@@ -65,6 +65,10 @@ import {
     detectFaceBox,
     spicifyScenePrompt,
 } from '@/services/GeminiService'
+import {
+    SPICY_NUDE_SHEET_MIN,
+    SPICY_EXPLICIT_MIN,
+} from '@/utils/spicyTiers'
 import { maskFaceInImage } from '@/utils/faceMask'
 import {
     compositeMaskOverlay,
@@ -580,6 +584,7 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
         prompt,
         generationMode,
         nsfwMode,
+        nsfwLevel,
         videoSubMode,
         avatarDefaultVoice,
         aspectRatio,
@@ -1323,7 +1328,7 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                     )
                     return
                 }
-                const spicy = await spicifyScenePrompt(prompt)
+                const spicy = await spicifyScenePrompt(prompt, nsfwLevel)
                 fullPrompt = getFullPrompt(spicy)
                 nsfwRun = true
             }
@@ -1417,8 +1422,14 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                 const permissiveEngine = isExplicitCapableModel(
                     activeProvider?.model || '',
                 )
+                // La hoja NUDE solo a partir de TOPLESS (>=65). Debajo de ese
+                // nivel el texto pide lenceria o ropa sugerente, y una hoja
+                // desnuda como ancla empuja al desnudo contra lo que pide la
+                // escena — el mismo choque imagen-vs-texto que ya nos costo la
+                // saga de "sale vestida en NSFW", pero al reves.
                 const usingNudeSheet = !!(
                     nsfwRun &&
+                    nsfwLevel >= SPICY_NUDE_SHEET_MIN &&
                     permissiveEngine &&
                     effectiveBodyRefNsfw
                 )
@@ -1754,14 +1765,26 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                         // denso (con sheet la señal viaja en imagen + cm + boost).
                         // Contextualmente pertenecen aquí — solo aplican si el
                         // outfit descubre, y solo los runs NSFW pueden descubrir.
-                        if (nsfwRun && !optimizedDeepfakeRef && measurements) {
+                        // Por NIVEL: describir pezones cuando la escena la deja
+                        // en lenceria, o la vulva cuando lleva bragas, es texto
+                        // que no se puede cumplir — y un motor literal resuelve
+                        // esa contradiccion quitando la ropa.
+                        if (
+                            nsfwRun &&
+                            nsfwLevel >= SPICY_NUDE_SHEET_MIN &&
+                            !optimizedDeepfakeRef &&
+                            measurements
+                        ) {
                             // Pezón (per-avatar) + vulva (realismo anti-monte-liso,
                             // 2026-07-24 "no se nota") — misma vía probada en vivo.
                             const anatomy = [
                                 nippleClause(measurements),
                                 // La escena decide el modo: desnudo total
                                 // explícito → imperativa; si no → condicional.
-                                vulvaClause(fullPrompt),
+                                // Y SOLO desde nivel explícito (>=85): en
+                                // topless lleva bragas, así que describir la
+                                // vulva es una orden que no se puede cumplir.
+                                nsfwLevel >= SPICY_EXPLICIT_MIN ? vulvaClause(fullPrompt) : '',
                             ]
                                 .filter(Boolean)
                                 .join('. Also ')
@@ -2252,7 +2275,12 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                             const mr = buildMuleRouterEditMaxPrompt({
                                 measurements,
                                 scene: fullPrompt,
-                                nsfw: nsfwRun,
+                                // En MuleRouter `nsfw`/`undress` significan
+                                // DESNUDAR. Solo desde explícito (>=85): en
+                                // topless o lencería la prenda la decide la
+                                // escena ya reescrita por su tramo, y
+                                // desvestir aquí la contradiría.
+                                nsfw: nsfwRun && nsfwLevel >= SPICY_EXPLICIT_MIN,
                                 // Chips de Framing/Angle — la cámara va AL
                                 // FRENTE del prompt compacto (el truncado a
                                 // 800 se los comía al final de la escena).
@@ -2351,7 +2379,8 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                                         // editor tomaba los rizos del lienzo)
                                         mrHairDesc(measurements),
                                         {
-                                            undress: nsfwRun,
+                                            undress:
+                                                nsfwRun && nsfwLevel >= SPICY_EXPLICIT_MIN,
                                             // La fase 2 decide la CARA → los
                                             // ojos del avatar viajan aquí.
                                             eyeDesc: getEyeColorDescription(
@@ -2441,7 +2470,7 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                                     ) || undefined,
                                 negativePrompt: buildIdentityNegative(
                                     measurements,
-                                    { nsfw: nsfwRun },
+                                    { nsfw: nsfwRun && nsfwLevel >= SPICY_EXPLICIT_MIN },
                                 ),
                                 identityWeight,
                             })
@@ -2551,7 +2580,8 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                                 negativePrompt: deepfakeActive
                                     ? undefined
                                     : buildIdentityNegative(measurements, {
-                                          nsfw: nsfwRun,
+                                          nsfw:
+                                              nsfwRun && nsfwLevel >= SPICY_EXPLICIT_MIN,
                                       }),
                                 // Escala la cláusula de fidelidad facial del
                                 // ancla (port condensado del identity harness).
@@ -3336,6 +3366,7 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
             placeImage,
             videoInputImage,
             nsfwMode,
+            nsfwLevel,
             aspectRatio,
             videoDuration,
             cameraShot,
@@ -3442,6 +3473,7 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
             )
             const spicy = await spicifyScenePrompt(
                 useAvatarStudioStore.getState().prompt,
+                useAvatarStudioStore.getState().nsfwLevel,
             )
             for (const provider of explicitCapable) {
                 void handleGenerate({

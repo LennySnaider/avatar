@@ -278,11 +278,19 @@ interface AvatarStudioState {
     // Toggle 🌶️ NSFW (sesión): Generate spicifica la escena y exige modelo
     // explícito-capaz; Batch pasa a modo DUAL (SFW + NSFW).
     nsfwMode: boolean
+    /**
+     * INTENSIDAD del modo 🌶️ (0-100), como el slider de Clone Ref. Antes era
+     * binario: el toggle mandaba todo a desnudo total, "sin mucho chiste ni
+     * variedad". Los tramos van de sugerente-vestida a explicito.
+     * 100 = comportamiento de siempre (default, no rompe nada existente).
+     */
+    nsfwLevel: number
     /** Batch ON → Generate abanica a los modelos marcados en vez de generar
      *  en uno solo. Combinado con nsfwMode da las 4 variantes (normal, spicy,
      *  batch, batch+spicy) desde un mismo botón. */
     batchMode: boolean
     setNsfwMode: (on: boolean) => void
+    setNsfwLevel: (level: number) => void
     setBatchMode: (on: boolean) => void
     setVideoSubMode: (mode: VideoSubMode) => void
     setAvatarDefaultVoice: (voice: ClonedVoice | null) => void
@@ -451,6 +459,7 @@ const initialState = {
     detectedTerms: [] as DetectedTerm[],
     generationMode: 'IMAGE' as MediaType,
     nsfwMode: false,
+    nsfwLevel: 100,
     batchMode: false,
     videoSubMode: 'ANIMATE' as VideoSubMode,
     avatarDefaultVoice: null as ClonedVoice | null,
@@ -762,6 +771,7 @@ export const useAvatarStudioStore = create<AvatarStudioState>()(
                 return `${stripNegatedTattoos(assembled)} ${ANTI_WATERMARK_CLAUSE}`
             },
             setNsfwMode: (on) => set({ nsfwMode: on }),
+            setNsfwLevel: (level) => set({ nsfwLevel: level }),
             setBatchMode: (on) => set({ batchMode: on }),
             setGenerationMode: (mode) =>
                 set((state) => ({

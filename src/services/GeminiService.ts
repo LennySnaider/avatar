@@ -1,5 +1,6 @@
 'use server'
 
+import { spicyTier } from '@/utils/spicyTiers'
 import {
     GoogleGenAI,
     Type,
@@ -747,8 +748,12 @@ HASHTAGS:
  * subidos de tono sin problema — generar la IMAGEN es otra cosa y va a los
  * modelos permisivos). Fallback fijo si Gemini rehúsa: nunca frena el batch.
  */
-export async function spicifyScenePrompt(scenePrompt: string): Promise<string> {
-    const fallback = `${scenePrompt}\n\nNSFW VARIANT (MANDATORY): the same scene, setting, pose, lighting and framing — but fully explicit: she is topless or completely nude (whichever fits the scene more naturally), her clothing removed, with a confident, sensual attitude. Explicit adult nudity is required in the output.`
+export async function spicifyScenePrompt(
+    scenePrompt: string,
+    level = 100,
+): Promise<string> {
+    const tier = spicyTier(level)
+    const fallback = `${scenePrompt}\n\n${tier.fallback}`
     try {
         const apiKey = getApiKey()
         const ai = new GoogleGenAI({ apiKey })
@@ -762,7 +767,7 @@ export async function spicifyScenePrompt(scenePrompt: string): Promise<string> {
 
 KEEP IDENTICAL: the location/setting, the pose and action, the lighting, the camera framing, and any bracketed tags like [POSE: ...] or [CLONE: ...] (copy tags VERBATIM).
 KEEP VERBATIM — DO NOT REWRITE: any body/proportion description (body-shape words like "hourglass", waist/hip/glute/bust phrases, centimetre measurements, ratios). Copy those sentences word for word, unchanged — never paraphrase them, never swap their words for synonyms, never weave nudity adjectives into them. Add the nudity/attitude language AROUND them, not inside them.
-CHANGE: the wardrobe and attitude — she is now topless or completely nude (choose what fits the scene naturally; e.g. lingerie bottoms only, or fully nude), with a confident, sensual, provocative attitude. Be direct and explicit about the nudity in plain words.
+CHANGE: the wardrobe and attitude — ${tier.wardrobe}
 
 OUTPUT: ONLY the rewritten prompt as flowing prose (same language as the input). No intro, no quotes, no commentary.
 

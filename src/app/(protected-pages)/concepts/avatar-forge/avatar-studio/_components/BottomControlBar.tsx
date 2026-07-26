@@ -12,6 +12,8 @@ import { apiCreatePrompt } from '@/services/AvatarForgeService'
 import { resizeBase64Image } from '@/utils/imageOptimization'
 import Button from '@/components/ui/Button'
 import Switcher from '@/components/ui/Switcher'
+import Slider from '@/components/ui/Slider'
+import { spicyTier } from '@/utils/spicyTiers'
 import Dialog from '@/components/ui/Dialog'
 import Notification from '@/components/ui/Notification'
 import Spinner from '@/components/ui/Spinner'
@@ -547,6 +549,8 @@ const BottomControlBar = ({
         getActiveProvider,
         batchProviderIds,
         batchProviderIdsNsfw,
+        nsfwLevel,
+        setNsfwLevel,
         nsfwMode,
         setNsfwMode,
         batchMode,
@@ -1985,6 +1989,35 @@ const BottomControlBar = ({
                                                 }
                                             />
                                         </label>
+                                    </div>
+                                )}
+                                {/* INTENSIDAD 🌶️ — solo con Spicy encendido: un
+                                    control de intensidad apagado es ruido. Los
+                                    tramos son los mismos cuartiles del Clone
+                                    Ref, y la etiqueta DICE lo que va a salir
+                                    (antes el toggle mandaba todo a desnudo
+                                    total, sin variedad). */}
+                                {isImage && nsfwMode && (
+                                    <div className="rounded-lg border-2 border-dashed border-red-400 bg-red-50 px-2.5 py-2 dark:bg-red-500/10">
+                                        <div className="mb-1 flex items-center justify-between">
+                                            <span className="text-[11px] font-medium text-red-500">
+                                                {spicyTier(nsfwLevel).label}
+                                            </span>
+                                            <span className="text-[11px] tabular-nums text-gray-500">
+                                                {nsfwLevel}%
+                                            </span>
+                                        </div>
+                                        <Slider
+                                            value={nsfwLevel}
+                                            onChange={(v) =>
+                                                setNsfwLevel(
+                                                    Array.isArray(v) ? v[0] : v,
+                                                )
+                                            }
+                                            min={10}
+                                            max={100}
+                                            step={5}
+                                        />
                                     </div>
                                 )}
                             </>
