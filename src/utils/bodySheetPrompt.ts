@@ -219,9 +219,18 @@ const CLOTHED_SHEET_CLAUSE =
  * - Anti-doll explícito (si no, monte liso de muñeca).
  * - Encuadre CLÍNICO: es una referencia anatómica, no una pose erótica — así
  *   la hoja no inyecta "mood sensual" en las generaciones que la usan de ancla.
+ *
+ * TIPO DE VULVA (2026-07-26): la hoja salía tipo "mariposa" (labios menores
+ * sobresaliendo). El estándar de la plataforma es "ojo cerrado": los labios
+ * MAYORES son grandes y tapan por completo a los menores. El positivo de antes
+ * ("soft closed labia") era demasiado tibio para fijar el tipo, y el negativo
+ * de la hoja no llevaba los términos anti-mariposa que la ruta de ESCENA sí
+ * tiene desde la saga de anatomía — la hoja es el ANCLA de los runs NSFW, así
+ * que su mariposa se propagaba a todo lo generado. Ahora el tipo se declara
+ * explícito en positivo Y se prohíbe el contrario en negativo.
  */
 const NUDE_SHEET_CLAUSE =
-    'She is COMPLETELY NUDE in every view — no bra, no briefs, no garments at all, bare skin from head to toe, so her full body shape reads with nothing covering it. Natural realistic anatomy: bare breasts with small skin-toned areolas, and a natural vulva with soft closed labia in matte skin tone — real anatomy, never a smooth featureless doll-like blank. This is a CLINICAL anatomical body reference: neutral expression, relaxed stance, no seduction and no erotic posing.'
+    'She is COMPLETELY NUDE in every view — no bra, no briefs, no garments at all, bare skin from head to toe, so her full body shape reads with nothing covering it. Natural realistic anatomy: bare breasts with small skin-toned areolas, and a vulva of the fully CLOSED type — plump full outer labia pressed together that completely conceal the inner labia, everything tucked inside, a soft narrow closed cleft in matte skin tone — real anatomy, never a smooth featureless doll-like blank. This is a CLINICAL anatomical body reference: neutral expression, relaxed stance, no seduction and no erotic posing.'
 
 export const BODY_TURNAROUND_TEMPLATE_URL = '/body/turnaround-template.png'
 
@@ -365,8 +374,14 @@ export const BODY_SHEET_NEGATIVE_PROMPT = [
  * las prohibiciones de vestuario (en nude sobra "one-piece swimsuit…" y hay que
  * prohibir la ROPA en sí) y añade el anti-censura/anti-doll que costó toda la
  * saga de anatomía — más el anti-rubor (las palabras de color se pintan).
+ *
+ * Anti-MARIPOSA (2026-07-26): estos términos ya vivían en el negative de la
+ * ruta de ESCENA (sceneSanitizer) pero nunca se replicaron aquí, así que la
+ * hoja —que es el ancla de los runs NSFW— podía salir mariposa y contaminaba
+ * todo lo generado a partir de ella. La difusión NO procesa negaciones en el
+ * positivo: prohibir el tipo contrario solo funciona desde el negative.
  */
 export const BODY_SHEET_NUDE_NEGATIVE_PROMPT = BODY_SHEET_NEGATIVE_PROMPT.replace(
     'one-piece swimsuit, bodysuit, dress, full clothing',
-    'clothes, clothing, sports bra, briefs, underwear, panties, bikini, swimsuit, bodysuit, dress, covered body, censored, censor bar, mosaic censoring, blurred crotch, smooth featureless crotch, doll-like genital area, pink areolas, blushed chest',
+    'clothes, clothing, sports bra, briefs, underwear, panties, bikini, swimsuit, bodysuit, dress, covered body, censored, censor bar, mosaic censoring, blurred crotch, smooth featureless crotch, doll-like genital area, pink areolas, blushed chest, protruding inner labia, long labia minora, visible inner labia, open labia, spread labia, gaping, everted vulva, butterfly vulva, horseshoe vulva',
 )

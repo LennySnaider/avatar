@@ -283,7 +283,7 @@ export function buildMuleRouterEditMaxPrompt(params: {
         // LÍNEA vertical literal en el torso/ropa. Se describe la anatomía SIN
         // la palabra "line". Nudez reforzada (no top, no panti).
         parts.push(
-            'She is COMPLETELY NUDE — no bra, top or underwear, bare skin all over. Realistic bare breasts with CLEARLY DEFINED nipples and small skin-toned areolas, and a natural vulva with soft closed labia, matte skin tone, anatomically real and softly detailed.',
+            'She is COMPLETELY NUDE — no bra, top or underwear, bare skin all over. Realistic bare breasts with CLEARLY DEFINED nipples and small skin-toned areolas, and a fully CLOSED vulva, plump outer labia concealing the inner ones, matte skin tone, anatomically real and softly detailed.',
         )
     }
 
@@ -307,7 +307,7 @@ export function buildMuleRouterEditMaxPrompt(params: {
     const FIXED_NEG =
         'watermark, text, logo, signature, extra fingers, deformed hands, missing limbs, amputated limbs'
     const NSFW_NEG =
-        'clothes, bra, panties, underwear, covered body, censored, censor bar, blurred crotch, smooth featureless crotch, doll-like genital area, pink areolas, blushed chest, open labia, gaping, oversized breasts'
+        'clothes, bra, panties, underwear, covered body, censored, censor bar, blurred crotch, smooth featureless crotch, doll-like genital area, pink areolas, blushed chest, open labia, protruding inner labia, gaping, oversized breasts'
     // El API corta a 500 a MEDIA PALABRA: en NSFW la lista llegaba justo a 500 y
     // se perdían los fijos del final (watermark, deformed hands, missing/
     // amputated limbs — la red anti-mutilación que costó encontrar). Los
@@ -395,7 +395,7 @@ export function buildMuleRouterFaceSwapPrompt(
     // del pezón/areola (y el de la vulva) tiene que viajar AQUÍ.
     const areola = opts?.areolaDesc ?? 'small'
     const undress = opts?.undress
-        ? ` Also REMOVE all her clothing — she is completely nude, bare skin, same pose and framing. Natural breasts with CLEARLY DEFINED nipples and ${areola} skin-toned areolas, and a natural vulva with soft closed labia, anatomically real.`
+        ? ` Also REMOVE all her clothing — she is completely nude, bare skin, same pose and framing. Natural breasts with CLEARLY DEFINED nipples and ${areola} skin-toned areolas, and a fully CLOSED vulva, plump outer labia concealing the inner ones, anatomically real.`
         : ''
     const keepList = opts?.undress
         ? 'same body, pose, hands, framing, lighting and background'
