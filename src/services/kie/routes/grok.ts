@@ -51,15 +51,31 @@ async function build(ctx: ImageRouteContext): Promise<KieImageRequest> {
             )
             const refUrl = await ctx.uploadRef(cropped.base64, cropped.mimeType)
             input.image_urls = [refUrl]
-            if (hairClause || faceFidelityClause) {
-                input.prompt = `Keep the EXACT face and likeness of the person in the reference image.${faceFidelityClause}${hairClause} ${input.prompt}`
+            if (ctx.editMode) {
+                // EDICION (2026-07-26, reporte "el edit en grok no respeta la
+                // pose"): las dos frases de abajo son ciertas al GENERAR y
+                // falsas al EDITAR. "Keep the EXACT face … of the person in the
+                // reference image" enmarca la foto como una REFERENCIA DE CARA,
+                // y el ancla anti-mutilacion exige "both arms, both legs, hands
+                // and feet fully rendered" — que no describe, ORDENA reencuadrar
+                // a cuerpo entero. Juntas obligan a recomponer a la persona, y
+                // por eso salian poses rigidas y simetricas con todo el cuerpo
+                // dentro del marco en vez de la pose original.
+                //
+                // Al editar, la referencia ES la foto: la anatomia ya es
+                // correcta (no hace falta el guard) y la pose debe conservarse.
+                input.prompt = `This image IS the photo to edit: keep its pose, body position, framing, crop, lighting and background exactly as they are, and the same person. Apply ONLY this change: ${input.prompt}`
+            } else {
+                if (hairClause || faceFidelityClause) {
+                    input.prompt = `Keep the EXACT face and likeness of the person in the reference image.${faceFidelityClause}${hairClause} ${input.prompt}`
+                }
+                // Anti-mutilación SIEMPRE (2026-07-23, reporte con imagen: Grok
+                // "escondía" ambos brazos tras la espalda = amputación visual).
+                // Grok NO soporta negative prompt y este ancla es condicional —
+                // era la única ruta sin cobertura. Al FRENTE (prioridad de
+                // supervivencia/atención).
+                input.prompt = `${INTACT_BODY_CLAUSE.trim()} ${input.prompt}`
             }
-            // Anti-mutilación SIEMPRE (2026-07-23, reporte con imagen: Grok
-            // "escondía" ambos brazos tras la espalda = amputación visual).
-            // Grok NO soporta negative prompt y este ancla es condicional —
-            // era la única ruta sin cobertura. Al FRENTE (prioridad de
-            // supervivencia/atención).
-            input.prompt = `${INTACT_BODY_CLAUSE.trim()} ${input.prompt}`
             console.log(
                 `[KIE] Grok i2i with 1 identity ref (AR-cropped)${hairClause ? ' + hair override' : ''}`,
             )
