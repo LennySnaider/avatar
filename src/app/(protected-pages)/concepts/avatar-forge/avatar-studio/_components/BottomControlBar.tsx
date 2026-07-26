@@ -1808,7 +1808,7 @@ const BottomControlBar = ({
                 </div>
 
                 {/* Generate + Batch (móvil: CTA a ancho completo) */}
-                <div className="flex shrink-0 flex-col gap-1 w-full md:w-auto order-5 md:order-0">
+                <div className="flex shrink-0 flex-col gap-2 w-full md:w-[236px] order-5 md:order-0">
                     {(() => {
                         const n = batchProviderIds.length
                         const isImage = generationMode === 'IMAGE'
@@ -1816,15 +1816,14 @@ const BottomControlBar = ({
                         // Antes eran 3 controles con estados distintos (botón +
                         // dos toggles con borde punteado) y no se entendía la
                         // combinación — ahora se lee de un vistazo.
-                        // Sufijos COMPACTOS (2026-07-26): "Generate · Batch 2 🌶️"
-                        // hacía crecer el botón (w-auto) y le robaba ancho al
-                        // avatar, que es el control principal de la barra. Los
-                        // switches de abajo ya dicen el modo con todas sus
-                        // letras, así que aquí basta el eco corto — y con ancho
-                        // fijo el botón deja de moverse al cambiar de modo.
+                        // El BOTÓN es uno solo; los switches deciden QUÉ hace,
+                        // y la etiqueta refleja la combinación activa. Cabe
+                        // entera porque la columna tiene ancho fijo — no crece
+                        // con el texto, así que el botón ya no se mueve al
+                        // cambiar de modo.
                         const label = isGenerating
                             ? 'Generating...'
-                            : `Generate${isImage && batchMode ? ` ·${n || ''}` : ''}${isImage && nsfwMode ? ' 🌶️' : ''}`
+                            : `Generate${isImage && batchMode ? ` · Batch${n ? ` ${n}` : ''}` : ''}${isImage && nsfwMode ? ' 🌶️' : ''}`
                         return (
                             <>
                                 <Button
@@ -1841,14 +1840,24 @@ const BottomControlBar = ({
                                     }
                                     loading={isGenerating}
                                     disabled={!canGenerate()}
-                                    className="h-11 w-full md:w-[122px]"
+                                    className="h-14 w-full text-base font-semibold"
                                 >
                                     {label}
                                 </Button>
                                 {isImage && (
-                                    <div className="flex items-center justify-between gap-3 px-0.5">
+                                    // Cajas punteadas con el MISMO lenguaje que
+                                    // los dropzones de referencia de al lado
+                                    // (borde discontinuo + esquinas redondas):
+                                    // se leen como "ranuras de modo" y el borde
+                                    // se tiñe con el color del modo activo, asi
+                                    // que el estado se ve sin leer el switch.
+                                    <div className="flex items-stretch gap-2">
                                         <label
-                                            className="flex cursor-pointer select-none items-center gap-1.5"
+                                            className={`flex flex-1 cursor-pointer select-none items-center justify-between gap-1.5 rounded-lg border-2 border-dashed px-2 py-2 transition-colors ${
+                                                nsfwMode
+                                                    ? 'border-red-400 bg-red-50 dark:bg-red-500/10'
+                                                    : 'border-gray-300 dark:border-gray-600 hover:border-red-300'
+                                            }`}
                                             title={
                                                 nsfwMode
                                                     ? 'Spicy ON: genera la versión explícita (misma escena, sin ropa). Solo Seedream/Wan/Qwen la rinden.'
@@ -1856,7 +1865,7 @@ const BottomControlBar = ({
                                             }
                                         >
                                             <span
-                                                className={`text-xs font-medium ${nsfwMode ? 'text-red-500' : 'text-gray-500 dark:text-gray-400'}`}
+                                                className={`flex items-center gap-1 text-xs font-medium ${nsfwMode ? 'text-red-500' : 'text-gray-500 dark:text-gray-400'}`}
                                             >
                                                 🌶️ Spicy
                                             </span>
@@ -1868,7 +1877,11 @@ const BottomControlBar = ({
                                             />
                                         </label>
                                         <label
-                                            className="flex cursor-pointer select-none items-center gap-1.5"
+                                            className={`flex flex-1 cursor-pointer select-none items-center justify-between gap-1.5 rounded-lg border-2 border-dashed px-2 py-2 transition-colors ${
+                                                batchMode
+                                                    ? 'border-blue-400 bg-blue-50 dark:bg-blue-500/10'
+                                                    : 'border-gray-300 dark:border-gray-600 hover:border-blue-300'
+                                            }`}
                                             title={
                                                 n > 0
                                                     ? `Batch ON: Generate manda el mismo prompt a los ${n} modelo${n === 1 ? '' : 's'} marcados (☑ en el selector).`
