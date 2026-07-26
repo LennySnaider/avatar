@@ -1,8 +1,5 @@
 import { auth } from '@/auth'
-import Container from '@/components/shared/Container'
-import AvatarStudioProvider from './_components/AvatarStudioProvider'
-import AvatarStudioMain from './_components/AvatarStudioMain'
-import StudioTabs from './_components/StudioTabs'
+import StudioShell from './_components/StudioShell'
 import getAvatarStudioData from '@/server/actions/getAvatarStudioData'
 import type { PageProps } from '@/@types/common'
 
@@ -39,7 +36,7 @@ export default async function Page({ searchParams }: PageProps) {
     }))
 
     return (
-        <AvatarStudioProvider
+        <StudioShell
             avatar={avatar}
             defaultVoice={defaultVoice}
             references={transformedReferences}
@@ -47,12 +44,7 @@ export default async function Page({ searchParams }: PageProps) {
             prompts={prompts}
             initialPrompt={initialPrompt}
             initialMode={initialMode}
-        >
-            <StudioTabs>
-                <Container className="h-full">
-                    <AvatarStudioMain userId={session?.user?.id} />
-                </Container>
-            </StudioTabs>
-        </AvatarStudioProvider>
+            userId={session?.user?.id}
+        />
     )
 }

@@ -1,8 +1,6 @@
 import { auth } from '@/auth'
 import { redirect } from 'next/navigation'
-import Container from '@/components/shared/Container'
-import AvatarStudioProvider from '../_components/AvatarStudioProvider'
-import AvatarStudioMain from '../_components/AvatarStudioMain'
+import StudioShell from '../_components/StudioShell'
 import getAvatarStudioData from '@/server/actions/getAvatarStudioData'
 import type { ReferenceImage } from '../types'
 
@@ -19,10 +17,10 @@ export default async function Page({ params }: PageProps) {
     }
 
     // Fetch avatar data
-    const { avatar, references, providers, prompts } = await getAvatarStudioData(
-        avatarId,
-        session.user.id
-    )
+    // defaultVoice FALTABA aquí (solo lo pedía la ruta raíz): entrar al Studio
+    // por /[slug] dejaba al avatar sin su voz clonada para TTS/lip-sync.
+    const { avatar, references, providers, prompts, defaultVoice } =
+        await getAvatarStudioData(avatarId, session.user.id)
 
     // If avatar doesn't exist or doesn't belong to user, redirect
     if (!avatar || avatar.user_id !== session.user.id) {
@@ -42,15 +40,13 @@ export default async function Page({ params }: PageProps) {
     }))
 
     return (
-        <AvatarStudioProvider
+        <StudioShell
             avatar={avatar}
+            defaultVoice={defaultVoice}
             references={transformedReferences}
             providers={providers}
             prompts={prompts}
-        >
-            <Container className="h-[calc(100vh-theme(spacing.16))]">
-                <AvatarStudioMain userId={session.user.id} />
-            </Container>
-        </AvatarStudioProvider>
+            userId={session.user.id}
+        />
     )
 }
