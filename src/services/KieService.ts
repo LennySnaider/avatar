@@ -277,7 +277,21 @@ export async function uploadReferenceToSupabase(
             { method: 'HEAD' },
             5_000,
         )
-        if (head.ok) return publicUrl
+        // Existir no basta: hay que mirar CÓMO se sirve. Los objetos subidos
+        // antes de que existiera el `cacheControl` de abajo conservan el
+        // `no-cache` por defecto de Supabase, y este mismo atajo impedía que
+        // se corrigieran nunca — el nombre es el hash del contenido, así que
+        // sin reescribir el objeto su metadato queda congelado de por vida.
+        //
+        // Y `no-cache` es lo peor que le puede pasar a una ref: Cloudflare no
+        // la guarda en el borde, así que CADA descarga del proveedor cruza
+        // hasta el origen. Justo lo que reventó el 2026-07-27 con un
+        // "Timeout while downloading url=…" de Alibaba sobre un JPEG de 1 MB.
+        // Reusar la ref es el caso NORMAL (para eso se direcciona por
+        // contenido), o sea que es exactamente donde la caché más rinde.
+        const cc = head.headers.get('cache-control') ?? ''
+        const cacheable = /max-age=\d+/.test(cc) && !/no-cache|no-store/.test(cc)
+        if (head.ok && cacheable) return publicUrl
     } catch {
         /* sin caché — sube normal */
     }
@@ -287,8 +301,12 @@ export async function uploadReferenceToSupabase(
         .from('generations')
         .upload(fileName, buffer, {
             contentType: mimeType,
-            // Content-addressed → inmutable: cache larga es segura.
-            cacheControl: '3600',
+            // Content-addressed → el nombre ES el sha256 del contenido, así
+            // que este objeto no puede cambiar nunca. Una hora se quedaba
+            // corta para algo inmutable: un año mantiene la ref caliente en
+            // el borde entre sesiones, que es cuando el proveedor la vuelve
+            // a pedir.
+            cacheControl: '31536000',
             // upsert: dos generaciones concurrentes con la misma ref no deben
             // fallar por "already exists" (el contenido es idéntico por hash).
             upsert: true,
