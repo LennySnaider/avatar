@@ -716,8 +716,28 @@ HASHTAGS:
         })
 
         const raw = response.text
-        if (!raw)
-            return { success: false, error: 'Gemini returned an empty result' }
+        if (!raw) {
+            // "Vacío" tapaba CUATRO fallos distintos con arreglos distintos, y
+            // sin distinguirlos la única salida era adivinar. Cada uno se lee
+            // en un sitio diferente de la respuesta:
+            //   · blockReason           bloqueo de ENTRADA (la imagen)
+            //   · finishReason SAFETY   rechazo de SALIDA (el texto)
+            //   · PROHIBITED_CONTENT    filtro NO configurable — BLOCK_NONE no
+            //                           lo desactiva. ES el único que obliga a
+            //                           cambiar de proveedor.
+            //   · MAX_TOKENS            no es censura: se quedó sin presupuesto
+            const block = response.promptFeedback?.blockReason
+            const finish = response.candidates?.[0]?.finishReason
+            const why = block
+                ? `input blocked (${block})`
+                : finish
+                  ? `no output (${finish})`
+                  : 'no reason reported'
+            return {
+                success: false,
+                error: `Gemini returned an empty result — ${why}`,
+            }
+        }
         const parsed = JSON.parse(raw) as {
             caption: string
             hashtags: string[]

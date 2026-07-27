@@ -53,7 +53,11 @@ export async function uploadAudioForCloning(
 
     const json: MiniMaxFileUploadResponse = JSON.parse(rawText)
     if (json.base_resp.status_code !== 0) {
-        throw new Error(`MiniMax file upload error: ${json.base_resp.status_msg}`)
+        // El upload va con purpose=voice_clone, así que cae en la misma puerta
+        // de plan que la clonación — mismo traductor.
+        throw new Error(
+            `MiniMax file upload error: ${explainMiniMaxVoiceFailure(json.base_resp.status_msg)}`,
+        )
     }
 
     // Extract file_id as raw string to preserve int64 precision
@@ -66,6 +70,32 @@ export async function uploadAudioForCloning(
 }
 
 // ─── Voice Clone ──────────────────────────────────────────
+
+/**
+ * MiniMax distingue DOS tipos de credencial y el mensaje crudo no lo dice:
+ *
+ *  · Subscription Key (Token Plan + créditos) — la que tenemos, `sk-cp-…`
+ *  · API Key de pago por uso (JWT `eyJ…`)
+ *
+ * El Token Plan cubre TTS pero NO la clonación: Rapid Voice Cloning se cobra
+ * aparte (~$1.5 por voz, al primer uso de la voz en T2A). De ahí que el saldo
+ * de la cuenta no ayude — el plan y el saldo son bolsillos distintos, y la
+ * clonación solo sale del segundo.
+ *
+ * Pasó el 2026-07-26 tras 5 clones correctos (el último el 09-07) sin tocar
+ * este archivo desde abril: cambió el plan, no el código. Sin traducir, el
+ * error sonaba a bug nuestro y mandaba a buscar en el sitio equivocado.
+ */
+function explainMiniMaxVoiceFailure(statusMsg: string): string {
+    if (/token plan not support|not support model/i.test(statusMsg)) {
+        return (
+            'MiniMax rejected the clone: this API key is a Subscription Key (Token Plan), ' +
+            'which covers TTS but not voice cloning. Cloning needs a pay-as-you-go API key ' +
+            'from the MiniMax dashboard — account balance alone does not enable it.'
+        )
+    }
+    return statusMsg
+}
 
 export async function cloneVoice(
     fileId: string,
@@ -103,7 +133,9 @@ export async function cloneVoice(
 
     const json: MiniMaxVoiceCloneResponse = await res.json()
     if (json.base_resp.status_code !== 0) {
-        throw new Error(`MiniMax voice clone error: ${json.base_resp.status_msg}`)
+        throw new Error(
+            `MiniMax voice clone error: ${explainMiniMaxVoiceFailure(json.base_resp.status_msg)}`,
+        )
     }
 
     return json
