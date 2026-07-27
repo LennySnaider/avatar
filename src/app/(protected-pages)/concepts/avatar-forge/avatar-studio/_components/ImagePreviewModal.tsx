@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useRef, useEffect, useCallback } from 'react'
+import { useState, useRef, useEffect, useLayoutEffect, useCallback } from 'react'
 import { useAvatarStudioStore } from '../_store/avatarStudioStore'
 import { downloadMediaUrl } from '../../_utils/mediaDownload'
 import Dialog from '@/components/ui/Dialog'
@@ -148,6 +148,10 @@ const ImagePreviewModal = ({
     const [blurStrength, setBlurStrength] = useState(24)
     const [isBlurring, setIsBlurring] = useState(false)
     const [assetDragOver, setAssetDragOver] = useState(false)
+    /** ESPACIO mantenido = mano temporal, como en Photoshop. Deja arrastrar la
+     * imagen sin salir del pincel — antes, con la máscara activa, no había
+     * forma de moverse por una imagen ampliada. */
+    const [spaceHeld, setSpaceHeld] = useState(false)
     const [editAspectRatio, setEditAspectRatio] = useState<AspectRatio>('1:1')
     const [editProviderId, setEditProviderId] = useState<string | null>(null)
     const [cropPosition, setCropPosition] = useState({ x: 0, y: 0 })
@@ -158,6 +162,8 @@ const ImagePreviewModal = ({
     const [isCropping, setIsCropping] = useState(false)
     const [dragStart, setDragStart] = useState({ x: 0, y: 0 })
     const [zoomLevel, setZoomLevel] = useState(1)
+    // Espejo del zoom para leerlo desde handlers sin re-crearlos en cada paso.
+    const zoomLevelRef = useRef(1)
     const [isPanning, setIsPanning] = useState(false)
     // Colapsar el panel inferior (prompt + acciones) para ver la media completa.
     const [panelCollapsed, setPanelCollapsed] = useState(false)
@@ -287,14 +293,80 @@ const ImagePreviewModal = ({
         setEditAssets((prev) => prev.filter((a) => a.id !== id))
     }, [])
 
-    // Zoom handlers
+    // ── ZOOM ────────────────────────────────────────────────────────────
+    // Hasta 600%: el techo de 300% se quedaba corto para retocar detalle, que
+    // es justo para lo que se hace zoom aqui.
+    const MAX_ZOOM = 6
+
+    /**
+     * Punto de la PANTALLA que debe quedarse quieto al escalar. Se guarda con
+     * el zoom previo y lo consume el efecto de abajo, ya con el DOM al tamano
+     * nuevo — hay que medir DESPUES de que el navegador aplique el tamano.
+     */
+    const zoomAnchorRef = useRef<{
+        mx: number
+        my: number
+        prev: number
+    } | null>(null)
+
+    /**
+     * Ancla el zoom al PUNTERO, como en Photoshop. Sin esto el contenedor
+     * crece desde su origen y la vista se va a la esquina superior izquierda:
+     * te acercas y pierdes justo lo que estabas mirando.
+     *
+     * La cuenta: lo que hay bajo el cursor esta a `(scroll + m)` del origen
+     * del contenido. Al escalar por k pasa a `(scroll + m) * k`, y para que
+     * siga bajo el cursor el scroll nuevo es `(scroll + m) * k - m`.
+     */
+    const applyZoom = useCallback(
+        (next: number, clientX?: number, clientY?: number) => {
+            const el = getMediaScrollEl()
+            setZoomLevel((prev) => {
+                const target = Math.max(1, Math.min(next, MAX_ZOOM))
+                if (target === prev) return prev
+                if (el && clientX !== undefined && clientY !== undefined) {
+                    const rect = el.getBoundingClientRect()
+                    zoomAnchorRef.current = {
+                        mx: clientX - rect.left,
+                        my: clientY - rect.top,
+                        prev,
+                    }
+                } else if (el) {
+                    // Con los botones el ancla es el CENTRO de la vista: es lo
+                    // que se esta mirando cuando no hay puntero que mande.
+                    zoomAnchorRef.current = {
+                        mx: el.clientWidth / 2,
+                        my: el.clientHeight / 2,
+                        prev,
+                    }
+                }
+                return target
+            })
+        },
+        [],
+    )
+
+    useEffect(() => {
+        zoomLevelRef.current = zoomLevel
+    }, [zoomLevel])
+
+    useLayoutEffect(() => {
+        const anchor = zoomAnchorRef.current
+        const el = getMediaScrollEl()
+        zoomAnchorRef.current = null
+        if (!anchor || !el || anchor.prev === zoomLevel) return
+        const k = zoomLevel / anchor.prev
+        el.scrollLeft = (el.scrollLeft + anchor.mx) * k - anchor.mx
+        el.scrollTop = (el.scrollTop + anchor.my) * k - anchor.my
+    }, [zoomLevel])
+
     const handleZoomIn = useCallback(() => {
-        setZoomLevel(prev => Math.min(prev + 0.25, 3))
-    }, [])
+        applyZoom(zoomLevelRef.current + 0.25)
+    }, [applyZoom])
 
     const handleZoomOut = useCallback(() => {
-        setZoomLevel(prev => Math.max(prev - 0.25, 1))
-    }, [])
+        applyZoom(zoomLevelRef.current - 0.25)
+    }, [applyZoom])
 
     const handleResetZoom = useCallback(() => {
         setZoomLevel(1)
@@ -311,15 +383,43 @@ const ImagePreviewModal = ({
             // imagen.
             if (isCropping) return
             e.preventDefault()
-            if (e.deltaY < 0) {
-                handleZoomIn()
-            } else {
-                handleZoomOut()
-            }
+            // Paso proporcional al zoom actual: a 500% un salto fijo de 0.25
+            // apenas se nota, y a 100% es brusco.
+            const step = e.deltaY < 0 ? 1.12 : 1 / 1.12
+            applyZoom(zoomLevelRef.current * step, e.clientX, e.clientY)
         }
         el.addEventListener('wheel', onWheel, { passive: false })
         return () => el.removeEventListener('wheel', onWheel)
-    }, [isDrawingMask, isCropping, handleZoomIn, handleZoomOut, previewMedia])
+    }, [isCropping, applyZoom, previewMedia])
+
+    useEffect(() => {
+        if (!previewMedia) return
+        const isTyping = (t: EventTarget | null) =>
+            t instanceof HTMLElement &&
+            (t.tagName === 'INPUT' ||
+                t.tagName === 'TEXTAREA' ||
+                t.isContentEditable)
+        const down = (e: KeyboardEvent) => {
+            // Escribiendo en el prompt, ESPACIO es un espacio.
+            if (e.code !== 'Space' || isTyping(e.target)) return
+            e.preventDefault()
+            setSpaceHeld(true)
+        }
+        const up = (e: KeyboardEvent) => {
+            if (e.code === 'Space') setSpaceHeld(false)
+        }
+        // El blur importa: si se suelta la tecla fuera de la ventana el
+        // keyup nunca llega y la mano se quedaria pegada.
+        const clear = () => setSpaceHeld(false)
+        window.addEventListener('keydown', down)
+        window.addEventListener('keyup', up)
+        window.addEventListener('blur', clear)
+        return () => {
+            window.removeEventListener('keydown', down)
+            window.removeEventListener('keyup', up)
+            window.removeEventListener('blur', clear)
+        }
+    }, [previewMedia])
 
     // Drag-to-pan: grabbing the zoomed image scrolls the overflow-auto media
     // container. Driving the container's own scrollLeft/scrollTop means every
@@ -327,7 +427,9 @@ const ImagePreviewModal = ({
     // translate/clamp jank.
     const handlePanStart = useCallback((e: React.MouseEvent) => {
         const el = getMediaScrollEl()
-        if (!el || isDrawingMask || isCropping) return
+        // Con ESPACIO se puede arrastrar incluso dibujando: es el gesto que
+        // convierte el pincel en mano mientras se mantiene.
+        if (!el || isCropping || (isDrawingMask && !spaceHeld)) return
         const canScroll =
             el.scrollHeight > el.clientHeight || el.scrollWidth > el.clientWidth
         if (!canScroll) return
@@ -339,7 +441,7 @@ const ImagePreviewModal = ({
             scrollLeft: el.scrollLeft,
             scrollTop: el.scrollTop,
         }
-    }, [isDrawingMask, isCropping])
+    }, [isDrawingMask, isCropping, spaceHeld])
 
     const handlePanMove = useCallback((e: MouseEvent) => {
         const el = getMediaScrollEl()
@@ -1043,7 +1145,7 @@ const ImagePreviewModal = ({
                         <div className="flex items-center gap-1 sm:gap-2 ml-auto shrink-0">
                             <button
                                 onClick={handleZoomOut}
-                                disabled={zoomLevel <= 1 || isDrawingMask || isCropping}
+                                disabled={zoomLevel <= 1 || isCropping}
                                 className="p-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                                 title="Zoom Out"
                             >
@@ -1060,7 +1162,7 @@ const ImagePreviewModal = ({
                             )}
                             <button
                                 onClick={handleZoomIn}
-                                disabled={zoomLevel >= 3 || isDrawingMask || isCropping}
+                                disabled={zoomLevel >= 6 || isCropping}
                                 className="p-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                                 title="Zoom In"
                             >
@@ -1119,7 +1221,11 @@ const ImagePreviewModal = ({
                         onMouseDown={handlePanStart}
                         style={{
                             cursor:
-                                zoomLevel > 1 && !isDrawingMask && !isCropping
+                                spaceHeld
+                                    ? isPanning
+                                        ? 'grabbing'
+                                        : 'grab'
+                                    : zoomLevel > 1 && !isDrawingMask && !isCropping
                                     ? isPanning
                                         ? 'grabbing'
                                         : 'grab'
@@ -1269,6 +1375,12 @@ const ImagePreviewModal = ({
                                                 height: '100%',
                                                 opacity: 0.5,
                                                 cursor: 'none',
+                                                // Con ESPACIO el canvas se
+                                                // aparta para que el arrastre
+                                                // llegue al contenedor.
+                                                pointerEvents: spaceHeld
+                                                    ? 'none'
+                                                    : 'auto',
                                             }}
                                             onMouseDown={startDrawing}
                                             onMouseMove={draw}
@@ -1389,7 +1501,7 @@ const ImagePreviewModal = ({
                                 onClick={handleToggleMask}
                                 icon={<HiOutlinePencil />}
                             >
-                                <span>{isDrawingMask ? 'Drawing...' : 'Draw Mask'}</span>
+                                <span>{isDrawingMask ? 'Pintando…' : 'Pincel'}</span>
                             </Button>
                             <Button
                                 variant={isCropping ? 'solid' : 'plain'}
