@@ -56,6 +56,22 @@ async function build(ctx: ImageRouteContext): Promise<KieImageRequest> {
         input.seed = ctx.seed
     }
 
+    // EDICIÓN POR REGIÓN NATIVA (`bbox_list`, docs Alibaba: soportado por
+    // wan2.7-image y -pro). Formato List[List[List[int]]]: una entrada POR
+    // IMAGEN de entrada, cada una con sus cajas [x1,y1,x2,y2] en píxeles de
+    // la original, máx. 2 por imagen. `[]` para las que no se editan.
+    //
+    // Por qué importa: antes la zona se marcaba pintando un resalte morado
+    // ENCIMA de la foto. Wan es un fusor literal — copiaba el morado a la
+    // salida. Se intentó prohibirlo por texto y salió peor (la negación
+    // invoca), y luego atribuyéndolo en positivo, y seguía saliendo: a un
+    // fusor le basta VER el color. Con bbox no hay color que ver.
+    //
+    // La caja va en el índice 0 porque en edición la foto fuente ES la imagen
+    // 1; el resto de refs van sin caja. La lista se completa más abajo, una
+    // vez se sabe cuántas imágenes se mandan.
+    const maskBox = ctx.editMode ? ctx.maskBBox : undefined
+
     if (ctx.referenceImage) {
         try {
             const {
@@ -245,6 +261,16 @@ async function build(ctx: ImageRouteContext): Promise<KieImageRequest> {
                 logRoles = `face${wanExtras.length > 0 ? ', ' + wanExtras.map((r) => r.role).join(', ') : ''}`
             }
             input.input_urls = wanUrls
+            if (maskBox) {
+                // Una entrada por imagen; solo la primera (la foto que se
+                // edita) lleva caja.
+                input.bbox_list = wanUrls.map((_, i) =>
+                    i === 0 ? [maskBox] : [],
+                )
+                console.log(
+                    `[KIE] Wan edicion por REGION via bbox_list: [${maskBox.join(', ')}]`,
+                )
+            }
             const wanSceneRoom = Math.max(250, 2750 - wanAnchor.length)
             let wanSceneText = String(input.prompt)
             if (wanHasClone && cw >= 50) {

@@ -72,7 +72,9 @@ import {
 import { maskFaceInImage } from '@/utils/faceMask'
 import {
     compositeMaskOverlay,
+    maskBoundingBox,
     MASKED_EDIT_INSTRUCTION,
+    type MaskBBox,
 } from '../_utils/maskOverlay'
 import {
     generateVideo as generateVideoKling,
@@ -4031,7 +4033,25 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                         </Notification>,
                     )
                 }
-                if (maskBase64 && !overlayHostile) {
+                // Wan 2.7 (base y pro) acepta `bbox_list`: la región viaja
+                // como COORDENADAS. Es estrictamente mejor que pintarla —
+                // recibe dónde editar sin recibir un color que copiar, que es
+                // lo que hacía salir la mancha morada dos veces seguidas.
+                const wanRegional =
+                    resolvedProvider?.model === 'wan/2-7-image' ||
+                    resolvedProvider?.model === 'wan/2-7-image-pro'
+                let maskBBox: MaskBBox | null = null
+                if (maskBase64 && wanRegional) {
+                    try {
+                        maskBBox = await maskBoundingBox(
+                            `data:${sourceMime};base64,${sourceBase64}`,
+                            maskBase64,
+                        )
+                    } catch (e) {
+                        console.warn('[edit] mask bbox failed:', e)
+                    }
+                }
+                if (maskBase64 && !overlayHostile && !wanRegional) {
                     try {
                         const comp = await compositeMaskOverlay(
                             `data:${sourceMime};base64,${sourceBase64}`,
@@ -4136,6 +4156,9 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                                 // La foto que se edita YA lleva su ropa: sin
                                 // esto el dispatcher inyectaba un outfit.
                                 editMode: true,
+                                // Region nativa de Wan: sin esto la mascara
+                                // tendria que pintarse encima, y el fusor la copia.
+                                maskBBox: maskBBox ?? undefined,
                             })
                             resultUrl = polled.url
                             pendingStableUrl = polled.stableUrl
@@ -4147,6 +4170,9 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                                 aspectRatio: targetAspectRatio,
                                 model: editModel,
                                 editMode: true,
+                                // Region nativa de Wan: sin esto la mascara
+                                // tendria que pintarse encima, y el fusor la copia.
+                                maskBBox: maskBBox ?? undefined,
                             })
                             if (!r.success) {
                                 throw new Error(r.error)

@@ -490,6 +490,8 @@ export interface GenerateImageKieParams {
     // vestida hay que acotar su ropa. MuleRouter ya lo distinguia; KIE no
     // recibia el dato.
     bodySheetNude?: boolean
+    // Region a editar en pixeles [x1,y1,x2,y2] — Wan la acepta como bbox_list.
+    maskBBox?: [number, number, number, number]
     // Refuerzo de curvas EXCLUSIVO de Seedream (Pro aplana el hourglass cuando
     // describeBody describe la cadera por cm absolutos en vez de por ratio).
     // Solo la rama seedream/ lo inyecta; los demás modelos lo ignoran. Vacío
@@ -540,6 +542,7 @@ export async function generateImageKie(
         deepfakeMode,
         editMode,
         bodySheetNude,
+        maskBBox,
         curveBoost,
         cloneWeight,
         negativePrompt,
@@ -600,6 +603,7 @@ export async function generateImageKie(
             deepfakeMode,
             editMode,
             bodySheetNude,
+            maskBBox,
             curveBoost,
             cloneWeight,
             negativePrompt,

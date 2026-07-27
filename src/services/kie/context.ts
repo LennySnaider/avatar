@@ -57,6 +57,14 @@ export interface ImageRouteContext {
      * cruzaba: una ruta no puede usar lo que no recibe.
      */
     bodySheetNude?: boolean
+    /**
+     * Region a editar en PIXELES de la imagen original [x1,y1,x2,y2].
+     *
+     * Wan 2.7 (base y pro) la acepta como `bbox_list`, un canal NATIVO. Es la
+     * alternativa a quemar la mascara sobre la foto — que en un fusor literal
+     * acaba copiada en la salida, con negacion o sin ella.
+     */
+    maskBBox?: [number, number, number, number]
     curveBoost?: string
     /**
      * Peso del Clone Ref (0-100). 100 = recrear la foto EXACTA (default);
