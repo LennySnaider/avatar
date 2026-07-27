@@ -247,6 +247,9 @@ function explainKieFailure(raw: string): string {
  * generaciones siguientes hacen un HEAD (~100ms) y reutilizan la URL en vez de
  * re-subir 1-3MB por ref en cada generación (y otra vez en el retry).
  */
+/** Mínimo que exige KIE en cualquier imagen de entrada (error 500 explícito). */
+const MIN_REF_SIDE = 240
+
 /** Por debajo de esto el PNG ya viaja rápido y recomprimir solo añade CPU. */
 const PNG_RECOMPRESS_MIN_BYTES = 400 * 1024
 
@@ -296,6 +299,40 @@ export async function uploadReferenceToSupabase(
             // Recomprimir es una OPTIMIZACIÓN: si sharp falla, sube el PNG tal
             // cual. Perder velocidad es mejor que perder la generación.
             console.warn('[KIE/ref] PNG recompress skipped:', err)
+        }
+    }
+
+    // MÍNIMO DE RESOLUCIÓN. KIE rechaza con 500 "resolution must be at least
+    // 240x240" — pasó el 2026-07-27 con un Reference Asset de 406x175, y el
+    // fallo llega DESPUÉS de componer el prompt y subir todo, así que se
+    // pierde la generación entera por un logo pequeño.
+    //
+    // Se escala en vez de bloquear: un asset chico (un logo, un recorte) es
+    // contenido perfectamente válido, solo que no cumple el mínimo del
+    // proveedor. Ampliar preserva el aspecto y no inventa nada — el modelo lo
+    // iba a reescalar igual por dentro.
+    if (!effectiveMime.includes('mp4')) {
+        try {
+            const sharp = (await import('sharp')).default
+            const meta = await sharp(buffer).metadata()
+            const w = meta.width ?? 0
+            const h = meta.height ?? 0
+            if (w > 0 && h > 0 && (w < MIN_REF_SIDE || h < MIN_REF_SIDE)) {
+                const factor = MIN_REF_SIDE / Math.min(w, h)
+                const out = await sharp(buffer)
+                    .resize(Math.ceil(w * factor), Math.ceil(h * factor), {
+                        fit: 'fill',
+                        kernel: 'lanczos3',
+                    })
+                    .toBuffer()
+                console.log(
+                    `[KIE/ref] ${w}x${h} < ${MIN_REF_SIDE} → ampliada a ${Math.ceil(w * factor)}x${Math.ceil(h * factor)}`,
+                )
+                buffer = Buffer.from(out)
+            }
+        } catch (err) {
+            // Igual que la recompresión: es una salvaguarda, no un requisito.
+            console.warn('[KIE/ref] upscale check skipped:', err)
         }
     }
 

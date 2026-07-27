@@ -276,10 +276,10 @@ const ImagePreviewModal = ({
         const el = getMediaScrollEl()
         if (!el) return
         const onWheel = (e: WheelEvent) => {
-            // El zoom también vive en modo EDIT; solo se bloquea mientras las
-            // herramientas que asumen la imagen "en fit" están activas
-            // (máscara/crop — sus overlays se alinean al tamaño mostrado).
-            if (isDrawingMask || isCropping) return
+            // El crop SI asume la imagen en fit (su marco se calcula sobre el
+            // tamaño mostrado). La máscara ya no: su canvas escala con la
+            // imagen.
+            if (isCropping) return
             e.preventDefault()
             if (e.deltaY < 0) {
                 handleZoomIn()
@@ -489,8 +489,9 @@ const ImagePreviewModal = ({
 
     const handleToggleMask = () => {
         setIsDrawingMask(!isDrawingMask)
-        // La máscara asume la imagen en fit — vuelve a 100% al activarla.
-        if (!isDrawingMask) setZoomLevel(1)
+        // El zoom SOBREVIVE al entrar en máscara: se pierde justo cuando más
+        // falta hace, que es al acercarse para marcar con precisión. El canvas
+        // escala con la imagen, asi que ya no hay desalineación que evitar.
         if (!isDrawingMask) setIsCropping(false)
         if (!isDrawingMask && canvasRef.current) {
             // Clear canvas when starting mask mode
@@ -531,13 +532,18 @@ const ImagePreviewModal = ({
         }
     }, [isEditing, updateCanvasSize])
 
-    // Get coordinates for canvas drawing (1:1 since canvas matches display size)
+    // Del rect MOSTRADO al bitmap. Ya no es 1:1: con zoom el canvas se estira
+    // por CSS mientras su bitmap se queda al tamaño de "fit", asi que hay que
+    // dividir por la escala o los trazos caen desplazados.
     const getCanvasCoordinates = (e: React.MouseEvent<HTMLCanvasElement>) => {
-        if (!canvasRef.current) return { x: 0, y: 0 }
-        const rect = canvasRef.current.getBoundingClientRect()
+        const canvas = canvasRef.current
+        if (!canvas) return { x: 0, y: 0 }
+        const rect = canvas.getBoundingClientRect()
+        const sx = rect.width > 0 ? canvas.width / rect.width : 1
+        const sy = rect.height > 0 ? canvas.height / rect.height : 1
         return {
-            x: e.clientX - rect.left,
-            y: e.clientY - rect.top,
+            x: (e.clientX - rect.left) * sx,
+            y: (e.clientY - rect.top) * sy,
         }
     }
 
@@ -1095,7 +1101,7 @@ const ImagePreviewModal = ({
                                     }}
                                     className="rounded-lg block select-none"
                                     style={
-                                        zoomLevel > 1 && !isDrawingMask && !isCropping
+                                        zoomLevel > 1 && !isCropping
                                             ? {
                                                   // Altura EXPLÍCITA: con max-*
                                                   // la imagen dejaba de crecer al
@@ -1126,8 +1132,15 @@ const ImagePreviewModal = ({
                                             height={canvasSize.height}
                                             className="absolute inset-0"
                                             style={{
-                                                width: canvasSize.width,
-                                                height: canvasSize.height,
+                                                // El BITMAP (atributos width/
+                                                // height) se queda fijo; aquí
+                                                // solo se ESTIRA por CSS para
+                                                // seguir a la imagen al hacer
+                                                // zoom. Redimensionar el bitmap
+                                                // borraria los trazos ya
+                                                // dibujados.
+                                                width: '100%',
+                                                height: '100%',
                                                 opacity: 0.5,
                                                 cursor: 'none',
                                             }}
