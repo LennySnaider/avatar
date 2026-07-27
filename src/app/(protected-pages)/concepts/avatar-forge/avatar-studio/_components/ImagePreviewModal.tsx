@@ -342,6 +342,30 @@ const ImagePreviewModal = ({
      * del contenido. Al escalar por k pasa a `(scroll + m) * k`, y para que
      * siga bajo el cursor el scroll nuevo es `(scroll + m) * k - m`.
      */
+    /**
+     * Limita el desplazamiento a lo que un SCROLL habria permitido.
+     *
+     * Con `transform` el contenedor ya no scrollea, asi que su barra de ECME
+     * dejo de tener sentido — pero lo que esa barra garantizaba si importa:
+     * que no puedas perder la imagen fuera de la vista ni quedarte sin forma
+     * de volver. Esto lo garantiza por construccion.
+     *
+     * A pan 0 la imagen esta CENTRADA, asi que el margen util a cada lado es
+     * la mitad de lo que sobresale. Si cabe entera, el rango es 0 y queda
+     * centrada — igual que un contenedor sin overflow.
+     */
+    const clampPan = useCallback((next: { x: number; y: number }, scale: number) => {
+        const stage = stageRef.current
+        const el = getMediaScrollEl()
+        if (!stage || !el) return next
+        const overflowX = Math.max(0, stage.offsetWidth * scale - el.clientWidth)
+        const overflowY = Math.max(0, stage.offsetHeight * scale - el.clientHeight)
+        return {
+            x: Math.max(-overflowX / 2, Math.min(overflowX / 2, next.x)),
+            y: Math.max(-overflowY / 2, Math.min(overflowY / 2, next.y)),
+        }
+    }, [])
+
     const applyZoom = useCallback(
         (next: number, clientX?: number, clientY?: number) => {
             const target = Math.max(1, Math.min(next, MAX_ZOOM))
@@ -371,13 +395,14 @@ const ImagePreviewModal = ({
                     x: p.x + (ax - lx * target) - rect.left,
                     y: p.y + (ay - ly * target) - rect.top,
                 }
-                panRef.current = target === 1 ? { x: 0, y: 0 } : nextPan
+                panRef.current =
+                    target === 1 ? { x: 0, y: 0 } : clampPan(nextPan, target)
                 setPan(panRef.current)
             }
             zoomLevelRef.current = target
             setZoomLevel(target)
         },
-        [],
+        [clampPan],
     )
 
     useEffect(() => {
@@ -480,12 +505,15 @@ const ImagePreviewModal = ({
     const handlePanMove = useCallback((e: MouseEvent) => {
         const drag = dragScrollRef.current
         if (!drag) return
-        panRef.current = {
-            x: drag.scrollLeft + (e.clientX - drag.startX),
-            y: drag.scrollTop + (e.clientY - drag.startY),
-        }
+        panRef.current = clampPan(
+            {
+                x: drag.scrollLeft + (e.clientX - drag.startX),
+                y: drag.scrollTop + (e.clientY - drag.startY),
+            },
+            zoomLevelRef.current,
+        )
         setPan(panRef.current)
-    }, [])
+    }, [clampPan])
 
     const handlePanEnd = useCallback(() => {
         setIsPanning(false)
