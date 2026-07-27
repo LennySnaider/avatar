@@ -234,13 +234,21 @@ const ImagePreviewModal = ({
     useEffect(() => {
         const el = mediaContainerRef.current
         if (!el) return
-        const ro = new ResizeObserver(() => {
+        const measure = () =>
             setViewport({ w: el.clientWidth, h: el.clientHeight })
-        })
+        const ro = new ResizeObserver(measure)
         ro.observe(el)
-        setViewport({ w: el.clientWidth, h: el.clientHeight })
-        return () => ro.disconnect()
-    }, [scrollElVersion])
+        measure()
+        // Una medida mas en el siguiente frame: en el primer render el flex
+        // puede no haber repartido todavia, y si sale 0 el ResizeObserver NO
+        // vuelve a disparar (el contenedor no cambia de tamaño despues) — la
+        // imagen se quedaria sin limite para siempre.
+        const raf = requestAnimationFrame(measure)
+        return () => {
+            cancelAnimationFrame(raf)
+            ro.disconnect()
+        }
+    }, [scrollElVersion, previewMedia, isEditing, panelCollapsed])
     const viewportRef = useRef<HTMLDivElement>(null)
     const isDrawingRef = useRef(false)
     const lastPosRef = useRef({ x: 0, y: 0 })
@@ -1475,10 +1483,22 @@ const ImagePreviewModal = ({
                                     // mide lo que se ve — que es lo que usa
                                     // el clamp del paneo.
                                     style={{
-                                        maxWidth: viewport.w || undefined,
-                                        maxHeight: viewport.h || undefined,
+                                        // El vh es la RED por si la medida aun
+                                        // no llego: sin el, una medida de 0
+                                        // deja la imagen sin limite y desborda.
+                                        maxWidth: viewport.w || '100%',
+                                        maxHeight: viewport.h || '60vh',
                                     }}
-                                    onLoad={updateCanvasSize}
+                                    onLoad={(e) => {
+                                        updateCanvasSize()
+                                        const el = mediaContainerRef.current
+                                        if (el)
+                                            setViewport({
+                                                w: el.clientWidth,
+                                                h: el.clientHeight,
+                                            })
+                                        void e
+                                    }}
                                     draggable={false}
                                 />
                                 {/* Drawing Canvas Overlay */}
