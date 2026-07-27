@@ -656,3 +656,154 @@ export async function deleteFanvuePost(
         return fail(e)
     }
 }
+
+/** Tope de la API por llamada al adjuntar media a una carpeta. */
+const VAULT_ATTACH_CHUNK = 100
+
+/**
+ * Manda generaciones a la BÓVEDA de Fanvue (no las publica).
+ *
+ * Comparte los tres primeros pasos con `createFanvuePost` —conexión, permiso
+ * sobre el creator, propiedad de la media y subida— y solo diverge en el
+ * último: en vez de crear un post, adjunta los uuids a una carpeta. Es la
+ * misma media en la cuenta de Fanvue; la bóveda es dónde vive, no otra copia.
+ *
+ * La carpeta se identifica por NOMBRE. Se intenta crear siempre y un 409 se
+ * trata como éxito: "ya existe" es justo el estado que se buscaba.
+ */
+export async function sendGenerationsToFanvueVault(input: {
+    generationIds: string[]
+    creatorUserUuid?: string | null
+    folderName: string
+}): Promise<FanvueResult<{ sent: number; folderName: string }>> {
+    let userId: string
+    try {
+        userId = await requireSession()
+    } catch (e) {
+        return fail(e)
+    }
+
+    const folderName = input.folderName.trim()
+    if (!folderName) {
+        return { success: false, error: 'Pick a vault folder name' }
+    }
+    if (folderName.length > 255) {
+        return { success: false, error: 'Folder name is too long (max 255)' }
+    }
+
+    const ids = input.generationIds.filter(
+        (id, i, arr) => Boolean(id) && arr.indexOf(id) === i,
+    )
+    if (ids.length === 0) {
+        return { success: false, error: 'Select at least one item' }
+    }
+
+    const supabase = fanvueSupabase()
+
+    try {
+        const connection = await loadConnection(userId)
+        if (!connection)
+            return { success: false, error: 'Connect your Fanvue agency first' }
+
+        // Mismo control que al publicar: en modo agencia el creator tiene que
+        // estar gestionado por ESTA conexión.
+        if (input.creatorUserUuid) {
+            const { data: creator, error: creatorErr } = await supabase
+                .from('fanvue_creators')
+                .select('creator_user_uuid')
+                .eq('connection_id', connection.id)
+                .eq('creator_user_uuid', input.creatorUserUuid)
+                .maybeSingle()
+            if (creatorErr) throw new Error(creatorErr.message)
+            if (!creator) {
+                return {
+                    success: false,
+                    error: 'That creator is not managed by your Fanvue agency',
+                }
+            }
+        }
+
+        const { data: gens, error: genErr } = await supabase
+            .from('generations')
+            .select('id, media_type, storage_path, user_id')
+            .in('id', ids)
+        if (genErr) throw new Error(genErr.message)
+        if (!gens || gens.length !== ids.length) {
+            return { success: false, error: 'Generation not found' }
+        }
+        for (const g of gens) {
+            if (g.user_id && g.user_id !== userId) {
+                return { success: false, error: 'Not your media' }
+            }
+        }
+
+        const client = makeClient(userId)
+        const creatorUuid = input.creatorUserUuid ?? null
+
+        // La carpeta ANTES de subir: si el nombre es inválido o falta scope,
+        // se falla sin haber gastado una subida por cada imagen.
+        await client.createVaultFolder(creatorUuid, folderName)
+
+        const byId = new Map(gens.map((g) => [g.id, g]))
+        const mediaUuids: string[] = []
+        for (const id of ids) {
+            const g = byId.get(id)!
+            mediaUuids.push(
+                await uploadGenerationMedia({
+                    client,
+                    creatorUuid,
+                    storagePath: g.storage_path,
+                    mediaType: mapMediaType(g.media_type),
+                    supabase: supabase as unknown as Parameters<
+                        typeof uploadGenerationMedia
+                    >[0]['supabase'],
+                }),
+            )
+        }
+
+        for (let i = 0; i < mediaUuids.length; i += VAULT_ATTACH_CHUNK) {
+            await client.attachMediaToVaultFolder(
+                creatorUuid,
+                folderName,
+                mediaUuids.slice(i, i + VAULT_ATTACH_CHUNK),
+            )
+        }
+
+        return {
+            success: true,
+            data: { sent: mediaUuids.length, folderName },
+        }
+    } catch (e) {
+        return fail(e)
+    }
+}
+
+/** Carpetas de la bóveda, para ofrecerlas en vez de pedir el nombre a ciegas. */
+export async function listFanvueVaultFolders(
+    creatorUserUuid?: string | null,
+): Promise<FanvueResult<{ name: string; mediaCount: number }[]>> {
+    let userId: string
+    try {
+        userId = await requireSession()
+    } catch (e) {
+        return fail(e)
+    }
+    try {
+        const connection = await loadConnection(userId)
+        if (!connection)
+            return { success: false, error: 'Connect your Fanvue agency first' }
+        const res = await makeClient(userId).listVaultFolders(
+            creatorUserUuid ?? null,
+            { size: 50 },
+        )
+        return {
+            success: true,
+            data: (res.data ?? []).map((f) => ({
+                name: f.name,
+                mediaCount: f.mediaCount,
+            })),
+        }
+    } catch (e) {
+        return fail(e)
+    }
+}

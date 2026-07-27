@@ -37,10 +37,12 @@ import {
     HiOutlineChevronDoubleLeft,
     HiOutlineChevronDoubleRight,
     HiOutlineShare,
+    HiOutlineFolderAdd,
     HiOutlineVolumeUp,
     HiOutlineUserCircle,
 } from 'react-icons/hi'
 import AssignAvatarDialog from './AssignAvatarDialog'
+import VaultDialog from './VaultDialog'
 import { HiOutlineArrowUturnLeft, HiOutlineArrowUturnRight } from 'react-icons/hi2'
 import Tooltip from '@/components/ui/Tooltip'
 import type { GeneratedMedia } from '../types'
@@ -131,6 +133,7 @@ const ImagePreviewModal = ({
 
     const [isEditing, setIsEditing] = useState(false)
     const [assignMedia, setAssignMedia] = useState<GeneratedMedia | null>(null)
+    const [vaultOpen, setVaultOpen] = useState(false)
     const [editPrompt, setEditPrompt] = useState('')
     const [isDrawingMask, setIsDrawingMask] = useState(false)
     const [maskCanvas, setMaskCanvas] = useState<string | null>(null)
@@ -1600,6 +1603,28 @@ const ImagePreviewModal = ({
                                 </Tooltip>
                             )}
 
+                            {/* Bóveda de Fanvue: guardar sin publicar. Va
+                                junto a Post porque comparten destino, pero es
+                                la otra intención — archivar en vez de sacar. */}
+                            <Tooltip
+                                title={
+                                    previewMedia.saveState !== 'saved'
+                                        ? 'Saving… available once this media is saved'
+                                        : 'Enviar a la bóveda de Fanvue (no publica)'
+                                }
+                            >
+                                <Button
+                                    size="sm"
+                                    variant="plain"
+                                    onClick={() => setVaultOpen(true)}
+                                    disabled={
+                                        previewMedia.saveState !== 'saved' ||
+                                        !previewMedia.generationId
+                                    }
+                                    icon={<HiOutlineFolderAdd />}
+                                />
+                            </Tooltip>
+
                             {/* Delete — al final del toolbar y en ROJO (antes
                                 flotaba junto al zoom: demasiado fácil tocarlo
                                 por accidente). ml-auto lo separa del resto. */}
@@ -1623,6 +1648,12 @@ const ImagePreviewModal = ({
         </Dialog>
 
             {/* Assign to avatar (owner decides whose accounts can publish) */}
+            <VaultDialog
+                isOpen={vaultOpen}
+                onClose={() => setVaultOpen(false)}
+                generationIds={previewMedia?.generationId ? [previewMedia.generationId] : []}
+                avatarId={previewMedia?.avatarId ?? null}
+            />
             <AssignAvatarDialog
                 media={assignMedia}
                 userId={userId}

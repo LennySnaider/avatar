@@ -294,6 +294,70 @@ export class FanvueClient {
     // Chats (agent inbox). Shapes verified against api.fanvue.com docs
     // 2026-07-11. Chats are keyed by the FAN's userUuid.
     // -----------------------------------------------------------------------
+    // Vault. Las carpetas se identifican por NOMBRE, no por uuid — así que el
+    // nombre ES la clave y hay que codificarlo en la ruta. Mismo prefijo
+    // `base()` que posts y chats: en modo agencia cuelga de /creators/{uuid}.
+    // Scopes: read:media para listar, write:media para crear y adjuntar.
+    // -----------------------------------------------------------------------
+
+    /** `GET [/creators/{uuid}]/vault/folders` — una página de carpetas. */
+    async listVaultFolders(
+        creatorUuid: string | null,
+        params?: { page?: number; size?: number },
+    ): Promise<{
+        data: { name: string; createdAt: string | null; mediaCount: number }[]
+        page?: number
+        size?: number
+        hasMore?: boolean
+    }> {
+        const qs = new URLSearchParams()
+        if (params?.page) qs.set('page', String(params.page))
+        if (params?.size) qs.set('size', String(params.size))
+        const query = qs.toString()
+        return this.requestJson(
+            'GET',
+            `${this.base(creatorUuid)}/vault/folders${query ? `?${query}` : ''}`,
+        )
+    }
+
+    /**
+     * `POST [/creators/{uuid}]/vault/folders` — crea una carpeta.
+     *
+     * Devuelve `false` si ya existía (409) en vez de reventar: el nombre es la
+     * clave, así que "ya existe" es exactamente el estado que se buscaba. Que
+     * el llamador tenga que distinguir crear-de-cero de ya-estaba solo le
+     * añadiría un try/catch para acabar haciendo lo mismo.
+     */
+    async createVaultFolder(
+        creatorUuid: string | null,
+        name: string,
+    ): Promise<boolean> {
+        try {
+            await this.requestJson('POST', `${this.base(creatorUuid)}/vault/folders`, {
+                name,
+            })
+            return true
+        } catch (err) {
+            if (err instanceof FanvueApiError && err.status === 409) return false
+            throw err
+        }
+    }
+
+    /**
+     * `POST [/creators/{uuid}]/vault/folders/{name}/media` — adjunta media ya
+     * subida a una carpeta. La API acepta como mucho 100 uuids por llamada.
+     */
+    async attachMediaToVaultFolder(
+        creatorUuid: string | null,
+        folderName: string,
+        mediaUuids: string[],
+    ): Promise<void> {
+        await this.requestJson(
+            'POST',
+            `${this.base(creatorUuid)}/vault/folders/${encodeURIComponent(folderName)}/media`,
+            { mediaUuids },
+        )
+    }
 
     /** `GET [/creators/{uuid}]/chats` — one page of chat summaries. */
     async listChats(

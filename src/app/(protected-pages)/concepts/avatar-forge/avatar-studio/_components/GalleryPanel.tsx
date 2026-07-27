@@ -11,6 +11,7 @@ import ScrollBar, { type ScrollBarRef } from '@/components/ui/ScrollBar'
 import Notification from '@/components/ui/Notification'
 import toast from '@/components/ui/toast'
 import ConfirmDialog from '@/components/shared/ConfirmDialog'
+import VaultDialog from './VaultDialog'
 import AssignAvatarDialog from './AssignAvatarDialog'
 import {
     apiDeleteGeneration,
@@ -32,6 +33,7 @@ import {
     HiOutlineStar,
     HiArchive,
     HiOutlineArchive,
+    HiOutlineFolderAdd,
     HiArrowUp,
     HiOutlineCheckCircle,
     HiCheck,
@@ -158,6 +160,7 @@ const GalleryPanel = ({
     const [selectMode, setSelectMode] = useState(false)
     const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
     const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false)
+    const [vaultOpen, setVaultOpen] = useState(false)
     const [bulkBusy, setBulkBusy] = useState(false)
     const exitSelect = () => {
         setSelectMode(false)
@@ -360,6 +363,17 @@ const GalleryPanel = ({
         selectedMedia.forEach((m) => setNsfwFlag(m, !allNsfw))
         exitSelect()
     }
+    // Solo lo persistido puede ir a la bóveda: el servidor comprueba la
+    // propiedad contra la fila de `generations`, y una media de sesión aún no
+    // tiene ninguna.
+    const vaultableIds = selectedMedia
+        .map((m) => m.generationId)
+        .filter((id): id is string => Boolean(id))
+    // El creator de Fanvue cuelga del avatar. Si la selección mezcla avatares
+    // no hay un destino único, así que manda el de la primera — que es el
+    // caso real, porque la galería se filtra por avatar.
+    const vaultAvatarId = selectedMedia.find((m) => m.avatarId)?.avatarId ?? null
+
     const bulkDelete = async () => {
         setBulkBusy(true)
         try {
@@ -776,6 +790,26 @@ const GalleryPanel = ({
                                 >
                                     <TbPepper className="w-3.5 h-3.5" />
                                     {allNsfw ? 'Quitar NSFW' : 'NSFW'}
+                                </button>
+                                {/* La bóveda solo acepta media PERSISTIDA: las
+                                    de sesión aún no tienen fila, y el servidor
+                                    valida propiedad contra ella. Por eso el
+                                    contador es de `vaultableIds`, no de la
+                                    selección — decir "3" y enviar 1 sería
+                                    peor que decir 1. */}
+                                <button
+                                    type="button"
+                                    disabled={vaultableIds.length === 0}
+                                    onClick={() => setVaultOpen(true)}
+                                    title={
+                                        vaultableIds.length === 0
+                                            ? 'Ninguna de las seleccionadas está guardada todavía'
+                                            : 'Enviar a la bóveda de Fanvue (no publica)'
+                                    }
+                                    className="flex items-center gap-1 text-xs px-2.5 py-1 rounded-lg border border-violet-300 text-violet-700 dark:text-violet-300 hover:bg-violet-50 dark:hover:bg-violet-500/10 disabled:opacity-40"
+                                >
+                                    <HiOutlineFolderAdd className="w-3.5 h-3.5" />
+                                    Bóveda{vaultableIds.length > 0 ? ` (${vaultableIds.length})` : ''}
                                 </button>
                                 <button
                                     type="button"
@@ -1291,6 +1325,15 @@ const GalleryPanel = ({
                     .
                 </p>
             </ConfirmDialog>
+
+            {/* Bóveda de Fanvue (multi-selección) */}
+            <VaultDialog
+                isOpen={vaultOpen}
+                onClose={() => setVaultOpen(false)}
+                generationIds={vaultableIds}
+                avatarId={vaultAvatarId}
+                onSent={exitSelect}
+            />
 
             {/* Borrado en LOTE (multi-selección) */}
             <ConfirmDialog
