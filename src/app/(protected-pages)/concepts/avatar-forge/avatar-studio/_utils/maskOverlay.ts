@@ -14,8 +14,25 @@
  * Instrucción que acompaña al composite en los paths i2i (KIE/Kling/MiniMax).
  * COMPACTA a propósito: en Qwen viaja dentro del cap de 800 chars.
  */
+/**
+ * AUDITORÍA 2026-07-27: la versión anterior cerraba con "NEVER paint purple in
+ * the output" — una NEGACIÓN en el prompt positivo, que es justo lo que la
+ * difusión no procesa: mete "paint purple" en lo que debe dibujar. Wan, que es
+ * un fusor literal, calcaba la mancha morada en el resultado (mismo fallo que
+ * ya tuvo copiando el óvalo del difuminado de cara el 25/07).
+ *
+ * Ahora se ATRIBUYE en positivo en vez de prohibir: se dice qué ES la capa
+ * (un marcador transparente encima) y de qué color sale la salida (los colores
+ * propios de la foto). La prohibición vive donde sí funciona — el
+ * negative_prompt, en las rutas que lo aceptan.
+ */
 export const MASKED_EDIT_INSTRUCTION =
-    'MASKED EDIT: the photo has a translucent PURPLE highlight marking the ONLY area to change — apply the edit EXCLUSIVELY there; everything outside it stays IDENTICAL. The purple tint is an annotation: NEVER paint purple in the output.'
+    'MASKED EDIT: a translucent PURPLE highlight marks the ONLY area to change — apply the edit EXCLUSIVELY there, and everything outside it stays IDENTICAL. That highlight is a transparent marker layer sitting on top of the photo: underneath it the scene continues in its own natural colours, and the output renders those real colours, matching the rest of the photo.'
+
+/** Términos para el `negative_prompt` de las rutas que lo aceptan: ahí SÍ es
+ * donde una prohibición de color funciona. */
+export const MASK_NEGATIVE_TERMS =
+    'purple tint, purple overlay, violet wash, magenta patch, coloured highlight over the subject'
 
 function loadImage(src: string): Promise<HTMLImageElement> {
     return new Promise((resolve, reject) => {

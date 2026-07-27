@@ -215,7 +215,14 @@ async function build(ctx: ImageRouteContext): Promise<KieImageRequest> {
                 const wanBodyClause = ctx.deepfakeMode
                     ? ''
                     : wanHasBody
-                      ? ` The SECOND attached image shows her real BODY (a turnaround sheet: the SAME one woman from several angles) — replicate its exact body shape, proportions, curves and build; do NOT take the body from the first image. IGNORE the second image's clothing, pose, scene, lighting and background — her outfit, pose and the scene come ONLY from ${wanHasClone ? 'the CLONE image and the text description' : 'the text description'}.${
+                      // La hoja NUDE y la VESTIDA aportan cosas distintas y
+                      // hasta ahora recibían la MISMA frase: a la nude se le
+                      // pedía ignorar una ropa que no tiene, y nunca se le
+                      // pedía la PIEL — que es justo lo que hizo que la nude
+                      // funcionara ("con la hoja NUDE se copia además la piel
+                      // y la anatomía reales, lo que el texto no lograba").
+                      // Redacción portada de muleRouterPrompt, ya validada.
+                      ? ` The SECOND attached image shows her real BODY (a turnaround sheet: the SAME one woman from several angles) — replicate its exact body shape, proportions, curves and build${ctx.bodySheetNude ? ', and her real SKIN: its tone, texture and natural anatomy' : ''}; the body comes from THAT image, not from the first one.${ctx.bodySheetNude ? '' : " IGNORE the second image's clothing —"} its pose, scene, lighting and background stay out too: her outfit, pose and the scene come ONLY from ${wanHasClone ? 'the CLONE image and the text description' : 'the text description'}.${
                             // Spec en TEXTO también con body ref (mismo hueco
                             // que seedream, 2026-07-22) — con la calibración
                             // DIRECCIONAL de Wan (6c97342): caderas/glúteos/

@@ -43,6 +43,7 @@ import {
     describeBody,
     buildCurvesEmphasis,
 } from '../src/utils/bodyDescriptors'
+import { MASKED_EDIT_INSTRUCTION } from '../src/app/(protected-pages)/concepts/avatar-forge/avatar-studio/_utils/maskOverlay'
 import type { PhysicalMeasurements } from '../src/@types/supabase'
 
 /**
@@ -155,6 +156,10 @@ push('eyeClause', eyeClause('green eyes'))
 push('INTACT_BODY_CLAUSE', INTACT_BODY_CLAUSE)
 push('INTACT_BODY_IN_FRAME_CLAUSE', INTACT_BODY_IN_FRAME_CLAUSE)
 push('EDIT_ANCHOR_CLAUSE', EDIT_ANCHOR_CLAUSE)
+// Vive en _utils/ y no en el juego de clausulas, asi que se colo un
+// "NEVER paint purple" que Wan calcaba literalmente. El centinela solo
+// protege lo que se le da a mirar.
+push('MASKED_EDIT_INSTRUCTION', MASKED_EDIT_INSTRUCTION)
 push('vulvaClause', vulvaClause('completely nude'))
 push('pubicHairClause', pubicHairClause(M))
 // El caso 'shaved' toma una rama DISTINTA de la función, con su propia

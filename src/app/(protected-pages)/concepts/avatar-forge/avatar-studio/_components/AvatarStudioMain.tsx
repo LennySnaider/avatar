@@ -2586,6 +2586,12 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                                     ? undefined
                                     : cloneWeight,
                                 deepfakeMode: deepfakeActive,
+                                // La hoja que se manda es la NUDE? Cambia la
+                                // clausula de cuerpo: con nude se pide ademas
+                                // la PIEL. Ya se le pasaba a MuleRouter; a KIE
+                                // no llegaba, asi que sus rutas trataban igual
+                                // a las dos hojas.
+                                bodySheetNude: usingNudeSheet,
                                 // Color de pelo DENTRO del ancla i2i: como "brown
                                 // hair" en el [BODY:] tardío, Seedream/Wan seguían
                                 // el tono del ref/escena (reporte: MiaUltra salía

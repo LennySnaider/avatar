@@ -45,6 +45,18 @@ export interface ImageRouteContext {
      * la foto que se edita YA lleva su ropa puesta.
      */
     editMode?: boolean
+    /**
+     * ¿La hoja de cuerpo que viaja como ref es la NUDE del Body Lab?
+     *
+     * Existía en el Studio y se le pasaba a MuleRouter, pero NO llegaba aquí —
+     * así que las rutas de KIE trataban igual a las dos hojas: le pedían a la
+     * nude que "ignorara su ropa" (que no tiene) y nunca le pedían la PIEL,
+     * que es lo que hizo que la nude funcionara ("con la hoja NUDE se copia
+     * además la piel y la anatomía reales, lo que el texto no lograba").
+     * La mejora vivía en muleRouterPrompt y no cruzó, porque el dato no
+     * cruzaba: una ruta no puede usar lo que no recibe.
+     */
+    bodySheetNude?: boolean
     curveBoost?: string
     /**
      * Peso del Clone Ref (0-100). 100 = recrear la foto EXACTA (default);

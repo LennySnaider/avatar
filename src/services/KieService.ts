@@ -485,6 +485,11 @@ export interface GenerateImageKieParams {
     // EDICION de una foto existente (la fuente va en referenceImage). Apaga el
     // fallback de outfit: la foto que se edita ya lleva su ropa puesta.
     editMode?: boolean
+    // ¿La ref de rol 'body' es la hoja NUDE del Body Lab? Cambia la clausula:
+    // con la nude se pide ademas la PIEL (lo que el texto no lograba), con la
+    // vestida hay que acotar su ropa. MuleRouter ya lo distinguia; KIE no
+    // recibia el dato.
+    bodySheetNude?: boolean
     // Refuerzo de curvas EXCLUSIVO de Seedream (Pro aplana el hourglass cuando
     // describeBody describe la cadera por cm absolutos en vez de por ratio).
     // Solo la rama seedream/ lo inyecta; los demás modelos lo ignoran. Vacío
@@ -534,6 +539,7 @@ export async function generateImageKie(
         identityWeight,
         deepfakeMode,
         editMode,
+        bodySheetNude,
         curveBoost,
         cloneWeight,
         negativePrompt,
@@ -593,6 +599,7 @@ export async function generateImageKie(
             identityWeight,
             deepfakeMode,
             editMode,
+            bodySheetNude,
             curveBoost,
             cloneWeight,
             negativePrompt,

@@ -9,6 +9,7 @@
  */
 
 import type { ImageRoute, ImageRouteContext, KieImageRequest } from '../context'
+import { MASK_NEGATIVE_TERMS } from '@/app/(protected-pages)/concepts/avatar-forge/avatar-studio/_utils/maskOverlay'
 import {
     relocatePoseTag,
     capAtWordBoundary,
@@ -100,6 +101,10 @@ async function build(ctx: ImageRouteContext): Promise<KieImageRequest> {
         // Qwen es el que mas los saca (reporte con imagen: manchas rojas por
         // pecho y muslos). El positivo ya no nombra marcas; esto es la red.
         SKIN_ARTIFACT_NEGATIVE_TERMS,
+        // Enmascarado: la capa morada es una ANOTACION, y prohibir su color
+        // solo funciona por este canal. En el positivo el "NEVER paint purple"
+        // lograba lo contrario — Wan calcaba la mancha (2026-07-27).
+        ctx.editMode ? MASK_NEGATIVE_TERMS : '',
     ]
         .filter(Boolean)
         .join(', ')
