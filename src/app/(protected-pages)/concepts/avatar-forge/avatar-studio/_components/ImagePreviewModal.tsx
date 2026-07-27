@@ -45,6 +45,8 @@ import AssignAvatarDialog from './AssignAvatarDialog'
 import VaultDialog from './VaultDialog'
 import { HiOutlineArrowUturnLeft, HiOutlineArrowUturnRight } from 'react-icons/hi2'
 import Tooltip from '@/components/ui/Tooltip'
+import Notification from '@/components/ui/Notification'
+import toast from '@/components/ui/toast'
 import type { GeneratedMedia } from '../types'
 import type { AspectRatio } from '@/@types/supabase'
 
@@ -142,6 +144,9 @@ const ImagePreviewModal = ({
     const [videoCurrentTime, setVideoCurrentTime] = useState(0)
     const [videoDuration, setVideoDuration] = useState(0)
     const [brushSize, setBrushSize] = useState(30)
+    /** Radio del difuminado, en pixeles de la imagen NATURAL. */
+    const [blurStrength, setBlurStrength] = useState(24)
+    const [isBlurring, setIsBlurring] = useState(false)
     const [editAspectRatio, setEditAspectRatio] = useState<AspectRatio>('1:1')
     const [editProviderId, setEditProviderId] = useState<string | null>(null)
     const [cropPosition, setCropPosition] = useState({ x: 0, y: 0 })
@@ -381,6 +386,96 @@ const ImagePreviewModal = ({
             setPreviewMedia(previewMedia, false)
         }
     }, [previewMedia, previewStartInEdit, onEdit, setPreviewMedia])
+
+    /**
+     * DIFUMINAR la zona pintada y guardar una COPIA.
+     *
+     * No pasa por ningun modelo: es composicion de canvas, asi que es
+     * instantaneo y gratis. Sirve para tapar caras, marcas o fondos sin gastar
+     * una generacion — y sobre todo sin arriesgar que el modelo cambie algo
+     * mas de lo que se le pidio, que es lo que pasa al "editar" para borrar.
+     *
+     * Como funciona: se pinta el original, aparte una version desenfocada
+     * entera, y se recorta esa version con la mascara usando
+     * `destination-in` (deja solo los pixeles donde la mascara tiene alfa).
+     * El resultado se superpone. La mascara viene a resolucion de PANTALLA y
+     * se escala a la natural, igual que en el composite.
+     */
+    const handleApplyBlur = useCallback(async () => {
+        if (!previewMedia || !canvasRef.current) return
+        const maskUrl = canvasRef.current.toDataURL('image/png')
+
+        const load = (src: string) =>
+            new Promise<HTMLImageElement>((resolve, reject) => {
+                const im = new Image()
+                im.crossOrigin = 'anonymous'
+                im.onload = () => resolve(im)
+                im.onerror = () => reject(new Error('no se pudo cargar'))
+                im.src = src
+            })
+
+        try {
+            const [source, mask] = await Promise.all([
+                load(previewMedia.publicUrl ?? previewMedia.url),
+                load(maskUrl),
+            ])
+            const w = source.naturalWidth
+            const h = source.naturalHeight
+
+            // Capa desenfocada, recortada por la mascara.
+            const blurred = document.createElement('canvas')
+            blurred.width = w
+            blurred.height = h
+            const bctx = blurred.getContext('2d')
+            if (!bctx) return
+            // El radio se escala con la imagen: 24px sobre una foto 4K casi no
+            // se ve, y sobre una de 512 la borra entera.
+            const radius = Math.max(2, Math.round((blurStrength * w) / 1024))
+            bctx.filter = `blur(${radius}px)`
+            bctx.drawImage(source, 0, 0, w, h)
+            bctx.filter = 'none'
+            bctx.globalCompositeOperation = 'destination-in'
+            bctx.drawImage(mask, 0, 0, w, h)
+
+            const out = document.createElement('canvas')
+            out.width = w
+            out.height = h
+            const octx = out.getContext('2d')
+            if (!octx) return
+            octx.drawImage(source, 0, 0)
+            octx.drawImage(blurred, 0, 0)
+
+            const blurredMedia: GeneratedMedia = {
+                id: `blur-${Date.now()}`,
+                url: out.toDataURL('image/jpeg', 0.95),
+                prompt: `Blurred: ${previewMedia.prompt}`,
+                aspectRatio: previewMedia.aspectRatio,
+                timestamp: Date.now(),
+                mediaType: 'IMAGE',
+                avatarId: previewMedia.avatarId ?? null,
+                avatarInfo: previewMedia.avatarInfo,
+            }
+            addToGallery(blurredMedia)
+            // Mismo contrato que el crop: persistir de inmediato para que Post
+            // y Asignar no queden bloqueados esperando un Save manual.
+            onCropped?.(blurredMedia)
+            setPreviewMedia(blurredMedia)
+            setIsDrawingMask(false)
+            setIsBlurring(false)
+            toast.push(
+                <Notification type="success" title="Copia difuminada" duration={2500}>
+                    El original se queda intacto en la galería.
+                </Notification>,
+            )
+        } catch (e) {
+            console.error('[blur] failed:', e)
+            toast.push(
+                <Notification type="danger" title="No se pudo difuminar">
+                    {e instanceof Error ? e.message : 'Fallo al componer la imagen'}
+                </Notification>,
+            )
+        }
+    }, [previewMedia, blurStrength, addToGallery, onCropped, setPreviewMedia])
 
     const handleSubmitEdit = async () => {
         if (!previewMedia) return
@@ -1312,6 +1407,55 @@ const ImagePreviewModal = ({
                         </div>
                         {isDrawingMask ? (
                             <div className="mt-3 space-y-2">
+                                {/* Dos usos del MISMO trazo: marcarle la zona
+                                    al modelo, o difuminarla aqui mismo. Lo
+                                    segundo no pasa por ningun proveedor —
+                                    instantaneo, gratis, y sin riesgo de que el
+                                    modelo cambie algo mas de lo pedido. */}
+                                <div className="flex items-center gap-2">
+                                    <span className="text-xs text-gray-500 dark:text-gray-400 w-20">
+                                        El trazo
+                                    </span>
+                                    <Button
+                                        size="xs"
+                                        variant={isBlurring ? 'default' : 'solid'}
+                                        onClick={() => setIsBlurring(false)}
+                                    >
+                                        <span>Marca la zona a editar</span>
+                                    </Button>
+                                    <Button
+                                        size="xs"
+                                        variant={isBlurring ? 'solid' : 'default'}
+                                        onClick={() => setIsBlurring(true)}
+                                    >
+                                        <span>Difumina (copia)</span>
+                                    </Button>
+                                </div>
+                                {isBlurring && (
+                                    <div className="flex items-center gap-4">
+                                        <span className="text-xs text-gray-500 dark:text-gray-400 w-20">
+                                            Intensidad
+                                        </span>
+                                        <div className="flex-1">
+                                            <Slider
+                                                value={blurStrength}
+                                                onChange={(val) => setBlurStrength(val as number)}
+                                                min={4}
+                                                max={80}
+                                            />
+                                        </div>
+                                        <span className="text-xs text-gray-500 dark:text-gray-400 w-10 text-right">
+                                            {blurStrength}
+                                        </span>
+                                        <Button
+                                            size="xs"
+                                            variant="solid"
+                                            onClick={handleApplyBlur}
+                                        >
+                                            <span>Guardar copia</span>
+                                        </Button>
+                                    </div>
+                                )}
                                 <div className="flex items-center gap-4">
                                     <span className="text-xs text-gray-500 dark:text-gray-400 w-20">Brush Size</span>
                                     <div className="flex-1">
