@@ -1,7 +1,7 @@
 import type { VideoNodeHandler, MediaBundle, AvatarBundle } from '../_engine/types'
 import type { MediaType } from '@/@types/supabase'
-import { getStoragePublicUrl } from '@/lib/storagePaths'
-import { uploadToSignedStorageUrl } from '@/lib/storageUpload'
+import { getGenerationMediaUrl } from '@/lib/storagePaths'
+import { uploadGenerationTicket } from '@/lib/storageUpload'
 import {
     apiCreateGenerationUploadUrl,
     apiSaveGeneration,
@@ -39,14 +39,18 @@ export const saveToGallery: VideoNodeHandler = async (node, inputs) => {
     const contentType =
         blob.type || (mediaType === 'VIDEO' ? 'video/mp4' : 'image/jpeg')
 
-    const { path, token } = await apiCreateGenerationUploadUrl(mediaType)
-    await uploadToSignedStorageUrl('generations', path, token, blob, contentType)
+    const ticket = await apiCreateGenerationUploadUrl(mediaType)
+    await uploadGenerationTicket(ticket, blob, contentType)
+    const path = ticket.path
 
     // user_id is re-derived from the session inside apiSaveGeneration.
     const row = await apiSaveGeneration({
         avatar_id: avatarId,
         media_type: mediaType,
         storage_path: path,
+        ...(ticket.provider === 'r2'
+            ? ({ storage_provider: 'r2' } as object)
+            : {}),
         prompt: media.prompt ?? 'Video Flow',
         metadata: {
             collection: (node.data.config.collection as string) ?? 'default',
@@ -56,7 +60,7 @@ export const saveToGallery: VideoNodeHandler = async (node, inputs) => {
 
     const saved: MediaBundle = {
         kind: media.kind,
-        url: getStoragePublicUrl('generations', path),
+        url: getGenerationMediaUrl(path, ticket.provider),
         prompt: media.prompt,
         generationId: row.id,
         avatarId: avatarId ?? undefined,

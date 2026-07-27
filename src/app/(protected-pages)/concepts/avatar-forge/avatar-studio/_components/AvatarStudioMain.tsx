@@ -51,8 +51,8 @@ import {
     getSignedUrl,
 } from '@/services/AvatarForgeService'
 import { urlToDataUrl } from '@/utils/imageStitch'
-import { getStoragePublicUrl } from '@/lib/storagePaths'
-import { uploadToSignedStorageUrl } from '@/lib/storageUpload'
+import { getStoragePublicUrl, getGenerationMediaUrl } from '@/lib/storagePaths'
+import { uploadGenerationTicket } from '@/lib/storageUpload'
 import {
     generateAvatar,
     generateVideoSafe as generateVideoGeminiSafe,
@@ -480,20 +480,16 @@ async function uploadGenerationWithRetry(
     mediaType: Parameters<typeof apiCreateGenerationUploadUrl>[0],
     blob: Blob,
     contentType: string,
-): Promise<string> {
+): Promise<{ path: string; provider: 'r2' | 'supabase' }> {
     let lastError: unknown = null
     for (let attempt = 1; attempt <= 3; attempt++) {
         try {
-            const { path, token } =
-                await apiCreateGenerationUploadUrl(mediaType)
-            await uploadToSignedStorageUrl(
-                'generations',
-                path,
-                token,
-                blob,
-                contentType,
-            )
-            return path
+            // El ticket decide el destino (R2 o Supabase); la subida es la
+            // misma puerta para ambos. El provider vuelve para persistirse en
+            // la fila — el lector construye la URL correcta con él.
+            const ticket = await apiCreateGenerationUploadUrl(mediaType)
+            await uploadGenerationTicket(ticket, blob, contentType)
+            return { path: ticket.path, provider: ticket.provider }
         } catch (e) {
             lastError = e
             console.warn(`[Gallery] Upload attempt ${attempt}/3 failed:`, e)
@@ -1030,7 +1026,7 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                 const blob = await response.blob()
                 const contentType = isVideo ? 'video/mp4' : 'image/jpeg'
 
-                const path = await withDeadline(
+                const { path, provider } = await withDeadline(
                     uploadGenerationWithRetry(
                         media.mediaType,
                         blob,
@@ -1059,6 +1055,9 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                         avatar_id: media.avatarId ?? avatarId ?? null,
                         media_type: media.mediaType,
                         storage_path: path,
+                        ...(provider === 'r2'
+                            ? ({ storage_provider: 'r2' } as object)
+                            : {}),
                         prompt: media.prompt,
                         aspect_ratio: media.aspectRatio,
                         // Persist providerName inside metadata so the model tag
@@ -1092,7 +1091,7 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                     saveState: 'saved',
                     generationId: row.id,
                     avatarId: media.avatarId ?? avatarId ?? null,
-                    publicUrl: getStoragePublicUrl('generations', path),
+                    publicUrl: getGenerationMediaUrl(path, provider),
                 })
             } catch (error) {
                 // Un abort/timeout es el deadline HACIENDO su trabajo (card →
@@ -4302,7 +4301,7 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                 const contentType =
                     media.mediaType === 'VIDEO' ? 'video/mp4' : 'image/jpeg'
 
-                const path = await uploadGenerationWithRetry(
+                const { path, provider } = await uploadGenerationWithRetry(
                     media.mediaType,
                     blob,
                     contentType,
@@ -4315,6 +4314,9 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                     avatar_id: media.avatarId ?? avatarId ?? null,
                     media_type: media.mediaType,
                     storage_path: path,
+                    ...(provider === 'r2'
+                        ? ({ storage_provider: 'r2' } as object)
+                        : {}),
                     prompt: media.prompt,
                     aspect_ratio: media.aspectRatio,
                     // Persist providerName inside metadata so the model tag
@@ -4332,7 +4334,7 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                     saveState: 'saved',
                     generationId: row.id,
                     avatarId: media.avatarId ?? avatarId ?? null,
-                    publicUrl: getStoragePublicUrl('generations', path),
+                    publicUrl: getGenerationMediaUrl(path, provider),
                 })
 
                 toast.push(

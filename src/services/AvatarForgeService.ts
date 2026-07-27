@@ -9,6 +9,8 @@
  * los inserts como "creado por" (auditoría), NO como frontera de tenant.
  */
 import { getOrgContext, type OrgContext } from '@/lib/tenant/getOrgContext'
+import { putMediaObject, r2Enabled, createPresignedPutUrl } from '@/lib/mediaStore'
+import type { GenerationUploadTicket } from '@/lib/storageUpload'
 import { orgTable, orgSupabase } from '@/lib/org/orgTable'
 import type {
     Avatar,
@@ -440,21 +442,19 @@ async function uploadGeneration(
     mediaType: MediaType,
     blob: Blob,
     extension: string = 'jpg'
-): Promise<string> {
-    const supabase = orgSupabase()
+): Promise<{ path: string; provider: 'r2' | 'supabase' }> {
     const folder = mediaType === 'IMAGE' ? 'images' : 'videos'
     const fileName = `${Date.now()}.${extension}`
     const filePath = `${ctx.userId}/${folder}/${fileName}`
 
-    const { error } = await supabase.storage
-        .from('generations')
-        .upload(filePath, blob, {
-            cacheControl: '3600',
-            upsert: false,
-        })
-
-    if (error) throw error
-    return filePath
+    const contentType =
+        blob.type || (mediaType === 'VIDEO' ? 'video/mp4' : 'image/jpeg')
+    const { provider } = await putMediaObject({
+        path: filePath,
+        body: Buffer.from(await blob.arrayBuffer()),
+        contentType,
+    })
+    return { path: filePath, provider }
 }
 
 export async function getStorageUrl(bucket: string, path: string): Promise<string> {
@@ -549,19 +549,28 @@ export async function apiUploadReference(
  */
 export async function apiCreateGenerationUploadUrl(
     mediaType: MediaType,
-): Promise<{ path: string; token: string }> {
+): Promise<GenerationUploadTicket> {
     const ctx = await getOrgContext()
-    const supabase = orgSupabase()
     const folder = mediaType === 'IMAGE' ? 'images' : 'videos'
     const ext = mediaType === 'VIDEO' ? 'mp4' : 'jpg'
     const path = `${ctx.userId}/${folder}/${Date.now()}.${ext}`
+
+    // R2 activo → PUT prefirmado directo al bucket. Mismo principio que el
+    // signed-upload de Supabase (anti-413: el binario nunca cruza un server
+    // action), solo cambia quién firma.
+    if (r2Enabled()) {
+        const uploadUrl = await createPresignedPutUrl(path)
+        return { path, provider: 'r2', uploadUrl }
+    }
+
+    const supabase = orgSupabase()
     const { data, error } = await supabase.storage
         .from('generations')
         .createSignedUploadUrl(path)
     if (error || !data) {
         throw new Error(`Failed to create generation upload URL: ${error?.message ?? 'no data'}`)
     }
-    return { path, token: data.token }
+    return { path, provider: 'supabase', token: data.token }
 }
 
 /**
@@ -583,14 +592,25 @@ export async function apiSaveGenerationWithFile(
     const ext = data.media_type === 'VIDEO' ? 'mp4' : 'jpg'
 
     // Upload to storage
-    const storagePath = await uploadGeneration(ctx, data.media_type, file, ext)
+    const { path: storagePath, provider } = await uploadGeneration(
+        ctx,
+        data.media_type,
+        file,
+        ext,
+    )
 
     // Create database record (apiSaveGeneration re-derives session context
     // and validates avatar ownership)
+    // storage_provider SOLO se manda con R2 activo: la columna nace en la
+    // migración 20260728010000, y encender R2 exige aplicarla antes (runbook
+    // del día D). Con el flag apagado el insert es byte-idéntico al de antes.
     const generation = await apiSaveGeneration({
         avatar_id: avatarId,
         media_type: data.media_type,
         storage_path: storagePath,
+        ...(r2Enabled()
+            ? ({ storage_provider: provider } as Partial<GenerationInsert>)
+            : {}),
         prompt: data.prompt,
         aspect_ratio: data.aspect_ratio,
         metadata: data.metadata,

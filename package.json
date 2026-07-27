@@ -39,6 +39,7 @@
         "@xyflow/react": "^12.10.2",
         "ai": "^6.0.193",
         "apexcharts": "^5.3.6",
+        "aws4fetch": "^1.0.20",
         "axios": "^1.7.7",
         "classnames": "^2.5.1",
         "d3-dsv": "^3.0.1",

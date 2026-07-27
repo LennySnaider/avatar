@@ -1,6 +1,7 @@
 'use server'
 
 import { createHash } from 'crypto'
+import { putMediaObject, r2Enabled, r2ObjectExists, getR2PublicUrl } from '@/lib/mediaStore'
 import { createServerSupabaseClient } from '@/lib/supabase'
 import {
     centerCropToAspect,
@@ -349,43 +350,36 @@ export async function uploadReferenceToSupabase(
 
     // ¿Ya existe? (misma ref de una generación anterior) → salta la subida.
     // Cualquier fallo del HEAD cae al upload normal — nunca bloquea.
+    // Con R2 activo el dedupe pregunta a R2 (HEAD firmado); si no, a la URL
+    // pública de Supabase, como siempre.
     try {
-        const head = await fetchWithAbort(
-            publicUrl,
-            { method: 'HEAD' },
-            5_000,
-        )
-        if (head.ok) return publicUrl
+        if (r2Enabled()) {
+            if (await r2ObjectExists(fileName)) return getR2PublicUrl(fileName)
+        } else {
+            const head = await fetchWithAbort(
+                publicUrl,
+                { method: 'HEAD' },
+                5_000,
+            )
+            if (head.ok) return publicUrl
+        }
     } catch {
         /* sin caché — sube normal */
     }
 
-    const supabase = createServerSupabaseClient()
-    const { error } = await supabase.storage
-        .from('generations')
-        .upload(fileName, buffer, {
-            contentType: effectiveMime,
-            // Content-addressed → el nombre ES el sha256, así que el objeto no
-            // puede cambiar y una caché eterna sería segura.
-            //
-            // OJO (medido 2026-07-27): en este plan **Supabase sirve
-            // `cache-control: no-cache` haga lo que haga este campo**. Se
-            // comprobó subiendo un PNG de prueba con max-age=31536000 y
-            // leyendo la cabecera de vuelta: `no-cache`. Así que Cloudflare
-            // nunca guarda la ref en el borde y CADA descarga del proveedor
-            // cruza hasta el origen — de ahí los "Timeout while downloading
-            // url=…" de Alibaba. Se deja puesto por si el plan cambia, pero
-            // NO se puede construir nada encima: condicionar el atajo de
-            // arriba a esta cabecera hacía resubir 1-3 MB en cada generación.
-            cacheControl: '31536000',
-            // upsert: dos generaciones concurrentes con la misma ref no deben
-            // fallar por "already exists" (el contenido es idéntico por hash).
-            upsert: true,
-        })
-    if (error)
-        throw new Error(`Failed to upload KIE reference: ${error.message}`)
-
-    return publicUrl
+    // La subida va por el almacén activo (R2 con flag; Supabase si no). Las
+    // refs son las que descargan los PROVEEDORES — servirlas desde el borde de
+    // Cloudflare es lo que mata los "Timeout while downloading" de Alibaba,
+    // además del egress.
+    const { url } = await putMediaObject({
+        path: fileName,
+        body: buffer,
+        contentType: effectiveMime,
+        // upsert: dos generaciones concurrentes con la misma ref no deben
+        // fallar por "already exists" (contenido idéntico por hash).
+        upsert: true,
+    })
+    return url
 }
 
 /**

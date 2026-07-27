@@ -1,5 +1,5 @@
 import sharp from 'sharp'
-import { createServerSupabaseClient } from '@/lib/supabase'
+import { putMediaObject } from '@/lib/mediaStore'
 
 /**
  * Server-side media persistence helpers shared across generation providers
@@ -56,20 +56,22 @@ export async function uploadBufferToGenerations(
     fileName: string,
     contentType: string,
 ): Promise<string> {
-    const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL
-    if (!SUPABASE_URL) throw new Error('NEXT_PUBLIC_SUPABASE_URL is not defined')
+    const { url } = await putMediaObject({
+        path: fileName,
+        body: buffer,
+        contentType,
+    })
+    return url
+}
 
-    const supabase = createServerSupabaseClient()
-    const { error } = await supabase.storage
-        .from('generations')
-        .upload(fileName, buffer, {
-            contentType,
-            cacheControl: '3600',
-            upsert: false,
-        })
-    if (error) throw new Error(`Failed to persist media: ${error.message}`)
-
-    return `${SUPABASE_URL}/storage/v1/object/public/generations/${fileName}`
+/** Variante que además dice DÓNDE quedó el objeto — para los callers que
+ * insertan la fila de `generations` y deben persistir el provider. */
+export async function uploadBufferToGenerationsWithProvider(
+    buffer: Buffer,
+    fileName: string,
+    contentType: string,
+): Promise<{ url: string; provider: 'r2' | 'supabase' }> {
+    return putMediaObject({ path: fileName, body: buffer, contentType })
 }
 
 /**
