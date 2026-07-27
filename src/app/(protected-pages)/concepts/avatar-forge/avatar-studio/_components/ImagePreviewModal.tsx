@@ -359,9 +359,9 @@ const ImagePreviewModal = ({
     }, [])
 
     // ── ZOOM ────────────────────────────────────────────────────────────
-    // Hasta 600%: el techo de 300% se quedaba corto para retocar detalle, que
-    // es justo para lo que se hace zoom aqui.
-    const MAX_ZOOM = 6
+    // Hasta 800%. Con el zoom por transform ampliar no cuesta layout, asi que
+    // el techo lo pone el uso —retocar detalle— y no el rendimiento.
+    const MAX_ZOOM = 8
 
     /**
      * Punto de la PANTALLA que debe quedarse quieto al escalar. Se guarda con
@@ -390,19 +390,53 @@ const ImagePreviewModal = ({
      * la mitad de lo que sobresale. Si cabe entera, el rango es 0 y queda
      * centrada — igual que un contenedor sin overflow.
      */
-    const clampPan = useCallback((next: { x: number; y: number }, scale: number) => {
-        const stage = stageRef.current
-        const el = getMediaScrollEl()
-        if (!stage || !el) return next
-        // offsetWidth/Height son el tamaño de LAYOUT (sin transform), que es
-        // justo la base a la que hay que aplicar la escala.
-        const overflowX = Math.max(0, stage.offsetWidth * scale - el.clientWidth)
-        const overflowY = Math.max(0, stage.offsetHeight * scale - el.clientHeight)
-        return {
-            x: Math.max(-overflowX / 2, Math.min(overflowX / 2, next.x)),
-            y: Math.max(-overflowY / 2, Math.min(overflowY / 2, next.y)),
-        }
-    }, [])
+    const clampPan = useCallback(
+        (next: { x: number; y: number }, scale: number) => {
+            const stage = stageRef.current
+            const el = getMediaScrollEl()
+            if (!stage || !el) return next
+
+            const cRect = el.getBoundingClientRect()
+            const sRect = stage.getBoundingClientRect()
+            const p = panRef.current
+            // Origen del LAYOUT: el rect actual ya lleva el pan aplicado, asi
+            // que restarlo devuelve donde estaria el contenido sin desplazar.
+            const originX = sRect.left - p.x
+            const originY = sRect.top - p.y
+            // Con transform-origin 0 0 el contenido NO crece centrado: se
+            // expande hacia abajo-derecha desde esa esquina. Por eso los
+            // limites son ASIMETRICOS — asumirlos simetricos (±overflow/2)
+            // daba la mitad del recorrido y el borde inferior quedaba
+            // inalcanzable con imagenes altas.
+            const w = stage.offsetWidth * scale
+            const h = stage.offsetHeight * scale
+
+            const clampAxis = (
+                value: number,
+                origin: number,
+                size: number,
+                start: number,
+                end: number,
+            ) => {
+                if (size <= end - start) {
+                    // Cabe entero: se centra, como haria un contenedor sin
+                    // desbordamiento.
+                    return start + (end - start - size) / 2 - origin
+                }
+                // No cabe: el borde inicial no puede bajar de la esquina y el
+                // final no puede subir por encima de ella.
+                const min = end - origin - size
+                const max = start - origin
+                return Math.max(min, Math.min(max, value))
+            }
+
+            return {
+                x: clampAxis(next.x, originX, w, cRect.left, cRect.right),
+                y: clampAxis(next.y, originY, h, cRect.top, cRect.bottom),
+            }
+        },
+        [],
+    )
 
     const applyZoom = useCallback(
         (next: number, clientX?: number, clientY?: number) => {
@@ -1284,7 +1318,7 @@ const ImagePreviewModal = ({
                             )}
                             <button
                                 onClick={handleZoomIn}
-                                disabled={zoomLevel >= 6 || isCropping}
+                                disabled={zoomLevel >= MAX_ZOOM || isCropping}
                                 className="p-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                                 title="Zoom In"
                             >
