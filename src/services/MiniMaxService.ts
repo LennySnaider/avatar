@@ -141,6 +141,40 @@ export async function cloneVoice(
     return json
 }
 
+/**
+ * Inventario de voces CLONADAS que MiniMax tiene registradas para esta cuenta.
+ * `/get_voice` solo lee — no sintetiza nada, así que no cobra.
+ *
+ * Sirve para detectar huérfanas: clones pagados cuya fila en `cloned_voices`
+ * nunca se escribió (o se borró), y que por tanto la app no puede mostrar ni
+ * usar. Se descubrió con 3 de 5 el 2026-07-26.
+ */
+export async function listProviderClonedVoices(): Promise<
+    { voiceId: string; createdTime: string | null }[]
+> {
+    const res = await fetch(`${MINIMAX_API_BASE}/get_voice`, {
+        method: 'POST',
+        headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+        body: JSON.stringify({ voice_type: 'all' }),
+    })
+    if (!res.ok) {
+        throw new Error(`MiniMax get_voice failed (${res.status})`)
+    }
+    const json = (await res.json()) as {
+        base_resp?: { status_code: number; status_msg: string }
+        voice_cloning?: { voice_id: string; created_time?: string }[]
+    }
+    if (json.base_resp && json.base_resp.status_code !== 0) {
+        throw new Error(
+            `MiniMax get_voice error: ${explainMiniMaxVoiceFailure(json.base_resp.status_msg)}`,
+        )
+    }
+    return (json.voice_cloning ?? []).map((v) => ({
+        voiceId: v.voice_id,
+        createdTime: v.created_time ?? null,
+    }))
+}
+
 // ─── Text-to-Speech ───────────────────────────────────────
 
 export async function textToSpeech(params: {

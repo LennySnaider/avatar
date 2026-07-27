@@ -5,6 +5,8 @@ import { useVoiceStudioStore, refreshVoices } from '../_store/voiceStudioStore'
 import Card from '@/components/ui/Card'
 import Button from '@/components/ui/Button'
 import Spinner from '@/components/ui/Spinner'
+import Notification from '@/components/ui/Notification'
+import toast from '@/components/ui/toast'
 import type { Avatar } from '@/@types/supabase'
 
 interface VoiceLibraryProps {
@@ -125,6 +127,53 @@ export default function VoiceLibrary({ avatars }: VoiceLibraryProps) {
         }
     }
 
+    // Rescata clones que existen (y están pagados) en MiniMax pero perdieron
+    // su fila, así que la app no los veía. No genera nada: es gratis.
+    const [isRecovering, setIsRecovering] = useState(false)
+
+    const handleRecover = async () => {
+        setIsRecovering(true)
+        try {
+            const res = await fetch('/api/voice/recover', { method: 'POST' })
+            const body = await res.json()
+            if (!res.ok) throw new Error(body.error || 'Could not check MiniMax')
+
+            if (body.recovered > 0) await refreshVoices()
+
+            toast.push(
+                body.recovered > 0 ? (
+                    <Notification type="success" title={`${body.recovered} voice(s) recovered`}>
+                        Rename them and pick their avatar — the clones themselves are intact.
+                    </Notification>
+                ) : (
+                    <Notification type="info" title="Nothing to recover" duration={2500}>
+                        Every MiniMax clone already has a voice here.
+                    </Notification>
+                ),
+            )
+        } catch (err) {
+            toast.push(
+                <Notification type="danger" title="Recover failed">
+                    {err instanceof Error ? err.message : 'Could not check MiniMax'}
+                </Notification>,
+            )
+        } finally {
+            setIsRecovering(false)
+        }
+    }
+
+    const recoverButton = (
+        <Button
+            size="xs"
+            variant="plain"
+            loading={isRecovering}
+            title="Look for clones that exist in MiniMax but lost their entry here. Free — nothing is generated."
+            onClick={handleRecover}
+        >
+            <span>Recover</span>
+        </Button>
+    )
+
     // ★ desde el mapeo VIVO (refreshVoices); el prop SSR `avatars` solo es
     // fallback de nombre para el primer render.
     const isMainVoice = (voice: { id: string; avatar_id: string | null }) => {
@@ -146,8 +195,11 @@ export default function VoiceLibrary({ avatars }: VoiceLibraryProps) {
     if (voices.length === 0) {
         return (
             <Card>
-                <div className="p-4 text-center text-sm text-gray-500">
+                <div className="p-4 flex flex-col items-center gap-2 text-center text-sm text-gray-500">
                     No voices cloned yet. Upload an audio sample to get started.
+                    {/* Con la lista vacía es cuando más falta hace: si ya
+                        clonaste antes, tus voces siguen en MiniMax. */}
+                    {recoverButton}
                 </div>
             </Card>
         )
@@ -156,7 +208,10 @@ export default function VoiceLibrary({ avatars }: VoiceLibraryProps) {
     return (
         <Card>
             <div className="p-4 flex flex-col gap-2">
-                <h3 className="font-semibold text-lg">Your Voices</h3>
+                <div className="flex items-center justify-between">
+                    <h3 className="font-semibold text-lg">Your Voices</h3>
+                    {recoverButton}
+                </div>
                 {voices.map((voice) => {
                     const linkedAvatarName = avatarNameFor(voice.avatar_id)
                     const isMain = isMainVoice(voice)
