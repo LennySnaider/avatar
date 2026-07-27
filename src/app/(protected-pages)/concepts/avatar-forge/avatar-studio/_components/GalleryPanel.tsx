@@ -1018,6 +1018,23 @@ const GalleryPanel = ({
                                                 Save failed
                                             </span>
                                         )}
+                                        {/* Ya esta en la boveda de Fanvue. El
+                                            badge es lo que evita el reenvio:
+                                            archivarla la quita de la vista,
+                                            pero si se restaura hay que seguir
+                                            viendo que ya se mando. */}
+                                        {(media.metadata as { fanvueVault?: { folderName?: string } } | undefined)
+                                            ?.fanvueVault && (
+                                            <span
+                                                className="px-2 py-1 text-[10px] font-medium rounded bg-violet-500 text-white inline-block"
+                                                title={`En la bóveda de Fanvue · ${
+                                                    (media.metadata as { fanvueVault?: { folderName?: string } })
+                                                        ?.fanvueVault?.folderName ?? ''
+                                                }`}
+                                            >
+                                                Bóveda
+                                            </span>
+                                        )}
                                         {media.postedPlatforms &&
                                             media.postedPlatforms.length >
                                                 0 && (
@@ -1332,7 +1349,13 @@ const GalleryPanel = ({
                 onClose={() => setVaultOpen(false)}
                 generationIds={vaultableIds}
                 avatarId={vaultAvatarId}
-                onSent={exitSelect}
+                // Recargar no es cosmetico: el envio ARCHIVA las enviadas del
+                // lado servidor, asi que sin esto seguirian en la vista
+                // principal como si nada hubiera pasado.
+                onSent={() => {
+                    exitSelect()
+                    void reloadGallery()
+                }}
             />
 
             {/* Borrado en LOTE (multi-selección) */}

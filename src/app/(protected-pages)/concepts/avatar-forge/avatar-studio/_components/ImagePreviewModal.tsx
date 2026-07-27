@@ -1653,6 +1653,11 @@ const ImagePreviewModal = ({
                 onClose={() => setVaultOpen(false)}
                 generationIds={previewMedia?.generationId ? [previewMedia.generationId] : []}
                 avatarId={previewMedia?.avatarId ?? null}
+                // Igual que en la galeria: el envio ARCHIVA del lado servidor,
+                // asi que hay que recargar para que el cambio se vea.
+                onSent={() => {
+                    void useAvatarStudioStore.getState().reloadGallery()
+                }}
             />
             <AssignAvatarDialog
                 media={assignMedia}

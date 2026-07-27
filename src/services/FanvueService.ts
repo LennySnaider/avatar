@@ -725,7 +725,7 @@ export async function sendGenerationsToFanvueVault(input: {
 
         const { data: gens, error: genErr } = await supabase
             .from('generations')
-            .select('id, media_type, storage_path, user_id')
+            .select('id, media_type, storage_path, user_id, metadata')
             .in('id', ids)
         if (genErr) throw new Error(genErr.message)
         if (!gens || gens.length !== ids.length) {
@@ -767,6 +767,41 @@ export async function sendGenerationsToFanvueVault(input: {
                 folderName,
                 mediaUuids.slice(i, i + VAULT_ATTACH_CHUNK),
             )
+        }
+
+        // MARCAR + ARCHIVAR. El envio no deja rastro en Fanvue que podamos
+        // consultar barato, asi que el rastro lo llevamos nosotros: sin el, la
+        // unica forma de saber si una imagen ya se mando es acordarse — y a
+        // 1000 generaciones eso significa reenviar duplicados a la boveda.
+        //
+        // Se hace DESPUES del attach: marcar antes dejaria imagenes "enviadas"
+        // que no llegaron. Y va fila por fila porque `metadata` es un jsonb que
+        // hay que FUSIONAR: escribir el objeto entero borraria favorite,
+        // nsfw y lo que haya puesto el usuario.
+        const sentAt = new Date().toISOString()
+        for (const g of gens) {
+            const prev = (g.metadata ?? {}) as Record<string, unknown>
+            const { error: markError } = await supabase
+                .from('generations')
+                .update({
+                    metadata: {
+                        ...prev,
+                        // Archivar la saca de la vista principal: ya cumplio su
+                        // proposito y estorba entre las candidatas.
+                        archived: true,
+                        fanvueVault: {
+                            folderName,
+                            creatorUuid: creatorUuid ?? null,
+                            sentAt,
+                        },
+                    },
+                })
+                .eq('id', g.id)
+            if (markError) {
+                // La media YA esta en la boveda: fallar aqui la reportaria como
+                // no enviada y provocaria justo el duplicado que esto evita.
+                console.error('[fanvue/vault] no se pudo marcar la generacion:', markError.message)
+            }
         }
 
         return {
