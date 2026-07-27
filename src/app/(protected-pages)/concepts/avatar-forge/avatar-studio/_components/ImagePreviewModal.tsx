@@ -1211,7 +1211,7 @@ const ImagePreviewModal = ({
                 {/* Media Content */}
                 <div
                     ref={viewportRef}
-                    className="flex-1 relative flex items-center justify-center p-4 bg-gray-100 dark:bg-gray-800 overflow-hidden"
+                    className="flex-1 min-h-0 relative flex items-center justify-center p-2 bg-gray-100 dark:bg-gray-800 overflow-hidden"
                 >
                     {/* Toggle: colapsar/expandir el panel inferior para ver la
                         media completa sin obstrucción. Flota abajo-centro de la
@@ -1253,7 +1253,7 @@ const ImagePreviewModal = ({
                         rompía el render de la media (área vacía). */}
                     <div
                         ref={attachMediaContainer}
-                        className="relative max-h-full max-w-full overflow-hidden"
+                        className="relative w-full h-full min-h-0 flex items-center justify-center overflow-hidden"
                         onMouseDown={handlePanStart}
                         style={{
                             cursor:
@@ -1355,7 +1355,7 @@ const ImagePreviewModal = ({
                             // (incl. the bottom of tall images) is reachable.
                             <div
                                 ref={stageRef}
-                                className="relative inline-block"
+                                className="relative inline-block max-h-full max-w-full"
                                 style={{
                                     // TODO el zoom y el paneo viven aqui. Es un
                                     // transform: lo resuelve el compositor sin
@@ -1383,13 +1383,14 @@ const ImagePreviewModal = ({
                                         }
                                     }}
                                     className="rounded-lg block select-none"
-                                    // Tamaño FIJO: el zoom lo aplica el
-                                    // transform del contenedor. Antes se
-                                    // escalaba cambiando la altura en vh —un
-                                    // cambio de LAYOUT— y por eso cada paso de
-                                    // rueda costaba un reflow y se veia el
-                                    // brinco.
-                                    style={{ maxHeight: '60vh', maxWidth: '100%' }}
+                                    // Tamaño base = TODA el area disponible.
+                                    // Estaba capado a 60vh, asi que el modal
+                                    // se veia enorme alrededor de una imagen
+                                    // pequena. El zoom lo aplica el transform
+                                    // del contenedor, no este tamaño — por eso
+                                    // aqui puede ser 100% sin reintroducir el
+                                    // reflow.
+                                    style={{ maxHeight: '100%', maxWidth: '100%' }}
                                     onLoad={updateCanvasSize}
                                     draggable={false}
                                 />
