@@ -244,6 +244,9 @@ const VideoEditorMain = ({ userId, initialVideoUrl }: VideoEditorMainProps) => {
     const [selectedSound, setSelectedSound] = useState<TrendingSoundDTO | null>(null)
     const [uploadedAudio, setUploadedAudio] = useState<File | null>(null)
     const [keepOriginalSound, setKeepOriginalSound] = useState(false)
+    /** Nivel de la pista AÑADIDA cuando se conserva el sonido del clip. 25% es
+     * el punto donde una base se oye sin competir con lo que pasa en el vídeo. */
+    const [bedVolume, setBedVolume] = useState(0.25)
     const audioFileInputRef = useRef<HTMLInputElement>(null)
 
     // ─── Timeline state ───────────────────────────────────────────────
@@ -1183,7 +1186,12 @@ const VideoEditorMain = ({ userId, initialVideoUrl }: VideoEditorMainProps) => {
             setProgress(0)
             try {
                 const muxed = await muxAudioIntoVideo(videoUrl, audioUrl, {
-                    keepOriginalVolume: keepOriginalSound ? 0.15 : 0,
+                    // Conservar el sonido del clip lo deja al FRENTE (1) y
+                    // manda la pista añadida al fondo. Antes era al revés —
+                    // el original bajaba a 0.15 y la música mandaba, que
+                    // sirve para un videoclip pero no para una base.
+                    keepOriginalVolume: keepOriginalSound ? 1 : 0,
+                    newTrackVolume: keepOriginalSound ? bedVolume : 1,
                     onProgress: setProgress,
                 })
                 if (videoIsMinted) {
@@ -1196,7 +1204,7 @@ const VideoEditorMain = ({ userId, initialVideoUrl }: VideoEditorMainProps) => {
                 }
             }
         },
-        [audioMode, selectedSound, uploadedAudio, keepOriginalSound],
+        [audioMode, selectedSound, uploadedAudio, keepOriginalSound, bedVolume],
     )
 
     const buildFinalVideo = useCallback(async (): Promise<string | null> => {
@@ -1833,8 +1841,34 @@ const VideoEditorMain = ({ userId, initialVideoUrl }: VideoEditorMainProps) => {
                                                 checked={keepOriginalSound}
                                                 onChange={(e) => setKeepOriginalSound(e.target.checked)}
                                             />
-                                            <span>Keep original video sound (mixed low)</span>
+                                            <span>
+                                                Keep the clips&apos; own sound (the new track becomes a
+                                                background bed)
+                                            </span>
                                         </label>
+                                        {/* Sin esto la pista añadida entra al
+                                            100% y tapa el sonido del clip —
+                                            que es justo lo contrario de una
+                                            base ambiental. */}
+                                        {keepOriginalSound && (
+                                            <label className="flex items-center gap-2 text-xs">
+                                                <span className="text-gray-500 w-20">Bed level</span>
+                                                <input
+                                                    type="range"
+                                                    min={5}
+                                                    max={100}
+                                                    step={5}
+                                                    value={Math.round(bedVolume * 100)}
+                                                    onChange={(e) =>
+                                                        setBedVolume(Number(e.target.value) / 100)
+                                                    }
+                                                    className="flex-1"
+                                                />
+                                                <span className="w-10 text-right text-gray-400">
+                                                    {Math.round(bedVolume * 100)}%
+                                                </span>
+                                            </label>
+                                        )}
                                         <p className="text-[10px] text-amber-600 dark:text-amber-400">
                                             Baked into the export on Save/Download. Platforms may mute
                                             copyrighted music.

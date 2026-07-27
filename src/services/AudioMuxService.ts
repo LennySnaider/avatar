@@ -10,9 +10,14 @@
 import { loadFFmpeg, fetchVideoData } from './_ffmpegRuntime'
 
 export interface MuxAudioOptions {
-    /** 0–1. When > 0, the original video audio is kept and mixed under the new
+    /** 0–1. When > 0, the original video audio is KEPT and mixed with the new
      * track at this level; 0 (default) replaces the audio entirely. */
     keepOriginalVolume?: number
+    /** 0–1, default 1. Level of the track being added. Bajarlo es lo que
+     * convierte una banda sonora (que manda) en una BASE ambiental (que
+     * acompaña) — con esto a 0.25 y keepOriginalVolume a 1, el sonido del
+     * clip sigue al frente y la base queda debajo. */
+    newTrackVolume?: number
     onProgress?: (percent: number) => void
 }
 
@@ -51,14 +56,24 @@ export async function muxAudioIntoVideo(
         opts.onProgress?.(42)
 
         const keep = opts.keepOriginalVolume ?? 0
+        const newVol = opts.newTrackVolume ?? 1
         const args: string[] =
             keep > 0
                 ? [
-                      // Loop the new track, mix it with the original at `keep`.
+                      // Loop the new track, mix it with the original.
                       '-stream_loop', '-1', '-i', audioIn,
                       '-i', videoIn,
+                      // `normalize=0` es lo que hace que los volúmenes de
+                      // arriba signifiquen lo que dicen: por defecto amix
+                      // divide cada entrada entre el número de entradas, así
+                      // que pedir "original al 100%" acababa sonando a la
+                      // mitad. Con los niveles ya explícitos, esa división
+                      // sobra. El volume=0.9 final deja margen para que la
+                      // suma de las dos pistas no sature.
                       '-filter_complex',
-                      `[1:a]volume=${keep}[o];[0:a][o]amix=inputs=2:duration=shortest:dropout_transition=0[a]`,
+                      `[0:a]volume=${newVol}[n];[1:a]volume=${keep}[o];` +
+                          `[n][o]amix=inputs=2:duration=shortest:dropout_transition=0:normalize=0[m];` +
+                          `[m]volume=0.9[a]`,
                       '-map', '1:v', '-map', '[a]',
                       '-c:v', 'copy', '-c:a', 'aac', '-b:a', '192k',
                       '-shortest', output,
