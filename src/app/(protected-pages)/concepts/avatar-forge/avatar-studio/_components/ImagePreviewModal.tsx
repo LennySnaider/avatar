@@ -147,6 +147,7 @@ const ImagePreviewModal = ({
     /** Radio del difuminado, en pixeles de la imagen NATURAL. */
     const [blurStrength, setBlurStrength] = useState(24)
     const [isBlurring, setIsBlurring] = useState(false)
+    const [assetDragOver, setAssetDragOver] = useState(false)
     const [editAspectRatio, setEditAspectRatio] = useState<AspectRatio>('1:1')
     const [editProviderId, setEditProviderId] = useState<string | null>(null)
     const [cropPosition, setCropPosition] = useState({ x: 0, y: 0 })
@@ -238,11 +239,20 @@ const ImagePreviewModal = ({
     }, [setPreviewMedia])
 
     // Handle edit asset upload
-    const handleEditAssetUpload = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-        const files = e.target.files
-        if (!files || files.length === 0) return
+    /**
+     * Alta de assets, compartida por el selector y por ARRASTRAR.
+     *
+     * La zona tenia borde punteado —que invita a soltar— pero era solo un
+     * <button>: no habia manejador de drop, asi que soltar encima no hacia
+     * nada y no habia forma de saber por que.
+     */
+    const addEditAssetFiles = useCallback((fileList: FileList | File[]) => {
+        const files = Array.from(fileList).filter((f) =>
+            f.type.startsWith('image/'),
+        )
+        if (files.length === 0) return
 
-        Array.from(files).forEach((file) => {
+        files.forEach((file) => {
             if (editAssets.length >= 3) return // Max 3 assets
 
             const reader = new FileReader()
@@ -263,9 +273,14 @@ const ImagePreviewModal = ({
             }
             reader.readAsDataURL(file)
         })
-
-        e.target.value = ''
     }, [editAssets.length])
+
+    const handleEditAssetUpload = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+        if (e.target.files) addEditAssetFiles(e.target.files)
+        // Permite volver a elegir el MISMO fichero: sin esto el input conserva
+        // el valor y el segundo intento no dispara onChange.
+        e.target.value = ''
+    }, [addEditAssetFiles])
 
     // Remove edit asset
     const removeEditAsset = useCallback((id: string) => {
@@ -1516,7 +1531,31 @@ const ImagePreviewModal = ({
                                 <span className="text-xs font-medium text-gray-700 dark:text-gray-200">Reference Assets</span>
                                 <span className="text-[10px] text-gray-400 dark:text-gray-500">({editAssets.length}/3)</span>
                             </div>
-                            <div className="flex items-center gap-2">
+                            {/* El drop escucha en TODA la fila, no solo en el
+                                cuadrito: el objetivo era de 48px y fallarlo
+                                parecia que la funcion no existiera. El
+                                resaltado confirma que la zona esta viva —
+                                antes no habia forma de saber si soltar valia. */}
+                            <div
+                                className={`flex items-center gap-2 rounded-lg transition-colors ${
+                                    assetDragOver
+                                        ? 'ring-2 ring-purple-400 bg-purple-50 dark:bg-purple-950/30'
+                                        : ''
+                                }`}
+                                onDragOver={(e) => {
+                                    if (editAssets.length >= 3) return
+                                    e.preventDefault()
+                                    setAssetDragOver(true)
+                                }}
+                                onDragLeave={() => setAssetDragOver(false)}
+                                onDrop={(e) => {
+                                    e.preventDefault()
+                                    setAssetDragOver(false)
+                                    if (e.dataTransfer.files?.length) {
+                                        addEditAssetFiles(e.dataTransfer.files)
+                                    }
+                                }}
+                            >
                                 {/* Existing assets */}
                                 {editAssets.map((asset) => (
                                     <div key={asset.id} className="relative group">
@@ -1535,7 +1574,7 @@ const ImagePreviewModal = ({
                                 ))}
                                 {/* Add button */}
                                 {editAssets.length < 3 && (
-                                    <Tooltip title="Add reference image for the edit">
+                                    <Tooltip title="Haz clic o arrastra una imagen aquí">
                                         <button
                                             onClick={() => editAssetInputRef.current?.click()}
                                             className="w-12 h-12 border-2 border-dashed border-purple-300 dark:border-purple-700 rounded-lg flex items-center justify-center hover:border-purple-500 hover:bg-purple-50 dark:hover:bg-purple-950/40 transition-colors"
@@ -1553,7 +1592,7 @@ const ImagePreviewModal = ({
                                     onChange={handleEditAssetUpload}
                                 />
                                 <p className="text-[10px] text-gray-400 dark:text-gray-500 ml-2">
-                                    Add images to guide the edit (e.g., style reference, outfit example)
+                                    Arrastra o haz clic para añadir imágenes que guíen el edit (estilo, prenda de ejemplo…)
                                 </p>
                             </div>
                         </div>
