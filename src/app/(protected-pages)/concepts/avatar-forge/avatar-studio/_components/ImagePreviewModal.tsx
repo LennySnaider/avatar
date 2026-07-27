@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useRef, useEffect, useLayoutEffect, useCallback } from 'react'
+import { useState, useRef, useEffect, useCallback } from 'react'
 import { useAvatarStudioStore } from '../_store/avatarStudioStore'
 import { downloadMediaUrl } from '../../_utils/mediaDownload'
 import Dialog from '@/components/ui/Dialog'
@@ -164,6 +164,23 @@ const ImagePreviewModal = ({
     const [zoomLevel, setZoomLevel] = useState(1)
     // Espejo del zoom para leerlo desde handlers sin re-crearlos en cada paso.
     const zoomLevelRef = useRef(1)
+    /**
+     * Desplazamiento en PIXELES de pantalla. Junto con el zoom forma un
+     * `transform: translate3d(...) scale(...)`.
+     *
+     * Antes el zoom cambiaba la ALTURA de la imagen y el paneo movia el
+     * scroll: las dos cosas son cambios de LAYOUT, asi que el navegador
+     * reflowaba en cada paso de rueda y la imagen "brincaba". Un transform lo
+     * resuelve el compositor —sin reflow ni repaint del contenido— que es como
+     * consiguen el zoom continuo Figma, Photoshop o Maps.
+     */
+    const [pan, setPan] = useState({ x: 0, y: 0 })
+    const panRef = useRef({ x: 0, y: 0 })
+    /** El contenido transformado; su rect ya viene con el transform aplicado. */
+    const stageRef = useRef<HTMLDivElement>(null)
+    /** Con rueda NO se anima (cada paso llegaria tarde y se sentiria pastoso);
+     *  con los botones SI, porque es un salto grande y aislado. */
+    const [animateZoom, setAnimateZoom] = useState(false)
     const [isPanning, setIsPanning] = useState(false)
     // Colapsar el panel inferior (prompt + acciones) para ver la media completa.
     const [panelCollapsed, setPanelCollapsed] = useState(false)
@@ -315,11 +332,6 @@ const ImagePreviewModal = ({
      * el zoom previo y lo consume el efecto de abajo, ya con el DOM al tamano
      * nuevo — hay que medir DESPUES de que el navegador aplique el tamano.
      */
-    const zoomAnchorRef = useRef<{
-        mx: number
-        my: number
-        prev: number
-    } | null>(null)
 
     /**
      * Ancla el zoom al PUNTERO, como en Photoshop. Sin esto el contenedor
@@ -332,28 +344,38 @@ const ImagePreviewModal = ({
      */
     const applyZoom = useCallback(
         (next: number, clientX?: number, clientY?: number) => {
-            const el = getMediaScrollEl()
-            setZoomLevel((prev) => {
-                const target = Math.max(1, Math.min(next, MAX_ZOOM))
-                if (target === prev) return prev
-                if (el && clientX !== undefined && clientY !== undefined) {
-                    const rect = el.getBoundingClientRect()
-                    zoomAnchorRef.current = {
-                        mx: clientX - rect.left,
-                        my: clientY - rect.top,
-                        prev,
-                    }
-                } else if (el) {
-                    // Con los botones el ancla es el CENTRO de la vista: es lo
-                    // que se esta mirando cuando no hay puntero que mande.
-                    zoomAnchorRef.current = {
-                        mx: el.clientWidth / 2,
-                        my: el.clientHeight / 2,
-                        prev,
-                    }
+            const target = Math.max(1, Math.min(next, MAX_ZOOM))
+            const prev = zoomLevelRef.current
+            if (target === prev) return
+
+            const stage = stageRef.current
+            if (stage) {
+                const rect = stage.getBoundingClientRect()
+                // Sin puntero (botones) el ancla es el centro de lo que se ve.
+                const container = getMediaScrollEl()?.getBoundingClientRect()
+                const ax =
+                    clientX ??
+                    (container ? container.left + container.width / 2 : rect.left)
+                const ay =
+                    clientY ??
+                    (container ? container.top + container.height / 2 : rect.top)
+                // Punto del CONTENIDO bajo el ancla, sin escalar. El rect ya
+                // viene transformado, asi que dividir por el zoom actual lo
+                // devuelve a coordenadas propias.
+                const lx = (ax - rect.left) / prev
+                const ly = (ay - rect.top) / prev
+                // Para que ese punto no se mueva, el borde debe caer en
+                // `ancla - punto*zoomNuevo`; el pan absorbe la diferencia.
+                const p = panRef.current
+                const nextPan = {
+                    x: p.x + (ax - lx * target) - rect.left,
+                    y: p.y + (ay - ly * target) - rect.top,
                 }
-                return target
-            })
+                panRef.current = target === 1 ? { x: 0, y: 0 } : nextPan
+                setPan(panRef.current)
+            }
+            zoomLevelRef.current = target
+            setZoomLevel(target)
         },
         [],
     )
@@ -362,28 +384,21 @@ const ImagePreviewModal = ({
         zoomLevelRef.current = zoomLevel
     }, [zoomLevel])
 
-    useLayoutEffect(() => {
-        const anchor = zoomAnchorRef.current
-        const el = getMediaScrollEl()
-        zoomAnchorRef.current = null
-        if (!anchor || !el || anchor.prev === zoomLevel) return
-        const k = zoomLevel / anchor.prev
-        el.scrollLeft = (el.scrollLeft + anchor.mx) * k - anchor.mx
-        el.scrollTop = (el.scrollTop + anchor.my) * k - anchor.my
-    }, [zoomLevel])
-
-    // Pasos PROPORCIONALES tambien en los botones: un +0.25 fijo salta un 25%
-    // a zoom 1 y solo un 4% a zoom 6, asi que el mismo boton se sentia brusco
-    // al principio e inutil al final.
     const handleZoomIn = useCallback(() => {
+        setAnimateZoom(true)
         applyZoom(zoomLevelRef.current * 1.25)
     }, [applyZoom])
 
     const handleZoomOut = useCallback(() => {
+        setAnimateZoom(true)
         applyZoom(zoomLevelRef.current / 1.25)
     }, [applyZoom])
 
     const handleResetZoom = useCallback(() => {
+        setAnimateZoom(true)
+        zoomLevelRef.current = 1
+        panRef.current = { x: 0, y: 0 }
+        setPan({ x: 0, y: 0 })
         setZoomLevel(1)
     }, [])
 
@@ -398,9 +413,11 @@ const ImagePreviewModal = ({
             // imagen.
             if (isCropping) return
             e.preventDefault()
-            // Paso proporcional al zoom actual: a 500% un salto fijo de 0.25
-            // apenas se nota, y a 100% es brusco.
-            const step = e.deltaY < 0 ? 1.12 : 1 / 1.12
+            setAnimateZoom(false)
+            // Paso FINO y proporcional: con transform cada evento cuesta solo
+            // una recomposicion, asi que se puede seguir la rueda de cerca en
+            // vez de dar saltos gruesos.
+            const step = Math.exp(-e.deltaY * 0.0015)
             applyZoom(zoomLevelRef.current * step, e.clientX, e.clientY)
         }
         el.addEventListener('wheel', onWheel, { passive: false })
@@ -441,29 +458,33 @@ const ImagePreviewModal = ({
     // region (incl. the bottom of tall images) is reachable, with no
     // translate/clamp jank.
     const handlePanStart = useCallback((e: React.MouseEvent) => {
-        const el = getMediaScrollEl()
         // Con ESPACIO se puede arrastrar incluso dibujando: es el gesto que
         // convierte el pincel en mano mientras se mantiene.
-        if (!el || isCropping || (isDrawingMask && !spaceHeld)) return
-        const canScroll =
-            el.scrollHeight > el.clientHeight || el.scrollWidth > el.clientWidth
-        if (!canScroll) return
+        if (isCropping || (isDrawingMask && !spaceHeld)) return
+        // A zoom 1 no hay nada que mover: la imagen cabe entera.
+        if (zoomLevelRef.current <= 1 && !spaceHeld) return
         e.preventDefault()
+        setAnimateZoom(false)
         setIsPanning(true)
         dragScrollRef.current = {
             startX: e.clientX,
             startY: e.clientY,
-            scrollLeft: el.scrollLeft,
-            scrollTop: el.scrollTop,
+            // Reutiliza los campos: ahora guardan el PAN de partida, no el
+            // scroll. Mover por transform y no por scroll es lo que evita el
+            // reflow en cada frame del arrastre.
+            scrollLeft: panRef.current.x,
+            scrollTop: panRef.current.y,
         }
     }, [isDrawingMask, isCropping, spaceHeld])
 
     const handlePanMove = useCallback((e: MouseEvent) => {
-        const el = getMediaScrollEl()
         const drag = dragScrollRef.current
-        if (!el || !drag) return
-        el.scrollLeft = drag.scrollLeft - (e.clientX - drag.startX)
-        el.scrollTop = drag.scrollTop - (e.clientY - drag.startY)
+        if (!drag) return
+        panRef.current = {
+            x: drag.scrollLeft + (e.clientX - drag.startX),
+            y: drag.scrollTop + (e.clientY - drag.startY),
+        }
+        setPan(panRef.current)
     }, [])
 
     const handlePanEnd = useCallback(() => {
@@ -1232,7 +1253,7 @@ const ImagePreviewModal = ({
                         rompía el render de la media (área vacía). */}
                     <div
                         ref={attachMediaContainer}
-                        className="relative max-h-full max-w-full overflow-auto thin-scrollbar"
+                        className="relative max-h-full max-w-full overflow-hidden"
                         onMouseDown={handlePanStart}
                         style={{
                             cursor:
@@ -1332,7 +1353,22 @@ const ImagePreviewModal = ({
                             // Zoomed images are navigated by SCROLLING the
                             // overflow-auto container above — every region
                             // (incl. the bottom of tall images) is reachable.
-                            <div className="relative inline-block">
+                            <div
+                                ref={stageRef}
+                                className="relative inline-block"
+                                style={{
+                                    // TODO el zoom y el paneo viven aqui. Es un
+                                    // transform: lo resuelve el compositor sin
+                                    // reflow, que es lo que hace que la rueda
+                                    // se sienta continua en vez de a saltos.
+                                    transform: `translate3d(${pan.x}px, ${pan.y}px, 0) scale(${zoomLevel})`,
+                                    transformOrigin: '0 0',
+                                    willChange: 'transform',
+                                    transition: animateZoom
+                                        ? 'transform 160ms cubic-bezier(0.22, 1, 0.36, 1)'
+                                        : 'none',
+                                }}
+                            >
                                 <img
                                     ref={imageRef}
                                     src={previewMedia.publicUrl ?? previewMedia.url}
@@ -1347,26 +1383,13 @@ const ImagePreviewModal = ({
                                         }
                                     }}
                                     className="rounded-lg block select-none"
-                                    style={
-                                        zoomLevel > 1 && !isCropping
-                                            ? {
-                                                  // Altura EXPLÍCITA: con max-*
-                                                  // la imagen dejaba de crecer al
-                                                  // llegar a su tamaño natural
-                                                  // aunque el % siguiera subiendo
-                                                  // ("se queda en 200%").
-                                                  height: `${60 * zoomLevel}vh`,
-                                                  width: 'auto',
-                                                  maxHeight: 'none',
-                                                  maxWidth: 'none',
-                                                  transition: isPanning ? 'none' : 'height 0.2s ease-out',
-                                              }
-                                            : {
-                                                  maxHeight: '60vh',
-                                                  maxWidth: '100%',
-                                                  transition: isPanning ? 'none' : 'max-height 0.2s ease-out, max-width 0.2s ease-out',
-                                              }
-                                    }
+                                    // Tamaño FIJO: el zoom lo aplica el
+                                    // transform del contenedor. Antes se
+                                    // escalaba cambiando la altura en vh —un
+                                    // cambio de LAYOUT— y por eso cada paso de
+                                    // rueda costaba un reflow y se veia el
+                                    // brinco.
+                                    style={{ maxHeight: '60vh', maxWidth: '100%' }}
                                     onLoad={updateCanvasSize}
                                     draggable={false}
                                 />
