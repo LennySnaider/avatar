@@ -213,10 +213,34 @@ const ImagePreviewModal = ({
      * efecto se re-ejecuta justo cuando hay algo a lo que engancharse.
      */
     const [scrollElVersion, setScrollElVersion] = useState(0)
+    /**
+     * Tamaño del area de trabajo, MEDIDO.
+     *
+     * `maxHeight: 100%` en la imagen no servia: se resuelve contra el stage,
+     * que tiene altura automatica, y contra `auto` el navegador ignora un
+     * porcentaje. La imagen quedaba limitada solo por el ancho y salia
+     * cortada por abajo ya al 100% — y de ahi venia que el paneo vertical no
+     * tuviera recorrido, porque el clamp mide el stage.
+     */
+    const [viewport, setViewport] = useState({ w: 0, h: 0 })
     const attachMediaContainer = useCallback((node: HTMLDivElement | null) => {
         mediaContainerRef.current = node
         if (node) setScrollElVersion((v) => v + 1)
     }, [])
+
+    // El area cambia al colapsar el panel, al entrar en edicion o al
+    // redimensionar la ventana; un ResizeObserver lo cubre todo sin tener que
+    // acordarse de cada caso.
+    useEffect(() => {
+        const el = mediaContainerRef.current
+        if (!el) return
+        const ro = new ResizeObserver(() => {
+            setViewport({ w: el.clientWidth, h: el.clientHeight })
+        })
+        ro.observe(el)
+        setViewport({ w: el.clientWidth, h: el.clientHeight })
+        return () => ro.disconnect()
+    }, [scrollElVersion])
     const viewportRef = useRef<HTMLDivElement>(null)
     const isDrawingRef = useRef(false)
     const lastPosRef = useRef({ x: 0, y: 0 })
@@ -362,6 +386,8 @@ const ImagePreviewModal = ({
         const stage = stageRef.current
         const el = getMediaScrollEl()
         if (!stage || !el) return next
+        // offsetWidth/Height son el tamaño de LAYOUT (sin transform), que es
+        // justo la base a la que hay que aplicar la escala.
         const overflowX = Math.max(0, stage.offsetWidth * scale - el.clientWidth)
         const overflowY = Math.max(0, stage.offsetHeight * scale - el.clientHeight)
         return {
@@ -1407,7 +1433,7 @@ const ImagePreviewModal = ({
                             // (incl. the bottom of tall images) is reachable.
                             <div
                                 ref={stageRef}
-                                className="relative inline-block max-h-full max-w-full"
+                                className="relative inline-block"
                                 style={{
                                     // TODO el zoom y el paneo viven aqui. Es un
                                     // transform: lo resuelve el compositor sin
@@ -1442,7 +1468,16 @@ const ImagePreviewModal = ({
                                     // del contenedor, no este tamaño — por eso
                                     // aqui puede ser 100% sin reintroducir el
                                     // reflow.
-                                    style={{ maxHeight: '100%', maxWidth: '100%' }}
+                                    // Limites en PIXELES medidos: un
+                                    // porcentaje no se resuelve contra un
+                                    // padre de altura automatica. Asi la
+                                    // imagen cabe entera al 100% y el stage
+                                    // mide lo que se ve — que es lo que usa
+                                    // el clamp del paneo.
+                                    style={{
+                                        maxWidth: viewport.w || undefined,
+                                        maxHeight: viewport.h || undefined,
+                                    }}
                                     onLoad={updateCanvasSize}
                                     draggable={false}
                                 />
