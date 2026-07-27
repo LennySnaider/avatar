@@ -50,6 +50,54 @@ export default function AudioPreview({ onSentToAvatarStudio }: AudioPreviewProps
     // avatar sí se cobraría por voz.
     const [isAssigning, setIsAssigning] = useState(false)
 
+    // Renombrar es SOLO nuestra etiqueta: `provider_voice_id` sigue igual, así
+    // que TTS, Speak y Lipsync siguen apuntando al mismo clon en MiniMax.
+    // Se guarda al salir del campo (o con Enter); Escape descarta.
+    const [nameDraft, setNameDraft] = useState('')
+    const [isRenaming, setIsRenaming] = useState(false)
+    // Escape revierte y saca el foco — pero el blur que provoca dispararía el
+    // guardado con el borrador VIEJO (setNameDraft no es inmediato, y el
+    // handler ya cerró sobre el valor de este render). La ref sí se lee al
+    // instante, así que marca "esto era un descarte" antes de que llegue.
+    const cancelRenameRef = useRef(false)
+
+    useEffect(() => {
+        setNameDraft(selectedVoice?.name ?? '')
+    }, [selectedVoice?.id, selectedVoice?.name])
+
+    const handleRename = async () => {
+        if (!selectedVoice) return
+        const clean = nameDraft.trim()
+        // Un nombre vacío dejaría la voz sin forma de reconocerla en la lista;
+        // se revierte en silencio en vez de plantar un error por un descuido.
+        if (!clean || clean === selectedVoice.name) {
+            setNameDraft(selectedVoice.name)
+            return
+        }
+        setIsRenaming(true)
+        try {
+            const res = await fetch('/api/voice/rename', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ voiceId: selectedVoice.id, name: clean }),
+            })
+            const body = await res.json()
+            if (!res.ok) throw new Error(body.error || 'Could not rename the voice')
+            // Basta con parchear la lista: renombrar no mueve el vínculo con el
+            // avatar ni la ★, que es lo único que obliga a re-consultar.
+            setVoices(voices.map((v) => (v.id === selectedVoice.id ? { ...v, name: body.name } : v)))
+        } catch (err) {
+            setNameDraft(selectedVoice.name)
+            toast.push(
+                <Notification type="danger" title="Rename failed">
+                    {err instanceof Error ? err.message : 'Could not rename the voice'}
+                </Notification>,
+            )
+        } finally {
+            setIsRenaming(false)
+        }
+    }
+
     const handleAssignAvatar = async (avatarId: string) => {
         if (!selectedVoice) return
         setIsAssigning(true)
@@ -361,9 +409,35 @@ export default function AudioPreview({ onSentToAvatarStudio }: AudioPreviewProps
 
                 {selectedVoice && (
                     <div className="text-sm bg-gray-50 dark:bg-gray-800 rounded-md p-2 flex flex-col gap-2">
-                        <div>
-                            Voice: <strong>{selectedVoice.name}</strong> ({selectedVoice.language.toUpperCase()})
-                        </div>
+                        <label className="flex items-center justify-between gap-2 text-xs">
+                            <span className="text-gray-500">Voice</span>
+                            <input
+                                className="flex-1 rounded-md border px-2 py-1 text-xs bg-transparent disabled:opacity-50"
+                                value={nameDraft}
+                                disabled={isRenaming}
+                                maxLength={60}
+                                title="Rename this voice (the clone itself is untouched)"
+                                onChange={(e) => setNameDraft(e.target.value)}
+                                onBlur={() => {
+                                    if (cancelRenameRef.current) {
+                                        cancelRenameRef.current = false
+                                        setNameDraft(selectedVoice.name)
+                                        return
+                                    }
+                                    handleRename()
+                                }}
+                                onKeyDown={(e) => {
+                                    if (e.key === 'Enter') e.currentTarget.blur()
+                                    if (e.key === 'Escape') {
+                                        cancelRenameRef.current = true
+                                        e.currentTarget.blur()
+                                    }
+                                }}
+                            />
+                            <span className="text-gray-500">
+                                {selectedVoice.language.toUpperCase()}
+                            </span>
+                        </label>
                         <label className="flex items-center justify-between gap-2 text-xs">
                             <span className="text-gray-500">Avatar</span>
                             <select
