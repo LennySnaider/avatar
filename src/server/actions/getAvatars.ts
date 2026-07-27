@@ -4,6 +4,7 @@ import type { Avatar, AvatarReference } from '@/@types/supabase'
 
 interface AvatarWithRefs extends Avatar {
     avatar_references: AvatarReference[]
+    default_voice: { name: string } | null
 }
 
 const getAvatars = async (_queryParams: {
@@ -25,7 +26,14 @@ const getAvatars = async (_queryParams: {
     // Build query for avatars
     let avatarsQuery = supabase
         .from('avatars')
-        .select('*, avatar_references(*)', { count: 'exact' })
+        // El nombre de la voz viene embebido por la FK, no con una consulta
+        // extra. Hay DOS relaciones entre avatars y cloned_voices (la voz
+        // apunta a su avatar, y el avatar a su voz principal), así que hay que
+        // nombrar la clave o PostgREST no sabe cuál seguir.
+        .select(
+            '*, avatar_references(*), default_voice:cloned_voices!avatars_default_voice_id_fkey(name)',
+            { count: 'exact' },
+        )
         .order('created_at', { ascending: false })
 
     // Filter by user if provided

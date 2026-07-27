@@ -2,6 +2,9 @@ import type { Avatar, AvatarReference } from '@/@types/supabase'
 
 export type AvatarWithReferences = Avatar & {
     avatar_references: AvatarReference[]
+    /** Voz principal embebida por la FK `default_voice_id` (solo el nombre,
+     * para el badge de la tarjeta). Null cuando el avatar no tiene voz. */
+    default_voice?: { name: string } | null
 }
 
 export interface AvatarListState {

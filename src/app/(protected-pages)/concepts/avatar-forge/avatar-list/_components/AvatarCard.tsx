@@ -37,6 +37,7 @@ import {
     HiOutlinePhotograph,
     HiOutlineChatAlt2,
     HiOutlineUser,
+    HiOutlineMicrophone,
 } from 'react-icons/hi'
 
 interface AvatarCardProps {
@@ -515,6 +516,25 @@ const AvatarCard = ({ avatar }: AvatarCardProps) => {
                                     <span className="flex items-center gap-1">
                                         <HiOutlineUser className="w-3 h-3" />
                                         Cuerpo
+                                    </span>
+                                </Tag>
+                            </Tooltip>
+                        )}
+                        {/* Voz principal asignada: lo que hace que Speak y
+                            Lipsync puedan hablar con SU voz y no con una
+                            genérica. El nombre llega embebido por la FK. */}
+                        {avatar.default_voice_id && (
+                            <Tooltip
+                                title={
+                                    avatar.default_voice?.name
+                                        ? `Voz principal: ${avatar.default_voice.name}`
+                                        : 'Tiene voz principal asignada'
+                                }
+                            >
+                                <Tag className="text-xs bg-violet-100 text-violet-700 dark:bg-violet-500/20 dark:text-violet-300">
+                                    <span className="flex items-center gap-1">
+                                        <HiOutlineMicrophone className="w-3 h-3" />
+                                        {avatar.default_voice?.name ?? 'Voz'}
                                     </span>
                                 </Tag>
                             </Tooltip>
