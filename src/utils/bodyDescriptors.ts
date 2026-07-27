@@ -385,7 +385,24 @@ export function nippleClause(m: PhysicalMeasurements): string {
     // blushed or tinted pink" ponía 8 palabras-pigmento AL FRENTE y Qwen las
     // PINTABA (rubor rosa). El positivo solo dice QUÉ pintar; toda prohibición
     // vive en el negative_prompt (antiPinkNegative de la ruta Qwen).
-    return `only when uncovered: ${spec}${sizeLock}, matte low-saturation tone that blends naturally with her skin. This colour stays STRICTLY on the nipple and areola only; the surrounding breast skin keeps her normal even, uniform skin tone all over. Always identical; when clothed nothing shows through fabric`
+    // AUDITORÍA 2026-07-27 ("el color no se respeta" en Seedream): la cláusula
+    // se contradecía a sí misma. Decía TRES veces "igual que su piel" —
+    // la propia frase de color (que en rosy/peach ya es RELATIVA a propósito),
+    // más "blends naturally with her skin", más "keeps her normal skin tone".
+    // Los dos últimos nacieron como guardas anti-saturación del incidente del
+    // rubor, pero pasaron de "no satures" a "fúndelo", que es otra cosa: el
+    // modelo obedecía y pintaba el pezón del color de la piel.
+    //
+    // Queda UNA sola mención de la piel, y con su papel bien delimitado — que
+    // el color no se DERRAME al pecho, no que se disuelva en él. `matte` se
+    // conserva porque habla del acabado, no de la identidad con la piel.
+    //
+    // También cae el "only when uncovered" de cabecera: esto solo viaja desde
+    // nivel 65 (topless o desnudo), o sea que el pecho está descubierto por
+    // definición. Era un condicional muerto al FRENTE de la orden, y un hedge
+    // delantero diluye en los motores literales (misma lección que la v2 de
+    // la vulva).
+    return `${spec}, matte finish. This tone stays STRICTLY on the nipple and areola; the surrounding breast skin keeps her own even skin tone${sizeLock}`
 }
 
 /** ¿La escena declara desnudez TOTAL explícita? Regex estricta a propósito:
