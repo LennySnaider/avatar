@@ -182,7 +182,17 @@ const ImagePreviewModal = ({
     const [canvasSize, setCanvasSize] = useState({ width: 500, height: 500 })
 
     // Brush cursor preview — follows the mouse so the user sees the brush radius.
-    const [cursorPreview, setCursorPreview] = useState<{ x: number; y: number } | null>(null)
+    //
+    // Va en pixeles de PANTALLA, no del bitmap. Son cosas distintas desde que
+    // el canvas escala con el zoom: el circulo se posiciona con CSS sobre el
+    // contenedor, asi que darle coordenadas del bitmap lo desplazaba mas
+    // cuanto mas zoom hubiera. `size` viaja con ellas porque el pincel tambien
+    // se ve mas grande al acercarse — es el mismo trazo, visto de cerca.
+    const [cursorPreview, setCursorPreview] = useState<{
+        x: number
+        y: number
+        size: number
+    } | null>(null)
 
     // Undo/redo history for the mask canvas. ImageData snapshots are kept in a
     // ref (heavy, no re-render needed); the index lives in state so the
@@ -568,7 +578,13 @@ const ImagePreviewModal = ({
     const draw = (e: React.MouseEvent<HTMLCanvasElement>) => {
         if (!canvasRef.current) return
         const coords = getCanvasCoordinates(e)
-        setCursorPreview(coords)
+        const rect = canvasRef.current.getBoundingClientRect()
+        const shown = rect.width > 0 ? rect.width / canvasRef.current.width : 1
+        setCursorPreview({
+            x: e.clientX - rect.left,
+            y: e.clientY - rect.top,
+            size: brushSize * shown,
+        })
 
         if (!isDrawingRef.current || !isDrawingMask) return
 
@@ -1155,10 +1171,10 @@ const ImagePreviewModal = ({
                                             <div
                                                 className="absolute pointer-events-none rounded-full border-2 border-white"
                                                 style={{
-                                                    left: cursorPreview.x - brushSize / 2,
-                                                    top: cursorPreview.y - brushSize / 2,
-                                                    width: brushSize,
-                                                    height: brushSize,
+                                                    left: cursorPreview.x - cursorPreview.size / 2,
+                                                    top: cursorPreview.y - cursorPreview.size / 2,
+                                                    width: cursorPreview.size,
+                                                    height: cursorPreview.size,
                                                     boxShadow: '0 0 0 1px rgba(0, 0, 0, 0.7), inset 0 0 0 1px rgba(0, 0, 0, 0.7)',
                                                     mixBlendMode: 'difference',
                                                 }}
