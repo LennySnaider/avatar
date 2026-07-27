@@ -344,7 +344,7 @@ export const DEFAULT_PROVIDERS: AIProvider[] = [
     },
     {
         id: 'kling-v1-5',
-        name: 'Kling v1.5',
+        name: 'Kling v1.5 · directo',
         type: 'KLING' as ProviderType,
         model: 'kling-v1-5',
         endpoint: 'https://api-singapore.klingai.com',
@@ -357,7 +357,7 @@ export const DEFAULT_PROVIDERS: AIProvider[] = [
     },
     {
         id: 'kling-v1-6',
-        name: 'Kling v1.6',
+        name: 'Kling v1.6 · directo',
         type: 'KLING' as ProviderType,
         model: 'kling-v1-6',
         endpoint: 'https://api-singapore.klingai.com',
@@ -370,7 +370,7 @@ export const DEFAULT_PROVIDERS: AIProvider[] = [
     },
     {
         id: 'kling-v2-6',
-        name: 'Kling v2.6 (Voice)',
+        name: 'Kling v2.6 Voice · directo',
         type: 'KLING' as ProviderType,
         model: 'kling-v2-6',
         endpoint: 'https://api-singapore.klingai.com',
@@ -383,7 +383,7 @@ export const DEFAULT_PROVIDERS: AIProvider[] = [
     },
     {
         id: 'kling-v3',
-        name: 'Kling v3 (Latest)',
+        name: 'Kling v3 · directo',
         type: 'KLING' as ProviderType,
         model: 'kling-v3',
         endpoint: 'https://api-singapore.klingai.com',

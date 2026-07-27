@@ -151,6 +151,19 @@ async function klingRequest<T>(
     if (!response.ok) {
         const errorText = await response.text()
         console.error('Kling API Error:', errorText)
+        // El saldo que falta NO es el de KIE: este servicio habla con la API
+        // de Kling directamente (KLING_ACCESS_KEY, cuenta y monedero
+        // propios). Sin decirlo, "Account balance not enough" manda a mirar
+        // los créditos de KIE, que pueden estar perfectamente llenos — pasó
+        // el 2026-07-26. Los modelos que entran por aquí llevan "· directo"
+        // en el catálogo; el que cobra de KIE es "Kling 3.0 · KIE".
+        if (/balance not enough|1102/.test(errorText)) {
+            throw new Error(
+                'Kling rejected the job: the DIRECT Kling account is out of balance ' +
+                    '(KLING_ACCESS_KEY — this does not use KIE credits). Top it up at ' +
+                    'klingai.com, or pick "Kling 3.0 · KIE", which bills KIE instead.',
+            )
+        }
         throw new Error(`Kling API Error: ${response.status} - ${errorText}`)
     }
 
