@@ -37,6 +37,7 @@ import {
     removeWatermark,
     trimVideo,
     cropVideo,
+    stripAudio,
     type VideoRegion,
 } from '@/services/VideoEditService'
 import { stitchVideos } from '@/services/VideoStitchService'
@@ -52,6 +53,10 @@ interface TimelineClip {
     duration: number
     inPoint: number
     outPoint: number
+    /** Silencia SOLO este clip. Es una marca, no una edición: `clip.url` no se
+     * toca, así que se puede quitar y poner sin degradar nada. La pista se
+     * elimina de verdad al exportar. */
+    muted?: boolean
 }
 
 type ToolMode = 'none' | 'crop' | 'watermark'
@@ -1147,6 +1152,10 @@ const VideoEditorMain = ({ userId, initialVideoUrl }: VideoEditorMainProps) => {
         setClips((prev) => prev.map((c) => ({ ...c, inPoint: 0, outPoint: c.duration })))
     }, [])
 
+    const toggleClipMuted = useCallback((clipId: string) => {
+        setClips((prev) => prev.map((c) => (c.id === clipId ? { ...c, muted: !c.muted } : c)))
+    }, [])
+
     // ─── Export: trim each clip as needed, stitch if >1, then download or
     // save to gallery via the existing addToGallery contract ───────────
     const loadTrendingSounds = useCallback(async () => {
@@ -1195,7 +1204,8 @@ const VideoEditorMain = ({ userId, initialVideoUrl }: VideoEditorMainProps) => {
         const EPS = 0.01
         const needsTrim = clips.map((c) => c.inPoint > EPS || c.outPoint < c.duration - EPS)
         const trimCount = needsTrim.filter(Boolean).length
-        const steps = Math.max(1, trimCount + (clips.length > 1 ? 1 : 0))
+        const muteCount = clips.filter((c) => c.muted).length
+        const steps = Math.max(1, trimCount + muteCount + (clips.length > 1 ? 1 : 0))
         const stepProgress = (i: number) => (p: number) => setProgress(Math.round(((i + p / 100) / steps) * 100))
 
         let stepIdx = 0
@@ -1205,18 +1215,37 @@ const VideoEditorMain = ({ userId, initialVideoUrl }: VideoEditorMainProps) => {
         // Revoked below once stitchVideos has read them (or on error), so
         // they never leak. Never includes a passed-through clip.url.
         const createdPartUrls: string[] = []
+        // Paralelo a partUrls: si esa parte la creamos nosotros o es el
+        // clip.url de la timeline (que NO se puede revocar). Antes bastaba
+        // `needsTrim[i]`, pero silenciar también acuña una URL nueva.
+        const partIsMintedAt: boolean[] = []
         try {
             for (let i = 0; i < clips.length; i++) {
                 const clip = clips[i]
+                let partUrl = clip.url
+                let partIsMinted = false
                 if (needsTrim[i]) {
                     setProgressLabel(`Trimming clip ${i + 1}/${clips.length}…`)
-                    const url = await trimVideo(clip.url, clip.inPoint, clip.outPoint, stepProgress(stepIdx))
-                    partUrls.push(url)
-                    createdPartUrls.push(url)
+                    partUrl = await trimVideo(clip.url, clip.inPoint, clip.outPoint, stepProgress(stepIdx))
+                    partIsMinted = true
                     stepIdx++
-                } else {
-                    partUrls.push(clip.url)
                 }
+                // El silencio se aplica DESPUÉS del recorte: así se muda solo
+                // el trozo que sobrevive, y sobre un fichero ya local. El
+                // intermedio del recorte se revoca en cuanto se lee.
+                if (clip.muted) {
+                    setProgressLabel(`Muting clip ${i + 1}/${clips.length}…`)
+                    const mutedUrl = await stripAudio(partUrl, stepProgress(stepIdx))
+                    if (partIsMinted) {
+                        try { URL.revokeObjectURL(partUrl) } catch { /* ignore */ }
+                    }
+                    partUrl = mutedUrl
+                    partIsMinted = true
+                    stepIdx++
+                }
+                partUrls.push(partUrl)
+                partIsMintedAt.push(partIsMinted)
+                if (partIsMinted) createdPartUrls.push(partUrl)
             }
             if (partUrls.length > 1) {
                 setProgressLabel('Combining clips…')
@@ -1234,7 +1263,7 @@ const VideoEditorMain = ({ userId, initialVideoUrl }: VideoEditorMainProps) => {
             // Single part: partUrls[0] is a trimmed blob (minted) if that clip
             // was trimmed, else the timeline's own clip.url (passthrough) which
             // applyAudioToVideo must NOT revoke.
-            return await applyAudioToVideo(partUrls[0], needsTrim[0])
+            return await applyAudioToVideo(partUrls[0], partIsMintedAt[0])
         } catch (err) {
             // Trim/stitch failed partway — revoke whatever intermediates
             // were already minted so they don't leak.
@@ -1534,6 +1563,10 @@ const VideoEditorMain = ({ userId, initialVideoUrl }: VideoEditorMainProps) => {
                             // one cache entry (else the strip can't read the frames).
                             crossOrigin="anonymous"
                             playsInline
+                            // El preview refleja la marca: si el clip va mudo
+                            // en el export, aquí también. Sin esto se oiría
+                            // algo que el resultado no va a tener.
+                            muted={Boolean(selectedClip?.muted)}
                             className="max-w-full max-h-[42vh] block bg-black"
                             style={{ pointerEvents: 'none' }}
                         />
@@ -1970,6 +2003,30 @@ const VideoEditorMain = ({ userId, initialVideoUrl }: VideoEditorMainProps) => {
                                         className="absolute right-0 top-0 bottom-0 w-2 cursor-ew-resize hover:bg-purple-500/50 z-10"
                                         onMouseDown={(e) => { e.stopPropagation(); startTrimDrag(e, clip, 'out') }}
                                     />
+
+                                    {/* Silenciar SOLO este clip. La marca no
+                                        toca clip.url, así que es reversible
+                                        sin recodificar; la pista se quita de
+                                        verdad al exportar. */}
+                                    <button
+                                        type="button"
+                                        onClick={(e) => { e.stopPropagation(); toggleClipMuted(clip.id) }}
+                                        className={`absolute bottom-0.5 right-0.5 z-20 p-0.5 rounded bg-black/60 ${
+                                            clip.muted ? 'text-red-400' : 'text-white/70 hover:text-white'
+                                        }`}
+                                        aria-label={clip.muted ? 'Unmute clip' : 'Mute clip'}
+                                        title={
+                                            clip.muted
+                                                ? 'Este clip sale MUDO — pulsa para devolverle el sonido'
+                                                : 'Silenciar solo este clip'
+                                        }
+                                    >
+                                        {clip.muted ? (
+                                            <HiOutlineVolumeOff className="w-3.5 h-3.5" />
+                                        ) : (
+                                            <HiOutlineVolumeUp className="w-3.5 h-3.5" />
+                                        )}
+                                    </button>
 
                                     {/* Remove clip */}
                                     <button

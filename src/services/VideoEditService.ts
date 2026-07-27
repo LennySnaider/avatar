@@ -393,6 +393,51 @@ export async function trimVideo(
 }
 
 /**
+ * Drop a clip's audio track. `-c:v copy` means the VIDEO is never re-encoded:
+ * this only rewrites the container without the audio stream, so it costs a
+ * remux and not a full pass — barely slower than a file copy, and with zero
+ * generational quality loss.
+ *
+ * No hace falta sintetizar silencio aquí. `stitchVideos` prueba cada entrada y
+ * a las que no traen audio les engancha un `anullsrc` recortado a su duración,
+ * porque `concat=v=1:a=1` exige que todas tengan las dos pistas. O sea que un
+ * clip mudo se alinea solo, y los demás conservan su sonido.
+ */
+export async function stripAudio(
+    videoUrl: string,
+    onProgress?: (percent: number) => void,
+): Promise<string> {
+    const ff = await loadFFmpeg()
+    onProgress?.(5)
+
+    const input = `mute-in-${Date.now()}.mp4`
+    const output = `mute-out-${Date.now()}.mp4`
+
+    try {
+        const data = await fetchVideoData(videoUrl)
+        await ff.writeFile(input, data)
+        onProgress?.(40)
+
+        const exitCode = await ff.exec(['-i', input, '-c:v', 'copy', '-an', output])
+        if (exitCode !== 0) {
+            throw new Error(
+                `FFmpeg mute exited with code ${exitCode}. See [FFmpeg Log] for details.`,
+            )
+        }
+
+        onProgress?.(90)
+        const result = await ff.readFile(output)
+        const blob = new Blob([result as BlobPart], { type: 'video/mp4' })
+        const url = URL.createObjectURL(blob)
+        onProgress?.(100)
+        return url
+    } finally {
+        try { await ff.deleteFile(input) } catch { /* ignore */ }
+        try { await ff.deleteFile(output) } catch { /* ignore */ }
+    }
+}
+
+/**
  * Crop a video to the given rectangle. Coordinates are in source-video pixels
  * (the caller is responsible for mapping display-space rectangles to source
  * pixels — VideoEditorMain does this by accounting for letterboxing).
