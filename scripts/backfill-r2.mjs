@@ -98,14 +98,22 @@ let failed = 0
 let bytes = 0
 const failures = []
 
+let dryPage = 0
 for (;;) {
     const migratedBefore = migrated
-    const { data: rows, error } = await supabase
+    let query = supabase
         .from('generations')
         .select('id, storage_path, media_type, thumbnail_path')
         .eq('storage_provider', 'supabase')
         .order('created_at', { ascending: true })
-        .limit(BATCH)
+    // DRY_RUN no voltea filas, así que la primera página se repetiría para
+    // siempre: se pagina por offset SOLO en dry run. En real, el flip hace
+    // avanzar la query sola.
+    query = DRY_RUN
+        ? query.range(dryPage * BATCH, dryPage * BATCH + BATCH - 1)
+        : query.limit(BATCH)
+    dryPage++
+    const { data: rows, error } = await query
     if (error) throw new Error(error.message)
     if (!rows?.length) break
 
@@ -171,7 +179,7 @@ for (;;) {
     // Cero migradas NUEVAS en esta pasada = solo quedan filas que fallan
     // (siguen en 'supabase' y la query las devolvería otra vez): parar aquí
     // en vez de reintentar las mismas en bucle infinito.
-    if (migrated === migratedBefore) {
+    if (!DRY_RUN && migrated === migratedBefore) {
         console.error('❌ Pasada sin progreso — quedan solo filas fallidas, revisar la lista')
         break
     }
