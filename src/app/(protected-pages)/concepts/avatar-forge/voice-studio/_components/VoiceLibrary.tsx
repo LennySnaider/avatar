@@ -5,6 +5,8 @@ import { useVoiceStudioStore, refreshVoices } from '../_store/voiceStudioStore'
 import Card from '@/components/ui/Card'
 import Button from '@/components/ui/Button'
 import Spinner from '@/components/ui/Spinner'
+import Notification from '@/components/ui/Notification'
+import toast from '@/components/ui/toast'
 import type { Avatar } from '@/@types/supabase'
 
 interface VoiceLibraryProps {
@@ -110,6 +112,49 @@ export default function VoiceLibrary({ avatars }: VoiceLibraryProps) {
         }
     }
 
+    // Reasignar una voz YA clonada a otro avatar. Es gratis —el clon vive en
+    // MiniMax y no se vuelve a generar—, mientras que clonarla otra vez para
+    // el segundo avatar sí se cobraría por voz.
+    const [assigningId, setAssigningId] = useState<string | null>(null)
+
+    const handleAssign = async (voiceId: string, avatarId: string) => {
+        setAssigningId(voiceId)
+        try {
+            const res = await fetch('/api/voice/assign', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ voiceId, avatarId: avatarId || null }),
+            })
+            const body = await res.json()
+            if (!res.ok) throw new Error(body.error || 'Could not reassign the voice')
+
+            await refreshVoices()
+
+            // Si la voz era la principal del avatar anterior, ese avatar se
+            // queda SIN voz principal. Callarlo dejaría un Speak mudo sin
+            // explicación, así que se dice en el mismo momento.
+            if (body.clearedFrom) {
+                toast.push(
+                    <Notification type="warning" title="Voice reassigned">
+                        {body.clearedFrom} no longer has a main voice — pick one for it.
+                    </Notification>,
+                )
+            } else {
+                toast.push(
+                    <Notification type="success" title="Voice reassigned" duration={2000} />,
+                )
+            }
+        } catch (err) {
+            toast.push(
+                <Notification type="danger" title="Reassign failed">
+                    {err instanceof Error ? err.message : 'Could not reassign the voice'}
+                </Notification>,
+            )
+        } finally {
+            setAssigningId(null)
+        }
+    }
+
     const handleSetDefault = async (voiceId: string) => {
         const res = await fetch('/api/voice/set-default', {
             method: 'POST',
@@ -134,14 +179,9 @@ export default function VoiceLibrary({ avatars }: VoiceLibraryProps) {
         return avatars.find((a) => a.id === voice.avatar_id)?.default_voice_id === voice.id
     }
 
-    const avatarNameFor = (avatarId: string | null) => {
-        if (!avatarId) return null
-        return (
-            voiceAvatars.find((a) => a.id === avatarId)?.name ??
-            avatars.find((a) => a.id === avatarId)?.name ??
-            null
-        )
-    }
+    // Mismo criterio que la ★: manda el mapeo vivo; el prop SSR solo cubre el
+    // primer render, antes de que refreshVoices haya contestado.
+    const avatarOptions = voiceAvatars.length > 0 ? voiceAvatars : avatars
 
     if (voices.length === 0) {
         return (
@@ -158,7 +198,6 @@ export default function VoiceLibrary({ avatars }: VoiceLibraryProps) {
             <div className="p-4 flex flex-col gap-2">
                 <h3 className="font-semibold text-lg">Your Voices</h3>
                 {voices.map((voice) => {
-                    const linkedAvatarName = avatarNameFor(voice.avatar_id)
                     const isMain = isMainVoice(voice)
                     return (
                         <div
@@ -175,9 +214,31 @@ export default function VoiceLibrary({ avatars }: VoiceLibraryProps) {
                                     {voice.name}
                                     {isMain && <span className="ml-1 text-primary" title="Main voice">★</span>}
                                 </span>
-                                <span className="text-xs text-gray-500">
+                                {/* El avatar vinculado ES el control: donde
+                                    antes se leía el nombre, ahora se cambia.
+                                    Reasignar no vuelve a clonar nada. */}
+                                <span className="text-xs text-gray-500 flex items-center gap-1">
                                     {voice.language.toUpperCase()}
-                                    {linkedAvatarName && ` · ${linkedAvatarName}`}
+                                    {' · '}
+                                    <select
+                                        className="bg-transparent border-none p-0 pr-1 text-xs text-gray-500 hover:text-gray-300 cursor-pointer focus:outline-none"
+                                        value={voice.avatar_id ?? ''}
+                                        disabled={assigningId === voice.id}
+                                        title="Reassign this voice to another avatar"
+                                        onClick={(e) => e.stopPropagation()}
+                                        onChange={(e) => {
+                                            e.stopPropagation()
+                                            handleAssign(voice.id, e.target.value)
+                                        }}
+                                    >
+                                        <option value="">No avatar</option>
+                                        {avatarOptions.map((a) => (
+                                            <option key={a.id} value={a.id}>
+                                                {a.name}
+                                            </option>
+                                        ))}
+                                    </select>
+                                    {assigningId === voice.id && <Spinner size={12} />}
                                     {' · '}{new Date(voice.created_at).toLocaleDateString()}
                                 </span>
                             </div>
