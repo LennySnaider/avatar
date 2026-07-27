@@ -7,6 +7,7 @@
  * api_key never reaches the client (PersonaDTO carries hasApiKey only).
  */
 import { GoogleGenAI, Type } from '@google/genai'
+import { getStoragePublicUrl } from '@/lib/storagePaths'
 import { generateText } from 'ai'
 import { getOrgContext, type OrgContext } from '@/lib/tenant/getOrgContext'
 import { agentSupabase, type AvatarKnowledgeRow } from '@/lib/agent/db'
@@ -295,9 +296,66 @@ export async function listKnowledge(avatarId: string): Promise<AgentResult<Knowl
             .order('created_at', { ascending: false })
             .limit(500)
         if (error) throw new Error(error.message)
-        return { success: true, data: (data ?? []).map(toKnowledgeDTO) }
+        const items = (data ?? []).map(toKnowledgeDTO)
+        await attachKnowledgeThumbnails(items)
+        return { success: true, data: items }
     } catch (e) {
         return fail(e)
+    }
+}
+
+/**
+ * Resuelve la miniatura de las entradas que vienen de un post.
+ *
+ * `source_ref` guarda `social_posts:{id}` (o `fanvue_posts:{id}`), y la imagen
+ * no vive ahi: el post apunta a una `generations`, y la generacion tiene el
+ * `storage_path`. Sin esto la base de conocimiento era una lista de captions
+ * sin cara — imposible saber a que foto pertenece cada una cuando dos
+ * comparten texto, que es justo lo que pasa aqui.
+ *
+ * Va en DOS consultas batched (posts y generaciones), no una por fila: con 500
+ * entradas la version ingenua serian 1000 viajes.
+ */
+async function attachKnowledgeThumbnails(items: KnowledgeItemDTO[]): Promise<void> {
+    // Solo `social_posts`: es lo unico que indexa hoy el reindex, y el cliente
+    // tipado rechaza un nombre de tabla dinamico (bien: obliga a declarar de
+    // donde se lee en vez de construirlo en tiempo de ejecucion).
+    const byPostId = new Map<string, KnowledgeItemDTO[]>()
+    for (const it of items) {
+        const [table, id] = (it.sourceRef ?? '').split(':')
+        if (table !== 'social_posts' || !id) continue
+        byPostId.set(id, [...(byPostId.get(id) ?? []), it])
+    }
+    if (byPostId.size === 0) return
+
+    const supabase = agentSupabase()
+    const { data: posts } = await supabase
+        .from('social_posts')
+        .select('id, generation_id')
+        .in('id', [...byPostId.keys()])
+
+    const genToItems = new Map<string, KnowledgeItemDTO[]>()
+    for (const post of posts ?? []) {
+        if (!post.generation_id) continue
+        genToItems.set(post.generation_id, [
+            ...(genToItems.get(post.generation_id) ?? []),
+            ...(byPostId.get(post.id) ?? []),
+        ])
+    }
+    if (genToItems.size === 0) return
+
+    const { data: gens } = await supabase
+        .from('generations')
+        .select('id, storage_path, media_type')
+        .in('id', [...genToItems.keys()])
+
+    for (const gen of gens ?? []) {
+        if (!gen.storage_path) continue
+        const url = getStoragePublicUrl('generations', gen.storage_path)
+        for (const it of genToItems.get(gen.id) ?? []) {
+            it.thumbnailUrl = url
+            it.thumbnailMediaType = gen.media_type === 'VIDEO' ? 'VIDEO' : 'IMAGE'
+        }
     }
 }
 

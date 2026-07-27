@@ -39,15 +39,22 @@ const AgentView = ({
             </TabList>
             <div className="pt-4">
                 <TabContent value="persona">
+                    {/* La cuenta de Fanvue va ARRIBA del todo: no es un ajuste
+                        del chat, es a QUÉ cuenta pertenece este avatar — y de
+                        ella cuelgan el inbox, publicar y la bóveda. Estaba al
+                        final, después de "Save persona", con nombre de ajuste
+                        de chat; el 2026-07-27 eso hizo que 10 de 11 avatares
+                        quedaran sin enlazar y que la bóveda los rechazara sin
+                        que se viera el porqué. */}
+                    <FanvueChatCard
+                        avatarId={avatarId}
+                        initialCreatorUuid={initialFanvueCreatorUuid}
+                    />
                     <PersonaEditor
                         avatarId={avatarId}
                         avatarName={avatarName}
                         persona={persona}
                         onPersonaChange={setPersona}
-                    />
-                    <FanvueChatCard
-                        avatarId={avatarId}
-                        initialCreatorUuid={initialFanvueCreatorUuid}
                     />
                     <AutopilotCard avatarId={avatarId} />
                 </TabContent>

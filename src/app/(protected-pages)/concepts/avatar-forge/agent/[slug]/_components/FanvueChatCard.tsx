@@ -55,7 +55,7 @@ const FanvueChatCard = ({ avatarId, initialCreatorUuid }: FanvueChatCardProps) =
             toast.push(
                 result.success ? (
                     <Notification type="success" title="Saved">
-                        Fanvue chat account linked
+                        Fanvue account linked — chat, publishing and vault now use it
                     </Notification>
                 ) : (
                     <Notification type="danger" title="Failed">
@@ -92,9 +92,14 @@ const FanvueChatCard = ({ avatarId, initialCreatorUuid }: FanvueChatCardProps) =
 
     return (
         <Card className="max-w-4xl mt-4">
-            <p className="text-sm font-semibold mb-1">Fanvue chat</p>
+            {/* El nombre importa: se llamaba "Fanvue chat" y parecia un
+                ajuste del inbox, pero de este enlace cuelgan TAMBIEN publicar
+                y la boveda. Con el nombre viejo, 10 de 11 avatares quedaron
+                sin enlazar (2026-07-27). */}
+            <p className="text-sm font-semibold mb-1">Fanvue account</p>
             <p className="text-xs text-gray-400 mb-3">
-                Which Fanvue account this avatar chats from. Replies show up in the{' '}
+                Which Fanvue creator this avatar <strong>is</strong> — it drives the
+                chat inbox, publishing and the vault. Replies show up in the{' '}
                 <Link href="/concepts/avatar-forge/inbox" className="underline">
                     Agent Inbox
                 </Link>
@@ -107,7 +112,7 @@ const FanvueChatCard = ({ avatarId, initialCreatorUuid }: FanvueChatCardProps) =
                     <Link href="/concepts/avatar-forge/fanvue/accounts" className="underline font-semibold">
                         connect it
                     </Link>{' '}
-                    to enable chat.
+                    to enable chat, publishing and the vault.
                 </p>
             ) : (
                 <div className="flex flex-wrap items-end gap-3">

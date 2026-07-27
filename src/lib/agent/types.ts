@@ -50,6 +50,11 @@ export interface KnowledgeItemDTO {
     sourceRef: string | null
     hasEmbedding: boolean
     createdAt: string
+    /** Miniatura de la media de la que salio esta entrada, resuelta al listar
+     * (source_ref → post → generacion → storage). Solo la traen las entradas
+     * de post; el resto es texto suelto y no tiene imagen que ensenar. */
+    thumbnailUrl?: string | null
+    thumbnailMediaType?: 'IMAGE' | 'VIDEO' | null
 }
 
 export interface RetrievedChunk {

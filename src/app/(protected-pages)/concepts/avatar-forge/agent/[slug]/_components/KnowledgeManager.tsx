@@ -261,7 +261,31 @@ const KnowledgeManager = ({ avatarId }: KnowledgeManagerProps) => {
                                 key={item.id}
                                 className="flex items-start justify-between gap-3 p-2 rounded-lg border border-gray-200 dark:border-gray-700"
                             >
-                                <div className="min-w-0">
+                                {/* La miniatura de la media de la que salio la
+                                    entrada. Sin ella la base era una lista de
+                                    captions sin cara, y con dos textos casi
+                                    identicos no habia forma de saber cual es
+                                    cual. */}
+                                {item.thumbnailUrl && (
+                                    <div className="relative shrink-0 w-14 h-14 rounded-md overflow-hidden bg-black">
+                                        {item.thumbnailMediaType === 'VIDEO' ? (
+                                            <video
+                                                src={item.thumbnailUrl}
+                                                muted
+                                                preload="metadata"
+                                                className="w-full h-full object-cover"
+                                            />
+                                        ) : (
+                                            <img
+                                                src={item.thumbnailUrl}
+                                                alt=""
+                                                loading="lazy"
+                                                className="w-full h-full object-cover"
+                                            />
+                                        )}
+                                    </div>
+                                )}
+                                <div className="min-w-0 flex-1">
                                     <div className="flex items-center gap-2 mb-1">
                                         <Tag className={KIND_STYLES[item.kind] ?? ''}>{item.kind}</Tag>
                                         {item.title && (
