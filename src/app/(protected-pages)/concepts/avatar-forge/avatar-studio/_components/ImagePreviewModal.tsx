@@ -188,6 +188,18 @@ const ImagePreviewModal = ({
     const videoRef = useRef<HTMLVideoElement>(null)
     const mediaContainerRef = useRef<HTMLDivElement>(null)
     const getMediaScrollEl = () => mediaContainerRef.current
+    /**
+     * El efecto de la rueda salia por `if (!el) return` cuando el contenedor
+     * aun no estaba montado, y como sus dependencias no cambiaban NUNCA se
+     * volvia a ejecutar: el zoom con rueda quedaba muerto para el resto de la
+     * vida del modal. Este contador cambia al montar el nodo, asi que el
+     * efecto se re-ejecuta justo cuando hay algo a lo que engancharse.
+     */
+    const [scrollElVersion, setScrollElVersion] = useState(0)
+    const attachMediaContainer = useCallback((node: HTMLDivElement | null) => {
+        mediaContainerRef.current = node
+        if (node) setScrollElVersion((v) => v + 1)
+    }, [])
     const viewportRef = useRef<HTMLDivElement>(null)
     const isDrawingRef = useRef(false)
     const lastPosRef = useRef({ x: 0, y: 0 })
@@ -360,12 +372,15 @@ const ImagePreviewModal = ({
         el.scrollTop = (el.scrollTop + anchor.my) * k - anchor.my
     }, [zoomLevel])
 
+    // Pasos PROPORCIONALES tambien en los botones: un +0.25 fijo salta un 25%
+    // a zoom 1 y solo un 4% a zoom 6, asi que el mismo boton se sentia brusco
+    // al principio e inutil al final.
     const handleZoomIn = useCallback(() => {
-        applyZoom(zoomLevelRef.current + 0.25)
+        applyZoom(zoomLevelRef.current * 1.25)
     }, [applyZoom])
 
     const handleZoomOut = useCallback(() => {
-        applyZoom(zoomLevelRef.current - 0.25)
+        applyZoom(zoomLevelRef.current / 1.25)
     }, [applyZoom])
 
     const handleResetZoom = useCallback(() => {
@@ -390,7 +405,7 @@ const ImagePreviewModal = ({
         }
         el.addEventListener('wheel', onWheel, { passive: false })
         return () => el.removeEventListener('wheel', onWheel)
-    }, [isCropping, applyZoom, previewMedia])
+    }, [isCropping, applyZoom, previewMedia, scrollElVersion])
 
     useEffect(() => {
         if (!previewMedia) return
@@ -1216,7 +1231,7 @@ const ImagePreviewModal = ({
                         template (plugin tailwind-scrollbar). SimpleBar aquí
                         rompía el render de la media (área vacía). */}
                     <div
-                        ref={mediaContainerRef}
+                        ref={attachMediaContainer}
                         className="relative max-h-full max-w-full overflow-auto thin-scrollbar"
                         onMouseDown={handlePanStart}
                         style={{
