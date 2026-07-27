@@ -8,6 +8,8 @@ import Button from '@/components/ui/Button'
 import Card from '@/components/ui/Card'
 import Notification from '@/components/ui/Notification'
 import toast from '@/components/ui/toast'
+import Input from '@/components/ui/Input'
+import Select from '@/components/ui/Select'
 import type { VoiceTtsSettings } from '@/@types/voice'
 
 const EMOTIONS = [
@@ -49,6 +51,11 @@ export default function AudioPreview({ onSentToAvatarStudio }: AudioPreviewProps
     // solo se mueve el vínculo. Volver a clonar la misma voz para un segundo
     // avatar sí se cobraría por voz.
     const [isAssigning, setIsAssigning] = useState(false)
+
+    const avatarSelectOptions = [
+        { value: '', label: 'No avatar (voice only)' },
+        ...voiceAvatars.map((a) => ({ value: a.id, label: a.name })),
+    ]
 
     // Renombrar es SOLO nuestra etiqueta: `provider_voice_id` sigue igual, así
     // que TTS, Speak y Lipsync siguen apuntando al mismo clon en MiniMax.
@@ -410,9 +417,10 @@ export default function AudioPreview({ onSentToAvatarStudio }: AudioPreviewProps
                 {selectedVoice && (
                     <div className="text-sm bg-gray-50 dark:bg-gray-800 rounded-md p-2 flex flex-col gap-2">
                         <label className="flex items-center justify-between gap-2 text-xs">
-                            <span className="text-gray-500">Voice</span>
-                            <input
-                                className="flex-1 rounded-md border px-2 py-1 text-xs bg-transparent disabled:opacity-50"
+                            <span className="text-gray-500 w-14">Voice</span>
+                            <Input
+                                size="sm"
+                                className="flex-1"
                                 value={nameDraft}
                                 disabled={isRenaming}
                                 maxLength={60}
@@ -438,22 +446,21 @@ export default function AudioPreview({ onSentToAvatarStudio }: AudioPreviewProps
                                 {selectedVoice.language.toUpperCase()}
                             </span>
                         </label>
-                        <label className="flex items-center justify-between gap-2 text-xs">
-                            <span className="text-gray-500">Avatar</span>
-                            <select
-                                className="flex-1 rounded-md border px-2 py-1 text-xs bg-transparent disabled:opacity-50"
-                                value={selectedVoice.avatar_id ?? ''}
-                                disabled={isAssigning}
-                                onChange={(e) => handleAssignAvatar(e.target.value)}
-                            >
-                                <option value="">No avatar (voice only)</option>
-                                {voiceAvatars.map((a) => (
-                                    <option key={a.id} value={a.id}>
-                                        {a.name}
-                                    </option>
-                                ))}
-                            </select>
-                        </label>
+                        <div className="flex items-center justify-between gap-2 text-xs">
+                            <span className="text-gray-500 w-14">Avatar</span>
+                            <div className="flex-1">
+                                <Select<{ value: string; label: string }>
+                                    instanceId="voice-preview-avatar"
+                                    size="sm"
+                                    isDisabled={isAssigning}
+                                    options={avatarSelectOptions}
+                                    value={avatarSelectOptions.find(
+                                        (o) => o.value === (selectedVoice.avatar_id ?? ''),
+                                    )}
+                                    onChange={(option) => handleAssignAvatar(option?.value ?? '')}
+                                />
+                            </div>
+                        </div>
                     </div>
                 )}
 
