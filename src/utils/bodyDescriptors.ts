@@ -473,21 +473,23 @@ export function pubicHairClause(m: PhysicalMeasurements): string {
  * IMPERATIVA (la escena manda, el hedge sobra); si no, conserva el condicional
  * para no empujar desnudez en escenas vestidas. */
 /**
- * INTERRUPTOR TEMPORAL — prueba A/B (2026-07-26).
+ * DECISION VALIDADA (2026-07-26) — la clausula queda APAGADA.
  *
- * Reporte: "en seedream la vulva se veia siempre bien, pero ahora se ve super
- * mal, esta mal posicionada (muy arriba)". La clausula lleva muchas rondas de
- * ajuste encima y puede haber pasado de ayudar a estorbar: describir una
- * anatomia con tanto detalle posicional le da al modelo mas oportunidades de
- * colocarla mal que de acertar. Sin ella, el motor usa su prior anatomico, que
- * es lo que hacia cuando "se veia siempre bien".
+ * Se apago como prueba A/B tras el reporte "en seedream la vulva se veia
+ * siempre bien, pero ahora se ve super mal, esta mal posicionada (muy arriba)",
+ * y el usuario confirmo la mejora sin ella.
  *
- * Apaga la clausula en TODAS las rutas a la vez para que la comparacion sea
- * limpia — si solo se quitara en Seedream, Qwen seguiria con ella y no
- * sabriamos que estamos midiendo.
+ * EL HALLAZGO, que vale para lo que venga: describir una anatomia con detalle
+ * POSICIONAL empeoraba el resultado. Cada ronda de ajuste añadia precision
+ * aparente y le quitaba al modelo la libertad de colocarla donde toca — su
+ * prior anatomico acierta mas que nuestras instrucciones acumuladas.
  *
- * PARA REVERTIR: poner `true`. No se borra el codigo a proposito; si el
- * experimento sale mal, volver es cambiar una palabra.
+ * Apaga las CUATRO apariciones a la vez (escena, fase 1 y 2 de MuleRouter, y
+ * hoja NUDE); se hizo asi para que la comparacion fuera limpia.
+ *
+ * El codigo NO se borra: si un motor nuevo la necesitara, encenderla es cambiar
+ * una palabra. La red de seguridad nunca se quito — el NEGATIVE sigue
+ * prohibiendo mariposa, labios abiertos, censura y entrepierna lisa.
  */
 export const VULVA_CLAUSE_ENABLED = false
 
