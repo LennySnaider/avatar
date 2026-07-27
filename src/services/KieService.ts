@@ -247,6 +247,9 @@ function explainKieFailure(raw: string): string {
  * generaciones siguientes hacen un HEAD (~100ms) y reutilizan la URL en vez de
  * re-subir 1-3MB por ref en cada generación (y otra vez en el retry).
  */
+/** Por debajo de esto el PNG ya viaja rápido y recomprimir solo añade CPU. */
+const PNG_RECOMPRESS_MIN_BYTES = 400 * 1024
+
 export async function uploadReferenceToSupabase(
     base64: string,
     mimeType: string,
@@ -256,13 +259,51 @@ export async function uploadReferenceToSupabase(
         throw new Error('NEXT_PUBLIC_SUPABASE_URL is not defined')
 
     const cleanBase64 = base64.includes(',') ? base64.split(',')[1] : base64
-    const buffer = Buffer.from(cleanBase64, 'base64')
+    let buffer = Buffer.from(cleanBase64, 'base64')
+    let effectiveMime = mimeType
 
-    const ext = mimeType.includes('mp4')
+    // PNG → JPEG cuando pesa de más. El PNG es SIN PÉRDIDA, así que una ref de
+    // 1024px sale a 1.5-3 MB donde un JPEG de calidad alta ocupa 4-5 veces
+    // menos con diferencia invisible — y el proveedor la recodifica igual al
+    // recibirla. Ese peso es lo que agota el temporizador de descarga de
+    // Alibaba ("Timeout while downloading url=…", 2026-07-27), y aquí no hay
+    // caché de borde que lo salve: este plan de Supabase sirve `no-cache`
+    // pase lo que pase (medido), así que CADA descarga cruza hasta el origen.
+    //
+    // NO se reescala: bajar la resolución tocaría el clonado de identidad, que
+    // es lo que más nos ha costado calibrar. Solo cambia el contenedor.
+    //
+    // Con canal ALFA se deja el PNG: JPEG no lo tiene, y aunque hoy las
+    // máscaras se queman sobre la imagen, convertir un alfa real la aplanaría
+    // en silencio. Comprobarlo cuesta una lectura de metadatos.
+    if (mimeType.includes('png') && buffer.byteLength > PNG_RECOMPRESS_MIN_BYTES) {
+        try {
+            const sharp = (await import('sharp')).default
+            const meta = await sharp(buffer).metadata()
+            if (!meta.hasAlpha) {
+                const jpeg = await sharp(buffer)
+                    .jpeg({ quality: 92, mozjpeg: true })
+                    .toBuffer()
+                if (jpeg.byteLength < buffer.byteLength) {
+                    console.log(
+                        `[KIE/ref] PNG ${(buffer.byteLength / 1048576).toFixed(2)}MB → JPEG ${(jpeg.byteLength / 1048576).toFixed(2)}MB`,
+                    )
+                    buffer = Buffer.from(jpeg)
+                    effectiveMime = 'image/jpeg'
+                }
+            }
+        } catch (err) {
+            // Recomprimir es una OPTIMIZACIÓN: si sharp falla, sube el PNG tal
+            // cual. Perder velocidad es mejor que perder la generación.
+            console.warn('[KIE/ref] PNG recompress skipped:', err)
+        }
+    }
+
+    const ext = effectiveMime.includes('mp4')
         ? 'mp4'
-        : mimeType.includes('png')
+        : effectiveMime.includes('png')
           ? 'png'
-          : mimeType.includes('webp')
+          : effectiveMime.includes('webp')
             ? 'webp'
             : 'jpg'
     const hash = createHash('sha256').update(buffer).digest('hex').slice(0, 32)
@@ -277,21 +318,7 @@ export async function uploadReferenceToSupabase(
             { method: 'HEAD' },
             5_000,
         )
-        // Existir no basta: hay que mirar CÓMO se sirve. Los objetos subidos
-        // antes de que existiera el `cacheControl` de abajo conservan el
-        // `no-cache` por defecto de Supabase, y este mismo atajo impedía que
-        // se corrigieran nunca — el nombre es el hash del contenido, así que
-        // sin reescribir el objeto su metadato queda congelado de por vida.
-        //
-        // Y `no-cache` es lo peor que le puede pasar a una ref: Cloudflare no
-        // la guarda en el borde, así que CADA descarga del proveedor cruza
-        // hasta el origen. Justo lo que reventó el 2026-07-27 con un
-        // "Timeout while downloading url=…" de Alibaba sobre un JPEG de 1 MB.
-        // Reusar la ref es el caso NORMAL (para eso se direcciona por
-        // contenido), o sea que es exactamente donde la caché más rinde.
-        const cc = head.headers.get('cache-control') ?? ''
-        const cacheable = /max-age=\d+/.test(cc) && !/no-cache|no-store/.test(cc)
-        if (head.ok && cacheable) return publicUrl
+        if (head.ok) return publicUrl
     } catch {
         /* sin caché — sube normal */
     }
@@ -300,12 +327,19 @@ export async function uploadReferenceToSupabase(
     const { error } = await supabase.storage
         .from('generations')
         .upload(fileName, buffer, {
-            contentType: mimeType,
-            // Content-addressed → el nombre ES el sha256 del contenido, así
-            // que este objeto no puede cambiar nunca. Una hora se quedaba
-            // corta para algo inmutable: un año mantiene la ref caliente en
-            // el borde entre sesiones, que es cuando el proveedor la vuelve
-            // a pedir.
+            contentType: effectiveMime,
+            // Content-addressed → el nombre ES el sha256, así que el objeto no
+            // puede cambiar y una caché eterna sería segura.
+            //
+            // OJO (medido 2026-07-27): en este plan **Supabase sirve
+            // `cache-control: no-cache` haga lo que haga este campo**. Se
+            // comprobó subiendo un PNG de prueba con max-age=31536000 y
+            // leyendo la cabecera de vuelta: `no-cache`. Así que Cloudflare
+            // nunca guarda la ref en el borde y CADA descarga del proveedor
+            // cruza hasta el origen — de ahí los "Timeout while downloading
+            // url=…" de Alibaba. Se deja puesto por si el plan cambia, pero
+            // NO se puede construir nada encima: condicionar el atajo de
+            // arriba a esta cabecera hacía resubir 1-3 MB en cada generación.
             cacheControl: '31536000',
             // upsert: dos generaciones concurrentes con la misma ref no deben
             // fallar por "already exists" (el contenido es idéntico por hash).
