@@ -2,10 +2,12 @@
 
 import { useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { useVoiceStudioStore } from '../_store/voiceStudioStore'
+import { useVoiceStudioStore, refreshVoices } from '../_store/voiceStudioStore'
 import { useAvatarStudioStore } from '../../avatar-studio/_store/avatarStudioStore'
 import Button from '@/components/ui/Button'
 import Card from '@/components/ui/Card'
+import Notification from '@/components/ui/Notification'
+import toast from '@/components/ui/toast'
 import type { VoiceTtsSettings } from '@/@types/voice'
 
 const EMOTIONS = [
@@ -29,7 +31,7 @@ interface AudioPreviewProps {
 
 export default function AudioPreview({ onSentToAvatarStudio }: AudioPreviewProps = {}) {
     const {
-        currentScript, selectedVoiceId, voices, setVoices,
+        currentScript, selectedVoiceId, voices, setVoices, voiceAvatars,
         previewAudioUrl, setPreviewAudioUrl,
         isGeneratingAudio, setIsGeneratingAudio,
         scriptLanguage, settingsEditNonce,
@@ -38,6 +40,52 @@ export default function AudioPreview({ onSentToAvatarStudio }: AudioPreviewProps
     const router = useRouter()
 
     const selectedVoice = voices.find((v) => v.id === selectedVoiceId)
+
+    // Reasignar la voz a otro avatar. Vive AQUÍ y no en la lista porque este
+    // es el panel donde aterriza "Edit": es donde se viene a tocar una voz ya
+    // guardada, y donde se fue a buscar el selector.
+    //
+    // No cuesta nada: el clon vive en MiniMax y `provider_voice_id` no cambia,
+    // solo se mueve el vínculo. Volver a clonar la misma voz para un segundo
+    // avatar sí se cobraría por voz.
+    const [isAssigning, setIsAssigning] = useState(false)
+
+    const handleAssignAvatar = async (avatarId: string) => {
+        if (!selectedVoice) return
+        setIsAssigning(true)
+        try {
+            const res = await fetch('/api/voice/assign', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ voiceId: selectedVoice.id, avatarId: avatarId || null }),
+            })
+            const body = await res.json()
+            if (!res.ok) throw new Error(body.error || 'Could not reassign the voice')
+
+            await refreshVoices()
+
+            // Si era la voz principal del avatar anterior, ese avatar se queda
+            // SIN principal. Callarlo dejaría su modo Speak mudo sin
+            // explicación posible, así que se dice en el momento.
+            toast.push(
+                body.clearedFrom ? (
+                    <Notification type="warning" title="Voice reassigned">
+                        {body.clearedFrom} no longer has a main voice — pick one for it.
+                    </Notification>
+                ) : (
+                    <Notification type="success" title="Voice reassigned" duration={2000} />
+                ),
+            )
+        } catch (err) {
+            toast.push(
+                <Notification type="danger" title="Reassign failed">
+                    {err instanceof Error ? err.message : 'Could not reassign the voice'}
+                </Notification>,
+            )
+        } finally {
+            setIsAssigning(false)
+        }
+    }
 
     // Lleva el audio generado + guion directo al modo Speak del Avatar Studio
     // (navegación client-side: los stores sobreviven, no se re-genera nada).
@@ -312,8 +360,26 @@ export default function AudioPreview({ onSentToAvatarStudio }: AudioPreviewProps
                 )}
 
                 {selectedVoice && (
-                    <div className="text-sm bg-gray-50 dark:bg-gray-800 rounded-md p-2">
-                        Voice: <strong>{selectedVoice.name}</strong> ({selectedVoice.language.toUpperCase()})
+                    <div className="text-sm bg-gray-50 dark:bg-gray-800 rounded-md p-2 flex flex-col gap-2">
+                        <div>
+                            Voice: <strong>{selectedVoice.name}</strong> ({selectedVoice.language.toUpperCase()})
+                        </div>
+                        <label className="flex items-center justify-between gap-2 text-xs">
+                            <span className="text-gray-500">Avatar</span>
+                            <select
+                                className="flex-1 rounded-md border px-2 py-1 text-xs bg-transparent disabled:opacity-50"
+                                value={selectedVoice.avatar_id ?? ''}
+                                disabled={isAssigning}
+                                onChange={(e) => handleAssignAvatar(e.target.value)}
+                            >
+                                <option value="">No avatar (voice only)</option>
+                                {voiceAvatars.map((a) => (
+                                    <option key={a.id} value={a.id}>
+                                        {a.name}
+                                    </option>
+                                ))}
+                            </select>
+                        </label>
                     </div>
                 )}
 
