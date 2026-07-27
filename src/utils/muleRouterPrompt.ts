@@ -3,6 +3,7 @@ import {
     describeHair,
     getEyeColorDescription,
     getSkinToneDescription,
+    VULVA_CLAUSE_ENABLED,
 } from '@/utils/bodyDescriptors'
 // Mapas COMPACTOS propios (los DIFFUSION_* de avatarPromptBuilder son
 // verbosos — aquí cada char compite contra el límite de 800 y una línea de
@@ -366,7 +367,9 @@ export function buildMuleRouterEditMaxPrompt(params: {
         // LÍNEA vertical literal en el torso/ropa. Se describe la anatomía SIN
         // la palabra "line". Nudez reforzada (no top, no panti).
         parts.push(
-            'She is COMPLETELY NUDE — no bra, top or underwear, bare skin all over. Realistic bare breasts with CLEARLY DEFINED nipples and small skin-toned areolas, and a fully CLOSED vulva, plump outer labia concealing the inner ones, matte skin tone, anatomically real and softly detailed.',
+            // La parte de vulva sale bajo el MISMO interruptor de la prueba
+            // A/B (VULVA_CLAUSE_ENABLED) para que la comparacion sea limpia.
+            `She is COMPLETELY NUDE — no bra, top or underwear, bare skin all over. Realistic bare breasts with CLEARLY DEFINED nipples and small skin-toned areolas${VULVA_CLAUSE_ENABLED ? ', and a fully CLOSED vulva, plump outer labia concealing the inner ones' : ''}, matte skin tone, anatomically real and softly detailed.`,
         )
     }
 
@@ -500,7 +503,7 @@ export function buildMuleRouterFaceSwapPrompt(
     // integracion habia que hacer sitio, y estas frases decian lo mismo con
     // menos ("same pose and framing" ya lo repite el keepList del final).
     const undress = opts?.undress
-        ? ` Also REMOVE all clothing — completely nude. Natural breasts, CLEARLY DEFINED nipples, ${areola} skin-toned areolas, fully CLOSED vulva with plump outer labia concealing the inner ones.${opts?.pubicDesc ? ` ${opts.pubicDesc}` : ''}`
+        ? ` Also REMOVE all clothing — completely nude. Natural breasts, CLEARLY DEFINED nipples, ${areola} skin-toned areolas${VULVA_CLAUSE_ENABLED ? ', fully CLOSED vulva with plump outer labia concealing the inner ones' : ''}.${opts?.pubicDesc ? ` ${opts.pubicDesc}` : ''}`
         : ''
     const keepList = opts?.undress
         ? 'same body, pose, hands, framing, lighting and background'

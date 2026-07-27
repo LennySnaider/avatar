@@ -472,7 +472,27 @@ export function pubicHairClause(m: PhysicalMeasurements): string {
  * un editor literal. Cuando la ESCENA ya declara desnudo total, la cláusula es
  * IMPERATIVA (la escena manda, el hedge sobra); si no, conserva el condicional
  * para no empujar desnudez en escenas vestidas. */
+/**
+ * INTERRUPTOR TEMPORAL — prueba A/B (2026-07-26).
+ *
+ * Reporte: "en seedream la vulva se veia siempre bien, pero ahora se ve super
+ * mal, esta mal posicionada (muy arriba)". La clausula lleva muchas rondas de
+ * ajuste encima y puede haber pasado de ayudar a estorbar: describir una
+ * anatomia con tanto detalle posicional le da al modelo mas oportunidades de
+ * colocarla mal que de acertar. Sin ella, el motor usa su prior anatomico, que
+ * es lo que hacia cuando "se veia siempre bien".
+ *
+ * Apaga la clausula en TODAS las rutas a la vez para que la comparacion sea
+ * limpia — si solo se quitara en Seedream, Qwen seguiria con ella y no
+ * sabriamos que estamos midiendo.
+ *
+ * PARA REVERTIR: poner `true`. No se borra el codigo a proposito; si el
+ * experimento sale mal, volver es cambiar una palabra.
+ */
+export const VULVA_CLAUSE_ENABLED = false
+
 export function vulvaClause(scenePrompt?: string): string {
+    if (!VULVA_CLAUSE_ENABLED) return ''
     // v3 "cerradito" (2026-07-24): lever 3 logró que Qwen renderice, pero salía
     // ABIERTA y rosada = irreal. Calibración entre los dos modos de fallo:
     // monte-liso-doll ←→ abierta/explícita. El punto medio: hendidura CERRADA

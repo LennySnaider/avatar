@@ -4,6 +4,7 @@ import {
     describeBody,
     getSkinToneDescription,
     tanLinesClause,
+    VULVA_CLAUSE_ENABLED,
     pubicHairClause,
     effectiveThighsLevel,
     isExaggeratedBody,
@@ -240,7 +241,7 @@ const CLOTHED_SHEET_CLAUSE =
  * explícito en positivo Y se prohíbe el contrario en negativo.
  */
 const NUDE_SHEET_CLAUSE =
-    'She is COMPLETELY NUDE in every view — no bra, no briefs, no garments at all, bare skin from head to toe, so her full body shape reads with nothing covering it. Natural realistic anatomy: bare breasts with small skin-toned areolas, and a vulva of the fully CLOSED type — plump full outer labia pressed together that completely conceal the inner labia, everything tucked inside, a soft narrow closed cleft in matte skin tone — real anatomy, never a smooth featureless doll-like blank. This is a CLINICAL anatomical body reference: neutral expression, relaxed stance, no seduction and no erotic posing.'
+    `She is COMPLETELY NUDE in every view — no bra, no briefs, no garments at all, bare skin from head to toe, so her full body shape reads with nothing covering it. Natural realistic anatomy: bare breasts with small skin-toned areolas${VULVA_CLAUSE_ENABLED ? ', and a vulva of the fully CLOSED type — plump full outer labia pressed together that completely conceal the inner labia, everything tucked inside, a soft narrow closed cleft in matte skin tone — real anatomy, never a smooth featureless doll-like blank' : ''}. This is a CLINICAL anatomical body reference: neutral expression, relaxed stance, no seduction and no erotic posing.`
 
 export const BODY_TURNAROUND_TEMPLATE_URL = '/body/turnaround-template.png'
 

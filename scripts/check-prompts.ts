@@ -51,9 +51,12 @@ import type { PhysicalMeasurements } from '../src/@types/supabase'
  * Las 7 que quedan son DEUDA CONSCIENTE, no descuido — cada una tiene una
  * razón para seguir ahí:
  *
- *  · vulvaClause (2)        costó cuatro rondas de calibración hasta el "se ve
- *                           perfecto" del usuario. Reescribirla arriesga algo
- *                           que hoy funciona; se toca solo con evidencia.
+ *  · vulvaClause (2)        APAGADA temporalmente (VULVA_CLAUSE_ENABLED=false,
+ *                           prueba A/B: "ahora se ve mal posicionada"). El
+ *                           baseline se deja en 7 y NO en 5 justamente para
+ *                           que volver a encenderla no haga fallar el
+ *                           centinela — un ratchet no debe bloquear un
+ *                           revert.
  *  · anti-mutilación (3)    INTACT_BODY / IN_FRAME / EDIT_ANCHOR. Se añadieron
  *                           por un bug real (brazos escondidos, extremidades
  *                           cortadas). Pasarlas a positivo es viable pero hay
