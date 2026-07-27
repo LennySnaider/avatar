@@ -72,26 +72,28 @@ export async function uploadAudioForCloning(
 // ─── Voice Clone ──────────────────────────────────────────
 
 /**
- * MiniMax distingue DOS tipos de credencial y el mensaje crudo no lo dice:
+ * "your current token plan not support model, voice_clone" NO es un bug
+ * nuestro ni una key equivocada: es el Token Plan sin crédito de clonación.
  *
- *  · Subscription Key (Token Plan + créditos) — la que tenemos, `sk-cp-…`
- *  · API Key de pago por uso (JWT `eyJ…`)
+ * VALIDADO el 2026-07-26: recargar el plan en el panel de MiniMax devolvió la
+ * clonación al instante, sin tocar la credencial. Conviene decirlo porque la
+ * primera lectura del error apuntaba al TIPO de key (Subscription vs pago por
+ * uso) y eso habría mandado a cambiar una credencial que estaba bien.
  *
- * El Token Plan cubre TTS pero NO la clonación: Rapid Voice Cloning se cobra
- * aparte (~$1.5 por voz, al primer uso de la voz en T2A). De ahí que el saldo
- * de la cuenta no ayude — el plan y el saldo son bolsillos distintos, y la
- * clonación solo sale del segundo.
+ * Lo que despistaba: el TTS seguía funcionando con la misma key, así que el
+ * fallo parecía de permisos y no de saldo. Son contadores distintos —
+ * Rapid Voice Cloning se cobra aparte (~$1.5 por voz, al primer uso de la voz
+ * en síntesis), y se puede agotar mientras el resto del plan sigue vivo.
  *
- * Pasó el 2026-07-26 tras 5 clones correctos (el último el 09-07) sin tocar
- * este archivo desde abril: cambió el plan, no el código. Sin traducir, el
- * error sonaba a bug nuestro y mandaba a buscar en el sitio equivocado.
+ * Sucedió tras 5 clones correctos (el último el 09-07) sin tocar este archivo
+ * desde abril: cambió el saldo, no el código.
  */
 function explainMiniMaxVoiceFailure(statusMsg: string): string {
     if (/token plan not support|not support model/i.test(statusMsg)) {
         return (
-            'MiniMax rejected the clone: this API key is a Subscription Key (Token Plan), ' +
-            'which covers TTS but not voice cloning. Cloning needs a pay-as-you-go API key ' +
-            'from the MiniMax dashboard — account balance alone does not enable it.'
+            'MiniMax rejected the clone: the account has no voice-cloning credit left. ' +
+            'Recharge the plan in the MiniMax dashboard — that alone fixes it, the API key ' +
+            'is fine. TTS keeps working meanwhile because it draws from a different balance.'
         )
     }
     return statusMsg
