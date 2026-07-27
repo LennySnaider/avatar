@@ -234,6 +234,10 @@ const ImagePreviewModal = ({
         y: number
         size: number
     } | null>(null)
+    /** Ultima posicion del raton en PANTALLA. Al hacer zoom con la rueda el
+     *  raton no se mueve, asi que sin esto el indicador se quedaria pegado al
+     *  punto de la IMAGEN en vez de seguir bajo el puntero. */
+    const lastClientRef = useRef<{ x: number; y: number } | null>(null)
 
     // Undo/redo history for the mask canvas. ImageData snapshots are kept in a
     // ref (heavy, no re-render needed); the index lives in state so the
@@ -408,6 +412,26 @@ const ImagePreviewModal = ({
     useEffect(() => {
         zoomLevelRef.current = zoomLevel
     }, [zoomLevel])
+
+    /**
+     * Recoloca el indicador cuando cambia el zoom o el paneo SIN mover el
+     * raton — que es justo lo que pasa al usar la rueda. El puntero sigue en
+     * el mismo sitio de la pantalla, pero la imagen se ha movido debajo: sin
+     * recalcular, el circulo se quedaria clavado al punto viejo de la imagen
+     * en vez de estar donde vas a pintar.
+     */
+    useEffect(() => {
+        const last = lastClientRef.current
+        const canvas = canvasRef.current
+        if (!last || !canvas || !isDrawingMask) return
+        const rect = canvas.getBoundingClientRect()
+        if (rect.width === 0) return
+        setCursorPreview({
+            x: ((last.x - rect.left) * canvas.width) / rect.width,
+            y: ((last.y - rect.top) * canvas.height) / rect.height,
+            size: brushSize,
+        })
+    }, [zoomLevel, pan, brushSize, isDrawingMask])
 
     const handleZoomIn = useCallback(() => {
         setAnimateZoom(true)
@@ -854,13 +878,13 @@ const ImagePreviewModal = ({
     const draw = (e: React.MouseEvent<HTMLCanvasElement>) => {
         if (!canvasRef.current) return
         const coords = getCanvasCoordinates(e)
-        const rect = canvasRef.current.getBoundingClientRect()
-        const shown = rect.width > 0 ? rect.width / canvasRef.current.width : 1
-        setCursorPreview({
-            x: e.clientX - rect.left,
-            y: e.clientY - rect.top,
-            size: brushSize * shown,
-        })
+        // El indicador vive DENTRO del contenedor transformado, asi que el
+        // propio transform ya lo escala y lo coloca: hay que darle coordenadas
+        // LOCALES (las del bitmap) y el radio sin escalar. Darle coordenadas
+        // de pantalla —que ya vienen escaladas— lo multiplicaba dos veces y
+        // por eso derivaba al alejarse del origen.
+        lastClientRef.current = { x: e.clientX, y: e.clientY }
+        setCursorPreview({ x: coords.x, y: coords.y, size: brushSize })
 
         if (!isDrawingRef.current || !isDrawingMask) return
 
@@ -1464,6 +1488,15 @@ const ImagePreviewModal = ({
                                                     top: cursorPreview.y - cursorPreview.size / 2,
                                                     width: cursorPreview.size,
                                                     height: cursorPreview.size,
+                                                    // Contrarresta el zoom del
+                                                    // contenedor para que el
+                                                    // BORDE no engorde: el
+                                                    // circulo debe crecer, su
+                                                    // linea no.
+                                                    borderWidth: Math.max(
+                                                        0.5,
+                                                        2 / zoomLevel,
+                                                    ),
                                                     boxShadow: '0 0 0 1px rgba(0, 0, 0, 0.7), inset 0 0 0 1px rgba(0, 0, 0, 0.7)',
                                                     mixBlendMode: 'difference',
                                                 }}
