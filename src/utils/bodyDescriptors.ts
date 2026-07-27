@@ -425,7 +425,10 @@ const EXPLICIT_FULL_NUDE_RE =
  */
 export function tanLinesClause(m: PhysicalMeasurements): string {
     if (!m.tanLines) return ''
-    return 'natural bikini tan lines: the strips of skin normally covered by a bikini top and bottoms are a shade lighter than her surrounding tanned skin, with soft blended edges — visible ONLY where her skin is bare, never drawn over clothing'
+    // Mismo arreglo que el vello púbico (2026-07-27): "never drawn over
+    // clothing" duplicaba en negativo lo que "visible ONLY where her skin is
+    // bare" ya dice en positivo — y metía `clothing` en la escena.
+    return 'natural bikini tan lines: the strips of skin normally covered by a bikini top and bottoms are a shade lighter than her surrounding tanned skin, with soft blended edges — visible ONLY where her skin is bare'
 }
 
 /**
@@ -441,7 +444,9 @@ export function tanLinesClause(m: PhysicalMeasurements): string {
  *    piel, que es lo que de verdad debe salir.
  */
 const PUBIC_STYLE_PHRASE: Record<string, string> = {
-    shaved: 'her pubic area is completely smooth and bare, clean-shaven skin with no stubble',
+    // "with no stubble" nombraba justo lo que quería evitar. "smooth and bare"
+    // + "freshly shaved" ya lo dicen en positivo, sin invocar nada.
+    shaved: 'her pubic area is completely smooth and bare, freshly shaved skin',
     strip: 'a narrow vertical strip of pubic hair above her vulva, the sides bare and cleanly groomed',
     triangle: 'a small neat triangle of pubic hair above her vulva, tidily trimmed at the edges',
     natural: 'a natural, untrimmed patch of pubic hair above her vulva',
@@ -465,9 +470,12 @@ export function pubicHairClause(m: PhysicalMeasurements): string {
     if (style === 'shaved') {
         return `${shape} — visible ONLY where she is bare below the waist`
     }
+    // "…cleanly groomed, moderate, the same colour…" dejaba el adjetivo
+    // colgando entre comas, sin sujeto al que agarrarse. Con "of X density"
+    // la densidad vuelve a describir el vello y no al aire.
     const density =
         m.pubicAmount && PUBIC_AMOUNT_PHRASE[m.pubicAmount]
-            ? `, ${PUBIC_AMOUNT_PHRASE[m.pubicAmount]}`
+            ? `, of ${PUBIC_AMOUNT_PHRASE[m.pubicAmount]} density`
             : ''
     // Color RELATIVO: 'hair' (lo normal) se ancla al pelo de la cabeza; un
     // color propio se nombra pero SIEMPRE acotado a esa zona.
@@ -475,7 +483,17 @@ export function pubicHairClause(m: PhysicalMeasurements): string {
         !m.pubicColor || m.pubicColor === 'hair'
             ? ', the same colour as the hair on her head'
             : `, ${String(m.pubicColor).replace(/-/g, ' ')} in colour`
-    return `${shape}${density}${color} — visible ONLY where she is bare below the waist, never drawn through clothing`
+    // AUDITORÍA 2026-07-27: "never drawn through clothing" era una NEGACIÓN
+    // que además metía el token `clothing` en un prompt cuyo objetivo es que
+    // no la lleve — y encima redundante: "visible ONLY where she is bare below
+    // the waist" ya dice lo mismo en positivo, que es la única forma en que la
+    // difusión lo procesa. El alcance se queda; la prohibición sobra.
+    //
+    // El condicional SÍ es imprescindible aquí, al revés que en el pezón: esto
+    // viaja desde nivel 85, y ese tramo permite "topless o desnudo total", así
+    // que las bragas pueden seguir puestas. Sin acotar, el vello se pintaría
+    // encima de la tela.
+    return `${shape}${density}${color} — visible ONLY where she is bare below the waist`
 }
 
 /** Cláusula de la zona íntima (2026-07-24, "no se nota"): la difusión suaviza

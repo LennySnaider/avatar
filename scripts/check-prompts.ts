@@ -48,24 +48,25 @@ import type { PhysicalMeasurements } from '../src/@types/supabase'
 /**
  * Sube este número SOLO si es deliberado y está justificado. Debe BAJAR.
  *
- * Las 7 que quedan son DEUDA CONSCIENTE, no descuido — cada una tiene una
- * razón para seguir ahí:
+ * Las 5 que quedan son DEUDA CONSCIENTE, no descuido:
  *
- *  · vulvaClause (2)        APAGADA temporalmente (VULVA_CLAUSE_ENABLED=false,
- *                           prueba A/B: "ahora se ve mal posicionada"). El
- *                           baseline se deja en 7 y NO en 5 justamente para
- *                           que volver a encenderla no haga fallar el
- *                           centinela — un ratchet no debe bloquear un
- *                           revert.
+ *  · vulvaClause (2)        APAGADA (VULVA_CLAUSE_ENABLED=false, prueba A/B:
+ *                           "ahora se ve mal posicionada"). El baseline
+ *                           mantiene su hueco a propósito para que volver a
+ *                           encenderla no haga fallar el centinela — un
+ *                           ratchet no debe bloquear un revert.
  *  · anti-mutilación (3)    INTACT_BODY / IN_FRAME / EDIT_ANCHOR. Se añadieron
  *                           por un bug real (brazos escondidos, extremidades
  *                           cortadas). Pasarlas a positivo es viable pero hay
  *                           que MEDIRLO generando, no asumirlo.
- *  · alcance de piel (2)    pubicHair y tanLines: el "never drawn through
- *                           clothing" es lo que impide pintarlas sobre la ropa.
- *                           Reciente y sin validar todavía.
+ *
+ * SALDADO 2026-07-27 — alcance de piel (pubicHair y tanLines): el "never drawn
+ * through/over clothing" resultó REDUNDANTE. Ambas cláusulas ya acotaban en
+ * positivo ("visible ONLY where she is bare…"), que es la única forma en que la
+ * difusión procesa un límite; la negación solo añadía el token `clothing` a un
+ * prompt que busca lo contrario. Se borró sin perder la protección.
  */
-const BASELINE = 7
+const BASELINE = 5
 
 const M = {
     age: 22,
@@ -156,6 +157,11 @@ push('INTACT_BODY_IN_FRAME_CLAUSE', INTACT_BODY_IN_FRAME_CLAUSE)
 push('EDIT_ANCHOR_CLAUSE', EDIT_ANCHOR_CLAUSE)
 push('vulvaClause', vulvaClause('completely nude'))
 push('pubicHairClause', pubicHairClause(M))
+// El caso 'shaved' toma una rama DISTINTA de la función, con su propia
+// frase — se le escapaba al centinela, y ahí vivía un "with no stubble"
+// que nombraba justo lo que quería evitar. Una rama sin caso es una rama
+// sin vigilancia.
+push('pubicHairClause[shaved]', pubicHairClause({ ...M, pubicStyle: 'shaved' } as typeof M))
 push('tanLinesClause', tanLinesClause(M))
 push('nippleClause', nippleClause(M))
 push('describeBody', describeBody(M))
