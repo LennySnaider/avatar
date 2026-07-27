@@ -70,6 +70,10 @@ export interface GeneratedAvatarInfo {
 export interface GeneratedMedia {
     id: string
     url: string
+    /** Miniatura webp/jpeg (~30-60 KB) para las CARDS. Es la pieza que corta
+     * ~50x el egress de navegar la galeria: sin ella cada card baja el
+     * original de 1-3 MB para pintar 250px. */
+    thumbnailUrl?: string
     prompt: string
     aspectRatio: AspectRatio
     timestamp: number

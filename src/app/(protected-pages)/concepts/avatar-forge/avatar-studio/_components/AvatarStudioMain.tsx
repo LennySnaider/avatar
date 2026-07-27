@@ -44,6 +44,7 @@ import {
     apiGetAvatarReferences,
     apiDeleteAvatarReference,
     apiCreateGenerationUploadUrl,
+    apiCreateThumbnailUploadTicket,
     apiSaveGeneration,
     apiDeleteGeneration,
     apiGetGenerations,
@@ -51,7 +52,8 @@ import {
     getSignedUrl,
 } from '@/services/AvatarForgeService'
 import { urlToDataUrl } from '@/utils/imageStitch'
-import { getStoragePublicUrl, getGenerationMediaUrl } from '@/lib/storagePaths'
+import { getGenerationMediaUrl } from '@/lib/storagePaths'
+import { createThumbnail } from '@/utils/imageOptimization'
 import { uploadGenerationTicket } from '@/lib/storageUpload'
 import {
     generateAvatar,
@@ -480,7 +482,11 @@ async function uploadGenerationWithRetry(
     mediaType: Parameters<typeof apiCreateGenerationUploadUrl>[0],
     blob: Blob,
     contentType: string,
-): Promise<{ path: string; provider: 'r2' | 'supabase' }> {
+): Promise<{
+    path: string
+    provider: 'r2' | 'supabase'
+    thumbnailPath?: string
+}> {
     let lastError: unknown = null
     for (let attempt = 1; attempt <= 3; attempt++) {
         try {
@@ -489,7 +495,36 @@ async function uploadGenerationWithRetry(
             // la fila — el lector construye la URL correcta con él.
             const ticket = await apiCreateGenerationUploadUrl(mediaType)
             await uploadGenerationTicket(ticket, blob, contentType)
-            return { path: ticket.path, provider: ticket.provider }
+
+            // MINIATURA (solo imagen, solo con la columna viva = era R2).
+            // BEST-EFFORT a proposito: un thumb caido no puede costar la
+            // generacion — sin el, la card cae al original como siempre.
+            let thumbnailPath: string | undefined
+            if (mediaType === 'IMAGE' && ticket.provider === 'r2') {
+                try {
+                    const dataUrl = await new Promise<string>((res, rej) => {
+                        const r = new FileReader()
+                        r.onload = () => res(String(r.result))
+                        r.onerror = () => rej(new Error('read failed'))
+                        r.readAsDataURL(blob)
+                    })
+                    const base64 = dataUrl.split(',')[1]
+                    const thumbDataUrl = await createThumbnail(base64, 'PREVIEW')
+                    const thumbBlob = await (await fetch(thumbDataUrl)).blob()
+                    const tTicket = await apiCreateThumbnailUploadTicket(
+                        ticket.path,
+                    )
+                    await uploadGenerationTicket(
+                        tTicket,
+                        thumbBlob,
+                        'image/jpeg',
+                    )
+                    thumbnailPath = tTicket.path
+                } catch (thumbErr) {
+                    console.warn('[Gallery] thumb skipped:', thumbErr)
+                }
+            }
+            return { path: ticket.path, provider: ticket.provider, thumbnailPath }
         } catch (e) {
             lastError = e
             console.warn(`[Gallery] Upload attempt ${attempt}/3 failed:`, e)
@@ -756,11 +791,26 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                 // trip × 160+ items, and nothing rendered until ALL resolved)
                 // was pure latency. The gallery now seeds instantly.
                 const items = rows.map((gen): GeneratedMedia => {
-                    const url = getStoragePublicUrl(
-                        'generations',
+                    // Columnas de la era R2 (migracion 20260728010000): antes
+                    // de aplicarla simplemente no vienen y todo cae a Supabase
+                    // sin thumb — el comportamiento de siempre.
+                    const g = gen as typeof gen & {
+                        storage_provider?: string | null
+                        thumbnail_path?: string | null
+                    }
+                    const url = getGenerationMediaUrl(
                         gen.storage_path,
+                        g.storage_provider,
                     )
                     return {
+                        ...(g.thumbnail_path
+                            ? {
+                                  thumbnailUrl: getGenerationMediaUrl(
+                                      g.thumbnail_path,
+                                      g.storage_provider,
+                                  ),
+                              }
+                            : {}),
                         id: crypto.randomUUID(),
                         url,
                         prompt: gen.prompt,
@@ -1026,7 +1076,7 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                 const blob = await response.blob()
                 const contentType = isVideo ? 'video/mp4' : 'image/jpeg'
 
-                const { path, provider } = await withDeadline(
+                const { path, provider, thumbnailPath } = await withDeadline(
                     uploadGenerationWithRetry(
                         media.mediaType,
                         blob,
@@ -1057,6 +1107,9 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                         storage_path: path,
                         ...(provider === 'r2'
                             ? ({ storage_provider: 'r2' } as object)
+                            : {}),
+                        ...(thumbnailPath
+                            ? ({ thumbnail_path: thumbnailPath } as object)
                             : {}),
                         prompt: media.prompt,
                         aspect_ratio: media.aspectRatio,
@@ -1092,6 +1145,14 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                     generationId: row.id,
                     avatarId: media.avatarId ?? avatarId ?? null,
                     publicUrl: getGenerationMediaUrl(path, provider),
+                    ...(thumbnailPath
+                        ? {
+                              thumbnailUrl: getGenerationMediaUrl(
+                                  thumbnailPath,
+                                  provider,
+                              ),
+                          }
+                        : {}),
                 })
             } catch (error) {
                 // Un abort/timeout es el deadline HACIENDO su trabajo (card →
@@ -4301,7 +4362,8 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                 const contentType =
                     media.mediaType === 'VIDEO' ? 'video/mp4' : 'image/jpeg'
 
-                const { path, provider } = await uploadGenerationWithRetry(
+                const { path, provider, thumbnailPath } =
+                    await uploadGenerationWithRetry(
                     media.mediaType,
                     blob,
                     contentType,
@@ -4316,6 +4378,9 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                     storage_path: path,
                     ...(provider === 'r2'
                         ? ({ storage_provider: 'r2' } as object)
+                        : {}),
+                    ...(thumbnailPath
+                        ? ({ thumbnail_path: thumbnailPath } as object)
                         : {}),
                     prompt: media.prompt,
                     aspect_ratio: media.aspectRatio,
@@ -4335,6 +4400,14 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                     generationId: row.id,
                     avatarId: media.avatarId ?? avatarId ?? null,
                     publicUrl: getGenerationMediaUrl(path, provider),
+                    ...(thumbnailPath
+                        ? {
+                              thumbnailUrl: getGenerationMediaUrl(
+                                  thumbnailPath,
+                                  provider,
+                              ),
+                          }
+                        : {}),
                 })
 
                 toast.push(

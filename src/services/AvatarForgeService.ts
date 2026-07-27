@@ -576,6 +576,34 @@ export async function apiCreateGenerationUploadUrl(
 /**
  * Save a generation (upload file + create record)
  */
+/**
+ * Ticket para subir la MINIATURA de una generación ya subida. El path deriva
+ * del original (`thumbs/{path}.jpg`) y se valida que el original pertenezca al
+ * usuario de la sesión — sin eso, un path arbitrario escribiría miniaturas en
+ * el espacio de otro.
+ */
+export async function apiCreateThumbnailUploadTicket(
+    originalPath: string,
+): Promise<GenerationUploadTicket> {
+    const ctx = await getOrgContext()
+    if (!originalPath.startsWith(`${ctx.userId}/`)) {
+        throw new Error('Not your media path')
+    }
+    const path = `thumbs/${originalPath}.jpg`
+    if (r2Enabled()) {
+        const uploadUrl = await createPresignedPutUrl(path)
+        return { path, provider: 'r2', uploadUrl }
+    }
+    const supabase = orgSupabase()
+    const { data, error } = await supabase.storage
+        .from('generations')
+        .createSignedUploadUrl(path)
+    if (error || !data) {
+        throw new Error(`Failed to create thumb upload URL: ${error?.message ?? 'no data'}`)
+    }
+    return { path, provider: 'supabase', token: data.token }
+}
+
 export async function apiSaveGenerationWithFile(
     avatarId: string | null,
     file: File,

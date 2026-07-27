@@ -948,8 +948,16 @@ const GalleryPanel = ({
                                             // and would show nothing with no error. If the
                                             // primary src fails, fall back to the other.
                                             <img
+                                                // El THUMB primero: la card
+                                                // mide ~250px y el original
+                                                // 1-3 MB — bajarlo aqui fue lo
+                                                // que fundio la cuota de
+                                                // egress. El detalle sigue
+                                                // abriendo el original.
                                                 src={
-                                                    media.publicUrl ?? media.url
+                                                    media.thumbnailUrl ??
+                                                    media.publicUrl ??
+                                                    media.url
                                                 }
                                                 alt={media.prompt}
                                                 className="w-full h-auto"
