@@ -31,7 +31,11 @@ const get = (k) => {
     const m = env.match(new RegExp(`^${k}=(.+)$`, 'm'))
     return m ? m[1].trim().replace(/^["']|["']$/g, '') : undefined
 }
-const SUPABASE_URL = get('NEXT_PUBLIC_SUPABASE_URL') || get('SUPABASE_URL')
+// FUENTE de la media = el proyecto VIEJO. Tras el trasplante, las vars
+// estándar apuntan al proyecto NUEVO (así la app no cambia ni un import) y el
+// viejo vive en OLD_*. Sin esta preferencia, el backfill intentaría bajar la
+// media de un proyecto que nunca la tuvo.
+const SUPABASE_URL = get('OLD_SUPABASE_URL') || get('NEXT_PUBLIC_SUPABASE_URL')
 const SERVICE_KEY = get('SUPABASE_SERVICE_ROLE_KEY') || get('SUPABASE_SERVICE_KEY')
 const R2 = {
     accountId: get('R2_ACCOUNT_ID'),
