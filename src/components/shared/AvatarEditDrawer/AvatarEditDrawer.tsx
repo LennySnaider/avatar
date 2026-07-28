@@ -31,7 +31,7 @@ import {
 } from '@/app/(protected-pages)/concepts/avatar-forge/_shared/providerCatalog'
 import PhysicalAttributesEditor from '@/components/shared/PhysicalAttributesEditor'
 import AppearanceEditor from '@/components/shared/AppearanceEditor'
-import BodyLab from '@/components/shared/BodyLab'
+import BodyLab, { buildMissingSheetNotice } from '@/components/shared/BodyLab'
 import ImageLightbox from '@/components/shared/ImageLightbox'
 import { deriveShapeFromMeasurements } from '@/utils/bodyShapes'
 
@@ -65,6 +65,10 @@ export interface AvatarEditData {
     identityWeight: number
     measurements: PhysicalMeasurements
     faceDescription: string
+    /** Hojas que la BD dice tener pero cuyo archivo no se pudo bajar. El host
+     *  las detecta al hidratar; sin esto el panel se pinta igual que "nunca se
+     *  generó" y no hay forma de saber si el cuerpo viaja a la generación. */
+    missingBodySheets?: ('body' | 'body_nsfw')[]
 }
 
 interface AvatarEditDrawerProps {
@@ -1023,6 +1027,16 @@ const AvatarEditDrawer = ({
                                         if (s) setPreviewImage(s)
                                     }}
                                     stale={bodyStale}
+                                    missingSheetNotice={
+                                        // Igual que en el Studio: una hoja
+                                        // fresca ya tapa el hueco.
+                                        bodySheet || bodySheetNude
+                                            ? undefined
+                                            : buildMissingSheetNotice(
+                                                  initialData?.missingBodySheets ??
+                                                      [],
+                                              )
+                                    }
                                     disabledReason={
                                         BODY_LAB_MODELS.length === 0
                                             ? 'No hay modelos KIE de imagen disponibles.'

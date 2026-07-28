@@ -34,7 +34,7 @@ import type { PhysicalMeasurements } from '@/@types/supabase'
 import { createThumbnail } from '@/utils/imageOptimization'
 import PhysicalAttributesEditor from '@/components/shared/PhysicalAttributesEditor'
 import AppearanceEditor from '@/components/shared/AppearanceEditor'
-import BodyLab from '@/components/shared/BodyLab'
+import BodyLab, { buildMissingSheetNotice } from '@/components/shared/BodyLab'
 import ImageLightbox from '@/components/shared/ImageLightbox'
 import { deriveShapeFromMeasurements } from '@/utils/bodyShapes'
 
@@ -66,6 +66,10 @@ const AvatarEditDrawer = ({
         null,
     )
     const [bodySheetModel, setBodySheetModel] = useState('')
+    // Hojas que la BD dice tener pero cuyo archivo no se pudo cargar.
+    const [missingSheets, setMissingSheets] = useState<
+        ('body' | 'body_nsfw')[]
+    >([])
     // Snapshot de las medidas con que se generó/cargó el sheet mostrado — para
     // detectar si el usuario cambió atributos (→ sheet "desactualizado").
     const [sheetMeasurements, setSheetMeasurements] =
@@ -164,6 +168,9 @@ const AvatarEditDrawer = ({
     useEffect(() => {
         if (!isOpen || !avatarId) return
         let cancelled = false
+        // Se recalcula por apertura/avatar: un aviso de "hoja perdida" heredado
+        // de otro avatar sería peor que no avisar.
+        setMissingSheets([])
         // Las DOS hojas se hidratan INDEPENDIENTES (2026-07-26). Antes la nude
         // vivía anidada dentro de los early-return de la vestida, así que el
         // caso normal —vestida ya fresca en el store→ return— saltaba la nude
@@ -175,10 +182,24 @@ const AvatarEditDrawer = ({
             current: typeof bodyRef,
             apply: (ref: NonNullable<typeof bodyRef>) => void,
         ) => {
+            // Una salida sin pintar la hoja SOLO es normal si la BD dice que no
+            // hay ninguna. En cuanto hay fila, no pintarla es una pérdida que
+            // hay que NOMBRAR: si no, el panel queda igual que "nunca se
+            // generó" y no se distingue un guardado fallido de un archivo que
+            // ya no está (caso real: las hojas del 26-jul se quedaron en el
+            // proyecto viejo — la fila viajó, los bytes no).
+            let rowExists = false
+            const lost = () => {
+                if (rowExists && !cancelled)
+                    setMissingSheets((prev) =>
+                        prev.includes(type) ? prev : [...prev, type],
+                    )
+            }
             try {
                 const rows = await apiGetAvatarReferences(avatarId, type)
                 const row = rows?.[0]
                 if (!row?.storage_path) return
+                rowExists = true
                 // No pisar: (a) una selección FRESCA sin guardar (sin
                 // storagePath), ni (b) si ya está fresco (mismo storagePath).
                 if (
@@ -188,10 +209,11 @@ const AvatarEditDrawer = ({
                 )
                     return
                 const signed = await getSignedUrl('avatars', row.storage_path)
-                if (!signed) return
+                if (!signed) return lost()
                 const dataUrl = await urlToDataUrl(signed)
                 const m = dataUrl.match(/^data:(.+);base64,(.+)$/)
-                if (!m || cancelled) return
+                if (cancelled) return
+                if (!m) return lost()
                 apply({
                     id: row.id,
                     url: dataUrl,
@@ -201,7 +223,9 @@ const AvatarEditDrawer = ({
                     storagePath: row.storage_path,
                 })
             } catch {
-                // sin esa hoja o fallo de carga → se deja lo que haya
+                // La fila existía (si no, ya habríamos salido arriba): esto es
+                // un fallo de carga real, no un avatar sin hoja.
+                lost()
             }
         }
         void Promise.all([
@@ -1043,6 +1067,16 @@ const AvatarEditDrawer = ({
                                         bodyLabModels.length === 0
                                             ? 'No hay modelos KIE de imagen disponibles. Actívalos en AI Providers.'
                                             : undefined
+                                    }
+                                    missingSheetNotice={
+                                        // Una hoja recién generada ya resuelve
+                                        // el hueco: avisar entonces sería
+                                        // alarmar por algo ya arreglado.
+                                        bodySheet || bodySheetNude
+                                            ? undefined
+                                            : buildMissingSheetNotice(
+                                                  missingSheets,
+                                              )
                                     }
                                 />
                             </Card>

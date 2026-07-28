@@ -165,6 +165,9 @@ const AvatarCard = ({ avatar }: AvatarCardProps) => {
         // Hoja NUDE: se CARGA para mostrarla y devolverla intacta al guardar,
         // pero NO entra en refIds (el borrado la eliminaría — ver abajo).
         let bodyRefNsfw: AvatarReferenceImage | null = null
+        // Hojas con fila pero sin archivo — el drawer las anuncia en vez de
+        // pintar un panel vacío indistinguible de "nunca se generó".
+        const missingBodySheets: ('body' | 'body_nsfw')[] = []
         const refIds: string[] = []
 
         if (avatar.avatar_references?.length) {
@@ -179,7 +182,15 @@ const AvatarCard = ({ avatar }: AvatarCardProps) => {
                     const res = signedUrl ? await fetch(signedUrl) : null
                     const data = res?.ok ? await res.blob() : null
 
-                    if (!data) continue
+                    if (!data) {
+                        // La fila existe y el archivo no. Para las hojas del
+                        // Body Lab hay que DECIRLO: si no, el panel se pinta
+                        // igual que "nunca se generó" y el usuario no puede
+                        // saber que su cuerpo no viaja a la generación.
+                        if (ref.type === 'body' || ref.type === 'body_nsfw')
+                            missingBodySheets.push(ref.type)
+                        continue
+                    }
 
                     const base64 = await new Promise<string>((resolve) => {
                         const reader = new FileReader()
@@ -255,6 +266,7 @@ const AvatarCard = ({ avatar }: AvatarCardProps) => {
                 hips: 90,
             },
             faceDescription: avatar.face_description || '',
+            missingBodySheets,
         })
     }, [avatar])
 

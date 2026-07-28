@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { HiOutlineEye, HiOutlineRefresh } from 'react-icons/hi'
+import Alert from '@/components/ui/Alert'
 
 /**
  * Body Lab — Cuerpo canónico. Extraído de PhysicalAttributesEditor (antes un
@@ -58,6 +59,34 @@ export interface BodyLabProps {
     // Regenera SOLO una variante (evita pagar las dos). Si no se pasa, no se
     // muestran los botones de refresh por hoja.
     onRegenerate?: (only: 'clothed' | 'nude') => void
+    // La BD dice que este avatar TIENE hoja pero el archivo no se pudo cargar.
+    // Sin esto el panel se pinta igual que "nunca se generó" y el usuario no
+    // puede saber si su hoja se guardó, si se perdió, o si viaja a la
+    // generación (reporte: "no lo muestra… y no sé si sí le envié realmente").
+    // Un fallo silencioso que se parece a un estado vacío legítimo es
+    // indistinguible de un bug: hay que nombrarlo.
+    missingSheetNotice?: string
+}
+
+/**
+ * Texto del aviso "la BD dice que hay hoja, el archivo no está". Vive aquí y no
+ * en cada drawer porque son DOS hosts (Studio y My Avatars) y dos copias del
+ * mismo mensaje divergen: uno se actualiza y el otro miente.
+ * Devuelve undefined cuando no hay nada que avisar, para pasarlo tal cual.
+ */
+export function buildMissingSheetNotice(
+    missing: ('body' | 'body_nsfw')[],
+): string | undefined {
+    if (missing.length === 0) return undefined
+    const cuales =
+        missing.length === 2
+            ? 'sus dos hojas'
+            : missing[0] === 'body_nsfw'
+              ? 'su hoja NSFW'
+              : 'su hoja de cuerpo'
+    // Se dice explícitamente lo que el usuario no podía saber: que mientras
+    // tanto la generación sale SIN cuerpo (solo medidas en texto).
+    return `Este avatar tenía ${cuales} guardadas, pero el archivo ya no está disponible. Mientras tanto el cuerpo NO viaja a la generación (solo las medidas en texto): vuelve a generarlo aquí para recuperarlo.`
 }
 
 /** Overlay de "generando" sobre una hoja. Sin esto la miniatura se quedaba
@@ -270,6 +299,12 @@ const BodyLab = (props: BodyLabProps) => {
                     </button>
                 )}
             </div>
+
+            {props.missingSheetNotice && (
+                <Alert type="warning" showIcon className="text-xs">
+                    {props.missingSheetNotice}
+                </Alert>
+            )}
 
             {props.disabledReason && (
                 <p className="text-xs text-amber-500">{props.disabledReason}</p>
