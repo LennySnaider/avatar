@@ -74,17 +74,28 @@ const AvatarCard = ({ avatar }: AvatarCardProps) => {
     // MISMO tipo. Quedarse con la primera cara y rendirse dejaba a Raven con
     // letra aunque su cara nueva estuviera perfecta — hay que probar hasta
     // que una sirva.
+    // NUEVAS PRIMERO dentro de cada tipo: al editar, la ref recién subida
+    // entra al final del array — sin ordenar, la cara VIEJA seguía siendo el
+    // candidato 0 y el thumb no se refrescaba hasta un reload de página.
+    const byNewest = (
+        a: { created_at?: string | null },
+        b: { created_at?: string | null },
+    ) => (b.created_at ?? '').localeCompare(a.created_at ?? '')
     const previewCandidates = [
-        ...refs.filter((r) => r.type === 'face'),
-        ...refs.filter((r) => r.type === 'angle'),
-        ...refs.filter((r) => r.type === 'general'),
+        ...refs.filter((r) => r.type === 'face').sort(byNewest),
+        ...refs.filter((r) => r.type === 'angle').sort(byNewest),
+        ...refs.filter((r) => r.type === 'general').sort(byNewest),
         ...refs.filter(
             (r) =>
                 r.storage_path &&
                 !['face', 'angle', 'general'].includes(r.type),
         ),
     ]
-    const previewImage = previewCandidates[0]
+    // Firma de TODA la lista: el efecto del thumb debe rerun si CUALQUIER
+    // candidato cambia (añadir, borrar, reordenar), no solo el primero.
+    const candidatesSignature = previewCandidates
+        .map((r) => r.storage_path)
+        .join('|')
     // Cuerpo canónico del Body Lab = una ref persistida type:'body'.
     const hasCanonicalBody = refs.some((r) => r.type === 'body')
 
@@ -142,7 +153,8 @@ const AvatarCard = ({ avatar }: AvatarCardProps) => {
         }
 
         loadThumbnail()
-    }, [previewImage?.storage_path])
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [candidatesSignature])
 
     // Load references when drawer opens and build initialEditData
     const loadReferences = useCallback(async () => {
