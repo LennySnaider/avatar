@@ -634,8 +634,13 @@ const AvatarCreatorMain = ({
                 ...generalReferences,
                 ...(faceRef ? [faceRef] : []),
                 ...(angleRef ? [angleRef] : []),
-                ...(bodyRef ? [bodyRef] : []),
-                ...(bodyRefNsfw ? [bodyRefNsfw] : []),
+                // SE GUARDA LO QUE SE VE: la hoja recién generada vive en
+                // `bodySheet` hasta pulsar "Usar como cuerpo" — sin esto se
+                // descartaba al crear, ya generada y cobrada. La fresca gana.
+                ...(bodySheet || bodyRef ? [(bodySheet || bodyRef)!] : []),
+                ...(bodySheetNude || bodyRefNsfw
+                    ? [(bodySheetNude || bodyRefNsfw)!]
+                    : []),
             ]
 
             for (const ref of allRefs) {

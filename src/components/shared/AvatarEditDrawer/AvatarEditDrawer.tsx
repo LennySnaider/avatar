@@ -186,8 +186,15 @@ const AvatarEditDrawer = ({
         angleRef: localAngleRef,
         // El cuerpo canónico SÍ se guarda: AvatarCard.handleSaveFromDrawer sube
         // data.bodyRef como type:'body' cuando no tiene storagePath.
-        bodyRef: localBodyRef,
-        bodyRefNsfw: localBodyRefNsfw,
+        //
+        // SE GUARDA LO QUE SE VE (2026-07-28): antes solo viajaba localBodyRef,
+        // así que una hoja recién generada —que vive en `bodySheet` hasta que
+        // pulsas "Usar como cuerpo"— se DESCARTABA al guardar. La generación
+        // ya estaba hecha y cobrada en KIE, el usuario la tenía delante, y
+        // desaparecía sin un aviso. Mismo criterio que `shownBody`: la hoja
+        // fresca gana sobre la guardada.
+        bodyRef: bodySheet ?? localBodyRef,
+        bodyRefNsfw: bodySheetNude ?? localBodyRefNsfw,
         identityWeight: localIdentityWeight,
         measurements: localMeasurements,
         faceDescription: localFaceDescription,

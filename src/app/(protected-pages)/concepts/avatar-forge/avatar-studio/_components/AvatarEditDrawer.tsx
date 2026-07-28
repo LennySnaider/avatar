@@ -364,6 +364,12 @@ const AvatarEditDrawer = ({
         setGeneralReferences(localGeneralRefs)
         setFaceRef(localFaceRef)
         setAngleRef(localAngleRef)
+        // SE GUARDA LO QUE SE VE: una hoja recién generada vive en `bodySheet`
+        // hasta que se pulsa "Usar como cuerpo". Sin esto, generarla (ya
+        // cobrada en KIE), verla en pantalla y darle a Guardar la descartaba
+        // en silencio. Mismo criterio que `shownBody`: la fresca gana.
+        if (bodySheet) setBodyRef(bodySheet)
+        if (bodySheetNude) setBodyRefNsfw(bodySheetNude)
         setIdentityWeight(localIdentityWeight)
         setMeasurements(localMeasurements)
         setFaceDescription(localFaceDescription)
