@@ -1,7 +1,7 @@
 'use client'
 
 import { useRef, useCallback, useState, useEffect } from 'react'
-import { apiFetchUrlAsDataUrl } from '@/services/AvatarForgeService'
+import { urlToDataUrl } from '@/utils/imageStitch'
 import Drawer from '@/components/ui/Drawer'
 import Button from '@/components/ui/Button'
 import Input from '@/components/ui/Input'
@@ -512,28 +512,10 @@ const AvatarEditDrawer = ({
         url: string,
         type: 'body' | 'body_nsfw' = 'body',
     ): Promise<AvatarReferenceImage> => {
-        let dataUrl = url
-        if (!url.startsWith('data:')) {
-            try {
-                const blob = await fetch(url).then((r) => {
-                    if (!r.ok) throw new Error(`HTTP ${r.status}`)
-                    return r.blob()
-                })
-                dataUrl = await new Promise<string>((resolve, reject) => {
-                    const reader = new FileReader()
-                    reader.onloadend = () => resolve(reader.result as string)
-                    reader.onerror = reject
-                    reader.readAsDataURL(blob)
-                })
-            } catch (err) {
-                // CDNs sin CORS (MuleRouter siempre, KIE según host) matan el
-                // fetch del navegador aunque la URL sirva. El servidor no
-                // tiene CORS: mismo contenido, otra puerta.
-                console.info('[body-sheet] fetch directo falló, vía servidor:', err)
-                const { base64, mimeType } = await apiFetchUrlAsDataUrl(url)
-                dataUrl = `data:${mimeType};base64,${base64}`
-            }
-        }
+        // CDNs sin CORS (MuleRouter siempre, R2 público y KIE según host) matan
+        // el fetch del navegador aunque la URL sirva: urlToDataUrl cae solo al
+        // servidor, que no tiene CORS.
+        const dataUrl = await urlToDataUrl(url)
         const matches = dataUrl.match(/^data:(.+);base64,(.+)$/)
         if (!matches) throw new Error('Invalid image data returned')
         let thumbnailUrl = dataUrl
@@ -561,10 +543,20 @@ const AvatarEditDrawer = ({
         try {
             // Las DOS variantes de un golpe (vestida + nude) — la vestida va
             // a todos los motores, la nude solo a permisivos en runs NSFW.
+            // Al refrescar SOLO la vestida, se hereda el cuerpo de la nude que
+            // el avatar ya tiene — si no, la hoja nueva diverge de la guardada.
+            const nudeExistente = bodySheetNude ?? localBodyRefNsfw
             const pair = await generateBodySheetPair({
                 measurements: localMeasurements,
                 model: selectedBodyModel,
                 only,
+                nudeSheet:
+                    nudeExistente?.base64 && nudeExistente.mimeType
+                        ? {
+                              base64: nudeExistente.base64,
+                              mimeType: nudeExistente.mimeType,
+                          }
+                        : undefined,
             })
             if (pair.url) {
                 const sheet = await toBodyReferenceImage(pair.url, 'body')

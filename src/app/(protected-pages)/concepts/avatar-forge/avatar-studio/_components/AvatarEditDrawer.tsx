@@ -553,17 +553,9 @@ const AvatarEditDrawer = ({
         url: string,
         type: ReferenceImage['type'],
     ): Promise<ReferenceImage> => {
-        // data URL directo
-        let dataUrl = url
-        if (!url.startsWith('data:')) {
-            const blob = await fetch(url).then((r) => r.blob())
-            dataUrl = await new Promise<string>((resolve, reject) => {
-                const reader = new FileReader()
-                reader.onloadend = () => resolve(reader.result as string)
-                reader.onerror = reject
-                reader.readAsDataURL(blob)
-            })
-        }
+        // data URL directo; http(s) vía urlToDataUrl, que cae al servidor si el
+        // host no manda CORS (R2 público, MuleRouter).
+        const dataUrl = await urlToDataUrl(url)
         const matches = dataUrl.match(/^data:(.+);base64,(.+)$/)
         if (!matches) throw new Error('Invalid image data returned')
         let thumbnailUrl = dataUrl
@@ -592,10 +584,20 @@ const AvatarEditDrawer = ({
         try {
             // Las DOS variantes de un golpe (vestida + nude): la vestida va a
             // todos los motores y la nude solo a los permisivos en runs NSFW.
+            // Al refrescar SOLO la vestida, se hereda el cuerpo de la nude que
+            // el avatar ya tiene — si no, la hoja nueva diverge de la guardada.
+            const nudeExistente = bodySheetNude ?? bodyRefNsfw
             const pair = await generateBodySheetPair({
                 measurements: localMeasurements,
                 model: selectedBodyModel,
                 only,
+                nudeSheet:
+                    nudeExistente?.base64 && nudeExistente.mimeType
+                        ? {
+                              base64: nudeExistente.base64,
+                              mimeType: nudeExistente.mimeType,
+                          }
+                        : undefined,
             })
             if (pair.url) {
                 const sheet = await toReferenceImage(pair.url, 'body')

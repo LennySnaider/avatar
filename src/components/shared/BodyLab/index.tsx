@@ -114,6 +114,17 @@ const BodyLab = (props: BodyLabProps) => {
         if (!isGenerating) setPending(null)
     }, [isGenerating])
 
+    // El aviso pide "no recargues la página"; esto lo respalda. Sin
+    // pending_generations detrás, un F5 a mitad de camino tira una generación
+    // ya cobrada, y eso es demasiado caro para confiarlo solo a que el usuario
+    // lea. Se engancha SOLO mientras se genera.
+    useEffect(() => {
+        if (!isGenerating) return
+        const avisar = (e: BeforeUnloadEvent) => e.preventDefault()
+        window.addEventListener('beforeunload', avisar)
+        return () => window.removeEventListener('beforeunload', avisar)
+    }, [isGenerating])
+
     const busyClothed = isGenerating && pending !== 'nude'
     const busyNude = isGenerating && pending !== 'clothed'
 
@@ -299,6 +310,25 @@ const BodyLab = (props: BodyLabProps) => {
                     </button>
                 )}
             </div>
+
+            {/* AVISO DE ESPERA: el body sheet NO pasa por pending_generations
+                (eso es solo la galería del Studio), así que si el usuario cierra
+                el drawer a mitad de camino, el resultado se descarta aunque KIE
+                ya lo haya cobrado. Y desde que las hojas se generan ENCADENADAS
+                (nude → vestida) la espera es del doble, así que el silencio de
+                antes ya no alcanzaba: hay que decir cuánto tarda y por qué. */}
+            {props.isGenerating && (
+                <Alert type="info" showIcon className="text-xs">
+                    <span className="font-semibold">
+                        No cierres este panel ni recargues la página.
+                    </span>{' '}
+                    {pending
+                        ? 'Estamos generando la hoja; suele tardar entre 30 y 90 segundos.'
+                        : 'Estamos generando las dos hojas, una después de la otra: primero la NSFW y luego la vestida se deriva de ella, para que las dos tengan exactamente el mismo cuerpo. Puede tardar un par de minutos.'}{' '}
+                    Si sales ahora se pierde el resultado y hay que generarlo de
+                    nuevo.
+                </Alert>
+            )}
 
             {props.missingSheetNotice && (
                 <Alert type="warning" showIcon className="text-xs">

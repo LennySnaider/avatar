@@ -25,6 +25,7 @@ import AppearanceEditor from '@/components/shared/AppearanceEditor'
 import BodyLab from '@/components/shared/BodyLab'
 import { sameBodyShape } from '@/utils/bodySheetPrompt'
 import { generateBodySheetPair } from '@/utils/bodySheetGenerate'
+import { urlToDataUrl } from '@/utils/imageStitch'
 import {
     getBodyLabModels,
     DEFAULT_PROVIDERS,
@@ -125,16 +126,8 @@ const AvatarCreatorMain = ({
         url: string,
         type: 'body' | 'body_nsfw' = 'body',
     ): Promise<ReferenceImage> => {
-        let dataUrl = url
-        if (!url.startsWith('data:')) {
-            const blob = await fetch(url).then((r) => r.blob())
-            dataUrl = await new Promise<string>((resolve, reject) => {
-                const reader = new FileReader()
-                reader.onloadend = () => resolve(reader.result as string)
-                reader.onerror = reject
-                reader.readAsDataURL(blob)
-            })
-        }
+        // urlToDataUrl cae al servidor si el host no manda CORS (R2 público).
+        const dataUrl = await urlToDataUrl(url)
         const m = dataUrl.match(/^data:(.+);base64,(.+)$/)
         if (!m) throw new Error('Invalid image data returned')
         return {
@@ -153,10 +146,20 @@ const AvatarCreatorMain = ({
         setIsGeneratingBody(true)
         try {
             // Las DOS variantes de un golpe (vestida + nude).
+            // Al refrescar SOLO la vestida, se hereda el cuerpo de la nude que
+            // el avatar ya tiene — si no, la hoja nueva diverge de la guardada.
+            const nudeExistente = bodySheetNude ?? bodyRefNsfw
             const pair = await generateBodySheetPair({
                 measurements,
                 model: selectedBodyModel,
                 only,
+                nudeSheet:
+                    nudeExistente?.base64 && nudeExistente.mimeType
+                        ? {
+                              base64: nudeExistente.base64,
+                              mimeType: nudeExistente.mimeType,
+                          }
+                        : undefined,
             })
             if (pair.url) {
                 const sheet = await bodySheetToRef(pair.url, 'body')
