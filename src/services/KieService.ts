@@ -232,6 +232,13 @@ function explainKieFailure(raw: string): string {
         // de cara tiene persona pero no tiene de donde sacar movimiento.
         return `Kling no encontró un CUERPO del que copiar el movimiento en ese vídeo. No basta con que se vea a la persona: necesita hombros, brazos y torso para rastrear la pose. Un primer plano de cara, un plano de detalle (solo piernas o manos) o una toma muy cerrada no le sirven, aunque se vea perfectamente a alguien. Usa un clip de medio cuerpo o cuerpo entero. (${raw})`
     }
+    // "This field is required" sin decir CUAL: en la practica siempre es la
+    // IMAGEN de entrada de un modelo i2i/edit que salio sin refs (p.ej. avatar
+    // sin referencias durante la ventana del trasplante, o un permisivo de
+    // body sin imagen — bb6ebee).
+    if (/this field is required/i.test(raw)) {
+        return `Al modelo le falto la IMAGEN de entrada (es un modelo de edicion/i2i y el request salio sin referencias). Si el avatar no tiene refs disponibles, re-sube una foto de cara o usa un modelo de texto-a-imagen. (${raw})`
+    }
     if (/face|no face detected/i.test(raw) && /detect/i.test(raw)) {
         return `El modelo no detectó una cara utilizable en la imagen de referencia. Usa una foto donde la cara se vea de frente, nítida y sin tapar. (${raw})`
     }

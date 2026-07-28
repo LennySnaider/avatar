@@ -46,6 +46,17 @@ async function build(ctx: ImageRouteContext): Promise<KieImageRequest> {
     // y seguía el "golden blonde" de la escena. Como el clause NO va en los
     // tags stripeados sino en el ancla, sobrevive y recolorea. hairEmphasis solo
     // se puebla en GENERACIÓN (no en EDIT, donde el usuario recolorea a mano).
+    // GUARD (2026-07-28): Qwen es un EDITOR — sin imagen de entrada no hay
+    // nada que editar, y KIE lo rechaza con un 500 criptico ("This field is
+    // required") DESPUES de aceptar el task. Pasa de verdad en la ventana del
+    // trasplante: las refs sin bytes se saltan y el avatar puede quedar sin
+    // ninguna. Mejor fallar aqui, gratis y en espanol.
+    if (!ctx.referenceImage) {
+        throw new Error(
+            'Qwen es un editor y necesita una imagen de entrada. Este avatar no tiene referencias disponibles ahora mismo (sus archivos siguen en el proyecto anterior hasta el 12-ago) — re-sube una foto de cara al avatar, o usa un modelo que genere desde texto (Seedream, Wan, Z-Image).',
+        )
+    }
+
     const hairClause = buildHairClause(ctx.hairEmphasis)
 
     // Qwen NO es nano → reubica la pose; cap 4000 (docs: 5000).
