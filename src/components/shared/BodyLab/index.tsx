@@ -37,10 +37,6 @@ export interface BodyLabProps {
     sheet: PhysicalRegionRef | null // preview del sheet generado
     sheetModel?: string // nombre del modelo con que se generó el sheet (badge)
     onGenerate: () => void
-    onUseAsBody: () => void
-    // true si hay una generación FRESCA para fijar (sin esto, el botón "Usar
-    // como cuerpo" no aplica — solo se está viendo el cuerpo ya guardado).
-    canUseAsBody?: boolean
     // Click en el preview → abrir en grande (el host usa su propio lightbox).
     // Si no se pasa, el preview no es clickeable.
     onPreview?: () => void
@@ -284,32 +280,26 @@ const BodyLab = (props: BodyLabProps) => {
                 </div>
             )}
 
-            <div className="flex gap-2">
-                <button
-                    type="button"
-                    onClick={() => {
-                        setPending(null)
-                        props.onGenerate()
-                    }}
-                    disabled={!!props.disabledReason || props.isGenerating}
-                    className="flex-1 h-9 rounded-lg bg-primary text-white text-sm disabled:opacity-50"
-                >
-                    {props.isGenerating
-                        ? 'Generando…'
-                        : props.sheet
-                          ? 'Regenerar cuerpo'
-                          : 'Generar cuerpo'}
-                </button>
-                {props.canUseAsBody && !props.isGenerating && (
-                    <button
-                        type="button"
-                        onClick={props.onUseAsBody}
-                        className="flex-1 h-9 rounded-lg border border-primary text-primary text-sm"
-                    >
-                        Usar como cuerpo
-                    </button>
-                )}
-            </div>
+            {/* Un solo botón (2026-07-28): la hoja generada QUEDA como cuerpo
+                del avatar sin pasos intermedios. El "Usar como cuerpo" de antes
+                era un paso manual entre generar y tener cuerpo, y no protegía de
+                nada: si no se pulsaba, la generación —ya pagada— se descartaba
+                en silencio al cerrar. */}
+            <button
+                type="button"
+                onClick={() => {
+                    setPending(null)
+                    props.onGenerate()
+                }}
+                disabled={!!props.disabledReason || props.isGenerating}
+                className="w-full h-9 rounded-lg bg-primary text-white text-sm disabled:opacity-50"
+            >
+                {props.isGenerating
+                    ? 'Generando…'
+                    : props.sheet
+                      ? 'Regenerar cuerpo'
+                      : 'Generar cuerpo'}
+            </button>
 
             {/* AVISO DE ESPERA: el body sheet NO pasa por pending_generations
                 (eso es solo la galería del Studio), así que si el usuario cierra

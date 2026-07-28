@@ -161,21 +161,27 @@ const AvatarCreatorMain = ({
                           }
                         : undefined,
             })
-            if (pair.url) {
-                const sheet = await bodySheetToRef(pair.url, 'body')
-                setBodySheet(sheet)
-            }
+            const sheet = pair.url
+                ? await bodySheetToRef(pair.url, 'body')
+                : null
+            if (sheet) setBodySheet(sheet)
             const nudeSheet = pair.nudeUrl
                 ? await bodySheetToRef(pair.nudeUrl, 'body_nsfw')
                 : null
             // Solo pisa la nude si se pidió (refresh selectivo).
             if (nudeSheet || only !== 'clothed') setBodySheetNude(nudeSheet)
+            // FIJADO AUTOMÁTICO (2026-07-28): lo que se generó ES el cuerpo del
+            // avatar. Antes había que pulsar «Usar como cuerpo» y, si no se
+            // pulsaba, la hoja —ya pagada— se perdía. Se asigna SOLO lo que
+            // salió: una nude que rebotó no puede borrar la ya guardada.
+            if (sheet) setBodyRef(sheet)
+            if (nudeSheet) setBodyRefNsfw(nudeSheet)
             setSheetMeasurements(measurements)
             toast.push(
                 <Notification type="success" title="Cuerpo generado">
                     {nudeSheet
-                        ? 'Sheet de 3 vistas + variante NSFW listos. Revísalos y pulsa «Usar como cuerpo».'
-                        : `Sheet de 3 vistas listo — la variante NSFW no se pudo generar${pair.nudeError ? `: ${pair.nudeError}` : ''}. Revísalo y pulsa «Usar como cuerpo».`}
+                        ? 'Hoja + variante NSFW listas y fijadas como el cuerpo del avatar. Se guardan con «Save Avatar».'
+                        : `Hoja lista y fijada como el cuerpo del avatar — la variante NSFW no se pudo generar${pair.nudeError ? `: ${pair.nudeError}` : ''}. Se guarda con «Save Avatar».`}
                 </Notification>,
             )
         } catch (error) {
@@ -188,28 +194,6 @@ const AvatarCreatorMain = ({
         } finally {
             setIsGeneratingBody(false)
         }
-    }
-
-    const handleUseAsBody = () => {
-        // Cada hoja se fija por SEPARADO (2026-07-26). Con el refresh selectivo
-        // puedes haber regenerado SOLO la NSFW; el `if (!bodySheet) return` de
-        // antes daba por hecho que las dos venían en pareja, así que ese caso
-        // no se podía fijar — y el botón ni siquiera aparecía porque
-        // `canUseAsBody` también miraba solo la vestida.
-        if (!bodySheet && !bodySheetNude) return
-        if (bodySheet) {
-            setBodyRef(bodySheet)
-            setBodySheet(null) // pasa a ser el "Cuerpo guardado"
-        }
-        if (bodySheetNude) {
-            setBodyRefNsfw(bodySheetNude)
-            setBodySheetNude(null)
-        }
-        toast.push(
-            <Notification type="success" title="Cuerpo fijado">
-                Se guardará con el avatar al pulsar «Save Avatar».
-            </Notification>,
-        )
     }
 
     // Load existing avatar data
@@ -637,9 +621,10 @@ const AvatarCreatorMain = ({
                 ...generalReferences,
                 ...(faceRef ? [faceRef] : []),
                 ...(angleRef ? [angleRef] : []),
-                // SE GUARDA LO QUE SE VE: la hoja recién generada vive en
-                // `bodySheet` hasta pulsar "Usar como cuerpo" — sin esto se
-                // descartaba al crear, ya generada y cobrada. La fresca gana.
+                // SE GUARDA LO QUE SE VE: la hoja recién generada se descartaba
+                // al crear el avatar, ya generada y cobrada. Desde que la
+                // generación fija el cuerpo sola las dos apuntan a lo mismo
+                // (entra UNA sola, no se duplica); queda como red de seguridad.
                 ...(bodySheet || bodyRef ? [(bodySheet || bodyRef)!] : []),
                 ...(bodySheetNude || bodyRefNsfw
                     ? [(bodySheetNude || bodyRefNsfw)!]
@@ -1092,8 +1077,6 @@ const AvatarCreatorMain = ({
                                     onRegenerate={(only) =>
                                         handleGenerateBody(only)
                                     }
-                                    onUseAsBody={handleUseAsBody}
-                                    canUseAsBody={!!bodySheet || !!bodySheetNude}
                                     onPreview={() => {
                                         const s = bodySheet || bodyRef
                                         if (s) setPreviewImage(s)

@@ -388,10 +388,10 @@ const AvatarEditDrawer = ({
         setGeneralReferences(localGeneralRefs)
         setFaceRef(localFaceRef)
         setAngleRef(localAngleRef)
-        // SE GUARDA LO QUE SE VE: una hoja recién generada vive en `bodySheet`
-        // hasta que se pulsa "Usar como cuerpo". Sin esto, generarla (ya
-        // cobrada en KIE), verla en pantalla y darle a Guardar la descartaba
-        // en silencio. Mismo criterio que `shownBody`: la fresca gana.
+        // SE GUARDA LO QUE SE VE: generar (ya cobrado en KIE), verlo en
+        // pantalla y darle a Guardar descartaba la hoja en silencio. Desde que
+        // la generación fija el cuerpo sola esto es red de seguridad —
+        // idempotente, apuntan al mismo objeto— y no el mecanismo.
         if (bodySheet) setBodyRef(bodySheet)
         if (bodySheetNude) setBodyRefNsfw(bodySheetNude)
         setIdentityWeight(localIdentityWeight)
@@ -599,15 +599,22 @@ const AvatarEditDrawer = ({
                           }
                         : undefined,
             })
-            if (pair.url) {
-                const sheet = await toReferenceImage(pair.url, 'body')
-                setBodySheet(sheet)
-            }
+            const sheet = pair.url
+                ? await toReferenceImage(pair.url, 'body')
+                : null
+            if (sheet) setBodySheet(sheet)
             const nudeSheet = pair.nudeUrl
                 ? await toReferenceImage(pair.nudeUrl, 'body_nsfw')
                 : null
             // Solo pisa la nude si se pidió (refresh selectivo).
             if (nudeSheet || only !== 'clothed') setBodySheetNude(nudeSheet)
+            // FIJADO AUTOMÁTICO (2026-07-28): lo que se generó ES el cuerpo del
+            // avatar. Antes había que pulsar "Usar como cuerpo" y, si no se
+            // pulsaba, la hoja —ya pagada— se perdía al cerrar el drawer.
+            // Se asigna SOLO lo que salió: una nude que rebotó no puede borrar
+            // la que el avatar ya tenía guardada.
+            if (sheet) setBodyRef(sheet)
+            if (nudeSheet) setBodyRefNsfw(nudeSheet)
             setSheetMeasurements(localMeasurements) // sheet ↔ medidas actuales
             const selName =
                 bodyLabModels.find((p) => p.model === selectedBodyModel)
@@ -618,8 +625,8 @@ const AvatarEditDrawer = ({
             toast.push(
                 <Notification type="success" title="Cuerpo generado">
                     {nudeSheet
-                        ? 'Sheet de 3 vistas + variante NSFW listos. Revísalos y pulsa "Usar como cuerpo".'
-                        : `Sheet de 3 vistas listo — la variante NSFW no se pudo generar${pair.nudeError ? `: ${pair.nudeError}` : ''}. Revísalo y pulsa "Usar como cuerpo".`}
+                        ? 'Hoja + variante NSFW listas y fijadas como el cuerpo del avatar. Se guardan al guardar los cambios.'
+                        : `Hoja lista y fijada como el cuerpo del avatar — la variante NSFW no se pudo generar${pair.nudeError ? `: ${pair.nudeError}` : ''}. Se guarda al guardar los cambios.`}
                 </Notification>,
             )
         } catch (error) {
@@ -632,28 +639,6 @@ const AvatarEditDrawer = ({
         } finally {
             setIsGeneratingBody(false)
         }
-    }
-
-    const handleUseAsBody = () => {
-        // Cada hoja se fija por SEPARADO (2026-07-26). Con el refresh selectivo
-        // puedes haber regenerado SOLO la NSFW; el `if (!bodySheet) return` de
-        // antes daba por hecho que las dos venían en pareja, así que ese caso
-        // no se podía fijar — y el botón ni siquiera aparecía porque
-        // `canUseAsBody` también miraba solo la vestida.
-        if (!bodySheet && !bodySheetNude) return
-        if (bodySheet) {
-            setBodyRef(bodySheet)
-            setBodySheet(null) // pasa a ser el "Cuerpo guardado"
-        }
-        if (bodySheetNude) {
-            setBodyRefNsfw(bodySheetNude)
-            setBodySheetNude(null)
-        }
-        toast.push(
-            <Notification type="success" title="Cuerpo fijado">
-                Se guardará como el cuerpo del avatar al guardar los cambios.
-            </Notification>,
-        )
     }
 
     const hasLocalRefs =
@@ -1053,8 +1038,6 @@ const AvatarEditDrawer = ({
                                     onRegenerate={(only) =>
                                         handleGenerateBody(only)
                                     }
-                                    onUseAsBody={handleUseAsBody}
-                                    canUseAsBody={!!bodySheet || !!bodySheetNude}
                                     onPreview={() => {
                                         const s = bodySheet || bodyRef
                                         if (s) setPreviewImage(s)
