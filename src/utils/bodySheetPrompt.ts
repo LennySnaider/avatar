@@ -4,6 +4,7 @@ import {
     describeBody,
     getSkinToneDescription,
     tanLinesClause,
+    nippleClause,
     VULVA_CLAUSE_ENABLED,
     pubicHairClause,
     effectiveThighsLevel,
@@ -192,7 +193,7 @@ export function buildBodySheetPrompt(
         'Standing in a neutral relaxed A-pose, arms slightly away from the body, feet shoulder-width apart.',
         // Dos piezas explícito: los editores tienden a sacar enterizo. Gris
         // carbón (no beige/tono piel) — ver CLOTHED_SHEET_CLAUSE.
-        opts?.nude ? NUDE_SHEET_CLAUSE : CLOTHED_SHEET_CLAUSE,
+        opts?.nude ? nudeSheetClause(m) : CLOTHED_SHEET_CLAUSE,
         'Plain seamless light-gray studio background, soft even frontal lighting, no harsh shadows.',
         'The body shape, bust, waist, hips, glutes and thighs must be IDENTICAL across all three views and must match the measurements and body shape described above.',
         'Full body visible head-to-toe in every view, whole figure in frame, no cropping.',
@@ -240,8 +241,25 @@ const CLOTHED_SHEET_CLAUSE =
  * que su mariposa se propagaba a todo lo generado. Ahora el tipo se declara
  * explícito en positivo Y se prohíbe el contrario en negativo.
  */
-const NUDE_SHEET_CLAUSE =
-    `She is COMPLETELY NUDE in every view — no bra, no briefs, no garments at all, bare skin from head to toe, so her full body shape reads with nothing covering it. Natural realistic anatomy: bare breasts with small skin-toned areolas${VULVA_CLAUSE_ENABLED ? ', and a vulva of the fully CLOSED type — plump full outer labia pressed together that completely conceal the inner labia, everything tucked inside, a soft narrow closed cleft in matte skin tone — real anatomy, never a smooth featureless doll-like blank' : ''}. This is a CLINICAL anatomical body reference: neutral expression, relaxed stance, no seduction and no erotic posing.`
+/**
+ * PEZONES DESDE LA CONFIG (2026-07-28): el texto era fijo — "bare breasts with
+ * small skin-toned areolas" — y CONTRADECÍA la regla por avatar
+ * (`nippleColor`/`nippleAreola`), que existe justo para que el pezón no cambie
+ * entre generaciones. La hoja NUDE es el ancla de anatomía de los runs NSFW, así
+ * que su pezón inventado se propagaba a todo lo generado desde ella y ganaba a
+ * la config. Con regla definida manda la config; sin ella se conserva el texto
+ * de antes como default.
+ *
+ * (El razonamiento de SHEET_IGNORED_KEYS —"el sheet no los dibuja"— vale para la
+ * hoja VESTIDA, que no muestra el pecho; la nude sí lo muestra.)
+ */
+const nudeSheetClause = (m: PhysicalMeasurements): string => {
+    const nipples = nippleClause(m)
+    const breasts = nipples
+        ? `bare breasts — ${nipples}`
+        : 'bare breasts with small skin-toned areolas'
+    return `She is COMPLETELY NUDE in every view — no bra, no briefs, no garments at all, bare skin from head to toe, so her full body shape reads with nothing covering it. Natural realistic anatomy: ${breasts}${VULVA_CLAUSE_ENABLED ? ', and a vulva of the fully CLOSED type — plump full outer labia pressed together that completely conceal the inner labia, everything tucked inside, a soft narrow closed cleft in matte skin tone — real anatomy, never a smooth featureless doll-like blank' : ''}. This is a CLINICAL anatomical body reference: neutral expression, relaxed stance, no seduction and no erotic posing.`
+}
 
 export const BODY_TURNAROUND_TEMPLATE_URL = '/body/turnaround-template.png'
 
@@ -253,6 +271,53 @@ export const BODY_TURNAROUND_TEMPLATE_URL = '/body/turnaround-template.png'
 export const BODY_SHEET_REFINE_MODEL = 'seedream/5-pro-image-to-image'
 
 /**
+ * Prompt para RE-VESTIR (o desvestir) la hoja YA GENERADA de este avatar.
+ *
+ * La referencia no es la plantilla genérica sino la otra hoja del MISMO avatar,
+ * así que el cuerpo no se describe para construirlo: se ordena CONSERVARLO. Es
+ * la única forma de que las dos hojas compartan cuerpo exacto, porque Seedream
+ * no expone `seed` (spec de KIE) y dos generaciones independientes divergen por
+ * definición.
+ *
+ * El spec de medidas viaja igual, pero declarado como confirmación de lo que la
+ * imagen ya muestra. Sin él, un i2i largo puede derivar; con él dando una orden
+ * de REMODELAR, se pelearía con "copiá la referencia" — y esa contradicción es
+ * exactamente lo que rompía las hojas antes.
+ */
+function buildSheetRedressPrompt(
+    m: PhysicalMeasurements,
+    opts?: { nude?: boolean },
+): string {
+    const body = describeBody(m)
+    const curves = buildBodySheetCurves(m)
+    const measurements =
+        m.bust && m.waist && m.hips
+            ? `bust ${m.bust}cm, waist ${m.waist}cm, hips ${m.hips}cm${
+                  m.shoulders ? `, shoulders ${m.shoulders}cm` : ''
+              }`
+            : ''
+    return [
+        'The reference image is a full-body multi-view TURNAROUND of a woman (four full-body views side by side: front, three-quarter, side, back).',
+        'This is THE SAME WOMAN, in THE SAME photo session: keep her body EXACTLY as it appears in the reference — the same proportions, the same bust, waist, hips, glutes and thighs, the same height and build, the same skin tone and skin markings, the same face and the same hair. Keep the same number of views, the same poses, the same camera angles, the same framing and the same background.',
+        // La ORDEN de cambio, acotada a una sola cosa. Va antes del spec por la
+        // misma razón que en la ruta de la plantilla: si algo se recorta, que
+        // nunca sea la instrucción de vestuario.
+        opts?.nude
+            ? `Change ONE thing only: her clothing. ${nudeSheetClause(m)}`
+            : `Change ONE thing only: her clothing. ${CLOTHED_SHEET_CLAUSE}`,
+        'Do NOT reshape, slim, enlarge or "improve" her body, and do NOT change her pose, framing or background — this is a wardrobe change on an existing photo, nothing else.',
+        [body, curves, measurements].filter(Boolean).join(', ')
+            ? `For confirmation, her body already matches this specification and must stay that way: ${[body, curves, measurements].filter(Boolean).join(', ')}.`
+            : '',
+        'CONSISTENCY (CRITICAL): all four views depict THE EXACT SAME woman with IDENTICAL body proportions — hip width, glute size and thigh thickness must be EQUAL across every view, and EQUAL to the reference.',
+        'ANATOMY (CRITICAL): every figure is COMPLETE and intact — both arms, both legs, both hands and both feet fully rendered head-to-toe in EVERY view; never amputated, cropped, truncated or hidden limbs.',
+        'Photorealistic, natural skin texture, 8k, sharp focus. Not an illustration.',
+    ]
+        .filter(Boolean)
+        .join(' ')
+}
+
+/**
  * Prompt para Seedream i2i sobre la plantilla fija: conservar las MISMAS vistas/
  * poses/fondo de la referencia, pero con el CUERPO del configurador (no el de la
  * plantilla). La ruta de Seedream además inyecta, vía bodyEmphasis, la cláusula
@@ -260,11 +325,28 @@ export const BODY_SHEET_REFINE_MODEL = 'seedream/5-pro-image-to-image'
  */
 export function buildTurnaroundRefinePrompt(
     m: PhysicalMeasurements,
-    opts?: { nude?: boolean },
+    opts?: { nude?: boolean; fromOwnSheet?: boolean },
 ): string {
+    // VESTIR LA PROPIA HOJA (2026-07-28): cuando la referencia ya no es la
+    // plantilla genérica sino la hoja NUDE de ESTE avatar, todo se da vuelta.
+    // Contra la plantilla hay que ordenar "NO copies ese cuerpo"; contra la
+    // hoja propia hay que ordenar exactamente lo contrario — el cuerpo ya es
+    // el correcto y volver a describirlo desde cero sería reinventarlo, que es
+    // justo la varianza que estamos matando (Seedream no expone `seed`, así
+    // que heredar la imagen es el ÚNICO modo de garantizar el mismo cuerpo).
+    // El spec viaja igual, pero como CONFIRMACIÓN de lo que ya se ve, no como
+    // orden de remodelar: dos órdenes que se contradicen es lo que rompía las
+    // hojas antes.
+    if (opts?.fromOwnSheet) {
+        return buildSheetRedressPrompt(m, { nude: opts.nude })
+    }
     const body = describeBody(m)
     const curves = buildBodySheetCurves(m)
     const skin = getSkinToneDescription(m.skinTone)
+    // EDAD y ESTATURA (2026-07-28): la ruta t2i las mandaba y esta —la que se
+    // usa de verdad— no, así que la madurez del cuerpo y la escala la ponía la
+    // plantilla. Van al frente, donde el sujeto se declara.
+    const who = `a ${m.age ?? 22}-year-old woman${m.height ? `, ${m.height}cm tall` : ''}`
     const measurements =
         m.bust && m.waist && m.hips
             ? `bust ${m.bust}cm, waist ${m.waist}cm, hips ${m.hips}cm${
@@ -287,8 +369,8 @@ export function buildTurnaroundRefinePrompt(
         // bug "se ve desnuda" — su ropa color piel se filtraba al resultado
         // (BODY_SPEC_NOT_WARDROBE_CLAUSE prohíbe justo lo que la hoja mostraba).
         // Si el gris se filtra, se ve y se corrige; el beige se disfrazaba de piel.
-        opts?.nude ? NUDE_SHEET_CLAUSE : CLOTHED_SHEET_CLAUSE,
-        `Render a woman whose BODY matches this spec exactly — do NOT copy the reference body; make it: ${[body, curves, measurements].filter(Boolean).join(', ')}. ${[skin, opts?.nude ? tanLinesClause(m) : '', opts?.nude ? pubicHairClause(m) : ''].filter(Boolean).join('. ')}.`,
+        opts?.nude ? nudeSheetClause(m) : CLOTHED_SHEET_CLAUSE,
+        `Render ${who} whose BODY matches this spec exactly — do NOT copy the reference body; make it: ${[body, curves, measurements].filter(Boolean).join(', ')}. ${[skin, opts?.nude ? tanLinesClause(m) : '', opts?.nude ? pubicHairClause(m) : ''].filter(Boolean).join('. ')}.`,
         // Consistencia ENTRE VISTAS: el sesgo frontal normalizaba el cuerpo en
         // la vista de FRENTE (caderas angostas + thigh gap) mientras lado/
         // espalda sí rendían el spec (reporte con imagen 2026-07-23). La vista
