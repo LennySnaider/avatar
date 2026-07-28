@@ -68,21 +68,25 @@ const getAvatars = async (_queryParams: {
         (avatars || []).map(async (avatar) => {
             const references = avatar.avatar_references || []
 
-            // Get thumbnail from first face or general reference
-            const thumbnailRef = references.find(
-                (ref: { type: string }) => ref.type === 'face'
-            ) || references.find(
-                (ref: { type: string }) => ref.type === 'general'
-            )
+            // Candidatos EN ORDEN (cara → angle → general): durante la
+            // ventana del trasplante conviven filas viejas sin bytes y
+            // re-subidas nuevas del mismo tipo — hay que probar hasta que
+            // una firme, no rendirse con la primera.
+            const candidates = [
+                ...references.filter((r: { type: string }) => r.type === 'face'),
+                ...references.filter((r: { type: string }) => r.type === 'angle'),
+                ...references.filter((r: { type: string }) => r.type === 'general'),
+            ]
 
             let thumbnailUrl: string | undefined
-
-            if (thumbnailRef) {
+            for (const cand of candidates) {
                 const { data: signedUrl } = await supabase.storage
                     .from('avatars')
-                    .createSignedUrl(thumbnailRef.storage_path, 3600) // 1 hour expiry
-
-                thumbnailUrl = signedUrl?.signedUrl
+                    .createSignedUrl(cand.storage_path, 3600)
+                if (signedUrl?.signedUrl) {
+                    thumbnailUrl = signedUrl.signedUrl
+                    break
+                }
             }
 
             return {

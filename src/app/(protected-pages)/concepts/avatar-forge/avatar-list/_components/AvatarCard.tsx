@@ -69,31 +69,50 @@ const AvatarCard = ({ avatar }: AvatarCardProps) => {
     // que la cara se volvía la portada (reporte Evelyn: foto random de portada).
     // Orden: face → angle → general → cualquier ref con imagen.
     const refs = avatar.avatar_references ?? []
-    const previewImage =
-        refs.find((r) => r.type === 'face') ??
-        refs.find((r) => r.type === 'angle') ??
-        refs.find((r) => r.type === 'general') ??
-        refs.find((r) => r.storage_path)
+    // CANDIDATOS ordenados, no un único elegido: durante la ventana del
+    // trasplante conviven filas viejas (sin bytes) y re-subidas nuevas del
+    // MISMO tipo. Quedarse con la primera cara y rendirse dejaba a Raven con
+    // letra aunque su cara nueva estuviera perfecta — hay que probar hasta
+    // que una sirva.
+    const previewCandidates = [
+        ...refs.filter((r) => r.type === 'face'),
+        ...refs.filter((r) => r.type === 'angle'),
+        ...refs.filter((r) => r.type === 'general'),
+        ...refs.filter(
+            (r) =>
+                r.storage_path &&
+                !['face', 'angle', 'general'].includes(r.type),
+        ),
+    ]
+    const previewImage = previewCandidates[0]
     // Cuerpo canónico del Body Lab = una ref persistida type:'body'.
     const hasCanonicalBody = refs.some((r) => r.type === 'body')
 
     // Load thumbnail on mount
     useEffect(() => {
         const loadThumbnail = async () => {
-            if (!previewImage?.storage_path) {
+            if (previewCandidates.length === 0) {
                 setIsLoadingThumbnail(false)
                 return
             }
 
             try {
-                const signedUrl = await getSignedUrl(
-                    'avatars',
-                    previewImage.storage_path,
-                )
-                // null = bytes aún en el proyecto viejo (ventana del
-                // trasplante) → placeholder, sin ruido.
-                const res = signedUrl ? await fetch(signedUrl) : null
-                const data = res?.ok ? await res.blob() : null
+                // Prueba candidatos EN ORDEN hasta que uno tenga bytes: null
+                // (fila vieja del trasplante) → siguiente, no rendirse.
+                let data: Blob | null = null
+                for (const cand of previewCandidates) {
+                    if (!cand.storage_path) continue
+                    const signedUrl = await getSignedUrl(
+                        'avatars',
+                        cand.storage_path,
+                    )
+                    if (!signedUrl) continue
+                    const res = await fetch(signedUrl)
+                    if (res.ok) {
+                        data = await res.blob()
+                        break
+                    }
+                }
 
                 if (!data) {
                     setIsLoadingThumbnail(false)

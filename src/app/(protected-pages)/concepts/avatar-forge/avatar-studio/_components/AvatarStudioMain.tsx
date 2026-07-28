@@ -45,6 +45,7 @@ import {
     apiDeleteAvatarReference,
     apiCreateGenerationUploadUrl,
     apiCreateThumbnailUploadTicket,
+    apiFetchUrlAsDataUrl,
     apiSaveGeneration,
     apiDeleteGeneration,
     apiGetGenerations,
@@ -479,6 +480,32 @@ function withDeadline<T>(p: Promise<T>, ms: number, label: string): Promise<T> {
             ),
         ),
     ])
+}
+
+/**
+ * Baja media del CDN del proveedor con fallback por SERVIDOR.
+ *
+ * Algunos CDNs (MuleRouter siempre, KIE segun host) no mandan cabeceras CORS
+ * y el fetch del navegador muere con "Failed to fetch" aunque la URL sirva —
+ * en el persist eso costaba la GENERACION entera (pagada y perdida). El proxy
+ * autenticado lee los mismos bytes desde el servidor, donde CORS no existe.
+ * Los data:/blob: URLs pasan por la via directa, que si los maneja.
+ */
+async function fetchMediaBlobWithFallback(
+    url: string,
+    timeoutMs = 60_000,
+): Promise<Blob> {
+    try {
+        const res = await fetch(url, { signal: AbortSignal.timeout(timeoutMs) })
+        if (!res.ok) throw new Error(`HTTP ${res.status}`)
+        return await res.blob()
+    } catch (err) {
+        if (!/^https:/.test(url)) throw err // data:/blob: no tienen proxy
+        console.info('[media] fetch directo falló, vía servidor:', err)
+        const { base64, mimeType } = await apiFetchUrlAsDataUrl(url)
+        const bytes = Uint8Array.from(atob(base64), (c) => c.charCodeAt(0))
+        return new Blob([bytes], { type: mimeType })
+    }
 }
 
 async function uploadGenerationWithRetry(
@@ -1073,10 +1100,10 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                 // estancado deja el card en 'saving' eterno (imagen ya generada
                 // y cobrada en KIE, pero perdida). Con deadline, el cuelgue cae
                 // a saveState 'error' (badge de reintento) y se puede recuperar.
-                const response = await fetch(media.url, {
-                    signal: AbortSignal.timeout(isVideo ? 180_000 : 45_000),
-                })
-                const blob = await response.blob()
+                const blob = await fetchMediaBlobWithFallback(
+                    media.url,
+                    isVideo ? 180_000 : 45_000,
+                )
                 const contentType = isVideo ? 'video/mp4' : 'image/jpeg'
 
                 const { path, provider, thumbnailPath } = await withDeadline(
@@ -3976,8 +4003,7 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
     const handleAnimateImage = useCallback(
         async (media: GeneratedMedia) => {
             // Fetch the image and convert to base64
-            const response = await fetch(media.url)
-            const blob = await response.blob()
+            const blob = await fetchMediaBlobWithFallback(media.url)
             const reader = new FileReader()
 
             reader.onload = (e) => {
@@ -4049,13 +4075,7 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                 // signed URL (persisted gallery items). Providers need bytes:
                 // passing a signed URL straight to Gemini 400s with "Base64
                 // decoding failed". fetch() handles all three URL kinds.
-                const res = await fetch(media.url)
-                if (!res.ok) {
-                    throw new Error(
-                        `Failed to fetch source image (${res.status})`,
-                    )
-                }
-                const blob = await res.blob()
+                const blob = await fetchMediaBlobWithFallback(media.url)
                 const sourceBase64 = await new Promise<string>(
                     (resolve, reject) => {
                         const reader = new FileReader()
@@ -4307,8 +4327,7 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
         async (media: GeneratedMedia) => {
             try {
                 setIsEnhancingPrompt(true)
-                const response = await fetch(media.url)
-                const blob = await response.blob()
+                const blob = await fetchMediaBlobWithFallback(media.url)
                 const dataUrl: string = await new Promise((resolve, reject) => {
                     const reader = new FileReader()
                     reader.onload = () => resolve(reader.result as string)
@@ -4360,8 +4379,7 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                 // Download the media into the browser, then PUT it straight to
                 // Supabase via a signed URL — routing the file through a server
                 // action 413s past ~4.5MB (Vercel cap), which every video hits.
-                const response = await fetch(media.url)
-                const blob = await response.blob()
+                const blob = await fetchMediaBlobWithFallback(media.url)
                 const contentType =
                     media.mediaType === 'VIDEO' ? 'video/mp4' : 'image/jpeg'
 
@@ -4536,8 +4554,7 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
             // Set the image as clone reference
             if (media.mediaType === 'IMAGE') {
                 try {
-                    const response = await fetch(media.url)
-                    const blob = await response.blob()
+                    const blob = await fetchMediaBlobWithFallback(media.url)
                     const reader = new FileReader()
                     reader.onload = (e) => {
                         const result = e.target?.result as string
