@@ -3,6 +3,7 @@
  * generadas por separado (frente / lado / espalda) — un solo modelo t2i no logra
  * las 3 vistas en una imagen, así que se generan aparte y se unen aquí con canvas.
  */
+import { apiFetchUrlAsDataUrl } from '@/services/AvatarForgeService'
 
 /** Carga una URL (data: o http[s]:) en un HTMLImageElement. */
 function loadImage(src: string): Promise<HTMLImageElement> {
@@ -21,11 +22,30 @@ function loadImage(src: string): Promise<HTMLImageElement> {
  */
 export async function urlToDataUrl(url: string): Promise<string> {
     if (url.startsWith('data:')) return url
-    const res = await fetch(url)
-    // Sin este check, un 404 (p.ej. plantilla ausente) devolvería la página de
-    // error como "imagen" → basura a KIE (500 "field required"). Falla limpio.
-    if (!res.ok) throw new Error(`fetch ${url} → ${res.status}`)
-    const blob = await res.blob()
+    try {
+        const res = await fetch(url)
+        // Sin este check, un 404 (p.ej. plantilla ausente) devolvería la página
+        // de error como "imagen" → basura a KIE (500 "field required"). Falla
+        // limpio.
+        if (!res.ok) throw new Error(`fetch ${url} → ${res.status}`)
+        const blob = await res.blob()
+        return await blobToDataUrl(blob)
+    } catch (err) {
+        // Hosts sin cabeceras CORS (MuleRouter siempre; R2 público y KIE según
+        // el bucket/host) matan el fetch del navegador aunque la URL sirva
+        // perfecto: "Failed to fetch" antes de ver un status. En el servidor
+        // CORS no existe — mismo contenido, otra puerta. Solo tiene sentido
+        // para absolutas https: las relativas ya son mismo-origen, ahí un
+        // fallo es un 404 real y debe propagarse.
+        if (!/^https:\/\//.test(url)) throw err
+        console.info('[imageStitch] fetch directo falló, vía servidor:', err)
+        const { base64, mimeType } = await apiFetchUrlAsDataUrl(url)
+        return `data:${mimeType};base64,${base64}`
+    }
+}
+
+/** Blob → data URL base64 (FileReader). */
+export function blobToDataUrl(blob: Blob): Promise<string> {
     return new Promise<string>((resolve, reject) => {
         const reader = new FileReader()
         reader.onloadend = () => resolve(reader.result as string)
