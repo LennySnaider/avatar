@@ -19,6 +19,10 @@ export interface BodySheetPair {
      *  motor la rechazó: NO rompe el flujo, el avatar se queda sin variante
      *  NSFW y esos runs caen al cuerpo por texto (comportamiento previo). */
     nudeUrl: string | null
+    /** Motivo REAL si la nude falló (moderación del motor, timeout, código
+     *  KIE…) — antes el catch lo descartaba y era imposible diagnosticar por
+     *  qué un avatar se quedaba sin variante NSFW. Para log + toast. */
+    nudeError?: string
     /** true si se usó la plantilla fija (i2i) en vez del fallback t2i. */
     usedTemplate: boolean
 }
@@ -91,24 +95,32 @@ export async function generateBodySheetPair(params: {
             ? run(false)
             : Promise.resolve({ success: false as const, error: 'skipped' }),
         // La nude puede rebotar (filtro del motor) sin tumbar la generación:
-        // se captura aquí para que la vestida siempre llegue.
+        // se captura aquí para que la vestida siempre llegue — pero el MOTIVO
+        // se conserva (antes se descartaba y el fallo era indistinguible).
         wantNude
-            ? run(true).catch(() => ({
+            ? run(true).catch((e: unknown) => ({
                   success: false as const,
-                  error: 'nude sheet failed',
+                  error: e instanceof Error ? e.message : String(e),
               }))
             : Promise.resolve({ success: false as const, error: 'skipped' }),
     ])
 
+    const nudeError =
+        wantNude && !nude.success ? nude.error || 'nude sheet failed' : undefined
+    if (nudeError) {
+        console.warn('[BodySheet] Variante NSFW falló:', nudeError)
+    }
+
     // Solo es error si falló lo que SÍ se pidió.
     if (wantClothed && !clothed.success) throw new Error(clothed.error)
     if (params.only === 'nude' && !nude.success) {
-        throw new Error('No se pudo generar la variante NSFW')
+        throw new Error(`No se pudo generar la variante NSFW: ${nudeError}`)
     }
 
     return {
         url: clothed.success ? clothed.url : null,
         nudeUrl: nude.success ? nude.url : null,
+        nudeError,
         usedTemplate: !!tmpl,
     }
 }

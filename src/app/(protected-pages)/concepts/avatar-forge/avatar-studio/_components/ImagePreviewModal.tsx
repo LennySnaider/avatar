@@ -306,6 +306,9 @@ const ImagePreviewModal = ({
         setIsDrawingMask(false)
         setIsCropping(false)
         setZoomLevel(1)
+        zoomLevelRef.current = 1
+        panRef.current = { x: 0, y: 0 }
+        setPan({ x: 0, y: 0 })
         setEditAssets([])
     }, [setPreviewMedia])
 
@@ -480,6 +483,26 @@ const ImagePreviewModal = ({
     useEffect(() => {
         zoomLevelRef.current = zoomLevel
     }, [zoomLevel])
+
+    /**
+     * Vista NUEVA = cámara a cero (zoom 1, sin desplazamiento).
+     *
+     * El modal no se desmonta al cerrar —devuelve null pero conserva su
+     * estado—, y `handleClose` reseteaba el zoom pero NO el pan. Resultado: la
+     * siguiente imagen se abría con el desplazamiento de la anterior puesta y
+     * aparecía descuadrada, hasta que el primer zoom llamaba a clampPan y la
+     * recolocaba. Lo mismo al navegar con las flechas.
+     *
+     * Se resetean también los refs: son los que leen los handlers, y un ref
+     * desincronizado del estado devuelve el bug por la puerta de atrás.
+     */
+    useEffect(() => {
+        zoomLevelRef.current = 1
+        panRef.current = { x: 0, y: 0 }
+        setZoomLevel(1)
+        setPan({ x: 0, y: 0 })
+        setAnimateZoom(false)
+    }, [previewMedia?.id])
 
     /**
      * Recoloca el indicador cuando cambia el zoom o el paneo SIN mover el

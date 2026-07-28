@@ -172,7 +172,7 @@ const AvatarCreatorMain = ({
                 <Notification type="success" title="Cuerpo generado">
                     {nudeSheet
                         ? 'Sheet de 3 vistas + variante NSFW listos. Revísalos y pulsa «Usar como cuerpo».'
-                        : 'Sheet de 3 vistas listo (la variante NSFW no se pudo generar). Revísalo y pulsa «Usar como cuerpo».'}
+                        : `Sheet de 3 vistas listo — la variante NSFW no se pudo generar${pair.nudeError ? `: ${pair.nudeError}` : ''}. Revísalo y pulsa «Usar como cuerpo».`}
                 </Notification>,
             )
         } catch (error) {
