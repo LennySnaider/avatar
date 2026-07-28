@@ -18,7 +18,6 @@ import {
     stripIdentityRedundancy,
     relocatePoseTag,
     capAtWordBoundary,
-    capAtSentenceBoundary,
     INTACT_BODY_CLAUSE,
     EDIT_ANCHOR_CLAUSE,
     BODY_SPEC_NOT_WARDROBE_CLAUSE,
@@ -204,10 +203,54 @@ async function build(ctx: ImageRouteContext): Promise<KieImageRequest> {
                     anchorHead.length -
                     anchorTail.length,
             )
-            const fitBodyClause =
-                bodyClauseMax > 0 && bodyClause.length > bodyClauseMax
-                    ? capAtSentenceBoundary(bodyClause, bodyClauseMax, model)
-                    : bodyClause
+            // PISO DEL CUERPO (2026-07-28) — "con Clone Ref el busto sale del
+            // clon; sin Clone Ref sale bien" (reporte del usuario). Medido con
+            // harness: con clone quedaban **33 chars** para el bodyClause
+            // (head 828 + tail 1389 + reserva de escena 500 sobre 2750) y el
+            // texto se cortaba en "…the SAME one woman from". Truncar SIEMPRE
+            // mata la cola, y la cola es justo el guard IGNORE y las MEDIDAS
+            // (~60 chars que valen más que toda la prosa que los precede).
+            // Sin medidas el modelo solo tiene un cuerpo del que tirar: el del
+            // clon. Sin clone el cap también cortaba, pero más tarde ("…rati"),
+            // por eso ahí el busto salía bien y el bug parecía del clone.
+            //
+            // Cura: no cortar mejor — no cortar. Versión COMPACTA COMPLETA,
+            // misma información sin prosa y con las medidas DELANTE, y el
+            // clause no baja nunca de ahí (mismo patrón que SCENE_FLOOR con el
+            // fondo). Rebasar el presupuesto blando por ~300 chars es barato
+            // frente a perder el físico del avatar; el prompt final ya absorbe
+            // esto igual que absorbe el piso de escena.
+            const bodySheetRef =
+                'the SECOND image (a turnaround sheet: the SAME one woman from several angles)'
+            const sceneSource = hasClone
+                ? 'the CLONE image and the text description'
+                : 'the text description'
+            const bodyClauseCompact = ctx.deepfakeMode
+                ? ''
+                : hasBody
+                  ? `Her BODY${denseBodySpec ? ` measures ${denseBodySpec} and` : ''} is the one in ${bodySheetRef} — replicate that exact shape, those proportions and curves. From the sheet take ONLY the body: her outfit, pose and the scene come ONLY from ${sceneSource}.`
+                  : `Her BODY${denseBodySpec ? ` measures ${denseBodySpec} and` : ''} follows the text spec below — render THAT body, visibly fuller and curvier than the reference photo suggests. Use the reference image ONLY for her face and identity.`
+            // ESCALERA, no salto: completo → compacto+boost → compacto pelado.
+            // El curveBoost lleva el "do NOT normalize" que se validó en A/B
+            // para los ratios extremos (MiaUltra 2.64 salía flaca sin él), así
+            // que viaja siempre que quepa — pero NUNCA a costa de las medidas:
+            // su propio comentario avisa de que cada char del boost compite
+            // con la CARA dentro del ancla ("cara/ojos raros", 2026-07-23).
+            const compactWithBoost = ctx.curveBoost
+                ? `${bodyClauseCompact} ${ctx.curveBoost}`
+                : bodyClauseCompact
+            let fitBodyClause = bodyClause
+            if (bodyClauseMax <= 0 || bodyClause.length > bodyClauseMax) {
+                fitBodyClause =
+                    compactWithBoost.length <= bodyClauseMax
+                        ? compactWithBoost
+                        : bodyClauseCompact
+                if (fitBodyClause.length > bodyClauseMax) {
+                    console.warn(
+                        `[KIE] Seedream body clause en su PISO (${bodyClauseCompact.length} chars, presupuesto ${bodyClauseMax}) — las medidas viajan enteras a costa de ${bodyClauseCompact.length - Math.max(bodyClauseMax, 0)} chars de exceso`,
+                    )
+                }
+            }
             // EDICION: el ancla ENTERA sobra. Presenta la imagen como referencia
             // de CARA, re-especifica el cuerpo (fitBodyClause) y exige cuerpo
             // completo — al editar eso reencuadra y redibuja lo que deberia

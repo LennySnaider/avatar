@@ -67,7 +67,7 @@ import type { PhysicalMeasurements } from '../src/@types/supabase'
  * difusión procesa un límite; la negación solo añadía el token `clothing` a un
  * prompt que busca lo contrario. Se borró sin perder la protección.
  */
-const BASELINE = 5
+const BASELINE = 3
 
 const M = {
     age: 22,
