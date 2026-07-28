@@ -32,7 +32,18 @@ async function build(ctx: ImageRouteContext): Promise<KieImageRequest> {
     const faceFidelityClause = buildFaceFidelityClause(ctx.identityWeight)
     const model = ctx.model
 
-    // Seedream NO es nano → reubica la pose; luego strip ANTES del cap 2400.
+    // DOS techos distintos, que se confundían (2026-07-28):
+    //  · SEEDREAM_HARD_LIMIT = el que impone la API. La doc de KIE dice
+    //    "Max length: 3-5000 characters" para el prompt de Seedream — el 2400
+    //    que había aquí era una SUPOSICIÓN a la mitad del real, y en t2i (sin
+    //    referencia no hay ancla y este cap ES el prompt final) tiraba escenas
+    //    largas por la borda sin necesidad. Se deja margen sobre 5000.
+    //  · SEEDREAM_BUDGET (abajo, 2750) = techo de CALIDAD, no de la API: se
+    //    midió que anclas ~2300 diluyen la cara ("cara/ojos raros"). Ese NO
+    //    sube por conocer el límite real — más texto es peor cara. El límite
+    //    de la API solo dice cuánto cabe; el de calidad, cuánto conviene.
+    const SEEDREAM_HARD_LIMIT = 4800
+    // Seedream NO es nano → reubica la pose; luego strip ANTES del cap.
     let promptText = relocatePoseTag(ctx.prompt)
     if (ctx.referenceImage) {
         promptText = stripIdentityRedundancy(
@@ -42,7 +53,7 @@ async function build(ctx: ImageRouteContext): Promise<KieImageRequest> {
                 (ctx.referenceImages ?? []).some((r) => r.role === 'body'),
         )
     }
-    const capped = capAtWordBoundary(promptText, 2400, model)
+    const capped = capAtWordBoundary(promptText, SEEDREAM_HARD_LIMIT, model)
     let resolvedModel = model
     const input: Record<string, unknown> = {
         prompt: capped,
@@ -284,12 +295,22 @@ async function build(ctx: ImageRouteContext): Promise<KieImageRequest> {
                     `[KIE] Seedream scene re-capped to ${sceneText.length} chars (anchor ${seedreamAnchor.length})`,
                 )
             }
-            if (seedreamAnchor.length > 2400) {
+            // El aviso vigilaba el ancla contra 2400 "por si rebasa el límite
+            // del modelo" — pero el límite real es 5000 y lo que puede
+            // rebasarlo es el TOTAL, no el ancla. Se vigila lo que la API
+            // rechazaría (422) y, aparte, la señal de CALIDAD: un ancla que
+            // pasa del presupuesto es un ancla que diluye la cara.
+            const finalPrompt = `${seedreamAnchor} ${sceneText}`
+            if (finalPrompt.length > SEEDREAM_HARD_LIMIT) {
                 console.warn(
-                    `[KIE] Seedream anchor GRANDE (${seedreamAnchor.length} chars) — riesgo de rebasar el límite del modelo`,
+                    `[KIE] Seedream prompt ${finalPrompt.length} chars — pasa del límite de la API (${SEEDREAM_HARD_LIMIT}), riesgo de 422`,
+                )
+            } else if (seedreamAnchor.length > SEEDREAM_BUDGET) {
+                console.warn(
+                    `[KIE] Seedream ancla ${seedreamAnchor.length} chars sobre un presupuesto de calidad de ${SEEDREAM_BUDGET} — cabe en la API, pero diluye la cara`,
                 )
             }
-            input.prompt = `${seedreamAnchor} ${sceneText}`
+            input.prompt = finalPrompt
             console.log(
                 `[KIE] Seedream i2i (${resolvedModel}) with ${urls.length} ref(s) (roles: face${extras.length > 0 ? ', ' + extras.map((r) => r.role).join(', ') : ''}${hairClause ? ' + hair override' : ''})`,
             )
