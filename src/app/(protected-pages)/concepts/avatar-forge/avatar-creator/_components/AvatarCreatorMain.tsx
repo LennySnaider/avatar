@@ -26,6 +26,11 @@ import BodyLab from '@/components/shared/BodyLab'
 import { sameBodyShape } from '@/utils/bodySheetPrompt'
 import { generateBodySheetPair } from '@/utils/bodySheetGenerate'
 import { urlToDataUrl } from '@/utils/imageStitch'
+import UnsavedChangesDialog, {
+    notifyDiscarded,
+} from '@/components/shared/UnsavedChangesDialog'
+import useUnsavedChangesGuard from '@/utils/hooks/useUnsavedChangesGuard'
+import { isUnpersistedRef } from '@/utils/unsavedFingerprint'
 import {
     getBodyLabModels,
     DEFAULT_PROVIDERS,
@@ -57,6 +62,9 @@ const AvatarCreatorMain = ({
     // DESCARTA tras generar (decisión del usuario); el sheet se genera después
     // con el Auto-Generate existente, una vez APROBADA la frontal.
     const sourcePhotoInputRef = useRef<HTMLInputElement>(null)
+    // Para enfocar el nombre cuando es lo que impide guardar (ver el diálogo
+    // de cambios sin guardar).
+    const nameInputRef = useRef<HTMLInputElement>(null)
     const [isGeneratingFrontal, setIsGeneratingFrontal] = useState(false)
     const [isGeneratingAngle, setIsGeneratingAngle] = useState(false)
     const [previewImage, setPreviewImage] = useState<ReferenceImage | null>(
@@ -77,6 +85,7 @@ const AvatarCreatorMain = ({
         faceDescription,
         isSaving,
         isAnalyzing,
+        isDirty,
         addGeneralReference,
         removeGeneralReference,
         setFaceRef,
@@ -571,14 +580,16 @@ const AvatarCreatorMain = ({
         }
     }
 
-    const handleSave = async () => {
+    /** Devuelve si el guardado tuvo ÉXITO: "Guardar y salir" no puede navegar
+     *  tras un fallo, o perdería justo lo que no se pudo poner a salvo. */
+    const handleSave = async (): Promise<boolean> => {
         if (!avatarName.trim()) {
             toast.push(
                 <Notification type="warning" title="Name Required">
                     Please enter a name for your avatar
                 </Notification>,
             )
-            return
+            return false
         }
 
         if (!hasReferences()) {
@@ -587,7 +598,7 @@ const AvatarCreatorMain = ({
                     Please upload at least one reference image
                 </Notification>,
             )
-            return
+            return false
         }
 
         setIsSaving(true)
@@ -661,6 +672,7 @@ const AvatarCreatorMain = ({
                         : 'Avatar created successfully'}
                 </Notification>,
             )
+            return true
         } catch (error) {
             console.error('Save failed:', error)
             toast.push(
@@ -668,6 +680,7 @@ const AvatarCreatorMain = ({
                     Could not save avatar
                 </Notification>,
             )
+            return false
         } finally {
             setIsSaving(false)
         }
@@ -682,6 +695,72 @@ const AvatarCreatorMain = ({
                     Please save your avatar before going to the studio
                 </Notification>,
             )
+        }
+    }
+
+    // ── Guard de cambios sin guardar ──────────────────────────────────────
+    // Esta PÁGINA no tiene botón de salida propio: se sale por el sidebar, el
+    // logo o el buscador, todos `<Link>` de Next. App Router no expone
+    // `router.events` y `beforeunload` no ve las transiciones de cliente, así
+    // que `interceptLinks` es la única forma de cubrirlos sin tocar los
+    // componentes de navegación.
+    const hasFreshBodySheet =
+        !!bodySheet ||
+        !!bodySheetNude ||
+        isUnpersistedRef(bodyRef) ||
+        isUnpersistedRef(bodyRefNsfw)
+    const guardHook = useUnsavedChangesGuard({
+        isDirty: isDirty || hasFreshBodySheet,
+        interceptLinks: true,
+    })
+    const guardedGoToStudio = guardHook.guard(handleGoToStudio)
+
+    const lostItems = (): string[] => {
+        const items: string[] = []
+        if (hasFreshBodySheet) items.push('La hoja de cuerpo sin guardar')
+        if (avatarName.trim()) items.push('El nombre del avatar')
+        if (generalReferences.length > 0 || faceRef || angleRef) {
+            items.push('Las imágenes de referencia')
+        }
+        items.push('Los atributos físicos y de apariencia')
+        return items
+    }
+
+    // Mismas condiciones que deshabilitan el botón Guardar de la cabecera: el
+    // diálogo no puede ofrecer un guardado que la página rechazaría.
+    const isCleaningRefs = cleaningRefs.face || cleaningRefs.angle
+    const canSave = !!avatarName.trim() && hasReferences() && !isCleaningRefs
+    const saveBlockedReason = !avatarName.trim()
+        ? 'No se puede guardar todavía: ponle un nombre al avatar.'
+        : !hasReferences()
+          ? 'No se puede guardar todavía: sube al menos una imagen de referencia.'
+          : isCleaningRefs
+            ? 'Espera unos segundos: se está limpiando la marca de agua de una referencia.'
+            : undefined
+
+    /**
+     * `reset()` ANTES de navegar, en las dos salidas. El store del Creator es un
+     * singleton de módulo que no se limpia al desmontar: sin esto el avatar
+     * descartado reaparece la próxima vez que entres a crear uno.
+     */
+    const handleDiscard = () => {
+        notifyDiscarded(lostItems(), hasFreshBodySheet)
+        reset()
+        guardHook.proceed()
+    }
+
+    const handleSaveAndExit = async () => {
+        if (await handleSave()) {
+            reset()
+            guardHook.proceedIgnoringDirty()
+        }
+        // Si falló, el diálogo se queda abierto: ya se avisó con su toast.
+    }
+
+    const handleKeepEditing = () => {
+        guardHook.dismiss()
+        if (!avatarName.trim()) {
+            requestAnimationFrame(() => nameInputRef.current?.focus())
         }
     }
 
@@ -825,7 +904,7 @@ const AvatarCreatorMain = ({
                                 variant="solid"
                                 color="green"
                                 icon={<HiOutlineArrowRight />}
-                                onClick={handleGoToStudio}
+                                onClick={guardedGoToStudio}
                             >
                                 Go to Studio
                             </Button>
@@ -861,6 +940,7 @@ const AvatarCreatorMain = ({
                                 Avatar Name
                             </h3>
                             <Input
+                                ref={nameInputRef}
                                 placeholder="Enter a name for your avatar..."
                                 value={avatarName}
                                 onChange={(e) => setAvatarName(e.target.value)}
@@ -1186,6 +1266,19 @@ const AvatarCreatorMain = ({
                     ]
                 })()}
                 onClose={handlePreviewClose}
+            />
+
+            <UnsavedChangesDialog
+                isOpen={!!guardHook.pending}
+                lostItems={lostItems()}
+                hasFreshBodySheet={hasFreshBodySheet}
+                isBusy={isGeneratingBody}
+                canSave={canSave}
+                saveBlockedReason={saveBlockedReason}
+                isSaving={isSaving}
+                onSaveAndExit={handleSaveAndExit}
+                onDiscard={handleDiscard}
+                onKeepEditing={handleKeepEditing}
             />
         </div>
     )

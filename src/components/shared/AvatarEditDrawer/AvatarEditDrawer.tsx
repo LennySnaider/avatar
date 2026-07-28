@@ -33,6 +33,15 @@ import PhysicalAttributesEditor from '@/components/shared/PhysicalAttributesEdit
 import AppearanceEditor from '@/components/shared/AppearanceEditor'
 import BodyLab, { buildMissingSheetNotice } from '@/components/shared/BodyLab'
 import ImageLightbox from '@/components/shared/ImageLightbox'
+import UnsavedChangesDialog, {
+    notifyDiscarded,
+} from '@/components/shared/UnsavedChangesDialog'
+import useUnsavedChangesGuard from '@/utils/hooks/useUnsavedChangesGuard'
+import {
+    fingerprint,
+    measuresKey,
+    refKey,
+} from '@/utils/unsavedFingerprint'
 import { deriveShapeFromMeasurements } from '@/utils/bodyShapes'
 
 // Modelos permisivos aptos para el body sheet (Seedream/Wan), del catálogo de
@@ -109,6 +118,9 @@ const AvatarEditDrawer = ({
     const fileInputRef = useRef<HTMLInputElement>(null)
     const faceInputRef = useRef<HTMLInputElement>(null)
     const angleInputRef = useRef<HTMLInputElement>(null)
+    // Para enfocar el nombre cuando es lo que impide guardar (ver el diálogo
+    // de cambios sin guardar).
+    const nameInputRef = useRef<HTMLInputElement>(null)
 
     const [saveAvatarName, setSaveAvatarName] = useState('')
     const [isAnalyzingFace, setIsAnalyzingFace] = useState(false)
@@ -150,6 +162,28 @@ const AvatarEditDrawer = ({
     const [isGeneratingBody, setIsGeneratingBody] = useState(false)
     const [selectedBodyModel, setSelectedBodyModel] = useState('')
 
+    /**
+     * Huella del formulario para detectar cambios sin guardar. Se comparan
+     * CADENAS y no objetos: las refs llevan la imagen entera en `base64` y un
+     * deep-equal ahí compara megabytes en cada render. Ver `unsavedFingerprint`.
+     */
+    const fingerprintOf = useCallback(
+        (d: Omit<AvatarEditData, 'missingBodySheets'>) =>
+            fingerprint({
+                name: (d.name ?? '').trim(),
+                generalReferences: d.generalReferences.map(refKey),
+                faceRef: refKey(d.faceRef),
+                angleRef: refKey(d.angleRef),
+                bodyRef: refKey(d.bodyRef),
+                bodyRefNsfw: refKey(d.bodyRefNsfw),
+                identityWeight: d.identityWeight,
+                measurements: measuresKey(d.measurements),
+                faceDescription: d.faceDescription,
+            }),
+        [],
+    )
+    const baselineRef = useRef('')
+
     // Sync local state from initialData when drawer opens
     useEffect(() => {
         if (isOpen && initialData) {
@@ -158,7 +192,6 @@ const AvatarEditDrawer = ({
             setLocalAngleRef(initialData.angleRef)
             setLocalBodyRef(initialData.bodyRef)
             setLocalBodyRefNsfw(initialData.bodyRefNsfw ?? null)
-            setBodySheet(null)
             setLocalIdentityWeight(initialData.identityWeight)
             const synced = initialData.measurements.shape
                 ? { ...initialData.measurements }
@@ -172,8 +205,42 @@ const AvatarEditDrawer = ({
             setSheetMeasurements(synced)
             setLocalFaceDescription(initialData.faceDescription)
             setSaveAvatarName(avatarName || initialData.name || '')
+            // Línea base del guard de cambios sin guardar. Se toma con `synced`
+            // y NO con initialData.measurements: este efecto le inyecta `shape`
+            // vía deriveShapeFromMeasurements, así que comparar contra el crudo
+            // marcaría como modificado a todo avatar con solo abrirlo.
+            baselineRef.current = fingerprintOf({
+                name: avatarName || initialData.name || '',
+                generalReferences: initialData.generalReferences,
+                faceRef: initialData.faceRef,
+                angleRef: initialData.angleRef,
+                bodyRef: initialData.bodyRef,
+                bodyRefNsfw: initialData.bodyRefNsfw ?? null,
+                identityWeight: initialData.identityWeight,
+                measurements: synced,
+                faceDescription: initialData.faceDescription,
+            })
         }
-    }, [isOpen, initialData, avatarName])
+    }, [isOpen, initialData, avatarName, fingerprintOf])
+
+    /**
+     * Reset de la SESIÓN del Body Lab, en su propio efecto y solo en la
+     * transición de apertura.
+     *
+     * Dos bugs de una (2026-07-28):
+     *  · `bodySheetNude` no se reseteaba nunca — el drawer vive SIEMPRE montado,
+     *    así que la hoja NSFW de un avatar se filtraba al siguiente que abrías.
+     *  · El reset vivía en el efecto de sync, que depende de `initialData`. Ese
+     *    prop lo carga el padre de forma asíncrona, así que si llegaba tarde
+     *    borraba una hoja recién generada. Con deps `[isOpen]` eso no puede
+     *    pasar: solo se limpia al abrir.
+     */
+    useEffect(() => {
+        if (!isOpen) return
+        setBodySheet(null)
+        setBodySheetNude(null)
+        setBodySheetModel('')
+    }, [isOpen])
 
     // Default del selector de modelo del Body Lab (primer permisivo).
     useEffect(() => {
@@ -203,6 +270,61 @@ const AvatarEditDrawer = ({
         measurements: localMeasurements,
         faceDescription: localFaceDescription,
     })
+
+    // ── Guard de cambios sin guardar ──────────────────────────────────────
+    // Sin esto, la X y "Cancel" tiraban en silencio una hoja de cuerpo recién
+    // generada, que KIE ya cobró y que solo vive en memoria hasta Guardar.
+    const hasFreshBodySheet = !!bodySheet || !!bodySheetNude
+    const isDirty =
+        !!initialData && fingerprintOf(getCurrentData()) !== baselineRef.current
+    const guardHook = useUnsavedChangesGuard({ isDirty })
+    const guardedClose = guardHook.guard(onClose)
+
+    /** Lo que el usuario perdería, para que el diálogo lo nombre. */
+    const lostItems = (): string[] => {
+        if (!initialData) return []
+        const items: string[] = []
+        if (hasFreshBodySheet) items.push('La hoja de cuerpo recién generada')
+        if ((saveAvatarName || '').trim() !== (initialData.name ?? '').trim()) {
+            items.push('El nombre del avatar')
+        }
+        if (measuresKey(localMeasurements) !== measuresKey(initialData.measurements)) {
+            items.push('Los atributos físicos y de apariencia')
+        }
+        if (
+            localGeneralRefs.map(refKey).join() !==
+                initialData.generalReferences.map(refKey).join() ||
+            refKey(localFaceRef) !== refKey(initialData.faceRef) ||
+            refKey(localAngleRef) !== refKey(initialData.angleRef)
+        ) {
+            items.push('Las imágenes de referencia')
+        }
+        return items.length > 0 ? items : ['Los cambios del formulario']
+    }
+
+    // Mismas condiciones que deshabilitan el botón Guardar del footer: el
+    // diálogo no puede ofrecer un guardado que el drawer rechazaría.
+    const isCleaningRefs = cleaningRefs.face || cleaningRefs.angle
+    const canSave = !!saveAvatarName.trim() && !isCleaningRefs
+    const saveBlockedReason = !saveAvatarName.trim()
+        ? 'No se puede guardar todavía: ponle un nombre al avatar.'
+        : isCleaningRefs
+          ? 'Espera unos segundos: se está limpiando la marca de agua de una referencia.'
+          : undefined
+
+    const handleDiscard = () => {
+        notifyDiscarded(lostItems(), hasFreshBodySheet)
+        guardHook.proceed()
+    }
+
+    const handleKeepEditing = () => {
+        guardHook.dismiss()
+        // Si el bloqueo es el nombre, se enfoca: dejar al usuario delante de un
+        // "Guardar" apagado y un "Descartar" rojo es empujarlo a lo destructivo.
+        if (!saveAvatarName.trim()) {
+            requestAnimationFrame(() => nameInputRef.current?.focus())
+        }
+    }
 
     const handlePreviewClose = useCallback(() => {
         setPreviewImage(null)
@@ -351,10 +473,35 @@ const AvatarEditDrawer = ({
     const handleSave = async () => {
         if (onSave && saveAvatarName.trim()) {
             await onSave(saveAvatarName.trim(), getCurrentData())
+            // El guard no debe preguntar por un cierre que viene JUSTO de
+            // guardar: `isDirty` todavía no propagó cuando esto corre.
+            guardHook.bypassOnce()
             // Guardar es el final natural de editar — antes cerraba «Apply
             // Changes» y el flujo de guardar dejaba el drawer abierto.
             onClose()
         }
+    }
+
+    /**
+     * "Guardar y salir" del diálogo. Si el guardado FALLA, el diálogo se queda
+     * abierto con las otras dos opciones — cerrar igual sería perder el trabajo
+     * justo en el momento en que no se pudo poner a salvo. Depende de que
+     * `onSave` re-lance el error (ver AvatarCard.handleSaveFromDrawer).
+     */
+    const handleSaveAndExit = async () => {
+        try {
+            await handleSave()
+            guardHook.proceedIgnoringDirty()
+        } catch {
+            // El host ya avisó con su propio toast; se mantiene el diálogo.
+        }
+    }
+
+    /** Guardado desde el botón del footer. `handleSave` ahora propaga el error
+     *  (lo necesita el diálogo), así que aquí hay que absorberlo o quedaría una
+     *  promesa rechazada sin manejar; el host ya avisó con su toast. */
+    const handleSaveClick = () => {
+        handleSave().catch(() => {})
     }
 
     // Analyze face from images
@@ -726,7 +873,14 @@ const AvatarEditDrawer = ({
                     </div>
                 }
                 isOpen={isOpen}
-                onClose={onClose}
+                onClose={guardedClose}
+                // onRequestClose es lo que react-modal usa para ESC: no se
+                // pasaba, así que ESC no hacía nada. Ahora cierra, pero pasando
+                // por el guard. El click en el backdrop se deja DESACTIVADO a
+                // propósito: un panel de 480px lleno de sliders al lado de un
+                // backdrop enorme es un imán de clicks perdidos.
+                onRequestClose={guardedClose}
+                shouldCloseOnOverlayClick={false}
                 placement="right"
                 width={480}
             >
@@ -1033,20 +1187,21 @@ const AvatarEditDrawer = ({
                         {showSaveToDb && onSave && (
                             <>
                                 <Input
+                                    ref={nameInputRef}
                                     placeholder="Nombre del avatar..."
                                     value={saveAvatarName}
                                     onChange={(e) =>
                                         setSaveAvatarName(e.target.value)
                                     }
                                     onKeyDown={(e) =>
-                                        e.key === 'Enter' && handleSave()
+                                        e.key === 'Enter' && handleSaveClick()
                                     }
                                 />
                                 <div className="flex gap-2">
                                     <Button
                                         variant="solid"
                                         icon={<HiOutlineSave />}
-                                        onClick={handleSave}
+                                        onClick={handleSaveClick}
                                         loading={isSaving}
                                         className="flex-1"
                                         disabled={
@@ -1059,7 +1214,10 @@ const AvatarEditDrawer = ({
                                             ? 'Limpiando marca…'
                                             : 'Save Avatar'}
                                     </Button>
-                                    <Button variant="plain" onClick={onClose}>
+                                    <Button
+                                        variant="plain"
+                                        onClick={guardedClose}
+                                    >
                                         Cancel
                                     </Button>
                                 </div>
@@ -1090,6 +1248,19 @@ const AvatarEditDrawer = ({
                     ]
                 })()}
                 onClose={handlePreviewClose}
+            />
+
+            <UnsavedChangesDialog
+                isOpen={!!guardHook.pending}
+                lostItems={lostItems()}
+                hasFreshBodySheet={hasFreshBodySheet}
+                isBusy={isGeneratingBody}
+                canSave={canSave}
+                saveBlockedReason={saveBlockedReason}
+                isSaving={isSaving}
+                onSaveAndExit={handleSaveAndExit}
+                onDiscard={handleDiscard}
+                onKeepEditing={handleKeepEditing}
             />
         </>
     )

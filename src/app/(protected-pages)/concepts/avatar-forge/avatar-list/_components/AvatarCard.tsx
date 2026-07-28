@@ -433,6 +433,11 @@ const AvatarCard = ({ avatar }: AvatarCardProps) => {
                     Failed to save changes
                 </Notification>,
             )
+            // Se RE-LANZA (2026-07-28): el drawer necesita distinguir "guardé"
+            // de "no pude". Con el guard de cambios sin guardar, tragarse el
+            // error hacía que «Guardar y salir» cerrara igual y perdiera el
+            // trabajo justo cuando no se pudo poner a salvo.
+            throw error
         } finally {
             setIsSaving(false)
         }
