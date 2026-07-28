@@ -19,6 +19,8 @@ import { useRouter } from 'next/navigation'
 interface AvatarWithRefs extends Avatar {
     avatar_references?: AvatarReference[]
     thumbnailUrl?: string | null
+    /** Candidatos ordenados (nuevas primero) — ver AvatarGridPicker. */
+    thumbnailCandidates?: string[]
 }
 
 interface AvatarSelectorProps {
@@ -105,14 +107,24 @@ const AvatarSelector = ({ userId, isOpen, onClose }: AvatarSelectorProps) => {
             const data = await apiGetAvatars()
             const avatarsWithThumbnails = data.map((avatar) => {
                 const refs = avatar.avatar_references ?? []
-                const thumbnailRef =
-                    refs.find((r) => r.type === 'face') || refs[0]
+                // Candidatos: nuevas primero (created_at desc) dentro de cada
+                // tipo — durante la ventana del trasplante la re-subida es la
+                // que tiene bytes y la fila vieja 404ea. El grid avanza solo.
+                const byNewest = (a: { created_at?: string | null }, b: { created_at?: string | null }) =>
+                    (b.created_at ?? '').localeCompare(a.created_at ?? '')
+                const ordered = [
+                    ...refs.filter((r) => r.type === 'face').sort(byNewest),
+                    ...refs.filter((r) => r.type === 'angle').sort(byNewest),
+                    ...refs.filter((r) => r.type === 'general').sort(byNewest),
+                ]
+                const candidates = ordered.map((r) =>
+                    getStoragePublicUrl('avatars', r.storage_path),
+                )
                 return {
                     ...avatar,
                     avatar_references: refs,
-                    thumbnailUrl: thumbnailRef
-                        ? getStoragePublicUrl('avatars', thumbnailRef.storage_path)
-                        : null,
+                    thumbnailUrl: candidates[0] ?? null,
+                    thumbnailCandidates: candidates,
                 }
             })
             setAvatars(avatarsWithThumbnails)
@@ -347,6 +359,7 @@ const AvatarSelector = ({ userId, isOpen, onClose }: AvatarSelectorProps) => {
                                 id: a.id,
                                 name: a.name,
                                 thumbnailUrl: a.thumbnailUrl,
+                                thumbnailCandidates: a.thumbnailCandidates,
                                 subtitle: `${a.avatar_references?.length || 0} refs`,
                             }))}
                             selectedId={selectedAvatarId}

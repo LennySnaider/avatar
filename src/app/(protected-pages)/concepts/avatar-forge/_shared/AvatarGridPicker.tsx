@@ -1,13 +1,43 @@
 'use client'
 
+import { useState } from 'react'
 import { HiOutlineUser, HiOutlineCheck } from 'react-icons/hi'
 
 export interface AvatarGridItem {
     id: string
     name: string
     thumbnailUrl?: string | null
+    /** CANDIDATOS de miniatura en orden de preferencia. Existe por la ventana
+     * del trasplante: conviven refs viejas (sin bytes → 404) y re-subidas
+     * nuevas del mismo tipo, y quedarse con la primera deja la card rota
+     * aunque haya una buena detrás. El <img> avanza al siguiente en onError. */
+    thumbnailCandidates?: string[]
     /** Línea secundaria opcional bajo el nombre (p.ej. "3 refs"). */
     subtitle?: string
+}
+
+/** Miniatura que PRUEBA candidatos: si uno 404ea, pasa al siguiente; si se
+ * agotan, cae al placeholder de persona. */
+const CandidateThumb = ({ candidates, alt }: { candidates: string[]; alt: string }) => {
+    const [idx, setIdx] = useState(0)
+    if (idx >= candidates.length) {
+        return (
+            <div className="w-full aspect-square bg-gray-200 dark:bg-gray-800 flex items-center justify-center">
+                <HiOutlineUser className="w-10 h-10 text-gray-400" />
+            </div>
+        )
+    }
+    return (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+            src={candidates[idx]}
+            alt={alt}
+            className="w-full aspect-square object-cover"
+            loading="lazy"
+            decoding="async"
+            onError={() => setIdx((i) => i + 1)}
+        />
+    )
 }
 
 interface AvatarGridPickerProps {
@@ -54,7 +84,12 @@ const AvatarGridPicker = ({
                               : 'border-transparent hover:border-gray-300 dark:hover:border-gray-600'
                     } ${disabled ? 'opacity-50 cursor-wait' : ''}`}
                 >
-                    {item.thumbnailUrl ? (
+                    {(item.thumbnailCandidates?.length ?? 0) > 0 ? (
+                        <CandidateThumb
+                            candidates={item.thumbnailCandidates!}
+                            alt={item.name}
+                        />
+                    ) : item.thumbnailUrl ? (
                         // eslint-disable-next-line @next/next/no-img-element
                         <img
                             src={item.thumbnailUrl}
