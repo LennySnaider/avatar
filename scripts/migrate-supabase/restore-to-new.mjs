@@ -17,11 +17,19 @@
 import { readFileSync, readdirSync } from 'node:fs'
 
 const env = readFileSync(new URL('../../.env', import.meta.url), 'utf8')
-const get = (k) => env.match(new RegExp(`^${k}=(.+)$`, 'm'))?.[1].trim().replace(/^["']|["']$/g, '')
-const token = get('SUPABASE_ACCESS_TOKEN')
-const NEW_URL = get('NEW_SUPABASE_URL')
-const NEW_KEY = get('NEW_SUPABASE_SERVICE_ROLE_KEY')
-if (!token || !NEW_URL || !NEW_KEY) throw new Error('faltan SUPABASE_ACCESS_TOKEN / NEW_SUPABASE_URL / NEW_SUPABASE_SERVICE_ROLE_KEY')
+const get = (...keys) => {
+    for (const k of keys) {
+        const m = env.match(new RegExp(`^${k}=(.+)$`, 'm'))
+        if (m) return m[1].trim().replace(/^["']|["']$/g, '')
+    }
+}
+// El proyecto nuevo vive en OTRA CUENTA (el PAT viejo devuelve 403 ahi), asi
+// que el DDL usa su propio token. Los nombres alternativos son los que el
+// dashboard nuevo genera (formato sb_publishable_/sb_secret_).
+const token = get('NEW_SUPABASE_ACCESS_TOKEN')
+const NEW_URL = get('NEW_SUPABASE_URL', 'NEW_NEXT_PUBLIC_SUPABASE_URL')
+const NEW_KEY = get('NEW_SUPABASE_SERVICE_ROLE_KEY', 'SUPABASE_SECRET_KEY')
+if (!token || !NEW_URL || !NEW_KEY) throw new Error('faltan NEW_SUPABASE_ACCESS_TOKEN / NEW_*_URL / secret key')
 const newRef = NEW_URL.match(/https:\/\/([a-z0-9]+)\./)[1]
 const BACKUP = new URL('../../.backup-supabase/', import.meta.url).pathname
 
