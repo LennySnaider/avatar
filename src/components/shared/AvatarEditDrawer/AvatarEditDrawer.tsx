@@ -1,6 +1,7 @@
 'use client'
 
 import { useRef, useCallback, useState, useEffect } from 'react'
+import { apiFetchUrlAsDataUrl } from '@/services/AvatarForgeService'
 import Drawer from '@/components/ui/Drawer'
 import Button from '@/components/ui/Button'
 import Input from '@/components/ui/Input'
@@ -502,13 +503,25 @@ const AvatarEditDrawer = ({
     ): Promise<AvatarReferenceImage> => {
         let dataUrl = url
         if (!url.startsWith('data:')) {
-            const blob = await fetch(url).then((r) => r.blob())
-            dataUrl = await new Promise<string>((resolve, reject) => {
-                const reader = new FileReader()
-                reader.onloadend = () => resolve(reader.result as string)
-                reader.onerror = reject
-                reader.readAsDataURL(blob)
-            })
+            try {
+                const blob = await fetch(url).then((r) => {
+                    if (!r.ok) throw new Error(`HTTP ${r.status}`)
+                    return r.blob()
+                })
+                dataUrl = await new Promise<string>((resolve, reject) => {
+                    const reader = new FileReader()
+                    reader.onloadend = () => resolve(reader.result as string)
+                    reader.onerror = reject
+                    reader.readAsDataURL(blob)
+                })
+            } catch (err) {
+                // CDNs sin CORS (MuleRouter siempre, KIE según host) matan el
+                // fetch del navegador aunque la URL sirva. El servidor no
+                // tiene CORS: mismo contenido, otra puerta.
+                console.info('[body-sheet] fetch directo falló, vía servidor:', err)
+                const { base64, mimeType } = await apiFetchUrlAsDataUrl(url)
+                dataUrl = `data:${mimeType};base64,${base64}`
+            }
         }
         const matches = dataUrl.match(/^data:(.+);base64,(.+)$/)
         if (!matches) throw new Error('Invalid image data returned')

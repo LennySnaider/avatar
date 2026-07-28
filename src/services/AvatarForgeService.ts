@@ -487,6 +487,30 @@ async function assertPathInOrg(ctx: OrgContext, path: string) {
  * Sign a storage path for reading. Solo se emiten URLs firmadas para rutas
  * dentro de los prefijos de la org del caller.
  */
+/**
+ * Lee una URL de media DESDE EL SERVIDOR y la devuelve como base64.
+ *
+ * Existe porque algunos CDNs de proveedor (MuleRouter siempre; KIE según el
+ * host) no mandan cabeceras CORS y el `fetch` del navegador muere con
+ * "Failed to fetch" aunque la URL funcione. En el servidor CORS no existe.
+ * Es el fallback de los flujos que necesitan los BYTES (base64 para
+ * guardar/re-enviar), no solo pintar — un <img> no necesita esto.
+ */
+export async function apiFetchUrlAsDataUrl(
+    url: string,
+): Promise<{ base64: string; mimeType: string }> {
+    await getOrgContext() // autenticado: no es un proxy abierto
+    if (!/^https:\/\//.test(url)) throw new Error('Solo https')
+    const res = await fetch(url, { signal: AbortSignal.timeout(60_000) })
+    if (!res.ok) throw new Error(`fetch ${res.status}`)
+    const buf = Buffer.from(await res.arrayBuffer())
+    if (buf.byteLength > 40 * 1024 * 1024) throw new Error('media demasiado grande (40MB)')
+    return {
+        base64: buf.toString('base64'),
+        mimeType: res.headers.get('content-type')?.split(';')[0] || 'image/png',
+    }
+}
+
 export async function getSignedUrl(
     bucket: string,
     path: string,
