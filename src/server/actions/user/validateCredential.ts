@@ -36,8 +36,15 @@ const validateCredential = async (values: SignInCredential) => {
         .ilike('email', emailPattern)
         .maybeSingle()
     if (error) {
+        // NO devolver null: null significa "credenciales incorrectas" y la UI
+        // lo dice tal cual. Un fallo de la BASE (proyecto restringido por
+        // cuota, red, service key equivocada) acusaba al usuario de teclear
+        // mal su propia contraseña — y mandaba a buscar al sitio equivocado
+        // (2026-07-28: prod apuntando al proyecto viejo se veía como
+        // "Invalid credentials"). Lanzar hace que NextAuth propague un error
+        // de servidor, distinguible del de credenciales.
         console.error('validateCredential lookup failed:', error.message)
-        return null
+        throw new Error(`No se pudo consultar la base de usuarios: ${error.message}`)
     }
 
     const user = data as DbUser | null
