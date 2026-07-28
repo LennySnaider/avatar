@@ -13,6 +13,7 @@ import type { Avatar, AvatarReference, PhysicalMeasurements } from '@/@types/sup
 async function downloadViaSignedUrl(bucket: string, path: string): Promise<Blob | null> {
     try {
         const url = await getSignedUrl(bucket, path)
+        if (!url) return null
         const res = await fetch(url)
         if (!res.ok) return null
         return await res.blob()

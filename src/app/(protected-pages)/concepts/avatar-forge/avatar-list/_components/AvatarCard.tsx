@@ -90,8 +90,10 @@ const AvatarCard = ({ avatar }: AvatarCardProps) => {
                     'avatars',
                     previewImage.storage_path,
                 )
-                const res = await fetch(signedUrl)
-                const data = res.ok ? await res.blob() : null
+                // null = bytes aún en el proyecto viejo (ventana del
+                // trasplante) → placeholder, sin ruido.
+                const res = signedUrl ? await fetch(signedUrl) : null
+                const data = res?.ok ? await res.blob() : null
 
                 if (!data) {
                     setIsLoadingThumbnail(false)
@@ -143,8 +145,8 @@ const AvatarCard = ({ avatar }: AvatarCardProps) => {
                         'avatars',
                         ref.storage_path,
                     )
-                    const res = await fetch(signedUrl)
-                    const data = res.ok ? await res.blob() : null
+                    const res = signedUrl ? await fetch(signedUrl) : null
+                    const data = res?.ok ? await res.blob() : null
 
                     if (!data) continue
 

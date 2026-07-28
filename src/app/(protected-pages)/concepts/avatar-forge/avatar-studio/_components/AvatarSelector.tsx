@@ -147,6 +147,8 @@ const AvatarSelector = ({ userId, isOpen, onClose }: AvatarSelectorProps) => {
     const downloadReferenceWithThumbnail = async (storagePath: string): Promise<{ base64: string; url: string; thumbnailUrl: string }> => {
         try {
             const signedUrl = await getSignedUrl('avatars', storagePath)
+            // La convención de esta función para "no hay" son strings vacíos.
+            if (!signedUrl) return { base64: '', url: '', thumbnailUrl: '' }
             const res = await fetch(signedUrl)
             const data = res.ok ? await res.blob() : null
 

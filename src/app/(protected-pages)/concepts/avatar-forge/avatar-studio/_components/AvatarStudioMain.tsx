@@ -453,6 +453,9 @@ async function hydrateSheetFromDb(
         return null
     }
     const signed = await getSignedUrl('avatars', row.storage_path)
+    // null = bytes en el proyecto viejo (ventana del trasplante) → la ref se
+    // salta y la generación sigue con las que sí estén.
+    if (!signed) return null
     const dataUrl = await urlToDataUrl(signed)
     const mm = dataUrl.match(/^data:(.+);base64,(.+)$/)
     if (!mm) return null

@@ -491,7 +491,7 @@ export async function getSignedUrl(
     bucket: string,
     path: string,
     expiresIn: number = 3600
-): Promise<string> {
+): Promise<string | null> {
     const ctx = await getOrgContext()
     await assertPathInOrg(ctx, path)
     const supabase = orgSupabase()
@@ -499,7 +499,15 @@ export async function getSignedUrl(
         .from(bucket)
         .createSignedUrl(path, expiresIn)
 
-    if (error) throw error
+    if (error) {
+        // TRASPLANTE (2026-07-28→12-ago): las filas viven en el proyecto
+        // nuevo pero los BYTES de refs/voces siguen en el viejo (bloqueado)
+        // hasta que corra el sanador. "No existe" es un estado ESPERADO de
+        // esa ventana, no una excepción: null → la UI muestra su fallback.
+        // Cualquier otro error sigue lanzando.
+        if (/not.?found/i.test(error.message)) return null
+        throw error
+    }
     return data.signedUrl
 }
 

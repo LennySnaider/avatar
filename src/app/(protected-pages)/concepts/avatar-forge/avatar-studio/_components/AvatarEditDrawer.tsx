@@ -188,6 +188,7 @@ const AvatarEditDrawer = ({
                 )
                     return
                 const signed = await getSignedUrl('avatars', row.storage_path)
+                if (!signed) return
                 const dataUrl = await urlToDataUrl(signed)
                 const m = dataUrl.match(/^data:(.+);base64,(.+)$/)
                 if (!m || cancelled) return

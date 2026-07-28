@@ -25,6 +25,7 @@ interface AvatarStudioProviderProps {
 const downloadAndConvertToBase64 = async (bucket: string, path: string): Promise<{ base64: string; url: string }> => {
     try {
         const signedUrl = await getSignedUrl(bucket, path)
+        if (!signedUrl) throw new Error('missing object (transplant window)')
         const res = await fetch(signedUrl)
         const data = res.ok ? await res.blob() : null
 
