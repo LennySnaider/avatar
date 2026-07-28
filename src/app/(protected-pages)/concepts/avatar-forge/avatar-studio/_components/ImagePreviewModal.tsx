@@ -517,10 +517,11 @@ const ImagePreviewModal = ({
         if (!last || !canvas || !isDrawingMask) return
         const rect = canvas.getBoundingClientRect()
         if (rect.width === 0) return
+        const k = canvas.offsetWidth / canvas.width || 1
         setCursorPreview({
-            x: ((last.x - rect.left) * canvas.width) / rect.width,
-            y: ((last.y - rect.top) * canvas.height) / rect.height,
-            size: brushSize,
+            x: ((last.x - rect.left) * canvas.width) / rect.width * k,
+            y: ((last.y - rect.top) * canvas.height) / rect.height * k,
+            size: brushSize * k,
         })
     }, [zoomLevel, pan, brushSize, isDrawingMask])
 
@@ -912,8 +913,14 @@ const ImagePreviewModal = ({
     // Update canvas size to match displayed image dimensions
     const updateCanvasSize = useCallback(() => {
         if (imageRef.current) {
-            const rect = imageRef.current.getBoundingClientRect()
-            setCanvasSize({ width: rect.width, height: rect.height })
+            // offsetWidth/Height = tamaño de LAYOUT, SIN el transform del zoom.
+            // Con getBoundingClientRect() el bitmap nacía escalado (entrar al
+            // pincel al 167% lo hacía 1.67x más grande que su contenedor), y
+            // el indicador se desplazaba en esa misma proporción.
+            setCanvasSize({
+                width: imageRef.current.offsetWidth,
+                height: imageRef.current.offsetHeight,
+            })
         }
     }, [])
 
@@ -931,7 +938,12 @@ const ImagePreviewModal = ({
                 window.removeEventListener('resize', updateCanvasSize)
             }
         }
-    }, [isEditing, updateCanvasSize])
+        // `viewport` entra en las dependencias porque el tamaño de LAYOUT de la
+        // imagen depende de él (maxWidth/maxHeight medidos): si el área se
+        // reparte después del primer render, el bitmap tiene que volver a
+        // medirse o queda de un tamaño que ya no corresponde.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [isEditing, updateCanvasSize, viewport.w, viewport.h])
 
     // Del rect MOSTRADO al bitmap. Ya no es 1:1: con zoom el canvas se estira
     // por CSS mientras su bitmap se queda al tamaño de "fit", asi que hay que
@@ -975,7 +987,15 @@ const ImagePreviewModal = ({
         // de pantalla —que ya vienen escaladas— lo multiplicaba dos veces y
         // por eso derivaba al alejarse del origen.
         lastClientRef.current = { x: e.clientX, y: e.clientY }
-        setCursorPreview({ x: coords.x, y: coords.y, size: brushSize })
+        // Bitmap → px de LAYOUT del contenedor (que es donde se posiciona la
+        // preview). Normalmente la razón es 1; explicitarla hace que un
+        // desajuste entre ambos no vuelva a desplazar el indicador.
+        const k = canvasRef.current.offsetWidth / canvasRef.current.width || 1
+        setCursorPreview({
+            x: coords.x * k,
+            y: coords.y * k,
+            size: brushSize * k,
+        })
 
         if (!isDrawingRef.current || !isDrawingMask) return
 
