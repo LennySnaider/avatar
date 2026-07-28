@@ -58,6 +58,25 @@ export interface ImageRouteContext {
      */
     bodySheetNude?: boolean
     /**
+     * El prompt YA es completo y auto-contenido: la ruta NO debe envolverlo en
+     * su ancla de identidad ni recortarlo contra el presupuesto de escena.
+     *
+     * Existe por el Body Lab (2026-07-28). Sus hojas no son "un avatar en una
+     * escena" —son la DEFINICIÓN del cuerpo—, y su prompt ya trae dentro todo
+     * lo que el ancla intenta aportar (qué es la referencia, qué copiar de
+     * ella, qué no). Al tratarlas como escena, el ancla de Seedream (~1.370
+     * chars, hablando de una cara que la plantilla no aporta) se comía la mitad
+     * del presupuesto y decapitaba la hoja a ~1.379 chars: se perdían tono de
+     * piel, consistencia entre vistas, anclas de fotorrealismo y negativos.
+     *
+     * Peor: el corte caía en OFFSETS DISTINTOS para la variante vestida y la
+     * nude (su cláusula de vestuario mide distinto y va ANTES del spec), así
+     * que cada hoja se quedaba con un spec de cuerpo diferente —la vestida
+     * conservaba "extremely thick, heavy, massive thighs" y la nude no— y las
+     * dos hojas del MISMO avatar salían con cuerpos distintos.
+     */
+    selfContainedPrompt?: boolean
+    /**
      * Region a editar en PIXELES de la imagen original [x1,y1,x2,y2].
      *
      * Wan 2.7 (base y pro) la acepta como `bbox_list`, un canal NATIVO. Es la

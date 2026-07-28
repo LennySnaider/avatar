@@ -102,6 +102,18 @@ async function build(ctx: ImageRouteContext): Promise<KieImageRequest> {
                     ? 'seedream/4.5-edit'
                     : model.replace('text-to-image', 'image-to-image')
             input.image_urls = urls
+            // PROMPT AUTO-CONTENIDO (Body Lab): las refs se suben igual y el
+            // modelo se resuelve a i2i, pero el prompt viaja TAL CUAL. Sin
+            // ancla no hay presupuesto de escena que lo recorte, así que la
+            // hoja llega entera y las variantes vestida/nude solo difieren en
+            // su cláusula de vestuario — que es justo lo que las hacía
+            // divergir. Ver `selfContainedPrompt` en context.ts.
+            if (ctx.selfContainedPrompt) {
+                console.log(
+                    `[KIE] Seedream i2i (${resolvedModel}) prompt auto-contenido (${String(input.prompt).length} chars) — sin ancla de identidad`,
+                )
+                return { model: resolvedModel, input, fullApiPrompt: promptText }
+            }
             // hasBody: además de señalar la imagen 2, se RE-ANCLAN las medidas
             // en TEXTO (bodyEmphasis). Sin esto el cuerpo dependía 100% de que
             // Seedream obedeciera la imagen 2 — y su sesgo documentado es el
