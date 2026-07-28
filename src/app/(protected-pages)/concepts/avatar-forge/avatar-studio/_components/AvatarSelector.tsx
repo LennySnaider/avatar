@@ -200,6 +200,11 @@ const AvatarSelector = ({ userId, isOpen, onClose }: AvatarSelectorProps) => {
             // Convert to ReferenceImage format with thumbnails and set in store
             for (const ref of refs) {
                 const { base64, url, thumbnailUrl } = await downloadReferenceWithThumbnail(ref.storage_path)
+                // Ref sin bytes (ventana del trasplante: la fila existe, el
+                // archivo sigue en el proyecto viejo) → NO entra al store.
+                // Una ref con url:'' acababa como <img src=""> en la barra y
+                // como base64 vacío camino de los proveedores.
+                if (!base64 || !url) continue
                 const refImage: ReferenceImage = {
                     id: ref.id,
                     url,
