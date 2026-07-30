@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/auth'
 import { uploadBufferToGenerations } from '@/lib/mediaPersist'
+import { orgStoragePath } from '@/lib/storagePaths'
+import { getOrgContextForUser } from '@/lib/tenant/getOrgContext'
 
 /**
  * Sube un audio procesado en el navegador (p.ej. TTS con EQ horneado vía
@@ -11,6 +13,11 @@ export async function POST(req: NextRequest) {
     const session = await auth()
     if (!session?.user?.id) {
         return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+
+    const ctx = await getOrgContextForUser(session.user.id)
+    if (!ctx) {
+        return NextResponse.json({ error: 'No organization membership' }, { status: 403 })
     }
 
     const formData = await req.formData()
@@ -27,7 +34,11 @@ export async function POST(req: NextRequest) {
 
     try {
         const buffer = Buffer.from(await audio.arrayBuffer())
-        const fileName = `${session.user.id}/audios/eq-${Date.now()}.${ext}`
+        const fileName = orgStoragePath(
+            ctx.organizationId,
+            'audios',
+            `eq-${Date.now()}.${ext}`,
+        )
         const audioUrl = await uploadBufferToGenerations(buffer, fileName, contentType)
         return NextResponse.json({ success: true, audioUrl })
     } catch (error) {

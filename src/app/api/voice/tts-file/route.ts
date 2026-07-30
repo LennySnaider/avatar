@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/auth'
 import { textToSpeech } from '@/services/MiniMaxService'
 import { uploadBufferToGenerations } from '@/lib/mediaPersist'
+import { orgStoragePath } from '@/lib/storagePaths'
+import { getOrgContextForUser } from '@/lib/tenant/getOrgContext'
 
 /**
  * TTS que PERSISTE el mp3 en el bucket `generations` y devuelve una URL
@@ -13,6 +15,11 @@ export async function POST(req: NextRequest) {
     const session = await auth()
     if (!session?.user?.id) {
         return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+
+    const ctx = await getOrgContextForUser(session.user.id)
+    if (!ctx) {
+        return NextResponse.json({ error: 'No organization membership' }, { status: 403 })
     }
 
     const body = await req.json()
@@ -35,7 +42,11 @@ export async function POST(req: NextRequest) {
             language,
         })
 
-        const fileName = `${session.user.id}/audios/${Date.now()}.mp3`
+        const fileName = orgStoragePath(
+            ctx.organizationId,
+            'audios',
+            `${Date.now()}.mp3`,
+        )
         const audioUrl = await uploadBufferToGenerations(audioBuffer, fileName, 'audio/mpeg')
 
         return NextResponse.json({ success: true, audioUrl, durationMs, characters })

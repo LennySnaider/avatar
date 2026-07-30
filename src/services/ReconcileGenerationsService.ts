@@ -13,6 +13,8 @@
  */
 import { getOrgContext } from '@/lib/tenant/getOrgContext'
 import { orgSupabase } from '@/lib/org/orgTable'
+import { orgStoragePath } from '@/lib/storagePaths'
+import { settleHoldByRef, refundHoldByRef } from '@/lib/billing/wallet'
 import { checkKieImageTask } from '@/services/KieService'
 import {
     checkMuleRouterImageTask,
@@ -41,7 +43,7 @@ export interface ReconcileResult {
  * entrega basura es peor que uno que falla.
  */
 async function persistRemoteMedia(
-    userId: string,
+    organizationId: string,
     url: string,
     mediaType: string,
 ): Promise<string> {
@@ -51,10 +53,12 @@ async function persistRemoteMedia(
     }
     const buffer = Buffer.from(await res.arrayBuffer())
     const isVideo = mediaType === 'VIDEO'
-    // Mismo layout que el auto-save del Studio.
-    const path = `${userId}/${isVideo ? 'videos' : 'images'}/${Date.now()}.${
-        isVideo ? 'mp4' : 'jpg'
-    }`
+    // Mismo layout que el auto-save del Studio (F4.2.c: scope de org).
+    const path = orgStoragePath(
+        organizationId,
+        isVideo ? 'videos' : 'images',
+        `${Date.now()}.${isVideo ? 'mp4' : 'jpg'}`,
+    )
     const { error } = await orgSupabase()
         .storage.from('generations')
         .upload(path, buffer, {
@@ -103,8 +107,21 @@ export async function apiReconcilePendingGenerations(): Promise<ReconcileResult>
                 continue
             }
 
+            // F5.4 — la referencia con la que el ledger conoce esta tarea.
+            const holdRef =
+                row.provider === 'mulerouter' ? 'mulerouter_task' : 'kie_task'
+
             if (status.status === 'failed') {
                 out.failed++
+                // El proveedor no entregó nada → no se le cobra al cliente.
+                // Sin esto, una tarea fallida se queda cobrada para siempre: el
+                // hold ya debitó el saldo y nadie lo devuelve.
+                await refundHoldByRef(
+                    holdRef,
+                    row.task_id,
+                    'provider_task_failed',
+                    { ctx },
+                )
                 await orgSupabase()
                     .from('pending_generations')
                     .delete()
@@ -113,7 +130,7 @@ export async function apiReconcilePendingGenerations(): Promise<ReconcileResult>
             }
 
             const path = await persistRemoteMedia(
-                ctx.userId,
+                ctx.organizationId,
                 status.url,
                 row.media_type,
             )
@@ -134,6 +151,8 @@ export async function apiReconcilePendingGenerations(): Promise<ReconcileResult>
                         recoveredFrom: row.provider,
                     },
                 } as never)
+            // Rescatada y guardada: el cobro es legítimo, se cierra el hold.
+            await settleHoldByRef(holdRef, row.task_id, { ctx })
             await orgSupabase()
                 .from('pending_generations')
                 .delete()

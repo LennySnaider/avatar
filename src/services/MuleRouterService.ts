@@ -18,6 +18,13 @@
  */
 
 import { uploadReferenceToSupabase } from './KieService'
+import {
+    holdForOperation,
+    refundHold,
+    linkHoldToRef,
+    insufficientTokensMessage,
+} from '@/lib/billing/wallet'
+import { resolveVideoProviderId } from '@/lib/billing/catalog'
 
 const MR_BASE = 'https://api.mulerouter.ai'
 /** Tiers del mismo API (docs: Max $0.075 premium, Plus $0.03 económico). */
@@ -35,7 +42,7 @@ function mrKey(): string {
     return key
 }
 
-export async function submitMuleRouterImageTask(params: {
+type MuleRouterImageParams = {
     /** Prompt FINAL (se capea defensivo a 800 — el caller ya comprime). */
     prompt: string
     negativePrompt?: string
@@ -50,7 +57,36 @@ export async function submitMuleRouterImageTask(params: {
     seed?: number
     /** Tier: 'max' ($0.075, default) o 'plus' ($0.03 económico). */
     tier?: 'max' | 'plus'
-}): Promise<
+}
+
+export async function submitMuleRouterImageTask(
+    params: MuleRouterImageParams,
+): Promise<
+    | { success: true; taskId: string; fullApiPrompt: string }
+    | { success: false; error: string }
+> {
+    // F5.0 — CHOKEPOINT. El tier ES el precio aquí (max $0.075 vs plus $0.03),
+    // así que entra en el providerId — cobrar el mismo token por los dos haría
+    // que el tier económico no le ahorrara nada al cliente.
+    const gate = await holdForOperation({
+        kind: 'image',
+        providerId: `mulerouter-qwen-edit-${params.tier ?? 'max'}`,
+    })
+    if (!gate.ok) {
+        return { success: false, error: insufficientTokensMessage(gate) }
+    }
+    const result = await submitMuleRouterImageTaskInner(params)
+    if (!result.success) {
+        await refundHold(gate.hold, 'mulerouter_submit_failed')
+        return result
+    }
+    await linkHoldToRef(gate.hold.holdId, 'mulerouter_task', result.taskId)
+    return result
+}
+
+async function submitMuleRouterImageTaskInner(
+    params: MuleRouterImageParams,
+): Promise<
     | { success: true; taskId: string; fullApiPrompt: string }
     | { success: false; error: string }
 > {
@@ -235,6 +271,31 @@ export interface MuleRouterVideoParams {
 }
 
 export async function submitMuleRouterVideoTask(
+    params: MuleRouterVideoParams,
+): Promise<
+    | { success: true; taskId: string; fullApiPrompt: string }
+    | { success: false; error: string }
+> {
+    // F5.0 — CHOKEPOINT. `model` aquí es 'wan2.6-i2v'|'wan2.6-t2v'|'wan2.6-r2v';
+    // el resolver espera el prefijo 'mulerouter/' del catálogo de providers.
+    const gate = await holdForOperation({
+        kind: 'video',
+        providerId: resolveVideoProviderId(`mulerouter/${params.model}`),
+        seconds: params.duration ?? 5,
+    })
+    if (!gate.ok) {
+        return { success: false, error: insufficientTokensMessage(gate) }
+    }
+    const result = await submitMuleRouterVideoTaskInner(params)
+    if (!result.success) {
+        await refundHold(gate.hold, 'mulerouter_video_submit_failed')
+        return result
+    }
+    await linkHoldToRef(gate.hold.holdId, 'mulerouter_task', result.taskId)
+    return result
+}
+
+async function submitMuleRouterVideoTaskInner(
     params: MuleRouterVideoParams,
 ): Promise<
     | { success: true; taskId: string; fullApiPrompt: string }

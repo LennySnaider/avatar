@@ -1,5 +1,7 @@
 import sharp from 'sharp'
 import { putMediaObject } from '@/lib/mediaStore'
+import { orgStoragePath } from '@/lib/storagePaths'
+import { tryGetOrgContext } from '@/lib/tenant/getOrgContext'
 
 /**
  * Server-side media persistence helpers shared across generation providers
@@ -94,6 +96,10 @@ export async function persistImageBufferToSupabase(
     }
 
     const contentType = `image/${ext === 'jpg' ? 'jpeg' : 'png'}`
-    const fileName = `${subfolder}/${Date.now()}-${Math.random().toString(36).substr(2, 9)}.${ext}`
+    const leaf = `${subfolder}/${Date.now()}-${Math.random().toString(36).substr(2, 9)}.${ext}`
+    // F4.2.c: prefijo de org, con caída al path plano si no hay contexto (ver
+    // la nota de riesgo en tryGetOrgContext — no se tira una imagen ya pagada).
+    const ctx = await tryGetOrgContext()
+    const fileName = ctx ? orgStoragePath(ctx.organizationId, leaf) : leaf
     return uploadBufferToGenerations(out, fileName, contentType)
 }

@@ -1,14 +1,16 @@
 # SUPER PLAN — Prime Avatar (AvatarLab): Agente IA por Avatar + Plataforma Multi-tenant de Agencias
 
-> **Última revisión: 2026-07-15.** Fases 0-3 HECHAS y verificadas en código. Fanvue
+> **Última revisión: 2026-07-29.** Fases 0-3 HECHAS y verificadas en código. Fanvue
 > RECONECTADO en prod (2026-07-15) y los 3 P0s de seguridad heredados CERRADOS (abajo).
-> Siguiente: validar producto (F2/F3 en prod) → Fase 4 (multitenant).
+> **Siguiente, en este orden:** (1) `orgStoragePath()` — tiene fecha, ver 4.2.c;
+> (2) chokepoint + ledger en measure-only (F5.0/5.5); (3) cerrar 4.2.e/f/g;
+> (4) planes + enforcement; (5) checkout.
 > Este doc es la fuente de verdad portable del plan (las notas de sesión de Claude son locales
 > por máquina; esto viaja con el repo).
 
 ---
 
-## 📍 ESTADO ACTUAL (2026-07-22)
+## 📍 ESTADO ACTUAL (2026-07-29)
 
 | Fase | Entregable | Estado |
 |---|---|---|
@@ -16,10 +18,20 @@
 | 1 | Persona + RAG pgvector + Playground por avatar | ✅ HECHA |
 | 2 | Inbox Fanvue con borradores aprobables + memoria por fan | ✅ HECHA |
 | 3 | Autopilot + voice notes + PPV + métricas | ✅ HECHA (mass messages diferido) |
-| 4 | Multitenant core | 🔄 EN CURSO — 4.0/4.1 ✅ en prod; 4.2 en curso (a/b/d ✅, c 🟡, e/f/g 🔴) |
-| 5 | Billing + límites | ⬜ |
+| 4 | Multitenant core | 🔄 EN CURSO — 4.0/4.1 ✅ en prod; 4.2 (a/b/d ✅, c 🟡, e/f/g 🔴) |
+| 5 | Tokens + suscripción | 🔄 ARRANCANDO (5.0-5.5 diseñadas 2026-07-29) |
 | 5.5 | Meta Direct Publishing | ⬜ |
 | 6 | Agencia (dashboard earnings, white-label, plantillas) | ⬜ |
+
+> **Revisión 2026-07-29 contra el repo:** los ~25 commits desde el 22-jul son TODOS
+> producto/infra (Body Lab, trasplante a Supabase nuevo, migración a R2, thumbnails,
+> fixes de Studio/editor, fix de auth). **4.2 no avanzó**: solo 6 archivos de `src/` usan
+> `orgTable`; `SocialService` pasó de 19 a **25** `.from()` crudos y `FanvueService` tiene
+> 18. El aislamiento sigue casi sin morder.
+>
+> **Dato nuevo que ordena lo que sigue:** la migración a R2 se hizo **por costo de egress**
+> (140 GB en 15 días contra 5 GB de cuota → proyecto bloqueado). El costo variable ya
+> duele en infra, no solo en generación — refuerza el medidor de F5 y pone fecha a 4.2.c.
 
 **Evidencia F0-F3 en código:** migraciones `20260711090000_organizations` /
 `...100000_agent_persona_rag` / `...160000_agent_inbox` / `...180000_agent_autopilot`;
@@ -187,7 +199,14 @@ Patrón: `const ctx = await getOrgContext()` + wrapper **`orgTable(ctx, 'tabla')
 **Avance verificado (código + BD remota, 2026-07-22):**
 - ✅ **a** — lib/org + ESLint `no-restricted-imports` en **WARN** (solo prohíbe `@/lib/supabase`).
 - ✅ **b** — `AvatarForgeService` (ownership por org; fila `generations` scoped) + 8 componentes cliente limpios (0 `.from()` crudo en `.tsx`).
-- 🟡 **c** pipeline generación — **PARCIAL**: la *fila* `generations` va org-scoped; **falta** `orgStoragePath()` (no existe) + los *bytes* en Storage siguen sin scope (Kie/Gateway/MiniMax suben a folders genéricos; `apiCreateGenerationUploadUrl` usa `{userId}/`, no `org/`). Requiere helper + **dual-read** (viejo `{userId}/` + nuevo `org/{orgId}/`; los archivos viejos NO se mueven).
+- 🟡 **c** pipeline generación — **PARCIAL**: la *fila* `generations` va org-scoped; **falta** `orgStoragePath()` + los *bytes* en Storage siguen sin scope (Kie/Gateway/MiniMax suben a folders genéricos; `apiCreateGenerationUploadUrl` usa `{userId}/`, no `org/`). Requiere helper + **dual-read** (viejo `{userId}/` + nuevo `org/{orgId}/`; los archivos viejos NO se mueven).
+  > ⏳ **VENTANA CON FECHA (2026-07-29): la migración a R2 es la última oportunidad barata.**
+  > `mediaStore.ts` (R2 con caída a Supabase) ya está en código y las generaciones nuevas
+  > nacen en R2, pero el **backfill de `scripts/backfill-r2.mjs` es "día D" (12-ago o
+  > upgrade)** y su paso 6 BORRA los objetos de Supabase. El backfill mueve los objetos
+  > **sin renombrar** → si corre con los paths `{userId}/` de hoy, la deuda de scope se
+  > reescribe en R2 y ya no habrá otra migración gratis que la arregle. **`orgStoragePath()`
+  > tiene que existir ANTES del backfill.**
 - ✅ **d** — `api/voice/*` (9) + `api/script/*` (2) org-scoped (aún con `.from()` crudo guardado por `.eq(org)` → migrar a orgTable en **g** por estilo/CI).
 - 🔴 **e** Social — `SocialService.ts` con **19** `.from()` crudos (14 `social_profiles` + 5 `social_posts`), 0 org-scoped. Webhook/cron exentos (correlación por `request_id`, legítimo).
 - 🔴 **f** Fanvue — `FanvueService` + `tokenStore` por `user_id`/`connection_id`; `upsertConnection` con `onConflict:'user_id'` (contradice el `unique(org)` de 4.1 → arreglar aquí).
@@ -224,19 +243,72 @@ avatares, superadmin con banner + audit.
 
 ---
 
-## FASE 5 — Billing + límites
+## FASE 5 — Tokens + suscripción (decisión 2026-07-29)
 
-- **Planes**: port `plan_configurations` + seed Creator/Pro/Business/Agency (revalidar con
-  `docs/cost-routing.md`). `organizations` + `plan_slug, status, trial_ends_at,
-  payment_provider, payment_customer_id, payment_subscription_id`.
-- **Counters**: port `usage_counters` + increment. Tipos: `generations_image/video`,
-  `agent_messages`, `tts_chars`, `voice_clones`, `social_posts`; gauges: `avatars_active`,
-  `team_members`, `storage_gb`. Enforcement con chokepoint `startGeneration(ctx,kind)`.
-  Rollout: measure-only → flag `ENFORCE_LIMITS`.
-- **⚠️ SPIKE procesador (3-5 días, paralelo)**: Stripe prohíbe adult content and services —
-  evaluar Stripe vs Paddle/Lemon vs CCBill/Segpay/Epoch (fees 10-15%). **Diseño agnóstico
-  obligatorio**: interfaz `PaymentProvider` + `provider_products` + webhook único
-  `/api/webhooks/payments/[provider]`. Impl 1: Stripe; CCBill stub tipado.
+**Modelo comercial decidido:** suscripción mensual que incluye una bolsa de tokens +
+**packs de tokens comprables** cuando se acaba la del plan. Resuelve el punto abierto
+"límites por tipo vs créditos unificados" (riesgo 4) a favor de **una sola unidad**.
+
+### 5.0 Chokepoint de gasto (BLOQUEANTE — el hallazgo que reordena la fase)
+**No existe chokepoint de servidor.** `handleGenerate` en `AvatarStudioMain.tsx` (~L1337)
+es un dispatcher **de CLIENTE** que llama ~15 server actions sueltas (`generateImageKie`,
+`submitKieImageTask`, `submitMuleRouterImageTask`, `generateAvatar` de Gemini,
+`generateVideoKling`, `generateVideoMiniMax`, `submitMuleRouterVideoTask`…). Cualquier
+medidor puesto en el cliente es evitable desde devtools: hoy son endpoints que gastan
+plata real sin medidor. **El gate va DENTRO de cada server action pagada**, no en la UI.
+
+### 5.1 Unidad y catálogo
+Token **desacoplado del costo del proveedor**: `1 token = $0.001` de costo base, y
+`tokens = ceil(cost_usd × MARGIN / 0.001)`. El ledger guarda AMBOS: `tokens` (lo que ve
+el cliente) y `cost_usd` (verdad de márgenes). Así se cambia de proveedor sin tocar
+precios públicos. Fuente de costos: `PROVIDER_COST` de `providerCatalog.ts` + medidas de
+`docs/cost-routing.md` → mover a catálogo **server-authoritative NUMÉRICO** (`PROVIDER_COST`
+es `Record<string,string>` de UI, "~$0.09"; y el video cobra POR SEGUNDO → el SKU necesita
+duración).
+
+### 5.2 Dos bolsas, un balance
+- `included` — asignación del plan, se resetea cada ciclo, **NO acumula**.
+- `purchased` — packs, no expiran (o 12 meses).
+- Débito: **included primero, purchased después** (el pack solo se toca si se acabó el plan).
+
+### 5.3 Tablas (org-native desde el día 1, vía `orgInsert` — no dependen del puente)
+`plan_configurations` · `organizations` + `plan_slug, status, trial_ends_at,
+current_period_end, payment_provider, payment_customer_id, payment_subscription_id` ·
+`org_wallets` (balance materializado) · `token_ledger` (append-only:
+`grant|hold|settle|refund|purchase`). Función `spend_tokens()` con `select … for update`
+sobre el wallet — atómica, mismo estilo que `increment_agent_counter`.
+
+### 5.4 Reserva/liquidación (obligatorio por las async)
+KIE/MuleRouter son submit→poll **conducido por el navegador**. `hold` al enviar, `settle`
+al persistir, y el **reembolso de huérfanas lo engancha `ReconcileGenerationsService` sobre
+`pending_generations`** — esa infra ya existe para otro problema y sirve tal cual.
+
+### 5.5 Rollout
+`measure-only` (registra, no bloquea) → recoger consumo real por org → fijar precios →
+flag `ENFORCE_LIMITS`. **Sin los datos de measure-only los precios se fijan a ciegas.**
+Gauges: `avatars_active`, `team_members`. **`storage_gb` QUEDA FUERA de v1** — 4.2.c está
+a medias, los bytes no tienen scope de org, no es medible por tenant.
+
+### 5.6 Procesador — investigado 2026-07-29
+- **Fanvue NO es copiable**: es merchant-of-record propio (entidad UK Shift Holdings Ltd,
+  descriptor `fanvue.com` / `SHL`). No hay proveedor suyo al que darse de alta.
+- **Masspay y Cosmo son rieles de PAYOUT** (la pantalla de "retiro" de Fanvue), no de
+  cobro. MassPay es payouts-only por API; Cosmo es e-wallet+tarjeta para creadores. **No
+  sirven para cobrar suscripciones.**
+- **Paddle prohíbe generadores de imagen IA** de plano → descartado.
+- **AvatarLab no es adult: es SaaS B2B** (licencia de software a agencias, MCC de
+  software, no venta de contenido a fans). Stripe **sí permite** generadores de imagen IA;
+  lo que cierra cuentas es contenido adulto. El riesgo real es **la superficie pública que
+  ve el revisor de riesgo** → landing B2B sobria, sin outputs NSFW ni copy explícito.
+- **Ruta 1: Stripe** con marketing limpio. **Ruta 2 (fallback real): cripto/stablecoin**
+  para los packs — un pack es pago ÚNICO, sin rebill ni chargebacks; se mueve en un día.
+  **Ruta 3: CCBill/Segpay/Epoch/Verotel** solo si cierran Stripe (fees 7-12% + rolling
+  reserve, prefieren entidad UK/EU/US, preguntar si aceptan entidad MX).
+- ⛔ Descartado: procesadores "zero-KYC, sin revisión de contenido" (tipo NexaPay) —
+  bandera roja regulatoria, riesgo de reversión de fondos.
+- **Diseño agnóstico obligatorio**: interfaz `PaymentProvider` + `provider_products` +
+  webhook único `/api/webhooks/payments/[provider]`. **Modelar plan mensual y pack como el
+  MISMO evento `purchase` en el ledger** — así salir de Stripe solo duele en la recurrente.
 - Páginas `/pricing`, `/settings/billing`, checkout, `/platform/plans`. Trial 14d + cron
   `billing-lifecycle`.
 
@@ -271,7 +343,9 @@ contenedores REELS + poll + publish, transcoding H.264/AAC (el mux ya lo produce
 2. Autopilot vs ToS/rate-limits Fanvue: delays + límites diarios; classifier fail-closed;
    `underage_risk` escala SIEMPRE.
 3. Refresh token rotativo concurrente (webhook+cron): mutex in-process + gracia 30s.
-4. [F5] Procesador adult-adjacent (spike) · límites por tipo vs créditos unificados.
+4. [F5] ~~límites por tipo vs créditos unificados~~ → **RESUELTO 2026-07-29**: token único
+   (5.1/5.2). Procesador: **Stripe con landing B2B sobria** (ruta 1), cripto para packs
+   (ruta 2), high-risk solo si cierran Stripe (ruta 3) — ver 5.6.
 5. [F6] Meta App Review adult-adjacent (comments-only fallback) · NextAuth multi-dominio.
 6. P0s heredados → se cierran en F4.0/4.2/4.5.
 7. Mass messages del agente (F3) quedó diferido — retomar si la validación lo pide.
@@ -279,5 +353,8 @@ contenedores REELS + poll + publish, transcoding H.264/AAC (el mux ya lo produce
 ## Verificación por fase (gates)
 - **F4**: smoke de aislamiento 2 orgs; invitación E2E; operador restringido; superadmin
   banner+audit; `pg_policies` = 0 en tablas tenant con RLS on.
-- **F5**: checkout sandbox → org activa; counters cuadran; límite alcanzado → bloqueo con CTA.
+- **F5**: ninguna server action pagada gasta sin pasar por el chokepoint (grep CI);
+  measure-only registra `tokens`+`cost_usd` de toda generación; tarea abortada → refund
+  automático (saldo cuadra tras matar el navegador a media generación); checkout sandbox →
+  org activa; plan agotado → consume el pack; sin pack → bloqueo con CTA.
 - Al cerrar cada fase: actualizar memoria de sesión y marcar specs viejos superseded.

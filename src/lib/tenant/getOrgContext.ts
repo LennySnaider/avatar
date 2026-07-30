@@ -31,6 +31,30 @@ export async function getOrgContext(): Promise<OrgContext> {
 }
 
 /**
+ * Variante TOLERANTE: devuelve null en vez de lanzar cuando no hay sesión o
+ * membresía.
+ *
+ * Existe SOLO para decidir el prefijo de Storage (F4.2.c) en rutas de persist
+ * que aún no reciben `ctx` propagado. La regla de riesgo: un objeto que cae en
+ * la carpeta legacy es recuperable; una excepción a mitad de un persist pierde
+ * una generación YA PAGADA al proveedor. Por eso aquí no se lanza.
+ *
+ * ⚠️ NO usar para autorizar nada. Autorizar con "si no hay contexto, seguimos"
+ * es exactamente el bug que evita `getOrgContext()`. Cuando F5.0 propague ctx
+ * por las entradas pagadas, esta función y su fallback desaparecen.
+ */
+export async function tryGetOrgContext(): Promise<OrgContext | null> {
+    try {
+        const session = await auth()
+        const userId = session?.user?.id
+        if (!userId) return null
+        return await getOrgContextForUser(userId)
+    } catch {
+        return null
+    }
+}
+
+/**
  * Session-less variant for webhooks/cron, where the user is resolved from
  * data (e.g. a connection row) instead of cookies.
  */

@@ -11,6 +11,7 @@
 import { getOrgContext, type OrgContext } from '@/lib/tenant/getOrgContext'
 import { putMediaObject, r2Enabled, createPresignedPutUrl } from '@/lib/mediaStore'
 import type { GenerationUploadTicket } from '@/lib/storageUpload'
+import { orgStoragePath, orgOwnsStoragePath } from '@/lib/storagePaths'
 import { orgTable, orgSupabase } from '@/lib/org/orgTable'
 import type {
     Avatar,
@@ -445,7 +446,9 @@ async function uploadGeneration(
 ): Promise<{ path: string; provider: 'r2' | 'supabase' }> {
     const folder = mediaType === 'IMAGE' ? 'images' : 'videos'
     const fileName = `${Date.now()}.${extension}`
-    const filePath = `${ctx.userId}/${folder}/${fileName}`
+    // F4.2.c: los bytes nacen con scope de ORG. Los objetos viejos en
+    // `{userId}/…` no se mueven — la lectura es dual (orgOwnsStoragePath).
+    const filePath = orgStoragePath(ctx.organizationId, folder, fileName)
 
     const contentType =
         blob.type || (mediaType === 'VIDEO' ? 'video/mp4' : 'image/jpeg')
@@ -585,7 +588,11 @@ export async function apiCreateGenerationUploadUrl(
     const ctx = await getOrgContext()
     const folder = mediaType === 'IMAGE' ? 'images' : 'videos'
     const ext = mediaType === 'VIDEO' ? 'mp4' : 'jpg'
-    const path = `${ctx.userId}/${folder}/${Date.now()}.${ext}`
+    const path = orgStoragePath(
+        ctx.organizationId,
+        folder,
+        `${Date.now()}.${ext}`,
+    )
 
     // R2 activo → PUT prefirmado directo al bucket. Mismo principio que el
     // signed-upload de Supabase (anti-413: el binario nunca cruza un server
@@ -618,7 +625,10 @@ export async function apiCreateThumbnailUploadTicket(
     originalPath: string,
 ): Promise<GenerationUploadTicket> {
     const ctx = await getOrgContext()
-    if (!originalPath.startsWith(`${ctx.userId}/`)) {
+    // Dual-read: acepta el path nuevo (`org/{orgId}/…`) y el legacy
+    // (`{userId}/…`) mientras convivan. Un path de carpeta genérica no
+    // pertenece a nadie y queda rechazado.
+    if (!orgOwnsStoragePath(originalPath, ctx)) {
         throw new Error('Not your media path')
     }
     const path = `thumbs/${originalPath}.jpg`

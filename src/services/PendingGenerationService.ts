@@ -18,6 +18,7 @@
  */
 import { getOrgContext } from '@/lib/tenant/getOrgContext'
 import { orgSupabase } from '@/lib/org/orgTable'
+import { refundHoldByRef } from '@/lib/billing/wallet'
 
 export type PendingProvider = 'kie' | 'mulerouter'
 
@@ -111,6 +112,30 @@ export async function apiPurgeExpiredPendingGenerations(): Promise<void> {
     try {
         const ctx = await getOrgContext()
         const cutoff = new Date(Date.now() - MAX_AGE_MS).toISOString()
+
+        // F5.4 — antes de borrar el rastro, DEVOLVER los tokens. Una caducada
+        // es una tarea que nunca entregó nada: su hold debitó el saldo y este
+        // es el último momento en que se sabe a qué tarea pertenecía. Si se
+        // borra la fila primero, el cobro queda huérfano y sin forma de
+        // reclamarlo (no queda ni el task_id para correlacionar).
+        const { data: expiring } = await orgSupabase()
+            .from('pending_generations')
+            .select('task_id, provider')
+            .eq('user_id', ctx.userId)
+            .lt('created_at', cutoff)
+
+        for (const row of (expiring ?? []) as Array<{
+            task_id: string
+            provider: string
+        }>) {
+            await refundHoldByRef(
+                row.provider === 'mulerouter' ? 'mulerouter_task' : 'kie_task',
+                row.task_id,
+                'pending_generation_expired',
+                { ctx },
+            )
+        }
+
         await orgSupabase()
             .from('pending_generations')
             .delete()

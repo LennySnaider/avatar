@@ -3,6 +3,7 @@ import { auth } from '@/auth'
 import { createServerSupabaseClient } from '@/lib/supabase'
 import { textToSpeech } from '@/services/MiniMaxService'
 import { uploadBufferToGenerations } from '@/lib/mediaPersist'
+import { orgStoragePath } from '@/lib/storagePaths'
 import type { VoiceTtsSettings } from '@/@types/voice'
 import { getOrgContextForUser } from '@/lib/tenant/getOrgContext'
 
@@ -64,7 +65,11 @@ export async function POST(req: NextRequest) {
             ...settings,
         })
 
-        const fileName = `${session.user.id}/audios/preview-${voice.id}-${Date.now()}.mp3`
+        const fileName = orgStoragePath(
+            ctx.organizationId,
+            'audios',
+            `preview-${voice.id}-${Date.now()}.mp3`,
+        )
         const previewUrl = await uploadBufferToGenerations(audioBuffer, fileName, 'audio/mpeg')
 
         const { error: updateError } = await supabase

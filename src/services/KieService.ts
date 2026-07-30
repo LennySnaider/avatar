@@ -7,6 +7,19 @@ import {
     centerCropToAspect,
     uploadBufferToGenerations,
 } from '@/lib/mediaPersist'
+import { orgStoragePath } from '@/lib/storagePaths'
+import { tryGetOrgContext } from '@/lib/tenant/getOrgContext'
+import {
+    holdForOperation,
+    refundHold,
+    settleHold,
+    linkHoldToRef,
+    insufficientTokensMessage,
+} from '@/lib/billing/wallet'
+import {
+    resolveImageProviderId,
+    resolveVideoProviderId,
+} from '@/lib/billing/catalog'
 import {
     sanitizePromptForGeneration,
     aggressiveSanitize,
@@ -483,7 +496,18 @@ async function persistToSupabase(
         extension === 'mp4'
             ? 'video/mp4'
             : `image/${extension === 'jpg' ? 'jpeg' : extension}`
-    const fileName = `${subfolder}/${Date.now()}-${Math.random().toString(36).substr(2, 9)}.${extension}`
+    const leaf = `${subfolder}/${Date.now()}-${Math.random().toString(36).substr(2, 9)}.${extension}`
+
+    // F4.2.c: los resultados nacen bajo `org/{orgId}/…`. Sin contexto (no
+    // debería pasar desde el Studio) cae al path plano de siempre en vez de
+    // tirar: el objeto ya está descargado y la generación ya se pagó.
+    const ctx = await tryGetOrgContext()
+    const fileName = ctx ? orgStoragePath(ctx.organizationId, leaf) : leaf
+    if (!ctx) {
+        console.warn(
+            `[KIE] persist SIN contexto de org → path legacy ${leaf}`,
+        )
+    }
 
     return uploadBufferToGenerations(buffer, fileName, contentType)
 }
@@ -567,6 +591,39 @@ export async function generateImageKie(
     // server-side poll. The browser then polls `checkKieImageTask` — keeping the
     // server request short so a 50–140s generation can't outlive the serverless/
     // HTTP window (which silently lost finished results and double-charged).
+    submitSink?: { taskId?: string },
+): Promise<
+    | { success: true; url: string; fullApiPrompt: string }
+    | { success: false; error: string }
+> {
+    // F5.0 — CHOKEPOINT (ver la nota en submitKieImageTask).
+    const gate = await holdForOperation({
+        kind: 'image',
+        providerId: resolveImageProviderId(params.model),
+    })
+    if (!gate.ok) {
+        return { success: false, error: insufficientTokensMessage(gate) }
+    }
+
+    const result = await generateImageKieInner(params, submitSink)
+
+    if (!result.success) {
+        await refundHold(gate.hold, 'kie_generate_failed')
+        return result
+    }
+    // En modo submit-only el taskId es lo único que sobrevive al request; en
+    // modo síncrono ya está persistido y el hold se queda liquidado por el
+    // barrido (el cobro ya ocurrió — no hay nada que devolver).
+    if (submitSink?.taskId) {
+        await linkHoldToRef(gate.hold.holdId, 'kie_task', submitSink.taskId)
+    } else {
+        await settleHold(gate.hold)
+    }
+    return result
+}
+
+async function generateImageKieInner(
+    params: GenerateImageKieParams,
     submitSink?: { taskId?: string },
 ): Promise<
     | { success: true; url: string; fullApiPrompt: string }
@@ -888,6 +945,38 @@ export async function submitKieImageTask(
     | { success: true; taskId: string; fullApiPrompt: string }
     | { success: false; error: string }
 > {
+    // F5.0 — CHOKEPOINT. El gate va aquí, en la server action, no en el
+    // dispatcher de cliente: llamar esta action directo desde devtools es
+    // trivial. Wrapper en vez de tocar el cuerpo porque tiene ~15 `return`
+    // repartidos por familia de modelo y meter el cobro en cada uno se
+    // desincroniza en el primer modelo nuevo que alguien añada.
+    const gate = await holdForOperation({
+        kind: 'image',
+        providerId: resolveImageProviderId(params.model),
+    })
+    if (!gate.ok) {
+        return { success: false, error: insufficientTokensMessage(gate) }
+    }
+
+    const result = await submitKieImageTaskInner(params)
+
+    if (!result.success) {
+        // El submit falló → no hay tarea que cobrar.
+        await refundHold(gate.hold, 'kie_submit_failed')
+        return result
+    }
+    // Ata el hold al taskId: es la referencia con la que el persist liquida y
+    // con la que la reconciliación reembolsa las huérfanas.
+    await linkHoldToRef(gate.hold.holdId, 'kie_task', result.taskId)
+    return result
+}
+
+async function submitKieImageTaskInner(
+    params: GenerateImageKieParams,
+): Promise<
+    | { success: true; taskId: string; fullApiPrompt: string }
+    | { success: false; error: string }
+> {
     const {
         model,
         aspectRatio = '1:1',
@@ -948,7 +1037,11 @@ export async function submitKieImageTask(
         // input-building (i2i refs, model-aware params) in SUBMIT-ONLY mode so the
         // long poll moves to the browser (checkKieImageTask). Same fix as video.
         const sink: { taskId?: string } = {}
-        const r = await generateImageKie(params, sink)
+        // OJO: el _Inner_, NO el `generateImageKie` exportado. Este camino ya
+        // pasó por el chokepoint en `submitKieImageTask`; llamar al wrapper
+        // cobraría un SEGUNDO hold por la misma imagen — y es justo la ruta de
+        // los modelos permisivos, la más usada de la app.
+        const r = await generateImageKieInner(params, sink)
         if (!r.success) return { success: false, error: r.error }
         if (!sink.taskId) {
             return { success: false, error: 'KIE no devolvió taskId (submit)' }
@@ -1871,9 +1964,23 @@ export async function submitVideoKieTask(
 ): Promise<
     { success: true; taskId: string } | { success: false; error: string }
 > {
+    // F5.0 — CHOKEPOINT. El video cobra POR SEGUNDO, así que la duración es
+    // parte del precio: sin ella un clip de 10s costaría lo mismo que uno de 5
+    // (el quote asume el clip mínimo si no llega, nunca gratis).
+    const gate = await holdForOperation({
+        kind: 'video',
+        providerId: resolveVideoProviderId(params.model),
+        seconds: params.duration ?? 5,
+    })
+    if (!gate.ok) {
+        return { success: false, error: insufficientTokensMessage(gate) }
+    }
     try {
-        return { success: true, taskId: await submitVideoKieTaskId(params) }
+        const taskId = await submitVideoKieTaskId(params)
+        await linkHoldToRef(gate.hold.holdId, 'kie_task', taskId)
+        return { success: true, taskId }
     } catch (e) {
+        await refundHold(gate.hold, 'kie_video_submit_failed')
         return {
             success: false,
             error: e instanceof Error ? e.message : String(e),
