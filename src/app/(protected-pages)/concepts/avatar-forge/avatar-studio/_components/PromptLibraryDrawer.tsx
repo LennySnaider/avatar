@@ -30,6 +30,7 @@ import {
     PiPersonArmsSpreadDuotone,
     PiHandPalmDuotone,
     PiCameraDuotone,
+    PiFireDuotone,
 } from 'react-icons/pi'
 import {
     MODEL_ACTION_PRESETS,
@@ -52,6 +53,7 @@ const categoryIcons: Record<ActionCategory, React.ReactNode> = {
     actions_dynamic: <PiPersonArmsSpreadDuotone className="w-4 h-4" />,
     interactions: <PiHandPalmDuotone className="w-4 h-4" />,
     studio_angles: <PiCameraDuotone className="w-4 h-4" />,
+    spicy: <PiFireDuotone className="w-4 h-4 text-red-500" />,
 }
 
 const PromptLibraryDrawer = ({ userId }: PromptLibraryDrawerProps) => {
@@ -246,9 +248,13 @@ const PromptLibraryDrawer = ({ userId }: PromptLibraryDrawerProps) => {
             return next
         })
 
-    // Filter action presets by media type
-    const filteredPresets = MODEL_ACTION_PRESETS.filter((preset) =>
-        filterType === 'ALL' ? true : preset.mediaType === filterType
+    // Filter action presets by media type + el MISMO gate 🌶️ que My Prompts:
+    // el toggle es uno solo para las dos pestañas, así no hay un rincón del
+    // drawer donde lo picante siga visible con el gate apagado.
+    const filteredPresets = MODEL_ACTION_PRESETS.filter(
+        (preset) =>
+            (filterType === 'ALL' ? true : preset.mediaType === filterType) &&
+            (showNsfw ? true : !preset.nsfw),
     )
 
     // Group presets by category
@@ -488,6 +494,9 @@ const PromptLibraryDrawer = ({ userId }: PromptLibraryDrawerProps) => {
                                             {pinnedActionIds.map((id) => {
                                                 const preset = MODEL_ACTION_PRESETS.find((p) => p.id === id)
                                                 if (!preset) return null
+                                                // Un preset 🌶️ pineado sigue el gate: con NSFW apagado
+                                                // no reaparece por la puerta de atrás de Quick Actions.
+                                                if (preset.nsfw && !showNsfw) return null
                                                 return (
                                                     <button
                                                         key={id}

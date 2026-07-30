@@ -186,6 +186,7 @@ export const QUICK_STYLES: QuickStyleOption[] = [
     { value: 'low-key', label: 'Low Key', description: 'Dark, dramatic, moody shadows', category: 'lighting' },
     { value: 'split-lighting', label: 'Split Lighting', description: 'Half face lit, half in shadow', category: 'lighting' },
     { value: 'butterfly', label: 'Butterfly/Paramount', description: 'Classic Hollywood glamour lighting', category: 'lighting' },
+    { value: 'direct-flash', label: 'Direct Flash', description: 'Hard on-camera paparazzi flash, bright blown foreground, background falling into dark, sharp edge shadows', category: 'lighting' },
     { value: 'selfie', label: 'Selfie', description: 'Casual smartphone selfie, natural front-facing light', category: 'lighting' },
     { value: 'iphone', label: 'iPhone', description: 'Apple camera aesthetic, vibrant colors, smart HDR', category: 'lighting' },
 

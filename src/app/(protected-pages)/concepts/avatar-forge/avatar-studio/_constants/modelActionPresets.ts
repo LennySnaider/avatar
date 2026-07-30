@@ -15,6 +15,14 @@ export interface ActionPreset {
      * vacío (los 3 motores devolvían la plantilla del Body Lab).
      */
     scene?: string
+    /**
+     * 🌶️ Picante. Igual que en los prompts guardados, el default es OCULTO: el
+     * drawer solo los muestra con el toggle NSFW encendido y el Dice 🎲 los
+     * excluye salvo que se le pidan explícitamente. Es un flag aparte de
+     * `category` a propósito — mañana puede haber un preset picante que viva en
+     * `actions_dynamic`, y el gate debe seguir dependiendo del flag.
+     */
+    nsfw?: boolean
 }
 
 export type ActionCategory =
@@ -24,6 +32,7 @@ export type ActionCategory =
     | 'actions_dynamic'
     | 'interactions'
     | 'studio_angles'
+    | 'spicy'
 
 export const ACTION_CATEGORIES: Record<ActionCategory, { label: string; icon: string }> = {
     poses_basic: { label: 'Basic Poses', icon: 'pose' },
@@ -32,6 +41,7 @@ export const ACTION_CATEGORIES: Record<ActionCategory, { label: string; icon: st
     actions_dynamic: { label: 'Dynamic Actions', icon: 'action' },
     interactions: { label: 'Interactions', icon: 'interaction' },
     studio_angles: { label: 'Studio Angles', icon: 'camera' },
+    spicy: { label: 'Spicy 🌶️', icon: 'flame' },
 }
 
 export const MODEL_ACTION_PRESETS: ActionPreset[] = [
@@ -81,6 +91,23 @@ export const MODEL_ACTION_PRESETS: ActionPreset[] = [
         name: 'Arms Crossed',
         text: 'Standing with arms folded across the chest, weight even, shoulders relaxed rather than tense, head tilted a few degrees with the faintest knowing smile. Medium shot at eye level, 85mm lens, clean soft key with a subtle rim separating her from the background, self-assured quietly confident presence',
         scene: 'In a black ribbed turtleneck and slim trousers, against a deep charcoal studio wall.',
+        category: 'poses_basic',
+        mediaType: 'IMAGE',
+    },
+
+    {
+        id: 'pose-floor-sit',
+        name: 'Floor Sit',
+        text: 'Sitting directly on the floor with the legs folded to one side, one hand planted behind the hip taking the weight, the opposite shoulder dropping so the torso spirals gently toward the lens, chin following the twist. Full body shot from a low seated eye level, 35mm lens, broad soft toplight pooling on the floor around her, grounded relaxed intimacy',
+        scene: 'In a cream ribbed knit dress, on pale oak floorboards in an empty loft with one tall window.',
+        category: 'poses_basic',
+        mediaType: 'IMAGE',
+    },
+    {
+        id: 'pose-low-crouch',
+        name: 'Low Crouch',
+        text: 'Dropped into a deep crouch with both heels flat, knees wide, forearms resting across the thighs and hands hanging loose between them, spine long, eyes lifting straight into the lens from below her usual height. Full body shot at her seated eye level, 35mm lens, hard overhead light with a clean shadow pooling beneath her, streetwear attitude and coiled stillness',
+        scene: 'In a boxy grey hoodie, cargo trousers and white sneakers, on a rooftop stairwell landing with painted concrete.',
         category: 'poses_basic',
         mediaType: 'IMAGE',
     },
@@ -135,6 +162,31 @@ export const MODEL_ACTION_PRESETS: ActionPreset[] = [
         mediaType: 'IMAGE',
     },
 
+    {
+        id: 'fashion-backlit-silhouette',
+        name: 'Backlit Silhouette',
+        text: 'Standing against a bright source directly behind her so the body reads as a clean dark shape with light spilling around every edge, arms held slightly away from the torso to keep the outline separated, hair lit into a bright halo of individual strands, face turned into the last of the fill. Full body contre-jour shot, 85mm lens flaring gently, deep silhouette with a soft bounce lifting the front, graphic and cinematic',
+        scene: 'In a long chiffon slip dress that goes translucent in the light, in a doorway opening onto a white overcast sky.',
+        category: 'poses_fashion',
+        mediaType: 'IMAGE',
+    },
+    {
+        id: 'fashion-street-flash',
+        name: 'Street Style Flash',
+        text: 'Caught mid-step by a direct on-camera flash the way a street photographer would take it, one hand lifting toward the lens in a half-shielding gesture, body still angled forward in the walk, expression caught between surprise and amusement. Medium full shot at eye level, 28mm lens, hard frontal flash blowing the foreground bright while the street behind falls into deep night, raw paparazzi immediacy',
+        scene: 'In a cropped faux-fur coat over a black slip and knee boots, on a wet city sidewalk at night outside a lit entrance.',
+        category: 'poses_fashion',
+        mediaType: 'IMAGE',
+    },
+    {
+        id: 'fashion-mirror-selfie',
+        name: 'Mirror Selfie',
+        text: 'Taking a full-length mirror selfie, the phone held at chest height partly covering the lower face, the free hand resting on the hip, weight cocked onto one leg, eyes going to her own reflection rather than the camera. Full body shot framed as the mirror sees her, 24mm phone-style perspective with mild edge distortion, everyday room light with a soft screen bounce on the chin, authentic creator-feed candour',
+        scene: 'In a matching ribbed lounge set of soft caramel, in front of a leaning bedroom mirror with clothes draped on a chair behind.',
+        category: 'poses_fashion',
+        mediaType: 'IMAGE',
+    },
+
     // Expressions
     {
         id: 'expr-natural-smile',
@@ -181,6 +233,23 @@ export const MODEL_ACTION_PRESETS: ActionPreset[] = [
         name: 'Thoughtful',
         text: 'A quiet contemplative expression, head tilted a few degrees, gaze drifting off past the lens, lips softly closed, the smallest crease of concentration between the brows. Close-up, 85mm lens, soft directional window light coming from the side she gazes toward, introspective and unhurried',
         scene: 'In an oversized grey wool coat, beside a rain-streaked window in a quiet cafe.',
+        category: 'expressions',
+        mediaType: 'IMAGE',
+    },
+
+    {
+        id: 'expr-challenging-smirk',
+        name: 'Challenging Smirk',
+        text: 'One corner of the mouth pulling into a slow crooked smirk while a single brow arches, chin dropping a fraction so the eyes come up under the lashes, the look holding a beat too long as if she has just been dared. Close-up, 85mm lens, crisp key from high and to one side with the smirking half of the mouth catching the light, teasing and quietly combative',
+        scene: 'In a black leather blazer over bare skin, against a deep oxblood wall in a dim bar.',
+        category: 'expressions',
+        mediaType: 'IMAGE',
+    },
+    {
+        id: 'expr-blown-kiss',
+        name: 'Blowing a Kiss',
+        text: 'Lips pursed against her own fingertips with the hand caught mid-flight away from the mouth, palm opening toward the lens, eyes crinkled bright above the gesture, shoulders lifted playfully. Medium close-up, 50mm lens, soft frontal beauty light with a warm bounce under the chin, affectionate flirtatious charm sent straight down the barrel',
+        scene: 'In a red knit cardigan worn off one shoulder, against a soft blush-pink backdrop with heart bokeh behind.',
         category: 'expressions',
         mediaType: 'IMAGE',
     },
@@ -235,6 +304,23 @@ export const MODEL_ACTION_PRESETS: ActionPreset[] = [
         mediaType: 'IMAGE',
     },
 
+    {
+        id: 'action-water-splash',
+        name: 'Water Splash',
+        text: 'Rising out of waist-deep water and throwing her head back so the soaked hair whips into a long arc, a sheet of droplets flung off the ends and hanging frozen in the air, both hands sweeping the hair away from the face, water sheeting down the shoulders. Medium full shot at water level, 70mm lens, hard low sun turning every droplet into a bright bead, exhilarated and cinematic',
+        scene: 'In a black high-cut one-piece swimsuit, waist deep in a turquoise sea at golden hour.',
+        category: 'actions_dynamic',
+        mediaType: 'IMAGE',
+    },
+    {
+        id: 'action-boxing-combo',
+        name: 'Boxing Combo',
+        text: 'Mid-combination on the heavy bag with the rear hand landing and the bag deforming under the glove, front shoulder tucked to the chin, hips rotated fully through the punch, back heel lifted, breath held and jaw set. Medium full shot from a low angle, 50mm lens with a trace of blur in the striking arm, hard side light picking out sweat and chalk dust in the air, raw athletic power',
+        scene: 'In a cropped black training top, high-waisted shorts and red wraps, in a dim old gym with a single caged lamp overhead.',
+        category: 'actions_dynamic',
+        mediaType: 'IMAGE',
+    },
+
     // Interactions
     {
         id: 'interact-coffee-cup',
@@ -281,6 +367,23 @@ export const MODEL_ACTION_PRESETS: ActionPreset[] = [
         name: 'Looking in Mirror',
         text: 'Facing a mirror in a private unguarded moment, one hand adjusting her hair, the reflection visible alongside her, gaze fixed on her own image rather than the camera. Medium shot framing both her and the reflection, 35mm lens, soft lamp light, intimate candid observation',
         scene: 'In deep-red silk pyjamas, at a vanity mirror ringed with warm bulbs in a dim bedroom.',
+        category: 'interactions',
+        mediaType: 'IMAGE',
+    },
+
+    {
+        id: 'interact-car-hood',
+        name: 'Leaning on Car',
+        text: 'Perched back against the front wing of a car with both palms braced on the metal behind her, hips pushed forward off the panel, one ankle crossed over the other, head tipped back a few degrees with a level unbothered look. Full body shot from a slightly low angle, 35mm lens, low sun raking along the bodywork and throwing a long reflection under her, road-trip cool',
+        scene: 'In a white ribbed tank, faded straight-leg denim and tan boots, against a dusty vintage convertible on an empty desert highway.',
+        category: 'interactions',
+        mediaType: 'IMAGE',
+    },
+    {
+        id: 'interact-with-dog',
+        name: 'With a Dog',
+        text: 'Crouched down beside a large dog with one arm looped around its chest and the other scratching under its jaw, her cheek almost touching its head, both of them turning toward the lens at the same instant, her laughter caught in motion. Medium full shot at their shared eye level, 50mm lens, warm low backlight edging both silhouettes with soft haze, easy affectionate companionship',
+        scene: 'In a chunky oatmeal sweater and dark leggings, on an autumn park path with a golden retriever, leaves scattered underfoot.',
         category: 'interactions',
         mediaType: 'IMAGE',
     },
@@ -335,6 +438,23 @@ export const MODEL_ACTION_PRESETS: ActionPreset[] = [
         mediaType: 'IMAGE',
     },
 
+    {
+        id: 'angle-overhead-topdown',
+        name: 'Overhead Top-Down',
+        text: 'Camera mounted directly overhead pointing straight down while she lies on her back looking up into it, hair fanned out around the head like a corona, arms floating loose at her sides, one knee drawn up, the whole body reading as a flat graphic shape against the surface. Full body top-down shot, 35mm lens perfectly perpendicular, even soft light with a faint shadow halo beneath her, dreamlike and composed',
+        scene: 'In a pale blue slip dress, lying on white linen sheets scattered with loose petals.',
+        category: 'studio_angles',
+        mediaType: 'IMAGE',
+    },
+    {
+        id: 'angle-through-wet-glass',
+        name: 'Through Wet Glass',
+        text: 'Photographed from outside through a rain-beaded pane so the droplets sit sharp in the foreground and her face falls a touch softer behind them, one palm pressed flat against the glass, forehead close to it, gaze going through the water toward the lens. Medium close-up, 85mm lens focused on the glass so the beads read crisp, cool ambient daylight with warm lamplight behind her, wistful separated intimacy',
+        scene: 'In a heather-grey sweatshirt, behind the rain-streaked window of a warmly lit apartment at dusk.',
+        category: 'studio_angles',
+        mediaType: 'IMAGE',
+    },
+
     // Video-specific actions
     {
         id: 'video-slow-turn',
@@ -368,21 +488,188 @@ export const MODEL_ACTION_PRESETS: ActionPreset[] = [
         category: 'expressions',
         mediaType: 'VIDEO',
     },
+    {
+        id: 'video-rise-from-seat',
+        name: 'Rise from Seat',
+        text: 'She pushes up out of a low chair in one unbroken movement, the weight rolling forward over the feet, the head rising last, one hand smoothing the front of the garment as she reaches full height and settles her eyes on the lens. Single continuous take, camera tilting up to follow her, 50mm, soft window light from the side, unhurried grounded poise',
+        scene: 'In a camel wrap coat over a black turtleneck, in a quiet hotel lobby with leather seating.',
+        category: 'poses_basic',
+        mediaType: 'VIDEO',
+    },
+    {
+        id: 'video-wind-machine',
+        name: 'Wind Machine',
+        text: 'A steady wind hits her from the front so the hair streams back in continuous ribbons and the fabric ripples flat against the body then billows loose, her chin lifting into the current, eyes half closing and reopening on the lens, the whole body holding steady against the push. Locked-off camera, 85mm, hard sculpted key with deep falloff, high fashion film energy',
+        scene: 'In a floor-length crimson gown with a long train, on a dark studio floor with a single beam of light.',
+        category: 'poses_fashion',
+        mediaType: 'VIDEO',
+    },
+    {
+        id: 'video-outfit-spin',
+        name: 'Outfit Spin',
+        text: 'She starts facing the lens, lifts her arms slightly, then turns a full slow revolution on the spot so the outfit reads from every side, the skirt or coat lifting with the rotation, coming back around to the front and finishing with a small pleased smile and a shrug of the shoulders. Continuous take, locked-off full body framing, 35mm, bright even light, playful creator-feed showcase',
+        scene: 'In a pleated tartan mini skirt, cream cable-knit sweater and tall boots, in a bright bedroom with a full-length mirror.',
+        category: 'poses_fashion',
+        mediaType: 'VIDEO',
+    },
+    {
+        id: 'video-laugh-break',
+        name: 'Laugh Break',
+        text: 'She holds a composed expression for a moment, then the composure cracks and she breaks into real laughter, head dipping forward, one hand coming up to cover the mouth, shoulders shaking, and she looks back up at the lens still recovering with the smile lingering. Continuous take, tight medium close-up, 85mm, soft daylight with a warm bounce, candid and infectious',
+        scene: 'In a white oversized shirt, at a kitchen island with morning light across the counter.',
+        category: 'expressions',
+        mediaType: 'VIDEO',
+    },
+    {
+        id: 'video-coffee-sip',
+        name: 'Coffee Sip',
+        text: 'She lifts a cup slowly to her lips with both hands, the steam bending as it moves, takes a sip with her eyes closing briefly, then lowers the cup and opens her eyes onto the lens with a small satisfied exhale. Continuous take, gentle push-in, 50mm, warm side light catching the steam in the beam, cosy and unhurried',
+        scene: 'In a soft grey robe over pyjamas, on a couch by a rain-flecked window.',
+        category: 'interactions',
+        mediaType: 'VIDEO',
+    },
+    {
+        id: 'video-camera-orbit',
+        name: 'Camera Orbit',
+        text: 'She holds one still pose while the camera arcs a slow half circle around her, the background sliding past behind her as the light rolls across her face from one side to the other, her eyes tracking the lens the entire way through the move. Continuous orbiting move at a steady rate, 35mm, single hard key so the modelling shifts through the arc, sculptural and cinematic',
+        scene: 'In a structured black dress, at the centre of a dark studio with one lamp on a stand.',
+        category: 'studio_angles',
+        mediaType: 'VIDEO',
+    },
+    {
+        id: 'video-rain-walk',
+        name: 'Rain Walk',
+        text: 'She walks toward the lens through steady falling rain, water running off the hair and down the face, the soaked clothing clinging and moving with each step, hands hanging loose, her expression calm and unhurried as the drops keep landing. Camera tracking backward to hold framing, 50mm, hard backlight turning the falling rain into bright streaks, moody cinematic drama',
+        scene: 'In a soaked white cotton shirt and dark jeans, on a neon-reflected street at night.',
+        category: 'actions_dynamic',
+        mediaType: 'VIDEO',
+    },
+
+    // 🌶️ Spicy — ocultos salvo que el toggle NSFW esté encendido, y fuera del
+    // Dice 🎲 por default (ver `nsfw` en ActionPreset y getPresetsByMediaType).
+    {
+        id: 'spicy-lingerie-window',
+        name: 'Lingerie by Window',
+        text: 'Standing at a window in delicate lingerie with one forearm raised against the frame and the forehead resting on it, the opposite hip pushed out, spine curved into a long S, face turning back toward the lens under lowered lashes. Full body shot at eye level, 85mm lens, hard morning sun through half-open blinds laying bright bands and deep shadow across the skin, warm boudoir intimacy',
+        scene: 'In a champagne lace bra and matching high-cut briefs, at a tall bedroom window with slatted blinds and rumpled white sheets behind.',
+        category: 'spicy',
+        mediaType: 'IMAGE',
+        nsfw: true,
+    },
+    {
+        id: 'spicy-bedsheet-wrap',
+        name: 'Bedsheet Wrap',
+        text: 'Kneeling upright on a bed with a loose sheet gathered against the chest and held in one fist, the fabric falling open down the back and pooling around the knees, the free hand pushing tousled hair off the face, gaze soft and just-woken. Medium full shot from a low kneeling eye level, 50mm lens, soft overcast window light wrapping the shoulders, tender morning-after intimacy',
+        scene: 'In nothing but a crumpled white linen sheet, on an unmade bed in a bright minimal bedroom.',
+        category: 'spicy',
+        mediaType: 'IMAGE',
+        nsfw: true,
+    },
+    {
+        id: 'spicy-robe-off-shoulder',
+        name: 'Robe Off Shoulder',
+        text: 'Wearing a silk robe that has slipped down off one shoulder and hangs open at the front, the belt loose in one hand, the other arm crossing low over the waist, weight settled into one hip, chin dipped with a slow half-lidded look. Medium full shot, 85mm lens, low warm lamplight from one side with the silk catching a soft sheen, languid private glamour',
+        scene: 'In a deep-emerald short silk robe over matching briefs, in a dim hotel room with a single bedside lamp.',
+        category: 'spicy',
+        mediaType: 'IMAGE',
+        nsfw: true,
+    },
+    {
+        id: 'spicy-steamed-glass',
+        name: 'Steamed Shower Glass',
+        text: 'Standing behind a fogged shower panel so the figure reads as a soft blurred shape through the condensation, one palm dragged down the glass leaving a clear streak that reveals a sharp band of wet skin and the eyes looking through it. Medium full shot, 50mm lens focused on the glass surface, warm bathroom light diffusing through the steam, suggestive and half-hidden',
+        scene: 'Bare behind a steamed glass shower screen in a dark tiled bathroom with a warm ceiling light.',
+        category: 'spicy',
+        mediaType: 'IMAGE',
+        nsfw: true,
+    },
+    {
+        id: 'spicy-wet-shirt-pool',
+        name: 'Wet Shirt Poolside',
+        text: 'Sitting on the pool edge with the legs in the water to mid-calf, a soaked white shirt clinging translucent to the torso, leaning back on both straightened arms so the chest lifts and the head tips back toward the sun, hair dripping down the spine. Full body shot from water level, 35mm lens, hard midday sun with bright caustics rippling across the skin, sun-drenched and sultry',
+        scene: 'In a soaked oversized white cotton shirt over a black bikini bottom, at the edge of a turquoise infinity pool at noon.',
+        category: 'spicy',
+        mediaType: 'IMAGE',
+        nsfw: true,
+    },
+    {
+        id: 'spicy-stockings-vanity',
+        name: 'Stockings at the Vanity',
+        text: 'Perched on a vanity stool with one leg lifted onto the seat edge, both hands rolling a sheer stocking up along the calf toward the thigh, spine curved forward over the movement, eyes flicking up to the lens mid-task. Medium full shot from a low angle, 85mm lens, warm bulb light from the mirror throwing a soft glare along the leg, retro boudoir ritual',
+        scene: 'In a black lace balconette set with a garter belt and sheer stockings, at a bulb-lit vanity in a dim dressing room.',
+        category: 'spicy',
+        mediaType: 'IMAGE',
+        nsfw: true,
+    },
+    {
+        id: 'spicy-bare-back-arch',
+        name: 'Bare Back Arch',
+        text: 'Lying face down on the bed with the upper body propped on both forearms, the whole back bare and arching so the shoulder blades draw together and the spine hollows, ankles crossed and lifted in the air, face turning back over one shoulder toward the lens. Full body shot from a low side angle, 85mm lens, single warm side light raking along the spine to carve every contour, sculptural and unmistakably intimate',
+        scene: 'Bare with a sheet draped low across the hips, on dark charcoal bedding in a shadowed room.',
+        category: 'spicy',
+        mediaType: 'IMAGE',
+        nsfw: true,
+    },
+    {
+        id: 'spicy-oversized-shirt-morning',
+        name: 'His Shirt, Morning',
+        text: 'Standing in a kitchen wearing only an oversized unbuttoned mens shirt that hangs to mid-thigh, one hip leaning on the counter edge, bare legs crossed at the ankle, one hand holding a mug and the other tugging the collar closed, a sleepy amused look thrown at the lens. Full body shot, 35mm lens, bright morning backlight flaring past her and turning the shirt fabric luminous, cosy and quietly suggestive',
+        scene: 'In an oversized pale-blue mens dress shirt worn open, in a sunlit kitchen with a coffee pot on the counter.',
+        category: 'spicy',
+        mediaType: 'IMAGE',
+        nsfw: true,
+    },
+    {
+        id: 'spicy-video-strap-slip',
+        name: 'Strap Slip',
+        text: 'She holds the lens with a steady look, then lifts one hand and slides a thin strap slowly off the shoulder, the fabric easing down the upper arm as her chin turns toward the bared shoulder and her eyes come back up at the end of the movement. Single continuous take, locked-off medium close-up, 85mm, warm low key light with deep shadow behind, slow deliberate tease',
+        scene: 'In a black satin slip with fine straps, on the edge of a bed in a dim room lit by one warm lamp.',
+        category: 'spicy',
+        mediaType: 'VIDEO',
+        nsfw: true,
+    },
+    {
+        id: 'spicy-video-robe-turn',
+        name: 'Robe Turn',
+        text: 'She stands with her back to the lens in an open silk robe, the fabric hanging off both shoulders to reveal the full bare back, then turns her upper body slowly around toward the camera while one hand gathers the robe closed across the front, finishing with her eyes on the lens over the shoulder. Single continuous take, slow push-in, 85mm, soft warm side light travelling across the spine as she rotates, languid and cinematic',
+        scene: 'In a long ivory silk robe worn off the shoulders, in a candlelit bedroom with sheer curtains behind.',
+        category: 'spicy',
+        mediaType: 'VIDEO',
+        nsfw: true,
+    },
 ]
 
 // Helper function to get presets by category
-export const getPresetsByCategory = (category: ActionCategory): ActionPreset[] => {
-    return MODEL_ACTION_PRESETS.filter(preset => preset.category === category)
+export const getPresetsByCategory = (
+    category: ActionCategory,
+    includeNsfw = false,
+): ActionPreset[] => {
+    return MODEL_ACTION_PRESETS.filter(
+        preset =>
+            preset.category === category && (includeNsfw || !preset.nsfw),
+    )
 }
 
-// Helper function to get presets by media type
-export const getPresetsByMediaType = (mediaType: 'IMAGE' | 'VIDEO'): ActionPreset[] => {
-    return MODEL_ACTION_PRESETS.filter(preset => preset.mediaType === mediaType)
+/**
+ * Helper function to get presets by media type. El 🌶️ queda FUERA salvo que se
+ * pida — el Dice 🎲 llama a esto sin flag, así que un click al azar sigue sin
+ * poder soltar un prompt picante de sorpresa.
+ */
+export const getPresetsByMediaType = (
+    mediaType: 'IMAGE' | 'VIDEO',
+    includeNsfw = false,
+): ActionPreset[] => {
+    return MODEL_ACTION_PRESETS.filter(
+        preset =>
+            preset.mediaType === mediaType && (includeNsfw || !preset.nsfw),
+    )
 }
 
 // Get all categories with their presets
-export const getGroupedPresets = (): Record<ActionCategory, ActionPreset[]> => {
-    return MODEL_ACTION_PRESETS.reduce((acc, preset) => {
+export const getGroupedPresets = (includeNsfw = false): Record<ActionCategory, ActionPreset[]> => {
+    return MODEL_ACTION_PRESETS.filter(
+        preset => includeNsfw || !preset.nsfw,
+    ).reduce((acc, preset) => {
         if (!acc[preset.category]) {
             acc[preset.category] = []
         }

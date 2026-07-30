@@ -22,6 +22,7 @@ import {
     EDIT_ANCHOR_CLAUSE,
     BODY_SPEC_NOT_WARDROBE_CLAUSE,
     hairClause as buildHairClause,
+    hairClauseCompact,
     eyeClause as buildEyeClause,
     faceFidelityClause as buildFaceFidelityClause,
 } from '../shared'
@@ -112,7 +113,11 @@ async function build(ctx: ImageRouteContext): Promise<KieImageRequest> {
                 console.log(
                     `[KIE] Seedream i2i (${resolvedModel}) prompt auto-contenido (${String(input.prompt).length} chars) — sin ancla de identidad`,
                 )
-                return { model: resolvedModel, input, fullApiPrompt: promptText }
+                return {
+                    model: resolvedModel,
+                    input,
+                    fullApiPrompt: promptText,
+                }
             }
             // hasBody: además de señalar la imagen 2, se RE-ANCLAN las medidas
             // en TEXTO (bodyEmphasis). Sin esto el cuerpo dependía 100% de que
@@ -138,6 +143,29 @@ async function build(ctx: ImageRouteContext): Promise<KieImageRequest> {
                           .replace(/^\(|\)$/g, '')
                     : capAtWordBoundary(ctx.bodyEmphasis, 300, model)
                 : ''
+            // CURVAS POR NIVEL (2026-07-29, "Seedream 5 Pro saca los avatares
+            // más flacos que Gemini"): los sliders busto/glúteos/muslos viajan
+            // SOLO por `bodyEmphasis` —gating permisivo, nunca en el [BODY —]
+            // que ve Gemini— y la dieta de arriba se queda con el paréntesis de
+            // cm y TIRA esa cola. O sea que el único canal que existe para
+            // "bubble butt / muslos gruesos / nivel de busto" moría aquí, y a
+            // Seedream le llegaban tres números sueltos: bust 86, waist 45,
+            // hips 95. Con cinco superlativos de cintura mínima en la escena y
+            // CERO señal de volumen, un motor literal pinta exactamente eso —
+            // flaca. Gemini acierta porque infiere la cadera desde el ratio;
+            // Seedream no infiere, obedece.
+            //
+            // La cola se recupera como frase PROPIA. Lo que sigue sin viajar es
+            // la prosa de describeBody, y está bien: esa SÍ está duplicada en el
+            // [BODY —] de la escena (el strip solo borra `[BODY:`, con dos
+            // puntos — el tag del store usa raya, así que sobrevive intacto).
+            const curvesIdx = (ctx.bodyEmphasis ?? '').indexOf(
+                '; emphasized curves:',
+            )
+            const curvesSentence =
+                curvesIdx >= 0
+                    ? ` Her ${ctx.bodyEmphasis!.slice(curvesIdx + 2).trim()}.`
+                    : ''
             const bodyClause = ctx.deepfakeMode
                 ? ''
                 : hasBody
@@ -150,8 +178,8 @@ async function build(ctx: ImageRouteContext): Promise<KieImageRequest> {
                         ''
                     } IGNORE the second image's clothing, pose, scene, lighting and background — her outfit, pose and the scene come ONLY from ${hasClone ? 'the CLONE image and the text description' : 'the text description'}.${
                         denseBodySpec
-                            ? ` Her exact measurements: ${denseBodySpec} — render THAT body, matching the second image.${BODY_SPEC_NOT_WARDROBE_CLAUSE}`
-                            : ''
+                            ? ` Her exact measurements: ${denseBodySpec} — render THAT body, matching the second image.${curvesSentence}${BODY_SPEC_NOT_WARDROBE_CLAUSE}`
+                            : curvesSentence
                     }${
                         // curveBoost (refuerzo por RATIO, d4ca3f4) también con
                         // body ref: MiaUltra (hips 119/waist 45, ratio 2.64)
@@ -201,16 +229,14 @@ async function build(ctx: ImageRouteContext): Promise<KieImageRequest> {
             // Face-recall al CIERRE del ancla (recency): con anclas grandes la
             // instrucción de cara del head quedaba lejos y la identidad
             // derivaba — se re-ancla justo antes de la escena.
-            const anchorTail = `${hairClause}${eyeClause}${extraClauses} Render EXACTLY ONE person — a single subject in ONE pose; do NOT duplicate the figure, show multiple poses side by side, or add any extra people.${INTACT_BODY_CLAUSE} Above all: her FACE and eyes must remain EXACTLY the woman in the FIRST image. Follow the SCENE, POSE and ACTION described below EXACTLY.`
-            // RESERVA DINÁMICA (2026-07-22): el piso fijo reservaba 1300 chars
-            // aunque la escena midiera 160 — y ese espacio VACÍO decapitaba el
-            // bodyClause (MiaUltra: curveBoost cortado a media frase y guard
-            // IGNORE perdido, medido con el harness). Se reserva lo que la
-            // escena REALMENTE ocupa (con margen), capado al piso de Fase 6.
-            const sceneReserve = Math.min(
-                SCENE_FLOOR,
-                String(input.prompt).length + 50,
-            )
+            const buildAnchorTail = (hair: string) =>
+                `${hair}${eyeClause}${extraClauses} Render EXACTLY ONE person — a single subject in ONE pose; do NOT duplicate the figure, show multiple poses side by side, or add any extra people.${INTACT_BODY_CLAUSE} Above all: her FACE and eyes must remain EXACTLY the woman in the FIRST image. Follow the SCENE, POSE and ACTION described below EXACTLY.`
+            const anchorTailLong = buildAnchorTail(hairClause)
+            // (La RESERVA DINÁMICA de escena que vivía aquí desde 2026-07-22 ya
+            // no hace falta: el body clause dejó de descontarse contra la
+            // escena. Su motivo original —no regalarle 1300 chars a una escena
+            // de 160— lo cumple ahora `sceneRoom`, que recorta la escena por su
+            // cuenta más abajo.)
             // TECHO DURO del body clause (2026-07-23): la reserva dinámica
             // liberaba presupuesto con escenas CORTAS y el texto de cuerpo se
             // lo comía TODO — ancla de 2292/2700 con la cara diluida →
@@ -219,12 +245,28 @@ async function build(ctx: ImageRouteContext): Promise<KieImageRequest> {
             // entero (con margen); el techo protege el branch SIN sheet
             // (emphasis completo ~2,200 — a 1100 sobreviven prosa y cm).
             // Presupuesto libre NO usado = prompt más corto = más atención.
+            //
+            // DOS TECHOS OTRA VEZ CONFUNDIDOS (2026-07-29): esta resta trataba
+            // el 2750 como presupuesto TOTAL (ancla + escena) mientras el aviso
+            // del final lo trata como presupuesto del ANCLA. Con la escena
+            // reservando su piso (1300) y head+tail costando ~1340 de
+            // boilerplate —la hairClause autoritativa sola pesa ~430— al cuerpo
+            // le quedaban **106 chars** medidos con este mismo harness: la
+            // escalera aterrizaba SIEMPRE en su peldaño más bajo y se perdían a
+            // la vez las curvas por nivel y el curveBoost, que son justo el
+            // antídoto anti-flaca. El ancla real medía 1590 sobre un techo de
+            // 2750: había sitio de sobra y el cálculo no lo veía.
+            //
+            // El techo del ancla es el punto de DILUCIÓN DE CARA medido (~2300,
+            // "cara/ojos raros"), no 2750-menos-la-escena. La escena tiene su
+            // propio piso y se recorta aparte; el total sigue muy por debajo
+            // del límite de la API (2200 + 1300 = 3500 < 4800).
+            const SEEDREAM_ANCHOR_BUDGET = 2200
             const bodyClauseMax = Math.min(
                 1100,
-                SEEDREAM_BUDGET -
-                    sceneReserve -
+                SEEDREAM_ANCHOR_BUDGET -
                     anchorHead.length -
-                    anchorTail.length,
+                    anchorTailLong.length,
             )
             // PISO DEL CUERPO (2026-07-28) — "con Clone Ref el busto sale del
             // clon; sin Clone Ref sale bien" (reporte del usuario). Medido con
@@ -251,28 +293,49 @@ async function build(ctx: ImageRouteContext): Promise<KieImageRequest> {
             const bodyClauseCompact = ctx.deepfakeMode
                 ? ''
                 : hasBody
-                  ? `Her BODY${denseBodySpec ? ` measures ${denseBodySpec} and` : ''} is the one in ${bodySheetRef} — replicate that exact shape, those proportions and curves. From the sheet take ONLY the body: her outfit, pose and the scene come ONLY from ${sceneSource}.`
-                  : `Her BODY${denseBodySpec ? ` measures ${denseBodySpec} and` : ''} follows the text spec below — render THAT body, visibly fuller and curvier than the reference photo suggests. Use the reference image ONLY for her face and identity.`
-            // ESCALERA, no salto: completo → compacto+boost → compacto pelado.
-            // El curveBoost lleva el "do NOT normalize" que se validó en A/B
-            // para los ratios extremos (MiaUltra 2.64 salía flaca sin él), así
-            // que viaja siempre que quepa — pero NUNCA a costa de las medidas:
-            // su propio comentario avisa de que cada char del boost compite
-            // con la CARA dentro del ancla ("cara/ojos raros", 2026-07-23).
+                  ? `Her BODY${denseBodySpec ? ` measures ${denseBodySpec} and` : ''} is the one in ${bodySheetRef} — replicate that exact shape, those proportions and curves. From the sheet take ONLY the body: her outfit, pose and the scene come ONLY from ${sceneSource}.${curvesSentence}`
+                  : `Her BODY${denseBodySpec ? ` measures ${denseBodySpec} and` : ''} follows the text spec below — render THAT body, visibly fuller and curvier than the reference photo suggests. Use the reference image ONLY for her face and identity.${curvesSentence}`
+            // ESCALERA de DOS peldaños: completo → compacto+boost, y ahí para.
+            // El curveBoost lleva el "render WIDE, FULL … do NOT normalize" que
+            // se validó en A/B contra el sesgo flaco de Seedream (MiaUltra 2.64
+            // salía flaca sin él), así que ENTRA en el piso en vez de ser lo
+            // primero que se tira: el tercer peldaño "compacto pelado" era el
+            // que de hecho se servía siempre (presupuesto 106) y es justo el
+            // único sin defensa anti-flaca. Mismo criterio que ya se aplicó a
+            // las medidas el 2026-07-28: no cortar mejor — no cortar.
             const compactWithBoost = ctx.curveBoost
                 ? `${bodyClauseCompact} ${ctx.curveBoost}`
                 : bodyClauseCompact
             let fitBodyClause = bodyClause
             if (bodyClauseMax <= 0 || bodyClause.length > bodyClauseMax) {
-                fitBodyClause =
-                    compactWithBoost.length <= bodyClauseMax
-                        ? compactWithBoost
-                        : bodyClauseCompact
+                fitBodyClause = compactWithBoost
                 if (fitBodyClause.length > bodyClauseMax) {
                     console.warn(
-                        `[KIE] Seedream body clause en su PISO (${bodyClauseCompact.length} chars, presupuesto ${bodyClauseMax}) — las medidas viajan enteras a costa de ${bodyClauseCompact.length - Math.max(bodyClauseMax, 0)} chars de exceso`,
+                        `[KIE] Seedream body clause en su PISO (${fitBodyClause.length} chars, presupuesto ${bodyClauseMax}) — medidas + curvas + boost viajan enteros a costa de ${fitBodyClause.length - Math.max(bodyClauseMax, 0)} chars de exceso`,
                     )
                 }
+            }
+            // Y SI AUN ASI EL ANCLA SE PASA, lo que se abarata es el TAIL, no el
+            // cuerpo: la hairClause autoritativa cuesta ~430 chars y tiene una
+            // variante compacta (~120) que conserva sus tres ejes —largo,
+            // textura y color— y el "ignore any other hair". Cambiar de variante
+            // devuelve ~310 chars y mete el ancla por debajo del punto de
+            // dilución; el orden del tail (y su recency para la cara) no se
+            // toca. Antes de esto, el único ajuste posible era tirar cuerpo.
+            let anchorTail = anchorTailLong
+            if (
+                !ctx.editMode &&
+                anchorHead.length +
+                    fitBodyClause.length +
+                    anchorTailLong.length >
+                    SEEDREAM_ANCHOR_BUDGET
+            ) {
+                anchorTail = buildAnchorTail(
+                    hairClauseCompact(ctx.hairEmphasis),
+                )
+                console.warn(
+                    `[KIE] Seedream tail compacto (hairClause corta): el ancla larga medía ${anchorHead.length + fitBodyClause.length + anchorTailLong.length} sobre un techo de ${SEEDREAM_ANCHOR_BUDGET} — se abarata el pelo, no el cuerpo`,
+                )
             }
             // EDICION: el ancla ENTERA sobra. Presenta la imagen como referencia
             // de CARA, re-especifica el cuerpo (fitBodyClause) y exige cuerpo
