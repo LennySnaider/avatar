@@ -27,7 +27,7 @@ import { retrieveKnowledge } from '@/lib/agent/retrieval'
 import { AGENT_UTILITY_MODEL } from '@/lib/agent/models'
 import { uploadBufferMedia, uploadGenerationMedia } from '@/lib/fanvue/mediaUpload'
 import { textToSpeech } from '@/services/MiniMaxService'
-import { getStoragePublicUrl } from '@/lib/supabase'
+import { getGenerationMediaUrl, getRowMediaUrl } from '@/lib/storagePaths'
 import { GoogleGenAI, Type } from '@google/genai'
 import { loadConnection } from '@/lib/fanvue/tokenStore'
 
@@ -660,14 +660,26 @@ export async function suggestPpvOffer(chatId: string): Promise<InboxResult<PpvSu
         const chosen = mediaCandidates[Math.min(Math.max(0, parsed.index ?? 0), mediaCandidates.length - 1)]
         const storagePath = String(chosen.metadata?.storage_path)
         const mediaType = (chosen.metadata?.media_type === 'VIDEO' ? 'VIDEO' : 'IMAGE') as 'IMAGE' | 'VIDEO'
+        const generationId = String(chosen.metadata?.generation_id)
+        // El preview salía de una URL de Supabase fija y con media en R2 daba
+        // 404 (imagen roja en el diálogo de PPV). El knowledge indexado no
+        // guarda el provider, así que se lee la FILA — que además es la fuente
+        // de verdad si el backfill la movió después de indexarla.
+        const { data: genRow } = await supabase
+            .from('generations')
+            .select('*')
+            .eq('id', generationId)
+            .maybeSingle()
 
         return {
             success: true,
             data: {
-                generationId: String(chosen.metadata?.generation_id),
+                generationId,
                 storagePath,
                 mediaType,
-                previewUrl: getStoragePublicUrl('generations', storagePath),
+                previewUrl: genRow
+                    ? getRowMediaUrl(genRow)
+                    : getGenerationMediaUrl(storagePath),
                 teaser: parsed.teaser ?? 'Got something special for you… 😏',
                 priceCents: Math.max(300, Math.round(parsed.priceCents ?? 500)),
             },
@@ -712,7 +724,6 @@ export async function sendPpvOffer(input: {
             creatorUuid: avatar.fanvue_creator_uuid ?? null,
             storagePath: input.storagePath,
             mediaType: input.mediaType === 'VIDEO' ? 'video' : 'image',
-            supabase: supabase as unknown as Parameters<typeof uploadGenerationMedia>[0]['supabase'],
         })
         const res = await client.sendChatMessage(avatar.fanvue_creator_uuid ?? null, chat.external_chat_id, {
             text: input.text || undefined,

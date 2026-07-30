@@ -1,7 +1,8 @@
 'use server'
 
 import { requireUserId } from '@/lib/session'
-import { createServerSupabaseClient, getStoragePublicUrl } from '@/lib/supabase'
+import { createServerSupabaseClient } from '@/lib/supabase'
+import { getRowMediaUrl } from '@/lib/storagePaths'
 import { getSocialProvider, deriveUploadPostUsername } from '@/lib/social/provider'
 import { indexKnowledgeSource } from '@/lib/agent/indexer'
 import { getOrgContextForUser } from '@/lib/tenant/getOrgContext'
@@ -559,9 +560,14 @@ export async function createSocialPost(input: CreateSocialPostInput): Promise<So
         let contentType: 'photo' | 'video' | 'text' = 'text'
         let generationId: string | null = null
         if (requestedIds.length > 0) {
+            // select('*') y no la lista de columnas: la URL de la media depende
+            // de `storage_provider` (era R2) y esa columna puede no existir
+            // todavía en la BD — nombrarla en el select rompería la query
+            // entera, mientras que con '*' llega si está y si no, se cae a
+            // Supabase como siempre. Mismo patrón que la galería del Studio.
             const { data: gens, error: genErr } = await supabase
                 .from('generations')
-                .select('id, media_type, storage_path, user_id, avatar_id')
+                .select('*')
                 .in('id', requestedIds)
             if (genErr || !gens || gens.length !== requestedIds.length) {
                 return { success: false, error: 'Generation not found' }
@@ -579,7 +585,10 @@ export async function createSocialPost(input: CreateSocialPostInput): Promise<So
             if (ordered.length > 1 && ordered.some((g) => g.media_type === 'VIDEO')) {
                 return { success: false, error: 'Carousels support images only — post videos individually' }
             }
-            mediaUrls = ordered.map((g) => getStoragePublicUrl('generations', g.storage_path))
+            // URL POR FILA (2026-07-29): con `getStoragePublicUrl` fijo a
+            // Supabase, la media que vive en R2 le llegaba a Upload-Post como
+            // una URL 404 y el post se caía.
+            mediaUrls = ordered.map((g) => getRowMediaUrl(g))
             contentType = ordered[0].media_type === 'VIDEO' ? 'video' : 'photo'
             generationId = ordered[0].id
         }

@@ -7,7 +7,7 @@
  * api_key never reaches the client (PersonaDTO carries hasApiKey only).
  */
 import { GoogleGenAI, Type } from '@google/genai'
-import { getStoragePublicUrl } from '@/lib/storagePaths'
+import { getRowMediaUrl } from '@/lib/storagePaths'
 import { generateText } from 'ai'
 import { getOrgContext, type OrgContext } from '@/lib/tenant/getOrgContext'
 import { agentSupabase, type AvatarKnowledgeRow } from '@/lib/agent/db'
@@ -344,14 +344,16 @@ async function attachKnowledgeThumbnails(items: KnowledgeItemDTO[]): Promise<voi
     }
     if (genToItems.size === 0) return
 
+    // '*' para que venga `storage_provider` si la migración R2 ya está aplicada
+    // (nombrarlo en el select rompería la query si aún no existe).
     const { data: gens } = await supabase
         .from('generations')
-        .select('id, storage_path, media_type')
+        .select('*')
         .in('id', [...genToItems.keys()])
 
     for (const gen of gens ?? []) {
         if (!gen.storage_path) continue
-        const url = getStoragePublicUrl('generations', gen.storage_path)
+        const url = getRowMediaUrl(gen)
         for (const it of genToItems.get(gen.id) ?? []) {
             it.thumbnailUrl = url
             it.thumbnailMediaType = gen.media_type === 'VIDEO' ? 'VIDEO' : 'IMAGE'

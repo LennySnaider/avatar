@@ -1,17 +1,16 @@
 /**
- * High-level media upload: take a `generations` row, stream its bytes from
- * Supabase storage, and run the full Fanvue multipart flow for a creator,
- * returning the `mediaUuid` usable in a post.
+ * High-level media upload: take a `generations` row, pull its bytes from
+ * whichever store actually holds them (R2 or Supabase, via `getMediaObject`),
+ * and run the full Fanvue multipart flow for a creator, returning the
+ * `mediaUuid` usable in a post.
  *
  * Flow: create session → for each part get a presigned S3 URL and PUT the byte
  * range (capturing its ETag) → complete → poll until the media is ready.
  */
-import type { SupabaseClient } from '@supabase/supabase-js'
+import { getMediaObject } from '@/lib/mediaStore'
 import type { FanvueClient } from './FanvueClient'
 import type { FanvueMediaType, FanvueUploadPart } from './types'
 
-/** Storage bucket holding generated avatar media. */
-const GENERATIONS_BUCKET = 'generations'
 /** Fallback S3 part size if the session omits/zeroes `partSize` (Fanvue uses ~6MB). */
 const DEFAULT_PART_SIZE = 6 * 1024 * 1024
 
@@ -21,8 +20,13 @@ export interface UploadGenerationMediaInput {
     creatorUuid: string | null
     storagePath: string
     mediaType: FanvueMediaType
-    /** Service-role Supabase client (its Storage API is DB-generic agnostic). */
-    supabase: SupabaseClient
+    /**
+     * `generations.storage_provider` — dónde vive el objeto. Opcional: si no se
+     * pasa, `getMediaObject` prueba el almacén activo y cae al otro. El cliente
+     * de Supabase ya NO se recibe: la media puede estar en R2 y quién sabe eso
+     * es mediaStore, no el llamador.
+     */
+    storageProvider?: string | null
 }
 
 function deriveFilename(storagePath: string): string {
@@ -90,7 +94,11 @@ export async function uploadBufferMedia(input: {
         const start = (partNumber - 1) * partSize
         const end = Math.min(start + partSize, sizeBytes)
         const chunk = bytes.slice(start, end)
-        const signedUrl = await client.getPartSignedUrl(creatorUuid, session.uploadId, partNumber)
+        const signedUrl = await client.getPartSignedUrl(
+            creatorUuid,
+            session.uploadId,
+            partNumber,
+        )
         const etag = await putPart(signedUrl, chunk)
         parts.push({ PartNumber: partNumber, ETag: etag })
     }
@@ -103,19 +111,22 @@ export async function uploadBufferMedia(input: {
 export async function uploadGenerationMedia(
     input: UploadGenerationMediaInput,
 ): Promise<string> {
-    const { client, creatorUuid, storagePath, mediaType, supabase } = input
+    const { client, creatorUuid, storagePath, mediaType, storageProvider } =
+        input
 
-    // Pull the bytes out of Supabase storage, then run the shared flow.
-    const { data: blob, error } = await supabase.storage
-        .from(GENERATIONS_BUCKET)
-        .download(storagePath)
-    if (error || !blob) {
+    // Los bytes salen del almacén donde REALMENTE vive el objeto (R2 o
+    // Supabase), no de uno fijo; después, el flujo compartido de siempre.
+    let arrayBuffer: ArrayBuffer
+    try {
+        arrayBuffer = await getMediaObject({
+            path: storagePath,
+            provider: storageProvider,
+        })
+    } catch (e) {
         throw new Error(
-            `Failed to download generation media: ${error?.message ?? 'not found'}`,
+            `Failed to download generation media: ${e instanceof Error ? e.message : String(e)}`,
         )
     }
-    // ArrayBuffer is a clean BodyInit (no ArrayBufferLike widening).
-    const arrayBuffer = (await blob.arrayBuffer()) as ArrayBuffer
     return uploadBufferMedia({
         client,
         creatorUuid,

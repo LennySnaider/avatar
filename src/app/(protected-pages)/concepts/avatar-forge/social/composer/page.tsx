@@ -4,7 +4,7 @@ import Link from 'next/link'
 import Container from '@/components/shared/Container'
 import Card from '@/components/ui/Card'
 import SocialComposer from './_components/SocialComposer'
-import { getStoragePublicUrl } from '@/lib/storagePaths'
+import { getRowMediaUrl } from '@/lib/storagePaths'
 import { getOrgContext } from '@/lib/tenant/getOrgContext'
 import { orgTable } from '@/lib/org/orgTable'
 import { listAvatarSocialAccounts } from '@/services/SocialService'
@@ -39,15 +39,17 @@ export default async function Page({ searchParams }: PageProps) {
         listAvatarSocialAccounts(),
         (async (): Promise<GenerationMedia | null> => {
             if (!generationId) return null
+            // '*': la URL depende de `storage_provider` (era R2) y esa columna
+            // puede no existir todavía — nombrarla rompería la query.
             const { data: gen } = await orgTable(ctx, 'generations')
-                .select('id, media_type, storage_path, prompt, avatar_id')
+                .select('*')
                 .eq('id', generationId)
                 .maybeSingle()
             if (!gen) return null
             return {
                 id: gen.id,
                 mediaType: gen.media_type,
-                publicUrl: getStoragePublicUrl('generations', gen.storage_path),
+                publicUrl: getRowMediaUrl(gen),
                 prompt: gen.prompt,
                 avatarId: gen.avatar_id,
             }
@@ -57,13 +59,13 @@ export default async function Page({ searchParams }: PageProps) {
         // rejected by the server).
         (async (): Promise<{ id: string; publicUrl: string; avatarId: string | null }[]> => {
             const { data } = await orgTable(ctx, 'generations')
-                .select('id, storage_path, avatar_id')
+                .select('*')
                 .eq('media_type', 'IMAGE')
                 .order('created_at', { ascending: false })
                 .limit(24)
-            return ((data ?? []) as { id: string; storage_path: string; avatar_id: string | null }[]).map((g) => ({
+            return ((data ?? []) as { id: string; storage_path: string; storage_provider?: string | null; avatar_id: string | null }[]).map((g) => ({
                 id: g.id,
-                publicUrl: getStoragePublicUrl('generations', g.storage_path),
+                publicUrl: getRowMediaUrl(g),
                 avatarId: g.avatar_id,
             }))
         })(),

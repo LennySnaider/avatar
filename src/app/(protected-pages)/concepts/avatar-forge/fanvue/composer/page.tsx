@@ -4,7 +4,7 @@ import Link from 'next/link'
 import Container from '@/components/shared/Container'
 import Card from '@/components/ui/Card'
 import FanvueComposer from './_components/FanvueComposer'
-import { getStoragePublicUrl } from '@/lib/storagePaths'
+import { getRowMediaUrl } from '@/lib/storagePaths'
 import { getOrgContext } from '@/lib/tenant/getOrgContext'
 import { orgTable } from '@/lib/org/orgTable'
 import {
@@ -38,14 +38,16 @@ export default async function Page({ searchParams }: PageProps) {
         getFanvueConnection(),
         listFanvueCreators(),
         (async (): Promise<ComposerGeneration[]> => {
+            // '*': la URL depende de `storage_provider` (era R2) y esa columna
+            // puede no existir todavía — nombrarla rompería la query.
             const { data } = await orgTable(ctx, 'generations')
-                .select('id, media_type, storage_path, prompt')
+                .select('*')
                 .order('created_at', { ascending: false })
                 .limit(24)
-            return ((data ?? []) as { id: string; media_type: MediaType; storage_path: string; prompt: string }[]).map((g) => ({
+            return ((data ?? []) as { id: string; media_type: MediaType; storage_path: string; storage_provider?: string | null; prompt: string }[]).map((g) => ({
                 id: g.id,
                 mediaType: g.media_type,
-                publicUrl: getStoragePublicUrl('generations', g.storage_path),
+                publicUrl: getRowMediaUrl(g),
                 prompt: g.prompt,
             }))
         })(),

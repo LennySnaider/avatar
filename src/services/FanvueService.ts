@@ -366,9 +366,6 @@ export async function createFanvuePost(
                 creatorUuid: input.creatorUserUuid ?? null,
                 storagePath: g.storage_path,
                 mediaType: mapMediaType(g.media_type),
-                supabase: supabase as unknown as Parameters<
-                    typeof uploadGenerationMedia
-                >[0]['supabase'],
             })
             mediaUuids.push(uuid)
         }
@@ -754,9 +751,6 @@ export async function sendGenerationsToFanvueVault(input: {
                     creatorUuid,
                     storagePath: g.storage_path,
                     mediaType: mapMediaType(g.media_type),
-                    supabase: supabase as unknown as Parameters<
-                        typeof uploadGenerationMedia
-                    >[0]['supabase'],
                 }),
             )
         }

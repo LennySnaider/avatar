@@ -125,7 +125,8 @@ export async function putMediaObject(opts: {
     // Caída a Supabase: exactamente el comportamiento previo, para que con el
     // flag apagado nada cambie ni un byte.
     const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL
-    if (!SUPABASE_URL) throw new Error('NEXT_PUBLIC_SUPABASE_URL is not defined')
+    if (!SUPABASE_URL)
+        throw new Error('NEXT_PUBLIC_SUPABASE_URL is not defined')
     const supabase = createServerSupabaseClient()
     const { error } = await supabase.storage
         .from('generations')
@@ -139,6 +140,84 @@ export async function putMediaObject(opts: {
         url: `${SUPABASE_URL}/storage/v1/object/public/generations/${opts.path}`,
         provider: 'supabase',
     }
+}
+
+/** Bytes de un objeto en R2, o null si R2 no está configurado. GET FIRMADO (no
+ * la URL pública): así funciona aunque el bucket no sea público y sin depender
+ * de NEXT_PUBLIC_R2_PUBLIC_BASE_URL. */
+async function getFromR2(path: string): Promise<ArrayBuffer | null> {
+    const cfg = r2Config()
+    if (!cfg) return null
+    const res = await getAwsClient(cfg).fetch(r2ObjectUrl(cfg, path), {
+        method: 'GET',
+    })
+    if (!res.ok) throw new Error(`R2 GET ${res.status}`)
+    return await res.arrayBuffer()
+}
+
+/** Bytes de un objeto en el bucket `generations` de Supabase Storage. */
+async function getFromSupabase(path: string): Promise<ArrayBuffer> {
+    const supabase = createServerSupabaseClient()
+    const { data: blob, error } = await supabase.storage
+        .from('generations')
+        .download(path)
+    if (error || !blob) {
+        // El mensaje de storage-js puede venir como un JSON gigante con la
+        // Response entera serializada (cuando la descarga usa noResolveJson no
+        // parsea el cuerpo del error). Se acota para que quepa en un toast.
+        const raw = error?.message ?? 'objeto no encontrado'
+        throw new Error(`Supabase Storage: ${raw.slice(0, 120)}`)
+    }
+    return (await blob.arrayBuffer()) as ArrayBuffer
+}
+
+/**
+ * Bytes de una media de generación, desde DONDE DE VERDAD VIVA.
+ *
+ * POR QUÉ EXISTE (2026-07-29, reporte "al enviar a la bóveda de Fanvue me da
+ * error: Failed to download generation media"): tras la migración a R2 las
+ * generaciones nuevas viven en R2 y la fila lo anota en `storage_provider`,
+ * pero los consumidores de BYTES seguían bajando SIEMPRE del bucket
+ * `generations` de Supabase — donde el objeto ya no está (y para las filas que
+ * movió `backfill-r2.mjs`, tampoco). El envío a Fanvue (bóveda, publicar y PPV)
+ * fallaba por eso, no por Fanvue.
+ *
+ * Es el equivalente en BYTES de lo que `getGenerationMediaUrl` es en URLs: el
+ * ÚNICO sitio que decide dónde está el objeto.
+ *
+ * Intenta el provider declarado y CAE al otro si falla. Ese fallback no es
+ * adorno: hay filas cuyo provider no conocemos en el sitio de la llamada (el
+ * PPV solo tiene el storage_path indexado en knowledge) y filas que un backfill
+ * a medias pudo dejar mal etiquetadas. Una petición extra en el camino de fallo
+ * es más barata que un envío roto.
+ */
+export async function getMediaObject(opts: {
+    path: string
+    /** `generations.storage_provider` si el llamador lo tiene a mano. */
+    provider?: string | null
+}): Promise<ArrayBuffer> {
+    const r2First = opts.provider === 'r2' || (!opts.provider && r2Enabled())
+    const order: Array<'r2' | 'supabase'> = r2First
+        ? ['r2', 'supabase']
+        : ['supabase', 'r2']
+    const errors: string[] = []
+    for (const store of order) {
+        try {
+            const bytes =
+                store === 'r2'
+                    ? await getFromR2(opts.path)
+                    : await getFromSupabase(opts.path)
+            if (bytes) return bytes
+            errors.push(`${store}: sin configurar`)
+        } catch (e) {
+            errors.push(
+                `${store}: ${e instanceof Error ? e.message : String(e)}`,
+            )
+        }
+    }
+    throw new Error(
+        `${opts.path} no está en ningún almacén (${errors.join(' · ')})`,
+    )
 }
 
 /**

@@ -5,7 +5,7 @@ import Dialog from '@/components/ui/Dialog'
 import Spinner from '@/components/ui/Spinner'
 import { HiOutlineCollection, HiOutlineCheck, HiOutlineFilm } from 'react-icons/hi'
 import { apiGetGenerations } from '@/services/AvatarForgeService'
-import { getStoragePublicUrl } from '@/lib/storagePaths'
+import { getRowMediaUrl } from '@/lib/storagePaths'
 import type { Generation } from '@/@types/supabase'
 
 interface GalleryPickerValue {
@@ -49,7 +49,7 @@ export default function GalleryPickerField({ value, onSelect }: GalleryPickerFie
     const handlePick = (item: Generation) => {
         onSelect({
             generationId: item.id,
-            url: getStoragePublicUrl('generations', item.storage_path),
+            url: getRowMediaUrl(item),
             mediaType: item.media_type,
             prompt: item.prompt ?? '',
             avatarId: item.avatar_id ?? null,
@@ -115,7 +115,7 @@ export default function GalleryPickerField({ value, onSelect }: GalleryPickerFie
                     ) : (
                         <div className="grid grid-cols-4 gap-3 max-h-[60vh] overflow-y-auto">
                             {items.map((item) => {
-                                const url = getStoragePublicUrl('generations', item.storage_path)
+                                const url = getRowMediaUrl(item)
                                 const isSelected = value.generationId === item.id
                                 return (
                                     <button
