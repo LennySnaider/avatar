@@ -13,6 +13,7 @@ import toast from '@/components/ui/toast'
 import ConfirmDialog from '@/components/shared/ConfirmDialog'
 import VaultDialog from './VaultDialog'
 import AssignAvatarDialog from './AssignAvatarDialog'
+import KieTaskRescueDialog from './KieTaskRescueDialog'
 import {
     apiDeleteGeneration,
     apiGetAvatars,
@@ -38,6 +39,7 @@ import {
     HiOutlineCheckCircle,
     HiCheck,
     HiOutlineRefresh,
+    HiOutlineIdentification,
 } from 'react-icons/hi'
 import { PiFlowArrowDuotone } from 'react-icons/pi'
 import { TbPepper } from 'react-icons/tb'
@@ -113,6 +115,10 @@ const GalleryPanel = ({
     // guardo porque el navegador dejo de sondear (navegar, recargar, cerrar la
     // pestana). Estan pagadas y su imagen sigue viva un rato en el CDN.
     const [isReconciling, setIsReconciling] = useState(false)
+    // Rescate por ID: el reconciliador solo ve el rastro de reclamables, y hay
+    // tareas que nunca llegaron a registrarse ahi (poll sincrono de servidor).
+    // Con el taskId a mano se pueden recuperar igual.
+    const [rescueOpen, setRescueOpen] = useState(false)
 
     useEffect(() => {
         const el = scrollBarRef.current?.getScrollElement()
@@ -595,6 +601,17 @@ const GalleryPanel = ({
                             <HiOutlineRefresh
                                 className={`w-4 h-4 ${isReconciling ? 'animate-spin' : ''}`}
                             />
+                        </button>
+                        {/* Rescate por taskId — para cuando la tarea ni
+                            siquiera llego al rastro de reclamables y el boton
+                            de al lado dice "nada que recuperar". */}
+                        <button
+                            type="button"
+                            onClick={() => setRescueOpen(true)}
+                            title="Buscar una tarea de KIE por su taskId y rescatarla"
+                            className="shrink-0 flex items-center justify-center h-8 w-8 rounded-lg border border-gray-300 dark:border-gray-600 text-gray-500 hover:text-primary hover:border-primary transition-colors"
+                        >
+                            <HiOutlineIdentification className="w-4 h-4" />
                         </button>
                         {(filterableAvatars.length > 0 || hasOrphanMedia) && (
                             <select
@@ -1387,6 +1404,12 @@ const GalleryPanel = ({
                 media={assignTarget}
                 userId={userId}
                 onClose={() => setAssignTarget(null)}
+            />
+
+            <KieTaskRescueDialog
+                isOpen={rescueOpen}
+                onClose={() => setRescueOpen(false)}
+                onRescued={() => void reloadGallery()}
             />
         </div>
     )

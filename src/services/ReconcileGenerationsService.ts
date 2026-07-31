@@ -15,7 +15,7 @@ import { getOrgContext } from '@/lib/tenant/getOrgContext'
 import { orgSupabase } from '@/lib/org/orgTable'
 import { orgStoragePath } from '@/lib/storagePaths'
 import { settleHoldByRef, refundHoldByRef } from '@/lib/billing/wallet'
-import { checkKieImageTask } from '@/services/KieService'
+import { probeKieTask } from '@/services/kie/taskProbe'
 import {
     checkMuleRouterImageTask,
     checkMuleRouterVideoTask,
@@ -70,6 +70,28 @@ async function persistRemoteMedia(
     return path
 }
 
+/**
+ * Adapta el probe multi-familia de KIE a la forma que ya hablaban los checks
+ * de MuleRouter, para que el bucle de abajo no tenga que ramificar.
+ *
+ * 'unknown' se trata como VIVA a propósito: antes un 404 se traducía a
+ * 'failed' y la fila se borraba con reembolso, cerrando la puerta a rescatar
+ * una tarea que quizá solo vive en otra familia de endpoints. Si de verdad no
+ * existe, el barrido de caducadas la retira igual a las 24h — y también
+ * reembolsa.
+ */
+function toTaskStatus(
+    probe: Awaited<ReturnType<typeof probeKieTask>>,
+):
+    | { status: 'running' }
+    | { status: 'done'; url: string }
+    | { status: 'failed'; error: string } {
+    if (probe.state === 'success') return { status: 'done', url: probe.urls[0] }
+    if (probe.state === 'fail')
+        return { status: 'failed', error: probe.error }
+    return { status: 'running' }
+}
+
 export async function apiReconcilePendingGenerations(): Promise<ReconcileResult> {
     const ctx = await getOrgContext()
     const out: ReconcileResult = {
@@ -98,7 +120,12 @@ export async function apiReconcilePendingGenerations(): Promise<ReconcileResult>
                               row.task_id,
                               (row.metadata?.tier as 'max' | 'plus') ?? 'max',
                           )
-                    : await checkKieImageTask(row.task_id)
+                    : // El estado de KIE se pregunta por FAMILIA de endpoint:
+                      // flux-kontext y gpt-4o no viven en /jobs/recordInfo, y
+                      // preguntar ahí por una de ellas devolvía 404 → la
+                      // huérfana se contaba como "sin rescate" con la imagen
+                      // aún viva en el CDN. Ver services/kie/taskProbe.
+                      toTaskStatus(await probeKieTask(row.task_id))
 
             // 'running' (KIE) y 'processing' (MuleRouter) son el mismo estado:
             // sigue viva, se deja en la tabla para el próximo intento.
@@ -149,6 +176,13 @@ export async function apiReconcilePendingGenerations(): Promise<ReconcileResult>
                         // Marca de origen: se rescató, no se generó en vivo.
                         recovered: true,
                         recoveredFrom: row.provider,
+                        // El id del proveedor, para poder responder después a
+                        // "esta tarea terminó allí, ¿dónde está aquí?".
+                        // `generations` no tiene columna task_id, así que esta
+                        // marca es la ÚNICA forma de correlacionarlas.
+                        kieTaskId:
+                            row.provider === 'kie' ? row.task_id : undefined,
+                        providerTaskId: row.task_id,
                     },
                 } as never)
             // Rescatada y guardada: el cobro es legítimo, se cierra el hold.

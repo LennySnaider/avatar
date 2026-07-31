@@ -26,6 +26,10 @@ import {
     stripNegatedTattoos,
 } from '@/utils/promptSanitizer'
 import { buildImageRequest } from './kie/dispatch'
+import {
+    apiTrackPendingGeneration,
+    apiClearPendingGeneration,
+} from './PendingGenerationService'
 import type {
     KieCreateTaskRequest,
     KieCreateTaskResponse,
@@ -87,6 +91,35 @@ function isAbortError(e: unknown): boolean {
 }
 
 const POLL_FETCH_TIMEOUT_MS = 30_000
+
+/**
+ * Deja rastro de un taskId que se sondea EN EL SERVIDOR (poll síncrono).
+ *
+ * El camino async ya registra su tarea desde el navegador antes de empezar a
+ * sondear; el síncrono no registraba NADA: el id nacía y moría dentro de esta
+ * función. Si la función se corta —el presupuesto del poll son 600s y el
+ * maxDuration por defecto de Vercel es menor— la tarea sigue viva en KIE,
+ * termina bien, y en la app no queda ni el id para reclamarla. Generación
+ * pagada, resultado en el CDN del proveedor, y cero rastro.
+ *
+ * Nunca lanza (apiTrackPendingGeneration ya se lo traga): es telemetría de
+ * rescate y no debe tumbar una generación que el usuario ya pagó.
+ */
+async function trackSyncKieTask(
+    taskId: string,
+    model: string,
+    prompt: string,
+    aspectRatio: string,
+): Promise<void> {
+    await apiTrackPendingGeneration({
+        provider: 'kie',
+        taskId,
+        mediaType: 'IMAGE',
+        prompt,
+        aspectRatio,
+        metadata: { model, syncPoll: true },
+    })
+}
 
 async function submitTask(body: KieCreateTaskRequest): Promise<string> {
     const res = await fetch(`${KIE_API_BASE}/jobs/createTask`, {
@@ -778,13 +811,22 @@ async function generateImageKieInner(
         //   Shrink hard to ~900 chars and resubmit: the identity-critical part
         //   (body preamble + [FACE:]) leads the prompt, so it's what survives.
         let urls: string[]
+        // Se conserva fuera del try para poder dar de baja el rastro al final,
+        // venga del primer submit o del reintento.
+        let syncTaskId = ''
         try {
-            const taskId = await withTimeout(
+            syncTaskId = await withTimeout(
                 submitTask({ model: resolvedModel, input }),
                 30_000,
                 'KIE image submit',
             )
-            urls = await pollTask(taskId, {
+            await trackSyncKieTask(
+                syncTaskId,
+                resolvedModel,
+                promptText,
+                aspectRatio,
+            )
+            urls = await pollTask(syncTaskId, {
                 budgetMs: 600_000,
                 intervalMs: 3000,
             })
@@ -811,6 +853,13 @@ async function generateImageKieInner(
                 30_000,
                 'KIE image submit (retry)',
             )
+            syncTaskId = retryId
+            await trackSyncKieTask(
+                retryId,
+                resolvedModel,
+                String(input.prompt ?? promptText),
+                aspectRatio,
+            )
             urls = await pollTask(retryId, {
                 budgetMs: 600_000,
                 intervalMs: 3000,
@@ -821,6 +870,10 @@ async function generateImageKieInner(
             inferImageExt(urls[0]),
             'kie-images',
         )
+        // Copia estable en mano: deja de ser reclamable. Si no se diera de
+        // baja, el reconciliador la volvería a bajar y saldría DUPLICADA en la
+        // galería junto a la que guarda el cliente.
+        await apiClearPendingGeneration(syncTaskId)
         return { url: persistedUrl, fullApiPrompt: promptText }
     }
 
@@ -1199,6 +1252,9 @@ async function generateImageFluxKontext(
     }
     const taskId = submitJson.data.taskId
     console.log(`[KIE/Flux] Task submitted: ${taskId}`)
+    // Mismo rastro que la ruta genérica: este poll también vive en el servidor
+    // y sin registro el id se pierde si la función se corta.
+    await trackSyncKieTask(taskId, model, safePrompt, aspectRatio)
 
     // Flux Kontext Max can take 3-8 min especially with reference images.
     // Wall-clock budget so a hung fetch can't push real elapsed past Vercel Pro maxDuration (800s).
@@ -1268,6 +1324,7 @@ async function generateImageFluxKontext(
 
     console.log(`[KIE/Flux] Generation complete: ${resultUrl}`)
     const persistedUrl = await persistToSupabase(resultUrl, 'png', 'kie-images')
+    await apiClearPendingGeneration(taskId)
     return { url: persistedUrl, fullApiPrompt: prompt }
 }
 
@@ -1369,6 +1426,9 @@ async function generateImageGpt4o(
     }
     const taskId = submitJson.data.taskId
     console.log(`[KIE/GPT4o] Task submitted: ${taskId}`)
+    // Rastro de rescate: este poll (hasta 600s) corre en el servidor y sin
+    // registro el id se pierde con la función. Ver trackSyncKieTask.
+    await trackSyncKieTask(taskId, params.model, prompt, aspectRatio)
 
     // GPT 4o /gpt4o-image/record-info: successFlag 0=running, 1=success, 2/3=fail.
     // 600s to match every other KIE poll budget in this file (Flux/pollTask) —
@@ -1461,6 +1521,7 @@ async function generateImageGpt4o(
         'kie-images',
         aspectRatio,
     )
+    await apiClearPendingGeneration(taskId)
     return { url: persistedUrl, fullApiPrompt: prompt }
 }
 
