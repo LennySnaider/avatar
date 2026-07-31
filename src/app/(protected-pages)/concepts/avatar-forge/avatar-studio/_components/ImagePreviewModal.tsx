@@ -598,7 +598,12 @@ const ImagePreviewModal = ({
     // container. Driving the container's own scrollLeft/scrollTop means every
     // region (incl. the bottom of tall images) is reachable, with no
     // translate/clamp jank.
-    const handlePanStart = useCallback((e: React.MouseEvent) => {
+    // PointerEvent, no MouseEvent: es el único que llega igual desde ratón,
+    // dedo y lápiz. Con `mousedown` el táctil no disparaba nada — el navegador
+    // solo emite eventos de ratón sintéticos DESPUÉS del gesto (y no siempre),
+    // así que el arrastre en móvil no existía. `clientX/clientY` son idénticos
+    // en ambos, de modo que el cuerpo de los handlers no cambia.
+    const handlePanStart = useCallback((e: React.PointerEvent) => {
         // Con ESPACIO se puede arrastrar incluso dibujando: es el gesto que
         // convierte el pincel en mano mientras se mantiene.
         if (isCropping || (isDrawingMask && !spaceHeld)) return
@@ -618,7 +623,7 @@ const ImagePreviewModal = ({
         }
     }, [isDrawingMask, isCropping, spaceHeld])
 
-    const handlePanMove = useCallback((e: MouseEvent) => {
+    const handlePanMove = useCallback((e: PointerEvent) => {
         const drag = dragScrollRef.current
         if (!drag) return
         panRef.current = clampPan(
@@ -638,11 +643,17 @@ const ImagePreviewModal = ({
 
     useEffect(() => {
         if (isPanning) {
-            window.addEventListener('mousemove', handlePanMove)
-            window.addEventListener('mouseup', handlePanEnd)
+            window.addEventListener('pointermove', handlePanMove)
+            window.addEventListener('pointerup', handlePanEnd)
+            // `pointercancel` es OBLIGATORIO en táctil: el navegador se queda
+            // el gesto (scroll, zoom, gesto del sistema) y entonces NO llega
+            // `pointerup`. Sin esto el pan se queda pegado al dedo para
+            // siempre — la imagen sigue al puntero aunque ya no toques.
+            window.addEventListener('pointercancel', handlePanEnd)
             return () => {
-                window.removeEventListener('mousemove', handlePanMove)
-                window.removeEventListener('mouseup', handlePanEnd)
+                window.removeEventListener('pointermove', handlePanMove)
+                window.removeEventListener('pointerup', handlePanEnd)
+                window.removeEventListener('pointercancel', handlePanEnd)
             }
         }
     }, [isPanning, handlePanMove, handlePanEnd])
@@ -948,7 +959,7 @@ const ImagePreviewModal = ({
     // Del rect MOSTRADO al bitmap. Ya no es 1:1: con zoom el canvas se estira
     // por CSS mientras su bitmap se queda al tamaño de "fit", asi que hay que
     // dividir por la escala o los trazos caen desplazados.
-    const getCanvasCoordinates = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    const getCanvasCoordinates = (e: React.PointerEvent<HTMLCanvasElement>) => {
         const canvas = canvasRef.current
         if (!canvas) return { x: 0, y: 0 }
         const rect = canvas.getBoundingClientRect()
@@ -961,7 +972,7 @@ const ImagePreviewModal = ({
     }
 
     // Canvas drawing handlers
-    const startDrawing = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    const startDrawing = (e: React.PointerEvent<HTMLCanvasElement>) => {
         if (!isDrawingMask || !canvasRef.current) return
         isDrawingRef.current = true
         lastPosRef.current = getCanvasCoordinates(e)
@@ -978,7 +989,7 @@ const ImagePreviewModal = ({
         }
     }
 
-    const draw = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    const draw = (e: React.PointerEvent<HTMLCanvasElement>) => {
         if (!canvasRef.current) return
         const coords = getCanvasCoordinates(e)
         // El indicador vive DENTRO del contenedor transformado, asi que el
@@ -1135,14 +1146,14 @@ const ImagePreviewModal = ({
     }, [editAspectRatio])
 
     // Crop drag handlers
-    const handleCropMouseDown = (e: React.MouseEvent) => {
+    const handleCropMouseDown = (e: React.PointerEvent) => {
         if (!isEditing || isDrawingMask || !isCropping) return
         e.preventDefault()
         setIsDraggingCrop(true)
         setDragStart({ x: e.clientX - cropPosition.x, y: e.clientY - cropPosition.y })
     }
 
-    const handleCropMouseMove = useCallback((e: MouseEvent) => {
+    const handleCropMouseMove = useCallback((e: PointerEvent) => {
         if (!isDraggingCrop) return
         const crop = getCropDimensions()
         if (!crop) return
@@ -1158,11 +1169,13 @@ const ImagePreviewModal = ({
 
     useEffect(() => {
         if (isDraggingCrop) {
-            window.addEventListener('mousemove', handleCropMouseMove)
-            window.addEventListener('mouseup', handleCropMouseUp)
+            window.addEventListener('pointermove', handleCropMouseMove)
+            window.addEventListener('pointerup', handleCropMouseUp)
+            window.addEventListener('pointercancel', handleCropMouseUp)
             return () => {
-                window.removeEventListener('mousemove', handleCropMouseMove)
-                window.removeEventListener('mouseup', handleCropMouseUp)
+                window.removeEventListener('pointermove', handleCropMouseMove)
+                window.removeEventListener('pointerup', handleCropMouseUp)
+                window.removeEventListener('pointercancel', handleCropMouseUp)
             }
         }
     }, [isDraggingCrop, handleCropMouseMove, handleCropMouseUp])
@@ -1417,8 +1430,19 @@ const ImagePreviewModal = ({
                     <div
                         ref={attachMediaContainer}
                         className="relative w-full h-full min-h-0 flex items-center justify-center overflow-hidden"
-                        onMouseDown={handlePanStart}
+                        onPointerDown={handlePanStart}
                         style={{
+                            // Sin esto el táctil NO funciona aunque los
+                            // handlers sean correctos: el navegador reclama el
+                            // gesto para hacer scroll/zoom y deja de emitir
+                            // `pointermove` a mitad del arrastre. Solo se le
+                            // quita el gesto cuando de verdad hay algo que
+                            // arrastrar — a zoom 1 la imagen cabe entera y el
+                            // scroll de la página debe seguir siendo suyo.
+                            touchAction:
+                                isDrawingMask || isCropping || zoomLevel > 1
+                                    ? 'none'
+                                    : 'auto',
                             cursor:
                                 spaceHeld
                                     ? isPanning
@@ -1604,11 +1628,16 @@ const ImagePreviewModal = ({
                                                 pointerEvents: spaceHeld
                                                     ? 'none'
                                                     : 'auto',
+                                                // Superficie de dibujo: el
+                                                // gesto es SIEMPRE nuestro, o
+                                                // el dedo haria scroll en vez
+                                                // de trazar.
+                                                touchAction: 'none',
                                             }}
-                                            onMouseDown={startDrawing}
-                                            onMouseMove={draw}
-                                            onMouseUp={stopDrawing}
-                                            onMouseLeave={handleCanvasMouseLeave}
+                                            onPointerDown={startDrawing}
+                                            onPointerMove={draw}
+                                            onPointerUp={stopDrawing}
+                                            onPointerLeave={handleCanvasMouseLeave}
                                         />
                                         {/* Brush size cursor preview — sits on top of the canvas
                                             but doesn't capture events so drawing still works. */}
@@ -1653,8 +1682,12 @@ const ImagePreviewModal = ({
                                                     width: crop.width,
                                                     height: crop.height,
                                                     boxShadow: `0 0 0 9999px rgba(0, 0, 0, 0.7)`,
+                                                    // Mover el recorte es un
+                                                    // arrastre: el dedo no
+                                                    // debe hacer scroll aqui.
+                                                    touchAction: 'none',
                                                 }}
-                                                onMouseDown={handleCropMouseDown}
+                                                onPointerDown={handleCropMouseDown}
                                             >
                                                 {/* Corner indicators */}
                                                 <div className="absolute -top-1 -left-1 w-3 h-3 bg-primary rounded-full" />
