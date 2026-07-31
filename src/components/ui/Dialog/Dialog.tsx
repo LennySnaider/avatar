@@ -68,6 +68,13 @@ const Dialog = (props: DialogProps) => {
         ...style,
     }
 
+    // Tope duro al viewport. El ajuste de abajo ya evitaba que el ancho PEDIDO
+    // desbordara, pero al caer a `auto` el diálogo pasa a medir lo que mida su
+    // contenido: una fila de botones que no envuelve lo saca igual de la
+    // pantalla, y en un móvil los botones de la derecha quedan inalcanzables.
+    // `maxWidth` acota el resultado venga de donde venga.
+    contentStyle.content.maxWidth = '100vw'
+
     if (width !== undefined) {
         contentStyle.content.width = width
 

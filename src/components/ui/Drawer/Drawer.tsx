@@ -71,6 +71,8 @@ const Drawer = (props: DrawerProps) => {
         contentStyle?: {
             width?: string | number
             height?: string | number
+            maxWidth?: string | number
+            maxHeight?: string | number
         }
         closedPosition: string
     } => {
@@ -78,7 +80,16 @@ const Drawer = (props: DrawerProps) => {
             const offset = `-${width}${typeof width === 'number' ? 'px' : ''}`
             return {
                 dimensionClass: 'vertical',
-                contentStyle: { width },
+                // El ancho pedido es un DESEO, no un mínimo: se recorta a la
+                // pantalla. Con un `width` fijo (450, 720…) en un móvil de
+                // ~360px el drawer sale más ancho que la ventana y, al estar
+                // anclado a un borde, el contenido del otro lado queda fuera —
+                // se veía "ot Library" en vez de "Prompt Library".
+                //
+                // `maxWidth` en vez de tocar `width`: así en escritorio manda
+                // el valor pedido y nadie pierde su diseño, y el recorte solo
+                // aparece cuando de verdad no cabe.
+                contentStyle: { width, maxWidth: '100vw' },
                 closedPosition: offset,
             }
         }
@@ -87,7 +98,9 @@ const Drawer = (props: DrawerProps) => {
             const offset = `-${height}${typeof height === 'number' ? 'px' : ''}`
             return {
                 dimensionClass: 'horizontal',
-                contentStyle: { height },
+                // Mismo criterio en el eje vertical: un drawer más alto que la
+                // pantalla deja sus botones fuera de alcance.
+                contentStyle: { height, maxHeight: '100dvh' },
                 closedPosition: offset,
             }
         }

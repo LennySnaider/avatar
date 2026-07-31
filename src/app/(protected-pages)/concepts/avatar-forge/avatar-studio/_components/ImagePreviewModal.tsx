@@ -1712,8 +1712,15 @@ const ImagePreviewModal = ({
                 {/* Edit Mode Panel */}
                 {isEditing && previewMedia.mediaType === 'IMAGE' && (
                     <div className="p-4 border-t border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-900">
-                        <div className="flex gap-3 items-end">
-                            <div className="flex-1">
+                        {/* `flex-wrap`: en móvil el input + el selector de
+                            proveedor + los botones no caben en una línea, y sin
+                            envolver los últimos quedaban FUERA de la pantalla —
+                            no recortados, inalcanzables. En escritorio no
+                            cambia nada: solo envuelve cuando falta sitio.
+                            `min-w-0` en el input para que pueda encoger; sin
+                            eso su ancho mínimo de contenido empuja al resto. */}
+                        <div className="flex flex-wrap gap-3 items-end">
+                            <div className="flex-1 min-w-0 basis-56">
                                 <label className="text-xs text-gray-500 dark:text-gray-400 mb-1 block">
                                     Edit Instruction
                                 </label>
@@ -1804,7 +1811,7 @@ const ImagePreviewModal = ({
                                     segundo no pasa por ningun proveedor —
                                     instantaneo, gratis, y sin riesgo de que el
                                     modelo cambie algo mas de lo pedido. */}
-                                <div className="flex items-center gap-2">
+                                <div className="flex flex-wrap items-center gap-2">
                                     <span className="text-xs text-gray-500 dark:text-gray-400 w-20">
                                         El trazo
                                     </span>
