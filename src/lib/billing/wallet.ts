@@ -259,6 +259,17 @@ export async function linkHoldToRef(
     }
 }
 
+/**
+ * Cómo nombra el ledger a la tarea de cada proveedor.
+ *
+ * Vivía como un ternario duplicado en cada barrido. Un tercer sitio que lo
+ * escribiera distinto no fallaría: dejaría holds que nadie encuentra —y por
+ * tanto nadie liquida ni devuelve— sin un solo error en consola.
+ */
+export function holdRefTypeFor(provider: string): string {
+    return provider === 'mulerouter' ? 'mulerouter_task' : 'kie_task'
+}
+
 /** Mensaje de "no te alcanza" con las cifras reales, para devolver al cliente. */
 export function insufficientTokensMessage(gate: {
     required: number

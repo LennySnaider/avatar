@@ -14,7 +14,11 @@
 import { getOrgContext } from '@/lib/tenant/getOrgContext'
 import { orgSupabase } from '@/lib/org/orgTable'
 import { orgStoragePath } from '@/lib/storagePaths'
-import { settleHoldByRef, refundHoldByRef } from '@/lib/billing/wallet'
+import {
+    holdRefTypeFor,
+    settleHoldByRef,
+    refundHoldByRef,
+} from '@/lib/billing/wallet'
 import { probeKieTask } from '@/services/kie/taskProbe'
 import {
     checkMuleRouterImageTask,
@@ -135,8 +139,7 @@ export async function apiReconcilePendingGenerations(): Promise<ReconcileResult>
             }
 
             // F5.4 — la referencia con la que el ledger conoce esta tarea.
-            const holdRef =
-                row.provider === 'mulerouter' ? 'mulerouter_task' : 'kie_task'
+            const holdRef = holdRefTypeFor(row.provider)
 
             if (status.status === 'failed') {
                 out.failed++

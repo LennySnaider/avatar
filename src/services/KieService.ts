@@ -873,7 +873,7 @@ async function generateImageKieInner(
         // Copia estable en mano: deja de ser reclamable. Si no se diera de
         // baja, el reconciliador la volvería a bajar y saldría DUPLICADA en la
         // galería junto a la que guarda el cliente.
-        await apiClearPendingGeneration(syncTaskId)
+        await apiClearPendingGeneration(syncTaskId, 'delivered')
         return { url: persistedUrl, fullApiPrompt: promptText }
     }
 
@@ -1324,7 +1324,7 @@ async function generateImageFluxKontext(
 
     console.log(`[KIE/Flux] Generation complete: ${resultUrl}`)
     const persistedUrl = await persistToSupabase(resultUrl, 'png', 'kie-images')
-    await apiClearPendingGeneration(taskId)
+    await apiClearPendingGeneration(taskId, 'delivered')
     return { url: persistedUrl, fullApiPrompt: prompt }
 }
 
@@ -1521,7 +1521,7 @@ async function generateImageGpt4o(
         'kie-images',
         aspectRatio,
     )
-    await apiClearPendingGeneration(taskId)
+    await apiClearPendingGeneration(taskId, 'delivered')
     return { url: persistedUrl, fullApiPrompt: prompt }
 }
 

@@ -18,7 +18,11 @@
  */
 import { getOrgContext } from '@/lib/tenant/getOrgContext'
 import { orgSupabase } from '@/lib/org/orgTable'
-import { refundHoldByRef } from '@/lib/billing/wallet'
+import {
+    holdRefTypeFor,
+    refundHoldByRef,
+    settleHoldByRef,
+} from '@/lib/billing/wallet'
 
 export type PendingProvider = 'kie' | 'mulerouter'
 
@@ -70,10 +74,59 @@ export async function apiTrackPendingGeneration(params: {
     }
 }
 
-/** Baja del rastro: la tarea ya se persistió (o falló de forma terminal). */
-export async function apiClearPendingGeneration(taskId: string): Promise<void> {
+/**
+ * Baja del rastro Y CIERRE DEL COBRO. Las dos cosas juntas porque este es el
+ * único punto que sabe cómo terminó la tarea.
+ *
+ * POR QUÉ AQUÍ: el hold del camino submit-only lo liquidaba «el barrido», pero
+ * el barrido solo recorre `pending_generations` — y esta función es justo la
+ * que borra esa fila. Resultado medido antes del arreglo: 10 holds, 0 settles.
+ * Peor aún en el fallo, donde la fila se borraba sin devolver nada: la tarea
+ * quedaba cobrada sin entregar, y el reembolso del reconciliador
+ * (`provider_task_failed`) ya no tenía a quién aplicárselo.
+ */
+export async function apiClearPendingGeneration(
+    taskId: string,
+    // OBLIGATORIO a propósito, sin default: decide si el cobro se confirma o se
+    // devuelve, y un default silencioso le cobraría al cliente una generación
+    // que el proveedor nunca entregó. Que sea un parámetro requerido es lo que
+    // convierte ese error en un fallo de compilación en cada sitio nuevo.
+    outcome: 'delivered' | 'failed',
+): Promise<void> {
     try {
         const ctx = await getOrgContext()
+
+        // El provider sale de la propia fila; sin ella no se sabe bajo qué
+        // refType quedó anotado el hold, así que se prueban los dos (barato:
+        // ambas ayudas salen sin tocar nada si no encuentran hold).
+        const { data: row } = await orgSupabase()
+            .from('pending_generations')
+            .select('provider')
+            .eq('user_id', ctx.userId)
+            .eq('task_id', taskId)
+            .maybeSingle()
+
+        const provider = (row as { provider?: string } | null)?.provider
+        const refTypes = provider
+            ? [holdRefTypeFor(provider)]
+            : [holdRefTypeFor('kie'), holdRefTypeFor('mulerouter')]
+
+        // El cobro se cierra ANTES de borrar: si esto fallara, la fila
+        // sobrevive y el reconciliador todavía puede arreglarlo. Al revés se
+        // perdería el puntero, que es exactamente el bug que esto corrige.
+        for (const refType of refTypes) {
+            if (outcome === 'delivered') {
+                await settleHoldByRef(refType, taskId, { ctx })
+            } else {
+                await refundHoldByRef(
+                    refType,
+                    taskId,
+                    'provider_task_failed',
+                    { ctx },
+                )
+            }
+        }
+
         await orgSupabase()
             .from('pending_generations')
             .delete()
@@ -129,7 +182,7 @@ export async function apiPurgeExpiredPendingGenerations(): Promise<void> {
             provider: string
         }>) {
             await refundHoldByRef(
-                row.provider === 'mulerouter' ? 'mulerouter_task' : 'kie_task',
+                holdRefTypeFor(row.provider),
                 row.task_id,
                 'pending_generation_expired',
                 { ctx },

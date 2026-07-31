@@ -249,8 +249,9 @@ async function pollKieImageTask(
                 const stableUrl = persistKieImageResult(st.url)
                     .then((r) => (r.success ? r.url : null))
                     .catch(() => null)
-                // Ya está en manos del cliente: deja de ser reclamable.
-                void apiClearPendingGeneration(sub.taskId)
+                // Ya está en manos del cliente: deja de ser reclamable, y el
+                // cobro se confirma (entregó media).
+                void apiClearPendingGeneration(sub.taskId, 'delivered')
                 return {
                     url: st.url,
                     fullApiPrompt: sub.fullApiPrompt,
@@ -259,8 +260,9 @@ async function pollKieImageTask(
             }
             if (st.status === 'failed') {
                 failMsg = st.error
-                // Fallo terminal: no hay nada que reclamar.
-                void apiClearPendingGeneration(sub.taskId)
+                // Fallo terminal: no hay nada que reclamar, y el cobro se
+                // devuelve (el proveedor no entregó nada).
+                void apiClearPendingGeneration(sub.taskId, 'failed')
                 break
             }
         }
@@ -2442,11 +2444,17 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                                 )
                                 if (st.status === 'done') {
                                     mrUrl = st.url
-                                    void apiClearPendingGeneration(sub.taskId)
+                                    void apiClearPendingGeneration(
+                                        sub.taskId,
+                                        'delivered',
+                                    )
                                     break
                                 }
                                 if (st.status === 'failed') {
-                                    void apiClearPendingGeneration(sub.taskId)
+                                    void apiClearPendingGeneration(
+                                        sub.taskId,
+                                        'failed',
+                                    )
                                     throw new Error(st.error)
                                 }
                             }
@@ -2995,7 +3003,10 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                                     break
                                 }
                                 if (st.status === 'failed') {
-                                    void apiClearPendingGeneration(sub.taskId)
+                                    void apiClearPendingGeneration(
+                                        sub.taskId,
+                                        'failed',
+                                    )
                                     throw new Error(st.error)
                                 }
                             }
@@ -3013,7 +3024,10 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                             // Baja del rastro SOLO con el vídeo ya en Storage:
                             // hasta este punto sigue siendo reclamable con 🔄.
                             if (wanStable.success)
-                                void apiClearPendingGeneration(sub.taskId)
+                                void apiClearPendingGeneration(
+                                    sub.taskId,
+                                    'delivered',
+                                )
                             if (!wanStable.success)
                                 throw new Error(
                                     `El vídeo se generó pero no se pudo guardar: ${wanStable.error}. URL original: ${wanUrl}`,
@@ -3395,7 +3409,10 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                                     break
                                 }
                                 if (st.status === 'failed') {
-                                    void apiClearPendingGeneration(sub.taskId)
+                                    void apiClearPendingGeneration(
+                                        sub.taskId,
+                                        'failed',
+                                    )
                                     throw new Error(st.error)
                                 }
                             }
@@ -3413,7 +3430,10 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                             // Baja del rastro SOLO con el vídeo ya en Storage:
                             // hasta este punto sigue siendo reclamable con 🔄.
                             if (wanStable.success)
-                                void apiClearPendingGeneration(sub.taskId)
+                                void apiClearPendingGeneration(
+                                    sub.taskId,
+                                    'delivered',
+                                )
                             if (!wanStable.success)
                                 throw new Error(
                                     `El vídeo se generó pero no se pudo guardar: ${wanStable.error}. URL original: ${wanUrl}`,
