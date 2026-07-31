@@ -28,10 +28,47 @@ export type KieTaskFamily = 'jobs' | 'flux-kontext' | 'gpt4o-image'
 
 export type KieTaskProbe =
     | { state: 'running'; family: KieTaskFamily; model?: string }
-    | { state: 'success'; family: KieTaskFamily; urls: string[]; model?: string }
+    | {
+          state: 'success'
+          family: KieTaskFamily
+          urls: string[]
+          model?: string
+          /**
+           * Prompt con el que se lanzó la tarea, recuperado del `param` que
+           * guarda KIE. Existe porque `generations.prompt` es NOT NULL y el
+           * rescate manual no tiene de dónde sacarlo: sin esto, recuperar una
+           * tarea huérfana moría con "null value in column prompt".
+           */
+          prompt?: string
+      }
     | { state: 'fail'; family: KieTaskFamily; error: string; model?: string }
     /** Ninguna familia reconoce el id (o la clave no ve esa tarea). */
     | { state: 'unknown'; family: null; error: string }
+
+/**
+ * Saca el prompt del `param` que KIE guarda con cada tarea.
+ *
+ * Viene DOBLEMENTE serializado en la familia `jobs`: `param` es un JSON string
+ * cuyo campo `input` es OTRO JSON string. Se tolera también la forma plana (un
+ * solo nivel) porque no todas las familias lo anidan igual.
+ *
+ * Nunca lanza: esto es telemetría de rescate. Si el formato cambia, el rescate
+ * debe seguir funcionando con su texto de respaldo, no morirse parseando.
+ */
+function promptFromParam(param?: string): string | undefined {
+    if (!param) return undefined
+    try {
+        const outer = JSON.parse(param) as Record<string, unknown>
+        const inner =
+            typeof outer.input === 'string'
+                ? (JSON.parse(outer.input) as Record<string, unknown>)
+                : (outer.input as Record<string, unknown> | undefined)
+        const prompt = inner?.prompt ?? outer.prompt
+        return typeof prompt === 'string' && prompt.trim() ? prompt : undefined
+    } catch {
+        return undefined
+    }
+}
 
 function authHeaders(): Record<string, string> {
     const key = process.env.KIE_API_KEY
@@ -48,7 +85,7 @@ function authHeaders(): Record<string, string> {
  */
 type FamilyResult =
     | { state: 'running'; model?: string }
-    | { state: 'success'; urls: string[]; model?: string }
+    | { state: 'success'; urls: string[]; model?: string; prompt?: string }
     | { state: 'fail'; error: string; model?: string }
     | null
 
@@ -81,7 +118,12 @@ async function probeJobs(taskId: string): Promise<FamilyResult> {
             : {}
         const urls = parsed.resultUrls ?? []
         return urls.length
-            ? { state: 'success', urls, model: json.data.model }
+            ? {
+                  state: 'success',
+                  urls,
+                  model: json.data.model,
+                  prompt: promptFromParam(json.data.param),
+              }
             : {
                   state: 'fail',
                   error: 'KIE dice success pero no devolvió resultUrls',

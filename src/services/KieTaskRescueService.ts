@@ -222,7 +222,17 @@ export async function apiRescueKieTask(params: {
                 avatar_id: params.avatarId ?? null,
                 media_type: isVideo ? 'VIDEO' : 'IMAGE',
                 storage_path: path,
-                prompt: params.prompt ?? null,
+                // `generations.prompt` es NOT NULL y el rescate manual no
+                // recibe prompt: insertar null reventaba con "null value in
+                // column prompt" DESPUÉS de haber bajado y guardado el archivo
+                // — el peor momento, porque el trabajo ya estaba hecho.
+                // El prompt real se recupera del `param` que guarda KIE; el
+                // texto de respaldo solo entra si su formato cambió, y es
+                // preferible a perder el rescate por un campo descriptivo.
+                prompt:
+                    params.prompt ??
+                    probe.prompt ??
+                    `[rescatada de KIE · ${taskId}]`,
                 aspect_ratio: params.aspectRatio ?? null,
                 metadata: {
                     recovered: true,
