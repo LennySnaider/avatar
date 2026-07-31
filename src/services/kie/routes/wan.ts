@@ -128,17 +128,11 @@ async function build(ctx: ImageRouteContext): Promise<KieImageRequest> {
                     (r) => r.role !== 'clone',
                 )
                 wanUrls = [
-                    await ctx.uploadRef(
-                        cloneRef.base64,
-                        cloneRef.mimeType,
-                    ),
-                    await ctx.uploadRef(
-                        ctx.referenceImage.base64,
-                        ctx.referenceImage.mimeType,
-                    ),
+                    await ctx.uploadRef(cloneRef),
+                    await ctx.uploadRef(ctx.referenceImage),
                 ]
                 for (const r of otherExtras) {
-                    wanUrls.push(await ctx.uploadRef(r.base64, r.mimeType))
+                    wanUrls.push(await ctx.uploadRef(r))
                 }
                 // ANCLA LEAN (rediseño 2026-07-23, repro-medido): la versión previa
                 // llegó a 2872 chars con 3 CONTRADICCIONES (keep-hair-de-img1 vs
@@ -220,13 +214,10 @@ async function build(ctx: ImageRouteContext): Promise<KieImageRequest> {
             } else {
                 // ── Sin clone (o deepfake): cara = imagen 1 (byte-idéntico a antes) ──
                 wanUrls = [
-                    await ctx.uploadRef(
-                        ctx.referenceImage.base64,
-                        ctx.referenceImage.mimeType,
-                    ),
+                    await ctx.uploadRef(ctx.referenceImage),
                 ]
                 for (const r of wanExtras) {
-                    wanUrls.push(await ctx.uploadRef(r.base64, r.mimeType))
+                    wanUrls.push(await ctx.uploadRef(r))
                 }
                 const wanBodyClause = ctx.deepfakeMode
                     ? ''

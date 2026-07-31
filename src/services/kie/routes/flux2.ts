@@ -52,13 +52,10 @@ async function build(ctx: ImageRouteContext): Promise<KieImageRequest> {
                 hasNudityIntent(ctx.prompt),
             )
             const urls: string[] = [
-                await ctx.uploadRef(
-                    ctx.referenceImage.base64,
-                    ctx.referenceImage.mimeType,
-                ),
+                await ctx.uploadRef(ctx.referenceImage),
             ]
             for (const r of fluxExtras) {
-                urls.push(await ctx.uploadRef(r.base64, r.mimeType))
+                urls.push(await ctx.uploadRef(r))
             }
             resolvedModel = model.replace('text-to-image', 'image-to-image')
             input.input_urls = urls

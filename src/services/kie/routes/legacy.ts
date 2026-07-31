@@ -131,12 +131,8 @@ export async function buildLegacyRequest(
     ) {
         try {
             if (model === 'grok-imagine/image-to-image') {
-                const cropped = await cropToAspect(
-                    referenceImage.base64,
-                    referenceImage.mimeType,
-                    aspectRatio,
-                )
-                const refUrl = await uploadRef(cropped.base64, cropped.mimeType)
+                const cropped = await cropToAspect(referenceImage, aspectRatio)
+                const refUrl = await uploadRef(cropped)
                 input.image_urls = [refUrl]
                 if (hairClause || faceFidelityClause) {
                     input.prompt = `Keep the EXACT face and likeness of the person in the reference image.${faceFidelityClause}${hairClause} ${input.prompt}`
@@ -158,13 +154,10 @@ export async function buildLegacyRequest(
                     hasNudityIntent(promptText),
                 )
                 const urls: string[] = [
-                    await uploadRef(
-                        referenceImage.base64,
-                        referenceImage.mimeType,
-                    ),
+                    await uploadRef(referenceImage),
                 ]
                 for (const r of extras) {
-                    urls.push(await uploadRef(r.base64, r.mimeType))
+                    urls.push(await uploadRef(r))
                 }
                 resolvedModel =
                     model === 'seedream/4.5-text-to-image'
@@ -217,7 +210,7 @@ export async function buildLegacyRequest(
                 ).slice(0, 14)
                 const nbUrls: string[] = []
                 for (const r of nbRefs) {
-                    nbUrls.push(await uploadRef(r.base64, r.mimeType))
+                    nbUrls.push(await uploadRef(r))
                 }
                 input.image_input = nbUrls
                 input.prompt = `The person in the first attached reference image is the subject — keep her EXACT face, facial features and likeness.${hairClause} ${input.prompt}`
@@ -238,13 +231,10 @@ export async function buildLegacyRequest(
                     hasNudityIntent(promptText),
                 )
                 const wanUrls: string[] = [
-                    await uploadRef(
-                        referenceImage.base64,
-                        referenceImage.mimeType,
-                    ),
+                    await uploadRef(referenceImage),
                 ]
                 for (const r of wanExtras) {
-                    wanUrls.push(await uploadRef(r.base64, r.mimeType))
+                    wanUrls.push(await uploadRef(r))
                 }
                 input.input_urls = wanUrls
                 const wanBodyClause = deepfakeMode
@@ -290,13 +280,10 @@ export async function buildLegacyRequest(
                     hasNudityIntent(promptText),
                 )
                 const urls: string[] = [
-                    await uploadRef(
-                        referenceImage.base64,
-                        referenceImage.mimeType,
-                    ),
+                    await uploadRef(referenceImage),
                 ]
                 for (const r of fluxExtras) {
-                    urls.push(await uploadRef(r.base64, r.mimeType))
+                    urls.push(await uploadRef(r))
                 }
                 resolvedModel = model.replace('text-to-image', 'image-to-image')
                 input.input_urls = urls
@@ -316,20 +303,14 @@ export async function buildLegacyRequest(
                     `[KIE] FLUX.2 i2i with ${urls.length} ref(s) (roles: face${fluxExtras.length > 0 ? ', ' + fluxExtras.map((r) => r.role).join(', ') : ''})`,
                 )
             } else {
-                const refUrl = await uploadRef(
-                    referenceImage.base64,
-                    referenceImage.mimeType,
-                )
+                const refUrl = await uploadRef(referenceImage)
                 resolvedModel = 'qwen2/image-edit'
                 input.image_size = aspectRatio
                 const qwenDeepfakeCanvas = deepfakeMode
                     ? (referenceImages ?? []).find((r) => r.role === 'clone')
                     : undefined
                 if (qwenDeepfakeCanvas) {
-                    const canvasUrl = await uploadRef(
-                        qwenDeepfakeCanvas.base64,
-                        qwenDeepfakeCanvas.mimeType,
-                    )
+                    const canvasUrl = await uploadRef(qwenDeepfakeCanvas)
                     input.image_url = [canvasUrl, refUrl]
                     input.prompt = `REMOVE any overlaid stickers, watermarks, emojis or UI graphics pasted on the photo — the output must be a clean photograph. The FIRST image is the ORIGINAL photo — reproduce it EXACTLY: same body, build, outfit, pose, hands, framing, lighting, background and setting; do NOT blend the two images. The SECOND image shows the person whose FACE to use. The FACE SWAP is MANDATORY: replace the face in the first image with the face from the second image (exact features and likeness) — never keep the original face. Do NOT alter or remove any clothing. ${input.prompt}`
                     console.log(
@@ -342,7 +323,7 @@ export async function buildLegacyRequest(
                     if (qwenAssets.length > 0) {
                         const qwenUrls: string[] = [refUrl]
                         for (const a of qwenAssets) {
-                            qwenUrls.push(await uploadRef(a.base64, a.mimeType))
+                            qwenUrls.push(await uploadRef(a))
                         }
                         input.image_url = qwenUrls
                         const assetLines = qwenAssets

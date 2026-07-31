@@ -32,7 +32,7 @@ function makeCtx(
         deepfakeMode: false,
         curveBoost: undefined,
         uploadRef: async () => `https://ref/${n++}`,
-        cropToAspect: async (base64, mimeType) => ({ base64, mimeType }),
+        cropToAspect: async (ref) => ref,
         ...partial,
     }
 }

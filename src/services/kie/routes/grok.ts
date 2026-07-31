@@ -45,12 +45,8 @@ async function build(ctx: ImageRouteContext): Promise<KieImageRequest> {
     // i2i: 1 sola imagen (la cara), recortada al AR pedido.
     if (ctx.referenceImage) {
         try {
-            const cropped = await ctx.cropToAspect(
-                ctx.referenceImage.base64,
-                ctx.referenceImage.mimeType,
-                ctx.aspectRatio,
-            )
-            const refUrl = await ctx.uploadRef(cropped.base64, cropped.mimeType)
+            const cropped = await ctx.cropToAspect(ctx.referenceImage, ctx.aspectRatio)
+            const refUrl = await ctx.uploadRef(cropped)
             input.image_urls = [refUrl]
             if (ctx.editMode) {
                 // EDICION (2026-07-26, reporte "el edit en grok no respeta la

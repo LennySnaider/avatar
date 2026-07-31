@@ -125,20 +125,14 @@ async function build(ctx: ImageRouteContext): Promise<KieImageRequest> {
 
     if (ctx.referenceImage) {
         try {
-            const refUrl = await ctx.uploadRef(
-                ctx.referenceImage.base64,
-                ctx.referenceImage.mimeType,
-            )
+            const refUrl = await ctx.uploadRef(ctx.referenceImage)
             resolvedModel = 'qwen2/image-edit'
             input.image_size = ctx.aspectRatio
             const qwenDeepfakeCanvas = ctx.deepfakeMode
                 ? (ctx.referenceImages ?? []).find((r) => r.role === 'clone')
                 : undefined
             if (qwenDeepfakeCanvas) {
-                const canvasUrl = await ctx.uploadRef(
-                    qwenDeepfakeCanvas.base64,
-                    qwenDeepfakeCanvas.mimeType,
-                )
+                const canvasUrl = await ctx.uploadRef(qwenDeepfakeCanvas)
                 input.image_url = [canvasUrl, refUrl]
                 input.prompt = `REMOVE any overlaid stickers, watermarks, emojis or UI graphics pasted on the photo — the output must be a clean photograph. The FIRST image is the ORIGINAL photo — reproduce it EXACTLY: same body, build, outfit, pose, hands, framing, lighting, background and setting; do NOT blend the two images. The SECOND image shows the person whose FACE to use. The FACE SWAP is MANDATORY: replace the face in the first image with the face from the second image (exact features and likeness) — never keep the original face. Do NOT alter or remove any clothing. ${input.prompt}`
                 console.log('[KIE] qwen2/image-edit DEEPFAKE (canvas + face)')
@@ -157,10 +151,7 @@ async function build(ctx: ImageRouteContext): Promise<KieImageRequest> {
                     // del RETRATO e ignoraba la pose/fondo del clone (reporte: cara
                     // perfecta pero físico/pose/fondo mal). Mismo patrón que el
                     // deepfake de Qwen (que SÍ funciona), escalado por el peso.
-                    const cloneUrl = await ctx.uploadRef(
-                        qwenClone.base64,
-                        qwenClone.mimeType,
-                    )
+                    const cloneUrl = await ctx.uploadRef(qwenClone)
                     input.image_url = [cloneUrl, refUrl]
                     const cw = ctx.cloneWeight ?? 100
                     const fidelity =
@@ -215,7 +206,7 @@ async function build(ctx: ImageRouteContext): Promise<KieImageRequest> {
                 } else if (qwenAssets.length > 0) {
                     const qwenUrls: string[] = [refUrl]
                     for (const a of qwenAssets) {
-                        qwenUrls.push(await ctx.uploadRef(a.base64, a.mimeType))
+                        qwenUrls.push(await ctx.uploadRef(a))
                     }
                     input.image_url = qwenUrls
                     // OJO: Qwen 2.0 tiene "structured text rendering" (renderiza

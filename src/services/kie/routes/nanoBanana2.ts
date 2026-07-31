@@ -42,7 +42,7 @@ async function build(ctx: ImageRouteContext): Promise<KieImageRequest> {
             ).slice(0, 14)
             const nbUrls: string[] = []
             for (const r of nbRefs) {
-                nbUrls.push(await ctx.uploadRef(r.base64, r.mimeType))
+                nbUrls.push(await ctx.uploadRef(r))
             }
             input.image_input = nbUrls
             input.prompt = `The person in the first attached reference image is the subject — keep her EXACT face, facial features and likeness.${hairClause} ${input.prompt}`

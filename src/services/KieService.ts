@@ -26,6 +26,7 @@ import {
     stripNegatedTattoos,
 } from '@/utils/promptSanitizer'
 import { buildImageRequest } from './kie/dispatch'
+import type { KieRefWithRole } from './kie/shared'
 import {
     apiTrackPendingGeneration,
     apiClearPendingGeneration,
@@ -436,6 +437,75 @@ export async function uploadReferenceToSupabase(
 }
 
 /**
+ * URL pública de una referencia, venga ya subida o en bytes.
+ *
+ * Los proveedores solo aceptan URLs, así que hasta ahora TODA ref cruzaba el
+ * server action en base64 para que el servidor la subiera. Cuando la ref ya
+ * vive en R2 —el caso del editor: la imagen que se edita salió de la galería—
+ * eso era un viaje redondo absurdo (bajar al navegador, re-subir inflada un
+ * 33%, volver a guardarla) y encima chocaba con el tope de body de Vercel.
+ *
+ * Con `url` presente no se sube nada. `base64` sigue siendo el camino cuando
+ * los bytes son NUEVOS (el composite de la máscara se pinta en el navegador y
+ * no existe en ningún sitio hasta que alguien lo guarda).
+ */
+async function resolveRefUrl(ref: {
+    base64?: string
+    mimeType: string
+    url?: string
+}): Promise<string> {
+    if (ref.url) return ref.url
+    if (!ref.base64) {
+        throw new Error(
+            'Referencia sin contenido: hace falta `url` (ya subida) o `base64` (bytes nuevos).',
+        )
+    }
+    return uploadReferenceToSupabase(ref.base64, ref.mimeType)
+}
+
+/**
+ * Bytes de una referencia, descargándolos si solo llegó su URL.
+ *
+ * Casi ninguna ruta necesita los bytes —el proveedor descarga la URL él mismo—
+ * pero Grok sí: hay que recortar la ref al aspect ratio pedido porque su salida
+ * copia el del input. Descargar en el SERVIDOR está bien (sale del mismo R2 y
+ * no cruza ningún límite de body); lo que no podía seguir pasando es que los
+ * bytes viajaran desde el navegador para todas las rutas por culpa de una.
+ */
+async function ensureRefBytes(
+    ref: KieRefWithRole,
+): Promise<{ base64: string; mimeType: string }> {
+    if (ref.base64) return { base64: ref.base64, mimeType: ref.mimeType }
+    if (!ref.url) throw new Error('Referencia sin `url` ni `base64`.')
+    const res = await fetchWithAbort(ref.url, {}, 30_000)
+    if (!res.ok) {
+        throw new Error(`No se pudo descargar la referencia: HTTP ${res.status}`)
+    }
+    const buf = Buffer.from(await res.arrayBuffer())
+    return {
+        base64: buf.toString('base64'),
+        mimeType: res.headers.get('content-type') || ref.mimeType,
+    }
+}
+
+/** `cropToAspect` de producción: resuelve los bytes y recorta con sharp. */
+async function cropRefToAspect(
+    ref: KieRefWithRole,
+    aspectRatio: string,
+): Promise<KieRefWithRole> {
+    const bytes = await ensureRefBytes(ref)
+    const cropped = await cropBase64ToAspect(
+        bytes.base64,
+        bytes.mimeType,
+        aspectRatio,
+    )
+    // Se devuelve SIN `url`: los bytes recortados son nuevos y no están
+    // subidos en ningún sitio — conservar la url original haría que uploadRef
+    // pasara la imagen SIN recortar, que es justo lo que rompe a Grok.
+    return { ...ref, ...cropped, url: undefined }
+}
+
+/**
  * Cover-crop a base64 image to a target aspect ratio (server-side via sharp).
  * Grok's image-to-image has NO size params and MIRRORS the input's aspect
  * ratio (verified live: square ref + aspect_ratio:"9:16" in input → 1024x1024
@@ -549,11 +619,25 @@ export interface GenerateImageKieParams {
     prompt: string
     model: string
     aspectRatio?: string
-    referenceImage?: { base64: string; mimeType: string } | null
+    // `url` = la ref YA está subida y es pública: se pasa tal cual al proveedor
+    // en vez de viajar en base64. Es lo que evita el 413 del editor — una foto
+    // de 3.5 MB inflada por base64 (~4.6 MB) pasa del tope de 4.5 MB que Vercel
+    // impone al body de una server action, y ese tope NO se puede subir desde
+    // next.config (bodySizeLimit ya está en 50mb y aun así rebota).
+    referenceImage?: {
+        base64?: string
+        mimeType: string
+        url?: string
+    } | null
     // Multiple references for models that accept them (Nano Banana Pro → up to
     // 8 image_input). `role` lets us label each image in the prompt so the
     // model knows which one is the face to replicate (critical for identity).
-    referenceImages?: Array<{ base64: string; mimeType: string; role?: string }>
+    referenceImages?: Array<{
+        base64?: string
+        mimeType: string
+        role?: string
+        url?: string
+    }>
     // Short body-shape phrase (describeBody(measurements)) woven INTO the i2i
     // face anchor. Image-heavy models (Seedream 5.0 Pro) copy the slim build
     // of the face ref and ignore body text that only lives later in the
@@ -743,8 +827,8 @@ async function generateImageKieInner(
             negativePrompt,
             seed,
             safeMode: params.safeMode,
-            uploadRef: uploadReferenceToSupabase,
-            cropToAspect: cropBase64ToAspect,
+            uploadRef: resolveRefUrl,
+            cropToAspect: cropRefToAspect,
         })
         const resolvedModel = built.model
         const input = built.input
@@ -1218,10 +1302,7 @@ async function generateImageFluxKontext(
     if (referenceImage) {
         // Flux Kontext only accepts public HTTP URLs for inputImage, not data URIs.
         // Upload to Supabase first to get a stable public URL.
-        const uploadedUrl = await uploadReferenceToSupabase(
-            referenceImage.base64,
-            referenceImage.mimeType,
-        )
+        const uploadedUrl = await resolveRefUrl(referenceImage)
         console.log(`[KIE/Flux] Uploaded reference to: ${uploadedUrl}`)
         body.inputImage = uploadedUrl
     }
@@ -1394,10 +1475,7 @@ async function generateImageGpt4o(
     }
 
     if (referenceImage) {
-        const uploadedUrl = await uploadReferenceToSupabase(
-            referenceImage.base64,
-            referenceImage.mimeType,
-        )
+        const uploadedUrl = await resolveRefUrl(referenceImage)
         console.log(`[KIE/GPT4o] Uploaded reference to: ${uploadedUrl}`)
         body.filesUrl = [uploadedUrl]
     }
@@ -1531,11 +1609,9 @@ async function generateImageGpt4o(
  * labels them as Image 1..N, so order here must match the caller's role order.
  */
 async function uploadRefs(
-    refs: Array<{ base64: string; mimeType: string }>,
+    refs: Array<{ base64?: string; mimeType: string; url?: string }>,
 ): Promise<string[]> {
-    return Promise.all(
-        refs.map((r) => uploadReferenceToSupabase(r.base64, r.mimeType)),
-    )
+    return Promise.all(refs.map((r) => resolveRefUrl(r)))
 }
 
 /**
@@ -1771,6 +1847,13 @@ export interface GenerateMotionControlKieParams {
     /** Our VideoResolution string; '1080p' → mode '1080p', else → '720p'. */
     resolution?: string
     characterOrientation?: 'video' | 'image'
+    /**
+     * Duración del vídeo CONDUCTOR, que es la que sale (motion-control copia el
+     * movimiento del clip entero). Es el precio: el vídeo se cobra por segundo.
+     * Si no llega, el quote aplica su clip mínimo — nunca sale gratis, pero
+     * INFRAVALORA un clip largo, así que el cliente debería mandarla siempre.
+     */
+    durationSeconds?: number
 }
 
 /**
@@ -1791,6 +1874,7 @@ export async function generateMotionControlKie(
         prompt,
         resolution,
         characterOrientation = 'video',
+        durationSeconds,
     } = params
 
     // Validate before any side-effectful upload: a driving video is required.
@@ -1799,6 +1883,19 @@ export async function generateMotionControlKie(
         throw new Error(
             'Kling 3.0 motion-control (KIE) requires a driving video (upload or URL). Presets are not supported on KIE.',
         )
+    }
+
+    // F5.0 — CHOKEPOINT. Esta ruta era la ÚNICA de generación sin medir: no
+    // escribía nada en el ledger, así que su consumo no existía para el
+    // measure-only. Va DESPUÉS de validar el vídeo conductor (no se cobra un
+    // request que ni siquiera se va a enviar) y ANTES de subir nada.
+    const gate = await holdForOperation({
+        kind: 'video',
+        providerId: resolveVideoProviderId('kling-3.0'),
+        seconds: durationSeconds ?? 0,
+    })
+    if (!gate.ok) {
+        throw new Error(insufficientTokensMessage(gate))
     }
 
     const imageUrl = await uploadReferenceToSupabase(
@@ -1831,17 +1928,37 @@ export async function generateMotionControlKie(
     console.log(
         `[KIE/Kling3-MC] Submitting motion-control: mode=${input.mode}, orientation=${characterOrientation}`,
     )
-    const taskId = await withTimeout(
-        submitTask({ model: 'kling-3.0/motion-control', input }),
-        30_000,
-        'KIE Kling 3.0 motion-control submit',
-    )
-    console.log(`[KIE/Kling3-MC] Task submitted: ${taskId}`)
 
-    const urls = await pollTask(taskId, { budgetMs: 600_000, intervalMs: 5000 })
+    let taskId: string
+    try {
+        taskId = await withTimeout(
+            submitTask({ model: 'kling-3.0/motion-control', input }),
+            30_000,
+            'KIE Kling 3.0 motion-control submit',
+        )
+    } catch (e) {
+        await refundHold(gate.hold, 'kie_motion_control_submit_failed')
+        throw e
+    }
+    console.log(`[KIE/Kling3-MC] Task submitted: ${taskId}`)
+    await linkHoldToRef(gate.hold.holdId, 'kie_task', taskId)
+
+    // Esta ruta poll EN EL SERVIDOR, así que el desenlace se conoce aquí mismo:
+    // no hay barrido que la cierre después. Un fallo de KIE tras el submit —hoy
+    // el 500 "internal error" de motion-control, que llega con creditsConsumed
+    // 0— tiene que devolver el cobro, o el cliente paga lo que nadie generó.
+    let urls: string[]
+    try {
+        urls = await pollTask(taskId, { budgetMs: 600_000, intervalMs: 5000 })
+    } catch (e) {
+        await refundHold(gate.hold, 'kie_motion_control_failed')
+        throw e
+    }
     console.log(`[KIE/Kling3-MC] Generation complete: ${urls[0]}`)
 
-    return persistToSupabase(urls[0], 'mp4', 'kie-videos')
+    const persisted = await persistToSupabase(urls[0], 'mp4', 'kie-videos')
+    await settleHold(gate.hold)
+    return persisted
 }
 
 export interface KieVideoSafeResult {

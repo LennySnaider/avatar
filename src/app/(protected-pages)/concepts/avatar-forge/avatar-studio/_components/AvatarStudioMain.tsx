@@ -498,7 +498,17 @@ async function fetchMediaBlobWithFallback(
     timeoutMs = 60_000,
 ): Promise<Blob> {
     try {
-        const res = await fetch(url, { signal: AbortSignal.timeout(timeoutMs) })
+        // `cache: 'no-store'` NO es paranoia de frescura, es el arreglo de un
+        // CORS fantasma: la galería pinta la imagen con <img>, que NO manda
+        // Origin, así que la respuesta se guarda en la caché HTTP SIN
+        // Access-Control-Allow-Origin. Un fetch() posterior reutiliza esa
+        // entrada envenenada y el navegador la rechaza por CORS aunque el
+        // servidor SÍ emita la cabecera cuando se la piden (verificado con
+        // curl contra R2). Saltarse la caché pide una respuesta con Origin.
+        const res = await fetch(url, {
+            signal: AbortSignal.timeout(timeoutMs),
+            cache: 'no-store',
+        })
         if (!res.ok) throw new Error(`HTTP ${res.status}`)
         return await res.blob()
     } catch (err) {
@@ -508,6 +518,28 @@ async function fetchMediaBlobWithFallback(
         const bytes = Uint8Array.from(atob(base64), (c) => c.charCodeAt(0))
         return new Blob([bytes], { type: mimeType })
     }
+}
+
+/**
+ * Sube los bytes NUEVOS de una ref de edición y devuelve su URL pública.
+ *
+ * Solo hace falta cuando el composite de la máscara creó píxeles que no existen
+ * en ningún sitio. Reusa el ticket prefirmado de las generaciones, que es la
+ * puerta anti-413 del proyecto: el binario va directo a R2 y nunca cruza un
+ * server action, así que el tope de 4.5 MB de Vercel ni entra en juego.
+ */
+async function uploadEditRefToStorage(
+    base64: string,
+    mimeType: string,
+): Promise<string> {
+    const bytes = Uint8Array.from(atob(base64), (c) => c.charCodeAt(0))
+    const blob = new Blob([bytes], { type: mimeType })
+    const { path, provider } = await uploadGenerationWithRetry(
+        'IMAGE',
+        blob,
+        mimeType,
+    )
+    return getGenerationMediaUrl(path, provider)
 }
 
 async function uploadGenerationWithRetry(
@@ -4176,6 +4208,27 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                     }
                 }
 
+                // ANTI-413. La ref del edit pesa lo que pese la foto, y en
+                // base64 crece un 33%: una imagen de 3.5 MB sale a ~4.6 MB y
+                // pasa del tope de 4.5 MB que Vercel impone al body de una
+                // server action (`bodySizeLimit` ya está en 50mb y aun así
+                // rebota: el tope es de la plataforma, no de Next). El editor
+                // moría con "Content Too Large" y un "Edit failed" opaco.
+                //
+                // Ahora viaja una URL. Sin composite ni siquiera hay que subir
+                // nada: `maskedRefB64` son los bytes de `media.url`, que ya es
+                // pública — el viaje redondo (bajar, re-subir inflada, que el
+                // servidor la vuelva a guardar) era puro desperdicio. Con
+                // composite los bytes SÍ son nuevos, y suben por el ticket
+                // prefirmado, que va directo a R2 sin cruzar el server action.
+                const editSourceUrl =
+                    maskedRefB64 === sourceBase64 && /^https:/.test(media.url)
+                        ? media.url
+                        : await uploadEditRefToStorage(
+                              maskedRefB64,
+                              maskedRefMime,
+                          )
+
                 if (!resolvedProvider || resolvedProvider.type === 'GOOGLE') {
                     // Gemini: original como 1ª imagen + composite como 2ª.
                     resultUrl = await editImage(
@@ -4191,10 +4244,8 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                     if (resolvedProvider.type === 'KLING') {
                         const r = await generateImageKling({
                             prompt: maskedPrompt,
-                            referenceImage: {
-                                base64: maskedRefB64,
-                                mimeType: maskedRefMime,
-                            },
+                            // URL: Kling baja los bytes en el SERVIDOR.
+                            referenceImageUrl: editSourceUrl,
                             aspectRatio: targetAspectRatio,
                             modelName: resolvedProvider.model || 'kling-v2-1',
                         })
@@ -4204,7 +4255,9 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                         const r = await generateImageMiniMax({
                             prompt: maskedPrompt,
                             aspectRatio: targetAspectRatio,
-                            faceReferenceUrl: `data:${maskedRefMime};base64,${maskedRefB64}`,
+                            // Acepta URL directamente: no hay motivo para
+                            // inflar la foto a un data: URL de ~4.6 MB.
+                            faceReferenceUrl: editSourceUrl,
                         })
                         if (!r.success) throw new Error(r.error)
                         resultUrl = r.url
@@ -4212,8 +4265,9 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                         let editModel =
                             resolvedProvider.model ||
                             'flux-kontext/text-to-image'
+                        // URL, no bytes: ver la nota ANTI-413 de editSourceUrl.
                         const editRef = {
-                            base64: maskedRefB64,
+                            url: editSourceUrl,
                             mimeType: maskedRefMime,
                         }
                         // Reference Assets del editor → refs KIE con rol

@@ -92,11 +92,8 @@ async function build(ctx: ImageRouteContext): Promise<KieImageRequest> {
             // En PARALELO (antes: secuencial — cara + N extras en fila sumaban
             // segundos antes del submit). El orden se preserva: cara primero.
             const urls: string[] = await Promise.all([
-                ctx.uploadRef(
-                    ctx.referenceImage.base64,
-                    ctx.referenceImage.mimeType,
-                ),
-                ...extras.map((r) => ctx.uploadRef(r.base64, r.mimeType)),
+                ctx.uploadRef(ctx.referenceImage),
+                ...extras.map((r) => ctx.uploadRef(r)),
             ])
             resolvedModel =
                 model === 'seedream/4.5-text-to-image'

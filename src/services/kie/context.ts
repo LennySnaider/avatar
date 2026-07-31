@@ -31,7 +31,7 @@ export interface ImageRouteContext {
     aspectRatio: string
     /** Prompt ya sanitizado que entra a la ruta (la escena/harness del cliente). */
     prompt: string
-    referenceImage?: { base64: string; mimeType: string } | null
+    referenceImage?: KieRefWithRole | null
     referenceImages?: KieRefWithRole[]
     bodyEmphasis?: string
     hairEmphasis?: string
@@ -113,17 +113,26 @@ export interface ImageRouteContext {
      * `uploadReferenceToSupabase`; en el snapshot = un stub determinista. Es la
      * ÚNICA dependencia con efecto de una ruta.
      */
-    uploadRef: (base64: string, mimeType: string) => Promise<string>
     /**
-     * Recorta un base64 al aspect ratio pedido (solo Grok lo usa — espeja el AR
-     * del ref). En producción = `cropBase64ToAspect` (sharp); en el snapshot un
-     * stub identidad (el uploader stubeado ignora los bytes → sigue determinista).
+     * Ref -> URL publica. Recibe la REF ENTERA (no base64+mime sueltos) porque
+     * ahora puede venir ya subida: con `url` no hay nada que subir. Ese es el
+     * camino que evita el 413 del editor.
+     */
+    uploadRef: (ref: KieRefWithRole) => Promise<string>
+    /**
+     * Recorta la ref al aspect ratio pedido (solo Grok lo usa — espeja el AR
+     * del ref). En producción = sharp; en el snapshot un stub identidad (el
+     * uploader stubeado ignora los bytes → sigue determinista).
+     *
+     * Recibe la REF, no el base64: una ref puede llegar ya subida (`url`) y sin
+     * bytes, y aquí los bytes SÍ hacen falta — así que la implementación real
+     * los descarga. Recortar es obligatorio para Grok: es el único modo de que
+     * respete el aspect ratio pedido, porque copia el del input.
      */
     cropToAspect: (
-        base64: string,
-        mimeType: string,
+        ref: KieRefWithRole,
         aspectRatio: string,
-    ) => Promise<{ base64: string; mimeType: string }>
+    ) => Promise<KieRefWithRole>
 }
 
 /**

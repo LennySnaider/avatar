@@ -420,6 +420,15 @@ export async function generateImage(params: {
     prompt: string
     referenceImage?: ImageData | null
     referenceImages?: ImageData[] // Omni only: multi-image list (e.g. [face, clone])
+    /**
+     * Ref YA subida y pública, como alternativa a `referenceImage`. Kling manda
+     * los bytes inline a su API, así que aquí sí hacen falta — pero se
+     * descargan EN EL SERVIDOR. Lo que no podía seguir pasando es que el
+     * navegador los subiera en base64 por una server action: una foto de 3.5 MB
+     * infla a ~4.6 MB y pasa del tope de 4.5 MB de Vercel (413 Content Too
+     * Large, que en la UI salía como un "Edit failed" sin causa).
+     */
+    referenceImageUrl?: string | null
     aspectRatio: AspectRatio
     modelName?: string
     n?: number // number of images
@@ -429,14 +438,31 @@ export async function generateImage(params: {
 > {
     const {
         prompt,
-        referenceImage,
         referenceImages,
+        referenceImageUrl,
         aspectRatio,
         modelName = 'kling-v3',
         n = 1,
     } = params
+    let { referenceImage } = params
 
     try {
+        // La URL se resuelve a bytes ANTES de construir el request, así el
+        // resto del flujo no se entera de que existen dos formas de llegar.
+        if (!referenceImage?.base64 && referenceImageUrl) {
+            const res = await fetch(referenceImageUrl)
+            if (!res.ok) {
+                throw new Error(
+                    `No se pudo descargar la referencia (HTTP ${res.status})`,
+                )
+            }
+            const buf = Buffer.from(await res.arrayBuffer())
+            referenceImage = {
+                base64: buf.toString('base64'),
+                mimeType:
+                    res.headers.get('content-type') || 'image/jpeg',
+            }
+        }
         const normalizedModel = normalizeKlingModelName(modelName)
 
         // Omni image models use a different endpoint with a different

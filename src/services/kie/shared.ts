@@ -15,8 +15,13 @@
  */
 
 export type KieRefWithRole = {
-    base64: string
+    // Opcional desde que una ref puede llegar YA subida (`url`): el editor manda
+    // la URL de R2 en vez de 4.6 MB de base64, que es lo que reventaba el tope
+    // de body de Vercel con un 413. Quien necesite los BYTES debe comprobarlo.
+    base64?: string
     mimeType: string
+    /** Ref ya hospedada y pública. Excluyente con `base64` en la práctica. */
+    url?: string
     role?: string
     // Solo para role:'clone' — ¿se difuminó la cara rival del clon? Wan lo usa
     // para decidir el reorden (clon SIN cara → orden normal; con cara → reordena).
