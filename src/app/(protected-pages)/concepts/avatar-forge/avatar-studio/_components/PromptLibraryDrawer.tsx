@@ -31,6 +31,14 @@ import {
     PiHandPalmDuotone,
     PiCameraDuotone,
     PiFireDuotone,
+    PiHeartDuotone,
+    PiChatCircleDuotone,
+    PiMoonStarsDuotone,
+    PiBarbellDuotone,
+    PiCrownDuotone,
+    PiGameControllerDuotone,
+    PiBedDuotone,
+    PiButterflyDuotone,
 } from 'react-icons/pi'
 import {
     MODEL_ACTION_PRESETS,
@@ -38,6 +46,12 @@ import {
     type ActionCategory,
     type ActionPreset,
 } from '../_constants/modelActionPresets'
+import {
+    NICHE_PROMPT_PRESETS,
+    NICHE_CATEGORIES,
+    type NicheCategory,
+    type NichePreset,
+} from '../_constants/nichePromptPresets'
 import type { Prompt, MediaType } from '@/@types/supabase'
 
 interface PromptLibraryDrawerProps {
@@ -56,6 +70,17 @@ const categoryIcons: Record<ActionCategory, React.ReactNode> = {
     spicy: <PiFireDuotone className="w-4 h-4 text-red-500" />,
 }
 
+const nicheIcons: Record<NicheCategory, React.ReactNode> = {
+    sweet_girl: <PiHeartDuotone className="w-4 h-4 text-pink-500" />,
+    gfe: <PiChatCircleDuotone className="w-4 h-4 text-rose-500" />,
+    dark_gothic: <PiMoonStarsDuotone className="w-4 h-4 text-violet-500" />,
+    fitness: <PiBarbellDuotone className="w-4 h-4 text-emerald-500" />,
+    baddie_glam: <PiCrownDuotone className="w-4 h-4 text-amber-500" />,
+    egirl_alt: <PiGameControllerDuotone className="w-4 h-4 text-cyan-500" />,
+    boudoir: <PiBedDuotone className="w-4 h-4 text-red-500" />,
+    lingerie: <PiButterflyDuotone className="w-4 h-4 text-red-400" />,
+}
+
 const PromptLibraryDrawer = ({ userId }: PromptLibraryDrawerProps) => {
     const [isLoading, setIsLoading] = useState(false)
     const [isSaving, setIsSaving] = useState(false)
@@ -68,6 +93,7 @@ const PromptLibraryDrawer = ({ userId }: PromptLibraryDrawerProps) => {
     const [saveAsNsfw, setSaveAsNsfw] = useState(false)
     const [activeTab, setActiveTab] = useState('my-prompts')
     const [expandedCategory, setExpandedCategory] = useState<ActionCategory | null>('poses_basic')
+    const [expandedNiche, setExpandedNiche] = useState<NicheCategory | null>('sweet_girl')
 
     const {
         isPromptLibraryOpen,
@@ -266,6 +292,20 @@ const PromptLibraryDrawer = ({ userId }: PromptLibraryDrawerProps) => {
         return acc
     }, {} as Record<ActionCategory, ActionPreset[]>)
 
+    // Niche packs: prompts completos por nicho (Sweet Girl, GFE, etc.).
+    // Mismos filtros de media type + gate 🌶️ que el resto del drawer.
+    const groupedNichePresets = NICHE_PROMPT_PRESETS.filter(
+        (preset) =>
+            (filterType === 'ALL' ? true : preset.mediaType === filterType) &&
+            (showNsfw ? true : !preset.nsfw),
+    ).reduce((acc, preset) => {
+        if (!acc[preset.niche]) {
+            acc[preset.niche] = []
+        }
+        acc[preset.niche].push(preset)
+        return acc
+    }, {} as Record<NicheCategory, NichePreset[]>)
+
     return (
         <Drawer
             title="Prompt Library"
@@ -371,6 +411,7 @@ const PromptLibraryDrawer = ({ userId }: PromptLibraryDrawerProps) => {
                 <Tabs value={activeTab} onChange={(val) => setActiveTab(val)} className="flex-1 flex flex-col overflow-hidden min-h-0">
                     <TabList className="px-4 pt-2">
                         <TabNav value="my-prompts">My Prompts</TabNav>
+                        <TabNav value="niche-packs">Niche Packs</TabNav>
                         <TabNav value="action-presets">
                             Action Presets
                             {pinnedActionIds.length > 0 && (
@@ -477,6 +518,72 @@ const PromptLibraryDrawer = ({ userId }: PromptLibraryDrawerProps) => {
                                         </div>
                                     ))
                                 )}
+                        </div>
+                    </TabContent>
+
+                    {/* Niche Packs Tab — prompts completos por nicho, un click
+                        REEMPLAZA el prompt actual (a diferencia de los Action
+                        Presets, que se añaden a la escena existente) */}
+                    <TabContent value="niche-packs" className="flex-1 overflow-auto min-h-0">
+                        <div className="p-4 space-y-3">
+                            {(Object.entries(groupedNichePresets) as [NicheCategory, NichePreset[]][]).map(
+                                ([niche, presets]) => (
+                                    <div
+                                        key={niche}
+                                        className="border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden"
+                                    >
+                                        <button
+                                            onClick={() =>
+                                                setExpandedNiche(
+                                                    expandedNiche === niche ? null : niche,
+                                                )
+                                            }
+                                            className="w-full px-4 py-3 flex items-center justify-between bg-gray-50 dark:bg-gray-800 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+                                        >
+                                            <div className="flex items-center gap-2">
+                                                {nicheIcons[niche]}
+                                                <span className="text-sm font-medium">
+                                                    {NICHE_CATEGORIES[niche].label}
+                                                </span>
+                                                <span className="text-xs text-gray-400">
+                                                    ({presets.length})
+                                                </span>
+                                            </div>
+                                            <HiOutlineChevronDown
+                                                className={`w-4 h-4 transition-transform ${
+                                                    expandedNiche === niche ? 'rotate-180' : ''
+                                                }`}
+                                            />
+                                        </button>
+
+                                        {expandedNiche === niche && (
+                                            <div className="p-2 space-y-1">
+                                                {presets.map((preset) => (
+                                                    <div
+                                                        key={preset.id}
+                                                        onClick={() => handleUsePrompt(preset.text)}
+                                                        className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 cursor-pointer transition-colors"
+                                                    >
+                                                        <div className="flex items-center gap-2">
+                                                            <span className="text-sm font-medium">
+                                                                {preset.name}
+                                                            </span>
+                                                            {preset.nsfw && (
+                                                                <span className="shrink-0 text-[10px]">
+                                                                    🌶️
+                                                                </span>
+                                                            )}
+                                                        </div>
+                                                        <p className="text-xs text-gray-500 line-clamp-2 mt-0.5">
+                                                            {preset.text}
+                                                        </p>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        )}
+                                    </div>
+                                ),
+                            )}
                         </div>
                     </TabContent>
 
