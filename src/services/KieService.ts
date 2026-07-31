@@ -1943,21 +1943,33 @@ export async function generateMotionControlKie(
     console.log(`[KIE/Kling3-MC] Task submitted: ${taskId}`)
     await linkHoldToRef(gate.hold.holdId, 'kie_task', taskId)
 
-    // Esta ruta poll EN EL SERVIDOR, así que el desenlace se conoce aquí mismo:
-    // no hay barrido que la cierre después. Un fallo de KIE tras el submit —hoy
-    // el 500 "internal error" de motion-control, que llega con creditsConsumed
-    // 0— tiene que devolver el cobro, o el cliente paga lo que nadie generó.
+    // RECLAMABLE desde este instante. Era la única ruta que no se registraba, y
+    // el agujero se veía así: el poll dura minutos (medido: 269s) dentro de una
+    // server action, la respuesta no llega al navegador ("Failed to fetch"), y
+    // el usuario se queda sin el vídeo aunque KIE lo generó y cobró. Al no
+    // haber fila, el barrido contestaba "Nada que recuperar" — el peor mensaje
+    // posible, porque afirma que no hay nada cuando hay una generación pagada.
+    await apiTrackPendingGeneration({
+        provider: 'kie',
+        taskId,
+        mediaType: 'VIDEO',
+        prompt: prompt ?? undefined,
+        metadata: { model: 'kling-3.0/motion-control', mode: input.mode },
+    })
+
     let urls: string[]
     try {
         urls = await pollTask(taskId, { budgetMs: 600_000, intervalMs: 5000 })
     } catch (e) {
-        await refundHold(gate.hold, 'kie_motion_control_failed')
+        // Devuelve el cobro Y baja el rastro: el proveedor no entregó nada.
+        await apiClearPendingGeneration(taskId, 'failed')
         throw e
     }
     console.log(`[KIE/Kling3-MC] Generation complete: ${urls[0]}`)
 
     const persisted = await persistToSupabase(urls[0], 'mp4', 'kie-videos')
-    await settleHold(gate.hold)
+    // Confirma el cobro y baja el rastro — mismo cierre que el resto de rutas.
+    await apiClearPendingGeneration(taskId, 'delivered')
     return persisted
 }
 
