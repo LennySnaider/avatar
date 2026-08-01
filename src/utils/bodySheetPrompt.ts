@@ -427,8 +427,15 @@ export function buildTurnaroundRefinePrompt(
               // cintura de la plantilla, peor en la vista FRONTAL (sesgo
               // frontal ya documentado arriba). Reporte: 83/45/94 (ratio
               // 2.09) + glúteos 5 → hoja atlética recta.
+              // El tier strong ancla al SPEC, no a adjetivos fijos
+              // (2026-08-01, reporte: glúteos 1 salían como 3): la versión
+              // anterior ordenaba "fuller hips, glutes and thighs… round
+              // full glutes" a piedra — el tier dispara por la CINTURA
+              // (ratio) y ese texto fijo pisaba los niveles BAJOS de glúteo/
+              // muslo. Lo que el ratio justifica es la cintura; el resto se
+              // remite al spec, con candado bidireccional.
               isStrongCurvesBody(m)
-              ? 'IMPORTANT: her body is CLEARLY curvier than the reference — reshape it to the spec above (a much smaller waist and fuller hips, glutes and thighs than the template woman); the reference is ONLY for the poses, views, framing and background, NEVER for the body proportions. The SAME proportions in EVERY view: FRONT — her waist visibly cinched and narrow exactly as the measurements specify, hips flaring clearly wider than her waist, full thighs; THREE-QUARTER and SIDE — clear glute projection with a curved lower back; BACK — round full glutes and wide hips exactly as wide as in the front view.'
+              ? 'IMPORTANT: her body differs CLEARLY from the reference — reshape it to the spec above; the reference is ONLY for the poses, views, framing and background, NEVER for the body proportions. Render every curve at the size the spec states — no bigger and no smaller. The SAME proportions in EVERY view: FRONT — her waist visibly cinched and narrow exactly as the measurements specify, hip width true to her measured hips; THREE-QUARTER and SIDE — glute projection exactly as the spec states; BACK — glute volume, hip width and thigh thickness exactly as the spec states, matching the front view.'
               : '',
         'Photorealistic, natural skin texture, 8k, sharp focus. Not an illustration.',
     ]

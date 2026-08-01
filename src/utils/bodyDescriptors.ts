@@ -334,7 +334,10 @@ export const GLUTES_SHAPE_PHRASE: Record<string, string> = {
         'V-shaped glutes — fuller at the top narrowing downward, slim hips with little lower fullness',
     'a-shape':
         'A-shaped pear glutes — narrow at the top and widest at the bottom, volume concentrated low on the glutes and hips',
-    round: 'perfectly round glutes — full and balanced in every direction, symmetric youthful shape',
+    // "Round" SIN palabras de tamaño (2026-08-01, reporte: glúteos 1 salían
+    // como 3): decía "full and balanced" — la FORMA llevaba tamaño escondido
+    // y con nivel bajo el "full" ganaba. Forma = geometría; tamaño = el nivel.
+    round: 'perfectly round glutes — evenly rounded in every direction, symmetric youthful shape',
     heart: 'heart-shaped glutes — voluminous curvy lower part tapering up to a narrow waist, upside-down-heart silhouette with wide hips',
 }
 

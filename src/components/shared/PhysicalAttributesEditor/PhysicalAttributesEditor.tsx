@@ -406,7 +406,12 @@ const PhysicalAttributesEditor = ({
                         <p className="text-[10px] text-gray-400 mt-0.5">
                             {BUST_LEVEL_PHRASE[measurements.bustLevel]}
                         </p>
-                    ) : null}
+                    ) : (
+                        <p className="text-[10px] text-gray-400 mt-0.5">
+                            Auto = sin orden de tamaño — el busto lo deciden los
+                            cm y la forma. Mueve el slider (1-6) para fijarlo.
+                        </p>
+                    )}
                     {shapeChips('bustLevel')}
                 </div>
                 {/* Reglas de pezón POR AVATAR (consistencia NSFW) — condicional:
@@ -589,7 +594,13 @@ const PhysicalAttributesEditor = ({
                                 puro y la frase ya dice qué se renderizará. */}
                             {glutesLevelPhrase(measurements)}
                         </p>
-                    ) : null}
+                    ) : (
+                        <p className="text-[10px] text-gray-400 mt-0.5">
+                            Auto = sin orden de tamaño — el glúteo lo deciden la
+                            cadera (cm) y la forma. Mueve el slider (1-6) para
+                            fijar el volumen.
+                        </p>
+                    )}
                     {shapeChips('glutesLevel')}
                 </div>
                 {/* VELLO PÚBICO — tres ejes separados a propósito: se puede
