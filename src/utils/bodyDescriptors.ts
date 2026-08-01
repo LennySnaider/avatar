@@ -361,7 +361,13 @@ export const NIPPLE_AREOLA_PHRASE: Record<string, string> = {
     puffy: 'puffy raised areolas projecting softly outward',
 }
 
-export const NIPPLE_COLORS = ['rosy', 'peach', 'light-brown', 'brown', 'dark'] as const
+export const NIPPLE_COLORS = [
+    'rosy',
+    'peach',
+    'light-brown',
+    'brown',
+    'dark',
+] as const
 export const NIPPLE_AREOLAS = ['small', 'medium', 'large', 'puffy'] as const
 
 /** Cláusula condicional de pezones — vacía si el avatar no fijó reglas.
@@ -374,7 +380,9 @@ export function nippleClause(m: PhysicalMeasurements): string {
     const color = m.nippleColor ? NIPPLE_COLOR_PHRASE[m.nippleColor] : ''
     const areola = m.nippleAreola ? NIPPLE_AREOLA_PHRASE[m.nippleAreola] : ''
     if (!color && !areola) return ''
-    const spec = [color && `${color} nipples`, areola].filter(Boolean).join(' with ')
+    const spec = [color && `${color} nipples`, areola]
+        .filter(Boolean)
+        .join(' with ')
     // Candado de tamaño: desacopla la areola del tamaño del busto (el prior
     // que la infla). Solo se paga cuando hay regla de areola.
     const sizeLock = areola
@@ -448,7 +456,8 @@ const PUBIC_STYLE_PHRASE: Record<string, string> = {
     // + "freshly shaved" ya lo dicen en positivo, sin invocar nada.
     shaved: 'her pubic area is completely smooth and bare, freshly shaved skin',
     strip: 'a narrow vertical strip of pubic hair above her vulva, the sides bare and cleanly groomed',
-    triangle: 'a small neat triangle of pubic hair above her vulva, tidily trimmed at the edges',
+    triangle:
+        'a small neat triangle of pubic hair above her vulva, tidily trimmed at the edges',
     natural: 'a natural, untrimmed patch of pubic hair above her vulva',
     full: 'a full, thick and completely untrimmed bush of pubic hair',
 }
@@ -599,6 +608,28 @@ export function isExaggeratedBody(m: PhysicalMeasurements): boolean {
         (effectiveThighsLevel(m) ?? 0) >= 6 ||
         ratio >= 2.2 ||
         (m.hips ?? 0) >= 130
+    )
+}
+
+/**
+ * ¿Cuerpo de curvas FUERTES aunque no XXL? El tier intermedio que faltaba
+ * (2026-07-31): la recalibración del gate XXL a ratio 2.2 dejó a la banda
+ * 1.8-2.2 (wasp dramática según describeBody: whr ≤ 0.55) y a los niveles 5
+ * SIN ninguna autorización de remodelado contra la plantilla del Body Lab —
+ * todo o nada. Reporte real: bust 83 / waist 45 / hips 94 (ratio 2.09) +
+ * glúteos 5 → la hoja salía con el cuerpo NATURAL de la plantilla (cintura
+ * sin reducir, glúteos promedio, peor en la vista frontal). Bordes ALINEADOS
+ * con los existentes (un solo acantilado por dimensión): whr 0.55 = el borde
+ * de "extremely small, dramatically cinched waist" de describeShapeAndBuild;
+ * nivel 5 = el último peldaño natural de los sliders.
+ */
+export function isStrongCurvesBody(m: PhysicalMeasurements): boolean {
+    const whr = m.waist && m.hips ? m.waist / m.hips : 1
+    return (
+        whr <= 0.55 ||
+        (m.bustLevel ?? 0) >= 5 ||
+        (m.glutesLevel ?? 0) >= 5 ||
+        (effectiveThighsLevel(m) ?? 0) >= 5
     )
 }
 

@@ -9,6 +9,7 @@ import {
     pubicHairClause,
     effectiveThighsLevel,
     isExaggeratedBody,
+    isStrongCurvesBody,
     BUST_SHAPE_PHRASE,
     GLUTES_SHAPE_PHRASE,
 } from '@/utils/bodyDescriptors'
@@ -113,7 +114,7 @@ export function buildBodySheetCurves(m: PhysicalMeasurements): string {
     if (thighs && SHEET_THIGHS_PHRASE[thighs]) {
         parts.push(SHEET_THIGHS_PHRASE[thighs])
     }
-    // XXL (nivel 6 O medidas extremas: ratio >= 2.0 / cadera >= 118) → candado
+    // XXL (nivel 6 O medidas extremas: ratio >= 2.2 / cadera >= 130) → candado
     // anti-normalización (sin él los difusores regresan a proporciones
     // naturales — reporte: waist 45 / hips 120 sin niveles salía natural).
     if (isExaggeratedBody(m)) {
@@ -124,6 +125,15 @@ export function buildBodySheetCurves(m: PhysicalMeasurements): string {
         }
         parts.push(
             'these proportions are DELIBERATELY EXAGGERATED far beyond natural anatomy — render them at FULL intensity exactly as described, like a stylized social-media bombshell physique; do NOT tone them down or normalize toward average realistic proportions',
+        )
+    } else if (isStrongCurvesBody(m)) {
+        // Tier intermedio (2026-07-31): la banda wasp 1.8-2.2 / niveles 5 se
+        // quedó SIN candado al subir el gate XXL a 2.2 — el difusor
+        // normalizaba (cintura sin reducir, glúteos promedio; reporte con
+        // hoja: 83/45/94 + glúteos 5). Wording natural-fuerte, sin el
+        // "beyond natural anatomy" del XXL.
+        parts.push(
+            'render these curves at their FULL stated intensity exactly as described — a dramatic natural hourglass; do NOT soften, average out or normalize them toward ordinary proportions',
         )
     }
     return parts.join(', ')
@@ -163,7 +173,14 @@ export function buildBodySheetPrompt(
     // generación a otra y deja de ser la misma persona.
     const pubic = opts?.nude ? pubicHairClause(m) : ''
 
-    const person = [`${m.age ?? 22}-year-old woman`, body, skin, hair, tan, pubic]
+    const person = [
+        `${m.age ?? 22}-year-old woman`,
+        body,
+        skin,
+        hair,
+        tan,
+        pubic,
+    ]
         .filter(Boolean)
         .join(', ')
 
@@ -384,7 +401,17 @@ export function buildTurnaroundRefinePrompt(
         'ANATOMY (CRITICAL): every figure is COMPLETE and intact — both arms, both legs, both hands and both feet fully rendered head-to-toe in EVERY view; never amputated, cropped, truncated or hidden limbs.',
         isXXL
             ? 'IMPORTANT: her body is DRAMATICALLY different from the reference — RESHAPE it completely to the spec above (far curvier and more exaggerated than the template woman); the reference is ONLY for the poses, views, framing and background, NEVER for the body proportions. The SAME exaggerated proportions in EVERY view: FRONT — hips flare dramatically wider than her shoulders, inner thighs touching, no thigh gap; THREE-QUARTER and SIDE — extreme glute projection with a deep lower-back curve; BACK — MASSIVE round glutes and hips dominating the frame, exactly as wide as they appear in the front view.'
-            : '',
+            : // Tier intermedio (2026-07-31): al subir el gate XXL a ratio 2.2
+              // la banda 1.8-2.2 / niveles 5 perdió TODA autorización de
+              // remodelado — contra Seedream i2i (que ancla al cuerpo natural
+              // de la plantilla, sesgo documentado) la frase suelta "do NOT
+              // copy the reference body" pierde, y la hoja salía con la
+              // cintura de la plantilla, peor en la vista FRONTAL (sesgo
+              // frontal ya documentado arriba). Reporte: 83/45/94 (ratio
+              // 2.09) + glúteos 5 → hoja atlética recta.
+              isStrongCurvesBody(m)
+              ? 'IMPORTANT: her body is CLEARLY curvier than the reference — reshape it to the spec above (a much smaller waist and fuller hips, glutes and thighs than the template woman); the reference is ONLY for the poses, views, framing and background, NEVER for the body proportions. The SAME proportions in EVERY view: FRONT — her waist visibly cinched and narrow exactly as the measurements specify, hips flaring clearly wider than her waist, full thighs; THREE-QUARTER and SIDE — clear glute projection with a curved lower back; BACK — round full glutes and wide hips exactly as wide as in the front view.'
+              : '',
         'Photorealistic, natural skin texture, 8k, sharp focus. Not an illustration.',
     ]
         .filter(Boolean)
@@ -479,7 +506,8 @@ export const BODY_SHEET_NEGATIVE_PROMPT = [
  * todo lo generado a partir de ella. La difusión NO procesa negaciones en el
  * positivo: prohibir el tipo contrario solo funciona desde el negative.
  */
-export const BODY_SHEET_NUDE_NEGATIVE_PROMPT = BODY_SHEET_NEGATIVE_PROMPT.replace(
-    'one-piece swimsuit, bodysuit, dress, full clothing',
-    'clothes, clothing, sports bra, briefs, underwear, panties, bikini, swimsuit, bodysuit, dress, covered body, censored, censor bar, mosaic censoring, blurred crotch, smooth featureless crotch, doll-like genital area, pink areolas, blushed chest, protruding inner labia, long labia minora, visible inner labia, open labia, spread labia, gaping, everted vulva, butterfly vulva, horseshoe vulva',
-)
+export const BODY_SHEET_NUDE_NEGATIVE_PROMPT =
+    BODY_SHEET_NEGATIVE_PROMPT.replace(
+        'one-piece swimsuit, bodysuit, dress, full clothing',
+        'clothes, clothing, sports bra, briefs, underwear, panties, bikini, swimsuit, bodysuit, dress, covered body, censored, censor bar, mosaic censoring, blurred crotch, smooth featureless crotch, doll-like genital area, pink areolas, blushed chest, protruding inner labia, long labia minora, visible inner labia, open labia, spread labia, gaping, everted vulva, butterfly vulva, horseshoe vulva',
+    )
