@@ -1,7 +1,12 @@
 'use server'
 
 import { createHash } from 'crypto'
-import { putMediaObject, r2Enabled, r2ObjectExists, getR2PublicUrl } from '@/lib/mediaStore'
+import {
+    putMediaObject,
+    r2Enabled,
+    r2ObjectExists,
+    getR2PublicUrl,
+} from '@/lib/mediaStore'
 import { createServerSupabaseClient } from '@/lib/supabase'
 import {
     centerCropToAspect,
@@ -252,7 +257,8 @@ async function checkTaskOnce(
         return { state: 'success', urls }
     }
     if (state === 'fail') {
-        const raw = `${json.data.failCode || ''} ${json.data.failMsg || 'Unknown error'}`.trim()
+        const raw =
+            `${json.data.failCode || ''} ${json.data.failMsg || 'Unknown error'}`.trim()
         return { state: 'fail', error: explainKieFailure(raw) }
     }
     return { state: 'running' }
@@ -334,7 +340,10 @@ export async function uploadReferenceToSupabase(
     // Con canal ALFA se deja el PNG: JPEG no lo tiene, y aunque hoy las
     // máscaras se queman sobre la imagen, convertir un alfa real la aplanaría
     // en silencio. Comprobarlo cuesta una lectura de metadatos.
-    if (mimeType.includes('png') && buffer.byteLength > PNG_RECOMPRESS_MIN_BYTES) {
+    if (
+        mimeType.includes('png') &&
+        buffer.byteLength > PNG_RECOMPRESS_MIN_BYTES
+    ) {
         try {
             const sharp = (await import('sharp')).default
             const meta = await sharp(buffer).metadata()
@@ -479,7 +488,9 @@ async function ensureRefBytes(
     if (!ref.url) throw new Error('Referencia sin `url` ni `base64`.')
     const res = await fetchWithAbort(ref.url, {}, 30_000)
     if (!res.ok) {
-        throw new Error(`No se pudo descargar la referencia: HTTP ${res.status}`)
+        throw new Error(
+            `No se pudo descargar la referencia: HTTP ${res.status}`,
+        )
     }
     const buf = Buffer.from(await res.arrayBuffer())
     return {
@@ -607,9 +618,7 @@ async function persistToSupabase(
     const ctx = await tryGetOrgContext()
     const fileName = ctx ? orgStoragePath(ctx.organizationId, leaf) : leaf
     if (!ctx) {
-        console.warn(
-            `[KIE] persist SIN contexto de org → path legacy ${leaf}`,
-        )
+        console.warn(`[KIE] persist SIN contexto de org → path legacy ${leaf}`)
     }
 
     return uploadBufferToGenerations(buffer, fileName, contentType)
@@ -1916,6 +1925,23 @@ export async function generateMotionControlKie(
         )
     }
 
+    // Kling 3.0 motion-control 500ea ("internal error, please try again
+    // later", failCode 500, 0 créditos) con el arnés [BODY —]/[FACE:] en el
+    // prompt — forense del task 3ee350cc: prompt 1,586 chars, DENTRO del
+    // límite documentado de 2,500 (docs.kie.ai motion-control-v3), video
+    // conductor válido (14.3s ∈ 3-30s, 576x1024 >340px, aspecto 0.56 ∈
+    // 2:5-5:2). No es longitud ni el video: es el CONTENIDO estructurado —
+    // mismo modo de falla que Wan 2.2 turbo (verificado 2x en vivo ahí). En
+    // motion-control la identidad viaja en la IMAGEN (input_urls) y el
+    // movimiento en el VIDEO conductor: el texto solo aporta estilo, así que
+    // se stripean los bloques [LABEL ...] (con dos puntos O raya — el arnés
+    // de cuerpo usa "[BODY — ...]") y el resto respeta el cap de la doc.
+    const motionPrompt = (prompt ?? '')
+        .replace(/\[[A-Z][A-Z_ ]*\s*[:—-][^\]]*\]/g, ' ')
+        .replace(/\s{2,}/g, ' ')
+        .trim()
+        .slice(0, 2400)
+
     const input: Record<string, unknown> = {
         input_urls: [imageUrl],
         video_urls: [videoUrl],
@@ -1923,7 +1949,12 @@ export async function generateMotionControlKie(
         character_orientation: characterOrientation,
         background_source: 'input_video',
     }
-    if (prompt) input.prompt = prompt
+    if (motionPrompt) input.prompt = motionPrompt
+    if (prompt && motionPrompt.length !== prompt.trim().length) {
+        console.log(
+            `[KIE/Kling3-MC] Prompt stripped del arnés: ${prompt.length}→${motionPrompt.length} chars`,
+        )
+    }
 
     console.log(
         `[KIE/Kling3-MC] Submitting motion-control: mode=${input.mode}, orientation=${characterOrientation}`,
