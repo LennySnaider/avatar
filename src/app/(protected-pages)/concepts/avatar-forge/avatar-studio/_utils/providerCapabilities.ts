@@ -24,6 +24,10 @@ export function getDurationOptionsForProvider(provider: AIProvider | null): numb
             if (provider.model === 'kling-3.0/video') return [5, 10]
             if (provider.model === 'bytedance/seedance-2') return [4, 5, 6, 8, 10, 12, 15]
             if (provider.model === 'wan/2-7-image-to-video') return [2, 5, 7, 10, 12, 15]
+            // Wan 2.6 unificado (MuleRouter): la API acepta 5/10/15; si la
+            // ruta automática cae en r2v (que rechaza 15) el submit ya
+            // redondea a 10.
+            if (provider.model?.startsWith('mulerouter/wan2.6')) return [5, 10, 15]
             // Wan 2.2 turbo no expone duración — clip fijo (~5s).
             if (provider.model === 'wan/2-2-a14b-image-to-video-turbo') return [5]
             // Grok Imagine Video 1.5: entero 1-15s (default 8).
@@ -82,6 +86,9 @@ export function getResolutionOptionsForProvider(
             if (provider.model === 'kling-3.0/video') return ['720p', '1080p']
             if (provider.model === 'bytedance/seedance-2') return ['480p', '720p', '1080p']
             if (provider.model === 'wan/2-7-image-to-video') return ['720p', '1080p']
+            // Wan 2.6 unificado (MuleRouter): el submit mapea a 720P/1080P
+            // (i2v vía `resolution`, t2v/r2v vía `size`).
+            if (provider.model?.startsWith('mulerouter/wan2.6')) return ['720p', '1080p']
             if (provider.model === 'wan/2-2-a14b-image-to-video-turbo') return ['480p', '720p']
             if (provider.model === 'grok-imagine-video-1-5-preview') return ['480p', '720p']
             // Other KIE models (legacy Veo wiring, etc.) don't expose resolution.

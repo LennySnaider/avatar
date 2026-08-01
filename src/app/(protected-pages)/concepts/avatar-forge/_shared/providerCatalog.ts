@@ -199,46 +199,21 @@ export const DEFAULT_PROVIDERS: AIProvider[] = [
         created_at: null,
     },
     {
-        // Wan 2.6 i2v vía MuleRouter — ANIMA una imagen de la galería.
-        // Slug verificado contra la API (POST vacío → 400 pidiendo `image`).
-        // NO existe variante "spark"/"flash" en 2.6: ambas dan 404.
-        // Lo interesante para la plataforma: `audio_url` acepta un wav/mp3 de
-        // 3-30s, así que la VOZ CLONADA del avatar puede conducir el vídeo sin
-        // pasar por un modelo de lip-sync aparte.
-        id: 'mulerouter-wan26-i2v',
-        name: 'Wan 2.6 i2v · MuleRouter',
+        // Wan 2.6 vía MuleRouter — UN card, la variante se ENRUTA SOLA en el
+        // submit (patrón Kling 3.0): el cliente final no tiene por qué saber
+        // qué significa i2v/r2v/t2v. Con imagen de Input → i2v (anima esa
+        // foto); sin imagen pero con Character Ref → r2v (identidad desde
+        // vídeos, hasta 3, dur 5/10); solo texto → t2v. Antes eran 3 cards y
+        // el gate de Animate exigía imagen SIEMPRE: el card t2v acababa
+        // enviando i2v y r2v obligaba a subir una imagen que luego ignoraba.
+        // Slug y quirks verificados contra la API (POST vacío → 400 pidiendo
+        // `image`; NO existe variante "spark"/"flash" en 2.6: ambas dan 404).
+        // `audio_url` acepta un wav/mp3 de 3-30s, así que la VOZ CLONADA del
+        // avatar puede conducir el vídeo sin pasar por un lip-sync aparte.
+        id: 'mulerouter-wan26',
+        name: 'Wan 2.6 · MuleRouter',
         type: 'KIE' as ProviderType,
-        model: 'mulerouter/wan2.6-i2v',
-        endpoint: 'https://api.mulerouter.ai',
-        is_active: true,
-        supports_image: false,
-        supports_video: true,
-        requires_api_key: true,
-        api_key_env_var: 'MULEROUTER_API_KEY',
-        created_at: null,
-    },
-    {
-        // Wan 2.6 r2v — REFERENCIA DE PERSONAJE: toma vídeos donde ya sale el
-        // avatar y mantiene su identidad en la escena nueva. Hasta 3 refs
-        // (permite varios personajes). Duración de salida: 5 o 10 (NO 15).
-        id: 'mulerouter-wan26-r2v',
-        name: 'Wan 2.6 r2v · MuleRouter',
-        type: 'KIE' as ProviderType,
-        model: 'mulerouter/wan2.6-r2v',
-        endpoint: 'https://api.mulerouter.ai',
-        is_active: true,
-        supports_image: false,
-        supports_video: true,
-        requires_api_key: true,
-        api_key_env_var: 'MULEROUTER_API_KEY',
-        created_at: null,
-    },
-    {
-        // Wan 2.6 t2v — vídeo desde TEXTO, sin imagen de partida.
-        id: 'mulerouter-wan26-t2v',
-        name: 'Wan 2.6 t2v · MuleRouter',
-        type: 'KIE' as ProviderType,
-        model: 'mulerouter/wan2.6-t2v',
+        model: 'mulerouter/wan2.6',
         endpoint: 'https://api.mulerouter.ai',
         is_active: true,
         supports_image: false,
@@ -513,9 +488,8 @@ export const PROVIDER_COST: Record<string, string> = {
     'kie-qwen-image': '~$0.02',
     'mulerouter-qwen-edit-max': '$0.075',
     // Wan 2.6: $0.05/s a 480P … $0.15/s a 1080P segun su web. A 720P/5s ~ $0.5.
-    'mulerouter-wan26-i2v': '~$0.50 / 5s',
-    'mulerouter-wan26-t2v': '~$0.50 / 5s',
-    'mulerouter-wan26-r2v': '~$0.50 / 5s',
+    // (mismo precio en las 3 variantes i2v/t2v/r2v que enruta el card)
+    'mulerouter-wan26': '~$0.50 / 5s',
     'kie-ideogram-v3': '~$0.05',
     'kie-nano-banana-2': '~$0.06',
     'kie-nano-banana-2-lite': '~$0.034',
@@ -549,9 +523,7 @@ export const PROVIDER_TRAITS: Record<
     'kie-flux-2-pro': { permissive: true },
     'kie-qwen-image': { permissive: true },
     'mulerouter-qwen-edit-max': { permissive: true },
-    'mulerouter-wan26-i2v': { permissive: true },
-    'mulerouter-wan26-t2v': { permissive: true },
-    'mulerouter-wan26-r2v': { permissive: true },
+    'mulerouter-wan26': { permissive: true },
     'kie-grok-imagine': { face: true },
     'kie-grok-imagine-video': { face: true },
     // Ambos reciben la cara vía image_input[] (mismo patrón que nano-banana-pro)
@@ -622,6 +594,8 @@ export const getProviderDescription = (provider: AIProvider): string => {
             return 'Wan 2.7 Image (Alibaba) — SIN CENSURA real de imagen: nsfw off y SIN moderación upstream (edit NSFW verificado live). Genera Y edita en el mismo modelo, usa la cara del avatar (input_urls, hasta 9 refs), 9:16 nativo, 2K, ~30s. El único que edita desnudos — Qwen/FLUX.2/Grok bloquean upstream'
         case 'kie-kling-3-0':
             return 'Kling 3.0 vía KIE — video i2v/t2v + motion-control v2v, audio nativo opcional, ~20% más barato que el directo'
+        case 'mulerouter-wan26':
+            return 'Wan 2.6 (Alibaba) vía MuleRouter — se adapta solo a lo que le des: con imagen de Input ANIMA esa foto; sin imagen pero con Character Ref (vídeos del avatar) mantiene su identidad en la escena nueva; con solo texto genera desde cero. Audio nativo opcional y voz clonada con lip-sync (audio_url). 720p/1080p, 5-15s'
         case 'kie-wan-2-2-uncensored':
             return 'Wan 2.2 A14B turbo (Alibaba, open-weights) — video SIN CENSURA: sin filtro embebido y nsfw_checker off. i2v: anima una imagen (la identidad viaja en el first frame — usa Animate sobre una foto del avatar). 480p/720p, ~5s, hereda el aspect de la imagen'
         case 'kie-nano-banana-pro':

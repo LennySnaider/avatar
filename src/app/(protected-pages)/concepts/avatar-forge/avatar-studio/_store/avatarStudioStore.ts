@@ -152,10 +152,11 @@ interface AvatarStudioState {
      */
     videoAudio: boolean
     /**
-     * Vídeos de REFERENCIA de personaje para wan2.6-r2v. El modelo toma de
-     * ellos la identidad (y la voz) y la lleva a la escena nueva. Máx 3 — el
-     * API acepta varios para escenas multi-personaje. Cada ref debe durar
-     * 2-30s.
+     * Vídeos de REFERENCIA de personaje para Wan 2.6 (card unificado). Solo
+     * surten efecto SIN imagen de Input: la ruta automática elige r2v y el
+     * modelo toma de ellos la identidad (y la voz) para la escena nueva. Máx
+     * 3 — el API acepta varios para escenas multi-personaje. Cada ref debe
+     * durar 2-30s.
      */
     videoRefUrls: string[]
     /**
@@ -391,6 +392,15 @@ interface AvatarStudioState {
     setGalleryView: (v: 'all' | 'favorites' | 'archived') => void
     setGalleryBarOpen: (open: boolean) => void
     setGalleryHideNsfw: (v: boolean) => void
+    /**
+     * Ajusta los filtros de la galería para que `media` quede VISIBLE. Para
+     * generaciones recién terminadas en primer plano: sin esto, generar con
+     * el avatar A mientras la galería filtra por el avatar B deja el
+     * resultado guardado pero invisible — y se reporta como "perdido"
+     * (pasó con 2 vídeos Wan: fila en BD y archivo en R2 intactos, ocultos
+     * por el filtro).
+     */
+    revealInGallery: (media: GeneratedMedia) => void
 
     // Actions - Safety
     setIsAnalyzing: (analyzing: boolean) => void
@@ -956,6 +966,40 @@ export const useAvatarStudioStore = create<AvatarStudioState>()(
             setGalleryView: (v) => set({ galleryView: v }),
             setGalleryBarOpen: (open) => set({ galleryBarOpen: open }),
             setGalleryHideNsfw: (v) => set({ galleryHideNsfw: v }),
+            revealInGallery: (media) =>
+                set((state) => {
+                    const patch: Partial<AvatarStudioState> = {}
+                    // Filtro por avatar: si apunta a OTRO avatar, seguirlo al
+                    // del media (es con el que se está trabajando); sin
+                    // avatar, abrir a Todas.
+                    const wanted = media.avatarId ?? 'NONE'
+                    if (
+                        state.galleryAvatarFilter !== 'ALL' &&
+                        state.galleryAvatarFilter !== wanted
+                    ) {
+                        patch.galleryAvatarFilter = media.avatarId ?? 'ALL'
+                    }
+                    if (
+                        state.galleryMediaTypeFilter !== 'ALL' &&
+                        state.galleryMediaTypeFilter !== media.mediaType
+                    ) {
+                        patch.galleryMediaTypeFilter = 'ALL'
+                    }
+                    // Un item nuevo nunca es favorito ni archivado.
+                    if (state.galleryView !== 'all') {
+                        patch.galleryView = 'all'
+                    }
+                    // Una búsqueda tecleada antes también lo ocultaría.
+                    if (
+                        state.gallerySearchQuery &&
+                        !media.prompt
+                            .toLowerCase()
+                            .includes(state.gallerySearchQuery.toLowerCase())
+                    ) {
+                        patch.gallerySearchQuery = ''
+                    }
+                    return patch
+                }),
             // Seed the gallery with persisted history from the `generations` table.
             // Dedupe by generationId (persisted rows win), keep any session items not
             // yet persisted, newest first (by timestamp).

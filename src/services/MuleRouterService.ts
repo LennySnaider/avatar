@@ -227,18 +227,23 @@ const MR_VIDEO_PATH = (model: MuleRouterVideoModel) =>
  * lo ignoran en silencio — así que salían en horizontal por defecto aunque el
  * chip dijera 9:16 (reporte: "no respetó aspect ratio").
  */
-const MR_VIDEO_SIZE: Record<string, { sd: string; hd: string }> = {
-    '9:16': { sd: '480*832', hd: '720*1280' },
-    '16:9': { sd: '832*480', hd: '1280*720' },
-    '1:1': { sd: '624*624', hd: '960*960' },
-    '3:4': { sd: '832*1088', hd: '832*1088' },
-    '4:3': { sd: '1088*832', hd: '1088*832' },
+// Enum completo verificado 2026-08-01 (size inválido → la API lista el enum):
+// 832*480, 480*832, 624*624, 1280*720, 720*1280, 960*960, 1088*832, 832*1088,
+// 1920*1080, 1080*1920, 1440*1440, 1632*1248, 1248*1632, 2560*1440, 1440*2560,
+// 1920*1920. Sí hay clase 1080p — la tabla vieja paraba en 720p y el ternario
+// devolvía `hd` en ambas ramas: pedir 1080P entregaba 720p en silencio.
+const MR_VIDEO_SIZE: Record<string, { hd: string; fhd: string }> = {
+    '9:16': { hd: '720*1280', fhd: '1080*1920' },
+    '16:9': { hd: '1280*720', fhd: '1920*1080' },
+    '1:1': { hd: '960*960', fhd: '1440*1440' },
+    '3:4': { hd: '832*1088', fhd: '1248*1632' },
+    '4:3': { hd: '1088*832', fhd: '1632*1248' },
 }
 
 /** AR + calidad → `size` del enum. Cae a 9:16 HD, que es el formato del Studio. */
 function mrVideoSize(aspectRatio?: string, resolution?: '720P' | '1080P') {
     const pair = MR_VIDEO_SIZE[aspectRatio ?? '9:16'] ?? MR_VIDEO_SIZE['9:16']
-    return resolution === '1080P' ? pair.hd : pair.hd
+    return resolution === '1080P' ? pair.fhd : pair.hd
 }
 
 export interface MuleRouterVideoParams {

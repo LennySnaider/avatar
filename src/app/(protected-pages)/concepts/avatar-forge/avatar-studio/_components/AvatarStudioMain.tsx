@@ -722,6 +722,7 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
         addPendingGeneration,
         removePendingGeneration,
         addToGallery,
+        revealInGallery,
         updateGalleryItem,
         loadPersistedGallery,
         setIsEnhancingPrompt,
@@ -3161,21 +3162,32 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                             }
                         }
                     } else if (videoSubMode === 'ANIMATE') {
-                        if (!videoInputImage || !videoInputImage.base64) {
+                        // El card unificado Wan 2.6 es el ÚNICO que funciona
+                        // sin imagen (enruta a r2v/t2v); para el resto la
+                        // imagen sigue siendo obligatoria. Antes este gate
+                        // exigía imagen SIEMPRE y el card t2v acababa
+                        // enviando i2v con ella.
+                        const isWan26Animate =
+                            !!activeProvider?.model?.startsWith(
+                                'mulerouter/wan2.6',
+                            )
+                        if (!videoInputImage?.base64 && !isWan26Animate) {
                             throw new Error('Please upload an image to animate')
                         }
                         // First frame drives the whole clip's quality — keep full
                         // resolution (API_FULL) instead of the 1024px API preset,
                         // otherwise continued videos come out visibly softer.
-                        const optimizedVideoInput = await optimizeImage(
-                            {
-                                base64: videoInputImage.base64,
-                                mimeType: videoInputImage.mimeType,
-                            },
-                            'API_FULL',
-                        )
+                        const optimizedVideoInput = videoInputImage?.base64
+                            ? await optimizeImage(
+                                  {
+                                      base64: videoInputImage.base64,
+                                      mimeType: videoInputImage.mimeType,
+                                  },
+                                  'API_FULL',
+                              )
+                            : null
 
-                        if (!optimizedVideoInput) {
+                        if (videoInputImage?.base64 && !optimizedVideoInput) {
                             throw new Error(
                                 'Failed to optimize video input image',
                             )
@@ -3188,6 +3200,16 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                         // overridden because most models in our integration
                         // don't support first_frame + multi-image refs at once.
                         if (continueUseAvatarIdentity) {
+                            // Continue parte SIEMPRE de un frame del vídeo
+                            // anterior; sin imagen no hay qué continuar (el
+                            // gate de arriba solo exime a Wan 2.6, que no
+                            // pasa por aquí). El guard además narrowea el
+                            // tipo para los callers que la exigen.
+                            if (!optimizedVideoInput) {
+                                throw new Error(
+                                    'Please upload an image to animate',
+                                )
+                            }
                             const identityRefs = [
                                 optimizedPayload.faceRef,
                                 ...optimizedPayload.generalRefs,
@@ -3262,8 +3284,12 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                                 })
                             }
                         } else if (isKlingProvider) {
-                            // Check if Motion Control is enabled (v2.6+ only)
+                            // Check if Motion Control is enabled (v2.6+ only).
+                            // optimizedVideoInput existe SIEMPRE aquí (el gate
+                            // de arriba solo deja pasar sin imagen a Wan 2.6)
+                            // — la condición se lo enseña al type-checker.
                             if (
+                                optimizedVideoInput &&
                                 klingMotionControlEnabled &&
                                 (klingMotionVideoBase64 ||
                                     klingMotionVideoUrl ||
@@ -3327,7 +3353,10 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                             resultUrl = await generateVideoMiniMax({
                                 mode: 'image',
                                 prompt: fullPrompt,
-                                firstFrameImage: optimizedVideoInput,
+                                // El param es opcional pero no admite null; la
+                                // imagen existe siempre aquí (el gate solo
+                                // exime a Wan 2.6).
+                                firstFrameImage: optimizedVideoInput ?? undefined,
                                 model:
                                     (activeProvider?.model as MiniMaxVideoModel) ||
                                     'MiniMax-Hailuo-2.3',
@@ -3338,46 +3367,49 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                                 'mulerouter/wan2.6',
                             )
                         ) {
-                            // ── WAN 2.6 vía MULEROUTER ──
+                            // ── WAN 2.6 vía MULEROUTER — RUTA AUTOMÁTICA ──
+                            // UN solo card (patrón Kling 3.0): la variante la
+                            // decide lo que el usuario YA puso en la barra, no
+                            // un picker técnico i2v/r2v/t2v que el cliente
+                            // final no tiene por qué conocer:
+                            //   imagen de Input   → i2v (anima esa foto)
+                            //   Character Ref     → r2v (identidad de vídeos)
+                            //   solo texto        → t2v
                             // Submit + poll desde el NAVEGADOR, mismo carril
                             // async que la imagen: el vídeo tarda minutos y una
                             // server action abierta se comería el timeout.
-                            // r2v toma la identidad de VÍDEOS de referencia;
-                            // el resto parte de una imagen. Eso decide qué se
-                            // envía y también la duración: r2v NO acepta 15s
-                            // (solo 5 o 10) y pedirlo lo rechaza.
-                            const isR2V =
-                                activeProvider.model === 'mulerouter/wan2.6-r2v'
-                            if (isR2V && videoRefUrls.length === 0) {
-                                throw new Error(
-                                    'Wan 2.6 r2v necesita al menos un vídeo de referencia del personaje (2-30s). Súbelo en «Character Ref».',
-                                )
-                            }
-                            // r2v NO tiene parámetro de imagen: la API ni la
-                            // valida, la ignora. Descartarla ademas en silencio
-                            // desde aqui deja al usuario creyendo que la mandó
-                            // (reporte: "pero si había enviado el input de
-                            // imagen"). Se dice, y se dice cual es el modelo
-                            // que si la usa.
-                            if (isR2V && videoInputImage) {
+                            const wanModel = optimizedVideoInput
+                                ? ('wan2.6-i2v' as const)
+                                : videoRefUrls.length > 0
+                                  ? ('wan2.6-r2v' as const)
+                                  : ('wan2.6-t2v' as const)
+                            // Con imagen, las refs de personaje NO viajan (la
+                            // API de i2v no las tiene). Descartarlas en
+                            // silencio deja al usuario creyendo que las mandó
+                            // — mismo criterio que el aviso viejo de r2v.
+                            if (wanModel === 'wan2.6-i2v' && videoRefUrls.length > 0) {
                                 toast.push(
                                     <Notification
                                         type="warning"
-                                        title="La imagen no se usará"
+                                        title="Character Ref sin usar"
                                     >
-                                        r2v construye la escena desde los vídeos
-                                        de referencia y el texto — no acepta
-                                        imagen de partida. Si quieres animar esa
-                                        foto, usa Wan 2.6 i2v.
+                                        Con imagen de Input el vídeo sale de
+                                        animar esa foto y los vídeos de
+                                        referencia no aplican. Quita la imagen
+                                        si quieres construir la escena desde
+                                        las referencias del personaje.
                                     </Notification>,
                                 )
                             }
+                            const isR2V = wanModel === 'wan2.6-r2v'
                             const sub = await submitMuleRouterVideoTask({
-                                model: isR2V ? 'wan2.6-r2v' : 'wan2.6-i2v',
+                                model: wanModel,
                                 prompt: fullPrompt,
                                 ...(isR2V
                                     ? { videoUrls: videoRefUrls }
-                                    : { image: optimizedVideoInput }),
+                                    : optimizedVideoInput
+                                      ? { image: optimizedVideoInput }
+                                      : {}),
                                 resolution:
                                     videoResolution === '1080p'
                                         ? '1080P'
@@ -3386,9 +3418,10 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                                 // heredar el encuadre: el AR viaja
                                 // explícito o salen en horizontal.
                                 aspectRatio,
-                                // El API SOLO acepta 5, 10 o 15: se redondea al
-                                // permitido más cercano en vez de dejar que
-                                // rechace la petición.
+                                // El API SOLO acepta 5, 10 o 15 — y r2v ni
+                                // siquiera 15 (solo 5 o 10; pedirlo lo
+                                // rechaza). Se redondea al permitido más
+                                // cercano en vez de dejar que rechace.
                                 duration: (isR2V
                                     ? ([5, 10] as const)
                                     : ([5, 10, 15] as const)
@@ -3421,7 +3454,7 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                                 prompt,
                                 aspectRatio,
                                 metadata: {
-                                    model: isR2V ? 'wan2.6-r2v' : 'wan2.6-i2v',
+                                    model: wanModel,
                                 },
                             })
                             let wanUrl = ''
@@ -3430,7 +3463,7 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                                 await new Promise((r) => setTimeout(r, 8000))
                                 const st = await checkMuleRouterVideoTask(
                                     sub.taskId,
-                                    isR2V ? 'wan2.6-r2v' : 'wan2.6-i2v',
+                                    wanModel,
                                 )
                                 if (st.status === 'done') {
                                     wanUrl = st.url
@@ -3480,11 +3513,14 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                                 klingMotionVideoBase64 || klingMotionVideoUrl
                             )
                             if (
+                                optimizedVideoInput &&
                                 isKieKling &&
                                 klingMotionControlEnabled &&
                                 hasMotionVideo
                             ) {
-                                // KIE Kling 3.0 motion-control (v2v)
+                                // KIE Kling 3.0 motion-control (v2v) — la
+                                // imagen existe siempre aquí (el gate solo
+                                // exime a Wan 2.6); el && narrowea el tipo.
                                 resultUrl = await genMotionControlKie({
                                     characterImage: optimizedVideoInput,
                                     motionVideoUrl:
@@ -3722,6 +3758,10 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                         </Notification>,
                     )
                 } else {
+                    // Primer plano: el usuario está ESPERANDO este resultado —
+                    // si los filtros de la galería apuntan a otro avatar/tipo,
+                    // el item aterrizaría invisible y parecería perdido.
+                    revealInGallery(newMedia)
                     setAppState(AppState.SUCCESS)
                 }
             } catch (error: unknown) {
@@ -3823,6 +3863,7 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
             getActiveProvider,
             getFullPrompt,
             addToGallery,
+            revealInGallery,
             persistWhenStable,
             removePendingGeneration,
             setAppState,
@@ -4370,6 +4411,9 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                 }
 
                 addToGallery(newMedia)
+                // El edit siempre es en primer plano: destapar filtros que lo
+                // dejarían invisible (mismo criterio que handleGenerate).
+                revealInGallery(newMedia)
                 // Auto-persist the edited result too, so it survives reload and
                 // its Post button (gated on saveState === 'saved') becomes usable.
                 // KIE async: espera el swap a la URL estable antes de persistir.
@@ -4391,6 +4435,7 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
             avatarId,
             getActiveProvider,
             addToGallery,
+            revealInGallery,
             persistWhenStable,
             setAppState,
             setErrorMsg,

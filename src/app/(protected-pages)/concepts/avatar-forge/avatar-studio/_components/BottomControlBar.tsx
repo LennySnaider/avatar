@@ -589,8 +589,10 @@ const BottomControlBar = ({
     const isMuleRouterVideo = !!activeProvider?.model?.startsWith(
         'mulerouter/wan2.6',
     )
-    // r2v: la identidad sale de VÍDEOS del personaje, no de una imagen.
-    const isR2V = activeProvider?.model === 'mulerouter/wan2.6-r2v'
+    // Character Ref (r2v): la identidad sale de VÍDEOS del personaje. Con el
+    // card unificado el chip vive siempre que Wan 2.6 esté activo — la ruta
+    // a r2v la decide el submit cuando hay refs y NO hay imagen de Input.
+    const showWanCharacterRef = isMuleRouterVideo
     const [isUploadingRef, setIsUploadingRef] = useState(false)
     const refVideoInputRef = useRef<HTMLInputElement>(null)
 
@@ -2362,14 +2364,19 @@ const BottomControlBar = ({
                                 Con voz clonada del avatar, esa voz CONDUCE el
                                 vídeo (audio_url): el lip-sync sale del propio
                                 generador, sin pasar por un modelo aparte. */}
-                            {/* CHARACTER REF (r2v) — vídeos donde ya sale el
+                            {/* CHARACTER REF — vídeos donde ya sale el
                                 personaje. El modelo toma de ahí su identidad y
                                 la lleva a la escena nueva, que es justo la
                                 consistencia que buscamos. Máx 3 (el API acepta
                                 varios para escenas multi-personaje) y cada uno
-                                debe durar 2-30s. */}
-                            {isR2V && (
-                                <div className="flex items-center gap-1.5 rounded-lg border-2 border-dashed border-purple-400 px-2 py-1">
+                                debe durar 2-30s. Solo aplican SIN imagen de
+                                Input (la ruta automática elige r2v); con
+                                imagen gana animarla (i2v) y el submit avisa. */}
+                            {showWanCharacterRef && (
+                                <div
+                                    className="flex items-center gap-1.5 rounded-lg border-2 border-dashed border-purple-400 px-2 py-1"
+                                    title="Vídeos del personaje (2-30s, máx 3). Sin imagen de Input, el vídeo mantiene su identidad desde estas referencias."
+                                >
                                     <span className="text-xs font-medium text-purple-400">
                                         🎭 Character Ref
                                     </span>

@@ -163,6 +163,12 @@ const VIDEO_MODEL_FAMILIES: Array<[prefix: string, providerId: string]> = [
     ['mulerouter/wan2.6-i2v', 'mulerouter-wan26-i2v'],
     ['mulerouter/wan2.6-t2v', 'mulerouter-wan26-t2v'],
     ['mulerouter/wan2.6-r2v', 'mulerouter-wan26-r2v'],
+    // Card unificado 'mulerouter/wan2.6' (la variante se enruta en el submit):
+    // el hold real siempre llega con la variante concreta, pero si algún camino
+    // resolviera el model del catálogo tal cual, que caiga al precio i2v y no
+    // al fallback sin precio. resolveFamily ordena por prefijo más largo, así
+    // que esta entrada corta NUNCA pisa a las tres de arriba.
+    ['mulerouter/wan2.6', 'mulerouter-wan26-i2v'],
 ]
 
 function resolveFamily(
