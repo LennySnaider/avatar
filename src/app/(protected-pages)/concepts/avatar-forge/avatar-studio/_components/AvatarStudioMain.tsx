@@ -159,7 +159,7 @@ import {
     HiOutlineEyeOff,
 } from 'react-icons/hi'
 import { getPostedGenerationMap } from '@/services/SocialService'
-import { AppState } from '../types'
+import { AppState, frontloadQuickStyles } from '../types'
 import type { GeneratedMedia, ReferenceImage } from '../types'
 import type {
     AspectRatio,
@@ -1787,7 +1787,7 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                             .replace(/\[FACE:[^\]]*\]/gi, '')
                             .replace(/\s{2,}/g, ' ')
                             .trim()
-                        let miniMaxPrompt = `${buildDiffusionBodyPreamble(measurements, { cameraShot, cameraAngle })} ${sceneText}`
+                        let miniMaxPrompt = `${buildDiffusionBodyPreamble(measurements, { cameraShot, cameraAngle })} ${frontloadQuickStyles(sceneText)}`
                         const faceRoom = MINIMAX_CAP - miniMaxPrompt.length - 12
                         if (faceDescription?.trim() && faceRoom > 80) {
                             miniMaxPrompt += ` [FACE: ${faceDescription.trim().slice(0, faceRoom)}]`
@@ -1872,7 +1872,11 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                         // instruction-following models below (Nano Banana Pro / GPT Image 2
                         // / Flux Kontext) replace kiePrompt with their own harness, so this
                         // only reaches the diffusion models that actually benefit from it.
-                        let kiePrompt = `${buildDiffusionBodyPreamble(measurements, { cameraShot, cameraAngle })} ${fullPrompt}`
+                        // Chips de estilo AL FRENTE de la escena (patrón
+                        // cámara-first de MuleRouter): se appendean al final
+                        // del campo y las rutas KIE truncan la escena por el
+                        // final — los últimos chips morían en silencio.
+                        let kiePrompt = `${buildDiffusionBodyPreamble(measurements, { cameraShot, cameraAngle })} ${frontloadQuickStyles(fullPrompt)}`
                         // 🌶️ Reglas de pezón EN LA ESCENA (2026-07-23): la dieta
                         // del ancla Seedream dejó las curvas/nipple fuera del spec
                         // denso (con sheet la señal viaja en imagen + cm + boost).
