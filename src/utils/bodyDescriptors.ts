@@ -295,6 +295,27 @@ export const GLUTES_LEVEL_PHRASE: Record<number, string> = {
     6: 'MASSIVE exaggerated BBL-style glutes and hips, dramatically oversized beyond natural anatomy — hips far wider than her shoulders, extreme shelf-like glute projection',
 }
 
+/**
+ * Frase de nivel de glúteo COHERENTE con los cm (2026-07-31). El texto fijo
+ * del nivel 6 afirmaba ANCHURA ("hips far wider than her shoulders") aunque
+ * los cm dijeran lo contrario (reporte: glúteos 6 con hips 96 / shoulders 85
+ * → el spec se contradecía y el difusor resolvía POR VISTA: espalda ancha,
+ * frente angosto — vistas que no corresponden). El nivel 4 ya había aprendido
+ * la lección ("el glúteo es PROYECCIÓN hacia atrás, la anchura la fijan los
+ * cm"); el 6 la violaba. Con cadera realmente XXL (>=130, el mismo borde de
+ * isExaggeratedBody/getBodyDescriptors) la anchura es verdad y se conserva el
+ * texto original; con cadera moderada TODO el volumen se declara como
+ * proyección trasera — que es exactamente lo que promete el hint de la UI.
+ */
+export function glutesLevelPhrase(m: PhysicalMeasurements): string {
+    const lvl = m.glutesLevel
+    if (!lvl || !GLUTES_LEVEL_PHRASE[lvl]) return ''
+    if (lvl >= 6 && (m.hips ?? 0) < 130) {
+        return 'MASSIVE exaggerated BBL-style glutes, dramatically oversized beyond natural anatomy — ALL of the volume projects straight BACKWARD as an extreme shelf-like curve, most dramatic in the side and back views, while her frontal hip width stays true to her measured hips'
+    }
+    return GLUTES_LEVEL_PHRASE[lvl]
+}
+
 export const THIGHS_LEVEL_PHRASE: Record<number, string> = {
     1: 'slim light thighs',
     2: 'toned smooth thighs with soft definition',
@@ -645,8 +666,11 @@ export function buildCurvesEmphasis(m: PhysicalMeasurements): string {
     if (m.bustShape && BUST_SHAPE_PHRASE[m.bustShape]) {
         parts.push(BUST_SHAPE_PHRASE[m.bustShape])
     }
-    if (m.glutesLevel && GLUTES_LEVEL_PHRASE[m.glutesLevel]) {
-        parts.push(GLUTES_LEVEL_PHRASE[m.glutesLevel])
+    // Vía glutesLevelPhrase (no el mapa directo): el nivel 6 con cadera
+    // moderada habla de PROYECCIÓN trasera, no de anchura — ver su doc.
+    const glutesPhrase = glutesLevelPhrase(m)
+    if (glutesPhrase) {
+        parts.push(glutesPhrase)
     }
     if (m.glutesShape && GLUTES_SHAPE_PHRASE[m.glutesShape]) {
         parts.push(GLUTES_SHAPE_PHRASE[m.glutesShape])

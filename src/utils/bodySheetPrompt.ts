@@ -104,8 +104,19 @@ export function buildBodySheetCurves(m: PhysicalMeasurements): string {
     if (m.bustShape && BUST_SHAPE_PHRASE[m.bustShape]) {
         parts.push(BUST_SHAPE_PHRASE[m.bustShape])
     }
+    // COHERENCIA nivel-vs-cm (2026-07-31, espejo de glutesLevelPhrase): el
+    // texto fijo del nivel 6 afirmaba "hips more than TWICE the width of her
+    // waist and clearly wider than her shoulders" aunque los cm dijeran lo
+    // contrario (reporte: glúteos 6 con hips 96/shoulders 85 → espalda ancha,
+    // frente angosto — vistas que no corresponden). Con cadera moderada el
+    // volumen se declara como PROYECCIÓN trasera, que es lo que promete el
+    // hint de la UI; la anchura solo cuando la cadera es realmente XXL.
     if (m.glutesLevel && SHEET_GLUTES_PHRASE[m.glutesLevel]) {
-        parts.push(SHEET_GLUTES_PHRASE[m.glutesLevel])
+        parts.push(
+            m.glutesLevel >= 6 && (m.hips ?? 0) < 130
+                ? 'MASSIVE exaggerated BBL-style glutes far beyond natural anatomy — ALL of the volume projects straight BACKWARD as an extreme shelf-like curve seen from the side and back, while her frontal hip width stays true to her measured hips'
+                : SHEET_GLUTES_PHRASE[m.glutesLevel],
+        )
     }
     if (m.glutesShape && GLUTES_SHAPE_PHRASE[m.glutesShape]) {
         parts.push(GLUTES_SHAPE_PHRASE[m.glutesShape])
@@ -400,7 +411,14 @@ export function buildTurnaroundRefinePrompt(
         'CONSISTENCY (CRITICAL): all four views depict THE EXACT SAME woman with IDENTICAL body proportions — hip width, glute size and thigh thickness must be EQUAL across every view; no view may look slimmer OR more exaggerated than the others.',
         'ANATOMY (CRITICAL): every figure is COMPLETE and intact — both arms, both legs, both hands and both feet fully rendered head-to-toe in EVERY view; never amputated, cropped, truncated or hidden limbs.',
         isXXL
-            ? 'IMPORTANT: her body is DRAMATICALLY different from the reference — RESHAPE it completely to the spec above (far curvier and more exaggerated than the template woman); the reference is ONLY for the poses, views, framing and background, NEVER for the body proportions. The SAME exaggerated proportions in EVERY view: FRONT — hips flare dramatically wider than her shoulders, inner thighs touching, no thigh gap; THREE-QUARTER and SIDE — extreme glute projection with a deep lower-back curve; BACK — MASSIVE round glutes and hips dominating the frame, exactly as wide as they appear in the front view.'
+            ? // El detalle por-vista del XXL también debe ser coherente con
+              // los cm (2026-07-31): "hips flare dramatically wider than her
+              // shoulders" solo cuando la cadera lo es de verdad (>=130);
+              // con cadera moderada + glúteo 6, el drama vive en la
+              // PROYECCIÓN (side/back) y el frente respeta los cm medidos.
+              (m.hips ?? 0) >= 130
+                ? 'IMPORTANT: her body is DRAMATICALLY different from the reference — RESHAPE it completely to the spec above (far curvier and more exaggerated than the template woman); the reference is ONLY for the poses, views, framing and background, NEVER for the body proportions. The SAME exaggerated proportions in EVERY view: FRONT — hips flare dramatically wider than her shoulders, inner thighs touching, no thigh gap; THREE-QUARTER and SIDE — extreme glute projection with a deep lower-back curve; BACK — MASSIVE round glutes and hips dominating the frame, exactly as wide as they appear in the front view.'
+                : 'IMPORTANT: her body is DRAMATICALLY different from the reference — RESHAPE it completely to the spec above; the reference is ONLY for the poses, views, framing and background, NEVER for the body proportions. The SAME proportions in EVERY view: FRONT — a dramatically cinched waist with hip width true to her measured hips, inner thighs touching; THREE-QUARTER and SIDE — EXTREME shelf-like glute projection straight backward with a deep lower-back curve (this is where her glutes look most dramatic); BACK — MASSIVE round glutes dominating the frame through roundness and backward volume, with hip width exactly matching the front view.'
             : // Tier intermedio (2026-07-31): al subir el gate XXL a ratio 2.2
               // la banda 1.8-2.2 / niveles 5 perdió TODA autorización de
               // remodelado — contra Seedream i2i (que ancla al cuerpo natural
