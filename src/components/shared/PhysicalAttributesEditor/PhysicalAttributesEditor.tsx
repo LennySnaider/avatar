@@ -44,7 +44,6 @@ import {
     BUST_SHAPE_PHRASE,
     GLUTES_SHAPE_PHRASE,
     BUST_LEVEL_TO_CM,
-    GLUTES_LEVEL_TO_CM,
     cmToBustLevel,
     effectiveThighsLevel,
     describeBody,
@@ -583,24 +582,12 @@ const PhysicalAttributesEditor = ({
                         <p className="text-[10px] text-gray-400 mt-0.5">
                             {/* La frase REAL que viaja al prompt — coherente
                                 con los cm (con cadera <130 el nivel 6 habla de
-                                PROYECCIÓN trasera, no de anchura). */}
+                                PROYECCIÓN trasera, no de anchura). El aviso
+                                ámbar "nivel 6 sugiere cadera ≈132" se QUITÓ
+                                (2026-07-31): era reliquia del control acoplado
+                                nivel↔cm — hoy el nivel es volumen/proyección
+                                puro y la frase ya dice qué se renderizará. */}
                             {glutesLevelPhrase(measurements)}
-                        </p>
-                    ) : null}
-                    {/* Aviso de INCOHERENCIA glúteos↔cadera (2026-07-25): la
-                        medida de cadera se toma en la parte más llena del
-                        glúteo — con nivel alto y cadera estrecha, el prompt lo
-                        resuelve como PROYECCIÓN hacia atrás. */}
-                    {measurements.glutesLevel &&
-                    measurements.hips &&
-                    GLUTES_LEVEL_TO_CM[measurements.glutesLevel] -
-                        measurements.hips >
-                        10 ? (
-                        <p className="text-[10px] text-amber-500 mt-0.5">
-                            Nivel {measurements.glutesLevel}/6 sugiere cadera ≈
-                            {GLUTES_LEVEL_TO_CM[measurements.glutesLevel]}
-                            cm y tienes {measurements.hips}cm — se renderizará
-                            como proyección hacia ATRÁS, no como cadera ancha.
                         </p>
                     ) : null}
                     {shapeChips('glutesLevel')}
