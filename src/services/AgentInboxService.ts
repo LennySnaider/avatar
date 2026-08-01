@@ -25,7 +25,10 @@ import type { AutopilotConfig } from '@/lib/agent/autopilot'
 import { updateFanMemoryFromChat } from '@/lib/agent/draftPipeline'
 import { retrieveKnowledge } from '@/lib/agent/retrieval'
 import { AGENT_UTILITY_MODEL } from '@/lib/agent/models'
-import { uploadBufferMedia, uploadGenerationMedia } from '@/lib/fanvue/mediaUpload'
+import {
+    uploadBufferMedia,
+    uploadGenerationMedia,
+} from '@/lib/fanvue/mediaUpload'
 import { textToSpeech } from '@/services/MiniMaxService'
 import { getGenerationMediaUrl, getRowMediaUrl } from '@/lib/storagePaths'
 import { GoogleGenAI, Type } from '@google/genai'
@@ -76,7 +79,8 @@ function toMessageDTO(row: AgentMessageRow): AgentMessageDTO {
         direction: row.direction,
         text: row.text,
         status: row.status,
-        generatedBy: (row.generated_by ?? null) as AgentMessageDTO['generatedBy'],
+        generatedBy: (row.generated_by ??
+            null) as AgentMessageDTO['generatedBy'],
         approvedBy: row.approved_by,
         errorMessage: row.error_message,
         createdAt: row.created_at,
@@ -100,34 +104,35 @@ export async function getAgentMetrics(): Promise<InboxResult<AgentMetrics>> {
         const supabase = agentSupabase()
         const org = ctx.organizationId
 
-        const [fanChats, needsAttn, drafts, sentTotal, autoSent] = await Promise.all([
-            supabase
-                .from('agent_chats')
-                .select('id', { count: 'exact', head: true })
-                .eq('organization_id', org)
-                .eq('is_creator', false),
-            supabase
-                .from('agent_chats')
-                .select('id', { count: 'exact', head: true })
-                .eq('organization_id', org)
-                .eq('needs_attention', true),
-            supabase
-                .from('agent_messages')
-                .select('id', { count: 'exact', head: true })
-                .eq('organization_id', org)
-                .eq('status', 'draft'),
-            supabase
-                .from('agent_messages')
-                .select('id', { count: 'exact', head: true })
-                .eq('organization_id', org)
-                .eq('status', 'sent'),
-            supabase
-                .from('agent_messages')
-                .select('id', { count: 'exact', head: true })
-                .eq('organization_id', org)
-                .eq('status', 'sent')
-                .eq('approved_by', 'autopilot'),
-        ])
+        const [fanChats, needsAttn, drafts, sentTotal, autoSent] =
+            await Promise.all([
+                supabase
+                    .from('agent_chats')
+                    .select('id', { count: 'exact', head: true })
+                    .eq('organization_id', org)
+                    .eq('is_creator', false),
+                supabase
+                    .from('agent_chats')
+                    .select('id', { count: 'exact', head: true })
+                    .eq('organization_id', org)
+                    .eq('needs_attention', true),
+                supabase
+                    .from('agent_messages')
+                    .select('id', { count: 'exact', head: true })
+                    .eq('organization_id', org)
+                    .eq('status', 'draft'),
+                supabase
+                    .from('agent_messages')
+                    .select('id', { count: 'exact', head: true })
+                    .eq('organization_id', org)
+                    .eq('status', 'sent'),
+                supabase
+                    .from('agent_messages')
+                    .select('id', { count: 'exact', head: true })
+                    .eq('organization_id', org)
+                    .eq('status', 'sent')
+                    .eq('approved_by', 'autopilot'),
+            ])
 
         const sent = sentTotal.count ?? 0
         const auto = autoSent.count ?? 0
@@ -189,7 +194,8 @@ export async function listAgentChats(filter?: {
         const previewByChat = new Map<string, string>()
         for (const m of msgs ?? []) {
             if (m.status === 'draft') draftChatIds.add(m.chat_id)
-            if (!previewByChat.has(m.chat_id) && m.text) previewByChat.set(m.chat_id, m.text)
+            if (!previewByChat.has(m.chat_id) && m.text)
+                previewByChat.set(m.chat_id, m.text)
         }
 
         const items: AgentChatListItem[] = rows.map((c) => ({
@@ -207,7 +213,9 @@ export async function listAgentChats(filter?: {
             lastMessagePreview: previewByChat.get(c.id) ?? null,
             hasDraft: draftChatIds.has(c.id),
         }))
-        const filtered = filter?.hasDraft ? items.filter((i) => i.hasDraft) : items
+        const filtered = filter?.hasDraft
+            ? items.filter((i) => i.hasDraft)
+            : items
         return { success: true, data: filtered }
     } catch (e) {
         return fail(e)
@@ -216,7 +224,17 @@ export async function listAgentChats(filter?: {
 
 export async function getAgentChatThread(
     chatId: string,
-): Promise<InboxResult<{ chat: AgentChatListItem; messages: AgentMessageDTO[]; fanMemory: { summary: string | null; facts: Record<string, string> } | null; hasVoice: boolean }>> {
+): Promise<
+    InboxResult<{
+        chat: AgentChatListItem
+        messages: AgentMessageDTO[]
+        fanMemory: {
+            summary: string | null
+            facts: Record<string, string>
+        } | null
+        hasVoice: boolean
+    }>
+> {
     try {
         const ctx = await getOrgContext()
         const supabase = agentSupabase()
@@ -228,23 +246,28 @@ export async function getAgentChatThread(
             .maybeSingle()
         if (!chat) return { success: false, error: 'Chat not found' }
 
-        const [{ data: avatar }, { data: msgs }, { data: memory }] = await Promise.all([
-            supabase.from('avatars').select('name, default_voice_id').eq('id', chat.avatar_id).maybeSingle(),
-            supabase
-                .from('agent_messages')
-                .select('*')
-                .eq('chat_id', chatId)
-                .not('status', 'eq', 'discarded')
-                .order('created_at', { ascending: true })
-                .limit(200),
-            supabase
-                .from('avatar_fan_memories')
-                .select('summary, facts')
-                .eq('avatar_id', chat.avatar_id)
-                .eq('platform', 'fanvue')
-                .eq('external_fan_id', chat.external_chat_id)
-                .maybeSingle(),
-        ])
+        const [{ data: avatar }, { data: msgs }, { data: memory }] =
+            await Promise.all([
+                supabase
+                    .from('avatars')
+                    .select('name, default_voice_id')
+                    .eq('id', chat.avatar_id)
+                    .maybeSingle(),
+                supabase
+                    .from('agent_messages')
+                    .select('*')
+                    .eq('chat_id', chatId)
+                    .not('status', 'eq', 'discarded')
+                    .order('created_at', { ascending: true })
+                    .limit(200),
+                supabase
+                    .from('avatar_fan_memories')
+                    .select('summary, facts')
+                    .eq('avatar_id', chat.avatar_id)
+                    .eq('platform', 'fanvue')
+                    .eq('external_fan_id', chat.external_chat_id)
+                    .maybeSingle(),
+            ])
 
         const messages = ((msgs ?? []) as AgentMessageRow[]).map(toMessageDTO)
         return {
@@ -267,7 +290,10 @@ export async function getAgentChatThread(
                 },
                 messages,
                 fanMemory: memory
-                    ? { summary: memory.summary, facts: (memory.facts ?? {}) as Record<string, string> }
+                    ? {
+                          summary: memory.summary,
+                          facts: (memory.facts ?? {}) as Record<string, string>,
+                      }
                     : null,
                 hasVoice: Boolean(avatar?.default_voice_id),
             },
@@ -298,7 +324,9 @@ export async function setChatMode(
     }
 }
 
-export async function regenerateDraft(chatId: string): Promise<InboxResult<AgentMessageDTO>> {
+export async function regenerateDraft(
+    chatId: string,
+): Promise<InboxResult<AgentMessageDTO>> {
     try {
         const ctx = await getOrgContext()
         const supabase = agentSupabase()
@@ -310,7 +338,11 @@ export async function regenerateDraft(chatId: string): Promise<InboxResult<Agent
             .maybeSingle()
         if (!chat) return { success: false, error: 'Chat not found' }
         const result = await generateDraftReply(chatId)
-        if (!result) return { success: false, error: 'Could not generate a draft (no persona or no fan message)' }
+        if (!result)
+            return {
+                success: false,
+                error: 'Could not generate a draft (no persona or no fan message)',
+            }
         const { data: row } = await supabase
             .from('agent_messages')
             .select('*')
@@ -322,13 +354,18 @@ export async function regenerateDraft(chatId: string): Promise<InboxResult<Agent
     }
 }
 
-export async function discardDraft(messageId: string): Promise<InboxResult<{ id: string }>> {
+export async function discardDraft(
+    messageId: string,
+): Promise<InboxResult<{ id: string }>> {
     try {
         const ctx = await getOrgContext()
         const supabase = agentSupabase()
         const { error } = await supabase
             .from('agent_messages')
-            .update({ status: 'discarded', updated_at: new Date().toISOString() })
+            .update({
+                status: 'discarded',
+                updated_at: new Date().toISOString(),
+            })
             .eq('organization_id', ctx.organizationId)
             .eq('id', messageId)
             .eq('status', 'draft')
@@ -357,7 +394,11 @@ export async function approveAndSend(
             .eq('id', messageId)
             .maybeSingle()
         if (!msg) return { success: false, error: 'Draft not found' }
-        if (msg.status !== 'draft') return { success: false, error: `Cannot send a ${msg.status} message` }
+        if (msg.status !== 'draft')
+            return {
+                success: false,
+                error: `Cannot send a ${msg.status} message`,
+            }
 
         const text = (editedText ?? msg.text ?? '').trim()
         if (!text) return { success: false, error: 'Message is empty' }
@@ -365,7 +406,12 @@ export async function approveAndSend(
         // Approve with the edited text + human approver, clear any attention flag.
         await supabase
             .from('agent_messages')
-            .update({ status: 'approved', approved_by: ctx.userId, text, updated_at: new Date().toISOString() })
+            .update({
+                status: 'approved',
+                approved_by: ctx.userId,
+                text,
+                updated_at: new Date().toISOString(),
+            })
             .eq('id', messageId)
         await supabase
             .from('agent_chats')
@@ -374,9 +420,12 @@ export async function approveAndSend(
 
         // Humanized delay (1.2s + 55ms/char, capped 8s) then send via the
         // shared core (also used by autopilot).
-        await new Promise((r) => setTimeout(r, Math.min(1200 + 55 * text.length, 8000)))
+        await new Promise((r) =>
+            setTimeout(r, Math.min(1200 + 55 * text.length, 8000)),
+        )
         const result = await sendAgentMessage(messageId)
-        if (!result.success) return { success: false, error: `Send failed: ${result.error}` }
+        if (!result.success)
+            return { success: false, error: `Send failed: ${result.error}` }
 
         const { data: updated } = await supabase
             .from('agent_messages')
@@ -389,7 +438,9 @@ export async function approveAndSend(
     }
 }
 
-export async function getAutopilotConfig(avatarId: string): Promise<InboxResult<AutopilotConfig>> {
+export async function getAutopilotConfig(
+    avatarId: string,
+): Promise<InboxResult<AutopilotConfig>> {
     try {
         const ctx = await getOrgContext()
         const supabase = agentSupabase()
@@ -399,7 +450,10 @@ export async function getAutopilotConfig(avatarId: string): Promise<InboxResult<
             .eq('organization_id', ctx.organizationId)
             .eq('avatar_id', avatarId)
             .maybeSingle()
-        return { success: true, data: (data?.autopilot ?? {}) as AutopilotConfig }
+        return {
+            success: true,
+            data: (data?.autopilot ?? {}) as AutopilotConfig,
+        }
     } catch (e) {
         return fail(e)
     }
@@ -414,7 +468,10 @@ export async function setAutopilotConfig(
         const supabase = agentSupabase()
         const { error } = await supabase
             .from('avatar_personas')
-            .update({ autopilot: config as never, updated_at: new Date().toISOString() })
+            .update({
+                autopilot: config as never,
+                updated_at: new Date().toISOString(),
+            })
             .eq('organization_id', ctx.organizationId)
             .eq('avatar_id', avatarId)
         if (error) throw new Error(error.message)
@@ -470,7 +527,11 @@ export async function approveAndSendVoiceNote(
             .eq('id', messageId)
             .maybeSingle()
         if (!msg) return { success: false, error: 'Draft not found' }
-        if (msg.status !== 'draft') return { success: false, error: `Cannot send a ${msg.status} message` }
+        if (msg.status !== 'draft')
+            return {
+                success: false,
+                error: `Cannot send a ${msg.status} message`,
+            }
         const text = (editedText ?? msg.text ?? '').trim()
         if (!text) return { success: false, error: 'Message is empty' }
 
@@ -486,9 +547,13 @@ export async function approveAndSendVoiceNote(
             .select('user_id, fanvue_creator_uuid, default_voice_id')
             .eq('id', chat.avatar_id)
             .single()
-        if (!avatar?.user_id) return { success: false, error: 'Avatar has no owner' }
+        if (!avatar?.user_id)
+            return { success: false, error: 'Avatar has no owner' }
         if (!avatar.default_voice_id) {
-            return { success: false, error: 'This avatar has no voice — clone one in Voice Studio and set it as default' }
+            return {
+                success: false,
+                error: 'This avatar has no voice — clone one in Voice Studio and set it as default',
+            }
         }
         const { data: voice } = await supabase
             .from('cloned_voices')
@@ -496,22 +561,35 @@ export async function approveAndSendVoiceNote(
             .eq('id', avatar.default_voice_id)
             .maybeSingle()
         if (!voice || voice.status !== 'ready') {
-            return { success: false, error: 'The avatar voice is not ready yet' }
+            return {
+                success: false,
+                error: 'The avatar voice is not ready yet',
+            }
         }
         const connection = await loadConnection(avatar.user_id)
-        if (!connection) return { success: false, error: 'Fanvue not connected' }
+        if (!connection)
+            return { success: false, error: 'Fanvue not connected' }
 
         // Approve, then synthesize + upload + send.
         await supabase
             .from('agent_messages')
-            .update({ status: 'approved', approved_by: ctx.userId, text, updated_at: new Date().toISOString() })
+            .update({
+                status: 'approved',
+                approved_by: ctx.userId,
+                text,
+                updated_at: new Date().toISOString(),
+            })
             .eq('id', messageId)
         await supabase
             .from('agent_chats')
             .update({ needs_attention: false, attention_reason: null })
             .eq('id', chat.id)
 
-        const tts = (voice.tts_settings ?? {}) as { speed?: number; pitch?: number; emotion?: string }
+        const tts = (voice.tts_settings ?? {}) as {
+            speed?: number
+            pitch?: number
+            emotion?: string
+        }
         try {
             const { audioBuffer } = await textToSpeech({
                 text,
@@ -556,12 +634,19 @@ export async function approveAndSendVoiceNote(
                 .update({ last_message_at: new Date().toISOString() })
                 .eq('id', chat.id)
             void updateFanMemoryFromChat(chat.id)
-            return { success: true, data: toMessageDTO(updated as AgentMessageRow) }
+            return {
+                success: true,
+                data: toMessageDTO(updated as AgentMessageRow),
+            }
         } catch (e) {
             const message = e instanceof Error ? e.message : String(e)
             await supabase
                 .from('agent_messages')
-                .update({ status: 'failed', error_message: message, updated_at: new Date().toISOString() })
+                .update({
+                    status: 'failed',
+                    error_message: message,
+                    updated_at: new Date().toISOString(),
+                })
                 .eq('id', messageId)
             return { success: false, error: `Voice note failed: ${message}` }
         }
@@ -586,7 +671,9 @@ export interface PpvSuggestion {
  * confirms before sending. Requires the avatar's content to be reindexed
  * (Knowledge tab) so media has storage paths.
  */
-export async function suggestPpvOffer(chatId: string): Promise<InboxResult<PpvSuggestion>> {
+export async function suggestPpvOffer(
+    chatId: string,
+): Promise<InboxResult<PpvSuggestion>> {
     try {
         const ctx = await getOrgContext()
         const supabase = agentSupabase()
@@ -609,9 +696,17 @@ export async function suggestPpvOffer(chatId: string): Promise<InboxResult<PpvSu
         const query = lastFan?.text ?? 'exclusive content'
 
         // Media pieces the avatar can actually send.
-        const chunks = await retrieveKnowledge(chat.avatar_id, query, { matchCount: 12, minSimilarity: 0.1 })
+        const chunks = await retrieveKnowledge(chat.avatar_id, query, {
+            matchCount: 12,
+            minSimilarity: 0.1,
+        })
         const mediaCandidates = chunks
-            .filter((c) => c.kind === 'media' && c.metadata?.storage_path && c.metadata?.generation_id)
+            .filter(
+                (c) =>
+                    c.kind === 'media' &&
+                    c.metadata?.storage_path &&
+                    c.metadata?.generation_id,
+            )
             .slice(0, 6)
         if (mediaCandidates.length === 0) {
             return {
@@ -621,7 +716,8 @@ export async function suggestPpvOffer(chatId: string): Promise<InboxResult<PpvSu
         }
 
         const apiKey = process.env.GEMINI_API_KEY
-        if (!apiKey) return { success: false, error: 'GEMINI_API_KEY not configured' }
+        if (!apiKey)
+            return { success: false, error: 'GEMINI_API_KEY not configured' }
         const ai = new GoogleGenAI({ apiKey })
         const list = mediaCandidates
             .map((c, i) => `${i}: [${c.metadata?.media_type}] ${c.content}`)
@@ -656,10 +752,22 @@ export async function suggestPpvOffer(chatId: string): Promise<InboxResult<PpvSu
                 },
             },
         })
-        const parsed = JSON.parse(res.text ?? '{}') as { index?: number; teaser?: string; priceCents?: number }
-        const chosen = mediaCandidates[Math.min(Math.max(0, parsed.index ?? 0), mediaCandidates.length - 1)]
+        const parsed = JSON.parse(res.text ?? '{}') as {
+            index?: number
+            teaser?: string
+            priceCents?: number
+        }
+        const chosen =
+            mediaCandidates[
+                Math.min(
+                    Math.max(0, parsed.index ?? 0),
+                    mediaCandidates.length - 1,
+                )
+            ]
         const storagePath = String(chosen.metadata?.storage_path)
-        const mediaType = (chosen.metadata?.media_type === 'VIDEO' ? 'VIDEO' : 'IMAGE') as 'IMAGE' | 'VIDEO'
+        const mediaType = (
+            chosen.metadata?.media_type === 'VIDEO' ? 'VIDEO' : 'IMAGE'
+        ) as 'IMAGE' | 'VIDEO'
         const generationId = String(chosen.metadata?.generation_id)
         // El preview salía de una URL de Supabase fija y con media en R2 daba
         // 404 (imagen roja en el diálogo de PPV). El knowledge indexado no
@@ -707,16 +815,19 @@ export async function sendPpvOffer(input: {
             .eq('id', input.chatId)
             .maybeSingle()
         if (!chat) return { success: false, error: 'Chat not found' }
-        if (input.priceCents < 300) return { success: false, error: 'Price must be at least 300 cents' }
+        if (input.priceCents < 300)
+            return { success: false, error: 'Price must be at least 300 cents' }
 
         const { data: avatar } = await supabase
             .from('avatars')
             .select('user_id, fanvue_creator_uuid')
             .eq('id', chat.avatar_id)
             .single()
-        if (!avatar?.user_id) return { success: false, error: 'Avatar has no owner' }
+        if (!avatar?.user_id)
+            return { success: false, error: 'Avatar has no owner' }
         const connection = await loadConnection(avatar.user_id)
-        if (!connection) return { success: false, error: 'Fanvue not connected' }
+        if (!connection)
+            return { success: false, error: 'Fanvue not connected' }
 
         const client = makeFanvueClient(avatar.user_id)
         const mediaUuid = await uploadGenerationMedia({
@@ -725,11 +836,15 @@ export async function sendPpvOffer(input: {
             storagePath: input.storagePath,
             mediaType: input.mediaType === 'VIDEO' ? 'video' : 'image',
         })
-        const res = await client.sendChatMessage(avatar.fanvue_creator_uuid ?? null, chat.external_chat_id, {
-            text: input.text || undefined,
-            mediaUuids: [mediaUuid],
-            price: input.priceCents,
-        })
+        const res = await client.sendChatMessage(
+            avatar.fanvue_creator_uuid ?? null,
+            chat.external_chat_id,
+            {
+                text: input.text || undefined,
+                mediaUuids: [mediaUuid],
+                price: input.priceCents,
+            },
+        )
 
         await supabase.from('agent_messages').insert({
             organization_id: chat.organization_id,
@@ -737,7 +852,13 @@ export async function sendPpvOffer(input: {
             direction: 'out',
             external_message_id: res.messageUuid,
             text: input.text,
-            media: [{ type: input.mediaType.toLowerCase(), mediaUuid, price: input.priceCents }] as never,
+            media: [
+                {
+                    type: input.mediaType.toLowerCase(),
+                    mediaUuid,
+                    price: input.priceCents,
+                },
+            ] as never,
             status: 'sent',
             approved_by: ctx.userId,
             sent_at: new Date().toISOString(),
@@ -753,7 +874,9 @@ export async function sendPpvOffer(input: {
 }
 
 /** Pull recent chats/messages for an avatar from Fanvue into the inbox (button + first import). */
-export async function syncFanvueInbox(avatarId: string): Promise<InboxResult<{ chats: number; messages: number }>> {
+export async function syncFanvueInbox(
+    avatarId: string,
+): Promise<InboxResult<{ chats: number; messages: number }>> {
     try {
         const ctx = await getOrgContext()
         const supabase = agentSupabase()
@@ -768,67 +891,94 @@ export async function syncFanvueInbox(avatarId: string): Promise<InboxResult<{ c
             return { success: false, error: 'Not your avatar' }
         }
         const connection = await loadConnection(ownerUserId)
-        if (!connection) return { success: false, error: 'Fanvue account not connected' }
+        if (!connection)
+            return { success: false, error: 'Fanvue account not connected' }
 
         const creatorUuid = avatarRow?.fanvue_creator_uuid ?? null
-        const target = await resolveTargetAvatar(ownerUserId, creatorUuid, connection.fanvueAccountUuid)
-        if (!target) return { success: false, error: 'Could not resolve avatar target' }
+        const target = await resolveTargetAvatar(
+            ownerUserId,
+            creatorUuid,
+            connection.fanvueAccountUuid,
+        )
+        if (!target)
+            return { success: false, error: 'Could not resolve avatar target' }
 
         const client = makeFanvueClient(ownerUserId)
         const creatorSideUuids = new Set<string>(
-            [creatorUuid, connection.fanvueAccountUuid].filter((v): v is string => Boolean(v)),
+            [creatorUuid, connection.fanvueAccountUuid].filter(
+                (v): v is string => Boolean(v),
+            ),
         )
 
-        const chatsRes = await client.listChats(creatorUuid, { page: 1, size: 25 })
+        const chatsRes = await client.listChats(creatorUuid, {
+            page: 1,
+            size: 25,
+        })
         let chatCount = 0
         let msgCount = 0
         for (const summary of chatsRes.data) {
-            const chat = await upsertChat({
-                target,
-                fanUuid: summary.user.uuid,
-                fanDisplayName: summary.user.displayName ?? summary.user.handle,
-                fanHandle: summary.user.handle,
-                fanAvatarUrl: summary.user.avatarUrl ?? null,
-                isCreator: Boolean(summary.isCreator),
-                lastMessageAt: summary.lastMessageAt,
-                lastFanMessageAt:
-                    summary.lastMessage && !creatorSideUuids.has(summary.lastMessage.senderUuid)
-                        ? summary.lastMessage.sentAt
-                        : null,
-            })
-            chatCount++
-
-            const messagesRes = await client.listChatMessages(creatorUuid, summary.user.uuid, {
-                page: 1,
-                size: 20,
-                markAsRead: false,
-            })
-            for (const m of messagesRes.data) {
-                const { inserted } = await ingestMessage({
-                    organizationId: target.organizationId,
-                    chatId: chat.id,
-                    direction: messageDirection(m, creatorSideUuids),
-                    externalMessageId: m.uuid,
-                    text: m.text,
-                    mediaUuids: m.mediaUuids,
-                    externalCreatedAt: m.sentAt,
+            // Resiliencia POR CHAT (mismo fix que el cron agent-inbox-poll):
+            // Fanvue 400ea "Invalid user UUID" en /messages para hilos con
+            // cuentas creator/oficiales — un hilo así abortaba el sync entero.
+            try {
+                const chat = await upsertChat({
+                    target,
+                    fanUuid: summary.user.uuid,
+                    fanDisplayName:
+                        summary.user.displayName ?? summary.user.handle,
+                    fanHandle: summary.user.handle,
+                    fanAvatarUrl: summary.user.avatarUrl ?? null,
+                    isCreator: Boolean(summary.isCreator),
+                    lastMessageAt: summary.lastMessageAt,
+                    lastFanMessageAt:
+                        summary.lastMessage &&
+                        !creatorSideUuids.has(summary.lastMessage.senderUuid)
+                            ? summary.lastMessage.sentAt
+                            : null,
                 })
-                if (inserted) msgCount++
-            }
+                chatCount++
 
-            // Draft for chats whose latest message is from the fan, if enabled.
-            const latest = messagesRes.data[messagesRes.data.length - 1]
-            if (
-                target.personaEnabled &&
-                chat.mode !== 'off' &&
-                latest &&
-                messageDirection(latest, creatorSideUuids) === 'in'
-            ) {
-                try {
-                    await generateDraftReply(chat.id)
-                } catch (e) {
-                    console.warn('[syncFanvueInbox] draft failed', e)
+                const messagesRes = await client.listChatMessages(
+                    creatorUuid,
+                    summary.user.uuid,
+                    {
+                        page: 1,
+                        size: 20,
+                        markAsRead: false,
+                    },
+                )
+                for (const m of messagesRes.data) {
+                    const { inserted } = await ingestMessage({
+                        organizationId: target.organizationId,
+                        chatId: chat.id,
+                        direction: messageDirection(m, creatorSideUuids),
+                        externalMessageId: m.uuid,
+                        text: m.text,
+                        mediaUuids: m.mediaUuids,
+                        externalCreatedAt: m.sentAt,
+                    })
+                    if (inserted) msgCount++
                 }
+
+                // Draft for chats whose latest message is from the fan, if enabled.
+                const latest = messagesRes.data[messagesRes.data.length - 1]
+                if (
+                    target.personaEnabled &&
+                    chat.mode !== 'off' &&
+                    latest &&
+                    messageDirection(latest, creatorSideUuids) === 'in'
+                ) {
+                    try {
+                        await generateDraftReply(chat.id)
+                    } catch (e) {
+                        console.warn('[syncFanvueInbox] draft failed', e)
+                    }
+                }
+            } catch (e) {
+                console.warn(
+                    `[syncFanvueInbox] chat ${summary.user.handle ?? summary.user.uuid} saltado:`,
+                    e instanceof Error ? e.message : e,
+                )
             }
         }
         return { success: true, data: { chats: chatCount, messages: msgCount } }
