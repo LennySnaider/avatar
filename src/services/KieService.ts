@@ -1994,6 +1994,23 @@ export async function generateMotionControlKie(
     } catch (e) {
         // Devuelve el cobro Y baja el rastro: el proveedor no entregó nada.
         await apiClearPendingGeneration(taskId, 'failed')
+        // El 500 "internal error" opaco de motion-control = Kling RECHAZÓ el
+        // CLIP CONDUCTOR en su pre-análisis (falla en <10s, 0 créditos).
+        // Aislado por A/B forense 2026-07-31: mismo clip + imagen del task
+        // exitoso → mismo 500; clip distinto + arnés completo → success. NO
+        // es el prompt, ni la imagen, ni los hosts, ni la spec técnica (el
+        // clip cumplía 3-30s / >340px / aspecto). Causas típicas: cuerpo no
+        // rastreable para el esqueleto de movimiento, o el filtro de
+        // contenido del proveedor sobre el VIDEO (lencería/desnudez en el
+        // clip conductor se rechaza así, sin mensaje claro).
+        if (
+            e instanceof Error &&
+            /internal error, please try again later/i.test(e.message)
+        ) {
+            throw new Error(
+                `Kling rechazó el VIDEO conductor en su análisis previo (no cobró créditos). No es el prompt ni la imagen: es este clip. Suele pasar cuando el clip no muestra un cuerpo rastreable (hombros/torso/brazos) o cuando su contenido no pasa el filtro del proveedor (lencería/desnudez en el video conductor). Prueba con OTRO clip — de cuerpo entero y contenido neutro. (${e.message})`,
+            )
+        }
         throw e
     }
     console.log(`[KIE/Kling3-MC] Generation complete: ${urls[0]}`)
