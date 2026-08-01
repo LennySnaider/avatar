@@ -40,6 +40,7 @@ import {
     HiOutlineFolderAdd,
     HiOutlineVolumeUp,
     HiOutlineUserCircle,
+    HiOutlineUserGroup,
 } from 'react-icons/hi'
 import AssignAvatarDialog from './AssignAvatarDialog'
 import VaultDialog from './VaultDialog'
@@ -96,7 +97,7 @@ const ImagePreviewModal = ({
     onCropped,
     userId,
 }: ImagePreviewModalProps) => {
-    const { gallery, previewMedia, previewStartInEdit, setPreviewMedia, removeFromGallery, addToGallery, videoDialogue, providers, activeProviderId } = useAvatarStudioStore()
+    const { gallery, previewMedia, previewStartInEdit, setPreviewMedia, removeFromGallery, addToGallery, videoDialogue, providers, activeProviderId, videoRefUrls, setVideoRefUrls } = useAvatarStudioStore()
 
     // Image-supporting providers available for editing override
     const imageProviders = providers.filter(p => p.supports_image)
@@ -2147,6 +2148,66 @@ const ImagePreviewModal = ({
                                             handleClose()
                                         }}
                                         icon={<HiOutlineVolumeUp />}
+                                    />
+                                </Tooltip>
+                            )}
+
+                            {/* CHARACTER REF (Wan 2.6 r2v): un video donde ya
+                                sale el avatar ES la mejor ancla de identidad
+                                para video — la cara en texto no alcanza
+                                (reporte: "no respetó la cara"). Antes la única
+                                vía era re-subir el archivo a mano. Requiere
+                                URL pública estable → solo media guardada. */}
+                            {previewMedia.mediaType === 'VIDEO' && (
+                                <Tooltip
+                                    title={
+                                        previewMedia.saveState !== 'saved'
+                                            ? 'Guardando… disponible al terminar'
+                                            : videoRefUrls.length >= 3
+                                              ? 'Ya hay 3 Character Refs (máximo)'
+                                              : 'Usar como Character Ref (Wan 2.6): el próximo video sin imagen de Input mantiene la identidad de este video'
+                                    }
+                                >
+                                    <Button
+                                        size="sm"
+                                        variant="plain"
+                                        disabled={
+                                            previewMedia.saveState !==
+                                                'saved' ||
+                                            videoRefUrls.length >= 3
+                                        }
+                                        onClick={() => {
+                                            const url =
+                                                previewMedia.publicUrl ??
+                                                previewMedia.url
+                                            if (videoRefUrls.includes(url)) {
+                                                toast.push(
+                                                    <Notification
+                                                        type="info"
+                                                        title="Ya es Character Ref"
+                                                        duration={2500}
+                                                    >
+                                                        Este video ya está en
+                                                        las referencias.
+                                                    </Notification>,
+                                                )
+                                                return
+                                            }
+                                            setVideoRefUrls([
+                                                ...videoRefUrls,
+                                                url,
+                                            ])
+                                            toast.push(
+                                                <Notification
+                                                    type="success"
+                                                    title="Character Ref agregado"
+                                                    duration={3500}
+                                                >
+                                                    {`${videoRefUrls.length + 1}/3 — con Wan 2.6 y sin imagen de Input, el próximo video mantiene la identidad de estas referencias.`}
+                                                </Notification>,
+                                            )
+                                        }}
+                                        icon={<HiOutlineUserGroup />}
                                     />
                                 </Tooltip>
                             )}

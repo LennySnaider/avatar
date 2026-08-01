@@ -3012,6 +3012,14 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                                 audioUrl,
                             })
                             if (!sub.success) throw new Error(sub.error)
+                            // Mismo criterio que la rama Animate: variante y
+                            // task del proveedor también en el metadata final.
+                            generationMeta = {
+                                ...(generationMeta ?? {}),
+                                model: 'wan2.6-i2v',
+                                speak: true,
+                                providerTaskId: sub.taskId,
+                            }
                             void apiTrackPendingGeneration({
                                 provider: 'mulerouter',
                                 taskId: sub.taskId,
@@ -3401,6 +3409,26 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                                     </Notification>,
                                 )
                             }
+                            // t2v con avatar seleccionado: la cara viaja SOLO
+                            // como texto y puede no parecerse — decirlo ANTES
+                            // de que el resultado decepcione (reporte real:
+                            // "no respetó la cara"). i2v ancla en pixeles y
+                            // r2v en los vídeos de referencia.
+                            if (wanModel === 'wan2.6-t2v' && avatarId) {
+                                toast.push(
+                                    <Notification
+                                        type="warning"
+                                        title="Video desde texto puro"
+                                    >
+                                        Sin imagen de Input ni Character Ref,
+                                        la identidad del avatar viaja solo como
+                                        descripción y la cara puede variar.
+                                        Adjunta una imagen del avatar o marca
+                                        un video suyo como Character Ref para
+                                        anclarla.
+                                    </Notification>,
+                                )
+                            }
                             const isR2V = wanModel === 'wan2.6-r2v'
                             const sub = await submitMuleRouterVideoTask({
                                 model: wanModel,
@@ -3443,6 +3471,16 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                                 audioUrl: videoVoiceUrl ?? undefined,
                             })
                             if (!sub.success) throw new Error(sub.error)
+                            // Variante REAL enrutada + task del proveedor en
+                            // el metadata QUE SE GUARDA: sin esto un reporte
+                            // "no respetó la cara" no se puede atribuir
+                            // (¿fue i2v o t2v?) ni correlacionar con la tarea
+                            // en MuleRouter — pasó hoy y hubo que rendirse.
+                            generationMeta = {
+                                ...(generationMeta ?? {}),
+                                model: wanModel,
+                                providerTaskId: sub.taskId,
+                            }
                             // RASTRO DE RESCATE: el vídeo tarda minutos, o sea
                             // es donde más fácil se pierde una generación ya
                             // pagada si la pestaña se cierra.
