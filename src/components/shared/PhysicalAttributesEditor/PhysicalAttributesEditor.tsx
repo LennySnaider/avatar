@@ -29,6 +29,7 @@ import {
     LEG_TYPE_TOOLTIP,
     BUST_LEVEL_PHRASE,
     GLUTES_LEVEL_PHRASE,
+    glutesLevelPhrase,
     THIGHS_LEVEL_PHRASE,
     BUST_SHAPES,
     GLUTES_SHAPES,
@@ -437,7 +438,18 @@ const PhysicalAttributesEditor = ({
                                     </div>
                                     {measurements[key] ? (
                                         <p className="text-[10px] text-gray-400 mt-0.5">
-                                            {phrases[measurements[key]!]}
+                                            {/* Glúteos: la frase REAL que viaja
+                                                al prompt es coherente con los
+                                                cm (con cadera <130 el nivel 6
+                                                habla de PROYECCIÓN trasera, no
+                                                de anchura) — mostrar el mapa
+                                                estático aquí contradecía al
+                                                hint ámbar de abajo. */}
+                                            {key === 'glutesLevel'
+                                                ? glutesLevelPhrase(
+                                                      measurements,
+                                                  )
+                                                : phrases[measurements[key]!]}
                                         </p>
                                     ) : null}
                                     {/* Aviso de INCOHERENCIA glúteos↔cadera
@@ -581,9 +593,7 @@ const PhysicalAttributesEditor = ({
                         <div className="flex items-center justify-end">
                             <button
                                 type="button"
-                                onClick={() =>
-                                    set({ nippleColor: undefined })
-                                }
+                                onClick={() => set({ nippleColor: undefined })}
                                 className={`px-1.5 py-0.5 text-[10px] rounded border transition-colors ${
                                     measurements.nippleColor === undefined
                                         ? 'bg-primary text-white border-primary'
@@ -609,9 +619,7 @@ const PhysicalAttributesEditor = ({
                             >
                                 <button
                                     type="button"
-                                    onClick={() =>
-                                        set({ nippleAreola: a })
-                                    }
+                                    onClick={() => set({ nippleAreola: a })}
                                     className={`px-1.5 py-0.5 text-[10px] rounded border transition-colors capitalize ${
                                         (measurements.nippleAreola ??
                                             undefined) === a
