@@ -328,6 +328,25 @@ export const INTACT_BODY_IN_FRAME_CLAUSE =
     ' Every limb the pose shows must be anatomically COMPLETE — both arms with both hands, and legs with feet wherever the framing includes them; never sever, amputate, truncate or tuck a limb out of sight behind her body.'
 
 /**
+ * ¿La ESCENA declara un encuadre CERRADO (waist-up / medium / close-up)?
+ *
+ * El comentario de arriba decía "al generar da igual (el encuadre lo decide
+ * el prompt)" — FALSO cuando el prompt declara un encuadre cerrado: el
+ * INTACT completo ordena "hands and feet fully rendered" y el motor aleja la
+ * cámara hasta que quepan los pies, pisando el "Medium shot, framed from the
+ * waist up" de la escena (reporte 2026-08-01 con imagen: salió 3/4 con
+ * glúteos en un waist-up). Con encuadre cerrado declarado, el guard debe ser
+ * la variante in-frame. Los patrones cubren los chips de framing del Studio
+ * y wording genérico; "portrait" solo compuesto (portrait shot/composition)
+ * para no confundirlo con la orientación 9:16.
+ */
+export function hasCloseFraming(prompt: string): boolean {
+    return /waist[- ]?up|from the waist|medium shot|medium close|close[- ]?up|headshot|head[- ]and[- ]shoulders|bust shot|upper[- ]body|half[- ]body|portrait (shot|photo|composition)/i.test(
+        prompt,
+    )
+}
+
+/**
  * Ancla de EDICION. Sustituye al ancla de generacion (que presenta la imagen
  * como "referencia de cara", re-especifica el cuerpo y exige cuerpo entero):
  * al editar, la imagen ES la foto y todo eso reencuadra o redibuja lo que
@@ -526,7 +545,6 @@ function outfitHash(s: string): number {
 export function concreteOutfitClause(prompt: string): string {
     if (!prompt || NUDITY_WORDS.test(prompt) || GARMENT_WORDS.test(prompt))
         return ''
-    const pick =
-        FALLBACK_OUTFITS[outfitHash(prompt) % FALLBACK_OUTFITS.length]
+    const pick = FALLBACK_OUTFITS[outfitHash(prompt) % FALLBACK_OUTFITS.length]
     return ` No outfit is described — dress her in ${pick}, or something similar that suits the scene, in clearly defined colours; never a nude, beige or skin-tone garment.`
 }

@@ -19,6 +19,8 @@ import {
     relocatePoseTag,
     capAtWordBoundary,
     INTACT_BODY_CLAUSE,
+    INTACT_BODY_IN_FRAME_CLAUSE,
+    hasCloseFraming,
     EDIT_ANCHOR_CLAUSE,
     BODY_SPEC_NOT_WARDROBE_CLAUSE,
     hairClause as buildHairClause,
@@ -385,8 +387,17 @@ async function build(ctx: ImageRouteContext): Promise<KieImageRequest> {
                 // Face-recall al CIERRE del ancla (recency): con anclas grandes la
                 // instrucción de cara del head quedaba lejos y la identidad
                 // derivaba — se re-ancla justo antes de la escena.
+                // ENCUADRE CERRADO declarado en la escena (2026-08-01, reporte
+                // con imagen: "Medium shot, framed from the waist up" salía en
+                // 3/4 con glúteos): el INTACT completo ordena "hands and feet
+                // fully rendered" y eso OBLIGA al zoom out — mismo modo de
+                // falla que el editor (db77e38). Con encuadre cerrado va la
+                // variante in-frame + la orden explícita de respetar el crop.
+                const limbClause = hasCloseFraming(ctx.prompt)
+                    ? `${INTACT_BODY_IN_FRAME_CLAUSE} The FRAMING stated in the scene text is MANDATORY — crop exactly as it says; the camera stays at that framing instead of zooming out to include more of the body.`
+                    : INTACT_BODY_CLAUSE
                 const buildAnchorTail = (hair: string) =>
-                    `${hair}${eyeClause}${extraClauses} Render EXACTLY ONE person — a single subject in ONE pose; do NOT duplicate the figure, show multiple poses side by side, or add any extra people.${INTACT_BODY_CLAUSE} Above all: her FACE and eyes must remain EXACTLY the woman in the FIRST image. Follow the SCENE, POSE and ACTION described below EXACTLY.`
+                    `${hair}${eyeClause}${extraClauses} Render EXACTLY ONE person — a single subject in ONE pose; do NOT duplicate the figure, show multiple poses side by side, or add any extra people.${limbClause} Above all: her FACE and eyes must remain EXACTLY the woman in the FIRST image. Follow the SCENE, POSE and ACTION described below EXACTLY.`
                 const anchorTailLong = buildAnchorTail(hairClause)
                 // (La RESERVA DINÁMICA de escena que vivía aquí desde 2026-07-22 ya
                 // no hace falta: el body clause dejó de descontarse contra la
