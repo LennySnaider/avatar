@@ -260,16 +260,27 @@ async function build(ctx: ImageRouteContext): Promise<KieImageRequest> {
                     ? ctx.bodyEmphasis.split(';')[0].trim()
                     : ''
                 const canvasBodyFull = hasBody
-                    ? ` The THIRD attached image shows her real BODY (a turnaround sheet: the SAME one woman from several angles) — replicate its exact body shape, proportions, curves and build; her body comes from THAT image and the spec below, NEVER from the person in the first image, who may look slimmer than she really is. IGNORE the third image's clothing, pose, scene, lighting and background — outfit, pose and scene come from the FIRST image and the text.${
+                    ? // CON HOJA, la hoja ES el techo (2026-07-31, reporte con
+                      // imagen: la generación salía MUCHO más exagerada que la
+                      // hoja aprobada). curvesSentence traía los superlativos
+                      // de nivel ("MASSIVE… beyond natural anatomy… render at
+                      // FULL intensity") ENCIMA de la imagen que ya muestra el
+                      // cuerpo calibrado → el motor amplificaba texto+imagen.
+                      // Misma disciplina que el canvas de Wan (que con hoja no
+                      // manda superlativos): cuerpo = IMAGEN + cm; el texto
+                      // solo CLAVA la fidelidad, bidireccional (ni más flaca
+                      // ni más exagerada que la hoja — patrón del candado
+                      // numérico bidireccional validado en Qwen).
+                      ` The THIRD attached image shows her real BODY (a turnaround sheet: the SAME one woman from several angles) — replicate its exact body shape, proportions, curves and build; her body comes from THAT image and the measurements, NEVER from the person in the first image, who may look slimmer than she really is. IGNORE the third image's clothing, pose, scene, lighting and background — outfit, pose and scene come from the FIRST image and the text.${
                           denseBodySpec
-                              ? ` Her exact measurements: ${denseBodySpec} — render THAT body, matching the third image.${curvesSentence}`
-                              : curvesSentence
+                              ? ` Her exact measurements: ${denseBodySpec} — render THAT body, matching the third image EXACTLY: the same waist, the same hip width, the same glute volume and thigh thickness as the sheet shows — neither slimmer NOR curvier/more exaggerated than the sheet.`
+                              : ' Match the sheet EXACTLY — the same fullness it shows, no more and no less.'
                       }`
                     : bodyCore
                       ? ` Her silhouette keeps her own real proportions (${bodyCore}).${curvesSentence}`
                       : curvesSentence
                 const canvasBodyCompact = hasBody
-                    ? ` Her BODY${denseBodySpec ? ` measures ${denseBodySpec} and` : ''} is the one in the THIRD image (a turnaround sheet of the SAME one woman) — that exact shape, those proportions and curves; from the sheet take ONLY the body.${curvesSentence}`
+                    ? ` Her BODY${denseBodySpec ? ` measures ${denseBodySpec} and` : ''} is the one in the THIRD image (a turnaround sheet of the SAME one woman) — that exact shape, those proportions and curves, neither slimmer nor more exaggerated than the sheet shows; from the sheet take ONLY the body.`
                     : canvasBodyFull
                 // Extras restantes re-indexados desde la imagen 3. El body
                 // consume su índice pero su cláusula detallada es canvasBody*
