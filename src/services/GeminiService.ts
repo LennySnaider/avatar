@@ -8,6 +8,67 @@ import {
     HarmBlockThreshold,
 } from '@google/genai'
 
+import { kieChatCompletion } from '@/lib/ai/kieChat'
+import type { GeminiPart } from '@/lib/ai/kieChatPayload'
+import { isProviderOutage, geminiFailureMessage } from '@/utils/geminiError'
+
+interface AskResult {
+    text: string
+    /** Bloqueo de ENTRADA. Solo lo reporta Google; por KIE llega undefined. */
+    blockReason?: string
+    finishReason?: string
+    via: 'google' | 'kie'
+}
+
+/**
+ * Una llamada a Gemini con respaldo en KIE.
+ *
+ * Toma EXACTAMENTE lo mismo que `ai.models.generateContent`, para que adoptarla
+ * en un call site no obligue a tocar ni un carácter de su prompt. Si Google se
+ * cae (403 de cuenta, 429 de cuota, 5xx o red), repite la misma petición contra
+ * el endpoint chat de KIE — mismo modelo `gemini-2.5-flash`, otro monedero.
+ *
+ * Lo que NO reintenta: rechazos de contenido y peticiones mal armadas. Fallarían
+ * igual en KIE, así que reintentarlos es pagar dos veces por el mismo no.
+ */
+async function askGemini(
+    ai: GoogleGenAI,
+    req: {
+        model: string
+        contents: { parts: GeminiPart[] }
+        config?: Record<string, unknown>
+    },
+): Promise<AskResult> {
+    try {
+        const response = await ai.models.generateContent(req)
+        return {
+            text: response.text ?? '',
+            blockReason: response.promptFeedback?.blockReason as
+                | string
+                | undefined,
+            finishReason: response.candidates?.[0]?.finishReason as
+                | string
+                | undefined,
+            via: 'google',
+        }
+    } catch (e) {
+        if (!isProviderOutage(e)) throw e
+        // Se registra SIEMPRE: sin esta línea, un corte largo de Google drena
+        // el saldo de KIE sin que nadie lo note hasta la factura.
+        console.warn(
+            '[GeminiService] Google no disponible → respaldo KIE.',
+            geminiFailureMessage(e, 'provider outage'),
+        )
+        const text = await kieChatCompletion({
+            parts: req.contents.parts,
+            responseSchema: req.config?.responseSchema as
+                | Record<string, unknown>
+                | undefined,
+        })
+        return { text, via: 'kie' }
+    }
+}
+
 // Análisis de imágenes de referencia (Clone/Pose/Place/video-prompt): es
 // ENTENDIMIENTO de imagen, no generación. Sin esto, Gemini devuelve respuesta
 // VACÍA con refs sugerentes/NSFW y el Clone caía en silencio al fallback
@@ -48,7 +109,7 @@ async function retryAnalysisNeutral(
     focus: string,
 ): Promise<string> {
     try {
-        const response = await ai.models.generateContent({
+        const response = await askGemini(ai, {
             model: 'gemini-2.5-flash',
             config: { safetySettings: ANALYSIS_SAFETY_SETTINGS },
             contents: {
@@ -71,6 +132,7 @@ async function retryAnalysisNeutral(
     }
 }
 import type { PhysicalMeasurements, AspectRatio } from '@/@types/supabase'
+import { sceneFromGenerationPrompt } from '@/utils/captionScene'
 import { filterKnownSafeCorrections } from '@/app/(protected-pages)/concepts/avatar-forge/avatar-studio/_constants/knownSafeWords'
 import {
     sanitizePromptForGeneration,
@@ -391,7 +453,7 @@ Original prompt: "${originalPrompt}"
 
 Output ONLY the new variation prompt as one flowing paragraph, 2-4 sentences. No intro, no quotes, no labels.`
     try {
-        const response = await ai.models.generateContent({
+        const response = await askGemini(ai, {
             model: 'gemini-2.5-flash',
             config: { safetySettings: ANALYSIS_SAFETY_SETTINGS },
             contents: {
@@ -483,7 +545,9 @@ Output ONLY the prompt string for the next clip.
         return text.replace(/^["'`]+|["'`]+$/g, '').trim()
     } catch (e) {
         console.error('[GeminiService] generateContinuationPrompt failed:', e)
-        throw new Error('Failed to generate continuation prompt')
+        throw new Error(
+            geminiFailureMessage(e, 'Failed to generate continuation prompt'),
+        )
     }
 }
 
@@ -555,7 +619,7 @@ Ignore any text overlays, captions, stickers or watermarks in the video.
 Also report the video's approximate duration in seconds.
 `
 
-        const response = await ai.models.generateContent({
+        const response = await askGemini(ai, {
             model: 'gemini-2.5-flash',
             contents: {
                 parts: [
@@ -630,6 +694,14 @@ export async function generateSocialCaption(input: {
     /** Tono pícaro/sugerente (toggle 🌶️ NSFW del PostModal): coqueto y
      * provocador SIN lenguaje explícito (apto para IG/X y Fanvue). */
     spicy?: boolean
+    /**
+     * Prompt guardado de la generación (`generations.prompt`). Es el PLAN B
+     * cuando Gemini veta la imagen en la ENTRADA: con desnudos devuelve
+     * `blockReason: OTHER`, un filtro interno de Google que NO se apaga con
+     * safetySettings. Ahí el caption se escribe desde esta descripción en vez
+     * de mirando la foto. Sin esto, esa media simplemente no tiene caption.
+     */
+    sceneDescription?: string
 }): Promise<SocialCaptionResult> {
     try {
         // blob:/data: URIs only exist in the browser — undici fails on them
@@ -662,8 +734,20 @@ export async function generateSocialCaption(input: {
         const apiKey = getApiKey()
         const ai = new GoogleGenAI({ apiKey })
 
-        const instructions = `
-You are the social media manager for an AI influencer. Look at this ${input.mediaType === 'VIDEO' ? 'video' : 'photo'} and write the post for it.
+        const noun = input.mediaType === 'VIDEO' ? 'video' : 'photo'
+        /**
+         * El MISMO encargo en dos modos. Con `scene`, la IA no ve el archivo y
+         * escribe desde su descripción — es el único camino para la media que
+         * Gemini veta en la ENTRADA (ver el fallback más abajo).
+         */
+        const buildInstructions = (scene?: string) => `
+You are the social media manager for an AI influencer. ${
+            scene
+                ? `Here is the description of the ${noun} she is about to post — write the post for it.
+
+${noun.toUpperCase()}: ${scene}`
+                : `Look at this ${noun} and write the post for it.`
+        }
 
 CAPTION:
 - First person, as if the influencer herself is posting.
@@ -682,7 +766,26 @@ HASHTAGS:
 - Mix broad reach tags with content-specific ones.${input.spicy ? '\n- Lean flirty/lifestyle on a few tags where natural (still platform-safe).' : ''}
 `
 
-        const response = await ai.models.generateContent({
+        const config = {
+            // Sin BLOCK_NONE, media NSFW (Fanvue) hacía que Gemini
+            // devolviera vacío y el caption fallara — mismo patrón que los
+            // analizadores de refs (c7f6e8d).
+            safetySettings: ANALYSIS_SAFETY_SETTINGS,
+            responseMimeType: 'application/json',
+            responseSchema: {
+                type: Type.OBJECT,
+                properties: {
+                    caption: { type: Type.STRING },
+                    hashtags: {
+                        type: Type.ARRAY,
+                        items: { type: Type.STRING },
+                    },
+                },
+                required: ['caption', 'hashtags'],
+            },
+        }
+
+        const response = await askGemini(ai, {
             model: 'gemini-2.5-flash',
             contents: {
                 parts: [
@@ -692,30 +795,13 @@ HASHTAGS:
                             data: buffer.toString('base64'),
                         },
                     },
-                    { text: instructions },
+                    { text: buildInstructions() },
                 ],
             },
-            config: {
-                // Sin BLOCK_NONE, media NSFW (Fanvue) hacía que Gemini
-                // devolviera vacío y el caption fallara — mismo patrón que los
-                // analizadores de refs (c7f6e8d).
-                safetySettings: ANALYSIS_SAFETY_SETTINGS,
-                responseMimeType: 'application/json',
-                responseSchema: {
-                    type: Type.OBJECT,
-                    properties: {
-                        caption: { type: Type.STRING },
-                        hashtags: {
-                            type: Type.ARRAY,
-                            items: { type: Type.STRING },
-                        },
-                    },
-                    required: ['caption', 'hashtags'],
-                },
-            },
+            config,
         })
 
-        const raw = response.text
+        let raw = response.text
         if (!raw) {
             // "Vacío" tapaba CUATRO fallos distintos con arreglos distintos, y
             // sin distinguirlos la única salida era adivinar. Cada uno se lee
@@ -726,16 +812,42 @@ HASHTAGS:
             //                           lo desactiva. ES el único que obliga a
             //                           cambiar de proveedor.
             //   · MAX_TOKENS            no es censura: se quedó sin presupuesto
-            const block = response.promptFeedback?.blockReason
-            const finish = response.candidates?.[0]?.finishReason
-            const why = block
-                ? `input blocked (${block})`
-                : finish
-                  ? `no output (${finish})`
-                  : 'no reason reported'
-            return {
-                success: false,
-                error: `Gemini returned an empty result — ${why}`,
+            const block = response.blockReason
+            const finish = response.finishReason
+
+            // PLAN B para el bloqueo de ENTRADA: lo vetado es la IMAGEN, no el
+            // encargo. Medido (2026-08-01) contra las fotos que fallaban: con
+            // desnudo devuelve OTHER en las 6 combinaciones probadas — spicy y
+            // neutro, con schema y sin él, BLOCK_NONE y OFF — o sea que no hay
+            // NADA del lado del prompt que lo desbloquee. Pero la escena ya está
+            // descrita en el prompt de la generación y ESE texto Gemini sí lo
+            // acepta (6/6), así que el caption se escribe sin mirar la foto.
+            const scene = block
+                ? sceneFromGenerationPrompt(input.sceneDescription)
+                : ''
+            if (scene) {
+                const fromScene = await askGemini(ai, {
+                    model: 'gemini-2.5-flash',
+                    contents: { parts: [{ text: buildInstructions(scene) }] },
+                    config,
+                })
+                raw = fromScene.text
+            }
+
+            if (!raw) {
+                const why = block
+                    ? `input blocked (${block})`
+                    : finish
+                      ? `no output (${finish})`
+                      : 'no reason reported'
+                // Con bloqueo de entrada, la jerga de la API no le sirve de nada
+                // al usuario: se le dice qué pasó y qué le queda por hacer.
+                return {
+                    success: false,
+                    error: block
+                        ? `Google blocks this image for automatic captioning and this generation has no saved scene description to write from — please write the caption by hand (${why})`
+                        : `Gemini returned an empty result — ${why}`,
+                }
             }
         }
         const parsed = JSON.parse(raw) as {
@@ -822,7 +934,7 @@ async function locateRefWatermark(image: {
     const apiKey = getApiKey()
     const ai = new GoogleGenAI({ apiKey })
     try {
-        const res = await ai.models.generateContent({
+        const res = await askGemini(ai, {
             model: 'gemini-2.5-flash',
             config: { safetySettings: ANALYSIS_SAFETY_SETTINGS },
             contents: {
@@ -1011,7 +1123,7 @@ RULES:
 - Output ONLY the prompt text, no preamble.
 `
 
-        const response = await ai.models.generateContent({
+        const response = await askGemini(ai, {
             model: 'gemini-2.5-flash',
             config: { safetySettings: ANALYSIS_SAFETY_SETTINGS },
             contents: {
@@ -1072,7 +1184,7 @@ Rules:
 - Return hashtags lowercase, WITHOUT the # symbol, same count or fewer (dedupe).
 `
 
-        const response = await ai.models.generateContent({
+        const response = await askGemini(ai, {
             model: 'gemini-2.5-flash',
             contents: { parts: [{ text: instructions }] },
             config: {
@@ -1131,7 +1243,7 @@ export async function describeImageForPrompt(
     const ai = new GoogleGenAI({ apiKey })
 
     try {
-        const response = await ai.models.generateContent({
+        const response = await askGemini(ai, {
             model: 'gemini-2.5-flash',
             config: { safetySettings: ANALYSIS_SAFETY_SETTINGS },
             contents: {
@@ -1194,7 +1306,9 @@ Keep it concise, descriptive, and high-quality. Output only the description, no 
         )
     } catch (e) {
         console.error('Image Description Failed', e)
-        throw new Error('Failed to describe image.')
+        // El mensaje plano de antes hacía culpar a la IMAGEN de cortes de
+        // cuenta y de errores de payload — ver geminiFailureMessage.
+        throw new Error(geminiFailureMessage(e, 'Failed to describe image'))
     }
 }
 
@@ -1337,7 +1451,7 @@ export async function analyzeFaceFromImages(
     })
 
     try {
-        const response = await ai.models.generateContent({
+        const response = await askGemini(ai, {
             model: 'gemini-2.5-flash',
             contents: { parts },
         })
@@ -1366,7 +1480,7 @@ export async function analyzePoseFromImage(image: {
     const ai = new GoogleGenAI({ apiKey })
 
     try {
-        const response = await ai.models.generateContent({
+        const response = await askGemini(ai, {
             model: 'gemini-2.5-flash',
             config: { safetySettings: ANALYSIS_SAFETY_SETTINGS },
             contents: {
@@ -1441,7 +1555,7 @@ export async function analyzeImageForClone(image: {
     const ai = new GoogleGenAI({ apiKey })
 
     try {
-        const response = await ai.models.generateContent({
+        const response = await askGemini(ai, {
             model: 'gemini-2.5-flash',
             config: { safetySettings: ANALYSIS_SAFETY_SETTINGS },
             contents: {
@@ -1530,7 +1644,7 @@ export async function detectFaceBox(image: {
     ]
     for (const prompt of prompts) {
         try {
-            const response = await ai.models.generateContent({
+            const response = await askGemini(ai, {
                 model: 'gemini-2.5-flash',
                 config: { safetySettings: ANALYSIS_SAFETY_SETTINGS },
                 contents: {
@@ -1618,7 +1732,7 @@ export async function analyzeImageForPlace(image: {
     const ai = new GoogleGenAI({ apiKey })
 
     try {
-        const response = await ai.models.generateContent({
+        const response = await askGemini(ai, {
             model: 'gemini-2.5-flash',
             config: { safetySettings: ANALYSIS_SAFETY_SETTINGS },
             contents: {
@@ -1716,7 +1830,7 @@ export async function analyzeReelMotion(
             },
         }))
 
-        const response = await ai.models.generateContent({
+        const response = await askGemini(ai, {
             model: 'gemini-2.5-flash',
             contents: {
                 parts: [

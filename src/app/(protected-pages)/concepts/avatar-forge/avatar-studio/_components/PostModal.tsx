@@ -229,6 +229,9 @@ const PostModal = ({
                 draft: caption.trim() || undefined,
                 language: captionLang,
                 spicy: spicyCaption,
+                // Plan B para la media que Google veta (desnudos): el prompt
+                // describe la escena y el caption sale de ahí.
+                sceneDescription: media.prompt,
             })
             if (!result.success || !result.caption) {
                 setError(result.error ?? 'AI caption generation failed')

@@ -83,6 +83,9 @@ export const captionAI: VideoNodeHandler = async (node, inputs) => {
         mediaType: media.kind === 'video' ? 'VIDEO' : 'IMAGE',
         draft: (config.draft as string) || undefined,
         language: (config.language as 'en' | 'es') || undefined,
+        // Plan B para la media que Google veta (desnudos): el prompt describe
+        // la escena y el caption sale de ahí.
+        sceneDescription: media.prompt,
     })
     if (!result.success || !result.caption) {
         throw new Error(result.error ?? 'Caption generation failed')
