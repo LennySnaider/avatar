@@ -76,11 +76,12 @@ async function putR2(path, body, contentType) {
     if (!res.ok) throw new Error(`R2 PUT ${res.status}: ${(await res.text()).slice(0, 200)}`)
 }
 
-/** Miniatura de card: mismo criterio que el cliente (≈400px, jpeg q82). */
+/** Miniatura de card: mismo criterio que el cliente (900px — a 400 la card
+ *  retina de ~430px CSS se veía borrosa; ver IMAGE_SIZES.PREVIEW). */
 async function makeThumb(buffer) {
     return sharp(buffer)
-        .resize(400, 400, { fit: 'inside', withoutEnlargement: true })
-        .jpeg({ quality: 82, mozjpeg: true })
+        .resize(900, 900, { fit: 'inside', withoutEnlargement: true })
+        .jpeg({ quality: 85, mozjpeg: true })
         .toBuffer()
 }
 

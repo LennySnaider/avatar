@@ -13,7 +13,13 @@
 // thumbnails deben quedarse chicos.
 export const IMAGE_SIZES = {
     THUMBNAIL: { maxWidth: 200, maxHeight: 200, quality: 0.8 },
-    PREVIEW: { maxWidth: 400, maxHeight: 400, quality: 0.85 },
+    // PREVIEW alimenta el thumb de las CARDS de galería. A 400px un retrato
+    // 9:16 quedaba en ~225x400 y la card actual mide ~430px CSS (~860px
+    // físicos en Retina) → se veía BORROSA vs el original del editor
+    // (reporte 2026-07-31). El 400 venía de la cuota de egress de Supabase;
+    // con las generaciones en R2 el egress es gratis y solo importa el peso
+    // (~120KB a 900px vs 1-3MB del original). 900 cubre la card retina.
+    PREVIEW: { maxWidth: 900, maxHeight: 900, quality: 0.85 },
     API: { maxWidth: 1024, maxHeight: 1024, quality: 0.9, minSide: 256 },
     API_HIGH: { maxWidth: 1536, maxHeight: 1536, quality: 0.9, minSide: 256 },
     // Video first-frames: the frame drives the whole clip's quality, so keep
@@ -39,11 +45,19 @@ interface ResizeOptions {
  */
 export async function resizeBase64Image(
     base64: string,
-    options: ResizeOptions | ImageSizePreset = 'API'
+    options: ResizeOptions | ImageSizePreset = 'API',
 ): Promise<string> {
     const preset = typeof options === 'string' ? IMAGE_SIZES[options] : null
-    const opts = preset ? { ...preset, format: 'jpeg' as const } : (options as ResizeOptions)
-    const { maxWidth, maxHeight, quality = 0.9, format = 'jpeg', minSide } = opts as ResizeOptions
+    const opts = preset
+        ? { ...preset, format: 'jpeg' as const }
+        : (options as ResizeOptions)
+    const {
+        maxWidth,
+        maxHeight,
+        quality = 0.9,
+        format = 'jpeg',
+        minSide,
+    } = opts as ResizeOptions
 
     return new Promise((resolve, reject) => {
         const img = new Image()
@@ -110,7 +124,7 @@ export async function resizeBase64Image(
  */
 export async function createThumbnail(
     base64: string,
-    size: 'THUMBNAIL' | 'PREVIEW' = 'THUMBNAIL'
+    size: 'THUMBNAIL' | 'PREVIEW' = 'THUMBNAIL',
 ): Promise<string> {
     const resized = await resizeBase64Image(base64, size)
     return `data:image/jpeg;base64,${resized}`
@@ -122,7 +136,7 @@ export async function createThumbnail(
  */
 export async function optimizeForApi(
     base64: string,
-    highQuality = false
+    highQuality = false,
 ): Promise<string> {
     return resizeBase64Image(base64, highQuality ? 'API_HIGH' : 'API')
 }
@@ -135,9 +149,19 @@ export function getOptimizedStorageUrl(
     baseUrl: string,
     bucket: string,
     path: string,
-    options: { width?: number; height?: number; quality?: number; resize?: 'cover' | 'contain' | 'fill' } = {}
+    options: {
+        width?: number
+        height?: number
+        quality?: number
+        resize?: 'cover' | 'contain' | 'fill'
+    } = {},
 ): string {
-    const { width = 200, height = 200, quality = 80, resize = 'cover' } = options
+    const {
+        width = 200,
+        height = 200,
+        quality = 80,
+        resize = 'cover',
+    } = options
 
     // Supabase storage transform URL format
     // https://[project].supabase.co/storage/v1/render/image/public/[bucket]/[path]?width=200&height=200
@@ -159,7 +183,7 @@ export function getStorageThumbnailUrl(
     supabaseUrl: string,
     bucket: string,
     path: string,
-    size: 'small' | 'medium' | 'large' = 'small'
+    size: 'small' | 'medium' | 'large' = 'small',
 ): string {
     const sizes = {
         small: { width: 150, height: 150 },
@@ -187,7 +211,7 @@ export function cleanBase64(base64: string): string {
  * base64 string length * 0.75 ≈ bytes
  */
 export function needsOptimization(base64: string, maxSizeKB = 500): boolean {
-    const estimatedBytes = (base64.length * 0.75)
+    const estimatedBytes = base64.length * 0.75
     const estimatedKB = estimatedBytes / 1024
     return estimatedKB > maxSizeKB
 }
