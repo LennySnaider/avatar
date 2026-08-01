@@ -4,8 +4,12 @@ import { useState } from 'react'
 import Dialog from '@/components/ui/Dialog'
 import Button from '@/components/ui/Button'
 import { useVoiceStudioStore } from '../../voice-studio/_store/voiceStudioStore'
-import { submitLipsyncVideoKieTask, checkKieVideoTask } from '@/services/KieService'
+import {
+    submitLipsyncVideoKieTask,
+    checkKieVideoTask,
+} from '@/services/KieService'
 import { apiSaveGeneration } from '@/services/AvatarForgeService'
+import { downloadMediaUrl } from '../../_utils/mediaDownload'
 import { HiOutlineMicrophone, HiOutlineVolumeUp } from 'react-icons/hi'
 import type { GeneratedMedia } from '../types'
 
@@ -23,7 +27,12 @@ interface LipsyncDialogProps {
  * inside Avatar Studio next to the gallery) — the video is preselected here,
  * the audio comes from voiceStudioStore.previewAudioUrl.
  */
-const LipsyncDialog = ({ media, userId, onClose, onOpenVoiceStudio }: LipsyncDialogProps) => {
+const LipsyncDialog = ({
+    media,
+    userId,
+    onClose,
+    onOpenVoiceStudio,
+}: LipsyncDialogProps) => {
     const { previewAudioUrl, currentTitle } = useVoiceStudioStore()
 
     const [isLipsyncing, setIsLipsyncing] = useState(false)
@@ -70,7 +79,9 @@ const LipsyncDialog = ({ media, userId, onClose, onOpenVoiceStudio }: LipsyncDia
                 }
             }
             if (!url) {
-                throw new Error(`Lipsync timed out (>30 min). Job ${sub.taskId} may still be running on kie.ai/logs.`)
+                throw new Error(
+                    `Lipsync timed out (>30 min). Job ${sub.taskId} may still be running on kie.ai/logs.`,
+                )
             }
             setResultUrl(url)
 
@@ -78,17 +89,23 @@ const LipsyncDialog = ({ media, userId, onClose, onOpenVoiceStudio }: LipsyncDia
             // generations bucket). A failure here is NOT a lipsync failure.
             if (userId) {
                 try {
-                    const storagePath = url.split('/object/public/generations/')[1] ?? url
+                    const storagePath =
+                        url.split('/object/public/generations/')[1] ?? url
                     await apiSaveGeneration({
                         user_id: userId,
                         avatar_id: null,
                         media_type: 'VIDEO',
                         storage_path: storagePath,
                         prompt: `Lipsync: ${currentTitle || 'voice over'}`,
-                        metadata: { model: 'volcengine/video-to-video-lip-sync' },
+                        metadata: {
+                            model: 'volcengine/video-to-video-lip-sync',
+                        },
                     })
                 } catch (saveErr) {
-                    console.error('Failed to save lipsynced video to gallery:', saveErr)
+                    console.error(
+                        'Failed to save lipsynced video to gallery:',
+                        saveErr,
+                    )
                     setGalleryWarning(
                         'Video generated, but it could not be saved to your gallery. Use the download link below.',
                     )
@@ -102,7 +119,12 @@ const LipsyncDialog = ({ media, userId, onClose, onOpenVoiceStudio }: LipsyncDia
     }
 
     return (
-        <Dialog isOpen={!!media} onClose={handleClose} width={560} closable={!isLipsyncing}>
+        <Dialog
+            isOpen={!!media}
+            onClose={handleClose}
+            width={560}
+            closable={!isLipsyncing}
+        >
             <div className="flex flex-col gap-4">
                 <div className="flex items-center gap-2">
                     <HiOutlineMicrophone className="w-5 h-5 text-purple-500" />
@@ -110,20 +132,27 @@ const LipsyncDialog = ({ media, userId, onClose, onOpenVoiceStudio }: LipsyncDia
                 </div>
 
                 {media && (
-                    <video src={media.url} controls muted className="w-full max-h-64 rounded-lg object-contain bg-black" />
+                    <video
+                        src={media.url}
+                        controls
+                        muted
+                        className="w-full max-h-64 rounded-lg object-contain bg-black"
+                    />
                 )}
 
                 {previewAudioUrl ? (
                     <div className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-300">
                         <HiOutlineVolumeUp className="w-4 h-4 text-purple-400 shrink-0" />
                         <span className="truncate">
-                            Audio: {currentTitle || 'Voice Studio audio'} — the lips will be re-animated to match it.
+                            Audio: {currentTitle || 'Voice Studio audio'} — the
+                            lips will be re-animated to match it.
                         </span>
                     </div>
                 ) : (
                     <div className="p-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700 rounded-lg">
                         <p className="text-sm text-amber-600 dark:text-amber-400 mb-2">
-                            No audio yet — generate one in Voice Studio first (clone a voice, write a script, Generate Audio).
+                            No audio yet — generate one in Voice Studio first
+                            (clone a voice, write a script, Generate Audio).
                         </p>
                         {onOpenVoiceStudio && (
                             <Button
@@ -148,18 +177,40 @@ const LipsyncDialog = ({ media, userId, onClose, onOpenVoiceStudio }: LipsyncDia
                     disabled={!videoUrl || !previewAudioUrl || isLipsyncing}
                     onClick={handleLipsync}
                 >
-                    {isLipsyncing ? 'Syncing lips… (this can take a few minutes)' : 'Lipsync with this audio'}
+                    {isLipsyncing
+                        ? 'Syncing lips… (this can take a few minutes)'
+                        : 'Lipsync with this audio'}
                 </Button>
 
                 {errorMsg && <p className="text-sm text-red-500">{errorMsg}</p>}
-                {galleryWarning && <p className="text-sm text-amber-500">{galleryWarning}</p>}
+                {galleryWarning && (
+                    <p className="text-sm text-amber-500">{galleryWarning}</p>
+                )}
 
                 {resultUrl && (
                     <div className="flex flex-col gap-2">
-                        <video controls src={resultUrl} className="w-full rounded-lg" />
-                        <a href={resultUrl} download className="text-sm text-primary underline text-center">
+                        <video
+                            controls
+                            src={resultUrl}
+                            className="w-full rounded-lg"
+                        />
+                        {/* Botón real de descarga: un <a download> cross-origin
+                            ignora el atributo y NAVEGA a la URL (mismo bug que
+                            el Download de la galería) — se baja como blob vía
+                            el util con fallback de proxy. */}
+                        <button
+                            type="button"
+                            className="text-sm text-primary underline text-center"
+                            onClick={() =>
+                                downloadMediaUrl(
+                                    resultUrl,
+                                    `lipsync-${Date.now()}`,
+                                    true,
+                                )
+                            }
+                        >
                             Download lipsynced video
-                        </a>
+                        </button>
                     </div>
                 )}
             </div>

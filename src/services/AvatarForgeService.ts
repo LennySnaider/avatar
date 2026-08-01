@@ -9,7 +9,11 @@
  * los inserts como "creado por" (auditoría), NO como frontera de tenant.
  */
 import { getOrgContext, type OrgContext } from '@/lib/tenant/getOrgContext'
-import { putMediaObject, r2Enabled, createPresignedPutUrl } from '@/lib/mediaStore'
+import {
+    putMediaObject,
+    r2Enabled,
+    createPresignedPutUrl,
+} from '@/lib/mediaStore'
 import type { GenerationUploadTicket } from '@/lib/storageUpload'
 import { orgStoragePath, orgOwnsStoragePath } from '@/lib/storagePaths'
 import { orgTable, orgSupabase } from '@/lib/org/orgTable'
@@ -72,7 +76,10 @@ async function assertPromptInOrg(ctx: OrgContext, promptId: string) {
  * avatar's social accounts can publish the media, so BOTH rows must belong
  * to the caller's org.
  */
-export async function apiSetGenerationAvatar(generationId: string, avatarId: string | null) {
+export async function apiSetGenerationAvatar(
+    generationId: string,
+    avatarId: string | null,
+) {
     const ctx = await getOrgContext()
     await assertGenerationInOrg(ctx, generationId)
     if (avatarId) {
@@ -91,7 +98,9 @@ export async function apiGetAvatars() {
         .order('created_at', { ascending: false })
 
     if (error) throw error
-    return data as unknown as (Avatar & { avatar_references: AvatarReference[] })[]
+    return data as unknown as (Avatar & {
+        avatar_references: AvatarReference[]
+    })[]
 }
 
 export async function apiGetAvatarById(avatarId: string) {
@@ -173,7 +182,10 @@ export async function apiAddAvatarReference(reference: AvatarReferenceInsert) {
 
 export async function apiDeleteAvatarReference(referenceId: string) {
     const ctx = await getOrgContext()
-    const { data: ref, error: refErr } = await orgTable(ctx, 'avatar_references')
+    const { data: ref, error: refErr } = await orgTable(
+        ctx,
+        'avatar_references',
+    )
         .select('id, avatar_id')
         .eq('id', referenceId)
         .maybeSingle()
@@ -188,7 +200,10 @@ export async function apiDeleteAvatarReference(referenceId: string) {
     return true
 }
 
-export async function apiGetAvatarReferences(avatarId: string, type?: ReferenceType) {
+export async function apiGetAvatarReferences(
+    avatarId: string,
+    type?: ReferenceType,
+) {
     const ctx = await getOrgContext()
     await assertAvatarInOrg(ctx, avatarId)
     let query = orgTable(ctx, 'avatar_references')
@@ -209,14 +224,12 @@ export async function apiGetAvatarReferences(avatarId: string, type?: ReferenceT
 // GENERATIONS
 // =============================================
 
-export async function apiGetGenerations(
-    options?: {
-        mediaType?: MediaType
-        avatarId?: string
-        limit?: number
-        offset?: number
-    }
-) {
+export async function apiGetGenerations(options?: {
+    mediaType?: MediaType
+    avatarId?: string
+    limit?: number
+    offset?: number
+}) {
     const ctx = await getOrgContext()
     let query = orgTable(ctx, 'generations').select('*')
 
@@ -235,7 +248,10 @@ export async function apiGetGenerations(
     }
 
     if (options?.offset) {
-        query = query.range(options.offset, options.offset + (options.limit || 10) - 1)
+        query = query.range(
+            options.offset,
+            options.offset + (options.limit || 10) - 1,
+        )
     }
 
     const { data, error } = await query
@@ -305,7 +321,9 @@ export async function apiGetPrompts(mediaType?: MediaType) {
         query = query.eq('media_type', mediaType)
     }
 
-    const { data, error } = await query.order('created_at', { ascending: false })
+    const { data, error } = await query.order('created_at', {
+        ascending: false,
+    })
 
     if (error) throw error
     return data as unknown as Prompt[]
@@ -420,7 +438,7 @@ async function uploadAvatarReference(
     ctx: OrgContext,
     avatarId: string,
     type: ReferenceType,
-    file: File
+    file: File,
 ): Promise<string> {
     const supabase = orgSupabase()
     const fileExt = file.name.split('.').pop()
@@ -442,7 +460,7 @@ async function uploadGeneration(
     ctx: OrgContext,
     mediaType: MediaType,
     blob: Blob,
-    extension: string = 'jpg'
+    extension: string = 'jpg',
 ): Promise<{ path: string; provider: 'r2' | 'supabase' }> {
     const folder = mediaType === 'IMAGE' ? 'images' : 'videos'
     const fileName = `${Date.now()}.${extension}`
@@ -460,7 +478,10 @@ async function uploadGeneration(
     return { path: filePath, provider }
 }
 
-export async function getStorageUrl(bucket: string, path: string): Promise<string> {
+export async function getStorageUrl(
+    bucket: string,
+    path: string,
+): Promise<string> {
     await getOrgContext()
     const supabase = orgSupabase()
     const { data } = supabase.storage.from(bucket).getPublicUrl(path)
@@ -507,7 +528,8 @@ export async function apiFetchUrlAsDataUrl(
     const res = await fetch(url, { signal: AbortSignal.timeout(60_000) })
     if (!res.ok) throw new Error(`fetch ${res.status}`)
     const buf = Buffer.from(await res.arrayBuffer())
-    if (buf.byteLength > 40 * 1024 * 1024) throw new Error('media demasiado grande (40MB)')
+    if (buf.byteLength > 40 * 1024 * 1024)
+        throw new Error('media demasiado grande (40MB)')
     return {
         base64: buf.toString('base64'),
         mimeType: res.headers.get('content-type')?.split(';')[0] || 'image/png',
@@ -517,7 +539,7 @@ export async function apiFetchUrlAsDataUrl(
 export async function getSignedUrl(
     bucket: string,
     path: string,
-    expiresIn: number = 3600
+    expiresIn: number = 3600,
 ): Promise<string | null> {
     const ctx = await getOrgContext()
     await assertPathInOrg(ctx, path)
@@ -557,7 +579,7 @@ export async function deleteStorageFile(bucket: string, path: string) {
 export async function apiUploadReference(
     avatarId: string,
     file: File,
-    type: ReferenceType
+    type: ReferenceType,
 ): Promise<AvatarReference> {
     const ctx = await getOrgContext()
     await assertAvatarInOrg(ctx, avatarId)
@@ -584,10 +606,21 @@ export async function apiUploadReference(
  */
 export async function apiCreateGenerationUploadUrl(
     mediaType: MediaType,
+    // Extensión REAL del archivo (detectada por magic bytes en el cliente).
+    // Sin ella se cae al default histórico — que nombraba `.jpg` TODO lo que
+    // fuera imagen aunque los bytes fueran PNG (Seedream entrega PNG): el
+    // objeto quedaba mal etiquetado y la descarga no abría en macOS.
+    fileExt?: string,
 ): Promise<GenerationUploadTicket> {
     const ctx = await getOrgContext()
     const folder = mediaType === 'IMAGE' ? 'images' : 'videos'
-    const ext = mediaType === 'VIDEO' ? 'mp4' : 'jpg'
+    const ALLOWED_EXT = ['jpg', 'png', 'webp', 'gif', 'mp4', 'webm']
+    const ext =
+        fileExt && ALLOWED_EXT.includes(fileExt)
+            ? fileExt
+            : mediaType === 'VIDEO'
+              ? 'mp4'
+              : 'jpg'
     const path = orgStoragePath(
         ctx.organizationId,
         folder,
@@ -607,7 +640,9 @@ export async function apiCreateGenerationUploadUrl(
         .from('generations')
         .createSignedUploadUrl(path)
     if (error || !data) {
-        throw new Error(`Failed to create generation upload URL: ${error?.message ?? 'no data'}`)
+        throw new Error(
+            `Failed to create generation upload URL: ${error?.message ?? 'no data'}`,
+        )
     }
     return { path, provider: 'supabase', token: data.token }
 }
@@ -641,7 +676,9 @@ export async function apiCreateThumbnailUploadTicket(
         .from('generations')
         .createSignedUploadUrl(path)
     if (error || !data) {
-        throw new Error(`Failed to create thumb upload URL: ${error?.message ?? 'no data'}`)
+        throw new Error(
+            `Failed to create thumb upload URL: ${error?.message ?? 'no data'}`,
+        )
     }
     return { path, provider: 'supabase', token: data.token }
 }
@@ -654,7 +691,7 @@ export async function apiSaveGenerationWithFile(
         media_type: MediaType
         aspect_ratio?: string
         metadata?: Record<string, unknown>
-    }
+    },
 ): Promise<Generation> {
     const ctx = await getOrgContext()
 

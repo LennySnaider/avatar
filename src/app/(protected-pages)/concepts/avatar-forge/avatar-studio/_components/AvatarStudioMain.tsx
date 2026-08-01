@@ -45,7 +45,6 @@ import {
     apiDeleteAvatarReference,
     apiCreateGenerationUploadUrl,
     apiCreateThumbnailUploadTicket,
-    apiFetchUrlAsDataUrl,
     apiSaveGeneration,
     apiDeleteGeneration,
     apiGetGenerations,
@@ -53,6 +52,10 @@ import {
     getSignedUrl,
 } from '@/services/AvatarForgeService'
 import { urlToDataUrl } from '@/utils/imageStitch'
+import {
+    fetchMediaBlobWithFallback,
+    sniffMediaType,
+} from '../../_utils/mediaDownload'
 import { getGenerationMediaUrl } from '@/lib/storagePaths'
 import { createThumbnail } from '@/utils/imageOptimization'
 import { uploadGenerationTicket } from '@/lib/storageUpload'
@@ -68,10 +71,7 @@ import {
     detectFaceBox,
     spicifyScenePrompt,
 } from '@/services/GeminiService'
-import {
-    SPICY_NUDE_SHEET_MIN,
-    SPICY_EXPLICIT_MIN,
-} from '@/utils/spicyTiers'
+import { SPICY_NUDE_SHEET_MIN, SPICY_EXPLICIT_MIN } from '@/utils/spicyTiers'
 import { maskFaceInImage } from '@/utils/faceMask'
 import {
     compositeMaskOverlay,
@@ -485,42 +485,6 @@ function withDeadline<T>(p: Promise<T>, ms: number, label: string): Promise<T> {
 }
 
 /**
- * Baja media del CDN del proveedor con fallback por SERVIDOR.
- *
- * Algunos CDNs (MuleRouter siempre, KIE segun host) no mandan cabeceras CORS
- * y el fetch del navegador muere con "Failed to fetch" aunque la URL sirva —
- * en el persist eso costaba la GENERACION entera (pagada y perdida). El proxy
- * autenticado lee los mismos bytes desde el servidor, donde CORS no existe.
- * Los data:/blob: URLs pasan por la via directa, que si los maneja.
- */
-async function fetchMediaBlobWithFallback(
-    url: string,
-    timeoutMs = 60_000,
-): Promise<Blob> {
-    try {
-        // `cache: 'no-store'` NO es paranoia de frescura, es el arreglo de un
-        // CORS fantasma: la galería pinta la imagen con <img>, que NO manda
-        // Origin, así que la respuesta se guarda en la caché HTTP SIN
-        // Access-Control-Allow-Origin. Un fetch() posterior reutiliza esa
-        // entrada envenenada y el navegador la rechaza por CORS aunque el
-        // servidor SÍ emita la cabecera cuando se la piden (verificado con
-        // curl contra R2). Saltarse la caché pide una respuesta con Origin.
-        const res = await fetch(url, {
-            signal: AbortSignal.timeout(timeoutMs),
-            cache: 'no-store',
-        })
-        if (!res.ok) throw new Error(`HTTP ${res.status}`)
-        return await res.blob()
-    } catch (err) {
-        if (!/^https:/.test(url)) throw err // data:/blob: no tienen proxy
-        console.info('[media] fetch directo falló, vía servidor:', err)
-        const { base64, mimeType } = await apiFetchUrlAsDataUrl(url)
-        const bytes = Uint8Array.from(atob(base64), (c) => c.charCodeAt(0))
-        return new Blob([bytes], { type: mimeType })
-    }
-}
-
-/**
  * Sube los bytes NUEVOS de una ref de edición y devuelve su URL pública.
  *
  * Solo hace falta cuando el composite de la máscara creó píxeles que no existen
@@ -552,13 +516,22 @@ async function uploadGenerationWithRetry(
     thumbnailPath?: string
 }> {
     let lastError: unknown = null
+    // Tipo REAL por magic bytes: la etiqueta del caller miente a veces (KIE
+    // entrega PNG que viajaba nombrado .jpg + Content-Type image/jpeg → la
+    // descarga no abría en macOS). El nombre y el Content-Type del objeto
+    // salen de los BYTES; la etiqueta queda solo de fallback.
+    const sniffed = await sniffMediaType(blob)
+    const realContentType = sniffed?.mime ?? contentType
     for (let attempt = 1; attempt <= 3; attempt++) {
         try {
             // El ticket decide el destino (R2 o Supabase); la subida es la
             // misma puerta para ambos. El provider vuelve para persistirse en
             // la fila — el lector construye la URL correcta con él.
-            const ticket = await apiCreateGenerationUploadUrl(mediaType)
-            await uploadGenerationTicket(ticket, blob, contentType)
+            const ticket = await apiCreateGenerationUploadUrl(
+                mediaType,
+                sniffed?.ext,
+            )
+            await uploadGenerationTicket(ticket, blob, realContentType)
 
             // MINIATURA (solo imagen, solo con la columna viva = era R2).
             // BEST-EFFORT a proposito: un thumb caido no puede costar la
@@ -573,7 +546,10 @@ async function uploadGenerationWithRetry(
                         r.readAsDataURL(blob)
                     })
                     const base64 = dataUrl.split(',')[1]
-                    const thumbDataUrl = await createThumbnail(base64, 'PREVIEW')
+                    const thumbDataUrl = await createThumbnail(
+                        base64,
+                        'PREVIEW',
+                    )
                     const thumbBlob = await (await fetch(thumbDataUrl)).blob()
                     const tTicket = await apiCreateThumbnailUploadTicket(
                         ticket.path,
@@ -588,7 +564,11 @@ async function uploadGenerationWithRetry(
                     console.warn('[Gallery] thumb skipped:', thumbErr)
                 }
             }
-            return { path: ticket.path, provider: ticket.provider, thumbnailPath }
+            return {
+                path: ticket.path,
+                provider: ticket.provider,
+                thumbnailPath,
+            }
         } catch (e) {
             lastError = e
             console.warn(`[Gallery] Upload attempt ${attempt}/3 failed:`, e)
@@ -1255,10 +1235,7 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
      * su catch marca saveState 'error' (badge de reintento existente).
      */
     const persistWhenStable = useCallback(
-        (
-            media: GeneratedMedia,
-            stable: Promise<string | null> | null,
-        ) => {
+        (media: GeneratedMedia, stable: Promise<string | null> | null) => {
             if (!stable) {
                 void persistGeneration(media)
                 return
@@ -1419,7 +1396,8 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                 toast.push(
                     <Notification type="warning" title="Wan es editor">
                         Wan 2.7 quedó como editor — úsalo con Clone Ref o
-                        Deepfake. Para generar desde cero, elige Seedream o Qwen.
+                        Deepfake. Para generar desde cero, elige Seedream o
+                        Qwen.
                     </Notification>,
                 )
                 return
@@ -1531,10 +1509,7 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                             useAvatarStudioStore.getState().setBodyRef(fresh)
                         }
                     }
-                    if (
-                        avatarId &&
-                        (!bodyRefNsfw || bodyRefNsfw.storagePath)
-                    ) {
+                    if (avatarId && (!bodyRefNsfw || bodyRefNsfw.storagePath)) {
                         const freshNsfw = await hydrateSheetFromDb(
                             avatarId,
                             'body_nsfw',
@@ -1922,7 +1897,9 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                                 // Y SOLO desde nivel explícito (>=85): en
                                 // topless lleva bragas, así que describir la
                                 // vulva es una orden que no se puede cumplir.
-                                nsfwLevel >= SPICY_EXPLICIT_MIN ? vulvaClause(fullPrompt) : '',
+                                nsfwLevel >= SPICY_EXPLICIT_MIN
+                                    ? vulvaClause(fullPrompt)
+                                    : '',
                                 // Vello púbico: mismo gating que la vulva —
                                 // solo se ve con desnudo total, y describirlo
                                 // en topless (donde lleva bragas) seria una
@@ -2437,7 +2414,8 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                                 // topless o lencería la prenda la decide la
                                 // escena ya reescrita por su tramo, y
                                 // desvestir aquí la contradiría.
-                                nsfw: nsfwRun && nsfwLevel >= SPICY_EXPLICIT_MIN,
+                                nsfw:
+                                    nsfwRun && nsfwLevel >= SPICY_EXPLICIT_MIN,
                                 // Chips de Framing/Angle — la cámara va AL
                                 // FRENTE del prompt compacto (el truncado a
                                 // 800 se los comía al final de la escena).
@@ -2543,7 +2521,8 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                                         mrHairDesc(measurements),
                                         {
                                             undress:
-                                                nsfwRun && nsfwLevel >= SPICY_EXPLICIT_MIN,
+                                                nsfwRun &&
+                                                nsfwLevel >= SPICY_EXPLICIT_MIN,
                                             // La fase 2 decide la CARA → los
                                             // ojos del avatar viajan aquí.
                                             eyeDesc: getEyeColorDescription(
@@ -2642,7 +2621,11 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                                     ) || undefined,
                                 negativePrompt: buildIdentityNegative(
                                     measurements,
-                                    { nsfw: nsfwRun && nsfwLevel >= SPICY_EXPLICIT_MIN },
+                                    {
+                                        nsfw:
+                                            nsfwRun &&
+                                            nsfwLevel >= SPICY_EXPLICIT_MIN,
+                                    },
                                 ),
                                 identityWeight,
                             })
@@ -2680,96 +2663,104 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                             // la cara de la fase 1 ("perdimos la cara"). La
                             // instrucción de face-swap del route viaja SOLA,
                             // concentrada — el patrón deepfake probado.
-                            const phase2 = await pollKieImageTask({
-                                prompt: '',
-                                referenceImage: kieSingleRef,
-                                referenceImages: [
-                                    {
-                                        base64: canvasB64,
-                                        mimeType:
-                                            canvasBlob.type || 'image/jpeg',
-                                        role: 'clone' as const,
-                                    },
-                                ],
-                                aspectRatio,
-                                model: kieModel,
-                                deepfakeMode: true,
-                            }, {
+                            const phase2 = await pollKieImageTask(
+                                {
+                                    prompt: '',
+                                    referenceImage: kieSingleRef,
+                                    referenceImages: [
+                                        {
+                                            base64: canvasB64,
+                                            mimeType:
+                                                canvasBlob.type || 'image/jpeg',
+                                            role: 'clone' as const,
+                                        },
+                                    ],
+                                    aspectRatio,
+                                    model: kieModel,
+                                    deepfakeMode: true,
+                                },
+                                {
                                     avatarId,
                                     prompt,
                                     aspectRatio,
                                     metadata: { model: kieModel },
-                                })
+                                },
+                            )
                             resultUrl = phase2.url
                             apiPrompt = `[FASE 1 · qwen2/text-to-image — cuerpo/escena]\n${phase1.fullApiPrompt}\n\n[FASE 2 · qwen2/image-edit — face-swap]\n${phase2.fullApiPrompt}`
                             pendingStableUrl = phase2.stableUrl
                         } else if (isKieAsyncImageModel(kieModel)) {
                             // ASYNC submit + browser poll (see pollKieImageTask).
-                            const polled = await pollKieImageTask({
-                                prompt: kiePrompt,
-                                referenceImage: kieSingleRef,
-                                referenceImages: kieRefsToSend,
-                                aspectRatio,
-                                model: kieModel,
-                                // Concrete body descriptors for the Seedream/Wan
-                                // i2i anchor — Pro ignores body text that isn't in
-                                // the anchor's early tokens (kept rendering her
-                                // slim). Los cm + ratio explícitos anclan mejor que
-                                // solo adjetivos (Ana 90/60/100 salía slim en Wan).
-                                bodyEmphasis: deepfakeActive
-                                    ? undefined
-                                    : curvesEmphasis
-                                      ? `${baseBodyEmphasis}; emphasized curves: ${curvesEmphasis}`
-                                      : baseBodyEmphasis,
-                                // Solo la rama Seedream de KieService lo lee.
-                                curveBoost: deepfakeActive
-                                    ? undefined
-                                    : seedreamCurveBoost || undefined,
-                                // Peso del Clone Ref (slider): escala la fuerza del
-                                // clone clause en las rutas i2i. Deepfake ignora.
-                                cloneWeight: deepfakeActive
-                                    ? undefined
-                                    : cloneWeight,
-                                deepfakeMode: deepfakeActive,
-                                // La hoja que se manda es la NUDE? Cambia la
-                                // clausula de cuerpo: con nude se pide ademas
-                                // la PIEL. Ya se le pasaba a MuleRouter; a KIE
-                                // no llegaba, asi que sus rutas trataban igual
-                                // a las dos hojas.
-                                bodySheetNude: usingNudeSheet,
-                                // Color de pelo DENTRO del ancla i2i: como "brown
-                                // hair" en el [BODY:] tardío, Seedream/Wan seguían
-                                // el tono del ref/escena (reporte: MiaUltra salía
-                                // más clara en playa). Solo generación — en EDIT el
-                                // usuario puede estar recoloreando a propósito.
-                                hairEmphasis: deepfakeActive
-                                    ? undefined
-                                    : describeHair(measurements ?? {}) ||
-                                      undefined,
-                                eyeEmphasis: deepfakeActive
-                                    ? undefined
-                                    : getEyeColorDescription(
-                                          measurements?.eyeColor,
-                                      ) || undefined,
-                                // Identity Lock: negative derivado del config
-                                // para rutas con negative nativo (Qwen). En
-                                // deepfake se omite (el cuerpo/cara vienen del
-                                // lienzo, no del config).
-                                negativePrompt: deepfakeActive
-                                    ? undefined
-                                    : buildIdentityNegative(measurements, {
-                                          nsfw:
-                                              nsfwRun && nsfwLevel >= SPICY_EXPLICIT_MIN,
-                                      }),
-                                // Escala la cláusula de fidelidad facial del
-                                // ancla (port condensado del identity harness).
-                                identityWeight,
-                            }, {
+                            const polled = await pollKieImageTask(
+                                {
+                                    prompt: kiePrompt,
+                                    referenceImage: kieSingleRef,
+                                    referenceImages: kieRefsToSend,
+                                    aspectRatio,
+                                    model: kieModel,
+                                    // Concrete body descriptors for the Seedream/Wan
+                                    // i2i anchor — Pro ignores body text that isn't in
+                                    // the anchor's early tokens (kept rendering her
+                                    // slim). Los cm + ratio explícitos anclan mejor que
+                                    // solo adjetivos (Ana 90/60/100 salía slim en Wan).
+                                    bodyEmphasis: deepfakeActive
+                                        ? undefined
+                                        : curvesEmphasis
+                                          ? `${baseBodyEmphasis}; emphasized curves: ${curvesEmphasis}`
+                                          : baseBodyEmphasis,
+                                    // Solo la rama Seedream de KieService lo lee.
+                                    curveBoost: deepfakeActive
+                                        ? undefined
+                                        : seedreamCurveBoost || undefined,
+                                    // Peso del Clone Ref (slider): escala la fuerza del
+                                    // clone clause en las rutas i2i. Deepfake ignora.
+                                    cloneWeight: deepfakeActive
+                                        ? undefined
+                                        : cloneWeight,
+                                    deepfakeMode: deepfakeActive,
+                                    // La hoja que se manda es la NUDE? Cambia la
+                                    // clausula de cuerpo: con nude se pide ademas
+                                    // la PIEL. Ya se le pasaba a MuleRouter; a KIE
+                                    // no llegaba, asi que sus rutas trataban igual
+                                    // a las dos hojas.
+                                    bodySheetNude: usingNudeSheet,
+                                    // Color de pelo DENTRO del ancla i2i: como "brown
+                                    // hair" en el [BODY:] tardío, Seedream/Wan seguían
+                                    // el tono del ref/escena (reporte: MiaUltra salía
+                                    // más clara en playa). Solo generación — en EDIT el
+                                    // usuario puede estar recoloreando a propósito.
+                                    hairEmphasis: deepfakeActive
+                                        ? undefined
+                                        : describeHair(measurements ?? {}) ||
+                                          undefined,
+                                    eyeEmphasis: deepfakeActive
+                                        ? undefined
+                                        : getEyeColorDescription(
+                                              measurements?.eyeColor,
+                                          ) || undefined,
+                                    // Identity Lock: negative derivado del config
+                                    // para rutas con negative nativo (Qwen). En
+                                    // deepfake se omite (el cuerpo/cara vienen del
+                                    // lienzo, no del config).
+                                    negativePrompt: deepfakeActive
+                                        ? undefined
+                                        : buildIdentityNegative(measurements, {
+                                              nsfw:
+                                                  nsfwRun &&
+                                                  nsfwLevel >=
+                                                      SPICY_EXPLICIT_MIN,
+                                          }),
+                                    // Escala la cláusula de fidelidad facial del
+                                    // ancla (port condensado del identity harness).
+                                    identityWeight,
+                                },
+                                {
                                     avatarId,
                                     prompt,
                                     aspectRatio,
                                     metadata: { model: kieModel },
-                                })
+                                },
+                            )
                             resultUrl = polled.url
                             apiPrompt = polled.fullApiPrompt
                             pendingStableUrl = polled.stableUrl
@@ -3008,9 +2999,10 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                                 // La duración la manda el AUDIO, no el chip:
                                 // un vídeo más corto que la voz la corta a
                                 // media frase.
-                                duration: ([5, 10, 15] as const).find(
-                                    (d) => d * 1000 >= (durationMs ?? 0),
-                                ) ?? 15,
+                                duration:
+                                    ([5, 10, 15] as const).find(
+                                        (d) => d * 1000 >= (durationMs ?? 0),
+                                    ) ?? 15,
                                 audio: true,
                                 audioUrl,
                             })
@@ -3074,96 +3066,95 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                                 )
                             resultUrl = wanStable.url
                         } else {
+                            // 2. Talking-head con el motor elegido (InfiniteTalk / OmniHuman /
+                            // Kling 3.0 con audio element) — submit async + poll desde el
+                            // navegador, los jobs tardan 10-20 min.
+                            // Kling necesita 2-4 imágenes del personaje para su element —
+                            // pero SOLO del personaje que habla: si hay imagen cargada en
+                            // el dropzone, ella es la única identidad (mezclar las refs
+                            // del avatar mete una segunda persona al video); sin imagen
+                            // cargada, el personaje es el avatar y sus refs aplican.
+                            const speakElementImages = videoInputImage?.base64
+                                ? []
+                                : [
+                                      optimizedPayload.faceRef,
+                                      ...optimizedPayload.generalRefs,
+                                  ].filter(
+                                      (
+                                          r,
+                                      ): r is {
+                                          base64: string
+                                          mimeType: string
+                                      } => !!r,
+                                  )
 
-                        // 2. Talking-head con el motor elegido (InfiniteTalk / OmniHuman /
-                        // Kling 3.0 con audio element) — submit async + poll desde el
-                        // navegador, los jobs tardan 10-20 min.
-                        // Kling necesita 2-4 imágenes del personaje para su element —
-                        // pero SOLO del personaje que habla: si hay imagen cargada en
-                        // el dropzone, ella es la única identidad (mezclar las refs
-                        // del avatar mete una segunda persona al video); sin imagen
-                        // cargada, el personaje es el avatar y sus refs aplican.
-                        const speakElementImages = videoInputImage?.base64
-                            ? []
-                            : [
-                                  optimizedPayload.faceRef,
-                                  ...optimizedPayload.generalRefs,
-                              ].filter(
-                                  (
-                                      r,
-                                  ): r is {
-                                      base64: string
-                                      mimeType: string
-                                  } => !!r,
-                              )
+                            try {
+                                const speakModel =
+                                    useAvatarStudioStore.getState().speakModel
+                                resultUrl = await pollKieTalkingVideoTask({
+                                    image: speakImage,
+                                    audioUrl,
+                                    prompt: visualPrompt || undefined,
+                                    resolution: '720p',
+                                    model: speakModel,
+                                    elementImages: speakElementImages,
+                                    durationSec: durationMs
+                                        ? durationMs / 1000
+                                        : undefined,
+                                })
 
-                        try {
-                            const speakModel =
-                                useAvatarStudioStore.getState().speakModel
-                            resultUrl = await pollKieTalkingVideoTask({
-                                image: speakImage,
-                                audioUrl,
-                                prompt: visualPrompt || undefined,
-                                resolution: '720p',
-                                model: speakModel,
-                                elementImages: speakElementImages,
-                                durationSec: durationMs
-                                    ? durationMs / 1000
-                                    : undefined,
-                            })
-
-                            // Kling genera gran video pero IGNORA el audio del element
-                            // (verificado: la pista sale casi en silencio). Paso 2:
-                            // re-sincronizar labios con el mismo TTS vía Volcengine.
-                            if (speakModel === 'kling') {
-                                const lipsyncSub =
-                                    await submitLipsyncVideoKieTask({
-                                        videoUrl: resultUrl,
-                                        audioUrl,
-                                    })
-                                if (!lipsyncSub.success) {
-                                    throw new Error(
-                                        `Lipsync step failed to start: ${lipsyncSub.error}. Silent Kling video was generated: ${resultUrl}`,
-                                    )
-                                }
-                                const lipsyncDeadline =
-                                    Date.now() + 30 * 60 * 1000
-                                let lipsyncedUrl: string | null = null
-                                while (Date.now() < lipsyncDeadline) {
-                                    await new Promise((r) =>
-                                        setTimeout(r, 5000),
-                                    )
-                                    const st = await checkKieVideoTask(
-                                        lipsyncSub.taskId,
-                                    )
-                                    if (st.status === 'done') {
-                                        lipsyncedUrl = st.url
-                                        break
-                                    }
-                                    if (st.status === 'failed') {
+                                // Kling genera gran video pero IGNORA el audio del element
+                                // (verificado: la pista sale casi en silencio). Paso 2:
+                                // re-sincronizar labios con el mismo TTS vía Volcengine.
+                                if (speakModel === 'kling') {
+                                    const lipsyncSub =
+                                        await submitLipsyncVideoKieTask({
+                                            videoUrl: resultUrl,
+                                            audioUrl,
+                                        })
+                                    if (!lipsyncSub.success) {
                                         throw new Error(
-                                            `Lipsync step failed: ${st.error}. Silent Kling video was generated: ${resultUrl}`,
+                                            `Lipsync step failed to start: ${lipsyncSub.error}. Silent Kling video was generated: ${resultUrl}`,
                                         )
                                     }
+                                    const lipsyncDeadline =
+                                        Date.now() + 30 * 60 * 1000
+                                    let lipsyncedUrl: string | null = null
+                                    while (Date.now() < lipsyncDeadline) {
+                                        await new Promise((r) =>
+                                            setTimeout(r, 5000),
+                                        )
+                                        const st = await checkKieVideoTask(
+                                            lipsyncSub.taskId,
+                                        )
+                                        if (st.status === 'done') {
+                                            lipsyncedUrl = st.url
+                                            break
+                                        }
+                                        if (st.status === 'failed') {
+                                            throw new Error(
+                                                `Lipsync step failed: ${st.error}. Silent Kling video was generated: ${resultUrl}`,
+                                            )
+                                        }
+                                    }
+                                    if (!lipsyncedUrl) {
+                                        throw new Error(
+                                            `Lipsync step timed out (>30 min). Silent Kling video was generated: ${resultUrl}`,
+                                        )
+                                    }
+                                    resultUrl = lipsyncedUrl
                                 }
-                                if (!lipsyncedUrl) {
-                                    throw new Error(
-                                        `Lipsync step timed out (>30 min). Silent Kling video was generated: ${resultUrl}`,
-                                    )
-                                }
-                                resultUrl = lipsyncedUrl
+                            } catch (speakErr) {
+                                // El audio ya quedó generado y persistido; que el error lo diga
+                                // para no perder ese contexto (sin fallbacks silenciosos).
+                                const msg =
+                                    speakErr instanceof Error
+                                        ? speakErr.message
+                                        : String(speakErr)
+                                throw new Error(
+                                    `Talking video failed: ${msg}. The audio was generated: ${audioUrl}`,
+                                )
                             }
-                        } catch (speakErr) {
-                            // El audio ya quedó generado y persistido; que el error lo diga
-                            // para no perder ese contexto (sin fallbacks silenciosos).
-                            const msg =
-                                speakErr instanceof Error
-                                    ? speakErr.message
-                                    : String(speakErr)
-                            throw new Error(
-                                `Talking video failed: ${msg}. The audio was generated: ${audioUrl}`,
-                            )
-                        }
                         }
                     } else if (videoSubMode === 'ANIMATE') {
                         if (!videoInputImage || !videoInputImage.base64) {
@@ -3394,10 +3385,9 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                                 // El API SOLO acepta 5, 10 o 15: se redondea al
                                 // permitido más cercano en vez de dejar que
                                 // rechace la petición.
-                                duration: (
-                                    isR2V
-                                        ? ([5, 10] as const)
-                                        : ([5, 10, 15] as const)
+                                duration: (isR2V
+                                    ? ([5, 10] as const)
+                                    : ([5, 10, 15] as const)
                                 ).reduce<5 | 10 | 15>(
                                     (best, d) =>
                                         Math.abs(d - videoDuration) <
@@ -4472,10 +4462,10 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
 
                 const { path, provider, thumbnailPath } =
                     await uploadGenerationWithRetry(
-                    media.mediaType,
-                    blob,
-                    contentType,
-                )
+                        media.mediaType,
+                        blob,
+                        contentType,
+                    )
 
                 const row = await apiSaveGeneration({
                     user_id: userId,
@@ -4884,10 +4874,11 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                             // Modelos marcados con ☑ en el selector (persistidos).
                             // Si hay ≥1 → genera DIRECTO (sin abrir el dialog); si
                             // no hay ninguno → abre el dialog para elegir.
-                            const marked = readBatchIdsFor(nsfwMode).filter((id) =>
-                                providers.some(
-                                    (p) => p.id === id && p.supports_image,
-                                ),
+                            const marked = readBatchIdsFor(nsfwMode).filter(
+                                (id) =>
+                                    providers.some(
+                                        (p) => p.id === id && p.supports_image,
+                                    ),
                             )
                             if (marked.length > 0) {
                                 if (
