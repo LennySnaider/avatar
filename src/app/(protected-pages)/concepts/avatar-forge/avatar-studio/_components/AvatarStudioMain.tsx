@@ -2009,6 +2009,17 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                             (kieModel === 'wan/2-7-image' ||
                                 kieModel === 'wan/2-7-image-pro') &&
                             (cloneWeight ?? 100) >= 50
+                        // SEEDREAM cw<50: tampoco se adjunta la imagen — evidencia
+                        // en BD (full_api_prompt de corridas 15/65/100): con la
+                        // imagen presente Seedream la copia casi al píxel y el %
+                        // solo cambiaba UNA frase → 15/65/100 salían idénticas y
+                        // con la cara del clon. A cw>=50 la ruta seedream.ts la
+                        // usa de LIENZO (imagen 1) con face-swap; a cw<50 la
+                        // inspiración viaja por el TEXTO [CLONE:] con instrucción
+                        // de variación (mismo criterio que Wan y MuleRouter).
+                        const seedreamCanvasMode =
+                            kieModel.startsWith('seedream/') &&
+                            (cloneWeight ?? 100) >= 50
                         if (
                             !deepfakeActive &&
                             (kieModel === 'nano-banana-pro' ||
@@ -2020,14 +2031,11 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                                 // maniquí → clona fiel + el peso pesa la imagen.
                                 kieModel.startsWith('qwen') ||
                                 // Seedream Pro COPIA la cara del clone (muy
-                                // adherente a la imagen), por eso el clon va con la
-                                // cara difuminada CUANDO Gemini la detecta. Pero la
-                                // imagen SIEMPRE se manda: si el masking no corrió
-                                // (Gemini refusó el explícito) dejarlo fuera lo
-                                // volvía un retrato genérico —perdía escena/pose/
-                                // cuerpo— porque [CLONE:]/[POSE:] caen a texto
-                                // genérico. El IDENTITY LOCK de la ruta es la red.
-                                kieModel.startsWith('seedream/')) &&
+                                // adherente a la imagen), por eso el clon va con
+                                // la cara difuminada CUANDO Gemini la detecta —
+                                // y solo en modo canvas (cw>=50), donde es el
+                                // lienzo a recrear.
+                                seedreamCanvasMode) &&
                             optimizedCloneRef &&
                             kieReferenceImages.length > 0
                         ) {

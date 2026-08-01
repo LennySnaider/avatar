@@ -106,6 +106,39 @@ function fixturesFor(
             }),
         },
         {
+            // Canvas mode Seedream (cw>=50): clon = imagen 1 (lienzo), cara =
+            // imagen 2, body sheet = imagen 3 — verificar que el prompt cite
+            // FIRST=lienzo/SECOND=cara/THIRD=cuerpo y que image_urls[0] sea el
+            // clon. En Wan ejercita su canvas mode ya existente.
+            name: 'i2i-clone-canvas',
+            ctx: makeCtx({
+                model,
+                prompt: SCENE,
+                referenceImage: FACE,
+                referenceImages: withRefs(['face', 'body', 'clone']),
+                identityWeight: 90,
+                cloneWeight: 100,
+                bodyEmphasis,
+                hairEmphasis: 'brown',
+                eyeEmphasis: 'green',
+            }),
+        },
+        {
+            // Peso bajo (cw<50): el cliente NO adjunta la imagen del clon — la
+            // guía viaja por el texto [CLONE:] y la escena debe abrir con la
+            // instrucción de variación (VIBE/BASIS) en Seedream.
+            name: 'i2i-clone-loose',
+            ctx: makeCtx({
+                model,
+                prompt: SCENE,
+                referenceImage: FACE,
+                referenceImages: withRefs(['face', 'body']),
+                identityWeight: 90,
+                cloneWeight: 15,
+                bodyEmphasis,
+            }),
+        },
+        {
             name: 'deepfake',
             ctx: makeCtx({
                 model,
