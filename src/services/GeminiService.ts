@@ -1799,6 +1799,63 @@ Focus on the atmosphere, setting, and visual elements that define this place.`,
     }
 }
 
+/**
+ * Describe el OBJETO de una imagen de asset (su teléfono, un bolso, una prenda).
+ *
+ * Existe por la misma razón que el análisis de lugares: para poder GUARDAR el
+ * objeto y reutilizarlo sin volver a subir la foto. Y hay un motivo extra que
+ * pesa más — los assets viajan al motor en los slots que SOBRAN (Gemini admite
+ * 5 referencias en total), así que con Clone Ref o Place Ref activos se caen
+ * sin avisar. El texto no compite por slots: sobrevive justo en el caso en el
+ * que hoy el objeto desaparece.
+ *
+ * Corto a propósito: una frase. Es un objeto, no una escena, y cada carácter
+ * compite contra el presupuesto del prompt.
+ */
+export async function analyzeImageForAsset(image: {
+    base64: string
+    mimeType: string
+}): Promise<string> {
+    const apiKey = getApiKey()
+    const ai = new GoogleGenAI({ apiKey })
+
+    try {
+        const response = await askGemini(ai, {
+            model: 'gemini-2.5-flash',
+            config: { safetySettings: ANALYSIS_SAFETY_SETTINGS },
+            contents: {
+                parts: [
+                    {
+                        inlineData: {
+                            mimeType: image.mimeType,
+                            data: cleanBase64Data(image.base64),
+                        },
+                    },
+                    {
+                        text: `Describe ONLY the main object in this image, so it can be recreated in another photo.
+
+INCLUDE: what the object is, its colour, material, finish, distinctive markings, and any case, strap, texture or detail that makes this specific one recognisable.
+
+DO NOT describe: any person, hands, body, face, the background, the lighting or the setting. Do not mention who owns or holds it.
+
+Output ONE short phrase under 25 words, lowercase, no trailing period, starting directly with the object (for example: "a rose-gold smartphone in a clear glitter case with a small pearl charm").`,
+                    },
+                ],
+            },
+        })
+
+        const text = response.text?.trim()
+        if (!text) {
+            throw new Error('No asset description generated from the analysis')
+        }
+        // El modelo a veces devuelve la frase entrecomillada o con punto final.
+        return text.replace(/^["']|["']$/g, '').replace(/\.$/, '')
+    } catch (e) {
+        console.error('Asset Analysis Failed', e)
+        throw e instanceof Error ? e : new Error('Asset analysis failed')
+    }
+}
+
 // =============================================
 // REEL MOTION ANALYSIS
 // =============================================
@@ -2466,7 +2523,11 @@ ${hairColorSpecDesc ? `- EXACT HAIR COLOR: ${hairColorSpecDesc}` : ''}
     for (const img of assetReferences.slice(0, remainingSlots)) {
         await appendImage(
             img,
-            'BRAND ASSET (logo/graphic/product) - print this EXACT design on the outfit/props wherever a logo or graphic appears; reproduce its shapes, colors and lettering faithfully. Never write placeholder text such as "LOGO".',
+            // Antes esto SOLO hablaba de estampar un diseño en la ropa, así que
+            // un objeto físico (su teléfono, un bolso) acababa impreso sobre la
+            // prenda en vez de en la escena. Ahora cubre los dos casos sin
+            // necesidad de clasificar la imagen de antemano.
+            'REFERENCE ITEM - reproduce THIS exact item faithfully: its shape, proportions, colors, materials and any lettering. If it is a logo or graphic, print it on the garment where a graphic would naturally appear. If it is a physical object (a phone, a bag, a garment, an accessory), place the real object in the scene as the prompt describes - in her hand, worn, or resting nearby - never printed onto the clothing. Never write placeholder text such as "LOGO".',
             'ASSET',
         )
     }

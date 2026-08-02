@@ -93,6 +93,13 @@ export interface ReferenceImage {
         | 'pose'
     storagePath?: string
     thumbnailUrl?: string // Optimized thumbnail for UI display
+    /**
+     * Descripción en texto del OBJETO (solo assets). Los assets viajan al motor
+     * en los slots de referencia que sobran, así que con Clone Ref o Place Ref
+     * activos se caen sin avisar; el texto no compite por slots y es lo que
+     * permite además guardarlo en la librería y reutilizarlo sin la foto.
+     */
+    description?: string
 }
 
 // Avatar info stored with each generation

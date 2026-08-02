@@ -63,6 +63,10 @@ import {
     type PlaceCategory,
     type PlacePreset,
 } from '../_constants/placePresets'
+import {
+    assetNameFromText,
+    ASSET_PROMPT_CATEGORY,
+} from '../_constants/assetLibrary'
 import { insertBeforeCameraBlock } from '@/utils/promptCompose'
 import type { Prompt, MediaType } from '@/@types/supabase'
 
@@ -229,6 +233,25 @@ const PromptLibraryDrawer = ({ userId }: PromptLibraryDrawerProps) => {
         )
     }
 
+    /**
+     * Aplicar un objeto guardado: entra ANTES del bloque de cámara, como las
+     * poses y las acciones. Al final se lo comería el presupuesto de prompt, y
+     * un objeto sin respaldo de texto es justo lo que hoy desaparece cuando no
+     * quedan slots de referencia.
+     */
+    const handleUseAsset = (text: string) => {
+        // "with" y no "holding": un teléfono se sostiene, pero una prenda se
+        // lleva puesta y un bolso cuelga. El conector neutro deja que la escena
+        // decida cómo aparece el objeto.
+        setPrompt(insertBeforeCameraBlock(prompt, `with ${text}`))
+        setIsPromptLibraryOpen(false)
+        toast.push(
+            <Notification type="info" title="Asset Applied">
+                {assetNameFromText(text)}
+            </Notification>,
+        )
+    }
+
     // Toggle pin for action preset
     const handleTogglePin = (presetId: string, event: React.MouseEvent) => {
         event.stopPropagation()
@@ -270,9 +293,13 @@ const PromptLibraryDrawer = ({ userId }: PromptLibraryDrawerProps) => {
     const savedPlaces = prompts.filter(
         (p) => p.category === PLACE_PROMPT_CATEGORY,
     )
+    const savedAssets = prompts.filter(
+        (p) => p.category === ASSET_PROMPT_CATEGORY,
+    )
     const filteredPrompts = prompts.filter(
         (p) =>
             p.category !== PLACE_PROMPT_CATEGORY &&
+            p.category !== ASSET_PROMPT_CATEGORY &&
             (filterType === 'ALL' ? true : p.media_type === filterType) &&
             (showNsfw ? true : !parseCategory(p.category).isNsfw),
     )
@@ -460,6 +487,7 @@ const PromptLibraryDrawer = ({ userId }: PromptLibraryDrawerProps) => {
                         <TabNav value="my-prompts">My Prompts</TabNav>
                         <TabNav value="niche-packs">Niche Packs</TabNav>
                         <TabNav value="places">Places</TabNav>
+                        <TabNav value="assets">Assets</TabNav>
                         <TabNav value="action-presets">
                             Action Presets
                             {pinnedActionIds.length > 0 && (
@@ -727,6 +755,48 @@ const PromptLibraryDrawer = ({ userId }: PromptLibraryDrawerProps) => {
                                     </div>
                                 )
                             })}
+                        </div>
+                    </TabContent>
+
+                    {/* Assets Tab — objetos recurrentes del personaje. Se
+                        inyectan como TEXTO: la imagen del asset viaja en los
+                        slots de referencia que sobran y se cae cuando no hay,
+                        el texto no. */}
+                    <TabContent value="assets" className="flex-1 overflow-auto min-h-0">
+                        <div className="p-4 space-y-1">
+                            {savedAssets.length === 0 ? (
+                                <p className="text-sm text-gray-500 dark:text-gray-400">
+                                    Todavía no hay objetos guardados. Sube uno al
+                                    slot de Assets y pulsa el botón de guardar
+                                    que aparece en la esquina.
+                                </p>
+                            ) : (
+                                savedAssets.map((a) => (
+                                    <div
+                                        key={a.id}
+                                        className="group p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 cursor-pointer transition-colors"
+                                        onClick={() => handleUseAsset(a.text)}
+                                    >
+                                        <div className="flex items-center justify-between gap-2">
+                                            <span className="text-sm font-medium truncate">
+                                                {a.name}
+                                            </span>
+                                            <button
+                                                className="shrink-0 opacity-0 group-hover:opacity-100 transition-opacity text-gray-400 hover:text-red-500"
+                                                onClick={(e) => {
+                                                    e.stopPropagation()
+                                                    handleDeletePrompt(a.id)
+                                                }}
+                                            >
+                                                <HiOutlineTrash className="w-4 h-4" />
+                                            </button>
+                                        </div>
+                                        <p className="text-xs text-gray-500 dark:text-gray-400 line-clamp-2">
+                                            {a.text}
+                                        </p>
+                                    </div>
+                                ))
+                            )}
                         </div>
                     </TabContent>
 

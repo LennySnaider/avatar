@@ -8,6 +8,7 @@ import { MODEL_ACTION_PRESETS } from './modelActionPresets.ts'
 import { NICHE_PROMPT_PRESETS } from './nichePromptPresets.ts'
 import { NICHE_POSES } from './nichePoses.ts'
 import { PLACE_PRESETS, asPlaceTag, placeNameFromText } from './placePresets.ts'
+import { assetNameFromText } from './assetLibrary.ts'
 
 const VALID_TIERS = ['suggestive', 'lingerie', 'topless', 'explicit']
 
@@ -176,4 +177,27 @@ test('ninguna locación contiene señales de edad ambigua', () => {
         EDAD_PROHIBIDA.test(p.text),
     ).map((p) => p.id)
     assert.deepEqual(infractores, [])
+})
+
+// ── Assets ──────────────────────────────────────────────────────
+
+test('el nombre del asset salta artículos y rellenos del principio', () => {
+    assert.equal(
+        assetNameFromText(
+            'a rose-gold smartphone in a clear glitter case with a small pearl charm',
+        ),
+        'Rose-gold smartphone in',
+    )
+    assert.equal(
+        assetNameFromText('a small black leather tote bag'),
+        'Black leather tote',
+    )
+    // "of" en MEDIO es parte del nombre real, no se toca
+    assert.equal(assetNameFromText('a bag of pearls'), 'Bag of pearls')
+})
+
+test('el nombre del asset aguanta entradas degeneradas', () => {
+    assert.equal(assetNameFromText(''), 'Asset')
+    assert.equal(assetNameFromText('the a an with'), 'Asset')
+    assert.ok(assetNameFromText('x'.repeat(200)).length <= 40)
 })

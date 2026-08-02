@@ -6,6 +6,7 @@ import {
     analyzePoseFromImage,
     analyzeImageForClone,
     analyzeImageForPlace,
+    analyzeImageForAsset,
     generateVideoPromptFromImage,
 } from '@/services/GeminiService'
 import { apiCreatePrompt } from '@/services/AvatarForgeService'
@@ -13,6 +14,10 @@ import {
     placeNameFromText,
     PLACE_PROMPT_CATEGORY,
 } from '../_constants/placePresets'
+import {
+    assetNameFromText,
+    ASSET_PROMPT_CATEGORY,
+} from '../_constants/assetLibrary'
 import { resizeBase64Image } from '@/utils/imageOptimization'
 import Button from '@/components/ui/Button'
 import Switcher from '@/components/ui/Switcher'
@@ -357,6 +362,8 @@ const BottomControlBar = ({
     const [isAnalyzingClone, setIsAnalyzingClone] = useState(false)
     const [isAnalyzingPlace, setIsAnalyzingPlace] = useState(false)
     const [isSavingPlace, setIsSavingPlace] = useState(false)
+    const [isAnalyzingAsset, setIsAnalyzingAsset] = useState(false)
+    const [isSavingAsset, setIsSavingAsset] = useState(false)
     const [describeInputImage, setDescribeInputImage] = useState<string | null>(
         null,
     ) // URL for visual preview
@@ -550,6 +557,7 @@ const BottomControlBar = ({
         assetImages,
         addAssetImage,
         removeAssetImage,
+        updateAssetImage,
         isGenerating,
         isEnhancingPrompt,
         isAnalyzing,
@@ -998,13 +1006,68 @@ const BottomControlBar = ({
     // Handle asset upload
     const handleAssetUpload = async (file: File) => {
         const { base64, mimeType, url } = await processFileToBase64(file)
-        addAssetImage({
-            id: crypto.randomUUID(),
-            url,
-            mimeType,
-            base64,
-            type: 'general',
-        })
+        const id = crypto.randomUUID()
+        addAssetImage({ id, url, mimeType, base64, type: 'general' })
+
+        // Se describe en cuanto entra, igual que el Place Ref: el texto es lo
+        // que permite GUARDARLO y lo que sobrevive cuando no quedan slots de
+        // referencia para la imagen. Si el análisis falla, el asset sigue
+        // sirviendo como imagen — solo se pierde la opción de guardarlo.
+        setIsAnalyzingAsset(true)
+        try {
+            const apiBase64 = await resizeBase64Image(base64, 'API')
+            const description = await analyzeImageForAsset({
+                base64: apiBase64,
+                mimeType: 'image/jpeg',
+            })
+            if (description) {
+                updateAssetImage(id, { description })
+            }
+        } catch (error) {
+            console.error('Failed to analyze asset:', error)
+        } finally {
+            setIsAnalyzingAsset(false)
+        }
+    }
+
+    /**
+     * Guarda en la librería los assets que ya tienen descripción. Guarda TODOS
+     * los que haya en vez de pedir cuál: la pila admite 3 y obligar a elegir por
+     * un guardado es fricción para nada.
+     */
+    const handleSaveAssetsToLibrary = async () => {
+        const savable = assetImages.filter((a) => a.description?.trim())
+        if (savable.length === 0 || isSavingAsset) return
+
+        setIsSavingAsset(true)
+        try {
+            for (const asset of savable) {
+                const text = asset.description!.trim()
+                await apiCreatePrompt({
+                    name: assetNameFromText(text),
+                    text,
+                    media_type: 'IMAGE',
+                    category: ASSET_PROMPT_CATEGORY,
+                } as Parameters<typeof apiCreatePrompt>[0])
+            }
+            toast.push(
+                <Notification type="success" title="Assets guardados">
+                    {savable.length === 1
+                        ? assetNameFromText(savable[0].description!.trim())
+                        : `${savable.length} objetos`}{' '}
+                    — están en Assets, dentro de la librería
+                </Notification>,
+            )
+        } catch (error) {
+            console.error('Failed to save assets:', error)
+            toast.push(
+                <Notification type="danger" title="No se pudo guardar">
+                    {error instanceof Error ? error.message : String(error)}
+                </Notification>,
+            )
+        } finally {
+            setIsSavingAsset(false)
+        }
     }
 
     // Video input image upload
@@ -1800,6 +1863,30 @@ const BottomControlBar = ({
                                             <span className="absolute -bottom-1 -right-1 text-[8px] bg-green-600 text-white px-1 rounded font-medium">
                                                 {assetImages.length}/3
                                             </span>
+                                            {/* Guardar en la librería, en la
+                                                esquina opuesta a la de quitar —
+                                                mismo gesto que en el Place Ref.
+                                                Solo con descripción ya lista. */}
+                                            {!isAnalyzingAsset &&
+                                                assetImages.some((a) =>
+                                                    a.description?.trim(),
+                                                ) && (
+                                                    <button
+                                                        onClick={(e) => {
+                                                            e.stopPropagation()
+                                                            handleSaveAssetsToLibrary()
+                                                        }}
+                                                        disabled={isSavingAsset}
+                                                        title="Guardar estos objetos en la librería"
+                                                        className="absolute -top-1 -left-1 p-0.5 bg-teal-500 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity disabled:opacity-50"
+                                                    >
+                                                        {isSavingAsset ? (
+                                                            <Spinner size={12} />
+                                                        ) : (
+                                                            <HiOutlineSave className="w-3 h-3" />
+                                                        )}
+                                                    </button>
+                                                )}
                                             <button
                                                 onClick={(e) => {
                                                     e.stopPropagation()

@@ -260,6 +260,8 @@ interface AvatarStudioState {
     setAssetImages: (images: ReferenceImage[]) => void
     addAssetImage: (image: ReferenceImage) => void
     removeAssetImage: (id: string) => void
+    /** Parche por id — lo usa el análisis del asset para colgarle su descripción. */
+    updateAssetImage: (id: string, patch: Partial<ReferenceImage>) => void
     setCloneImage: (image: ReferenceImage | null) => void
     setCloneDescription: (description: string) => void
     setCloneWeight: (weight: number) => void
@@ -613,6 +615,12 @@ export const useAvatarStudioStore = create<AvatarStudioState>()(
             setBodyRef: (ref) => set({ bodyRef: ref }),
             setBodyRefNsfw: (ref) => set({ bodyRefNsfw: ref }),
             setAssetImages: (images) => set({ assetImages: images }),
+            updateAssetImage: (id, patch) =>
+                set((state) => ({
+                    assetImages: state.assetImages.map((a) =>
+                        a.id === id ? { ...a, ...patch } : a,
+                    ),
+                })),
             addAssetImage: (image) =>
                 set((state) => ({
                     // Limit to 3 assets max
