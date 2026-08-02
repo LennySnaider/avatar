@@ -483,13 +483,19 @@ const PromptLibraryDrawer = ({ userId }: PromptLibraryDrawerProps) => {
 
                 {/* Tabs */}
                 <Tabs value={activeTab} onChange={(val) => setActiveTab(val)} className="flex-1 flex flex-col overflow-hidden min-h-0">
-                    <TabList className="px-4 pt-2">
-                        <TabNav value="my-prompts">My Prompts</TabNav>
-                        <TabNav value="niche-packs">Niche Packs</TabNav>
+                    {/* Etiquetas de UNA palabra: con "My Prompts" / "Niche
+                        Packs" / "Action Presets" las cinco pedían ~550px en un
+                        drawer de 450, así que salía barra de scroll y la
+                        pestaña activa aparecía cortada. La barra se oculta
+                        además como red de seguridad (pantallas estrechas o una
+                        sexta pestaña), pero el scroll sigue existiendo. */}
+                    <TabList className="px-4 pt-2 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+                        <TabNav value="my-prompts">Mine</TabNav>
+                        <TabNav value="niche-packs">Niches</TabNav>
                         <TabNav value="places">Places</TabNav>
                         <TabNav value="assets">Assets</TabNav>
                         <TabNav value="action-presets">
-                            Action Presets
+                            Actions
                             {pinnedActionIds.length > 0 && (
                                 <span className="ml-1.5 px-1.5 py-0.5 text-[10px] bg-amber-500 text-white rounded-full">
                                     {pinnedActionIds.length}
@@ -673,7 +679,7 @@ const PromptLibraryDrawer = ({ userId }: PromptLibraryDrawerProps) => {
                             {savedPlaces.length > 0 && (
                                 <div>
                                     <p className="text-xs font-semibold uppercase tracking-wide text-teal-600 dark:text-teal-400 mb-1.5">
-                                        Mis lugares
+                                        Saved
                                     </p>
                                     <div className="space-y-1">
                                         {savedPlaces.map((p) => (
@@ -766,9 +772,9 @@ const PromptLibraryDrawer = ({ userId }: PromptLibraryDrawerProps) => {
                         <div className="p-4 space-y-1">
                             {savedAssets.length === 0 ? (
                                 <p className="text-sm text-gray-500 dark:text-gray-400">
-                                    Todavía no hay objetos guardados. Sube uno al
-                                    slot de Assets y pulsa el botón de guardar
-                                    que aparece en la esquina.
+                                    No saved objects yet. Drop one into the
+                                    Assets slot and hit the save button that
+                                    appears in its corner.
                                 </p>
                             ) : (
                                 savedAssets.map((a) => (

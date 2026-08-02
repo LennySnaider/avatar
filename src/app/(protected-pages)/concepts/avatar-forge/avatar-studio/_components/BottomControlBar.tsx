@@ -950,15 +950,14 @@ const BottomControlBar = ({
                 category: PLACE_PROMPT_CATEGORY,
             } as Parameters<typeof apiCreatePrompt>[0])
             toast.push(
-                <Notification type="success" title="Lugar guardado">
-                    {placeNameFromText(text)} — está en Places, dentro de la
-                    librería
+                <Notification type="success" title="Place saved">
+                    {placeNameFromText(text)} — now in the Places tab
                 </Notification>,
             )
         } catch (error) {
             console.error('Failed to save place:', error)
             toast.push(
-                <Notification type="danger" title="No se pudo guardar">
+                <Notification type="danger" title="Save failed">
                     {error instanceof Error ? error.message : String(error)}
                 </Notification>,
             )
@@ -1051,17 +1050,17 @@ const BottomControlBar = ({
                 } as Parameters<typeof apiCreatePrompt>[0])
             }
             toast.push(
-                <Notification type="success" title="Assets guardados">
+                <Notification type="success" title="Assets saved">
                     {savable.length === 1
                         ? assetNameFromText(savable[0].description!.trim())
-                        : `${savable.length} objetos`}{' '}
-                    — están en Assets, dentro de la librería
+                        : `${savable.length} objects`}{' '}
+                    — now in the Assets tab
                 </Notification>,
             )
         } catch (error) {
             console.error('Failed to save assets:', error)
             toast.push(
-                <Notification type="danger" title="No se pudo guardar">
+                <Notification type="danger" title="Save failed">
                     {error instanceof Error ? error.message : String(error)}
                 </Notification>,
             )
@@ -1877,7 +1876,7 @@ const BottomControlBar = ({
                                                             handleSaveAssetsToLibrary()
                                                         }}
                                                         disabled={isSavingAsset}
-                                                        title="Guardar estos objetos en la librería"
+                                                        title="Save these objects to your library"
                                                         className="absolute -top-1 -left-1 p-0.5 bg-teal-500 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity disabled:opacity-50"
                                                     >
                                                         {isSavingAsset ? (
@@ -1976,7 +1975,7 @@ const BottomControlBar = ({
                                                             handleSavePlaceToLibrary
                                                         }
                                                         disabled={isSavingPlace}
-                                                        title="Guardar este lugar en la librería"
+                                                        title="Save this place to your library"
                                                         className="absolute -top-1 -left-1 p-0.5 bg-teal-500 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity disabled:opacity-50"
                                                     >
                                                         {isSavingPlace ? (
