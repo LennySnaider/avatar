@@ -59,6 +59,7 @@ import {
     PLACE_PRESETS,
     PLACE_CATEGORIES,
     asPlaceTag,
+    PLACE_PROMPT_CATEGORY,
     type PlaceCategory,
     type PlacePreset,
 } from '../_constants/placePresets'
@@ -264,8 +265,14 @@ const PromptLibraryDrawer = ({ userId }: PromptLibraryDrawerProps) => {
     }
 
     // Filter prompts (tipo de media + gate NSFW)
+    // Los lugares guardados tienen su propia pestaña — si además salieran aquí
+    // aparecerían dos veces y con el texto crudo en vez del tag [PLACE: …].
+    const savedPlaces = prompts.filter(
+        (p) => p.category === PLACE_PROMPT_CATEGORY,
+    )
     const filteredPrompts = prompts.filter(
         (p) =>
+            p.category !== PLACE_PROMPT_CATEGORY &&
             (filterType === 'ALL' ? true : p.media_type === filterType) &&
             (showNsfw ? true : !parseCategory(p.category).isNsfw),
     )
@@ -633,6 +640,51 @@ const PromptLibraryDrawer = ({ userId }: PromptLibraryDrawerProps) => {
                         una foto y hacer que Gemini la describiera. */}
                     <TabContent value="places" className="flex-1 overflow-auto min-h-0">
                         <div className="p-4 space-y-3">
+                            {/* Los guardados desde el Place Ref van PRIMERO:
+                                son los suyos y los busca antes que el catálogo. */}
+                            {savedPlaces.length > 0 && (
+                                <div>
+                                    <p className="text-xs font-semibold uppercase tracking-wide text-teal-600 dark:text-teal-400 mb-1.5">
+                                        Mis lugares
+                                    </p>
+                                    <div className="space-y-1">
+                                        {savedPlaces.map((p) => (
+                                            <div
+                                                key={p.id}
+                                                className="group p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 cursor-pointer transition-colors"
+                                                onClick={() =>
+                                                    handleUsePlace({
+                                                        id: p.id,
+                                                        name: p.name,
+                                                        text: p.text,
+                                                        category: 'home',
+                                                    })
+                                                }
+                                            >
+                                                <div className="flex items-center justify-between gap-2">
+                                                    <span className="text-sm font-medium truncate">
+                                                        {p.name}
+                                                    </span>
+                                                    <button
+                                                        className="shrink-0 opacity-0 group-hover:opacity-100 transition-opacity text-gray-400 hover:text-red-500"
+                                                        onClick={(e) => {
+                                                            e.stopPropagation()
+                                                            handleDeletePrompt(
+                                                                p.id,
+                                                            )
+                                                        }}
+                                                    >
+                                                        <HiOutlineTrash className="w-4 h-4" />
+                                                    </button>
+                                                </div>
+                                                <p className="text-xs text-gray-500 dark:text-gray-400 line-clamp-2">
+                                                    {p.text}
+                                                </p>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
                             {(
                                 Object.keys(PLACE_CATEGORIES) as PlaceCategory[]
                             ).map((cat) => {

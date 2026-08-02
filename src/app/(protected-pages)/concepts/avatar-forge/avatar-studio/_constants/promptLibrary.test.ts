@@ -7,7 +7,7 @@ import assert from 'node:assert/strict'
 import { MODEL_ACTION_PRESETS } from './modelActionPresets.ts'
 import { NICHE_PROMPT_PRESETS } from './nichePromptPresets.ts'
 import { NICHE_POSES } from './nichePoses.ts'
-import { PLACE_PRESETS, asPlaceTag } from './placePresets.ts'
+import { PLACE_PRESETS, asPlaceTag, placeNameFromText } from './placePresets.ts'
 
 const VALID_TIERS = ['suggestive', 'lingerie', 'topless', 'explicit']
 
@@ -144,6 +144,31 @@ test('el preset de referencia del usuario se conserva literal', () => {
         p!.text,
         'Indoor, bedroom, feminine aesthetic, cozy, light pink color palette, white bedding, pink throw pillow, wall-mounted floating shelves, hanging faux ivy vine, photo collage wall art, small lamp with warm glow, bedside table, minimalist room decor, pastel tones, soft diffused lighting, shallow depth of field, intimate and stylish atmosphere.',
     )
+})
+
+test('el nombre derivado describe el sitio, no la hora a la que se guardó', () => {
+    const pink = PLACE_PRESETS.find((p) => p.id === 'place-pink-bedroom')!
+    assert.equal(placeNameFromText(pink.text), 'Bedroom · feminine aesthetic')
+    // "Indoor"/"Outdoor" solos no distinguen: se saltan
+    assert.equal(
+        placeNameFromText('Outdoor, rooftop terrace, warm, amber palette.'),
+        'Rooftop terrace · warm',
+    )
+})
+
+test('el nombre derivado aguanta entradas degeneradas', () => {
+    assert.equal(placeNameFromText(''), 'Place')
+    assert.equal(placeNameFromText('Indoor'), 'Place')
+    assert.equal(placeNameFromText('   ,  , '), 'Place')
+    // Un segmento kilométrico no puede reventar la lista
+    const largo = placeNameFromText(`${'x'.repeat(200)}, y`)
+    assert.ok(largo.length <= 48, `nombre de ${largo.length} chars`)
+})
+
+test('todo preset de código produce un nombre no vacío', () => {
+    for (const p of PLACE_PRESETS) {
+        assert.ok(placeNameFromText(p.text).length > 0, p.id)
+    }
 })
 
 test('ninguna locación contiene señales de edad ambigua', () => {

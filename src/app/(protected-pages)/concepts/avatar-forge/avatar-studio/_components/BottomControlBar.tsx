@@ -9,6 +9,10 @@ import {
     generateVideoPromptFromImage,
 } from '@/services/GeminiService'
 import { apiCreatePrompt } from '@/services/AvatarForgeService'
+import {
+    placeNameFromText,
+    PLACE_PROMPT_CATEGORY,
+} from '../_constants/placePresets'
 import { resizeBase64Image } from '@/utils/imageOptimization'
 import Button from '@/components/ui/Button'
 import Switcher from '@/components/ui/Switcher'
@@ -352,6 +356,7 @@ const BottomControlBar = ({
     const [isAnalyzingPose, setIsAnalyzingPose] = useState(false)
     const [isAnalyzingClone, setIsAnalyzingClone] = useState(false)
     const [isAnalyzingPlace, setIsAnalyzingPlace] = useState(false)
+    const [isSavingPlace, setIsSavingPlace] = useState(false)
     const [describeInputImage, setDescribeInputImage] = useState<string | null>(
         null,
     ) // URL for visual preview
@@ -909,6 +914,48 @@ const BottomControlBar = ({
             setPlaceDescription('')
         } finally {
             setIsAnalyzingPlace(false)
+        }
+    }
+
+    /**
+     * Guarda en la librería la locación que Gemini acaba de sacar de la foto.
+     *
+     * Sin esto, cada lugar cuesta volver a subir la imagen y otra llamada al
+     * proveedor — y si el proveedor está caído, no hay lugar. Se guarda en la
+     * tabla `prompts` con categoría `place`, así que es del usuario y de su
+     * org (los 20 del catálogo viven en código y los ve todo el mundo).
+     *
+     * El nombre se DERIVA del texto en vez de pedirlo con un diálogo: eso
+     * rompería el gesto de un click, y un sello de hora no distingue nada entre
+     * veinte lugares guardados.
+     */
+    const handleSavePlaceToLibrary = async () => {
+        const text = placeDescription?.trim()
+        if (!text || isSavingPlace) return
+
+        setIsSavingPlace(true)
+        try {
+            await apiCreatePrompt({
+                name: placeNameFromText(text),
+                text,
+                media_type: 'IMAGE',
+                category: PLACE_PROMPT_CATEGORY,
+            } as Parameters<typeof apiCreatePrompt>[0])
+            toast.push(
+                <Notification type="success" title="Lugar guardado">
+                    {placeNameFromText(text)} — está en Places, dentro de la
+                    librería
+                </Notification>,
+            )
+        } catch (error) {
+            console.error('Failed to save place:', error)
+            toast.push(
+                <Notification type="danger" title="No se pudo guardar">
+                    {error instanceof Error ? error.message : String(error)}
+                </Notification>,
+            )
+        } finally {
+            setIsSavingPlace(false)
         }
     }
 
@@ -1827,6 +1874,30 @@ const BottomControlBar = ({
                                                     <div className="absolute -bottom-1 -right-1 p-0.5 bg-green-500 text-white rounded-full">
                                                         <HiOutlineCheck className="w-2.5 h-2.5" />
                                                     </div>
+                                                )}
+                                            {/* Guardar la locación analizada en
+                                                la librería: sin esto, cada
+                                                place cuesta subir la foto otra
+                                                vez y otra llamada al proveedor.
+                                                Solo cuando ya hay descripción
+                                                (mientras analiza no hay nada
+                                                que guardar). */}
+                                            {!isAnalyzingPlace &&
+                                                placeDescription && (
+                                                    <button
+                                                        onClick={
+                                                            handleSavePlaceToLibrary
+                                                        }
+                                                        disabled={isSavingPlace}
+                                                        title="Guardar este lugar en la librería"
+                                                        className="absolute -top-1 -left-1 p-0.5 bg-teal-500 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity disabled:opacity-50"
+                                                    >
+                                                        {isSavingPlace ? (
+                                                            <Spinner size={12} />
+                                                        ) : (
+                                                            <HiOutlineSave className="w-3 h-3" />
+                                                        )}
+                                                    </button>
                                                 )}
                                             <button
                                                 onClick={() =>

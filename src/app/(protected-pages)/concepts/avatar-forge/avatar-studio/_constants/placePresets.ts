@@ -40,6 +40,37 @@ export const PLACE_CATEGORIES: Record<PlaceCategory, { label: string }> = {
 /** Envuelve la locación en el tag que entiende el pipeline. */
 export const asPlaceTag = (text: string): string => `[PLACE: ${text}]`
 
+/** Categoría con la que se guardan en la tabla `prompts` los lugares propios. */
+export const PLACE_PROMPT_CATEGORY = 'place'
+
+/**
+ * Nombre legible derivado del propio texto de la locación.
+ *
+ * Al guardar un place analizado desde una foto hay que ponerle nombre, y pedirlo
+ * con un diálogo rompe el gesto de "un click" (que es justo lo que se pidió).
+ * Un sello de fecha tampoco sirve: entre veinte lugares guardados, "Place 14:32"
+ * no dice nada. Estos textos empiezan por lo general y siguen por lo concreto,
+ * así que los dos primeros segmentos útiles describen el sitio bastante bien:
+ * "Indoor, bedroom, feminine aesthetic, …" → "Bedroom · feminine aesthetic".
+ */
+export function placeNameFromText(text: string): string {
+    const segments = text
+        .split(',')
+        .map((s) => s.trim())
+        .filter(Boolean)
+        // "Indoor"/"Outdoor" solos no distinguen nada: hay decenas de cada uno.
+        .filter((s) => !/^(indoor|outdoor|interior|exterior)$/i.test(s))
+
+    if (segments.length === 0) return 'Place'
+
+    const name = segments
+        .slice(0, 2)
+        .join(' · ')
+        .replace(/\.$/, '')
+    const titled = name.charAt(0).toUpperCase() + name.slice(1)
+    return titled.length > 48 ? `${titled.slice(0, 47).trimEnd()}…` : titled
+}
+
 export const PLACE_PRESETS: PlacePreset[] = [
     // ── Casa ────────────────────────────────────────────────────
     {
