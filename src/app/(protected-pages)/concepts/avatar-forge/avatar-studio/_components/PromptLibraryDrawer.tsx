@@ -55,6 +55,13 @@ import {
     type NichePreset,
 } from '../_constants/nichePromptPresets'
 import { NICHE_POSES } from '../_constants/nichePoses'
+import {
+    PLACE_PRESETS,
+    PLACE_CATEGORIES,
+    asPlaceTag,
+    type PlaceCategory,
+    type PlacePreset,
+} from '../_constants/placePresets'
 import { insertBeforeCameraBlock } from '@/utils/promptCompose'
 import type { Prompt, MediaType } from '@/@types/supabase'
 
@@ -202,6 +209,22 @@ const PromptLibraryDrawer = ({ userId }: PromptLibraryDrawerProps) => {
             <Notification type="info" title="Action Applied">
                 {preset.name} {prompt.trim() ? 'added' : 'applied'}
             </Notification>
+        )
+    }
+
+    // Aplicar una locación: se AÑADE el tag [PLACE: …] al prompt actual, igual
+    // que hace el flujo de imagen (BottomControlBar). El tag va al final a
+    // propósito — el pipeline lo desenvuelve por su nombre, no por su
+    // posición, y así no se mete en medio de la escena que el usuario escribió.
+    const handleUsePlace = (place: PlacePreset) => {
+        const tag = asPlaceTag(place.text)
+        const current = prompt.trim()
+        setPrompt(current ? `${current} ${tag}` : tag)
+        setIsPromptLibraryOpen(false)
+        toast.push(
+            <Notification type="info" title="Place Applied">
+                {place.name}
+            </Notification>,
         )
     }
 
@@ -429,6 +452,7 @@ const PromptLibraryDrawer = ({ userId }: PromptLibraryDrawerProps) => {
                     <TabList className="px-4 pt-2">
                         <TabNav value="my-prompts">My Prompts</TabNav>
                         <TabNav value="niche-packs">Niche Packs</TabNav>
+                        <TabNav value="places">Places</TabNav>
                         <TabNav value="action-presets">
                             Action Presets
                             {pinnedActionIds.length > 0 && (
@@ -601,6 +625,56 @@ const PromptLibraryDrawer = ({ userId }: PromptLibraryDrawerProps) => {
                                     </div>
                                 ),
                             )}
+                        </div>
+                    </TabContent>
+
+                    {/* Places Tab — locaciones listas para el tag [PLACE: …].
+                        Hasta ahora la única forma de conseguir uno era subir
+                        una foto y hacer que Gemini la describiera. */}
+                    <TabContent value="places" className="flex-1 overflow-auto min-h-0">
+                        <div className="p-4 space-y-3">
+                            {(
+                                Object.keys(PLACE_CATEGORIES) as PlaceCategory[]
+                            ).map((cat) => {
+                                const items = PLACE_PRESETS.filter(
+                                    (p) =>
+                                        p.category === cat &&
+                                        (showNsfw || !p.nsfw),
+                                )
+                                if (items.length === 0) return null
+                                return (
+                                    <div key={cat}>
+                                        <p className="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400 mb-1.5">
+                                            {PLACE_CATEGORIES[cat].label}
+                                        </p>
+                                        <div className="space-y-1">
+                                            {items.map((place) => (
+                                                <div
+                                                    key={place.id}
+                                                    onClick={() =>
+                                                        handleUsePlace(place)
+                                                    }
+                                                    className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 cursor-pointer transition-colors"
+                                                >
+                                                    <div className="flex items-center gap-2">
+                                                        <span className="text-sm font-medium">
+                                                            {place.name}
+                                                        </span>
+                                                        {place.nsfw && (
+                                                            <span className="shrink-0 text-[10px]">
+                                                                🌶️
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                    <p className="text-xs text-gray-500 dark:text-gray-400 line-clamp-2">
+                                                        {place.text}
+                                                    </p>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )
+                            })}
                         </div>
                     </TabContent>
 

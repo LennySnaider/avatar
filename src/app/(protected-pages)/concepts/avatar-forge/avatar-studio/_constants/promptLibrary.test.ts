@@ -7,6 +7,7 @@ import assert from 'node:assert/strict'
 import { MODEL_ACTION_PRESETS } from './modelActionPresets.ts'
 import { NICHE_PROMPT_PRESETS } from './nichePromptPresets.ts'
 import { NICHE_POSES } from './nichePoses.ts'
+import { PLACE_PRESETS, asPlaceTag } from './placePresets.ts'
 
 const VALID_TIERS = ['suggestive', 'lingerie', 'topless', 'explicit']
 
@@ -103,4 +104,51 @@ test('todo preset de uniforme está marcado nsfw (el gate los oculta por defecto
     for (const p of NICHE_PROMPT_PRESETS.filter((x) => x.niche === 'uniforms')) {
         assert.equal(p.nsfw, true, `${p.id} sin nsfw`)
     }
+})
+
+// ── Places ──────────────────────────────────────────────────────
+
+test('ids únicos entre locaciones', () => {
+    const ids = PLACE_PRESETS.map((p) => p.id)
+    assert.equal(new Set(ids).size, ids.length)
+})
+
+// La invariante que de verdad importa en un PLACE: describe el SITIO, no a
+// quien lo habita. Si además describe un sujeto, compite con el avatar y con la
+// pose, y el motor promedia — la sopa de órdenes documentada en el clon de Wan.
+const SUJETO_RE =
+    /\b(she|her|hers|herself|woman|women|girl|lady|model|person|people(?!\s)|man|men|subject|posing|standing|sitting|wearing)\b/i
+
+test('ninguna locación describe a una persona ni una pose', () => {
+    const infractores = PLACE_PRESETS.filter((p) => SUJETO_RE.test(p.text)).map(
+        (p) => `${p.id}: ${p.text.match(SUJETO_RE)?.[0]}`,
+    )
+    assert.deepEqual(infractores, [])
+})
+
+test('las locaciones no traen ya el envoltorio del tag', () => {
+    // El tag lo pone `asPlaceTag`; si el texto ya lo trae sale `[PLACE: [PLACE:`
+    for (const p of PLACE_PRESETS) {
+        assert.doesNotMatch(p.text, /\[PLACE:/i, `${p.id} trae el tag dentro`)
+    }
+})
+
+test('asPlaceTag envuelve exactamente como el flujo de imagen', () => {
+    assert.equal(asPlaceTag('Indoor, bedroom.'), '[PLACE: Indoor, bedroom.]')
+})
+
+test('el preset de referencia del usuario se conserva literal', () => {
+    const p = PLACE_PRESETS.find((x) => x.id === 'place-pink-bedroom')
+    assert.ok(p, 'falta el Pink Bedroom')
+    assert.equal(
+        p!.text,
+        'Indoor, bedroom, feminine aesthetic, cozy, light pink color palette, white bedding, pink throw pillow, wall-mounted floating shelves, hanging faux ivy vine, photo collage wall art, small lamp with warm glow, bedside table, minimalist room decor, pastel tones, soft diffused lighting, shallow depth of field, intimate and stylish atmosphere.',
+    )
+})
+
+test('ninguna locación contiene señales de edad ambigua', () => {
+    const infractores = PLACE_PRESETS.filter((p) =>
+        EDAD_PROHIBIDA.test(p.text),
+    ).map((p) => p.id)
+    assert.deepEqual(infractores, [])
 })
