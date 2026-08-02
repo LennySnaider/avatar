@@ -25,7 +25,13 @@ interface AvatarStudioProviderProps {
 const downloadAndConvertToBase64 = async (bucket: string, path: string): Promise<{ base64: string; url: string }> => {
     try {
         const signedUrl = await getSignedUrl(bucket, path)
-        if (!signedUrl) throw new Error('missing object (transplant window)')
+        // Objeto ausente = referencia anterior al trasplante de Supabase: la
+        // fila viajó pero sus bytes se quedaron en el proyecto viejo. NO se
+        // lanza: antes esto hacía `throw` para caer en su propio `catch` dos
+        // líneas más abajo, así que cada referencia huérfana pintaba un error
+        // en consola y en el overlay de Next sin que hubiera nada que
+        // depurar. El caller ya sabe tratar el resultado vacío.
+        if (!signedUrl) return { base64: '', url: '' }
         const res = await fetch(signedUrl)
         const data = res.ok ? await res.blob() : null
 
@@ -94,7 +100,26 @@ const loadReferencesWithBase64 = async (refs: ReferenceImage[]): Promise<Referen
             return ref
         })
     )
-    return loadedRefs
+
+    // Las que no trajeron bytes se DESCARTAN en vez de pintarse como miniatura
+    // rota: una referencia sin imagen no sirve para generar y sólo confunde
+    // sobre lo que el avatar tiene de verdad. Se avisa UNA vez y con el
+    // recuento — no 26 veces, que era lo que ensuciaba la consola.
+    const usable = loadedRefs.filter(
+        (ref) => !ref.storagePath || (ref.base64 && ref.base64.length > 0),
+    )
+    const missing = loadedRefs.length - usable.length
+    if (missing > 0) {
+        const tipos = loadedRefs
+            .filter((r) => r.storagePath && !(r.base64 && r.base64.length > 0))
+            .map((r) => r.type)
+            .join(', ')
+        console.warn(
+            `[AvatarStudio] ${missing} referencia(s) sin objeto en Storage y por tanto omitidas (${tipos}). ` +
+                'Son anteriores al trasplante de Supabase: la fila viajó pero los bytes se quedaron en el proyecto viejo.',
+        )
+    }
+    return usable
 }
 
 const AvatarStudioProvider = ({
