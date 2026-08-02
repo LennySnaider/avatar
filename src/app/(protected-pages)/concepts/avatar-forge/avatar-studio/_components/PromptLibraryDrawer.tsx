@@ -41,6 +41,9 @@ import {
     PiButterflyDuotone,
     PiIdentificationBadgeDuotone,
     PiDeviceMobileCameraDuotone,
+    PiBookmarkSimpleDuotone,
+    PiMapPinDuotone,
+    PiBagSimpleDuotone,
 } from 'react-icons/pi'
 import {
     MODEL_ACTION_PRESETS,
@@ -85,7 +88,9 @@ interface PromptLibraryDrawerProps {
     userId?: string
 }
 
-const { TabNav, TabList, TabContent } = Tabs
+// Solo TabContent: la navegación es un grid propio (ver LIBRARY_SECTIONS), no
+// la TabList de ECME — cinco pestañas en línea no caben en 450px.
+const { TabContent } = Tabs
 
 const categoryIcons: Record<ActionCategory, React.ReactNode> = {
     poses_basic: <PiPersonSimpleWalkDuotone className="w-4 h-4" />,
@@ -96,6 +101,49 @@ const categoryIcons: Record<ActionCategory, React.ReactNode> = {
     studio_angles: <PiCameraDuotone className="w-4 h-4" />,
     spicy: <PiFireDuotone className="w-4 h-4 text-red-500" />,
 }
+
+/**
+ * Las cinco secciones de la librería. El `title` va como tooltip porque la
+ * etiqueta de 10px es una abreviatura: "Mine" no dice por sí sola que son los
+ * prompts que tú guardaste.
+ */
+const LIBRARY_SECTIONS: {
+    value: string
+    label: string
+    title: string
+    icon: React.ReactNode
+}[] = [
+    {
+        value: 'my-prompts',
+        label: 'Mine',
+        title: 'Prompts que has guardado',
+        icon: <PiBookmarkSimpleDuotone className="w-5 h-5" />,
+    },
+    {
+        value: 'niche-packs',
+        label: 'Niches',
+        title: 'Packs por nicho — escenas completas',
+        icon: <PiSparkleDuotone className="w-5 h-5" />,
+    },
+    {
+        value: 'places',
+        label: 'Places',
+        title: 'Locaciones para el tag [PLACE:]',
+        icon: <PiMapPinDuotone className="w-5 h-5" />,
+    },
+    {
+        value: 'assets',
+        label: 'Assets',
+        title: 'Objetos recurrentes del personaje',
+        icon: <PiBagSimpleDuotone className="w-5 h-5" />,
+    },
+    {
+        value: 'action-presets',
+        label: 'Actions',
+        title: 'Poses y acciones que se añaden a la escena',
+        icon: <PiPersonArmsSpreadDuotone className="w-5 h-5" />,
+    },
+]
 
 const nicheIcons: Record<NicheCategory, React.ReactNode> = {
     sweet_girl: <PiHeartDuotone className="w-4 h-4 text-pink-500" />,
@@ -489,20 +537,45 @@ const PromptLibraryDrawer = ({ userId }: PromptLibraryDrawerProps) => {
                         pestaña activa aparecía cortada. La barra se oculta
                         además como red de seguridad (pantallas estrechas o una
                         sexta pestaña), pero el scroll sigue existiendo. */}
-                    <TabList className="px-4 pt-2 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-                        <TabNav value="my-prompts">Mine</TabNav>
-                        <TabNav value="niche-packs">Niches</TabNav>
-                        <TabNav value="places">Places</TabNav>
-                        <TabNav value="assets">Assets</TabNav>
-                        <TabNav value="action-presets">
-                            Actions
-                            {pinnedActionIds.length > 0 && (
-                                <span className="ml-1.5 px-1.5 py-0.5 text-[10px] bg-amber-500 text-white rounded-full">
-                                    {pinnedActionIds.length}
-                                </span>
-                            )}
-                        </TabNav>
-                    </TabList>
+                    <div className="grid grid-cols-5 gap-0.5 px-2 pt-2 border-b border-gray-200 dark:border-gray-700">
+                        {LIBRARY_SECTIONS.map((section) => {
+                            const isActive = activeTab === section.value
+                            const badge =
+                                section.value === 'action-presets'
+                                    ? pinnedActionIds.length
+                                    : 0
+                            return (
+                                <button
+                                    key={section.value}
+                                    onClick={() => setActiveTab(section.value)}
+                                    title={section.title}
+                                    className={`relative flex flex-col items-center gap-1 pt-1.5 pb-2 rounded-t-lg transition-colors ${
+                                        isActive
+                                            ? 'text-primary'
+                                            : 'text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200'
+                                    }`}
+                                >
+                                    <span className="relative">
+                                        {section.icon}
+                                        {badge > 0 && (
+                                            <span className="absolute -top-1.5 -right-2 px-1 text-[9px] leading-3.5 bg-amber-500 text-white rounded-full">
+                                                {badge}
+                                            </span>
+                                        )}
+                                    </span>
+                                    <span className="text-[10px] font-medium leading-none">
+                                        {section.label}
+                                    </span>
+                                    {/* Subrayado del activo: sin el, el grid se
+                                        lee como cinco botones sueltos y no como
+                                        una navegacion por secciones. */}
+                                    {isActive && (
+                                        <span className="absolute bottom-0 inset-x-2 h-0.5 bg-primary rounded-full" />
+                                    )}
+                                </button>
+                            )
+                        })}
+                    </div>
 
                     {/* My Prompts Tab */}
                     <TabContent value="my-prompts" className="flex-1 overflow-auto min-h-0">
