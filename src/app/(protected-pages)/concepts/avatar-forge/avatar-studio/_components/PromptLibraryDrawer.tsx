@@ -39,6 +39,7 @@ import {
     PiGameControllerDuotone,
     PiBedDuotone,
     PiButterflyDuotone,
+    PiIdentificationBadgeDuotone,
 } from 'react-icons/pi'
 import {
     MODEL_ACTION_PRESETS,
@@ -52,7 +53,20 @@ import {
     type NicheCategory,
     type NichePreset,
 } from '../_constants/nichePromptPresets'
+import { NICHE_POSES } from '../_constants/nichePoses'
+import { insertBeforeCameraBlock } from '@/utils/promptCompose'
 import type { Prompt, MediaType } from '@/@types/supabase'
+
+/**
+ * El preset de nicho describe outfit + locación + luz + cámara, pero la POSE
+ * vive aparte (ver nichePoses). Se inserta antes del bloque de cámara para que
+ * el cuerpo quede descrito junto a la escena y fuera de la zona que trunca el
+ * presupuesto de prompt.
+ */
+const withNichePose = (preset: NichePreset): string => {
+    const pose = NICHE_POSES[preset.id]?.base
+    return pose ? insertBeforeCameraBlock(preset.text, pose) : preset.text
+}
 
 interface PromptLibraryDrawerProps {
     userId?: string
@@ -79,6 +93,7 @@ const nicheIcons: Record<NicheCategory, React.ReactNode> = {
     egirl_alt: <PiGameControllerDuotone className="w-4 h-4 text-cyan-500" />,
     boudoir: <PiBedDuotone className="w-4 h-4 text-red-500" />,
     lingerie: <PiButterflyDuotone className="w-4 h-4 text-red-400" />,
+    uniforms: <PiIdentificationBadgeDuotone className="w-4 h-4 text-sky-500" />,
 }
 
 const PromptLibraryDrawer = ({ userId }: PromptLibraryDrawerProps) => {
@@ -174,11 +189,11 @@ const PromptLibraryDrawer = ({ userId }: PromptLibraryDrawerProps) => {
         )
     }
 
-    // Use an action preset - append to existing prompt
+    // Use an action preset - se INSERTA antes del bloque de cámara, no al
+    // final: la cola es lo primero que recorta el presupuesto de prompt (los
+    // chips de estilo ya murieron así en d5fb69e).
     const handleUseActionPreset = (preset: ActionPreset) => {
-        const newPrompt = prompt.trim()
-            ? `${prompt.trim()}. ${preset.text}`
-            : preset.text
+        const newPrompt = insertBeforeCameraBlock(prompt, preset.text)
         setPrompt(newPrompt)
         setIsPromptLibraryOpen(false)
         toast.push(
@@ -561,7 +576,7 @@ const PromptLibraryDrawer = ({ userId }: PromptLibraryDrawerProps) => {
                                                 {presets.map((preset) => (
                                                     <div
                                                         key={preset.id}
-                                                        onClick={() => handleUsePrompt(preset.text)}
+                                                        onClick={() => handleUsePrompt(withNichePose(preset))}
                                                         className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 cursor-pointer transition-colors"
                                                     >
                                                         <div className="flex items-center gap-2">

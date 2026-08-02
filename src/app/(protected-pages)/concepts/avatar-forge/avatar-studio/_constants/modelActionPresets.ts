@@ -1,6 +1,8 @@
 // Model Action Presets for Avatar Studio
 // These are pre-defined prompts for common model poses and actions
 
+import type { SpicyTier } from '@/utils/spicyTiers'
+
 export interface ActionPreset {
     id: string
     name: string
@@ -23,6 +25,17 @@ export interface ActionPreset {
      * `actions_dynamic`, y el gate debe seguir dependiendo del flag.
      */
     nsfw?: boolean
+    /**
+     * Tramo de intensidad al que pertenece la POSE. El slider 🌶️ reescribe el
+     * VESTUARIO por tramo (`spicyTier.wardrobe`) pero no toca la pose — por eso
+     * una acción de `explicit` no sirve de `lingerie` y hay que declararlo.
+     *
+     * La clave se importa de `@/utils/spicyTiers` en vez de redeclararse: con
+     * dos copias de los tramos, la etiqueta de la UI y el comportamiento se
+     * desincronizan en cuanto alguien mueva una frontera (la misma deriva que
+     * ya costó las bandas de cm contra los niveles).
+     */
+    tier?: SpicyTier['key']
 }
 
 export type ActionCategory =
@@ -555,6 +568,7 @@ export const MODEL_ACTION_PRESETS: ActionPreset[] = [
         category: 'spicy',
         mediaType: 'IMAGE',
         nsfw: true,
+        tier: 'lingerie',
     },
     {
         id: 'spicy-bedsheet-wrap',
@@ -564,6 +578,7 @@ export const MODEL_ACTION_PRESETS: ActionPreset[] = [
         category: 'spicy',
         mediaType: 'IMAGE',
         nsfw: true,
+        tier: 'lingerie',
     },
     {
         id: 'spicy-robe-off-shoulder',
@@ -573,6 +588,7 @@ export const MODEL_ACTION_PRESETS: ActionPreset[] = [
         category: 'spicy',
         mediaType: 'IMAGE',
         nsfw: true,
+        tier: 'lingerie',
     },
     {
         id: 'spicy-steamed-glass',
@@ -582,6 +598,7 @@ export const MODEL_ACTION_PRESETS: ActionPreset[] = [
         category: 'spicy',
         mediaType: 'IMAGE',
         nsfw: true,
+        tier: 'topless',
     },
     {
         id: 'spicy-wet-shirt-pool',
@@ -591,6 +608,7 @@ export const MODEL_ACTION_PRESETS: ActionPreset[] = [
         category: 'spicy',
         mediaType: 'IMAGE',
         nsfw: true,
+        tier: 'suggestive',
     },
     {
         id: 'spicy-stockings-vanity',
@@ -600,6 +618,7 @@ export const MODEL_ACTION_PRESETS: ActionPreset[] = [
         category: 'spicy',
         mediaType: 'IMAGE',
         nsfw: true,
+        tier: 'lingerie',
     },
     {
         id: 'spicy-bare-back-arch',
@@ -609,6 +628,7 @@ export const MODEL_ACTION_PRESETS: ActionPreset[] = [
         category: 'spicy',
         mediaType: 'IMAGE',
         nsfw: true,
+        tier: 'topless',
     },
     {
         id: 'spicy-oversized-shirt-morning',
@@ -618,6 +638,7 @@ export const MODEL_ACTION_PRESETS: ActionPreset[] = [
         category: 'spicy',
         mediaType: 'IMAGE',
         nsfw: true,
+        tier: 'suggestive',
     },
     {
         id: 'spicy-video-strap-slip',
@@ -627,6 +648,7 @@ export const MODEL_ACTION_PRESETS: ActionPreset[] = [
         category: 'spicy',
         mediaType: 'VIDEO',
         nsfw: true,
+        tier: 'lingerie',
     },
     {
         id: 'spicy-video-robe-turn',
@@ -636,6 +658,153 @@ export const MODEL_ACTION_PRESETS: ActionPreset[] = [
         category: 'spicy',
         mediaType: 'VIDEO',
         nsfw: true,
+        tier: 'lingerie',
+    },
+
+    // 🌶️ suggestive — sigue VESTIDA. La pose insinúa; la ropa no se quita.
+    {
+        id: 'spicy-hem-lift-glance',
+        name: 'Hem Lift Glance',
+        text: 'Standing with the weight on one hip, one hand gathering the hem of the dress a few inches up the outer thigh while the other rests flat on the opposite hip, the shoulder nearest the lens dropping so the collarbone catches the light, chin tucked and eyes lifting over it. Medium full shot at eye level, 85mm lens, warm low sun raking across the front of the body, playful restrained invitation',
+        scene: 'In a fitted ribbed midi dress, in a doorway with late afternoon sun spilling across the floor.',
+        category: 'spicy',
+        mediaType: 'IMAGE',
+        nsfw: true,
+        tier: 'suggestive',
+    },
+    {
+        id: 'spicy-collar-tug',
+        name: 'Collar Tug',
+        text: 'Seated leaning forward with the forearms braced on the thighs, one finger hooked into the neckline and drawing it a little away from the skin, the opposite hand pushing the hair back off the temple, gaze steady and level into the lens under a slight brow lift. Medium close-up from a fraction below eye level, 50mm lens, single warm key from the side leaving the far cheek in shadow, direct and unhurried',
+        scene: 'In a soft grey scoop-neck knit, perched on the edge of a low sofa in a dim living room.',
+        category: 'spicy',
+        mediaType: 'IMAGE',
+        nsfw: true,
+        tier: 'suggestive',
+    },
+    {
+        id: 'spicy-video-shirt-unbutton',
+        name: 'Slow Unbutton',
+        text: 'She works the top two buttons of the shirt open with unhurried fingers, the fabric parting just past the collarbone, then flattens her palm over her sternum and lets it slide down to rest at the waist, eyes holding the lens the whole way. Single continuous take, locked-off frame, 50mm, soft frontal key with a gentle falloff, deliberate and teasing',
+        scene: 'In a crisp oversized white shirt, standing against a plain warm-grey wall.',
+        category: 'spicy',
+        mediaType: 'VIDEO',
+        nsfw: true,
+        tier: 'suggestive',
+    },
+    {
+        id: 'spicy-video-hip-sway-turn',
+        name: 'Hip Sway Turn',
+        text: 'She rocks her weight slowly from one hip to the other, hands skimming down the outside of the thighs and back up to the waist, then turns a half step away and looks back over the shoulder with the chin low. Single continuous take, slow orbit around her, 85mm, warm practical light behind catching the edge of the silhouette, languid confident rhythm',
+        scene: 'In a slinky satin slip dress, in a dim hallway lit by one warm sconce.',
+        category: 'spicy',
+        mediaType: 'VIDEO',
+        nsfw: true,
+        tier: 'suggestive',
+    },
+
+    // 🌶️ topless — pecho descubierto, la parte de abajo se queda puesta.
+    {
+        id: 'spicy-forearm-cover-sit',
+        name: 'Forearm Cover',
+        text: 'Sitting upright on the edge of the bed with the top removed, one forearm laid horizontally across the chest to cover while the opposite hand braces on the mattress beside the hip, spine long, shoulders rolled back, head tipped a few degrees with a calm direct gaze. Medium shot at eye level, 85mm lens, soft window light from the side sculpting the ribs and the line of the waist, composed and unashamed',
+        scene: 'Topless in high-waisted black briefs, on the edge of an unmade bed in a bright bare room.',
+        category: 'spicy',
+        mediaType: 'IMAGE',
+        nsfw: true,
+        tier: 'topless',
+    },
+    {
+        id: 'spicy-hands-cup-chest',
+        name: 'Hands to Chest',
+        text: 'Kneeling upright with both hands cupped over the bare chest, fingers spread and relaxed rather than gripping, elbows drawn in close to the ribs, shoulders lifted slightly, chin dipped and eyes raised into the lens through the lashes. Medium close-up at chest height, 85mm lens, warm low key light from one side with deep shadow filling the opposite ribs, intimate and self-possessed',
+        scene: 'Topless in sheer black briefs, kneeling on dark rumpled bedding in a shadowed room.',
+        category: 'spicy',
+        mediaType: 'IMAGE',
+        nsfw: true,
+        tier: 'topless',
+    },
+    {
+        id: 'spicy-back-arch-overhead',
+        name: 'Arched, Arms Overhead',
+        text: 'Lying back across the bed with the spine arched off the sheets, both arms stretched overhead and the wrists loosely crossed, the bare chest lifted with the arch, one knee folded up and falling open, head tipped back so the throat is long and the face comes to the lens upside down. Full body shot from directly above, 35mm lens, soft overhead light pooling down the centre of the body, languid and unguarded',
+        scene: 'Topless in a thin gold hip chain and briefs, across white sheets in a sunlit bedroom.',
+        category: 'spicy',
+        mediaType: 'IMAGE',
+        nsfw: true,
+        tier: 'topless',
+    },
+    {
+        id: 'spicy-video-top-slip-off',
+        name: 'Top Slips Away',
+        text: 'She eases both straps off her shoulders and lets the top fall away from the chest, catching it briefly against her stomach before setting it aside, then draws one hand slowly up her ribs to rest flat below the collarbone, eyes coming back to the lens. Single continuous take, slow push-in to a medium shot, 85mm, warm side key travelling across the bare skin as she moves, unhurried and intimate',
+        scene: 'In a fine-strap camisole over briefs, seated on a low stool in a dim warm-lit room.',
+        category: 'spicy',
+        mediaType: 'VIDEO',
+        nsfw: true,
+        tier: 'topless',
+    },
+
+    // 🌶️ explicit — desnudo completo. La pose es el contenido, no el vestuario.
+    {
+        id: 'spicy-nude-kneel-thigh-hand',
+        name: 'Kneeling, Hand on Thigh',
+        text: 'Kneeling upright and fully bare with the thighs slightly apart, one hand spread flat high on the inner thigh and the other pushing the hair back off the face, spine stacked tall, shoulders open, chin level with a steady unbroken gaze into the lens. Full body shot at kneeling eye level, 85mm lens, warm single-source key from the side leaving one half of the body in soft shadow, confident and deliberate',
+        scene: 'Fully bare on dark rumpled bedding in a warm shadowed bedroom lit by one lamp.',
+        category: 'spicy',
+        mediaType: 'IMAGE',
+        nsfw: true,
+        tier: 'explicit',
+    },
+    {
+        id: 'spicy-nude-breast-cup-mirror',
+        name: 'Mirror, Hand to Breast',
+        text: 'Standing bare in front of a full-length mirror in three-quarter profile, one hand lifted to cup and lightly lift the near breast with the thumb resting below it, the other hand flat on the lower belly, hip pushed toward the glass, eyes meeting her own reflection rather than the lens. Full body shot catching both her and the reflection, 50mm lens, warm bedside lamp behind creating a soft rim down the front of the body, private and absorbed',
+        scene: 'Fully bare before a leaning full-length mirror in a dim bedroom with one warm lamp.',
+        category: 'spicy',
+        mediaType: 'IMAGE',
+        nsfw: true,
+        tier: 'explicit',
+    },
+    {
+        id: 'spicy-nude-supine-hand-trail',
+        name: 'Lying Back, Hand Trailing',
+        text: 'Lying back across the sheets fully bare, one knee raised and falling outward, the near hand trailing slowly down the centre of the body from between the breasts to rest low on the belly, the far arm folded under the head, lips parted and eyes half-closed toward the lens. Full body shot from a high three-quarter angle, 35mm lens, soft morning window light washing along the length of the body, languid and unhurried',
+        scene: 'Fully bare across pale crumpled sheets in a bright minimal bedroom.',
+        category: 'spicy',
+        mediaType: 'IMAGE',
+        nsfw: true,
+        tier: 'explicit',
+    },
+    {
+        id: 'spicy-nude-shower-wall',
+        name: 'Against the Wet Wall',
+        text: 'Standing bare under running water with the shoulder blades pressed back against wet tile, the head tipped back into the spray with the throat exposed, one hand smoothing water back through the hair and the other flat against the wall at hip height, one knee bent with the foot braced on the tile. Full body shot at eye level, 50mm lens, hard overhead light catching the running water and the wet sheen along the body, steamy and charged',
+        scene: 'Fully bare under a running shower in a dark tiled bathroom with warm overhead light.',
+        category: 'spicy',
+        mediaType: 'IMAGE',
+        nsfw: true,
+        tier: 'explicit',
+    },
+    {
+        id: 'spicy-video-nude-sheet-drop',
+        name: 'Sheet Drops',
+        text: 'She stands holding a sheet against her chest, holds the lens for a beat, then opens her fingers and lets the fabric fall away down her body to pool at her feet, drawing both hands slowly up her sides to rest at her ribs as she settles fully bare. Single continuous take, static frame, 85mm, warm low side key sweeping across the body as the sheet falls, slow and deliberate',
+        scene: 'Holding a white linen sheet in a warm dim bedroom with a lamp behind.',
+        category: 'spicy',
+        mediaType: 'VIDEO',
+        nsfw: true,
+        tier: 'explicit',
+    },
+    {
+        id: 'spicy-video-nude-turn-reveal',
+        name: 'Turn and Settle',
+        text: 'She stands fully bare with her back to the lens, rolls her shoulders once, then turns through profile to face front, one hand rising to rest across the collarbone and the other settling low on the hip as she comes to stillness with her eyes on the lens. Single continuous take, slow push-in from full body to medium, 85mm, warm rim light behind tracing the silhouette as she rotates into a soft frontal key, cinematic and composed',
+        scene: 'Fully bare in a warm candlelit bedroom with sheer curtains behind.',
+        category: 'spicy',
+        mediaType: 'VIDEO',
+        nsfw: true,
+        tier: 'explicit',
     },
 ]
 

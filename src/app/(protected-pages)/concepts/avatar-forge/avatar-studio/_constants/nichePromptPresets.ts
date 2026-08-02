@@ -24,6 +24,7 @@ export type NicheCategory =
     | 'egirl_alt'
     | 'boudoir'
     | 'lingerie'
+    | 'uniforms'
 
 export const NICHE_CATEGORIES: Record<NicheCategory, { label: string; icon: string }> = {
     sweet_girl: { label: 'Sweet Girl', icon: 'heart' },
@@ -34,6 +35,7 @@ export const NICHE_CATEGORIES: Record<NicheCategory, { label: string; icon: stri
     egirl_alt: { label: 'E-girl / Alt', icon: 'gamepad' },
     boudoir: { label: 'Boudoir 🌶️', icon: 'bed' },
     lingerie: { label: 'Lingerie 🌶️', icon: 'butterfly' },
+    uniforms: { label: 'Uniformes 🌶️', icon: 'badge' },
 }
 
 export const NICHE_PROMPT_PRESETS: NichePreset[] = [
@@ -709,6 +711,135 @@ export const NICHE_PROMPT_PRESETS: NichePreset[] = [
         name: 'Robe Reveal (Video)',
         text: 'She stands facing the lens in a long silk robe over a lace set, slowly unties the belt and lets the robe slip off one shoulder, then the other, finishing with a small smile and a tilt of the head. Single continuous take, locked-off medium shot, 85mm, warm low-key lamplight, slow deliberate tease',
         niche: 'lingerie',
+        mediaType: 'VIDEO',
+        nsfw: true,
+    },
+
+    // ── Uniformes 🌶️ ────────────────────────────────────────────
+    // Rol ocupacional, que es lo que no cubrían los nichos de estética.
+    // Se escriben UNA vez: el slider 🌶️ ya reescribe el vestuario por tramo
+    // (`spicyTier.wardrobe`), así que no hacen falta cuatro versiones de cada.
+    // Los de autoridad van GENÉRICOS a propósito — sin insignias, escudos,
+    // placas ni banderas: los motores rechazan uniformes oficiales
+    // reconocibles y las plataformas los tratan como suplantación.
+    // Toda referencia académica es UNIVERSITARIA ADULTA, nunca escolar.
+    {
+        id: 'uniform-teacher-desk',
+        name: 'Teacher After Class',
+        text: 'Perched on the front edge of her own desk with one heel hooked on the rail and the other foot on the floor, both hands braced on the desktop beside her hips, glasses pushed up into her hair, chin dipped and eyes raised over the empty room. Wearing a fitted pencil skirt, tucked silk blouse and low heels, in a university lecture room at dusk with chalk-dusted boards behind, 85mm portrait, warm low sun through high windows, quiet after-hours stillness',
+        niche: 'uniforms',
+        mediaType: 'IMAGE',
+        nsfw: true,
+    },
+    {
+        id: 'uniform-college-library',
+        name: 'University Library',
+        text: 'Sitting sideways in a study carrel with one knee drawn up against the desk edge and an open textbook forgotten under her forearm, the free hand twirling a pen against her lower lip, head turning to the lens with a slow distracted smile. Wearing a cropped university sweatshirt and a short pleated skirt with knee socks, deep in the stacks of a university library at night, 50mm, warm desk lamp pooling against cold overhead light, adult postgraduate setting',
+        niche: 'uniforms',
+        mediaType: 'IMAGE',
+        nsfw: true,
+    },
+    {
+        id: 'uniform-nurse-station',
+        name: 'Night Shift Nurse',
+        text: 'Leaning back against the counter of the nurses station with both hands gripping its edge behind her hips, one ankle crossed over the other, stethoscope hanging loose around her neck, head tipped back against the cabinet then coming level to the lens. Wearing a fitted scrub set with the top button open and white sneakers, in a dim hospital corridor at 3am with light spilling from one doorway, 50mm, cool overhead fluorescents against a warm spill, exhausted and unguarded',
+        niche: 'uniforms',
+        mediaType: 'IMAGE',
+        nsfw: true,
+    },
+    {
+        id: 'uniform-flight-attendant',
+        name: 'Cabin Crew Layover',
+        text: 'Standing in the empty aisle with one hand steadying herself on a seat back and the other unclipping the neck scarf, weight cocked onto one hip, the jacket already off and folded over an armrest, chin turning over the shoulder to the lens. Wearing a fitted airline-style skirt suit in navy with a silk neck scarf and a small pinned name badge, in a dim empty cabin after landing with the reading lights on, 35mm, warm pooled cabin lighting, end-of-shift intimacy',
+        niche: 'uniforms',
+        mediaType: 'IMAGE',
+        nsfw: true,
+    },
+    {
+        id: 'uniform-secretary-office',
+        name: 'Corner Office, Late',
+        text: 'Half-seated on the edge of the executive desk with a stack of files pushed aside, one hand flat on the wood behind her and the other pulling a pen from her hair to let it fall, legs crossed at the ankle, eyes level and unhurried on the lens. Wearing a tailored high-waisted skirt, a fitted blouse with the top buttons open and heels, in a glass corner office at night with the city lit behind, 85mm, warm desk lamp against cool window light, after-hours composure',
+        niche: 'uniforms',
+        mediaType: 'IMAGE',
+        nsfw: true,
+    },
+    {
+        id: 'uniform-waitress-diner',
+        name: 'Diner Close-Up',
+        text: 'Leaning both forearms on the diner counter from behind it with the order pad still in one hand and a pencil behind her ear, shoulders rounded in toward the lens, apron strings tied tight at the waist, brow raised in a knowing half smile. Wearing a fitted retro diner dress with a short apron and a name tag, behind a chrome counter under neon at closing time, 50mm, warm neon spill with hard overhead pools, small-hours flirtation',
+        niche: 'uniforms',
+        mediaType: 'IMAGE',
+        nsfw: true,
+    },
+    {
+        id: 'uniform-barista-counter',
+        name: 'Barista, Last Order',
+        text: 'Turned side-on at the espresso machine with one hand on the portafilter and the other resting on the counter edge, hip leaning into the machine, head tipping back over the shoulder to the lens as steam rises past her face. Wearing a fitted black tee with a canvas apron knotted at the waist and rolled sleeves, behind the bar of a small café at closing with chairs already up, 50mm, warm pendant light through steam, easy end-of-day warmth',
+        niche: 'uniforms',
+        mediaType: 'IMAGE',
+        nsfw: true,
+    },
+    {
+        id: 'uniform-maid-suite',
+        name: 'Housekeeping Suite',
+        text: 'Kneeling on the freshly made hotel bed with one hand still smoothing the sheet and the other resting on her own thigh, spine long, apron ties loose at the small of her back, head turning to the lens as if just interrupted. Wearing a fitted black housekeeping dress with a white apron and cuffs, in a bright hotel suite with the trolley in the doorway behind, 50mm, soft daylight through sheer curtains, caught-mid-task poise',
+        niche: 'uniforms',
+        mediaType: 'IMAGE',
+        nsfw: true,
+    },
+    {
+        id: 'uniform-officer-generic',
+        name: 'Duty Shift (Generic)',
+        text: 'Standing with the weight settled onto one hip and both thumbs hooked into a plain duty belt, the shirt unbuttoned at the collar and the sleeves rolled to the forearm, shoulders squared, chin dipped with a level unimpressed gaze into the lens. Wearing a plain navy uniform shirt with no insignia, patches, badges or flags of any kind and matching trousers, in a bare locker room at end of shift, 50mm, hard overhead light, deliberately unaffiliated styling',
+        niche: 'uniforms',
+        mediaType: 'IMAGE',
+        nsfw: true,
+    },
+    {
+        id: 'uniform-cadet-generic',
+        name: 'Off-Duty Fatigues',
+        text: 'Sitting on the edge of a bunk with the fatigue jacket open over a plain tank, elbows on her knees and the hands loosely clasped between them, dog-tag-free chain at her throat, head lifting slowly to the lens. Wearing plain olive fatigue trousers and an unmarked jacket with no insignia, patches, rank or flags, in a spare barracks room with grey light from a high window, 50mm, flat overcast light, deliberately unaffiliated styling',
+        niche: 'uniforms',
+        mediaType: 'IMAGE',
+        nsfw: true,
+    },
+    {
+        id: 'uniform-firefighter-generic',
+        name: 'Station Bay',
+        text: 'Standing in the open bay with the heavy coat shrugged off and hanging from the waist by its own sleeves, a plain fitted tank underneath, both hands hooked in the braces at her hips, chin lifted and jaw set toward the lens. Wearing plain heavy turnout trousers with reflective banding and unmarked braces, no crests, numbers or flags, in a concrete station bay with equipment racked behind, 35mm, hard daylight through the open door, deliberately unaffiliated styling',
+        niche: 'uniforms',
+        mediaType: 'IMAGE',
+        nsfw: true,
+    },
+    {
+        id: 'uniform-trainer-floor',
+        name: 'Personal Trainer',
+        text: 'Crouched on one knee beside a bench with a forearm resting across the raised thigh and a stopwatch hanging from the other hand, shoulders open, head turning up to the lens with a challenging half smile. Wearing a fitted zip crop top with a whistle on a cord and high-waisted leggings, on the floor of an empty gym at dawn, 35mm, cool window light with hard equipment shadows, coaching directness',
+        niche: 'uniforms',
+        mediaType: 'IMAGE',
+        nsfw: true,
+    },
+    {
+        id: 'uniform-yoga-instructor',
+        name: 'Yoga Instructor',
+        text: 'Kneeling upright at the front of the mat with the hips settled back onto the heels, both hands resting palm-up on the thighs, spine stacked long and shoulders drawn back, eyes opening slowly to the lens. Wearing a fitted cross-back top and matching leggings, at the head of an empty studio with mirrors and warm timber, 50mm, soft morning light across the floor, composed and centred',
+        niche: 'uniforms',
+        mediaType: 'IMAGE',
+        nsfw: true,
+    },
+    {
+        id: 'uniform-cheer-sideline',
+        name: 'Sideline Squad',
+        text: 'Standing with the pom-poms lowered and resting against her thighs, weight cocked onto one hip, ponytail swinging forward over a shoulder, chin dipped and eyes raised into the lens between routines. Wearing a fitted two-piece squad kit in plain team colours with no school name, crest or lettering, on the sideline of an empty university stadium at dusk, 85mm, warm floodlight from one side, adult collegiate setting',
+        niche: 'uniforms',
+        mediaType: 'IMAGE',
+        nsfw: true,
+    },
+    {
+        id: 'uniform-video-nurse-corridor',
+        name: 'Night Shift (Video)',
+        text: 'She walks slowly down the empty corridor toward the lens, pulls the stethoscope from around her neck and lets it hang from one hand, then stops and leans a shoulder into the wall, tipping her head back against it before bringing her eyes level to the lens. Wearing a fitted scrub set with the collar open, in a dim hospital corridor at night, single continuous take, slow dolly back, 50mm, cool fluorescents with one warm doorway spill, weary and unguarded',
+        niche: 'uniforms',
         mediaType: 'VIDEO',
         nsfw: true,
     },
