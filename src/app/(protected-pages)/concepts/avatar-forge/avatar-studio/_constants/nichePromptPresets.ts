@@ -25,6 +25,7 @@ export type NicheCategory =
     | 'boudoir'
     | 'lingerie'
     | 'uniforms'
+    | 'selfie'
 
 export const NICHE_CATEGORIES: Record<NicheCategory, { label: string; icon: string }> = {
     sweet_girl: { label: 'Sweet Girl', icon: 'heart' },
@@ -36,6 +37,7 @@ export const NICHE_CATEGORIES: Record<NicheCategory, { label: string; icon: stri
     boudoir: { label: 'Boudoir 🌶️', icon: 'bed' },
     lingerie: { label: 'Lingerie 🌶️', icon: 'butterfly' },
     uniforms: { label: 'Uniformes 🌶️', icon: 'badge' },
+    selfie: { label: 'Selfies 📱', icon: 'phone' },
 }
 
 export const NICHE_PROMPT_PRESETS: NichePreset[] = [
@@ -840,6 +842,129 @@ export const NICHE_PROMPT_PRESETS: NichePreset[] = [
         name: 'Night Shift (Video)',
         text: 'She walks slowly down the empty corridor toward the lens, pulls the stethoscope from around her neck and lets it hang from one hand, then stops and leans a shoulder into the wall, tipping her head back against it before bringing her eyes level to the lens. Wearing a fitted scrub set with the collar open, in a dim hospital corridor at night, single continuous take, slow dolly back, 50mm, cool fluorescents with one warm doorway spill, weary and unguarded',
         niche: 'uniforms',
+        mediaType: 'VIDEO',
+        nsfw: true,
+    },
+
+    // ── Selfies 📱 ──────────────────────────────────────────────
+    // El formato AUTORRETRATO, no el aparato: unos van con iPhone y luz
+    // natural y otros con digicam y flash duro, según la foto.
+    //
+    // CLAVE: pedir "selfie" a secas devuelve una foto de estudio. Lo que hace
+    // que el modelo la lea como autorretrato es declarar la MECÁNICA —
+    // teléfono visible en la mano, brazo en cuadro, lente ancha de móvil (~24mm
+    // equivalente) con su ligera distorsión, encuadre por encima de la línea de
+    // ojos y la mirada a la PANTALLA, no al objetivo. Sin eso el resto del
+    // prompt da igual.
+    {
+        id: 'selfie-mirror-bedroom',
+        name: 'Bedroom Mirror',
+        text: 'Full-length mirror selfie taken on a phone held at chest height, the handset clearly visible in the reflection, wearing a cropped baby tee and low-rise sweatpants, in a bedroom with posters and string lights on the wall behind, phone wide lens around 24mm equivalent with mild edge distortion, flat overhead room light with a soft screen glow on the face, slightly crooked handheld framing, authentic self-shot feel',
+        niche: 'selfie',
+        mediaType: 'IMAGE',
+        nsfw: true,
+    },
+    {
+        id: 'selfie-mirror-gym',
+        name: 'Gym Mirror',
+        text: 'Full-length mirror selfie in a gym, phone held low at hip height with the handset visible in the reflection, wearing a fitted sports bra and high-waisted leggings, racked dumbbells and equipment behind, phone wide lens around 24mm equivalent, hard overhead gym lighting with a bright hotspot on the mirror, faint smudges on the glass, casual unposed framing',
+        niche: 'selfie',
+        mediaType: 'IMAGE',
+        nsfw: true,
+    },
+    {
+        id: 'selfie-mirror-fitting-room',
+        name: 'Fitting Room',
+        text: 'Mirror selfie in a store fitting room, phone raised to chest height with the handset visible, wearing a short slip dress with the price tag still on and her own jacket hooked on the wall, curtain half drawn behind, phone wide lens around 24mm equivalent, unflattering flat overhead retail light, cramped tight framing, spontaneous try-on energy',
+        niche: 'selfie',
+        mediaType: 'IMAGE',
+        nsfw: true,
+    },
+    {
+        id: 'selfie-mirror-bathroom-flash',
+        name: 'Bar Bathroom Flash',
+        text: 'Mirror selfie in a bar bathroom shot with direct camera flash, the flash blowing out a bright hotspot on the mirror and the handset visible in her hand, wearing a going-out halter top and denim mini skirt, graffitied tiles behind, harsh frontal flash with deep falloff into darkness, slight overexposure on the skin, visible grain, tilted handheld crop, nightlife amateur look',
+        niche: 'selfie',
+        mediaType: 'IMAGE',
+        nsfw: true,
+    },
+    {
+        id: 'selfie-mirror-elevator',
+        name: 'Elevator Mirror',
+        text: 'Mirror selfie in a mirrored elevator, phone held at chest height with the handset visible, wearing an oversized hoodie over bike shorts, brushed metal panels and buttons reflecting beside her, phone wide lens around 24mm equivalent, cool overhead downlight with reflections repeating in the mirrored walls, quick candid framing',
+        niche: 'selfie',
+        mediaType: 'IMAGE',
+        nsfw: true,
+    },
+    {
+        id: 'selfie-arm-bed-morning',
+        name: 'Morning, Arm Out',
+        text: "Arm's-length selfie lying in bed, the extended forearm visible in the bottom of the frame and the eyes on the phone screen rather than the lens, wearing a thin cotton camisole with the duvet at her waist, tousled bed hair, phone wide lens around 24mm equivalent held slightly above eye level, soft morning daylight from a window off to one side, no makeup and no styling, unguarded just-woke-up feel",
+        niche: 'selfie',
+        mediaType: 'IMAGE',
+        nsfw: true,
+    },
+    {
+        id: 'selfie-highangle-bed',
+        name: 'High Angle, Lying Down',
+        text: 'Selfie shot from directly above while lying back on the bed, the phone held high overhead with the arm entering the top of the frame, wearing a loose ribbed tank, hair fanned across the pillow, phone wide lens around 24mm equivalent looking straight down, warm bedside lamp light from one side with the screen glow on the face, eyes on the screen not the lens',
+        niche: 'selfie',
+        mediaType: 'IMAGE',
+        nsfw: true,
+    },
+    {
+        id: 'selfie-car-seat',
+        name: 'Car, Before Going Out',
+        text: "Arm's-length selfie in the driver's seat before going out, seatbelt still across the chest and the extended arm visible in frame, wearing a going-out top with a small gold chain, parked at night with a lit car park behind the window, phone wide lens around 24mm equivalent from slightly above, interior dome light plus cold blue light off the phone screen, grainy low-light look",
+        niche: 'selfie',
+        mediaType: 'IMAGE',
+        nsfw: true,
+    },
+    {
+        id: 'selfie-kitchen-night',
+        name: 'Kitchen, 2AM',
+        text: "Arm's-length selfie standing in a dark kitchen at night, the fridge door open behind her throwing the only light, wearing an oversized tee and nothing else visible in frame, the extended arm and phone edge in shot, phone wide lens around 24mm equivalent, hard cold fridge light from behind with heavy shadow on the front, heavy grain, unplanned midnight snapshot",
+        niche: 'selfie',
+        mediaType: 'IMAGE',
+        nsfw: true,
+    },
+    {
+        id: 'selfie-hotel-window',
+        name: 'Hotel Window Light',
+        text: "Arm's-length selfie by a hotel room window, sheer curtain diffusing hard midday sun across her, wearing a white cotton set with the robe fallen off one shoulder, unmade bed behind, phone wide lens around 24mm equivalent held just above eye level, bright directional daylight with clean falloff, minimal styling, travel-day intimacy",
+        niche: 'selfie',
+        mediaType: 'IMAGE',
+        nsfw: true,
+    },
+    {
+        id: 'selfie-rooftop-lights',
+        name: 'Rooftop String Lights',
+        text: "Arm's-length selfie on a rooftop at night under warm string lights, the extended arm and phone visible in frame, wearing a cropped knit and jeans with a jacket over the shoulders, blurred city glow behind, phone wide lens around 24mm equivalent, warm bulb light overhead as the key with cool city light behind, handheld tilt, easy end-of-night mood",
+        niche: 'selfie',
+        mediaType: 'IMAGE',
+        nsfw: true,
+    },
+    {
+        id: 'selfie-beach-towel',
+        name: 'Beach Towel',
+        text: "Arm's-length selfie lying on a beach towel, the phone held above her with the arm in the top of frame and sand on her forearm, wearing a swim set with a shirt thrown open over it, bright sky at the edge of the frame, phone wide lens around 24mm equivalent from above, harsh midday sun with strong contrast and a slight lens flare, squinting into the screen",
+        niche: 'selfie',
+        mediaType: 'IMAGE',
+        nsfw: true,
+    },
+    {
+        id: 'selfie-digicam-party',
+        name: 'Digicam House Party',
+        text: 'Self-shot on a small compact digital camera held at arm\'s length at a house party, direct on-camera flash blowing out the skin, wearing a baby tee and low-rise cargo trousers with butterfly clips in the hair, blurred people and a lamp-lit room behind, harsh frontal flash with dark falloff, visible noise, a small date stamp in the corner, crooked crop, early-2000s amateur snapshot look',
+        niche: 'selfie',
+        mediaType: 'IMAGE',
+        nsfw: true,
+    },
+    {
+        id: 'selfie-video-mirror',
+        name: 'Mirror Clip (Video)',
+        text: 'Vertical phone video shot into a full-length bedroom mirror, the handset visible in her hand throughout, wearing a cropped tee and soft shorts, posters and string lights behind, single continuous handheld take with natural sway, phone wide lens around 24mm equivalent, flat room light with screen glow, casual unrehearsed self-shot energy',
+        niche: 'selfie',
         mediaType: 'VIDEO',
         nsfw: true,
     },

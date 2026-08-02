@@ -471,4 +471,65 @@ export const NICHE_POSES: Record<string, NichePose> = {
         base: 'She walks toward the lens, pulls the stethoscope from her neck, then leans a shoulder into the wall and tips her head back before levelling her eyes',
         spicy: 'She stops against the wall, works the scrub top open one tie at a time, then draws both hands slowly up her ribs and holds, eyes never leaving the lens',
     },
+
+    // ── Selfies 📱 ──────────────────────────────────────────────
+    // En una selfie, una mano SIEMPRE está ocupada con el teléfono. La pose es
+    // lo que hace la OTRA — si no se dice, el modelo inventa dos manos libres y
+    // el autorretrato deja de leerse como tal.
+    'selfie-mirror-bedroom': {
+        base: 'Hip cocked toward the mirror with the phone in one hand at chest height, the free hand hooked into the waistband of the sweatpants, chin dipped and eyes on the screen',
+        spicy: 'Hip cocked to the mirror with the phone in one hand, the free hand pushing the tee up and holding it bunched just under the collarbone, eyes flicking from the screen to her own reflection',
+    },
+    'selfie-mirror-gym': {
+        base: 'Standing square to the mirror with the phone low at the hip, the free hand lifting the hem of the sports bra a little clear of the ribs, weight on one leg, chin level',
+        spicy: 'Turned side-on to the mirror with the phone low, the free hand drawing the sports bra up over the chest and holding it there, spine arched, eyes on the reflection',
+    },
+    'selfie-mirror-fitting-room': {
+        base: 'One hand holding the phone at chest height and the other pulling the dress taut at the waist to check the fit, weight shifted onto one hip, head tilted at the reflection',
+        spicy: 'Phone in one hand while the other slips a strap off the shoulder and lets the dress fall open down the front, hip pushed toward the glass, eyes on the reflection',
+    },
+    'selfie-mirror-bathroom-flash': {
+        base: 'Phone raised at chest height into the flash, the free hand on the pushed-out hip, shoulders squared, lips parted and eyes cutting to the mirror past the burst',
+        spicy: 'Phone raised into the flash, the free hand pulling the halter neckline down off one shoulder, hip pushed out, chin low and eyes on the reflection through the glare',
+    },
+    'selfie-mirror-elevator': {
+        base: 'Phone at chest height, the free hand tugging the hoodie sleeve over the knuckles, weight back on one heel, chin tucked toward the screen',
+        spicy: 'Phone at chest height while the free hand pulls the hoodie zip down to the sternum, shoulders rolled forward, eyes lifted to the reflection',
+    },
+    'selfie-arm-bed-morning': {
+        base: 'Lying on her side with the phone extended overhead in one hand, the free hand tucked under her cheek on the pillow, knees drawn up under the duvet, eyes half-open on the screen',
+        spicy: 'Lying on her back with the phone extended overhead, the duvet pushed to her hips and the free hand resting flat on her stomach, chin tipped back toward the screen',
+    },
+    'selfie-highangle-bed': {
+        base: 'Flat on her back with the phone held high overhead, the free arm bent up beside her head on the pillow, one knee folded up, eyes on the screen',
+        spicy: 'Flat on her back with the phone overhead, the free hand drawn slowly up from her stomach to rest below the collarbone, spine arching off the sheets, lips parted at the screen',
+    },
+    'selfie-car-seat': {
+        base: 'Phone held out at arm\'s length above the wheel, the free hand adjusting the seatbelt across her chest, shoulders turned toward the door, eyes on the screen',
+        spicy: 'Phone at arm\'s length, the free hand slipping the seatbelt aside and pulling the neckline down off one shoulder, head tipped back against the headrest',
+    },
+    'selfie-kitchen-night': {
+        base: 'Phone extended in one hand with the fridge light behind, the free hand holding the tee down at the thigh, weight on one leg, squinting at the screen',
+        spicy: 'Phone extended with the fridge light behind, the free hand bunching the tee up at the hip and holding it there, hip pushed out, chin low toward the screen',
+    },
+    'selfie-hotel-window': {
+        base: 'Phone at arm\'s length just above eye level, the free hand holding the robe closed at the chest, shoulder turned into the window light, soft smile at the screen',
+        spicy: 'Phone at arm\'s length, the free hand letting the robe fall from both shoulders and resting flat between her breasts, chin lifted into the window light',
+    },
+    'selfie-rooftop-lights': {
+        base: 'Phone extended overhead, the free hand holding the jacket closed at her throat, head tipped toward the shoulder, laughing at the screen',
+        spicy: 'Phone extended overhead, the free hand pushing the jacket back off both shoulders and gathering her hair off the nape, chin tipped back under the lights',
+    },
+    'selfie-beach-towel': {
+        base: 'Lying back on the towel with the phone held above her in one hand, the free forearm shading her eyes, one knee bent up, squinting at the screen',
+        spicy: 'Lying back with the phone above her, the free hand pulling the open shirt back off her shoulder and resting on her stomach, spine arched into the sand, lips parted',
+    },
+    'selfie-digicam-party': {
+        base: 'Compact camera held out at arm\'s length, the free hand flashing a peace sign beside her face, shoulders drawn up, tongue out at the lens through the flash',
+        spicy: 'Camera at arm\'s length, the free hand tugging the baby tee up to the ribs and holding it, hip cocked, chin low and eyes into the flash',
+    },
+    'selfie-video-mirror': {
+        base: 'She raises the phone to the mirror, cocks a hip, tugs the hem of the tee straight with her free hand, then turns a half step to check the side and comes back to the screen',
+        spicy: 'She raises the phone to the mirror, draws the tee up with her free hand and holds it bunched under her collarbone, turns a half step to check the line, then lets it fall',
+    },
 }

@@ -40,6 +40,7 @@ import {
     PiBedDuotone,
     PiButterflyDuotone,
     PiIdentificationBadgeDuotone,
+    PiDeviceMobileCameraDuotone,
 } from 'react-icons/pi'
 import {
     MODEL_ACTION_PRESETS,
@@ -94,6 +95,7 @@ const nicheIcons: Record<NicheCategory, React.ReactNode> = {
     boudoir: <PiBedDuotone className="w-4 h-4 text-red-500" />,
     lingerie: <PiButterflyDuotone className="w-4 h-4 text-red-400" />,
     uniforms: <PiIdentificationBadgeDuotone className="w-4 h-4 text-sky-500" />,
+    selfie: <PiDeviceMobileCameraDuotone className="w-4 h-4 text-fuchsia-500" />,
 }
 
 const PromptLibraryDrawer = ({ userId }: PromptLibraryDrawerProps) => {
