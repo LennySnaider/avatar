@@ -33,6 +33,7 @@ export default async function Page({ searchParams }: PageProps) {
         base64: '', // Will be fetched client-side
         type: ref.type as 'general' | 'face' | 'angle' | 'body',
         storagePath: ref.storage_path,
+        storageProvider: ref.storage_provider,
     }))
 
     return (

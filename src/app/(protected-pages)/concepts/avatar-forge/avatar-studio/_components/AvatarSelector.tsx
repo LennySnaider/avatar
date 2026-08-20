@@ -156,9 +156,9 @@ const AvatarSelector = ({ userId, isOpen, onClose }: AvatarSelectorProps) => {
     // Helper to download and convert to base64 with thumbnail. Goes through a
     // server-signed URL (ownership enforced server-side) instead of the
     // browser's anon Supabase client.
-    const downloadReferenceWithThumbnail = async (storagePath: string): Promise<{ base64: string; url: string; thumbnailUrl: string }> => {
+    const downloadReferenceWithThumbnail = async (storagePath: string, storageProvider?: string | null): Promise<{ base64: string; url: string; thumbnailUrl: string }> => {
         try {
-            const signedUrl = await getSignedUrl('avatars', storagePath)
+            const signedUrl = await getSignedUrl('avatars', storagePath, 3600, storageProvider)
             // La convención de esta función para "no hay" son strings vacíos.
             if (!signedUrl) return { base64: '', url: '', thumbnailUrl: '' }
             const res = await fetch(signedUrl)
@@ -211,7 +211,7 @@ const AvatarSelector = ({ userId, isOpen, onClose }: AvatarSelectorProps) => {
 
             // Convert to ReferenceImage format with thumbnails and set in store
             for (const ref of refs) {
-                const { base64, url, thumbnailUrl } = await downloadReferenceWithThumbnail(ref.storage_path)
+                const { base64, url, thumbnailUrl } = await downloadReferenceWithThumbnail(ref.storage_path, ref.storage_provider)
                 // Ref sin bytes (ventana del trasplante: la fila existe, el
                 // archivo sigue en el proyecto viejo) → NO entra al store.
                 // Una ref con url:'' acababa como <img src=""> en la barra y
@@ -224,6 +224,7 @@ const AvatarSelector = ({ userId, isOpen, onClose }: AvatarSelectorProps) => {
                     base64,
                     type: ref.type as ReferenceImage['type'],
                     storagePath: ref.storage_path,
+                    storageProvider: ref.storage_provider,
                     thumbnailUrl,
                 }
 

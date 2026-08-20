@@ -22,9 +22,9 @@ interface AvatarStudioProviderProps {
 // Download file from Supabase Storage and convert to base64. Goes through a
 // server-signed URL (identity/ownership enforced server-side) instead of the
 // browser's anon Supabase client.
-const downloadAndConvertToBase64 = async (bucket: string, path: string): Promise<{ base64: string; url: string }> => {
+const downloadAndConvertToBase64 = async (bucket: string, path: string, provider?: string | null): Promise<{ base64: string; url: string }> => {
     try {
-        const signedUrl = await getSignedUrl(bucket, path)
+        const signedUrl = await getSignedUrl(bucket, path, 3600, provider)
         // Objeto ausente = referencia anterior al trasplante de Supabase: la
         // fila viajó pero sus bytes se quedaron en el proyecto viejo. NO se
         // lanza: antes esto hacía `throw` para caer en su propio `catch` dos
@@ -77,7 +77,7 @@ const loadReferencesWithBase64 = async (refs: ReferenceImage[]): Promise<Referen
 
             // If we have storagePath, fetch from Storage using Supabase client
             if (ref.storagePath) {
-                const { base64, url } = await downloadAndConvertToBase64('avatars', ref.storagePath)
+                const { base64, url } = await downloadAndConvertToBase64('avatars', ref.storagePath, ref.storageProvider)
 
                 // Create optimized thumbnail using Canvas (200x200)
                 let thumbnailUrl = url

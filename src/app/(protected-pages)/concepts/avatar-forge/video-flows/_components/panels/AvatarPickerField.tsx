@@ -10,9 +10,9 @@ import type { Avatar, AvatarReference, PhysicalMeasurements } from '@/@types/sup
 
 // Fetch a storage object through a server-signed URL (identity/ownership
 // enforced server-side) instead of the browser's anon Supabase client.
-async function downloadViaSignedUrl(bucket: string, path: string): Promise<Blob | null> {
+async function downloadViaSignedUrl(bucket: string, path: string, provider?: string | null): Promise<Blob | null> {
     try {
-        const url = await getSignedUrl(bucket, path)
+        const url = await getSignedUrl(bucket, path, 3600, provider)
         if (!url) return null
         const res = await fetch(url)
         if (!res.ok) return null
@@ -58,7 +58,7 @@ export default function AvatarPickerField({ value, onSelect }: AvatarPickerField
                         const faceRef = refs.find((r) => r.type === 'face') ?? refs[0]
                         let thumbnailDataUrl: string | null = null
                         if (faceRef?.storage_path) {
-                            const blob = await downloadViaSignedUrl('avatars', faceRef.storage_path)
+                            const blob = await downloadViaSignedUrl('avatars', faceRef.storage_path, faceRef.storage_provider)
                             if (blob) {
                                 thumbnailDataUrl = await blobToDataUrl(blob)
                             }
@@ -85,7 +85,7 @@ export default function AvatarPickerField({ value, onSelect }: AvatarPickerField
             const refs = avatar.avatar_references ?? (await apiGetAvatarReferences(avatar.id))
             const references = await Promise.all(
                 refs.map(async (ref) => {
-                    const data = await downloadViaSignedUrl('avatars', ref.storage_path)
+                    const data = await downloadViaSignedUrl('avatars', ref.storage_path, ref.storage_provider)
                     const base64 = data ? await blobToBase64(data) : ''
                     return {
                         id: ref.id,

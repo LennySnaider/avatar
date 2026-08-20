@@ -37,6 +37,7 @@ export default async function Page({ params }: PageProps) {
         base64: '', // Will be loaded client-side from storagePath
         type: ref.type as 'general' | 'face' | 'angle' | 'body',
         storagePath: ref.storage_path,
+        storageProvider: ref.storage_provider,
     }))
 
     return (

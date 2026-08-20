@@ -96,6 +96,16 @@ export async function putMediaObject(opts: {
     cacheControl?: string
     /** Sobrescribir si ya existe (content-addressed → mismo contenido). */
     upsert?: boolean
+    /**
+     * Bucket de Supabase en la rama de CAÍDA. Solo importa con R2 apagado: en
+     * R2 hay un único bucket y la carpeta la lleva el propio `path`.
+     *
+     * Existe desde que las referencias de avatar entran por aquí (2026-08-20):
+     * viven en el bucket `avatars`, no en `generations`, y sin este parámetro
+     * apagar R2 las habría mandado en silencio al bucket equivocado — un
+     * rollback por env var que corrompe datos deja de ser un rollback.
+     */
+    supabaseBucket?: string
 }): Promise<PutMediaResult> {
     const cacheControl = opts.cacheControl ?? IMMUTABLE_CACHE
 
@@ -127,9 +137,10 @@ export async function putMediaObject(opts: {
     const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL
     if (!SUPABASE_URL)
         throw new Error('NEXT_PUBLIC_SUPABASE_URL is not defined')
+    const bucket = opts.supabaseBucket ?? 'generations'
     const supabase = createServerSupabaseClient()
     const { error } = await supabase.storage
-        .from('generations')
+        .from(bucket)
         .upload(opts.path, opts.body, {
             contentType: opts.contentType,
             cacheControl: '31536000',
@@ -137,7 +148,7 @@ export async function putMediaObject(opts: {
         })
     if (error) throw new Error(`Failed to persist media: ${error.message}`)
     return {
-        url: `${SUPABASE_URL}/storage/v1/object/public/generations/${opts.path}`,
+        url: `${SUPABASE_URL}/storage/v1/object/public/${bucket}/${opts.path}`,
         provider: 'supabase',
     }
 }

@@ -55,6 +55,11 @@ export type Database = {
                     avatar_id: string | null
                     type: ReferenceType
                     storage_path: string
+                    // Dónde viven los bytes (migración 20260820220000).
+                    // Opcional en el tipo: las filas leídas antes de aplicarla
+                    // no lo traen, y el lector ya trata undefined como
+                    // 'supabase'.
+                    storage_provider?: string | null
                     mime_type: string
                     created_at: string | null
                 }
@@ -63,6 +68,7 @@ export type Database = {
                     avatar_id?: string | null
                     type: ReferenceType
                     storage_path: string
+                    storage_provider?: string | null
                     mime_type: string
                     created_at?: string | null
                 }
@@ -71,6 +77,7 @@ export type Database = {
                     avatar_id?: string | null
                     type?: ReferenceType
                     storage_path?: string
+                    storage_provider?: string | null
                     mime_type?: string
                     created_at?: string | null
                 }

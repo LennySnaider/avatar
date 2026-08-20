@@ -58,6 +58,10 @@ export interface AvatarReferenceImage {
     base64: string
     type: 'general' | 'face' | 'angle' | 'body' | 'body_nsfw'
     storagePath?: string
+    /** Dónde viven los bytes (supabase | r2). Viaja pegado al path a
+     *  propósito: separarlos es como se rompieron ocho lectores en la
+     *  migración de `generations`. */
+    storageProvider?: string | null
     thumbnailUrl?: string
 }
 

@@ -92,6 +92,10 @@ export interface ReferenceImage {
         | 'glutes'
         | 'pose'
     storagePath?: string
+    /** Dónde viven los bytes de `storagePath` (supabase | r2). Viaja junto al
+     *  path porque separarlos es como se rompieron ocho lectores en la
+     *  migración de `generations` — ver getRowMediaUrl en storagePaths. */
+    storageProvider?: string | null
     thumbnailUrl?: string // Optimized thumbnail for UI display
     /**
      * Descripción en texto del OBJETO (solo assets). Los assets viajan al motor

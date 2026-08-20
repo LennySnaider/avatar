@@ -1,4 +1,5 @@
 import { createServerSupabaseClient } from '@/lib/supabase'
+import { getR2PublicUrl } from '@/lib/mediaStore'
 import type { AvatarWithReferences } from '@/app/(protected-pages)/concepts/avatar-forge/avatar-list/types'
 import type { Avatar, AvatarReference } from '@/@types/supabase'
 
@@ -72,7 +73,11 @@ const getAvatars = async (_queryParams: {
             // ventana del trasplante conviven filas viejas sin bytes y
             // re-subidas nuevas del mismo tipo — hay que probar hasta que
             // una firme, no rendirse con la primera.
-            const candidates = [
+            const candidates: Array<{
+                type: string
+                storage_path: string
+                storage_provider?: string | null
+            }> = [
                 ...references.filter((r: { type: string }) => r.type === 'face'),
                 ...references.filter((r: { type: string }) => r.type === 'angle'),
                 ...references.filter((r: { type: string }) => r.type === 'general'),
@@ -80,6 +85,18 @@ const getAvatars = async (_queryParams: {
 
             let thumbnailUrl: string | undefined
             for (const cand of candidates) {
+                // R2 no se firma: su bucket es público (igual que `avatars` en
+                // Supabase) y su URL trae caché inmutable de un año — que es
+                // justo el egress que la migración venía a ahorrar. Ver
+                // getSignedUrl en AvatarForgeService.
+                if (cand.storage_provider === 'r2') {
+                    try {
+                        thumbnailUrl = getR2PublicUrl(cand.storage_path)
+                        break
+                    } catch {
+                        // sin base pública configurada → se intenta Supabase
+                    }
+                }
                 const { data: signedUrl } = await supabase.storage
                     .from('avatars')
                     .createSignedUrl(cand.storage_path, 3600)

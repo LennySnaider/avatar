@@ -269,7 +269,12 @@ const AvatarEditDrawer = ({
                         current.storagePath === row.storage_path)
                 )
                     return
-                const signed = await getSignedUrl('avatars', row.storage_path)
+                const signed = await getSignedUrl(
+                    'avatars',
+                    row.storage_path,
+                    3600,
+                    row.storage_provider,
+                )
                 if (!signed) return lost()
                 const dataUrl = await urlToDataUrl(signed)
                 const m = dataUrl.match(/^data:(.+);base64,(.+)$/)
@@ -282,6 +287,7 @@ const AvatarEditDrawer = ({
                     base64: m[2],
                     type,
                     storagePath: row.storage_path,
+                    storageProvider: row.storage_provider,
                 })
             } catch {
                 // La fila existía (si no, ya habríamos salido arriba): esto es

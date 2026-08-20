@@ -116,6 +116,8 @@ const AvatarCard = ({ avatar }: AvatarCardProps) => {
                     const signedUrl = await getSignedUrl(
                         'avatars',
                         cand.storage_path,
+                        3600,
+                        cand.storage_provider,
                     )
                     if (!signedUrl) continue
                     const res = await fetch(signedUrl)
@@ -178,6 +180,8 @@ const AvatarCard = ({ avatar }: AvatarCardProps) => {
                     const signedUrl = await getSignedUrl(
                         'avatars',
                         ref.storage_path,
+                        3600,
+                        ref.storage_provider,
                     )
                     const res = signedUrl ? await fetch(signedUrl) : null
                     const data = res?.ok ? await res.blob() : null
@@ -215,6 +219,7 @@ const AvatarCard = ({ avatar }: AvatarCardProps) => {
                                 | 'angle'
                                 | 'body',
                             storagePath: ref.storage_path,
+                            storageProvider: ref.storage_provider,
                             thumbnailUrl: thumb,
                         }
                         // `refIds` alimenta el borrado al guardar: todo lo que

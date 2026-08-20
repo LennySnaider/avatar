@@ -13,6 +13,8 @@ import {
     putMediaObject,
     r2Enabled,
     createPresignedPutUrl,
+    getR2PublicUrl,
+    r2ObjectExists,
 } from '@/lib/mediaStore'
 import type { GenerationUploadTicket } from '@/lib/storageUpload'
 import { orgStoragePath, orgOwnsStoragePath } from '@/lib/storagePaths'
@@ -434,26 +436,35 @@ export async function apiGetProviderById(providerId: string) {
 // server' los volvería endpoints públicos con userId crudo. Reciben el
 // contexto derivado de la sesión desde sus wrappers exportados.
 
+/**
+ * Sube una referencia (cara, hoja del Body Lab, angle, pose…).
+ *
+ * Pasa por `putMediaObject` desde 2026-08-20: era el hueco que dejó la
+ * migración a R2 de julio, que solo cubrió `generations`. Esto subía directo al
+ * bucket `avatars` de Supabase, así que `R2_ENABLED` no tenía forma de
+ * afectarlo y las refs seguían cargando la cuota de egress que ya restringió el
+ * proyecto con un 402.
+ *
+ * El `supabaseBucket` es obligatorio aquí y no adorno: con R2 apagado el
+ * default de putMediaObject es `generations`, y las refs viven en `avatars`.
+ */
 async function uploadAvatarReference(
     ctx: OrgContext,
     avatarId: string,
     type: ReferenceType,
     file: File,
-): Promise<string> {
-    const supabase = orgSupabase()
+): Promise<{ path: string; provider: 'r2' | 'supabase' }> {
     const fileExt = file.name.split('.').pop()
     const fileName = `${Date.now()}.${fileExt}`
     const filePath = `${ctx.userId}/references/${avatarId}/${type}/${fileName}`
 
-    const { error } = await supabase.storage
-        .from('avatars')
-        .upload(filePath, file, {
-            cacheControl: '3600',
-            upsert: false,
-        })
-
-    if (error) throw error
-    return filePath
+    const { provider } = await putMediaObject({
+        path: filePath,
+        body: Buffer.from(await file.arrayBuffer()),
+        contentType: file.type || 'image/jpeg',
+        supabaseBucket: 'avatars',
+    })
+    return { path: filePath, provider }
 }
 
 async function uploadGeneration(
@@ -536,13 +547,42 @@ export async function apiFetchUrlAsDataUrl(
     }
 }
 
+/**
+ * URL de lectura de un objeto, esté donde esté.
+ *
+ * Equivalente de `getGenerationMediaUrl` para el bucket `avatars`: desde la
+ * migración 20260820220000 las referencias pueden vivir en R2, y `provider` es
+ * lo que lo dice. Se pasa la columna `storage_provider` de la fila.
+ *
+ * En R2 no se firma nada: el bucket es público (igual que `avatars` en
+ * Supabase, `public: true` — esto no cambia quién puede ver qué) y su URL trae
+ * caché inmutable de un año, que es justo el egress que veníamos a ahorrar.
+ *
+ * RED DE SEGURIDAD: si el provider no llegó (un llamador que aún no lo pasa) y
+ * Supabase dice "not found", se prueba R2 antes de rendirse. Sin esto, olvidar
+ * el provider en UN sitio deja al avatar sin cara — y ese olvido es
+ * exactamente cómo se rompieron ocho llamadores en la migración de
+ * `generations` (ver la nota de getRowMediaUrl en storagePaths).
+ */
 export async function getSignedUrl(
     bucket: string,
     path: string,
     expiresIn: number = 3600,
+    provider?: string | null,
 ): Promise<string | null> {
     const ctx = await getOrgContext()
     await assertPathInOrg(ctx, path)
+
+    if (provider === 'r2') {
+        try {
+            return getR2PublicUrl(path)
+        } catch (e) {
+            // Fila marcada r2 sin base configurada: se sigue por Supabase, que
+            // quizá aún tenga el objeto, en vez de reventar el render.
+            console.warn('[storage] fila r2 sin base pública:', e)
+        }
+    }
+
     const supabase = orgSupabase()
     const { data, error } = await supabase.storage
         .from(bucket)
@@ -554,7 +594,10 @@ export async function getSignedUrl(
         // hasta que corra el sanador. "No existe" es un estado ESPERADO de
         // esa ventana, no una excepción: null → la UI muestra su fallback.
         // Cualquier otro error sigue lanzando.
-        if (/not.?found/i.test(error.message)) return null
+        if (/not.?found/i.test(error.message)) {
+            if (await r2ObjectExists(path)) return getR2PublicUrl(path)
+            return null
+        }
         throw error
     }
     return data.signedUrl
@@ -585,13 +628,21 @@ export async function apiUploadReference(
     await assertAvatarInOrg(ctx, avatarId)
 
     // Upload file to storage
-    const storagePath = await uploadAvatarReference(ctx, avatarId, type, file)
+    const { path: storagePath, provider } = await uploadAvatarReference(
+        ctx,
+        avatarId,
+        type,
+        file,
+    )
 
     // Create database record
     const reference = await apiAddAvatarReference({
         avatar_id: avatarId,
         type,
         storage_path: storagePath,
+        // Sin esto la fila cae al default 'supabase' y el lector buscaría los
+        // bytes en el proveedor equivocado (migración 20260820220000).
+        storage_provider: provider,
         mime_type: file.type,
     })
 
