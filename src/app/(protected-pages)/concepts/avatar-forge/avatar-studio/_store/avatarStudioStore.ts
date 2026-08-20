@@ -165,6 +165,14 @@ interface AvatarStudioState {
      * aparte. null = audio generado por el modelo (si videoAudio está on).
      */
     videoVoiceUrl: string | null
+    /**
+     * `return_last_frame` de Seedance 2.5: pide de vuelta el último fotograma
+     * del clip. Sirve para ENCADENAR — ese frame entra como imagen de Input del
+     * siguiente, que es continuidad exacta en vez de la aproximada que da
+     * capturar el vídeo ya comprimido. Off por defecto: la doc avisa de que es
+     * incompatible con `draft=true` y no todos los runs lo quieren.
+     */
+    videoReturnLastFrame: boolean
 
     // Provider
     providers: AIProvider[]
@@ -323,6 +331,7 @@ interface AvatarStudioState {
     setVideoAudio: (on: boolean) => void
     setVideoRefUrls: (urls: string[]) => void
     setVideoVoiceUrl: (url: string | null) => void
+    setVideoReturnLastFrame: (on: boolean) => void
     setCameraMotion: (motion: CameraMotion) => void
     setCameraShot: (shot: CameraShot) => void
     setCameraAngle: (angle: CameraShot | null) => void
@@ -537,6 +546,7 @@ const initialState = {
     videoAudio: false,
     videoRefUrls: [] as string[],
     videoVoiceUrl: null as string | null,
+    videoReturnLastFrame: false,
 
     providers: [],
     activeProviderId: null,
@@ -833,6 +843,8 @@ export const useAvatarStudioStore = create<AvatarStudioState>()(
             setVideoAudio: (on) => set({ videoAudio: on }),
             setVideoRefUrls: (urls) => set({ videoRefUrls: urls.slice(0, 3) }),
             setVideoVoiceUrl: (url) => set({ videoVoiceUrl: url }),
+            setVideoReturnLastFrame: (on) =>
+                set({ videoReturnLastFrame: on }),
             setCameraMotion: (motion) => set({ cameraMotion: motion }),
             setCameraShot: (shot) => set({ cameraShot: shot }),
             setCameraAngle: (angle) => set({ cameraAngle: angle }),

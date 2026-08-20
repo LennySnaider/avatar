@@ -86,6 +86,14 @@ export const VIDEO_COST_USD_PER_SECOND: Record<string, CostEntry> = {
     'kling-v1-5': { usd: 0.07, estimated: true },
     // Seedance 2.0 a 720p en KIE.
     'kie-seedance-2': { usd: 0.125 },
+    // Seedance 2.5: KIE NO publica su precio (no está en la doc del modelo y
+    // kie.ai/pricing responde 403 — verificado 2026-08-17). Se siembra con el
+    // del 2.0 para que el hold no caiga al fallback caro, marcado `estimated`
+    // hasta medirlo: primer run → kie.ai/logs → `creditsConsumed × $0.005`.
+    // Medirlo DOS veces: la doc dice explícitamente que activar el audio
+    // ("Enabling audio will increase the generation cost") sube el costo, así
+    // que con generate_audio ON el número real puede ser otro.
+    'kie-seedance-2-5': { usd: 0.125, estimated: true },
     'kie-wan-2-7': { usd: 0.08, estimated: true },
     // PROVIDER_COST los tenía como "~$0.50 / 5s".
     'mulerouter-wan26-i2v': { usd: 0.1, estimated: true },
@@ -156,6 +164,10 @@ const VIDEO_MODEL_FAMILIES: Array<[prefix: string, providerId: string]> = [
     ['kling-v1-5', 'kling-v1-5'],
     ['minimax-hailuo-2.3-fast', 'minimax-hailuo-2-3-fast'],
     ['minimax-hailuo', 'minimax-hailuo-2-3'],
+    // Prefijo LARGO primero por claridad; resolveFamily lo ordena igual. Sin
+    // esta línea, 'bytedance/seedance-2-5' haría match con la entrada corta de
+    // abajo y se cobraría al precio del 2.0 sin que nada fallara.
+    ['bytedance/seedance-2-5', 'kie-seedance-2-5'],
     ['bytedance/seedance', 'kie-seedance-2'],
     ['wan/2-7-image-to-video', 'kie-wan-2-7'],
     ['wan/2-2-a14b', 'kie-wan-2-2-uncensored'],

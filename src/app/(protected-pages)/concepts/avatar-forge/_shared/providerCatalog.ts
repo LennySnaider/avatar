@@ -409,6 +409,24 @@ export const DEFAULT_PROVIDERS: AIProvider[] = [
         created_at: null,
     },
     {
+        // Seedance 2.5 — modelo APARTE del 2.0, no un reemplazo: convive con él
+        // porque el Continue-Video con identidad está validado sobre 2.0.
+        // Trae lo que 2.0 no tiene: audio generado, último frame de vuelta y
+        // referencias de video/audio. A cambio pierde el 1080p (solo 480p/720p)
+        // y estira la duración a 30s. Precio SIN medir — ver creditsConsumed.
+        id: 'kie-seedance-2-5',
+        name: 'Seedance 2.5 · KIE',
+        type: 'KIE' as ProviderType,
+        model: 'bytedance/seedance-2-5',
+        endpoint: 'https://api.kie.ai/api/v1',
+        is_active: true,
+        supports_image: false,
+        supports_video: true,
+        requires_api_key: true,
+        api_key_env_var: 'KIE_API_KEY',
+        created_at: null,
+    },
+    {
         id: 'kie-wan-2-7',
         name: 'Wan 2.7 i2v (KIE)',
         type: 'KIE' as ProviderType,
@@ -536,6 +554,11 @@ export const PROVIDER_TRAITS: Record<
     // upstream (edit NSFW verificado live) → el permisivo REAL de imagen.
     'kie-wan-image': { face: true, permissive: true },
     'kie-wan-image-pro': { face: true, permissive: true },
+    // face: la identidad viaja por reference_image_urls[]. permissive: el
+    // nsfw_checker es apagable ("If set to false, our content filtering will be
+    // disabled") y cuelga del toggle 🌶️. Ojo: quitar el filtro de KIE no
+    // garantiza desnudo — ByteDance conserva el suyo río arriba.
+    'kie-seedance-2-5': { face: true, permissive: true },
 }
 
 // Descripción por provider — a nivel módulo para compartirla con la página

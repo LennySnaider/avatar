@@ -264,6 +264,30 @@ async function checkTaskOnce(
     return { state: 'running' }
 }
 
+const VIDEO_URL_EXT_RE = /\.(mp4|mov|m4v|webm|mkv)(\?|#|$)/i
+const IMAGE_URL_EXT_RE = /\.(png|jpe?g|webp)(\?|#|$)/i
+
+/**
+ * El VIDEO dentro de `resultUrls`.
+ *
+ * Hasta ahora este array traía un único elemento y `urls[0]` bastaba. Con
+ * `return_last_frame: true`, Seedance 2.5 devuelve TAMBIÉN el último frame y la
+ * doc no dice en qué orden llegan: si la imagen cayera primera, `urls[0]` se
+ * guardaría con nombre `.mp4` y la galería mostraría un video roto.
+ *
+ * Se elige por extensión, con caída a `urls[0]` cuando ninguna la declara
+ * (hay CDNs que sirven la media sin extensión) — así ningún motor que hoy
+ * devuelve un solo mp4 cambia de comportamiento.
+ */
+function pickVideoUrl(urls: string[]): string {
+    return urls.find((u) => VIDEO_URL_EXT_RE.test(u)) ?? urls[0]
+}
+
+/** El frame de `return_last_frame`, si vino. `null` en todos los demás motores. */
+function pickLastFrameUrl(urls: string[]): string | null {
+    return urls.find((u) => IMAGE_URL_EXT_RE.test(u)) ?? null
+}
+
 /**
  * Traduce los fallos de KIE que tienen una CAUSA accionable. El mensaje crudo
  * dice QUE pasó pero no qué hacer, y el usuario acaba reportándolo como bug
@@ -313,6 +337,39 @@ const MIN_REF_SIDE = 240
 
 /** Por debajo de esto el PNG ya viaja rápido y recomprimir solo añade CPU. */
 const PNG_RECOMPRESS_MIN_BYTES = 400 * 1024
+
+function isAudioVideoMime(mime: string): boolean {
+    return mime.startsWith('video/') || mime.startsWith('audio/')
+}
+
+/**
+ * Extensión del archivo subido. Importa MÁS de lo que parece: los proveedores
+ * deciden cómo decodificar por la extensión de la URL, no por el Content-Type,
+ * así que un mp3 guardado como `.jpg` (lo que hacía el fallback anterior con
+ * todo lo que no fuera mp4/png/webp) se rechaza al descargarlo.
+ *
+ * La lista cubre lo que aceptan los canales de referencia de Seedance 2.5:
+ * video mp4/mov/mkv, audio mpeg/wav/aac/mp4/ogg.
+ */
+function extensionForMime(mime: string): string {
+    const m = mime.toLowerCase()
+    // El orden importa: 'audio/mp4' contiene 'mp4' y NO es un video.
+    if (m.startsWith('audio/')) {
+        if (m.includes('mpeg') || m.includes('mp3')) return 'mp3'
+        if (m.includes('wav')) return 'wav'
+        if (m.includes('aac')) return 'aac'
+        if (m.includes('ogg')) return 'ogg'
+        if (m.includes('mp4') || m.includes('m4a')) return 'm4a'
+        return 'mp3'
+    }
+    if (m.includes('quicktime') || m.includes('mov')) return 'mov'
+    if (m.includes('matroska') || m.includes('mkv')) return 'mkv'
+    if (m.includes('webm')) return 'webm'
+    if (m.includes('mp4')) return 'mp4'
+    if (m.includes('png')) return 'png'
+    if (m.includes('webp')) return 'webp'
+    return 'jpg'
+}
 
 export async function uploadReferenceToSupabase(
     base64: string,
@@ -375,7 +432,13 @@ export async function uploadReferenceToSupabase(
     // contenido perfectamente válido, solo que no cumple el mínimo del
     // proveedor. Ampliar preserva el aspecto y no inventa nada — el modelo lo
     // iba a reescalar igual por dentro.
-    if (!effectiveMime.includes('mp4')) {
+    // Ninguna media A/V pasa por sharp. El guard era `!includes('mp4')`, que
+    // dejaba entrar mov/mkv y cualquier audio (las refs nuevas de Seedance
+    // 2.5): sharp fallaría, el catch lo taparía, y habríamos cargado 200MB de
+    // video en un decodificador de imágenes para nada. Se excluye por tipo A/V
+    // en vez de exigir `image/` para no cambiar el trato de un mime atípico
+    // que hoy sí llega por esta rama.
+    if (!isAudioVideoMime(effectiveMime)) {
         try {
             const sharp = (await import('sharp')).default
             const meta = await sharp(buffer).metadata()
@@ -400,13 +463,7 @@ export async function uploadReferenceToSupabase(
         }
     }
 
-    const ext = effectiveMime.includes('mp4')
-        ? 'mp4'
-        : effectiveMime.includes('png')
-          ? 'png'
-          : effectiveMime.includes('webp')
-            ? 'webp'
-            : 'jpg'
+    const ext = extensionForMime(effectiveMime)
     const hash = createHash('sha256').update(buffer).digest('hex').slice(0, 32)
     const fileName = `kie-refs/${hash}.${ext}`
     const publicUrl = `${SUPABASE_URL}/storage/v1/object/public/generations/${fileName}`
@@ -460,13 +517,19 @@ export async function uploadReferenceToSupabase(
  */
 async function resolveRefUrl(ref: {
     base64?: string
-    mimeType: string
+    /** Solo hace falta con `base64`: es lo que decide extensión y Content-Type. */
+    mimeType?: string
     url?: string
 }): Promise<string> {
     if (ref.url) return ref.url
     if (!ref.base64) {
         throw new Error(
             'Referencia sin contenido: hace falta `url` (ya subida) o `base64` (bytes nuevos).',
+        )
+    }
+    if (!ref.mimeType) {
+        throw new Error(
+            'Referencia en base64 sin `mimeType`: sin él el archivo se subiría con una extensión falsa y el proveedor lo rechazaría al descargarlo.',
         )
     }
     return uploadReferenceToSupabase(ref.base64, ref.mimeType)
@@ -1434,6 +1497,36 @@ export interface GenerateVideoKieParams {
     resolution?: string
     /** Kling 3.0 native audio (`sound`). Ignored by other KIE models. */
     sound?: boolean
+
+    // ─── Seedance 2.5 ────────────────────────────────────────────
+    // Canales que solo ese modelo expone. Opcionales a propósito: los
+    // demás submits no los leen, así que añadirlos no cambia un solo
+    // payload existente.
+
+    /** Frame FINAL del clip (`last_frame_url`) — el modelo interpola hasta él. */
+    lastFrameImage?: { base64: string; mimeType: string } | null
+    /**
+     * Videos de referencia (`reference_video_urls`). Máx 3 y ≤30s SUMADOS.
+     * La forma `{base64?, url?}` es la de `resolveRefUrl`: si el clip ya vive
+     * en R2 (salió de la galería) no se re-sube.
+     */
+    referenceVideos?: Array<{
+        base64?: string
+        url?: string
+        mimeType?: string
+    }>
+    /** Audios de referencia (`reference_audio_urls`). Máx 3 y ≤30s SUMADOS. */
+    referenceAudios?: Array<{
+        base64?: string
+        url?: string
+        mimeType?: string
+    }>
+    /** `generate_audio` — audio sincronizado. OJO: sube el costo del run. */
+    generateAudio?: boolean
+    /** `return_last_frame` — devuelve el último frame para encadenar clips. */
+    returnLastFrame?: boolean
+    /** Toggle 🌶️ de la sesión. Viaja invertido como `nsfw_checker: !nsfwMode`. */
+    nsfwMode?: boolean
 }
 
 /**
@@ -2129,6 +2222,9 @@ async function submitVideoGrokImagine(
 async function submitVideoKieTaskId(
     params: GenerateVideoKieParams,
 ): Promise<string> {
+    if (params.model === 'bytedance/seedance-2-5') {
+        return submitVideoSeedance25(params)
+    }
     if (params.model === 'bytedance/seedance-2') {
         return submitVideoSeedance(params)
     }
@@ -2189,7 +2285,7 @@ export async function generateVideoKie(
 ): Promise<string> {
     const taskId = await submitVideoKieTaskId(params)
     const urls = await pollTask(taskId, { budgetMs: 600_000, intervalMs: 5000 })
-    return persistToSupabase(urls[0], 'mp4', 'kie-videos')
+    return persistToSupabase(pickVideoUrl(urls), 'mp4', 'kie-videos')
 }
 
 /**
@@ -2304,6 +2400,184 @@ async function submitVideoSeedance(
     )
     console.log(`[KIE/Seedance] Task submitted: ${taskId}`)
     return taskId
+}
+
+/** Máx de refs por canal en Seedance 2.5 (doc: "the total length … 30 seconds"). */
+const SEEDANCE_25_MAX_AV_REFS = 3
+
+/**
+ * ByteDance Seedance 2.5 — modelo DISTINTO al 2.0, no una revisión del mismo
+ * endpoint: convive con él en el catálogo y NO hereda sus límites.
+ *
+ * Diferencias que obligan a un submit propio (docs.kie.ai/market/bytedance/
+ * seedance-2-5, consultada 2026-08-17):
+ *  - Resolución SOLO 480p/720p — 2.0 sí tiene 1080p. Un '1080p' heredado del
+ *    selector se DEGRADA a 720p (mismo criterio que clampResolutionForProvider:
+ *    bajar en silencio es recuperable, subir cobraría de más).
+ *  - Duración 4-30s (2.0: 4-15). El `-1` = "que elija el modelo" que documenta
+ *    la API no se expone: con precio por segundo, una duración que decide el
+ *    proveedor es un cobro que no se puede cotizar antes del hold.
+ *  - Canales nuevos: generate_audio, return_last_frame, reference_video_urls,
+ *    reference_audio_urls.
+ *  - `nsfw_checker` configurable ("If set to false, our content filtering will
+ *    be disabled") → cuelga del toggle 🌶️ de la sesión.
+ */
+async function submitVideoSeedance25(
+    params: GenerateVideoKieParams,
+): Promise<string> {
+    const {
+        prompt,
+        firstFrameImage,
+        lastFrameImage,
+        referenceImages,
+        referenceVideos,
+        referenceAudios,
+        aspectRatio = '16:9',
+        duration = 5,
+        resolution = '720p',
+        // El default de la API es `true`, y el audio SUBE EL COSTO del run
+        // ("Enabling audio will increase the generation cost"). Un default
+        // heredado que encarece cada generación sin que nadie lo pida es
+        // justo lo que no queremos: aquí se apaga salvo petición explícita,
+        // igual que el tier con voz de Kling 3.0.
+        generateAudio = false,
+        returnLastFrame = false,
+        nsfwMode = false,
+    } = params
+
+    const safeResolution = resolution === '480p' ? '480p' : '720p'
+    const safeDuration = Math.min(30, Math.max(4, Math.round(duration)))
+
+    const input: Record<string, unknown> = {
+        aspect_ratio: aspectRatio,
+        duration: safeDuration,
+        resolution: safeResolution,
+        // persistToSupabase guarda como .mp4 — pedir 'mov' produciría un
+        // contenedor QuickTime con nombre .mp4.
+        output_format: 'mp4',
+        generate_audio: generateAudio,
+        return_last_frame: returnLastFrame,
+        // Búsqueda online: no aporta a un avatar y mete contexto externo que
+        // nadie audita en el prompt.
+        web_search: false,
+        nsfw_checker: !nsfwMode,
+    }
+
+    // Refs de imagen — MISMA estrategia validada en 2.0: cuando hay refs de
+    // avatar, el frame capturado entra como reference_image_urls[0] en vez de
+    // first_frame_url, porque mezclar ambos canales hacía que 2.0 ignorara las
+    // refs en silencio (identidad perdida en la continuación).
+    //
+    // La doc de 2.5 ya no repite esa cláusula de exclusividad, pero eso NO es
+    // evidencia de que la levantaron: hasta medirlo con un run controlado se
+    // mantiene el camino que sabemos que preserva la cara.
+    let imageRefCount = 0
+    let frameIsRef = false
+    if (referenceImages && referenceImages.length > 0) {
+        const allRefs: Array<{ base64: string; mimeType: string }> = []
+        // El frame se antepone SOLO si no es ya una de las refs. En modo avatar
+        // el "first frame" que arma el caller ES la cara del avatar, y meterla
+        // dos veces la contaría doble en @Image1 y @Image2: eso DILUYE el ancla
+        // de identidad (el fallo clásico de este pipeline) en vez de reforzarlo.
+        const alreadyRef =
+            !!firstFrameImage &&
+            referenceImages.some((r) => r.base64 === firstFrameImage.base64)
+        if (firstFrameImage && !alreadyRef) {
+            allRefs.push(firstFrameImage)
+            frameIsRef = true
+        }
+        allRefs.push(...referenceImages)
+
+        const refUrls = await Promise.all(
+            // El tope de 9 se hereda de 2.0 — 2.5 dice "Multiple Files: Yes"
+            // sin dar número.
+            allRefs
+                .slice(0, 9)
+                .map((ref) =>
+                    uploadReferenceToSupabase(ref.base64, ref.mimeType),
+                ),
+        )
+        imageRefCount = refUrls.length
+        input.reference_image_urls = refUrls
+    } else if (firstFrameImage) {
+        input.first_frame_url = await uploadReferenceToSupabase(
+            firstFrameImage.base64,
+            firstFrameImage.mimeType,
+        )
+        // last_frame_url solo tiene sentido en el modo first-frame: es el otro
+        // extremo de la interpolación. En modo refs no hay "extremos".
+        if (lastFrameImage) {
+            input.last_frame_url = await uploadReferenceToSupabase(
+                lastFrameImage.base64,
+                lastFrameImage.mimeType,
+            )
+        }
+    }
+
+    // Refs de video y audio — canales independientes del modo de imagen.
+    // El tope de 3 es del modelo; el de 30s SUMADOS lo valida quien sube el
+    // archivo (aquí ya no hay duración que medir sin descargar los bytes).
+    if (referenceVideos?.length) {
+        input.reference_video_urls = await Promise.all(
+            referenceVideos
+                .slice(0, SEEDANCE_25_MAX_AV_REFS)
+                .map((ref) => resolveRefUrl(ref)),
+        )
+    }
+    if (referenceAudios?.length) {
+        input.reference_audio_urls = await Promise.all(
+            referenceAudios
+                .slice(0, SEEDANCE_25_MAX_AV_REFS)
+                .map((ref) => resolveRefUrl(ref)),
+        )
+    }
+
+    // SINTAXIS @ImageN — específica de 2.5. El modelo espera que el prompt
+    // APUNTE a cada referencia por posición ("Reference @Image1 @Image2 for the
+    // spear-wielding character…" es el propio ejemplo de la doc). Sin esa
+    // línea el array de refs viaja pero el texto no lo reclama, y el modelo lo
+    // trata como contexto suelto — el mismo síntoma que perder la identidad.
+    //
+    // Los videos/audios NO se numeran: la doc solo documenta el token @Image,
+    // y un @Video1 inventado sería ruido literal dentro del prompt.
+    input.prompt = imageRefCount
+        ? `${buildSeedance25RefClause(imageRefCount, frameIsRef)}\n\n${prompt}`
+        : prompt
+
+    console.log(
+        `[KIE/Seedance2.5] Submitting: duration=${safeDuration}s, resolution=${safeResolution}, ` +
+            `aspect=${aspectRatio}, imageRefs=${imageRefCount}${frameIsRef ? ' (incl. frame)' : ''}, ` +
+            `firstFrame=${!!input.first_frame_url}, lastFrame=${!!input.last_frame_url}, ` +
+            `videoRefs=${(input.reference_video_urls as string[])?.length ?? 0}, ` +
+            `audioRefs=${(input.reference_audio_urls as string[])?.length ?? 0}, ` +
+            `audio=${generateAudio}, lastFrameOut=${returnLastFrame}, nsfwChecker=${!nsfwMode}`,
+    )
+    const taskId = await withTimeout(
+        submitTask({ model: 'bytedance/seedance-2-5', input }),
+        30_000,
+        'KIE Seedance 2.5 submit',
+    )
+    console.log(`[KIE/Seedance2.5] Task submitted: ${taskId}`)
+    return taskId
+}
+
+/**
+ * Línea de anclaje `@ImageN` que 2.5 espera al principio del prompt.
+ *
+ * Cuando el frame capturado viaja como ref (modo continuación) se le da un rol
+ * DISTINTO al de las refs de identidad: si se mete en el mismo saco, el modelo
+ * promedia la cara del avatar con el fotograma comprimido del video anterior.
+ */
+function buildSeedance25RefClause(count: number, frameIsRef: boolean): string {
+    const tokens = Array.from({ length: count }, (_, i) => `@Image${i + 1}`)
+    if (frameIsRef && count > 1) {
+        return (
+            `Continue seamlessly from ${tokens[0]} (the last frame of the previous shot) — ` +
+            `same scene, lighting and wardrobe. Reference ${tokens.slice(1).join(' ')} ` +
+            `for the character's face, body and identity.`
+        )
+    }
+    return `Reference ${tokens.join(' ')} for the character's face, body and identity.`
 }
 
 /**
@@ -2604,15 +2878,36 @@ export async function checkKieVideoTask(
     taskId: string,
 ): Promise<
     | { status: 'running' }
-    | { status: 'done'; url: string }
+    | { status: 'done'; url: string; lastFrameUrl?: string }
     | { status: 'failed'; error: string }
 > {
     try {
         const r = await checkTaskOnce(taskId)
         if (r.state === 'running') return { status: 'running' }
         if (r.state === 'fail') return { status: 'failed', error: r.error }
-        const url = await persistToSupabase(r.urls[0], 'mp4', 'kie-videos')
-        return { status: 'done', url }
+        const url = await persistToSupabase(
+            pickVideoUrl(r.urls),
+            'mp4',
+            'kie-videos',
+        )
+        // `return_last_frame` (Seedance 2.5): el frame se persiste también. El
+        // de KIE es temporal, y si el encadenado lo va a usar más tarde, una
+        // URL caducada convierte "continuar el clip" en un error tardío.
+        const rawFrame = pickLastFrameUrl(r.urls)
+        if (!rawFrame) return { status: 'done', url }
+        try {
+            const lastFrameUrl = await persistToSupabase(
+                rawFrame,
+                'png',
+                'kie-frames',
+            )
+            return { status: 'done', url, lastFrameUrl }
+        } catch (err) {
+            // El frame es un EXTRA: perderlo no puede tumbar un video que ya
+            // se generó y ya se cobró.
+            console.warn('[KIE] last-frame persist failed:', err)
+            return { status: 'done', url }
+        }
     } catch (e) {
         const message = e instanceof Error ? e.message : String(e)
         return { status: 'failed', error: message }

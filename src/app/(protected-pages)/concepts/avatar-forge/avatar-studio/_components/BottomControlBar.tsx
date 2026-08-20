@@ -142,6 +142,63 @@ const VIDEO_RESOLUTIONS: { value: VideoResolution; label: string }[] = [
     { value: '1080p', label: '1080p' },
 ]
 
+/** Tope AGREGADO de los vídeos de referencia de Seedance 2.5, por su doc. */
+const SEEDANCE_25_REF_VIDEO_MAX_SECONDS = 30
+
+/**
+ * Duración de un vídeo leyendo solo sus METADATOS (`preload: 'metadata'`), sin
+ * descargarlo entero.
+ *
+ * Devuelve `null` cuando no se puede medir —CORS, códec que el navegador no
+ * abre, metadatos que no llegan—. Eso es deliberado: un límite que no se ha
+ * podido comprobar no debe convertirse en un "no puedes" inventado, así que el
+ * caller deja pasar la subida en vez de bloquearla a ciegas.
+ */
+function probeVideoSeconds(src: string): Promise<number | null> {
+    return new Promise((resolve) => {
+        const el = document.createElement('video')
+        el.preload = 'metadata'
+        let settled = false
+        const done = (seconds: number | null) => {
+            if (settled) return
+            settled = true
+            el.removeAttribute('src')
+            resolve(seconds)
+        }
+        el.onloadedmetadata = () =>
+            done(Number.isFinite(el.duration) ? el.duration : null)
+        el.onerror = () => done(null)
+        // Sin esto, una URL que nunca responde deja la subida colgada.
+        setTimeout(() => done(null), 8000)
+        el.src = src
+    })
+}
+
+/**
+ * Segundos que sumarían las refs de vídeo si se añade `incoming`.
+ *
+ * `null` = no se pudo medir alguna. Se propaga en vez de sumar lo medible:
+ * un total incompleto es MENOR que el real, o sea que dejaría pasar
+ * precisamente el caso que este cálculo existe para atrapar.
+ */
+async function totalRefVideoSeconds(
+    existingUrls: string[],
+    incoming: File,
+): Promise<number | null> {
+    const incomingUrl = URL.createObjectURL(incoming)
+    try {
+        const durations = await Promise.all([
+            probeVideoSeconds(incomingUrl),
+            ...existingUrls.map((u) => probeVideoSeconds(u)),
+        ])
+        const measured = durations.filter((d): d is number => d !== null)
+        if (measured.length !== durations.length) return null
+        return measured.reduce((sum, d) => sum + d, 0)
+    } finally {
+        URL.revokeObjectURL(incomingUrl)
+    }
+}
+
 // Peso del Clone en 4 POSICIONES (snap): mover dentro de un tramo NO cambia el
 // prompt (75-100 EXACT, 50-74 STRONG, 25-49 MODERATE, 0-24 LOOSE), así que el
 // slider salta entre 4 valores canónicos — uno bien centrado en cada tramo.
@@ -512,6 +569,8 @@ const BottomControlBar = ({
         setVideoVoiceUrl,
         videoRefUrls,
         setVideoRefUrls,
+        videoReturnLastFrame,
+        setVideoReturnLastFrame,
         aspectRatio,
         setAspectRatio,
         videoResolution,
@@ -602,10 +661,17 @@ const BottomControlBar = ({
     const isMuleRouterVideo = !!activeProvider?.model?.startsWith(
         'mulerouter/wan2.6',
     )
+    // Seedance 2.5 abre los MISMOS canales que Wan 2.6 (audio propio, vídeos y
+    // audio de referencia), así que reusa estos controles en vez de duplicarlos
+    // — el submit ya traduce cada uno a su parámetro.
+    const isSeedance25 = activeProvider?.model === 'bytedance/seedance-2-5'
     // Character Ref (r2v): la identidad sale de VÍDEOS del personaje. Con el
     // card unificado el chip vive siempre que Wan 2.6 esté activo — la ruta
     // a r2v la decide el submit cuando hay refs y NO hay imagen de Input.
-    const showWanCharacterRef = isMuleRouterVideo
+    const showWanCharacterRef = isMuleRouterVideo || isSeedance25
+    // Audio propio del motor. Ni Kling ni Veo lo exponen aquí (Kling tiene su
+    // propio toggle `sound`), así que ofrecerlo sería vender lo que no existe.
+    const showVideoAudioToggle = isMuleRouterVideo || isSeedance25
     const [isUploadingRef, setIsUploadingRef] = useState(false)
     const refVideoInputRef = useRef<HTMLInputElement>(null)
 
@@ -631,6 +697,23 @@ const BottomControlBar = ({
                 </Notification>,
             )
             return
+        }
+        // Seedance 2.5 exige que los vídeos de referencia sumen ≤30s ENTRE LOS
+        // TRES ("the total length of the three videos must not exceed 30
+        // seconds"). Es un límite AGREGADO, así que no basta con mirar el
+        // archivo nuevo: se miden también los ya puestos. Se comprueba aquí
+        // porque el submit ya no puede saber la duración sin descargarlos, y
+        // dejarlo pasar quema un run entero que el modelo va a rechazar.
+        if (isSeedance25) {
+            const total = await totalRefVideoSeconds(videoRefUrls, file)
+            if (total !== null && total > SEEDANCE_25_REF_VIDEO_MAX_SECONDS) {
+                toast.push(
+                    <Notification type="warning" title="Referencias muy largas">
+                        {`Seedance 2.5 admite 30s sumados entre las referencias de vídeo; estas suman ${Math.round(total)}s. Quita una o recorta.`}
+                    </Notification>,
+                )
+                return
+            }
         }
         setIsUploadingRef(true)
         try {
@@ -2532,7 +2615,11 @@ const BottomControlBar = ({
                             {showWanCharacterRef && (
                                 <div
                                     className="flex items-center gap-1.5 rounded-lg border-2 border-dashed border-purple-400 px-2 py-1"
-                                    title="Vídeos del personaje (2-30s, máx 3). Sin imagen de Input, el vídeo mantiene su identidad desde estas referencias."
+                                    title={
+                                        isSeedance25
+                                            ? 'Vídeos de referencia (máx 3, 30s SUMADOS entre los tres). El modelo toma de ellos identidad y movimiento.'
+                                            : 'Vídeos del personaje (2-30s, máx 3). Sin imagen de Input, el vídeo mantiene su identidad desde estas referencias.'
+                                    }
                                 >
                                     <span className="text-xs font-medium text-purple-400">
                                         🎭 Character Ref
@@ -2576,14 +2663,27 @@ const BottomControlBar = ({
                                 </div>
                             )}
 
-                            {isMuleRouterVideo && (
-                                <div className="flex items-center gap-1.5 rounded-lg border-2 border-dashed border-gray-300 px-2 py-1 dark:border-gray-600">
+                            {showVideoAudioToggle && (
+                                <div
+                                    className="flex items-center gap-1.5 rounded-lg border-2 border-dashed border-gray-300 px-2 py-1 dark:border-gray-600"
+                                    title={
+                                        isSeedance25
+                                            ? 'Audio generado por el modelo. OJO: según la doc de Seedance, activarlo SUBE el costo del run.'
+                                            : undefined
+                                    }
+                                >
                                     <span
                                         className={`text-xs font-medium ${videoAudio || videoVoiceUrl ? 'text-primary' : 'text-gray-500'}`}
                                     >
                                         {videoVoiceUrl
                                             ? `🎤 ${avatarDefaultVoice?.name ?? 'Voz'}`
                                             : '🔊 Audio'}
+                                        {isSeedance25 &&
+                                            (videoAudio || videoVoiceUrl) && (
+                                                <span className="ml-1 text-[10px] text-amber-500">
+                                                    +$
+                                                </span>
+                                            )}
                                     </span>
                                     <Switcher
                                         checked={
@@ -2596,6 +2696,27 @@ const BottomControlBar = ({
                                             // off es un estado que miente.
                                             if (!checked) setVideoVoiceUrl(null)
                                         }}
+                                    />
+                                </div>
+                            )}
+
+                            {/* ÚLTIMO FRAME (Seedance 2.5). El clip devuelve su
+                                fotograma final y queda cargado como Input, que
+                                es continuidad EXACTA para el siguiente — no la
+                                aproximada de capturar el vídeo ya comprimido. */}
+                            {isSeedance25 && (
+                                <div
+                                    className="flex items-center gap-1.5 rounded-lg border-2 border-dashed border-gray-300 px-2 py-1 dark:border-gray-600"
+                                    title="Devuelve el último fotograma del clip y lo deja como imagen de Input para encadenar el siguiente."
+                                >
+                                    <span
+                                        className={`text-xs font-medium ${videoReturnLastFrame ? 'text-primary' : 'text-gray-500'}`}
+                                    >
+                                        🔗 Últ. frame
+                                    </span>
+                                    <Switcher
+                                        checked={videoReturnLastFrame}
+                                        onChange={setVideoReturnLastFrame}
                                     />
                                 </div>
                             )}

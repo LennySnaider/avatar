@@ -23,6 +23,12 @@ export function getDurationOptionsForProvider(provider: AIProvider | null): numb
         case 'KIE':
             if (provider.model === 'kling-3.0/video') return [5, 10]
             if (provider.model === 'bytedance/seedance-2') return [4, 5, 6, 8, 10, 12, 15]
+            // Seedance 2.5 llega a 30s ("Video duration in 4-30 seconds"). El
+            // `-1` = "que elija el modelo" que acepta la API NO se expone: con
+            // precio por segundo, una duración decidida río arriba es un cobro
+            // que no se puede cotizar antes del hold.
+            if (provider.model === 'bytedance/seedance-2-5')
+                return [4, 5, 6, 8, 10, 12, 15, 20, 25, 30]
             if (provider.model === 'wan/2-7-image-to-video') return [2, 5, 7, 10, 12, 15]
             // Wan 2.6 unificado (MuleRouter): la API acepta 5/10/15; si la
             // ruta automática cae en r2v (que rechaza 15) el submit ya
@@ -85,6 +91,9 @@ export function getResolutionOptionsForProvider(
         case 'KIE':
             if (provider.model === 'kling-3.0/video') return ['720p', '1080p']
             if (provider.model === 'bytedance/seedance-2') return ['480p', '720p', '1080p']
+            // 2.5 NO tiene 1080p — al revés de lo que sugiere el número de
+            // versión: "480p for faster generation, 720p for balance".
+            if (provider.model === 'bytedance/seedance-2-5') return ['480p', '720p']
             if (provider.model === 'wan/2-7-image-to-video') return ['720p', '1080p']
             // Wan 2.6 unificado (MuleRouter): el submit mapea a 720P/1080P
             // (i2v vía `resolution`, t2v/r2v vía `size`).

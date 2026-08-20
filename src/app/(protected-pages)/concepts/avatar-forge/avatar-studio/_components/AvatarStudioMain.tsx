@@ -309,6 +309,46 @@ const isExplicitCapableModel = (m: string): boolean =>
     m.startsWith('qwen') ||
     m.startsWith('mulerouter/')
 
+/**
+ * Params que SOLO entiende Seedance 2.5. Devuelve `{}` para cualquier otro
+ * modelo, así que los call sites lo esparcen sin condicionales: el resto de
+ * motores KIE recibe exactamente el payload de antes.
+ *
+ * Los tres canales nuevos se sirven de estado que YA existía para Wan 2.6
+ * (mismo concepto, otro nombre de parámetro río arriba): el toggle de audio,
+ * los vídeos de personaje y la voz clonada.
+ */
+function seedance25Extras(opts: {
+    model: string | null | undefined
+    nsfwMode: boolean
+    videoAudio: boolean
+    videoVoiceUrl: string | null
+    videoRefUrls: string[]
+    returnLastFrame: boolean
+    referenceImages?: Array<{ base64: string; mimeType: string }>
+}): Partial<Parameters<typeof submitVideoKieTask>[0]> {
+    if (opts.model !== 'bytedance/seedance-2-5') return {}
+    return {
+        // Misma semántica que el switch de la barra: con voz puesta, el audio
+        // está encendido — un vídeo mudo con voz cargada sería un estado que
+        // miente.
+        generateAudio: opts.videoAudio || !!opts.videoVoiceUrl,
+        returnLastFrame: opts.returnLastFrame,
+        nsfwMode: opts.nsfwMode,
+        ...(opts.videoRefUrls.length
+            ? {
+                  referenceVideos: opts.videoRefUrls.map((url) => ({ url })),
+              }
+            : {}),
+        ...(opts.videoVoiceUrl
+            ? { referenceAudios: [{ url: opts.videoVoiceUrl }] }
+            : {}),
+        ...(opts.referenceImages?.length
+            ? { referenceImages: opts.referenceImages }
+            : {}),
+    }
+}
+
 const isKieAsyncImageModel = (m: string): boolean =>
     KIE_ASYNC_MODELS.includes(m) ||
     m.startsWith('seedream/') ||
@@ -377,7 +417,7 @@ async function genVideoGemini(
  */
 async function genVideoKie(
     params: Parameters<typeof submitVideoKieTask>[0],
-): Promise<string> {
+): Promise<{ url: string; lastFrameUrl?: string }> {
     // Hasta 2 tareas: mismo self-healing que pollKieImageTask para el
     // "internal error, please try again later" transitorio de KIE (las tareas
     // fallidas cobran 0 créditos).
@@ -394,7 +434,9 @@ async function genVideoKie(
             await new Promise((r) => setTimeout(r, 5000))
             const st = await checkKieVideoTask(sub.taskId)
             if (st.status === 'done') {
-                return st.url
+                // lastFrameUrl solo llega con `return_last_frame` (Seedance
+                // 2.5); en los demás motores viaja undefined y nadie lo mira.
+                return { url: st.url, lastFrameUrl: st.lastFrameUrl }
             }
             if (st.status === 'failed') {
                 failMsg = st.error
@@ -673,6 +715,7 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
         videoAudio,
         videoVoiceUrl,
         videoRefUrls,
+        videoReturnLastFrame,
         videoDuration,
         cameraMotion,
         cameraShot,
@@ -1343,6 +1386,49 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
             return saved ?? finalMedia
         },
         [avatarId, addToGallery, updateGalleryItem, persistGeneration],
+    )
+
+    /**
+     * Adopta el último frame que devolvió Seedance 2.5 como imagen de Input.
+     *
+     * Es la mitad útil de `return_last_frame`: el siguiente clip arranca del
+     * fotograma EXACTO donde acabó el anterior, en vez de la aproximación que
+     * da capturar el vídeo ya comprimido. NO dispara generación — solo deja el
+     * Input cargado para que el usuario decida.
+     */
+    const adoptLastFrame = useCallback(
+        async (frameUrl: string) => {
+            try {
+                const blob = await fetchMediaBlobWithFallback(frameUrl)
+                const dataUrl = await new Promise<string>((resolve, reject) => {
+                    const reader = new FileReader()
+                    reader.onload = (e) => resolve(e.target?.result as string)
+                    reader.onerror = () =>
+                        reject(new Error('No se pudo leer el frame'))
+                    reader.readAsDataURL(blob)
+                })
+                const matches = dataUrl.match(/^data:(.+);base64,(.+)$/)
+                if (!matches) return
+                setVideoInputImage({
+                    id: `last-frame-${Date.now()}`,
+                    url: dataUrl,
+                    mimeType: matches[1],
+                    base64: matches[2],
+                    type: 'general',
+                })
+                toast.push(
+                    <Notification type="info" title="Último frame listo">
+                        Cargado como imagen de Input — genera otra vez para
+                        encadenar el siguiente clip.
+                    </Notification>,
+                )
+            } catch (err) {
+                // El vídeo ya está generado y guardado: que falle adoptar el
+                // frame no puede parecer un fallo de la generación.
+                console.warn('[AvatarStudio] adoptLastFrame falló:', err)
+            }
+        },
+        [setVideoInputImage],
     )
 
     // Generate Handler
@@ -3281,15 +3367,20 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                                     modelName: 'kling-v3-omni',
                                 })
                             } else {
-                                resultUrl = await genVideoKie({
-                                    prompt: fullPrompt,
-                                    firstFrameImage: optimizedVideoInput,
-                                    referenceImages: identityRefs,
-                                    model: 'bytedance/seedance-2',
-                                    aspectRatio,
-                                    duration: videoDuration,
-                                    resolution: videoResolution,
-                                })
+                                // Continue-Video con identidad: se queda en 2.0
+                                // A PROPÓSITO — es el camino validado. 2.5 vive
+                                // como card aparte hasta medirlo aquí.
+                                resultUrl = (
+                                    await genVideoKie({
+                                        prompt: fullPrompt,
+                                        firstFrameImage: optimizedVideoInput,
+                                        referenceImages: identityRefs,
+                                        model: 'bytedance/seedance-2',
+                                        aspectRatio,
+                                        duration: videoDuration,
+                                        resolution: videoResolution,
+                                    })
+                                ).url
                             }
                         } else if (isKlingProvider) {
                             // Check if Motion Control is enabled (v2.6+ only).
@@ -3572,7 +3663,7 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                                 })
                             } else {
                                 // KIE aggregator — plain video (Kling 3.0 / Seedance / Wan / Veo)
-                                resultUrl = await genVideoKie({
+                                const kieVideo = await genVideoKie({
                                     prompt: fullPrompt,
                                     firstFrameImage: optimizedVideoInput,
                                     model:
@@ -3584,7 +3675,18 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                                     sound: isKieKling
                                         ? klingNativeAudioEnabled
                                         : undefined,
+                                    ...seedance25Extras({
+                                        model: activeProvider.model,
+                                        nsfwMode,
+                                        videoAudio,
+                                        videoVoiceUrl,
+                                        videoRefUrls,
+                                        returnLastFrame: videoReturnLastFrame,
+                                    }),
                                 })
+                                resultUrl = kieVideo.url
+                                if (kieVideo.lastFrameUrl)
+                                    void adoptLastFrame(kieVideo.lastFrameUrl)
                             }
                         } else {
                             // Use Gemini Service (default)
@@ -3719,7 +3821,7 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                                         klingMotionOrientation,
                                 })
                             } else {
-                                resultUrl = await genVideoKie({
+                                const kieVideo = await genVideoKie({
                                     prompt: fullPrompt,
                                     firstFrameImage: firstRef,
                                     model:
@@ -3731,7 +3833,32 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                                     sound: isKieKling
                                         ? klingNativeAudioEnabled
                                         : undefined,
+                                    // Modo AVATAR (sin imagen de Input): aquí la
+                                    // identidad SÍ viaja por el canal de refs —
+                                    // es lo que Seedance 2.5 numera como
+                                    // @Image1/@Image2 en el prompt.
+                                    ...seedance25Extras({
+                                        model: activeProvider.model,
+                                        nsfwMode,
+                                        videoAudio,
+                                        videoVoiceUrl,
+                                        videoRefUrls,
+                                        returnLastFrame: videoReturnLastFrame,
+                                        referenceImages: [
+                                            optimizedPayload.faceRef,
+                                            optimizedPayload.bodyRef,
+                                            ...optimizedPayload.generalRefs,
+                                        ].filter(
+                                            (
+                                                r,
+                                            ): r is NonNullable<typeof r> =>
+                                                !!r,
+                                        ),
+                                    }),
                                 })
+                                resultUrl = kieVideo.url
+                                if (kieVideo.lastFrameUrl)
+                                    void adoptLastFrame(kieVideo.lastFrameUrl)
                             }
                         } else {
                             // Use Gemini Service (default)
@@ -3872,6 +3999,8 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
             videoAudio,
             videoVoiceUrl,
             videoRefUrls,
+            videoReturnLastFrame,
+            adoptLastFrame,
             aspectRatio,
             videoDuration,
             cameraShot,

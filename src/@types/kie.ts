@@ -14,6 +14,7 @@ export type KieVideoModel =
     | 'veo-3.1'                    // dedicated endpoint /api/v1/veo/generate (TBD wiring)
     | 'veo-3.1-fast'
     | 'bytedance/seedance-2'       // unified /jobs/createTask, first_frame_url HTTP, duration int
+    | 'bytedance/seedance-2-5'     // unified /jobs/createTask; refs de imagen+video+audio, audio nativo, last frame; SOLO 480p/720p
     | 'wan/2-7-image-to-video'     // unified /jobs/createTask, first_frame_url HTTP required
     | 'wan/2-2-a14b-image-to-video-turbo' // unified /jobs/createTask; image_url HTTP; SIN CENSURA (nsfw_checker default false)
     | 'kling-3.0/video'            // unified /jobs/createTask; image_urls[], sound, mode std/pro
