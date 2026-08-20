@@ -133,6 +133,7 @@ const LipsyncDialog = ({
 
                 {media && (
                     <video
+                        crossOrigin="anonymous"
                         src={media.url}
                         controls
                         muted
@@ -191,6 +192,7 @@ const LipsyncDialog = ({
                     <div className="flex flex-col gap-2">
                         <video
                             controls
+                            crossOrigin="anonymous"
                             src={resultUrl}
                             className="w-full rounded-lg"
                         />

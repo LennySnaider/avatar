@@ -942,6 +942,31 @@ const GalleryPanel = ({
                                                 src={
                                                     media.publicUrl ?? media.url
                                                 }
+                                                // MISMO MODO CORS que el resto
+                                                // de la app (2026-08-20, "a
+                                                // veces el vídeo del preview no
+                                                // carga"). Esta card es la que
+                                                // PRIMERO pide el objeto —
+                                                // `preload="metadata"` lo baja
+                                                // en cuanto entra en pantalla— y
+                                                // sin crossOrigin dejaba en la
+                                                // caché HTTP una entrada en modo
+                                                // no-CORS. El preview, el editor
+                                                // y el extractor de frames sí
+                                                // piden con crossOrigin, así que
+                                                // REUTILIZABAN esa entrada sin
+                                                // aprobación CORS y el <video>
+                                                // se quedaba en blanco (0:00 y
+                                                // el recuadro gris de 300×150 =
+                                                // elemento sin fuente cargable).
+                                                //
+                                                // Es la misma trampa que ya
+                                                // documentó VideoEditorMain para
+                                                // su filmstrip: "the preview
+                                                // poisons the HTTP cache with a
+                                                // non-CORS response". Un modo
+                                                // para todos = una sola entrada.
+                                                crossOrigin="anonymous"
                                                 className="w-full h-auto"
                                                 // Only fetch headers/first frame up
                                                 // front — 100+ videos eagerly

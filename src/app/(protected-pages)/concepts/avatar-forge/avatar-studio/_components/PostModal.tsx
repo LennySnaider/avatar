@@ -643,6 +643,11 @@ const PostModal = ({
                                 >
                                     {item.mediaType === 'VIDEO' ? (
                                         <video
+                                            // Un solo modo CORS en toda la app:
+                                            // el primero que pide el objeto fija
+                                            // la entrada de caché para todos los
+                                            // demás. Ver GalleryPanel.
+                                            crossOrigin="anonymous"
                                             src={item.url}
                                             draggable={false}
                                             className="w-full h-full object-cover"
@@ -1068,6 +1073,7 @@ const PostModal = ({
                         {lightboxItem.mediaType === 'VIDEO' ? (
                             <video
                                 key={lightboxItem.id}
+                                crossOrigin="anonymous"
                                 src={lightboxItem.url}
                                 controls
                                 autoPlay

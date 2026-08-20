@@ -194,6 +194,7 @@ const FanvueComposer = ({
                             <div className="mb-3 w-48 rounded-lg overflow-hidden bg-gray-100 dark:bg-gray-800">
                                 {selectedGeneration.mediaType === 'VIDEO' ? (
                                     <video
+                                        crossOrigin="anonymous"
                                         src={selectedGeneration.publicUrl}
                                         controls
                                         className="w-full h-auto"
@@ -224,6 +225,7 @@ const FanvueComposer = ({
                                 >
                                     {gen.mediaType === 'VIDEO' ? (
                                         <video
+                                            crossOrigin="anonymous"
                                             src={gen.publicUrl}
                                             className="w-full h-full object-cover"
                                         />

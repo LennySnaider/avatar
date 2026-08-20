@@ -1461,12 +1461,39 @@ const ImagePreviewModal = ({
                                 <div className="relative">
                                     <video
                                         ref={videoRef}
-                                        src={previewMedia.url}
+                                        // MISMA fuente que la card de la galería
+                                        // (`publicUrl ?? url`), no `url` a secas:
+                                        // dos URLs distintas para el mismo vídeo
+                                        // son dos entradas de caché distintas, y
+                                        // `url` puede ser todavía el CDN efímero
+                                        // del proveedor mientras `publicUrl` ya
+                                        // apunta a nuestra copia durable. El <img>
+                                        // de aquí al lado ya lo hacía así.
+                                        src={previewMedia.publicUrl ?? previewMedia.url}
                                         crossOrigin="anonymous"
                                         className="max-h-[55vh] rounded-lg"
                                         controls={false}
                                         loop
                                         onClick={togglePlayback}
+                                        onError={(e) => {
+                                            // Degradar en vez de quedarse en
+                                            // blanco: si la copia durable falla
+                                            // (o su entrada de caché no sirve),
+                                            // se reintenta con la URL del
+                                            // proveedor. Espeja el onError que el
+                                            // <img> tiene desde hace tiempo — el
+                                            // vídeo se quedó sin él y por eso el
+                                            // fallo era MUDO: recuadro gris, 0:00
+                                            // y ni un error a la vista.
+                                            const v = e.currentTarget
+                                            if (
+                                                previewMedia.url &&
+                                                v.src !== previewMedia.url
+                                            ) {
+                                                v.src = previewMedia.url
+                                                v.load()
+                                            }
+                                        }}
                                         onLoadedMetadata={handleVideoLoadedMetadata}
                                         onTimeUpdate={handleVideoTimeUpdate}
                                         onPlay={() => setIsPlaying(true)}

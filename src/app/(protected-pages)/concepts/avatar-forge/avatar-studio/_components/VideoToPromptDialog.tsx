@@ -215,6 +215,7 @@ const VideoToPromptDialog = ({ isOpen, onClose }: VideoToPromptDialogProps) => {
                             </div>
                             <div className="rounded-lg overflow-hidden bg-black">
                                 <video
+                                    crossOrigin="anonymous"
                                     src={videoUrl}
                                     className="w-full max-h-52 object-contain"
                                     controls

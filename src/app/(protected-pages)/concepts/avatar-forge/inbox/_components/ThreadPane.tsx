@@ -283,7 +283,7 @@ const ThreadPane = ({ thread, onChanged }: ThreadPaneProps) => {
                     <div className="flex items-start gap-3">
                         <div className="w-16 h-16 rounded-lg overflow-hidden bg-gray-200 dark:bg-gray-700 shrink-0 relative">
                             {ppv.mediaType === 'VIDEO' ? (
-                                <video src={ppv.previewUrl} className="w-full h-full object-cover blur-sm" />
+                                <video src={ppv.previewUrl} crossOrigin="anonymous" className="w-full h-full object-cover blur-sm" />
                             ) : (
                                 // eslint-disable-next-line @next/next/no-img-element
                                 <img src={ppv.previewUrl} alt="" className="w-full h-full object-cover blur-sm" />

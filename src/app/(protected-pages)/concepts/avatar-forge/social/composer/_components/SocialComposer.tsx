@@ -276,7 +276,7 @@ const SocialComposer = ({ media, generationId, accounts, libraryImages = [] }: S
                     <div className="flex flex-wrap gap-3">
                         <div className="rounded-lg overflow-hidden bg-gray-100 dark:bg-gray-800 w-48">
                             {media.mediaType === 'VIDEO' ? (
-                                <video src={media.publicUrl} controls className="w-full h-auto" />
+                                <video src={media.publicUrl} crossOrigin="anonymous" controls className="w-full h-auto" />
                             ) : (
                                 <img src={media.publicUrl} alt="Generation preview" className="w-full h-auto" />
                             )}

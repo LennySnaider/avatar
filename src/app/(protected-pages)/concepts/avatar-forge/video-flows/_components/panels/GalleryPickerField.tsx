@@ -130,6 +130,7 @@ export default function GalleryPickerField({ value, onSelect }: GalleryPickerFie
                                     >
                                         {item.media_type === 'VIDEO' ? (
                                             <video
+                                                crossOrigin="anonymous"
                                                 src={url}
                                                 muted
                                                 playsInline

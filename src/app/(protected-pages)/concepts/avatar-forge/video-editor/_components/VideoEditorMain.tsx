@@ -1402,6 +1402,7 @@ const VideoEditorMain = ({ userId, initialVideoUrl }: VideoEditorMainProps) => {
                             className="relative aspect-[9/16] rounded-lg overflow-hidden border-2 border-transparent hover:border-primary transition-colors bg-black disabled:opacity-50"
                         >
                             <video
+                                crossOrigin="anonymous"
                                 src={g.url}
                                 muted
                                 preload="metadata"

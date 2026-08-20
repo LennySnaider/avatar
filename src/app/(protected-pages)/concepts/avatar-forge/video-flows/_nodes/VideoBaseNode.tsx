@@ -121,6 +121,7 @@ function ResultPreview({ result }: { result: Record<string, unknown> | undefined
     if (preview.kind === 'video') {
         return (
             <video
+                crossOrigin="anonymous"
                 src={preview.url}
                 controls
                 muted

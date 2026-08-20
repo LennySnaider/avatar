@@ -270,6 +270,7 @@ const KnowledgeManager = ({ avatarId }: KnowledgeManagerProps) => {
                                     <div className="relative shrink-0 w-14 h-14 rounded-md overflow-hidden bg-black">
                                         {item.thumbnailMediaType === 'VIDEO' ? (
                                             <video
+                                                crossOrigin="anonymous"
                                                 src={item.thumbnailUrl}
                                                 muted
                                                 preload="metadata"
