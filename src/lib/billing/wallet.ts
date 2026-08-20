@@ -336,6 +336,134 @@ export async function refundHoldByRef(
     await refundHold(hold, reason, opts)
 }
 
+/** Holgura antes de dar por muerta una tarea con hold abierto. Ver sweepStaleHolds. */
+const STALE_HOLD_HOURS = 48
+
+/** Vista mínima de un hold colgado; el cast de abajo la justifica. */
+type StaleHoldRow = {
+    id: string
+    organization_id: string
+    tokens: number | null
+    sku: string | null
+}
+
+/**
+ * Consulta cruda del ledger para el barrido. `billingDb()` modela solo
+ * select→maybeSingle y update (lo que necesitaban hold/settle/refund); esto
+ * necesita filtros de rango y listas devolviendo ARRAYS, así que lleva su
+ * propio cast acotado — misma razón y mismo destino que `BillingRpc`: se borra
+ * cuando `npm run db:types` incluya las tablas de billing.
+ */
+type LedgerQuery = {
+    from: (table: string) => {
+        select: (columns: string) => {
+            eq: (col: string, val: string) => LedgerFilter
+            in: (col: string, vals: string[]) => LedgerFilter
+        }
+    }
+}
+type LedgerFilter = Promise<{
+    data: Record<string, unknown>[] | null
+    error: { message: string } | null
+}> & {
+    lt: (col: string, val: string) => LedgerFilter
+    in: (col: string, vals: string[]) => LedgerFilter
+    limit: (n: number) => LedgerFilter
+}
+
+/**
+ * Libera los holds que quedaron colgados: ni liquidados ni reembolsados.
+ *
+ * POR QUÉ SE ACUMULAN: el gate cobra ANTES de llamar al proveedor y liquida
+ * DESPUÉS de persistir. Entre medias el proceso puede morir — la función se
+ * corta, el proveedor nunca responde, o el `settle` falla (y se traga el error
+ * a propósito, para no perderle el resultado al usuario). La fila `hold` se
+ * queda entonces sin cierre y sus tokens cuentan como `held_balance` para
+ * siempre. Medido el 2026-08-16: 84 holds colgados, 65.364 tokens retenidos,
+ * el más viejo de 16 días.
+ *
+ * POR QUÉ REEMBOLSA Y NO LIQUIDA: el `settle` ocurre al persistir la
+ * generación. Un hold que no llegó a settle es una tarea cuyo artefacto nunca
+ * aterrizó en la galería — el usuario no recibió nada, así que le vuelven sus
+ * tokens. Lo pagado al proveedor es dinero hundido y sigue registrado en el
+ * `cost_usd` de la fila del hold: esto devuelve tokens, no borra el costo.
+ *
+ * POR QUÉ 48H: un vídeo largo con reintentos puede tardar horas, y reembolsar
+ * un hold cuya tarea sigue viva provoca doble cobro cuando por fin liquide.
+ * Se prefiere barrer tarde a barrer de más.
+ *
+ * Idempotente: `wallet_refund` ignora los holds que ya tienen settle/refund,
+ * así que solaparse con el flujo normal es inocuo.
+ */
+export async function sweepStaleHolds(): Promise<{
+    swept: number
+    failed: number
+    tokens: number
+}> {
+    const db = orgSupabase() as unknown as LedgerQuery
+    const cutoff = new Date(
+        Date.now() - STALE_HOLD_HOURS * 60 * 60 * 1000,
+    ).toISOString()
+
+    const { data: holdRows, error: holdsErr } = await db
+        .from('token_ledger')
+        .select('id, organization_id, tokens, sku')
+        .eq('kind', 'hold')
+        .lt('created_at', cutoff)
+        .limit(1000)
+    if (holdsErr) throw new Error(`leyendo holds: ${holdsErr.message}`)
+    const holds = (holdRows ?? []) as unknown as StaleHoldRow[]
+    if (!holds.length) return { swept: 0, failed: 0, tokens: 0 }
+
+    // Los cierres se piden aparte: PostgREST no expresa el NOT EXISTS
+    // correlacionado, así que la resta se hace en memoria.
+    //
+    // EN TROZOS porque el filtro `in` viaja en la QUERY STRING: con ~800 holds
+    // antiguos la URL desborda y PostgREST responde 400 Bad Request (visto en
+    // el primer smoke test de este endpoint, no en teoría). 100 uuids por
+    // tanda deja la URL en ~4 KB, muy por debajo de cualquier límite.
+    const CHUNK = 100
+    const closed = new Set<string>()
+    for (let i = 0; i < holds.length; i += CHUNK) {
+        const ids = holds.slice(i, i + CHUNK).map((h) => h.id)
+        const { data: closureRows, error: closErr } = await db
+            .from('token_ledger')
+            .select('hold_id')
+            .in('kind', ['settle', 'refund'])
+            .in('hold_id', ids)
+        // Sin la lista de cerrados NO se barre: reembolsar a ciegas duplicaría
+        // el crédito de todo lo ya liquidado. Se propaga y no se toca nada —
+        // abortar entero es correcto, un barrido a medias con la mitad de los
+        // cierres conocidos es justo el escenario peligroso.
+        if (closErr) throw new Error(`leyendo cierres: ${closErr.message}`)
+        for (const c of closureRows ?? []) closed.add(c.hold_id as string)
+    }
+
+    const stale = holds.filter((h) => !closed.has(h.id))
+
+    let swept = 0
+    let failed = 0
+    let tokens = 0
+    for (const hold of stale) {
+        const { error } = await billingDb().rpc('wallet_refund', {
+            p_org: hold.organization_id,
+            p_hold_id: hold.id,
+            p_reason: 'sweep_stale_hold',
+        })
+        if (error) {
+            failed++
+            console.error(
+                `[holds-sweep] ${hold.id} (${hold.sku ?? 'sin sku'}):`,
+                error.message,
+            )
+            continue
+        }
+        swept++
+        tokens += Math.abs(hold.tokens ?? 0)
+    }
+    return { swept, failed, tokens }
+}
+
 export type WalletBalance = {
     includedBalance: number
     purchasedBalance: number
