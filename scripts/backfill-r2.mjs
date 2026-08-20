@@ -31,12 +31,16 @@ const get = (k) => {
     const m = env.match(new RegExp(`^${k}=(.+)$`, 'm'))
     return m ? m[1].trim().replace(/^["']|["']$/g, '') : undefined
 }
-// FUENTE de la media = el proyecto VIEJO. Tras el trasplante, las vars
-// estándar apuntan al proyecto NUEVO (así la app no cambia ni un import) y el
-// viejo vive en OLD_*. Sin esta preferencia, el backfill intentaría bajar la
-// media de un proyecto que nunca la tuvo.
-const SUPABASE_URL = get('OLD_SUPABASE_URL') || get('NEXT_PUBLIC_SUPABASE_URL')
-const SERVICE_KEY = get('SUPABASE_SERVICE_ROLE_KEY') || get('SUPABASE_SERVICE_KEY')
+// Tras el trasplante hay DOS proyectos con papeles distintos y el script
+// debe separarlos o no cura nada:
+//   - BD = el NUEVO (vars estándar): ahí viven las filas que la app lee y
+//     ahí debe aterrizar el flip storage_provider='r2'. Voltear la BD vieja
+//     dejaría la galería igual de rota tras mover todos los bytes.
+//   - MEDIA = el VIEJO (OLD_*): ahí están los objetos huérfanos. Fallback al
+//     nuevo para las ~7 filas 'supabase' cuyos bytes sí viven en el nuevo.
+const DB_URL = get('NEXT_PUBLIC_SUPABASE_URL')
+const DB_KEY = get('SUPABASE_SERVICE_ROLE_KEY') || get('SUPABASE_SECRET_KEY')
+const MEDIA_URLS = [get('OLD_SUPABASE_URL'), DB_URL].filter(Boolean)
 const R2 = {
     accountId: get('R2_ACCOUNT_ID'),
     accessKeyId: get('R2_ACCESS_KEY_ID'),
@@ -44,13 +48,18 @@ const R2 = {
     bucket: get('R2_BUCKET'),
 }
 const DRY_RUN = process.env.DRY_RUN === '1'
-const BATCH = 25
+// BATCH grande a propósito: las filas MUERTAS (sin objeto en el origen, p.ej.
+// las 23 de ad5f9bfe… perdidas desde dic-2025) son las más viejas y el orden
+// asc las deja SIEMPRE al frente de la página. Con batch 25 cada pasada eran
+// ellas + ~2 filas útiles → horas de head-of-line. Con 200, son ruido fijo.
+const BATCH = 200
 const CONCURRENCY = 4
 
-if (!SUPABASE_URL || !SERVICE_KEY) throw new Error('faltan vars de Supabase')
+if (!DB_URL || !DB_KEY) throw new Error('faltan vars de Supabase (BD nueva)')
+if (!MEDIA_URLS.length) throw new Error('falta OLD_SUPABASE_URL (fuente de media)')
 if (Object.values(R2).some((v) => !v)) throw new Error('faltan vars de R2')
 
-const supabase = createClient(SUPABASE_URL, SERVICE_KEY)
+const supabase = createClient(DB_URL, DB_KEY)
 const aws = new AwsClient({
     accessKeyId: R2.accessKeyId,
     secretAccessKey: R2.secretAccessKey,
@@ -102,6 +111,9 @@ let migrated = 0
 let failed = 0
 let bytes = 0
 const failures = []
+// Una fila muerta reaparece en TODAS las pasadas (nunca se voltea): se
+// reporta una sola vez o el log son miles de líneas repetidas.
+const alreadyFailed = new Set()
 
 let dryPage = 0
 for (;;) {
@@ -127,20 +139,30 @@ for (;;) {
     for (let i = 0; i < rows.length; i += CONCURRENCY) {
         await Promise.all(
             rows.slice(i, i + CONCURRENCY).map(async (row) => {
-                const src = `${SUPABASE_URL}/storage/v1/object/public/generations/${row.storage_path}`
                 try {
-                    const res = await fetch(src)
-                    if (!res.ok) throw new Error(`origen HTTP ${res.status}`)
+                    // Viejo primero (ahí está el 99%), nuevo de fallback
+                    // (las ~7 filas 'supabase' cuyos bytes ya viven ahí).
+                    // DRY_RUN inventaría con HEAD: bajar el objeto entero
+                    // solo para contarlo gastaría la MISMA cuota que migrarlo.
+                    let res = null
+                    for (const base of MEDIA_URLS) {
+                        res = await fetch(`${base}/storage/v1/object/public/generations/${row.storage_path}`, {
+                            method: DRY_RUN ? 'HEAD' : 'GET',
+                        })
+                        if (res.ok) break
+                    }
+                    if (!res?.ok) throw new Error(`origen HTTP ${res?.status}`)
+
+                    if (DRY_RUN) {
+                        migrated++
+                        bytes += Number(res.headers.get('content-length') ?? 0)
+                        return
+                    }
+
                     const buf = Buffer.from(await res.arrayBuffer())
                     const contentType =
                         res.headers.get('content-type') ??
                         (row.media_type === 'VIDEO' ? 'video/mp4' : 'image/jpeg')
-
-                    if (DRY_RUN) {
-                        migrated++
-                        bytes += buf.byteLength
-                        return
-                    }
 
                     await putR2(row.storage_path, buf, contentType)
 
@@ -172,9 +194,12 @@ for (;;) {
                     migrated++
                     bytes += buf.byteLength
                 } catch (e) {
-                    failed++
-                    failures.push({ id: row.id, path: row.storage_path, error: e.message })
-                    console.warn(`  ❌ ${row.id} (${row.storage_path}): ${e.message}`)
+                    if (!alreadyFailed.has(row.id)) {
+                        alreadyFailed.add(row.id)
+                        failed++
+                        failures.push({ id: row.id, path: row.storage_path, error: e.message })
+                        console.warn(`  ❌ ${row.id} (${row.storage_path}): ${e.message}`)
+                    }
                 }
             }),
         )

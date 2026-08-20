@@ -34,12 +34,12 @@ for (const obj of inventory) {
         // ¿ya está en el nuevo? HEAD autenticado
         const head = await fetch(`${NEW_URL}/storage/v1/object/avatars/${obj.name}`, {
             method: 'HEAD',
-            headers: { Authorization: `Bearer ${NEW_KEY}` },
+            headers: { Authorization: `Bearer ${NEW_KEY}`, apikey: NEW_KEY },
         })
         if (head.ok) { skipped++; continue }
 
         const src = await fetch(`${OLD_URL}/storage/v1/object/avatars/${obj.name}`, {
-            headers: { Authorization: `Bearer ${OLD_KEY}` },
+            headers: { Authorization: `Bearer ${OLD_KEY}`, apikey: OLD_KEY },
         })
         if (!src.ok) throw new Error(`origen ${src.status}`)
         const buf = Buffer.from(await src.arrayBuffer())
@@ -48,6 +48,7 @@ for (const obj of inventory) {
             method: 'POST',
             headers: {
                 Authorization: `Bearer ${NEW_KEY}`,
+                apikey: NEW_KEY,
                 'Content-Type': obj.mime || 'application/octet-stream',
                 'x-upsert': 'true',
             },
