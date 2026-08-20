@@ -341,16 +341,30 @@ export const GLUTES_SHAPE_PHRASE: Record<string, string> = {
     heart: 'heart-shaped glutes — voluminous curvy lower part tapering up to a narrow waist, upside-down-heart silhouette with wide hips',
 }
 
+// FORMA SIN ANATOMÍA DESCUBIERTA (2026-08-20, reporte "marca los pezones sobre
+// la ropa con 🌶️ apagado", tres imágenes + full_api_prompt en BD): estas frases
+// viajan por buildCurvesEmphasis → bodyEmphasis en TODAS las generaciones, SFW
+// incluidas, y tres de ellas nombraban pezones o areolas ("with centered
+// nipples", "tapering toward the nipple", "prominent areolas"). A un motor
+// literal se le estaba pidiendo dibujar un pezón mientras la escena le ponía un
+// crop top: lo obedece marcándolo ENCIMA de la prenda.
+//
+// Es el MISMO modo de falla que ya obligó a acotar tanLinesClause ("sin el
+// alcance explícito, los motores dibujaban las líneas ENCIMA de la ropa") y la
+// misma disciplina que ya se aplicó a GLUTES_SHAPE_PHRASE.round: la FORMA es
+// geometría; lo que solo se ve descubierta pertenece a nippleClause, que viaja
+// aparte y SÍ está gated a nsfwLevel>=65 (fuente única, ver la nota en
+// buildCurvesEmphasis). Aquí se describe la misma silueta sin nombrar la punta.
 export const BUST_SHAPE_PHRASE: Record<string, string> = {
-    round: 'perfectly round breasts — even fullness in every direction with centered nipples, youthful round shape',
+    round: 'perfectly round breasts — even fullness in every direction, symmetric youthful round shape',
     athletic:
         'athletic breasts — round firm base with a toned muscular look and less tissue volume',
     conical:
-        'conical breasts — rounded base tapering toward the nipple in a cone shape',
+        'conical breasts — rounded base narrowing toward the tip in a cone shape',
     teardrop:
         'teardrop pear-shaped breasts — slimmer flatter upper pole with fuller lower quadrants, natural sloped profile',
     tuberous:
-        'tubular breasts — narrow constricted base, wide spacing between the breasts, prominent areolas',
+        'tubular breasts — narrow constricted base, wide spacing between the breasts, puffy forward-projecting tips',
 }
 
 // ── Reglas de pezón POR AVATAR (consistencia NSFW) ─────────────────────────

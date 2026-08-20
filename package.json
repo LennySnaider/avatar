@@ -11,7 +11,9 @@
         "prettier": "npx prettier src --check",
         "prettier:fix": "npm run prettier -- --write",
         "check:prompts": "npx --yes tsx scripts/check-prompts.ts",
-        "db:types": "supabase gen types typescript --project-id huszemcrgiuhbknbsysf > src/@types/database.generated.ts"
+        "db:types": "supabase gen types typescript --project-id huszemcrgiuhbknbsysf > src/@types/database.generated.ts",
+        "check:video-cors": "node scripts/check-video-cors.mjs",
+        "test": "npx --yes tsx --test \"src/**/*.test.ts\""
     },
     "dependencies": {
         "@ai-sdk/google": "^3.0.91",

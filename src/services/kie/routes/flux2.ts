@@ -9,7 +9,7 @@
 import type { ImageRoute, ImageRouteContext, KieImageRequest } from '../context'
 import {
     planExtraRefs,
-    hasNudityIntent,
+    resolveNudityIntent,
     relocatePoseTag,
     capAtWordBoundary,
     INTACT_BODY_CLAUSE,
@@ -49,7 +49,7 @@ async function build(ctx: ImageRouteContext): Promise<KieImageRequest> {
                 7,
                 ctx.deepfakeMode,
                 ctx.cloneWeight,
-                hasNudityIntent(ctx.prompt),
+                resolveNudityIntent(ctx.nsfwIntent, ctx.prompt),
             )
             const urls: string[] = [
                 await ctx.uploadRef(ctx.referenceImage),

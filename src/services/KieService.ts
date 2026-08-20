@@ -741,6 +741,12 @@ export interface GenerateImageKieParams {
     // vestida hay que acotar su ropa. MuleRouter ya lo distinguia; KIE no
     // recibia el dato.
     bodySheetNude?: boolean
+    // ¿La escena DESVISTE al sujeto? El cliente lo SABE (toggle 🌶️); la ruta lo
+    // adivinaba leyendo el prompt y confundía prendas con desnudez ("semi-sheer
+    // bodice" → orden de desvestir en un run SFW → pezones sobre la ropa,
+    // reporte 2026-08-20). `false` es autoritativo; `undefined` = cae al
+    // heurístico. Ver la nota larga en kie/context.ts.
+    nsfwIntent?: boolean
     // El prompt ya es COMPLETO: la ruta no debe envolverlo en su ancla de
     // identidad ni recortarlo contra el presupuesto de escena. Lo usa el Body
     // Lab, cuyas hojas se definen a sí mismas (ver context.ts).
@@ -830,6 +836,7 @@ async function generateImageKieInner(
         deepfakeMode,
         editMode,
         bodySheetNude,
+        nsfwIntent,
         selfContainedPrompt,
         maskBBox,
         curveBoost,
@@ -892,6 +899,7 @@ async function generateImageKieInner(
             deepfakeMode,
             editMode,
             bodySheetNude,
+            nsfwIntent,
             selfContainedPrompt,
             maskBBox,
             curveBoost,

@@ -23,6 +23,7 @@
 import { getOrgContext } from '@/lib/tenant/getOrgContext'
 import { orgSupabase } from '@/lib/org/orgTable'
 import { orgStoragePath } from '@/lib/storagePaths'
+import { putMediaObject, r2Enabled } from '@/lib/mediaStore'
 import { settleHoldByRef, findHoldByRef } from '@/lib/billing/wallet'
 import { probeKieTask, type KieTaskFamily } from '@/services/kie/taskProbe'
 
@@ -132,11 +133,17 @@ function explainDiagnosis(d: KieTaskDiagnosis): string {
 
 /** Baja el resultado del CDN de KIE y lo deja en Storage (mismo layout que el
  *  auto-save del Studio y que el reconciliador). */
+/**
+ * Sale por `putMediaObject` — misma corrección que el reconciliador
+ * (2026-08-20): los dos caminos de rescate se habían quedado fuera de la
+ * migración a R2 y subían al bucket de Supabase, contra la cuota de egress que
+ * ya costó un 402. Ver la nota larga en ReconcileGenerationsService.
+ */
 async function persistRemoteMedia(
     organizationId: string,
     url: string,
     isVideo: boolean,
-): Promise<string> {
+): Promise<{ path: string; provider: 'r2' | 'supabase' }> {
     const res = await fetch(url, { signal: AbortSignal.timeout(180_000) })
     if (!res.ok) {
         throw new Error(
@@ -149,15 +156,12 @@ async function persistRemoteMedia(
         isVideo ? 'videos' : 'images',
         `${Date.now()}.${isVideo ? 'mp4' : 'jpg'}`,
     )
-    const { error } = await orgSupabase()
-        .storage.from('generations')
-        .upload(path, buffer, {
-            contentType: isVideo ? 'video/mp4' : 'image/jpeg',
-            cacheControl: '3600',
-            upsert: false,
-        })
-    if (error) throw new Error(error.message)
-    return path
+    const { provider } = await putMediaObject({
+        path,
+        body: buffer,
+        contentType: isVideo ? 'video/mp4' : 'image/jpeg',
+    })
+    return { path, provider }
 }
 
 export interface RescueResult {
@@ -213,7 +217,11 @@ export async function apiRescueKieTask(params: {
         params.mediaType === 'VIDEO' || /\.(mp4|mov|webm)(\?|$)/i.test(url)
 
     try {
-        const path = await persistRemoteMedia(ctx.organizationId, url, isVideo)
+        const { path, provider } = await persistRemoteMedia(
+            ctx.organizationId,
+            url,
+            isVideo,
+        )
         const { data, error } = await orgSupabase()
             .from('generations')
             .insert({
@@ -222,6 +230,9 @@ export async function apiRescueKieTask(params: {
                 avatar_id: params.avatarId ?? null,
                 media_type: isVideo ? 'VIDEO' : 'IMAGE',
                 storage_path: path,
+                // Sin esto la fila caía al default 'supabase' y el lector
+                // buscaba los bytes en el proveedor equivocado.
+                ...(r2Enabled() ? ({ storage_provider: provider } as object) : {}),
                 // `generations.prompt` es NOT NULL y el rescate manual no
                 // recibe prompt: insertar null reventaba con "null value in
                 // column prompt" DESPUÉS de haber bajado y guardado el archivo

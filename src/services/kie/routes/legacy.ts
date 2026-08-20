@@ -16,7 +16,7 @@
 import type { ImageRouteContext, KieImageRequest } from '../context'
 import {
     planExtraRefs,
-    hasNudityIntent,
+    resolveNudityIntent,
     stripIdentityRedundancy,
     relocatePoseTag,
     capAtWordBoundary,
@@ -151,7 +151,7 @@ export async function buildLegacyRequest(
                     9,
                     deepfakeMode,
                     cloneWeight,
-                    hasNudityIntent(promptText),
+                    resolveNudityIntent(ctx.nsfwIntent, promptText),
                 )
                 const urls: string[] = [
                     await uploadRef(referenceImage),
@@ -228,7 +228,7 @@ export async function buildLegacyRequest(
                     8,
                     deepfakeMode,
                     cloneWeight,
-                    hasNudityIntent(promptText),
+                    resolveNudityIntent(ctx.nsfwIntent, promptText),
                 )
                 const wanUrls: string[] = [
                     await uploadRef(referenceImage),
@@ -277,7 +277,7 @@ export async function buildLegacyRequest(
                     7,
                     deepfakeMode,
                     cloneWeight,
-                    hasNudityIntent(promptText),
+                    resolveNudityIntent(ctx.nsfwIntent, promptText),
                 )
                 const urls: string[] = [
                     await uploadRef(referenceImage),

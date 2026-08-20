@@ -57,7 +57,7 @@ import {
     sniffMediaType,
 } from '../../_utils/mediaDownload'
 import { getGenerationMediaUrl } from '@/lib/storagePaths'
-import { createThumbnail } from '@/utils/imageOptimization'
+import { createThumbnail, resizeBase64Image } from '@/utils/imageOptimization'
 import { uploadGenerationTicket } from '@/lib/storageUpload'
 import {
     generateAvatar,
@@ -72,6 +72,7 @@ import {
     spicifyScenePrompt,
 } from '@/services/GeminiService'
 import { SPICY_NUDE_SHEET_MIN, SPICY_EXPLICIT_MIN } from '@/utils/spicyTiers'
+import { cloneTier } from '@/utils/cloneTiers'
 import { maskFaceInImage } from '@/utils/faceMask'
 import {
     compositeMaskOverlay,
@@ -194,6 +195,12 @@ async function pollKieImageTask(
 ): Promise<{
     url: string
     fullApiPrompt: string
+    /**
+     * Id de la tarea en el proveedor. Sale de aquí porque el rastro de rescate
+     * ya NO se da de baja al recibir la URL (ver abajo): quien persista el
+     * resultado es quien debe cerrarlo, y necesita este id para hacerlo.
+     */
+    taskId: string
     // Copia estable en Supabase, corriendo en PARALELO. `url` es el CDN crudo
     // de KIE (renderiza YA en <img>, pero expira y no da CORS): el caller
     // muestra `url` de inmediato y swapea a `stableUrl` cuando resuelva (null
@@ -249,13 +256,27 @@ async function pollKieImageTask(
                 const stableUrl = persistKieImageResult(st.url)
                     .then((r) => (r.success ? r.url : null))
                     .catch(() => null)
-                // Ya está en manos del cliente: deja de ser reclamable, y el
-                // cobro se confirma (entregó media).
-                void apiClearPendingGeneration(sub.taskId, 'delivered')
+                // OJO: la baja del rastro NO va aquí (2026-08-20). Recibir la
+                // URL no es haber guardado nada: después de este `return` aún
+                // quedan la copia estable, la subida a la galería y el INSERT
+                // en `generations` — todo en el navegador, que es justo donde
+                // el usuario cierra la pestaña o se va. Darla de baja aquí
+                // borraba el único rastro reclamable y encima liquidaba el
+                // cobro, así que un fallo en ese tramo dejaba la generación
+                // pagada, viva en el CDN de KIE y sin forma de reclamarla.
+                //
+                // Medido en la task a9bfc27a…: hold 17:03:51 → settle 17:16:00
+                // → CERO filas en `generations`. La rama de VÍDEO ya había
+                // aprendido esto ("darlo de baja al terminar el POLL abre una
+                // ventana en la que la tarea ya no es reclamable pero tampoco
+                // está persistida"); la de imagen se quedó sin portarlo.
+                //
+                // Ahora cierra `persistGeneration`, con la fila ya escrita.
                 return {
                     url: st.url,
                     fullApiPrompt: sub.fullApiPrompt,
                     stableUrl,
+                    taskId: sub.taskId,
                 }
             }
             if (st.status === 'failed') {
@@ -497,7 +518,12 @@ async function hydrateSheetFromDb(
     if (!row?.storage_path || current?.storagePath === row.storage_path) {
         return null
     }
-    const signed = await getSignedUrl('avatars', row.storage_path)
+    const signed = await getSignedUrl(
+        'avatars',
+        row.storage_path,
+        3600,
+        row.storage_provider,
+    )
     // null = bytes en el proyecto viejo (ventana del trasplante) → la ref se
     // salta y la generación sigue con las que sí estén.
     if (!signed) return null
@@ -511,6 +537,7 @@ async function hydrateSheetFromDb(
         base64: mm[2],
         type,
         storagePath: row.storage_path,
+        storageProvider: row.storage_provider,
     }
 }
 
@@ -1152,6 +1179,15 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
     const persistGeneration = useCallback(
         async (media: GeneratedMedia) => {
             if (!userId) return
+            // Tarea del proveedor que dio origen a este media, si la hubo. Su
+            // fila de `pending_generations` sigue VIVA a propósito hasta que
+            // exista la fila de `generations`: mientras tanto la generación es
+            // reclamable con 🔄 y su cobro está solo retenido, no confirmado.
+            // Es la red que faltaba — ver la nota en pollKieImageTask.
+            const providerTaskId =
+                typeof media.metadata?.providerTaskId === 'string'
+                    ? media.metadata.providerTaskId
+                    : null
             updateGalleryItem(media.id, { saveState: 'saving' })
             // Timeouts POR TIPO (2026-07-24, AbortError en dev): el techo plano
             // de 30s mataba descargas lentas-pero-VIVAS — un video de KIE pesa
@@ -1188,7 +1224,17 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                     useAvatarStudioStore
                         .getState()
                         .gallery.some((m) => m.id === media.id)
-                if (!stillPresent()) return
+                if (!stillPresent()) {
+                    // Descartada por el usuario mientras subía: no habrá fila,
+                    // pero tampoco hay nada que reclamar. Se cierra el rastro
+                    // (el proveedor entregó) para que el 🔄 no la resucite.
+                    if (providerTaskId)
+                        void apiClearPendingGeneration(
+                            providerTaskId,
+                            'delivered',
+                        )
+                    return
+                }
 
                 const row = await withDeadline(
                     apiSaveGeneration({
@@ -1230,8 +1276,22 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                 // en vez de dejar un huérfano que revive al recargar.
                 if (!stillPresent()) {
                     await apiDeleteGeneration(row.id).catch(() => {})
+                    // Entregada y descartada por el usuario: deja de ser
+                    // reclamable (si no, el 🔄 la resucitaría) y el cobro se
+                    // confirma — el proveedor sí entregó.
+                    if (providerTaskId)
+                        void apiClearPendingGeneration(
+                            providerTaskId,
+                            'delivered',
+                        )
                     return
                 }
+
+                // AQUÍ, y no antes: la fila existe, el media está en nuestro
+                // storage y el usuario lo ve en la galería. Recién ahora deja
+                // de ser reclamable y el cobro se confirma.
+                if (providerTaskId)
+                    void apiClearPendingGeneration(providerTaskId, 'delivered')
 
                 updateGalleryItem(media.id, {
                     saveState: 'saved',
@@ -1370,6 +1430,12 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                 avatarInfo: source.avatarInfo,
                 fullApiPrompt: polled.fullApiPrompt,
                 providerName: 'Seedream 5.0 Pro',
+                // Mismo contrato que handleGenerate: persistGeneration cierra
+                // el rastro de rescate con la fila ya escrita.
+                metadata: {
+                    providerTaskId: polled.taskId,
+                    kieTaskId: polled.taskId,
+                },
             }
             addToGallery(newMedia)
             // Persistencia SÍNCRONA (no persistWhenStable): el carrusel publica
@@ -2073,26 +2139,37 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                         // (sin clone-imagen, wan.ts ya no lo stripea). Seedream
                         // NO sufre esto: re-sintetiza (no copia píxeles). El
                         // badge Clone NN% no se afecta (keyea optimizedCloneRef).
-                        const wanCanvasMode =
-                            (kieModel === 'wan/2-7-image' ||
-                                kieModel === 'wan/2-7-image-pro') &&
-                            (cloneWeight ?? 100) >= 50
-                        // SEEDREAM cw<50: tampoco se adjunta la imagen — evidencia
-                        // en BD (full_api_prompt de corridas 15/65/100): con la
-                        // imagen presente Seedream la copia casi al píxel y el %
-                        // solo cambiaba UNA frase → 15/65/100 salían idénticas y
-                        // con la cara del clon. A cw>=50 la ruta seedream.ts la
-                        // usa de LIENZO (imagen 1) con face-swap; a cw<50 la
-                        // inspiración viaja por el TEXTO [CLONE:] con instrucción
-                        // de variación (mismo criterio que Wan y MuleRouter).
-                        const seedreamCanvasMode =
-                            kieModel.startsWith('seedream/') &&
-                            (cloneWeight ?? 100) >= 50
+                        // TRAMO del Clone Ref — una sola fuente (utils/cloneTiers).
+                        // `canvas` solo es cierto en EXACT: ahí el clon ES el
+                        // lienzo (imagen 1) que se recrea. Por debajo, la imagen 1
+                        // vuelve a ser la CARA (ella es el sujeto) y el clon baja a
+                        // referencia. ESE salto de slot es la palanca real; el
+                        // adjetivo nunca lo fue.
+                        const cloneRefTier = cloneTier(cloneWeight ?? 100)
+                        const isWanImage =
+                            kieModel === 'wan/2-7-image' ||
+                            kieModel === 'wan/2-7-image-pro'
+                        // La imagen del clon viaja en LOS CUATRO tramos
+                        // (2026-08-20). Antes se caía a cw<50 porque con ella
+                        // delante Seedream la copiaba al píxel y el % solo cambiaba
+                        // UNA frase — pero quitarla dejaba los tramos bajos SIN
+                        // contexto ninguno, y en 🌶️ sin siquiera descripción
+                        // (Gemini y qwen-vl-max se niegan a describir desnudos:
+                        // medido con control el 2026-08-20). El arreglo no es
+                        // tirar la imagen sino BAJARLA DE RANGO: fuera de EXACT
+                        // deja de ser el lienzo y pasa por planExtraRefs como una
+                        // referencia más, con la cara del avatar recuperando la
+                        // imagen 1. Y en MOD/LOOSE viaja además reescalada — menos
+                        // píxeles es menos que calcar, y eso sí es físico.
+                        //
+                        // Quién decide el ROL ya no es este archivo: la ruta lo
+                        // deriva del mismo `cloneTier`. Aquí solo se decide si la
+                        // imagen se adjunta — y la respuesta pasó a ser «siempre».
                         if (
                             !deepfakeActive &&
                             (kieModel === 'nano-banana-pro' ||
                                 kieModel.startsWith('nano-banana-2') ||
-                                wanCanvasMode ||
+                                isWanImage ||
                                 kieModel.startsWith('flux-2/') ||
                                 // Qwen es editor de imagen (image_url acepta
                                 // array): recibe [cara, clone] con guard de
@@ -2100,10 +2177,8 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                                 kieModel.startsWith('qwen') ||
                                 // Seedream Pro COPIA la cara del clone (muy
                                 // adherente a la imagen), por eso el clon va con
-                                // la cara difuminada CUANDO Gemini la detecta —
-                                // y solo en modo canvas (cw>=50), donde es el
-                                // lienzo a recrear.
-                                seedreamCanvasMode) &&
+                                // la cara difuminada CUANDO Gemini la detecta.
+                                kieModel.startsWith('seedream/')) &&
                             optimizedCloneRef &&
                             kieReferenceImages.length > 0
                         ) {
@@ -2112,22 +2187,53 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                             // imagen. El masking borra la cabeza y la pose caía al
                             // texto lossy/erróneo de Gemini ("kneeling" ≠ pose real);
                             // Qwen sigue mucho el texto → la renderizaba mal.
-                            // Resto: enmascarado (Seedream COPIA la cara; Wan es
-                            // fuser y sin máscara podría bleedear la cara rival).
-                            // wanCanvasMode viene del scope de arriba: en canvas
-                            // (cw>=50) el clon va RAW como lienzo (la máscara
-                            // borraba lentes y aflojaba el edit-in-place); a
-                            // cw<50 wan NI ENTRA aquí (sin imagen — solo texto).
+                            // Seedream sí va enmascarado: COPIA la cara del
+                            // clon y es el único que la pisa.
+                            // WAN va SIEMPRE con el clon SIN enmascarar, no solo
+                            // en lienzo (2026-08-20). Wan es un FUSOR: calca el
+                            // óvalo difuminado de la máscara tal cual — es el bug
+                            // del "círculo gris" (2026-07-23), el mismo modo de
+                            // falla que Qwen pintando el overlay morado. Antes no
+                            // se notaba por debajo de 50 porque ahí Wan NI RECIBÍA
+                            // la imagen; ahora que la recibe en los cuatro tramos,
+                            // mandarla enmascarada resucitaría el artefacto. La
+                            // identidad la sostiene el guard de maniquí del texto
+                            // ("FACELESS MANNEQUIN — face ONLY from image 1"),
+                            // que es exactamente cómo se protege ya en Qwen.
                             const cloneForModel =
-                                (kieModel.startsWith('qwen') ||
-                                    wanCanvasMode) &&
+                                (kieModel.startsWith('qwen') || isWanImage) &&
                                 optimizedCloneRawRef
                                     ? optimizedCloneRawRef
                                     : optimizedCloneRef
+                            // SEGUNDA PALANCA (2026-08-20) — menos DETALLE en los
+                            // tramos bajos. La primera (qué slot ocupa) separa
+                            // EXACT de los demás; esta separa MOD de LOOSE sin
+                            // depender de que el motor obedezca un adjetivo:
+                            // sobreviven composición, colores y ambiente, y se
+                            // pierde la textura que invita a calcar. Es física,
+                            // no retórica — y por eso es monótona de verdad.
+                            const cloneSized = cloneRefTier.maxSide
+                                ? {
+                                      ...cloneForModel,
+                                      base64: await resizeBase64Image(
+                                          cloneForModel.base64,
+                                          {
+                                              maxWidth: cloneRefTier.maxSide,
+                                              maxHeight: cloneRefTier.maxSide,
+                                              quality: 0.85,
+                                              // KIE rechaza refs < 240px de lado:
+                                              // sin este piso, LOOSE sobre una
+                                              // foto ya pequeña la dejaba fuera
+                                              // de spec y moría el submit.
+                                              minSide: 256,
+                                          },
+                                      ),
+                                  }
+                                : cloneForModel
                             kieRefsToSend = [
                                 ...kieReferenceImages,
                                 {
-                                    ...cloneForModel,
+                                    ...cloneSized,
                                     role: 'clone' as const,
                                     masked: cloneFaceMasked,
                                 },
@@ -2553,10 +2659,12 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                                 )
                                 if (st.status === 'done') {
                                     mrUrl = st.url
-                                    void apiClearPendingGeneration(
-                                        sub.taskId,
-                                        'delivered',
-                                    )
+                                    // La baja NO va aquí (2026-08-20, mismo
+                                    // arreglo que la rama KIE): tener la URL no
+                                    // es tener la generación guardada. La cierra
+                                    // persistGeneration con la fila ya escrita —
+                                    // hasta entonces sigue siendo reclamable
+                                    // con 🔄 y su cobro solo retenido.
                                     break
                                 }
                                 if (st.status === 'failed') {
@@ -2687,6 +2795,10 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                             pendingStableUrl = persistKieImageResult(mrFinalUrl)
                                 .then((r) => (r.success ? r.url : null))
                                 .catch(() => null)
+                            generationMeta = {
+                                ...(generationMeta ?? {}),
+                                providerTaskId: sub.taskId,
+                            }
                         } else if (qwenTwoPhase && kieSingleRef) {
                             // La fase 1 NO debe pre-pintar la cara del avatar:
                             // el [FACE:] textual generaba una cara PARECIDA y el
@@ -2748,6 +2860,15 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                                     fr.readAsDataURL(canvasBlob)
                                 },
                             )
+                            // La fase 1 es un lienzo INTERMEDIO: nunca llega a
+                            // la galería, así que su rastro se cierra aquí (ya
+                            // tenemos sus bytes) y no en persistGeneration. Si
+                            // se dejara vivo, el 🔄 rescataría medias caras sin
+                            // swap como si fueran generaciones del usuario.
+                            void apiClearPendingGeneration(
+                                phase1.taskId,
+                                'delivered',
+                            )
                             // FASE 2 con prompt MÍNIMO: la escena/cuerpo ya
                             // están EN el canvas — re-describirlos (kiePrompt
                             // ~3KB) diluía la orden de swap y Qwen conservaba
@@ -2780,6 +2901,11 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                             resultUrl = phase2.url
                             apiPrompt = `[FASE 1 · qwen2/text-to-image — cuerpo/escena]\n${phase1.fullApiPrompt}\n\n[FASE 2 · qwen2/image-edit — face-swap]\n${phase2.fullApiPrompt}`
                             pendingStableUrl = phase2.stableUrl
+                            generationMeta = {
+                                ...(generationMeta ?? {}),
+                                providerTaskId: phase2.taskId,
+                                kieTaskId: phase2.taskId,
+                            }
                         } else if (isKieAsyncImageModel(kieModel)) {
                             // ASYNC submit + browser poll (see pollKieImageTask).
                             const polled = await pollKieImageTask(
@@ -2815,6 +2941,28 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                                     // no llegaba, asi que sus rutas trataban igual
                                     // a las dos hojas.
                                     bodySheetNude: usingNudeSheet,
+                                    // ¿Desvestir? Con 🌶️ APAGADO la respuesta es
+                                    // NO y es AUTORITATIVA: sin este dato la ruta
+                                    // lo adivinaba leyendo el prompt y confundía
+                                    // prendas con desnudez — un "semi-sheer
+                                    // bodice" o un "sheer mesh panel" bastaban
+                                    // para mandarle "IGNORE its clothing — follow
+                                    // the nudity" a una escena vestida, y el motor
+                                    // resolvía la contradicción marcando los
+                                    // pezones ENCIMA de la ropa (reporte
+                                    // 2026-08-20, tres imágenes + la task
+                                    // a9bfc27a… en BD).
+                                    //
+                                    // Con el toggle ENCENDIDO se deja `undefined`
+                                    // a propósito: la escena ya viene reescrita
+                                    // por su tramo (spicyTier) y el heurístico
+                                    // lee ESA escena, que es donde sí acierta —
+                                    // distingue el desnudo real (topless/nude) de
+                                    // los tramos que solo cambian de prenda
+                                    // (sugerente/lencería). `nsfwRun` a secas
+                                    // sería demasiado grueso y desvestiría un
+                                    // tramo de lencería.
+                                    nsfwIntent: nsfwRun ? undefined : false,
                                     // Color de pelo DENTRO del ancla i2i: como "brown
                                     // hair" en el [BODY:] tardío, Seedream/Wan seguían
                                     // el tono del ref/escena (reporte: MiaUltra salía
@@ -2855,12 +3003,25 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                             resultUrl = polled.url
                             apiPrompt = polled.fullApiPrompt
                             pendingStableUrl = polled.stableUrl
+                            // El id del proveedor viaja en el metadata por DOS
+                            // motivos: persistGeneration lo necesita para dar
+                            // de baja el rastro con la fila ya escrita, y deja
+                            // la fila correlacionable por taskId — que es justo
+                            // lo que le faltaba al rescate manual para poder
+                            // responder "esta tarea, ¿dónde acabó?".
+                            generationMeta = {
+                                ...(generationMeta ?? {}),
+                                providerTaskId: polled.taskId,
+                                kieTaskId: polled.taskId,
+                            }
                         } else {
                             const result = await generateImageKie({
                                 prompt: kiePrompt,
                                 referenceImage: kieSingleRef,
                                 referenceImages: kieRefsToSend,
                                 aspectRatio,
+                                // Mismo criterio que la rama async de arriba.
+                                nsfwIntent: nsfwRun ? undefined : false,
                                 model:
                                     activeProvider.model ||
                                     'flux-kontext/text-to-image',
@@ -4336,6 +4497,9 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                 // Copia estable pendiente (solo rama KIE async) — ver
                 // persistWhenStable.
                 let pendingStableUrl: Promise<string | null> | null = null
+                // Tarea del proveedor (solo rama KIE async): su rastro de
+                // rescate lo cierra persistGeneration, con la fila ya escrita.
+                let editTaskId: string | null = null
 
                 // Normalize the source to base64 FIRST — `media.url` can be a
                 // data: URL (session items), blob: (uploads) or an https
@@ -4534,6 +4698,7 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                             })
                             resultUrl = polled.url
                             pendingStableUrl = polled.stableUrl
+                            editTaskId = polled.taskId
                         } else {
                             const r = await generateImageKie({
                                 prompt: maskedPrompt,
@@ -4575,6 +4740,17 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                     avatarInfo: media.avatarInfo,
                     providerName:
                         resolvedProvider?.name ?? 'Gemini 3 Pro Image',
+                    // Mismo contrato que handleGenerate: el id del proveedor
+                    // viaja para que persistGeneration cierre el rastro con la
+                    // fila ya escrita (y la deje correlacionable por taskId).
+                    ...(editTaskId
+                        ? {
+                              metadata: {
+                                  providerTaskId: editTaskId,
+                                  kieTaskId: editTaskId,
+                              },
+                          }
+                        : {}),
                 }
 
                 addToGallery(newMedia)
@@ -4707,6 +4883,18 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                             : {}),
                     } as typeof media.metadata,
                 })
+
+                // Guardado a mano tras un auto-save fallido: la fila ya existe,
+                // así que el rastro de rescate se cierra igual que en
+                // persistGeneration. Sin esto, el 🔄 podría rescatarla OTRA vez
+                // (duplicado) y la purga de 24h devolvería tokens de algo que
+                // sí se entregó — la misma incoherencia que dejó el camino de
+                // vídeo separado del de imagen.
+                if (typeof media.metadata?.providerTaskId === 'string')
+                    void apiClearPendingGeneration(
+                        media.metadata.providerTaskId,
+                        'delivered',
+                    )
 
                 // Reflect the save on the item so Post/Assign unlock immediately.
                 updateGalleryItem(media.id, {

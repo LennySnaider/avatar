@@ -19,6 +19,7 @@ import {
     ASSET_PROMPT_CATEGORY,
 } from '../_constants/assetLibrary'
 import { resizeBase64Image } from '@/utils/imageOptimization'
+import { cloneTier, cloneWeightFromRatio, CLONE_STOPS } from '@/utils/cloneTiers'
 import Button from '@/components/ui/Button'
 import Switcher from '@/components/ui/Switcher'
 import Slider from '@/components/ui/Slider'
@@ -200,13 +201,10 @@ async function totalRefVideoSeconds(
 }
 
 // Peso del Clone en 4 POSICIONES (snap): mover dentro de un tramo NO cambia el
-// prompt (75-100 EXACT, 50-74 STRONG, 25-49 MODERATE, 0-24 LOOSE), así que el
-// slider salta entre 4 valores canónicos — uno bien centrado en cada tramo.
-const CLONE_STOPS = [15, 40, 65, 100]
-const cloneWeightFromRatio = (ratio: number): number => {
-    const r = Math.max(0, Math.min(1, ratio))
-    return r >= 0.75 ? 100 : r >= 0.5 ? 65 : r >= 0.25 ? 40 : 15
-}
+// prompt, así que el slider salta entre 4 valores canónicos — uno centrado en
+// cada tramo. Umbrales, etiquetas y snap viven en utils/cloneTiers: aquí había
+// una COPIA de las fronteras, que es como la etiqueta y el comportamiento se
+// desincronizan en cuanto alguien mueve una.
 const nextCloneStop = (current: number, dir: 1 | -1): number => {
     const idx = CLONE_STOPS.reduce(
         (best, v, i) =>
@@ -1607,7 +1605,7 @@ const BottomControlBar = ({
                                                     aria-valuemax={100}
                                                     aria-valuenow={cloneWeight}
                                                     tabIndex={0}
-                                                    title={`Peso del Clone: ${cloneWeight}% — arrastra ↑/↓ (100 recrea la foto exacta, bajo = inspirado)`}
+                                                    title={`Clone ${cloneWeight}% · ${cloneTier(cloneWeight).label} — ${cloneTier(cloneWeight).hint}. Arrastra ↑/↓`}
                                                     onPointerDown={(e) => {
                                                         e.currentTarget.setPointerCapture(
                                                             e.pointerId,
@@ -1687,15 +1685,7 @@ const BottomControlBar = ({
                                                             solo cambia el output al
                                                             CRUZAR umbral, no dentro. */}
                                                         <span className="mt-0.5 text-[6px] font-semibold uppercase tracking-wide text-purple-100">
-                                                            {cloneWeight >= 75
-                                                                ? 'EXACT'
-                                                                : cloneWeight >=
-                                                                    50
-                                                                  ? 'STRONG'
-                                                                  : cloneWeight >=
-                                                                      25
-                                                                    ? 'MOD'
-                                                                    : 'LOOSE'}
+                                                            {cloneTier(cloneWeight).label}
                                                         </span>
                                                     </div>
                                                 </div>

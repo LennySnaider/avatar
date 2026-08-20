@@ -8,9 +8,10 @@
  */
 
 import type { ImageRoute, ImageRouteContext, KieImageRequest } from '../context'
+import { cloneTier } from '@/utils/cloneTiers'
 import {
     planExtraRefs,
-    hasNudityIntent,
+    resolveNudityIntent,
     stripIdentityRedundancy,
     relocatePoseTag,
     capAtWordBoundary,
@@ -84,7 +85,7 @@ async function build(ctx: ImageRouteContext): Promise<KieImageRequest> {
                 8,
                 ctx.deepfakeMode,
                 ctx.cloneWeight,
-                hasNudityIntent(ctx.prompt),
+                resolveNudityIntent(ctx.nsfwIntent, ctx.prompt),
             )
             // CLONE en Wan = método de QWEN (su luz sale PERFECTA, ref del usuario):
             // Wan 2.7 con imágenes es un FUSOR sobre lienzo. Con la cara de img1 salía
@@ -113,8 +114,9 @@ async function build(ctx: ImageRouteContext): Promise<KieImageRequest> {
             // (shared.ts:115-126 → LOOSE = "faceless mannequin, reinterpret the
             // pose/framing freely"). Deepfake nunca usa este path (ya excluido).
             const cw = ctx.cloneWeight ?? 100
+            // Mismo criterio que seedream: lienzo SOLO en EXACT (ver cloneTiers).
             const cloneRef =
-                wanHasClone && !ctx.deepfakeMode && cw >= 50
+                wanHasClone && !ctx.deepfakeMode && cloneTier(cw).canvas
                     ? wanExtras.find((r) => r.role === 'clone')
                     : undefined
 
@@ -264,7 +266,7 @@ async function build(ctx: ImageRouteContext): Promise<KieImageRequest> {
             }
             const wanSceneRoom = Math.max(250, 2750 - wanAnchor.length)
             let wanSceneText = String(input.prompt)
-            if (wanHasClone && cw >= 50) {
+            if (wanHasClone && cloneTier(cw).canvas) {
                 // canvas mode (cw>=50): CONSERVA la descripción del clon (verificado
                 // por repro: sin ella el prompt de Wan NO menciona la tiara → Wan la
                 // pierde, mientras Seedream/Qwen que SÍ la conservan la muestran).

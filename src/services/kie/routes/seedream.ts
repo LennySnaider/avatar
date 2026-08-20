@@ -12,9 +12,10 @@
  */
 
 import type { ImageRoute, ImageRouteContext, KieImageRequest } from '../context'
+import { cloneTier } from '@/utils/cloneTiers'
 import {
     planExtraRefs,
-    hasNudityIntent,
+    resolveNudityIntent,
     stripIdentityRedundancy,
     relocatePoseTag,
     capAtWordBoundary,
@@ -79,7 +80,9 @@ async function build(ctx: ImageRouteContext): Promise<KieImageRequest> {
 
     if (ctx.referenceImage) {
         try {
-            const nsfwIntent = hasNudityIntent(ctx.prompt)
+            // El toggle 🌶️ del cliente MANDA; el heurístico solo decide si
+            // nadie lo declaró (ver resolveNudityIntent en ../shared).
+            const nsfwIntent = resolveNudityIntent(ctx.nsfwIntent, ctx.prompt)
             const {
                 extras,
                 clauses: extraClauses,
@@ -104,8 +107,18 @@ async function build(ctx: ImageRouteContext): Promise<KieImageRequest> {
             // [CLONE:] con instrucción de variación (ver sceneText abajo).
             // Deepfake y Edit NO reordenan (siguen por planExtraRefs).
             const cw = ctx.cloneWeight ?? 100
+            // CANVAS = SOLO el tramo EXACT (2026-08-20). Antes bastaba cw>=50, y
+            // por eso 100 y 65 salían idénticas: los dos mandaban el clon como
+            // lienzo y solo cambiaba una frase — contra los píxeles, el texto
+            // pierde. Ahora el salto es de SLOT: en EXACT el clon es la imagen 1
+            // que se recrea; en STRONG la imagen 1 vuelve a ser la CARA (ella es
+            // el sujeto) y el clon baja a referencia por planExtraRefs. Umbral
+            // en utils/cloneTiers para que UI, cliente y ruta no deriven.
             const canvasClone =
-                hasClone && !ctx.deepfakeMode && !ctx.editMode && cw >= 50
+                hasClone &&
+                !ctx.deepfakeMode &&
+                !ctx.editMode &&
+                cloneTier(cw).canvas
                     ? extras.find((r) => r.role === 'clone')
                     : undefined
             const otherExtras = canvasClone

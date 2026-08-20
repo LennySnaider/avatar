@@ -1,6 +1,6 @@
 'use server'
 
-import { createServerSupabaseClient } from '@/lib/supabase'
+import { uploadBufferToGenerations } from '@/lib/mediaPersist'
 import type {
     MiniMaxFileUploadResponse,
     MiniMaxVoiceCloneResponse,
@@ -428,15 +428,19 @@ export async function retrieveMiniMaxFile(fileId: string): Promise<string> {
 }
 
 /**
- * Download a video from a URL and re-upload to Supabase Storage.
+ * Download a video from a URL and re-upload to OUR storage.
  * MiniMax download_urls have CORS restrictions / attachment headers that
  * prevent inline playback in <video> elements, so we proxy through our own
  * bucket to get a stable, reproducible URL.
+ *
+ * Sale por `uploadBufferToGenerations` (2026-08-20) → `putMediaObject`, que
+ * respeta R2_ENABLED. Era el ÚLTIMO resultado de proveedor que subía al bucket
+ * de Supabase a pelo: su gemela de KIE (`persistKieImageResult`) ya pasaba por
+ * ahí, y esta se quedó atrás en la migración — 17 MB medidos en
+ * `generations/minimax-videos/`. Devuelve una URL pública igual que antes, así
+ * que para el llamante no cambia nada.
  */
 async function persistVideoToSupabase(sourceUrl: string): Promise<string> {
-    const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL
-    if (!SUPABASE_URL) throw new Error('NEXT_PUBLIC_SUPABASE_URL is not defined')
-
     const res = await fetch(sourceUrl)
     if (!res.ok) {
         throw new Error(`Failed to download MiniMax video (${res.status})`)
@@ -444,20 +448,11 @@ async function persistVideoToSupabase(sourceUrl: string): Promise<string> {
     const buffer = Buffer.from(await res.arrayBuffer())
 
     const fileName = `minimax-videos/${Date.now()}-${Math.random().toString(36).substr(2, 9)}.mp4`
-    const supabase = createServerSupabaseClient()
-    const { error } = await supabase.storage
-        .from('generations')
-        .upload(fileName, buffer, {
-            contentType: 'video/mp4',
-            cacheControl: '3600',
-            upsert: false,
-        })
-    if (error) {
-        console.error('[MiniMaxService] Supabase upload error:', error)
-        throw new Error(`Failed to persist MiniMax video: ${error.message}`)
-    }
-
-    const publicUrl = `${SUPABASE_URL}/storage/v1/object/public/generations/${fileName}`
+    const publicUrl = await uploadBufferToGenerations(
+        buffer,
+        fileName,
+        'video/mp4',
+    )
     console.log('[MiniMaxService] Video persisted to:', publicUrl)
     return publicUrl
 }

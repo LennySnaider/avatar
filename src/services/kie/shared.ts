@@ -13,6 +13,11 @@
  * el prelude de runWithPrompt y las cláusulas) para preservar el comportamiento
  * byte-a-byte mientras se migra a rutas por modelo.
  */
+// Único import del módulo, y a propósito: `cloneTiers` es igual de puro (solo
+// umbrales y strings). La regla de este archivo es no tocar red ni Supabase,
+// no la de no importar nada — y tener los umbrales del Clone en UN sitio vale
+// más que la pureza de la lista de imports.
+import { cloneTier } from '@/utils/cloneTiers'
 
 export type KieRefWithRole = {
     // Opcional desde que una ref puede llegar YA subida (`url`): el editor manda
@@ -42,10 +47,12 @@ export function planExtraRefs(
     referenceImages: KieRefWithRole[] | undefined,
     maxExtras: number,
     deepfakeMode = false,
-    // Peso del Clone Ref (0-100). Escala la FUERZA de la cláusula del clone en
-    // 4 TRAMOS (cuartiles): ≥75 EXACT (recrea exacto, default) · 50-74 STRONG
-    // (fiel con variación natural) · 25-49 MODERATE (misma base, reinterpreta
-    // detalles) · <25 LOOSE (solo el vibe). Solo afecta al clause del clone.
+    // Peso del Clone Ref (0-100). Da al clon un TRABAJO distinto por tramo (ver
+    // utils/cloneTiers, que es donde viven los umbrales): EXACT recrea la foto ·
+    // STRONG = otra toma de la misma sesión (mismo vestuario y lugar, otro
+    // encuadre) · MODERATE = misma idea, detalle reinventado · LOOSE = solo luz,
+    // paleta y ambiente. Escalar un adjetivo no bastaba: la imagen pesa más que
+    // la frase, y con el mismo rol estructural 100 y 65 salían idénticas.
     cloneWeight = 100,
     // ¿La escena pide desnudo? El clause del clone ordenaba "Keep her FULLY
     // dressed" SIEMPRE — en un run NSFW eso contradecia frontalmente a la
@@ -126,15 +133,40 @@ export function planExtraRefs(
                 break
             case 'clone': {
                 // Fuerza del clone escalada por cloneWeight (slider del Studio).
+                // CUATRO tramos REALMENTE distintos (2026-08-20). Antes los de
+                // abajo eran matices del mismo párrafo y, peor, ni se usaban:
+                // por debajo de 50 el cliente NO adjuntaba la imagen, así que
+                // estas frases hablaban de una "Image N" que no existía. Ahora
+                // la imagen viaja siempre y cada tramo le da un TRABAJO distinto,
+                // no un adjetivo distinto. Umbrales en utils/cloneTiers.
+                //
+                // Cada uno dice explícitamente QUÉ tomar y QUÉ inventar: un
+                // motor literal necesita saber dónde tiene permiso, si no
+                // resuelve la ambigüedad copiando (arriba) o ignorando (abajo) —
+                // que son exactamente los dos fallos reportados.
+                const tierKey = cloneTier(cloneWeight).key
+                const dressTail = nsfwIntent
+                    ? 'IGNORE its clothing — follow the nudity described in the scene below.'
+                    : 'Keep her dressed as the scene describes.'
+                const mannequin = `Its person is a FACELESS MANNEQUIN — the face comes ONLY from image 1.`
                 const cloneClause = deepfakeMode
                     ? `Image ${n} = the ORIGINAL photo: reproduce it EXACTLY (body, outfit, pose, hands, framing, lighting, background). MANDATORY face swap: the output face MUST be the person from image 1 — never keep the original face. Do NOT alter clothing. REMOVE overlaid stickers/watermarks/emojis — output a clean photo.`
-                    : cloneWeight >= 75
-                      ? `Image ${n} = the CLONE source: recreate its EXACT pose, body position, ${nsfwIntent ? '' : 'outfit, '}hands, objects held, framing, camera angle, lighting and setting. Its person is a FACELESS MANNEQUIN — the face comes ONLY from image 1. ${nsfwIntent ? 'IGNORE its clothing — follow the nudity described in the scene below.' : 'Keep her FULLY dressed as shown; do NOT remove or reduce clothing.'} REMOVE overlaid stickers/watermarks/emojis — output a clean photo.`
-                      : cloneWeight >= 50
-                        ? `Image ${n} = a STRONG reference: follow its ${nsfwIntent ? '' : 'outfit, '}pose, framing and setting closely but allow natural variation (it need not be pixel-identical). Its person is a FACELESS MANNEQUIN — the face comes ONLY from image 1. ${nsfwIntent ? 'IGNORE its clothing — follow the nudity described in the scene below.' : 'Keep her fully dressed.'} REMOVE overlaid stickers/watermarks/emojis.`
-                        : cloneWeight >= 25
-                          ? `Image ${n} = a MODERATE reference: keep its ${nsfwIntent ? 'general pose and setting' : 'overall outfit STYLE, general pose and setting'}, but freely reinterpret the exact details, framing and composition — a clear variation, NOT a copy. Its person is a FACELESS MANNEQUIN — the face comes ONLY from image 1. ${nsfwIntent ? 'IGNORE its clothing — follow the nudity described in the scene below.' : 'Keep her dressed.'}`
-                          : `Image ${n} = a LOOSE style/mood reference: take only the general vibe, ${nsfwIntent ? '' : 'outfit style and '}setting cues — freely reinterpret the pose, framing and details. Its person is a FACELESS MANNEQUIN — the face comes ONLY from image 1.`
+                    : tierKey === 'exact'
+                      ? `Image ${n} = the CLONE source: recreate its EXACT pose, body position, ${nsfwIntent ? '' : 'outfit, '}hands, objects held, framing, camera angle, lighting and setting. ${mannequin} ${dressTail} REMOVE overlaid stickers/watermarks/emojis — output a clean photo.`
+                      : tierKey === 'strong'
+                        ? // OTRA TOMA de la misma sesión: el encuadre y el
+                          // instante son libres, lo demás no. Es lo que separa
+                          // STRONG de EXACT sin volver a pedir una copia.
+                          `Image ${n} = the WARDROBE, LOCATION and POSE reference: she wears that same outfit${nsfwIntent ? '' : ' (every garment, its colour, cut and accessories)'}, stands in that same place and holds a pose of that same family — but this is ANOTHER SHOT of that session: shift the camera angle and the exact framing, and let her weight, hands and expression fall differently. Same wardrobe and same place, DIFFERENT photograph — never a pixel copy. ${mannequin} ${dressTail}`
+                        : tierKey === 'moderate'
+                          ? // La IDEA sobrevive, el detalle no. Se nombra lo que
+                            // debe conservarse para que "reinterpreta" no se lea
+                            // como "olvida la referencia".
+                            `Image ${n} = a STYLE reference: keep the KIND of outfit${nsfwIntent ? '' : ' (its category, silhouette and colour palette)'}, the KIND of place and the overall mood — then reinvent the garment's details, the pose, the framing and the composition freely. It must read as clearly INSPIRED BY that photo, not as that photo. ${mannequin} ${dressTail}`
+                          : // Moodboard: solo luz, color y aire. Se dice en
+                            // POSITIVO qué tomar, porque "no copies" en un prompt
+                            // positivo mete justo los tokens que no se quieren.
+                            `Image ${n} = a MOOD reference: take ONLY its lighting quality and direction, its colour palette and its general atmosphere. Outfit, pose, framing and setting come from the scene text, not from this image. ${mannequin}`
                 parts.push(cloneClause)
                 break
             }
@@ -514,8 +546,48 @@ const GARMENT_WORDS =
     /\b(dress|gown|skirt|shirt|blouse|top|tee|t-shirt|sweater|cardigan|hoodie|jacket|coat|blazer|suit|trousers?|pants?|jeans?|shorts?|leggings?|bodysuit|swimsuit|bikini|lingerie|bra|bralette|corset|jumpsuit|romper|overalls?|uniform|robe|kimono|activewear|leotard|tank|crop|turtleneck|halter|camisole|slip|nightgown|pyjamas?|pajamas?|underwear|panties|briefs|thong|outfit|wearing|dressed|clad|garment|clothes|clothing|attire|costume|wardrobe|denim|leather|lace)\b/i
 export const hasNudityIntent = (prompt?: string) =>
     !!prompt && NUDITY_WORDS.test(prompt)
+/**
+ * Intención de desnudo EFECTIVA para una ruta.
+ *
+ * El dato DECLARADO por quien lanza la generación manda; el heurístico de texto
+ * solo opina cuando nadie lo sabe (edición de una foto, callers sin toggle).
+ * Un heurístico es una respuesta para cuando falta el dato — no un voto que
+ * compita con él, y menos para contradecir un "no" explícito del usuario.
+ */
+export const resolveNudityIntent = (
+    declared: boolean | undefined,
+    prompt?: string,
+): boolean => declared ?? hasNudityIntent(prompt)
+/**
+ * ¿La escena pide DESNUDEZ? Decide si la cláusula del Clone Ref ordena
+ * "Keep her FULLY dressed" o "IGNORE its clothing — follow the nudity described
+ * in the scene below". No es cosmético: la segunda, sobre una escena que
+ * describe ropa, es una CONTRADICCIÓN, y un motor literal la resuelve dejando
+ * la prenda pero marcando debajo lo que le mandaron enseñar.
+ *
+ * Tres correcciones (2026-08-20, reporte "pezones marcados con 🌶️ apagado",
+ * evidencia en la task a9bfc27a… de Seedream 5 Pro):
+ *
+ *  1. `sheer` / `see-through` FUERA. Describen el TEJIDO de una prenda, no la
+ *     ausencia de prenda — "off-shoulder top with a semi-sheer bodice" y
+ *     "white top with a sheer mesh panel" son dos outfits, y los dos disparaban
+ *     la orden de desvestir en runs perfectamente SFW. Que una gasa deje ver
+ *     algo es cosa del motor y de la escena; aquí se pregunta si hay ropa.
+ *  2. `explicit` a secas FUERA: es palabra de uso general y nuestro propio
+ *     arnés la escribe ("LEG SHAPE (explicit)"). Se conserva solo colocada con
+ *     desnudez, que es cuando de verdad significa lo que parece.
+ *  3. `bare breasts` en PLURAL no se detectaba: `(chest|breast|body|skin)\b`
+ *     exigía frontera justo tras la palabra y la `s` la rompía. El fallo era
+ *     el simétrico —escena desnuda tratada como vestida— y afectaba a la
+ *     redacción más común del tramo topless.
+ *
+ * `nude` conserva su trampa conocida (la misma que documenta
+ * EXPLICIT_FULL_NUDE_RE en bodyDescriptors): es también un COLOR. Se excluyen
+ * las colocaciones de moda/maquillaje para que unos tacones nude no desnuden
+ * a nadie.
+ */
 const NUDITY_WORDS =
-    /\b(nude|naked|topless|bottomless|bare[- ]?(chest|breast|body|skin)|undressed|explicit|nsfw|see[- ]?through|sheer)\b/i
+    /\b(?:nude(?!\s*(?:-|\s)?(?:heels?|shoes?|pumps?|sandals?|boots?|lipstick|lip|gloss|nail|polish|bodysuit|dress|bra|top|garment|fabric|tone|colou?r|beige))|naked|topless|bottomless|bare[- ]?(?:chest|breast|boob|body|skin|torso)s?|undressed|explicitly\s+nude|explicit\s+nudity|sexually\s+explicit|nsfw)\b/i
 // 12 outfits DIVERSOS (2026-07-25): con 5 y `length % 5` el reparto se
 // agrupaba brutal y el primero (verde + jeans) salía una y otra vez — el
 // usuario lo reportó como "contamina las generaciones con jeans y playera

@@ -14,6 +14,7 @@
 import { getOrgContext } from '@/lib/tenant/getOrgContext'
 import { orgSupabase } from '@/lib/org/orgTable'
 import { orgStoragePath } from '@/lib/storagePaths'
+import { putMediaObject, r2Enabled } from '@/lib/mediaStore'
 import {
     holdRefTypeFor,
     settleHoldByRef,
@@ -45,12 +46,24 @@ export interface ReconcileResult {
  * con media_type VIDEO, y guardarlas como .jpg con content-type de imagen
  * dejaba un archivo que ningún reproductor abre — un rescate que "funciona" y
  * entrega basura es peor que uno que falla.
+ *
+ * SALE POR `putMediaObject` (2026-08-20), no por Supabase Storage a pelo. Este
+ * camino se había quedado FUERA de la migración a R2: subía directo al bucket
+ * de Supabase y ni siquiera escribía `storage_provider`, así que la fila caía
+ * al default 'supabase'. Coherente, pero al proveedor equivocado — y contra la
+ * cuota de egress que ya restringió el proyecto entero con un 402.
+ *
+ * Se veía así (medido): 4 objetos en `generations/org/…/images/*.jpg` con
+ * `cacheControl: max-age=3600` (la huella de Supabase; R2 sella inmutable a un
+ * año), todos con `metadata.recovered = true`. El backfill los movió después a
+ * mano. Un rescate que salva la generación y la deja en el sitio del que
+ * huimos no termina el trabajo.
  */
 async function persistRemoteMedia(
     organizationId: string,
     url: string,
     mediaType: string,
-): Promise<string> {
+): Promise<{ path: string; provider: 'r2' | 'supabase' }> {
     const res = await fetch(url, { signal: AbortSignal.timeout(180_000) })
     if (!res.ok) {
         throw new Error(`descarga ${res.status}`)
@@ -63,15 +76,12 @@ async function persistRemoteMedia(
         isVideo ? 'videos' : 'images',
         `${Date.now()}.${isVideo ? 'mp4' : 'jpg'}`,
     )
-    const { error } = await orgSupabase()
-        .storage.from('generations')
-        .upload(path, buffer, {
-            contentType: isVideo ? 'video/mp4' : 'image/jpeg',
-            cacheControl: '3600',
-            upsert: false,
-        })
-    if (error) throw new Error(error.message)
-    return path
+    const { provider } = await putMediaObject({
+        path,
+        body: buffer,
+        contentType: isVideo ? 'video/mp4' : 'image/jpeg',
+    })
+    return { path, provider }
 }
 
 /**
@@ -159,7 +169,7 @@ export async function apiReconcilePendingGenerations(): Promise<ReconcileResult>
                 continue
             }
 
-            const path = await persistRemoteMedia(
+            const { path, provider } = await persistRemoteMedia(
                 ctx.organizationId,
                 status.url,
                 row.media_type,
@@ -172,6 +182,11 @@ export async function apiReconcilePendingGenerations(): Promise<ReconcileResult>
                     avatar_id: row.avatar_id,
                     media_type: row.media_type,
                     storage_path: path,
+                    // Sin esto la fila caía al default 'supabase' y el lector
+                    // buscaba los bytes en el proveedor equivocado.
+                    ...(r2Enabled()
+                        ? ({ storage_provider: provider } as object)
+                        : {}),
                     prompt: row.prompt,
                     aspect_ratio: row.aspect_ratio,
                     metadata: {

@@ -58,6 +58,23 @@ export interface ImageRouteContext {
      */
     bodySheetNude?: boolean
     /**
+     * ¿La escena DESVISTE al sujeto? Decide si la cláusula del Clone Ref dice
+     * "Keep her FULLY dressed" o "IGNORE its clothing — follow the nudity
+     * described in the scene below".
+     *
+     * Hasta ahora la ruta lo ADIVINABA leyendo palabras del prompt
+     * (`hasNudityIntent`) — un proxy que se equivocaba con las prendas: un
+     * "semi-sheer bodice" bastaba para ordenarle desvestir una escena vestida,
+     * y el motor resolvía la contradicción marcando los pezones ENCIMA de la
+     * ropa (reporte 2026-08-20, con 🌶️ APAGADO). El cliente SÍ sabe si el
+     * toggle está apagado; el heurístico no tiene por qué opinar sobre eso.
+     *
+     * `false` = autoritativo, no hay desnudo (el usuario dijo que no).
+     * `undefined` = nadie lo sabe con certeza (edición, callers sin toggle) →
+     * la ruta cae al heurístico, que es donde sí aporta.
+     */
+    nsfwIntent?: boolean
+    /**
      * El prompt YA es completo y auto-contenido: la ruta NO debe envolverlo en
      * su ancla de identidad ni recortarlo contra el presupuesto de escena.
      *
