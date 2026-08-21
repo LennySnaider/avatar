@@ -50,8 +50,11 @@ export default async function Page() {
         personaByAvatar = new Map(
             ((personaRows ?? []) as PersonaCard[]).map((p) => [p.avatar_id, p]),
         )
-    } catch {
-        // sin org resuelta no hay nada seguro que listar: estado vacío
+    } catch (e) {
+        // Estado vacío, PERO con rastro: un catch mudo hace que una caída de
+        // BD se lea como «No avatars yet — create one in Avatar Studio first»
+        // y el usuario crea un avatar duplicado creyendo que no tenía ninguno.
+        console.warn('[agent] no se pudo listar avatares/personas', e)
     }
 
     return (

@@ -5,7 +5,7 @@ import Container from '@/components/shared/Container'
 import Card from '@/components/ui/Card'
 import FanvueComposer from './_components/FanvueComposer'
 import { getRowMediaUrl } from '@/lib/storagePaths'
-import { getOrgContext } from '@/lib/tenant/getOrgContext'
+import { getOrgContext, type OrgContext } from '@/lib/tenant/getOrgContext'
 import { orgTable } from '@/lib/org/orgTable'
 import {
     getFanvueConnection,
@@ -23,10 +23,26 @@ export interface ComposerGeneration {
 
 export default async function Page({ searchParams }: PageProps) {
     const session = await auth()
+    // OJO: `redirect()` funciona LANZANDO NEXT_REDIRECT, así que va FUERA del
+    // try — un catch se lo tragaría y la página seguiría renderizando.
     if (!session?.user?.id) {
         redirect('/sign-in')
     }
-    const ctx = await getOrgContext()
+
+    // getOrgContext() lanza por DOS motivos (sin sesión, sin fila en
+    // organization_members) y el redirect de arriba sólo cubre el primero: un
+    // usuario autenticado pero sin membresía se llevaba un 500 genérico (no
+    // hay error.tsx en (protected-pages)). Mismo contrato "vacío, no throw"
+    // que getAvatarAgentData (685cf32): sin org no hay galería que ofrecer y
+    // la página cae en la tarjeta de "conecta tu agencia" que ya existe.
+    let ctx: OrgContext | null = null
+    try {
+        ctx = await getOrgContext()
+    } catch (e) {
+        // Con log: un catch mudo haría pasar una caída de BD por "no tienes
+        // nada", y nadie se entera.
+        console.warn('[fanvue/composer] sin contexto de organizacion', e)
+    }
 
     const params = await searchParams
     const generationId =
@@ -38,6 +54,7 @@ export default async function Page({ searchParams }: PageProps) {
         getFanvueConnection(),
         listFanvueCreators(),
         (async (): Promise<ComposerGeneration[]> => {
+            if (!ctx) return []
             // '*': la URL depende de `storage_provider` (era R2) y esa columna
             // puede no existir todavía — nombrarla rompería la query.
             const { data } = await orgTable(ctx, 'generations')

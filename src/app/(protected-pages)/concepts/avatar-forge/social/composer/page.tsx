@@ -5,7 +5,7 @@ import Container from '@/components/shared/Container'
 import Card from '@/components/ui/Card'
 import SocialComposer from './_components/SocialComposer'
 import { getRowMediaUrl } from '@/lib/storagePaths'
-import { getOrgContext } from '@/lib/tenant/getOrgContext'
+import { getOrgContext, type OrgContext } from '@/lib/tenant/getOrgContext'
 import { orgTable } from '@/lib/org/orgTable'
 import { listAvatarSocialAccounts } from '@/services/SocialService'
 import type { PageProps } from '@/@types/common'
@@ -27,10 +27,26 @@ interface GenerationMedia {
 
 export default async function Page({ searchParams }: PageProps) {
     const session = await auth()
+    // OJO: `redirect()` funciona LANZANDO NEXT_REDIRECT, así que va FUERA del
+    // try — un catch se lo tragaría y la página seguiría renderizando.
     if (!session?.user?.id) {
         redirect('/sign-in')
     }
-    const ctx = await getOrgContext()
+
+    // getOrgContext() lanza por DOS motivos (sin sesión, sin fila en
+    // organization_members) y el redirect de arriba sólo cubre el primero: un
+    // usuario autenticado pero sin membresía se llevaba un 500 genérico (no
+    // hay error.tsx en (protected-pages)). Mismo contrato "vacío, no throw"
+    // que getAvatarAgentData (685cf32): sin org se cae en la tarjeta de
+    // "conecta una cuenta" que la página ya tiene.
+    let ctx: OrgContext | null = null
+    try {
+        ctx = await getOrgContext()
+    } catch (e) {
+        // Con log: un catch mudo haría pasar una caída de BD por "no tienes
+        // nada", y nadie se entera.
+        console.warn('[social/composer] sin contexto de organizacion', e)
+    }
 
     const params = await searchParams
     const generationId = typeof params.generationId === 'string' ? params.generationId : undefined
@@ -38,7 +54,7 @@ export default async function Page({ searchParams }: PageProps) {
     const [accountsResult, media, libraryImages] = await Promise.all([
         listAvatarSocialAccounts(),
         (async (): Promise<GenerationMedia | null> => {
-            if (!generationId) return null
+            if (!ctx || !generationId) return null
             // '*': la URL depende de `storage_provider` (era R2) y esa columna
             // puede no existir todavía — nombrarla rompería la query.
             const { data: gen } = await orgTable(ctx, 'generations')
@@ -58,6 +74,7 @@ export default async function Page({ searchParams }: PageProps) {
         // the selected avatar client-side — cross-avatar carousels are
         // rejected by the server).
         (async (): Promise<{ id: string; publicUrl: string; avatarId: string | null }[]> => {
+            if (!ctx) return []
             const { data } = await orgTable(ctx, 'generations')
                 .select('*')
                 .eq('media_type', 'IMAGE')
