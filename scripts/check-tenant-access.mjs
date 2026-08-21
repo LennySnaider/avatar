@@ -37,54 +37,17 @@
  * `orgTable`, así que hoy no hay agujero — pero si algún día se accede a una
  * tabla por variable, este script no lo verá.
  *
- * VÁLVULA DE ESCAPE — `SKIP_TENANT_CHECK=1`
- *
- * Este script es puerta del `build` (ver package.json), así que un falso
- * positivo suyo bloquea TODOS los deploys, incluidos los urgentes. Y los
- * urgentes existen: sólo en las últimas 24h este proyecto empujó tres arreglos
- * a producción (un borrado que no borraba, vídeos en blanco, las miniaturas del
- * selector caídas). Un candado sin válvula convierte un fallo del heurístico en
- * una caída de producción larga.
- *
- * Con `SKIP_TENANT_CHECK=1` el script avisa MUY fuerte y sale 0 sin mirar nada.
- * Esto NO debilita la garantía: lo que el candado impide es que un OLVIDO pase
- * inadvertido, no que alguien decida saltárselo a sabiendas. Poner la variable
- * en el proyecto de Vercel es un acto deliberado, con nombre y hora, y el aviso
- * queda escrito en el log del build para que nadie pueda decir que no lo vio.
- *
- * Cómo se usa en una emergencia:
- *   1. Vercel → Project → Settings → Environment Variables →
- *      `SKIP_TENANT_CHECK` = `1` (en el entorno que toque) y redeploy.
- *   2. Arreglar la causa (o el script, si el falso positivo era suyo).
- *   3. **QUITAR LA VARIABLE.** Si se queda puesta, el candado deja de existir y
- *      nadie se entera hasta que un cliente ve los datos de otro.
- *   En local: `SKIP_TENANT_CHECK=1 npm run build`.
- *
  * USO:
  *   node scripts/check-tenant-access.mjs      → 0 si todo limpio, 1 si no
- *   SKIP_TENANT_CHECK=1 node scripts/…        → 0 siempre, con aviso a gritos
+ *
+ * NO tiene bypass, a propósito (decisión del usuario, 21-ago): un candado con
+ * puerta trasera "temporal" es como mueren los candados. Y tampoco corre en el
+ * `build`: es un script que se lanza a mano o desde CI el día que haya CI. Si
+ * algún día se engancha a un gate automático, la conversación sobre la válvula
+ * hay que volver a tenerla — no darla por hecha.
  */
 import { readdirSync, readFileSync, statSync } from 'node:fs'
 import { join, relative, sep } from 'node:path'
-
-// La válvula va ANTES de tocar el disco: si el candado está desactivado a
-// propósito, ni siquiera queremos que un fallo del propio script (una lectura
-// rota, un regex que peta) tumbe el build que alguien está intentando sacar.
-if (process.env.SKIP_TENANT_CHECK) {
-    const raya = '='.repeat(78)
-    console.warn(
-        `\n${raya}\n` +
-            '  ⚠️  CANDADO MULTITENANT DESACTIVADO — SKIP_TENANT_CHECK está puesto.\n' +
-            '\n' +
-            '  NADIE está comprobando que las consultas filtren por organization_id.\n' +
-            '  Esto sólo vale para desbloquear un deploy urgente. En cuanto pase la\n' +
-            '  emergencia: QUITA la variable del proyecto de Vercel y vuelve a correr\n' +
-            '  `npm run check:tenant`. Si se queda puesta, el candado deja de existir\n' +
-            '  y no lo sabremos hasta que un cliente vea los datos de otro.\n' +
-            `${raya}\n`,
-    )
-    process.exit(0)
-}
 
 const RAIZ_REPO = new URL('..', import.meta.url).pathname
 const RAIZ_SRC = join(RAIZ_REPO, 'src')
