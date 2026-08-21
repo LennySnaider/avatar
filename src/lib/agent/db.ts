@@ -102,7 +102,7 @@ interface AvatarKnowledgeTable {
     Relationships: []
 }
 
-/** Minimal view of fanvue_posts (full type lives in FanvueService's local extension). */
+/** Minimal view of fanvue_posts (el tipo completo vive en database.generated.ts). */
 interface FanvuePostsLiteTable {
     Row: {
         id: string
