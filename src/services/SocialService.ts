@@ -1,12 +1,10 @@
 'use server'
 
-import { requireUserId } from '@/lib/session'
-import { createServerSupabaseClient } from '@/lib/supabase'
+import { getOrgContext, type OrgContext } from '@/lib/tenant/getOrgContext'
+import { orgTable, orgSupabase } from '@/lib/org/orgTable'
 import { getRowMediaUrl } from '@/lib/storagePaths'
 import { getSocialProvider, deriveUploadPostUsername } from '@/lib/social/provider'
 import { indexKnowledgeSource } from '@/lib/agent/indexer'
-import { getOrgContextForUser } from '@/lib/tenant/getOrgContext'
-import { agentSupabase } from '@/lib/agent/db'
 import { UploadPostProvider } from '@/lib/social/providers/UploadPostProvider'
 import { validatePostForPlatforms } from '@/lib/social/platformValidators'
 import { appendHashtagsToCaption } from '@/lib/social/hashtagHelpers'
@@ -76,8 +74,6 @@ const fail = (e: unknown): { success: false; error: string } => ({
     success: false,
     error: e instanceof Error ? e.message : String(e),
 })
-
-const requireSession = requireUserId
 
 const VALID_PLATFORMS = new Set<string>(ALL_PLATFORMS)
 
@@ -191,36 +187,38 @@ function findMatchingScheduledJob(
     return candidates.length === 1 ? candidates[0] : null
 }
 
-type SupabaseServerClient = ReturnType<typeof createServerSupabaseClient>
-
-/** Fetch an avatar row and assert the session user owns it. */
+/**
+ * Trae el avatar acotado a la org de la sesión (guarda anti-IDOR).
+ *
+ * Antes verificaba pertenencia con `avatar.user_id !== userId`: dentro de una
+ * org, `user_id` es sólo "creado por" (ver docstring de orgTable.ts), no la
+ * frontera de tenant — el filtro `.eq('organization_id', ...)` de `orgTable`
+ * YA es la comprobación real, igual que `assertAvatarInOrg` en
+ * AvatarForgeService.ts.
+ */
 async function getOwnedAvatar(
-    supabase: SupabaseServerClient,
+    ctx: OrgContext,
     avatarId: string,
-    userId: string,
 ): Promise<{ id: string; name: string }> {
-    const { data: avatar, error } = await supabase
-        .from('avatars')
-        .select('id, name, user_id')
+    const { data: avatar, error } = await orgTable(ctx, 'avatars')
+        .select('id, name')
         .eq('id', avatarId)
         .maybeSingle()
     if (error) throw new Error(error.message)
     if (!avatar) throw new Error('Avatar not found')
-    if (avatar.user_id && avatar.user_id !== userId) throw new Error('Not your avatar')
     return { id: avatar.id, name: avatar.name }
 }
 
 /** Resolve avatar id + name for a batch of posts via their social profile. */
 async function attachAvatarInfo(
-    supabase: SupabaseServerClient,
+    ctx: OrgContext,
     rows: SocialPostDbRow[],
 ): Promise<SocialPostRow[]> {
     const profileIds = [...new Set(rows.map((r) => r.social_profile_id).filter((id): id is string => Boolean(id)))]
     const profileToAvatar = new Map<string, string>()
     const avatarNames = new Map<string, string>()
     if (profileIds.length > 0) {
-        const { data: profiles } = await supabase
-            .from('social_profiles')
+        const { data: profiles } = await orgTable(ctx, 'social_profiles')
             .select('id, avatar_id')
             .in('id', profileIds)
         for (const p of profiles ?? []) {
@@ -228,8 +226,7 @@ async function attachAvatarInfo(
         }
         const avatarIds = [...new Set([...profileToAvatar.values()])]
         if (avatarIds.length > 0) {
-            const { data: avatars } = await supabase
-                .from('avatars')
+            const { data: avatars } = await orgTable(ctx, 'avatars')
                 .select('id, name')
                 .in('id', avatarIds)
             for (const a of avatars ?? []) avatarNames.set(a.id, a.name)
@@ -263,17 +260,20 @@ async function attachAvatarInfo(
 /** All of the user's avatars, each with its Upload-Post account state (or null). */
 export async function listAvatarSocialAccounts(): Promise<SocialResult<AvatarSocialAccountRow[]>> {
     try {
-        const userId = await requireSession()
-        const supabase = createServerSupabaseClient()
-        const { data: avatars, error: avErr } = await supabase
-            .from('avatars')
-            .select('id, name, user_id')
+        const ctx = await getOrgContext()
+        // orgTable ya acota por organization_id: dentro de una org todos los
+        // miembros ven todos sus avatares (mismo criterio que apiGetAvatars
+        // en AvatarForgeService), así que el filtro previo por user_id/null
+        // queda obsoleto.
+        const { data: avatars, error: avErr } = await orgTable(ctx, 'avatars')
+            .select('id, name')
             .order('created_at', { ascending: true })
         if (avErr) throw new Error(avErr.message)
-        const mine = (avatars ?? []).filter((a) => !a.user_id || a.user_id === userId)
+        // orgTable devuelve el builder sin tipar (ver el gotcha documentado en
+        // orgTable.ts); el cast va aquí, después del guard de arriba.
+        const avatarRows = (avatars ?? []) as unknown as { id: string; name: string }[]
 
-        const { data: profiles, error: prErr } = await supabase
-            .from('social_profiles')
+        const { data: profiles, error: prErr } = await orgTable(ctx, 'social_profiles')
             .select('*')
             .not('avatar_id', 'is', null)
         if (prErr) throw new Error(prErr.message)
@@ -283,7 +283,7 @@ export async function listAvatarSocialAccounts(): Promise<SocialResult<AvatarSoc
 
         return {
             success: true,
-            data: mine.map((a) => {
+            data: avatarRows.map((a) => {
                 const row = byAvatar.get(a.id)
                 return {
                     avatarId: a.id,
@@ -308,13 +308,12 @@ export async function connectUploadPostAccount(input: {
     apiKey: string
 }): Promise<SocialResult<SocialProfileSummary>> {
     try {
-        const userId = await requireSession()
+        const ctx = await getOrgContext()
         const apiKey = input.apiKey.trim()
         if (!input.avatarId) return { success: false, error: 'Avatar is required' }
         if (!apiKey) return { success: false, error: 'API key is required' }
 
-        const supabase = createServerSupabaseClient()
-        const avatar = await getOwnedAvatar(supabase, input.avatarId, userId)
+        const avatar = await getOwnedAvatar(ctx, input.avatarId)
 
         // Probe the key with a cheap authenticated GET before persisting
         // anything. Throws a mapped "Invalid Upload-Post API key" on 401.
@@ -325,8 +324,7 @@ export async function connectUploadPostAccount(input: {
 
         // Reuse the existing row's username (UNIQUE in our DB, and the
         // profile already exists on Upload-Post's side); derive one for new rows.
-        const { data: existing } = await supabase
-            .from('social_profiles')
+        const { data: existing } = await orgTable(ctx, 'social_profiles')
             .select('*')
             .eq('avatar_id', input.avatarId)
             .maybeSingle()
@@ -343,8 +341,7 @@ export async function connectUploadPostAccount(input: {
 
         let row: SocialProfileDbRow
         if (existing) {
-            const { data, error } = await supabase
-                .from('social_profiles')
+            const { data, error } = await orgTable(ctx, 'social_profiles')
                 .update({ api_key: apiKey, status: 'active' })
                 .eq('id', existing.id)
                 .select('*')
@@ -352,14 +349,17 @@ export async function connectUploadPostAccount(input: {
             if (error) throw new Error(error.message)
             row = data as SocialProfileDbRow
         } else {
-            const { data, error } = await supabase
+            // Insert manual (no orgInsert): mismo patrón que apiCreateAvatar
+            // en AvatarForgeService — organization_id de ctx, nunca del cliente.
+            const { data, error } = await orgSupabase()
                 .from('social_profiles')
                 .insert({
                     avatar_id: input.avatarId,
                     upload_post_username: username,
                     api_key: apiKey,
                     status: 'active',
-                })
+                    organization_id: ctx.organizationId,
+                } as never)
                 .select('*')
                 .single()
             if (error) throw new Error(error.message)
@@ -374,8 +374,7 @@ export async function connectUploadPostAccount(input: {
         }
         try {
             const details = await provider.getProfile(username)
-            const { data } = await supabase
-                .from('social_profiles')
+            const { data } = await orgTable(ctx, 'social_profiles')
                 .update({
                     connected_platforms: toJson(details.connectedAccounts ?? []),
                     upload_post_metadata: details.metadata ? toJson(details.metadata) : null,
@@ -403,11 +402,9 @@ export async function connectUploadPostAccount(input: {
  */
 export async function disconnectUploadPostAccount(avatarId: string): Promise<SocialResult<SocialProfileSummary>> {
     try {
-        const userId = await requireSession()
-        const supabase = createServerSupabaseClient()
-        await getOwnedAvatar(supabase, avatarId, userId)
-        const { data, error } = await supabase
-            .from('social_profiles')
+        const ctx = await getOrgContext()
+        await getOwnedAvatar(ctx, avatarId)
+        const { data, error } = await orgTable(ctx, 'social_profiles')
             .update({ status: 'disconnected', api_key: null, connected_platforms: toJson([]) })
             .eq('avatar_id', avatarId)
             .select('*')
@@ -421,11 +418,9 @@ export async function disconnectUploadPostAccount(avatarId: string): Promise<Soc
 
 export async function getSocialProfileAction(avatarId: string): Promise<SocialResult<SocialProfileSummary | null>> {
     try {
-        await requireSession()
+        const ctx = await getOrgContext()
         if (!avatarId) return { success: true, data: null }
-        const supabase = createServerSupabaseClient()
-        const { data, error } = await supabase
-            .from('social_profiles')
+        const { data, error } = await orgTable(ctx, 'social_profiles')
             .select('*')
             .eq('avatar_id', avatarId)
             .maybeSingle()
@@ -438,11 +433,9 @@ export async function getSocialProfileAction(avatarId: string): Promise<SocialRe
 
 export async function generateSocialConnectUrl(avatarId: string): Promise<SocialResult<{ accessUrl: string; expiresAt: string | null }>> {
     try {
-        const userId = await requireSession()
-        const supabase = createServerSupabaseClient()
-        const avatar = await getOwnedAvatar(supabase, avatarId, userId)
-        const { data: profile } = await supabase
-            .from('social_profiles')
+        const ctx = await getOrgContext()
+        const avatar = await getOwnedAvatar(ctx, avatarId)
+        const { data: profile } = await orgTable(ctx, 'social_profiles')
             .select('*')
             .eq('avatar_id', avatarId)
             .maybeSingle()
@@ -467,10 +460,8 @@ export async function generateSocialConnectUrl(avatarId: string): Promise<Social
 
 export async function syncConnectedAccounts(avatarId: string): Promise<SocialResult<SocialProfileSummary>> {
     try {
-        await requireSession()
-        const supabase = createServerSupabaseClient()
-        const { data: profile, error: profErr } = await supabase
-            .from('social_profiles')
+        const ctx = await getOrgContext()
+        const { data: profile, error: profErr } = await orgTable(ctx, 'social_profiles')
             .select('*')
             .eq('avatar_id', avatarId)
             .maybeSingle()
@@ -478,8 +469,7 @@ export async function syncConnectedAccounts(avatarId: string): Promise<SocialRes
         if (!profile) return { success: false, error: 'No Upload-Post account for this avatar' }
         const provider = getSocialProvider(resolveProfileKey(profile as SocialProfileDbRow))
         const details = await provider.getProfile(profile.upload_post_username)
-        const { data, error } = await supabase
-            .from('social_profiles')
+        const { data, error } = await orgTable(ctx, 'social_profiles')
             .update({
                 connected_platforms: toJson(details.connectedAccounts ?? []),
                 upload_post_metadata: details.metadata ? toJson(details.metadata) : null,
@@ -497,10 +487,8 @@ export async function syncConnectedAccounts(avatarId: string): Promise<SocialRes
 
 export async function registerUploadPostWebhook(avatarId: string): Promise<SocialResult<{ configured: boolean }>> {
     try {
-        await requireSession()
-        const supabase = createServerSupabaseClient()
-        const { data: profile } = await supabase
-            .from('social_profiles')
+        const ctx = await getOrgContext()
+        const { data: profile } = await orgTable(ctx, 'social_profiles')
             .select('*')
             .eq('avatar_id', avatarId)
             .maybeSingle()
@@ -523,16 +511,14 @@ export async function registerUploadPostWebhook(avatarId: string): Promise<Socia
 
 export async function createSocialPost(input: CreateSocialPostInput): Promise<SocialResult<SocialPostRow>> {
     try {
-        const userId = await requireSession()
-        const supabase = createServerSupabaseClient()
+        const ctx = await getOrgContext()
 
         if (!input.avatarId) {
             return { success: false, error: 'Select an avatar to post as' }
         }
-        await getOwnedAvatar(supabase, input.avatarId, userId)
+        await getOwnedAvatar(ctx, input.avatarId)
 
-        const { data: profile } = await supabase
-            .from('social_profiles')
+        const { data: profile } = await orgTable(ctx, 'social_profiles')
             .select('*')
             .eq('avatar_id', input.avatarId)
             .eq('status', 'active')
@@ -565,17 +551,22 @@ export async function createSocialPost(input: CreateSocialPostInput): Promise<So
             // todavía en la BD — nombrarla en el select rompería la query
             // entera, mientras que con '*' llega si está y si no, se cae a
             // Supabase como siempre. Mismo patrón que la galería del Studio.
-            const { data: gens, error: genErr } = await supabase
-                .from('generations')
+            const { data: gens, error: genErr } = await orgTable(ctx, 'generations')
                 .select('*')
                 .in('id', requestedIds)
             if (genErr || !gens || gens.length !== requestedIds.length) {
                 return { success: false, error: 'Generation not found' }
             }
-            const byId = new Map(gens.map((g) => [g.id, g]))
+            // orgTable devuelve el builder sin tipar (ver el gotcha documentado
+            // en orgTable.ts); el cast va aquí, después del guard de arriba.
+            const genRows = gens as unknown as Database['public']['Tables']['generations']['Row'][]
+            const byId = new Map(genRows.map((g) => [g.id, g]))
             const ordered = requestedIds.map((id) => byId.get(id)!)
+            // La comprobación previa era `gen.user_id !== userId`: dentro de una
+            // org, `user_id` es sólo "creado por" (ver orgTable.ts) — el filtro
+            // `.eq('organization_id', ...)` de `orgTable` ya garantiza que la
+            // media es de ESTA org, así que cualquier miembro puede publicarla.
             for (const gen of ordered) {
-                if (gen.user_id && gen.user_id !== userId) return { success: false, error: 'Not your media' }
                 // Media generated under another avatar must not go out through
                 // this avatar's accounts; avatar-less media (auto-saves) may.
                 if (gen.avatar_id && gen.avatar_id !== input.avatarId) {
@@ -639,12 +630,14 @@ export async function createSocialPost(input: CreateSocialPostInput): Promise<So
             }
         }
 
-        const { data: row, error: insErr } = await supabase
+        // Insert manual (no orgInsert): mismo patrón que apiSaveGeneration en
+        // AvatarForgeService — organization_id + "creado por" de ctx.
+        const { data: row, error: insErr } = await orgSupabase()
             .from('social_posts')
             .insert({
                 social_profile_id: profile.id,
                 generation_id: generationId,
-                user_id: userId,
+                user_id: ctx.userId,
                 caption,
                 hashtags: input.hashtags,
                 content_type: contentType,
@@ -655,20 +648,21 @@ export async function createSocialPost(input: CreateSocialPostInput): Promise<So
                 upload_post_request_id: dispatch.requestId ?? null,
                 upload_post_job_id: uploadPostJobId,
                 upload_post_response: toJson(dispatch),
-            })
+                organization_id: ctx.organizationId,
+            } as never)
             .select('*')
             .single()
         if (insErr) throw new Error(insErr.message)
 
         // Agent RAG hook: published captions become avatar knowledge —
-        // fire-and-forget, must never affect the publish result.
+        // fire-and-forget, must never affect the publish result. El ctx ya
+        // está resuelto arriba (sesión), no hace falta volver a resolverlo
+        // por userId.
         if (caption.trim() && profile.avatar_id) {
             void (async () => {
                 try {
-                    const orgCtx = await getOrgContextForUser(userId)
-                    if (!orgCtx) return
                     await indexKnowledgeSource({
-                        organizationId: orgCtx.organizationId,
+                        organizationId: ctx.organizationId,
                         avatarId: profile.avatar_id as string,
                         kind: 'post',
                         title: 'Social post',
@@ -681,7 +675,7 @@ export async function createSocialPost(input: CreateSocialPostInput): Promise<So
             })()
         }
 
-        const [enriched] = await attachAvatarInfo(supabase, [row as SocialPostDbRow])
+        const [enriched] = await attachAvatarInfo(ctx, [row as SocialPostDbRow])
         return { success: true, data: enriched }
     } catch (e) {
         return fail(e)
@@ -696,8 +690,7 @@ export async function createSocialPost(input: CreateSocialPostInput): Promise<So
  */
 export async function getPostedGenerationMap(): Promise<SocialResult<Record<string, string[]>>> {
     try {
-        const userId = await requireSession()
-        const supabase = createServerSupabaseClient()
+        const ctx = await getOrgContext()
         const map = new Map<string, Set<string>>()
         const add = (genId: string | null, labels: string[]) => {
             if (!genId || labels.length === 0) return
@@ -706,10 +699,11 @@ export async function getPostedGenerationMap(): Promise<SocialResult<Record<stri
             map.set(genId, set)
         }
 
-        const { data: socialPosts } = await supabase
-            .from('social_posts')
+        // El badge "Posted" es de la galería compartida de la org (mismo
+        // criterio que apiGetGenerations en AvatarForgeService, sin filtro
+        // por user_id): si CUALQUIER miembro publicó la generación, se marca.
+        const { data: socialPosts } = await orgTable(ctx, 'social_posts')
             .select('generation_id, platforms, status')
-            .eq('user_id', userId)
             .not('generation_id', 'is', null)
             .in('status', ['processing', 'scheduled', 'published'])
             .limit(1000)
@@ -717,10 +711,8 @@ export async function getPostedGenerationMap(): Promise<SocialResult<Record<stri
             add(post.generation_id, [...toPlatformSet(post.platforms)])
         }
 
-        const { data: fanvuePosts } = await agentSupabase()
-            .from('fanvue_posts')
-            .select('generation_id, status, user_id')
-            .eq('user_id', userId)
+        const { data: fanvuePosts } = await orgTable(ctx, 'fanvue_posts')
+            .select('generation_id, status')
             .in('status', ['published', 'scheduled'])
             .limit(1000)
         for (const post of fanvuePosts ?? []) {
@@ -730,8 +722,7 @@ export async function getPostedGenerationMap(): Promise<SocialResult<Record<stri
         // Re-attribute muxed copies to their original generation.
         const postedIds = [...map.keys()]
         if (postedIds.length > 0) {
-            const { data: gens } = await supabase
-                .from('generations')
+            const { data: gens } = await orgTable(ctx, 'generations')
                 .select('id, metadata')
                 .in('id', postedIds)
             for (const gen of gens ?? []) {
@@ -753,15 +744,13 @@ export async function getPostedGenerationMap(): Promise<SocialResult<Record<stri
 
 export async function listSocialPosts(): Promise<SocialResult<SocialPostRow[]>> {
     try {
-        await requireSession()
-        const supabase = createServerSupabaseClient()
-        const { data, error } = await supabase
-            .from('social_posts')
+        const ctx = await getOrgContext()
+        const { data, error } = await orgTable(ctx, 'social_posts')
             .select('*')
             .order('created_at', { ascending: false })
             .limit(100)
         if (error) throw new Error(error.message)
-        const enriched = await attachAvatarInfo(supabase, (data ?? []) as SocialPostDbRow[])
+        const enriched = await attachAvatarInfo(ctx, (data ?? []) as SocialPostDbRow[])
         return { success: true, data: enriched }
     } catch (e) {
         return fail(e)
@@ -770,10 +759,9 @@ export async function listSocialPosts(): Promise<SocialResult<SocialPostRow[]>> 
 
 export async function cancelScheduledPost(postId: string): Promise<SocialResult<SocialPostRow>> {
     try {
-        await requireSession()
-        const supabase = createServerSupabaseClient()
-        const { data: post } = await supabase
-            .from('social_posts').select('*').eq('id', postId).single()
+        const ctx = await getOrgContext()
+        const { data: post } = await orgTable(ctx, 'social_posts')
+            .select('*').eq('id', postId).single()
         if (!post) return { success: false, error: 'Post not found' }
         if (post.status !== 'scheduled') return { success: false, error: `Cannot cancel a ${post.status} post` }
 
@@ -785,8 +773,7 @@ export async function cancelScheduledPost(postId: string): Promise<SocialResult<
         // Resolve the account this post went out through — its API key and
         // sub-user name live on the post's social profile.
         const { data: profile } = post.social_profile_id
-            ? await supabase
-                  .from('social_profiles')
+            ? await orgTable(ctx, 'social_profiles')
                   .select('*')
                   .eq('id', post.social_profile_id)
                   .maybeSingle()
@@ -853,14 +840,13 @@ export async function cancelScheduledPost(postId: string): Promise<SocialResult<
         // scheduled_at to check against) — nothing exists remotely to
         // cancel, so a DB-only cancel below is honest, not a guess.
 
-        const { data: row, error } = await supabase
-            .from('social_posts')
+        const { data: row, error } = await orgTable(ctx, 'social_posts')
             .update({ status: 'cancelled', updated_at: new Date().toISOString() })
             .eq('id', postId)
             .select('*')
             .single()
         if (error) throw new Error(error.message)
-        const [enriched] = await attachAvatarInfo(supabase, [row as SocialPostDbRow])
+        const [enriched] = await attachAvatarInfo(ctx, [row as SocialPostDbRow])
         return { success: true, data: enriched }
     } catch (e) {
         return fail(e)
