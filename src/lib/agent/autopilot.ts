@@ -4,6 +4,10 @@
  * messages get queued with a humanized delay. Everything else (payment,
  * complaint, sensitive, underage, or any classifier failure) escalates to a
  * human by flagging the chat `needs_attention` and leaving the draft.
+ *
+ * F4.2 Tarea 4 — EXENTO de `orgTable`: lo disparan el webhook y el cron, sin
+ * sesión. El cliente sigue crudo, pero el resto de consultas cuelgan de la org
+ * de la fila ya resuelta (`chat.organization_id`), no de ids sueltos.
  */
 import { agentSupabase, type AvatarPersonaRow } from './db'
 import { classifyInboundMessage } from './classifier'
@@ -55,11 +59,12 @@ function randDelaySeconds(cfg: AutopilotConfig, seed: number): number {
     return Math.round(min + frac * (max - min))
 }
 
-async function escalate(chatId: string, reason: string): Promise<AutopilotOutcome> {
+async function escalate(organizationId: string, chatId: string, reason: string): Promise<AutopilotOutcome> {
     const supabase = agentSupabase()
     await supabase
         .from('agent_chats')
         .update({ needs_attention: true, attention_reason: reason, updated_at: new Date().toISOString() })
+        .eq('organization_id', organizationId)
         .eq('id', chatId)
     return 'escalated'
 }
@@ -71,12 +76,17 @@ async function escalate(chatId: string, reason: string): Promise<AutopilotOutcom
  */
 export async function maybeAutopilotSend(chatId: string, draftMessageId: string): Promise<AutopilotOutcome> {
     const supabase = agentSupabase()
+    // El chat se busca por id sin filtro de org porque ESTE id lo acaba de
+    // producir nuestro propio pipeline (draft recién creado); es la fila que
+    // RESUELVE la org, no una que haya que autorizar. De aquí en adelante todo
+    // cuelga de `chat.organization_id`.
     const { data: chat } = await supabase.from('agent_chats').select('*').eq('id', chatId).maybeSingle()
     if (!chat || chat.mode !== 'auto' || chat.is_creator) return 'skipped'
 
     const { data: persona } = await supabase
         .from('avatar_personas')
         .select('*')
+        .eq('organization_id', chat.organization_id)
         .eq('avatar_id', chat.avatar_id)
         .maybeSingle()
     if (!persona) return 'skipped'
@@ -87,6 +97,7 @@ export async function maybeAutopilotSend(chatId: string, draftMessageId: string)
     const { data: lastFan } = await supabase
         .from('agent_messages')
         .select('text')
+        .eq('organization_id', chat.organization_id)
         .eq('chat_id', chatId)
         .eq('direction', 'in')
         .order('created_at', { ascending: false })
@@ -94,7 +105,7 @@ export async function maybeAutopilotSend(chatId: string, draftMessageId: string)
         .maybeSingle()
     const risk = await classifyInboundMessage(lastFan?.text ?? '')
     if (!risk.autopilotSafe) {
-        return escalate(chatId, `${risk.category}: ${risk.reason}`)
+        return escalate(chat.organization_id, chatId, `${risk.category}: ${risk.reason}`)
     }
 
     // Active hours.
@@ -112,7 +123,11 @@ export async function maybeAutopilotSend(chatId: string, draftMessageId: string)
             .eq('approved_by', 'autopilot')
             .gte('sent_at', dayStart)
         if ((count ?? 0) >= cfg.dailyMessageLimit) {
-            return escalate(chatId, 'Daily autopilot limit reached — sending paused')
+            return escalate(
+                chat.organization_id,
+                chatId,
+                'Daily autopilot limit reached — sending paused',
+            )
         }
     }
 
@@ -127,12 +142,19 @@ export async function maybeAutopilotSend(chatId: string, draftMessageId: string)
             send_after: sendAfter,
             updated_at: now.toISOString(),
         })
+        .eq('organization_id', chat.organization_id)
         .eq('id', draftMessageId)
         .eq('status', 'draft')
     return 'scheduled'
 }
 
-/** Send every autopilot message whose delay has elapsed. Called by the poll cron. */
+/**
+ * Send every autopilot message whose delay has elapsed. Called by the poll cron.
+ *
+ * Deliberadamente SIN filtro de org: es un barrido de cron para TODAS las orgs
+ * (no hay sesión de la que sacar una). Cada envío vuelve a resolver su propia
+ * org dentro de `sendAgentMessage`, que sí acota por la fila del mensaje.
+ */
 export async function flushDueAutopilotMessages(): Promise<{ sent: number; failed: number }> {
     const supabase = agentSupabase()
     const nowIso = new Date().toISOString()

@@ -1,6 +1,11 @@
 /**
  * Draft-reply pipeline: history + persona + RAG + fan memory → an editable
  * draft the human approves. Max ONE draft per chat (regenerate replaces it).
+ *
+ * F4.2 Tarea 4 — EXENTO de `orgTable`: lo llaman el webhook y el cron (sin
+ * sesión) además del Inbox. La fila del chat es la que RESUELVE la org (su id
+ * lo trae el llamador de su propia ingesta) y todo lo demás —persona, avatar,
+ * historial, memoria del fan, borrador— filtra ya por `chat.organization_id`.
  */
 import { generateText, type ModelMessage } from 'ai'
 import { GoogleGenAI, Type } from '@google/genai'
@@ -38,6 +43,7 @@ export async function generateDraftReply(chatId: string): Promise<DraftResult | 
     const { data: personaRow } = await supabase
         .from('avatar_personas')
         .select('*')
+        .eq('organization_id', chat.organization_id)
         .eq('avatar_id', chat.avatar_id)
         .maybeSingle()
     if (!personaRow) return null
@@ -46,6 +52,7 @@ export async function generateDraftReply(chatId: string): Promise<DraftResult | 
     const { data: avatar } = await supabase
         .from('avatars')
         .select('name')
+        .eq('organization_id', chat.organization_id)
         .eq('id', chat.avatar_id)
         .maybeSingle()
 
@@ -53,6 +60,7 @@ export async function generateDraftReply(chatId: string): Promise<DraftResult | 
     const { data: history } = await supabase
         .from('agent_messages')
         .select('direction, text, status, created_at')
+        .eq('organization_id', chat.organization_id)
         .eq('chat_id', chatId)
         .in('status', ['received', 'sent'])
         .order('created_at', { ascending: false })
@@ -78,6 +86,7 @@ export async function generateDraftReply(chatId: string): Promise<DraftResult | 
     const { data: memory } = await supabase
         .from('avatar_fan_memories')
         .select('summary, facts')
+        .eq('organization_id', chat.organization_id)
         .eq('avatar_id', chat.avatar_id)
         .eq('platform', 'fanvue')
         .eq('external_fan_id', chat.external_chat_id)
@@ -112,6 +121,7 @@ export async function generateDraftReply(chatId: string): Promise<DraftResult | 
     await supabase
         .from('agent_messages')
         .delete()
+        .eq('organization_id', chat.organization_id)
         .eq('chat_id', chatId)
         .eq('status', 'draft')
 
@@ -148,6 +158,7 @@ export async function updateFanMemoryFromChat(chatId: string): Promise<void> {
         const { data: recent } = await supabase
             .from('agent_messages')
             .select('direction, text')
+            .eq('organization_id', chat.organization_id)
             .eq('chat_id', chatId)
             .in('status', ['received', 'sent'])
             .order('created_at', { ascending: false })
@@ -200,6 +211,7 @@ export async function updateFanMemoryFromChat(chatId: string): Promise<void> {
         const { data: existing } = await supabase
             .from('avatar_fan_memories')
             .select('facts')
+            .eq('organization_id', chat.organization_id)
             .eq('avatar_id', chat.avatar_id)
             .eq('platform', 'fanvue')
             .eq('external_fan_id', chat.external_chat_id)

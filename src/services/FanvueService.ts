@@ -6,15 +6,20 @@
  * SEPARATE from SocialService.ts (Upload-Post) — do not cross-wire the two.
  * F4.2.f: las tablas tenant (fanvue_connections, fanvue_creators,
  * fanvue_posts) pasan por `orgTable`/`orgInsert`/`orgUpsert` — mismo patrón
- * que SocialService.ts (commit acab85d). `generations` queda fuera del
- * alcance de esta tarea; sigue en `orgSupabase()` sin scoping adicional
- * salvo donde ya lo necesitaba. OAuth tokens never reach the client.
+ * que SocialService.ts (commit acab85d).
+ *
+ * F4.2 Tarea 4: `generations` (que quedó fuera de la tarea anterior) entra
+ * también. Se autorizaba con `if (g.user_id && g.user_id !== userId)` después
+ * de leer por `.in('id', …)`, y ese chequeo se salta ENTERO cuando `user_id`
+ * es null — que es el caso de casi todas las filas anteriores al multitenant.
+ * Ahora el filtro va DENTRO de la consulta (`orgTable`), donde no se puede
+ * saltar. OAuth tokens never reach the client.
  */
 import { FanvueClient } from '@/lib/fanvue/FanvueClient'
 import { uploadGenerationMedia } from '@/lib/fanvue/mediaUpload'
 import { indexKnowledgeSource } from '@/lib/agent/indexer'
 import { getOrgContext, type OrgContext } from '@/lib/tenant/getOrgContext'
-import { orgTable, orgInsert, orgUpsert, orgSupabase } from '@/lib/org/orgTable'
+import { orgTable, orgInsert, orgUpsert } from '@/lib/org/orgTable'
 import {
     buildAuthorizeUrl,
     FANVUE_API_BASE,
@@ -334,28 +339,33 @@ export async function createFanvuePost(
         // Resolve generation(s) + verify ownership. A single id posts as-is;
         // multiple ids form a multi-media gallery (input order preserved, the
         // cover first).
-        // `generations` queda fuera del alcance de F4.2.f (Tarea 2 sólo pide
-        // fanvue_connections/fanvue_creators/fanvue_posts) — se mantiene el
-        // filtro de propiedad por user_id tal cual estaba.
+        // F4.2 Tarea 4: la autorizacion es el filtro de org de la CONSULTA, no
+        // un `if` posterior. El `if (g.user_id && g.user_id !== userId)` que
+        // habia aqui se saltaba ENTERO cuando `user_id` era null (casi todas
+        // las filas anteriores al multitenant), asi que se podia publicar en
+        // Fanvue media de otra org con solo pasar su id. Lo que no es de la org
+        // ya no vuelve de la consulta y cae en el "Generation not found".
         const requestedIds = [
             input.generationId,
             ...(input.generationIds ?? []),
         ].filter((id, i, arr) => Boolean(id) && arr.indexOf(id) === i)
-        const { data: gens, error: genErr } = await orgSupabase()
-            .from('generations')
-            .select('id, media_type, storage_path, user_id, avatar_id')
+        const { data: gens, error: genErr } = await orgTable(ctx, 'generations')
+            .select('id, media_type, storage_path, avatar_id')
             .in('id', requestedIds)
         if (genErr) throw new Error(genErr.message)
         if (!gens || gens.length !== requestedIds.length) {
             return { success: false, error: 'Generation not found' }
         }
-        const genById = new Map(gens.map((g) => [g.id, g]))
+        // orgTable devuelve el builder sin tipar (ver orgTable.ts); el cast va
+        // aqui, despues del guard.
+        const genRows = gens as {
+            id: string
+            media_type: string
+            storage_path: string
+            avatar_id: string | null
+        }[]
+        const genById = new Map(genRows.map((g) => [g.id, g]))
         const orderedGens = requestedIds.map((id) => genById.get(id)!)
-        for (const g of orderedGens) {
-            if (g.user_id && g.user_id !== userId) {
-                return { success: false, error: 'Not your media' }
-            }
-        }
         const coverGen = orderedGens[0]
 
         // Upload each media → create one post carrying all of them.
@@ -490,18 +500,17 @@ export async function listFanvuePosts(): Promise<
             ),
         )
         if (genIds.length > 0) {
-            const { data: gens } = await orgSupabase()
-                .from('generations')
+            const { data: gens } = await orgTable(ctx, 'generations')
                 .select('id, storage_path, media_type')
-                .eq('organization_id', ctx.organizationId)
                 .in('id', genIds)
+            const genRows = (gens ?? []) as {
+                id: string
+                storage_path: string
+                media_type: string | null
+            }[]
             const coverById = new Map(
-                (gens ?? []).map(
-                    (g: {
-                        id: string
-                        storage_path: string
-                        media_type: string
-                    }) => [
+                genRows.map(
+                    (g): [string, { url: string; mediaType: MediaType | null }] => [
                         g.id,
                         {
                             url: getStoragePublicUrl(
@@ -727,21 +736,21 @@ export async function sendGenerationsToFanvueVault(input: {
             }
         }
 
-        // `generations` queda fuera del alcance de F4.2.f (ver nota en
-        // createFanvuePost) — se mantiene el filtro de propiedad por user_id.
-        const { data: gens, error: genErr } = await orgSupabase()
-            .from('generations')
-            .select('id, media_type, storage_path, user_id, metadata')
+        // Mismo cierre que en createFanvuePost: el filtro de org va en la
+        // consulta (el `if` por user_id no autorizaba nada con user_id null).
+        const { data: gens, error: genErr } = await orgTable(ctx, 'generations')
+            .select('id, media_type, storage_path, metadata')
             .in('id', ids)
         if (genErr) throw new Error(genErr.message)
         if (!gens || gens.length !== ids.length) {
             return { success: false, error: 'Generation not found' }
         }
-        for (const g of gens) {
-            if (g.user_id && g.user_id !== userId) {
-                return { success: false, error: 'Not your media' }
-            }
-        }
+        const genRows = gens as {
+            id: string
+            media_type: string
+            storage_path: string
+            metadata: Record<string, unknown> | null
+        }[]
 
         const client = makeClient(userId)
         const creatorUuid = input.creatorUserUuid ?? null
@@ -750,7 +759,7 @@ export async function sendGenerationsToFanvueVault(input: {
         // se falla sin haber gastado una subida por cada imagen.
         await client.createVaultFolder(creatorUuid, folderName)
 
-        const byId = new Map(gens.map((g) => [g.id, g]))
+        const byId = new Map(genRows.map((g) => [g.id, g]))
         const mediaUuids: string[] = []
         for (const id of ids) {
             const g = byId.get(id)!
@@ -782,10 +791,9 @@ export async function sendGenerationsToFanvueVault(input: {
         // hay que FUSIONAR: escribir el objeto entero borraria favorite,
         // nsfw y lo que haya puesto el usuario.
         const sentAt = new Date().toISOString()
-        for (const g of gens) {
+        for (const g of genRows) {
             const prev = (g.metadata ?? {}) as Record<string, unknown>
-            const { error: markError } = await orgSupabase()
-                .from('generations')
+            const { error: markError } = await orgTable(ctx, 'generations')
                 .update({
                     metadata: {
                         ...prev,

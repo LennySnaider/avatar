@@ -2,6 +2,15 @@
  * Shared Fanvue → agent_inbox ingestion, used by BOTH the webhook (real-time)
  * and the poll cron (fallback / initial import). Idempotent: chats keyed by
  * (avatar, fan) and messages deduped by external id.
+ *
+ * F4.2 Tarea 4 — EXENTO de `orgTable` a propósito: sus dos llamadores
+ * principales (webhook de Fanvue y cron de inbox) corren SIN sesión, así que
+ * aquí no existe `getOrgContext()`. Se queda con el cliente service-role pero
+ * TODA consulta filtra por la org que ya viene resuelta: `orgCtx` de
+ * `getOrgContextForUser(userId)` al resolver el target, y
+ * `ResolvedTarget.organizationId` / `input.organizationId` después. Antes se
+ * navegaba por `avatar_id` / `chat_id` sin ningún filtro de tenant, que es lo
+ * que convertía un id adivinado en acceso cruzado.
  */
 import { FanvueClient } from '@/lib/fanvue/FanvueClient'
 import { getValidAccessToken } from '@/lib/fanvue/tokenStore'
@@ -38,6 +47,7 @@ export async function resolveTargetAvatar(
         const { data: mapped } = await supabase
             .from('avatars')
             .select('id, user_id')
+            .eq('organization_id', orgCtx.organizationId)
             .eq('fanvue_creator_uuid', recipientUuid)
             .maybeSingle()
         if (mapped) {
@@ -52,6 +62,7 @@ export async function resolveTargetAvatar(
         const { data: selfAvatar } = await supabase
             .from('avatars')
             .select('id, user_id')
+            .eq('organization_id', orgCtx.organizationId)
             .eq('user_id', userId)
             .is('fanvue_creator_uuid', null)
             .order('created_at', { ascending: true })
@@ -72,6 +83,7 @@ export async function resolveTargetAvatar(
         const { data: persona } = await supabase
             .from('avatar_personas')
             .select('enabled')
+            .eq('organization_id', organizationId)
             .eq('avatar_id', avatarId)
             .maybeSingle()
         return {
@@ -101,6 +113,7 @@ export async function upsertChat(input: {
     const { data: existing } = await supabase
         .from('agent_chats')
         .select('*')
+        .eq('organization_id', input.target.organizationId)
         .eq('avatar_id', input.target.avatarId)
         .eq('platform', 'fanvue')
         .eq('external_chat_id', input.fanUuid)
@@ -118,6 +131,7 @@ export async function upsertChat(input: {
         const { data } = await supabase
             .from('agent_chats')
             .update(patch)
+            .eq('organization_id', input.target.organizationId)
             .eq('id', existing.id)
             .select('*')
             .single()
@@ -161,6 +175,7 @@ export async function ingestMessage(input: {
         const { data: dupe } = await supabase
             .from('agent_messages')
             .select('id')
+            .eq('organization_id', input.organizationId)
             .eq('chat_id', input.chatId)
             .eq('external_message_id', input.externalMessageId)
             .maybeSingle()

@@ -1,4 +1,15 @@
-/** Provider-agnostic RAG retrieval over avatar_knowledge (pgvector). */
+/**
+ * Provider-agnostic RAG retrieval over avatar_knowledge (pgvector).
+ *
+ * F4.2 Tarea 4 — EXENTO de `orgTable` por construcción: aquí no hay ningún
+ * `.from()`, sólo el RPC `match_avatar_knowledge`, y `orgTable` sólo sabe
+ * pre-scopear tablas. La función SQL filtra sólo por `p_avatar_id` (verificado
+ * contra la BD: no acepta parámetro de org), así que el scope real lo pone el
+ * llamador, que SIEMPRE valida antes el avatar contra la org —
+ * `AgentService.searchKnowledge` vía `getOwnedAvatar`, el playground y el
+ * inbox vía `orgTable(ctx,'avatars')`/`agent_chats`. Meterle un `p_org` es
+ * cambiar el esquema; queda anotado para la tarea de migraciones.
+ */
 import { agentSupabase } from './db'
 import { embedText } from './embeddings'
 import type { RetrievedChunk } from './types'

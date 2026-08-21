@@ -36,6 +36,11 @@ export async function GET(request: NextRequest) {
         return NextResponse.json({ error: 'unauthorized' }, { status: 401 })
     }
 
+    // F4.2 Tarea 4 — EXENTO de `orgTable`: el cron corre SIN sesión (lo
+    // autoriza CRON_SECRET, no un usuario) y su trabajo es precisamente barrer
+    // TODAS las orgs. No hay `ctx` que resolver aquí; la org de cada avatar se
+    // resuelve fila a fila más abajo (`getOrgContextForUser(avatar.user_id)` y
+    // `resolveTargetAvatar`), y las escrituras cuelgan de esa org resuelta.
     const supabase = agentSupabase()
     // Avatars whose persona is enabled — the only ones worth polling.
     const { data: personas } = await supabase

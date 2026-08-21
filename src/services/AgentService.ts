@@ -5,12 +5,21 @@
  * First org-scoped service (Phase 0 pattern): every function opens with
  * getOrgContext() and writes/filters organization_id. The persona's LLM
  * api_key never reaches the client (PersonaDTO carries hasApiKey only).
+ *
+ * F4.2 Tarea 4 — las 9 llamadas a `agentSupabase()` pasan por la puerta
+ * org-scoped (`orgTable`/`orgInsert`/`orgUpsert`), mismo patrón que
+ * SocialService.ts (acab85d) y FanvueService.ts (8c1d5f2). Cerraba tres
+ * agujeros reales: `getOwnedAvatar` autorizaba con `user_id` (que es null en
+ * las filas viejas, así que el chequeo se saltaba entero), y el reindexado
+ * leía `generations` sólo por `avatar_id` y `fanvue_posts` sólo por
+ * `generation_id` — sin ningún filtro de org.
  */
 import { GoogleGenAI, Type } from '@google/genai'
-import { getRowMediaUrl } from '@/lib/storagePaths'
+import { getRowMediaUrl, type GenerationMediaRow } from '@/lib/storagePaths'
 import { generateText } from 'ai'
 import { getOrgContext, type OrgContext } from '@/lib/tenant/getOrgContext'
-import { agentSupabase, type AvatarKnowledgeRow } from '@/lib/agent/db'
+import { orgTable, orgInsert, orgUpsert } from '@/lib/org/orgTable'
+import type { AvatarKnowledgeRow } from '@/lib/agent/db'
 import { toPersonaDTO } from '@/lib/agent/personaMapper'
 import { getChatModel } from '@/lib/agent/chatProvider'
 import { AGENT_UTILITY_MODEL } from '@/lib/agent/models'
@@ -72,18 +81,34 @@ function toKnowledgeDTO(row: AvatarKnowledgeRow): KnowledgeItemDTO {
     }
 }
 
-/** Fetch an avatar and assert it belongs to the caller (org-era: same user until Phase 4 migrates avatars). */
-async function getOwnedAvatar(ctx: OrgContext, avatarId: string) {
-    const supabase = agentSupabase()
-    const { data: avatar, error } = await supabase
-        .from('avatars')
-        .select('id, name, user_id, face_description, measurements, identity_weight')
+/**
+ * Trae el avatar acotado a la org de la sesión (guarda anti-IDOR).
+ *
+ * Antes autorizaba con `if (avatar.user_id && avatar.user_id !== ctx.userId)`:
+ * ese chequeo se SALTABA ENTERO cuando `user_id` era null (la mayoría de las
+ * filas anteriores al multitenant), así que cualquier autenticado podía tocar
+ * la persona/knowledge de un avatar ajeno pasando su id. El
+ * `.eq('organization_id', ...)` que inyecta `orgTable` no se puede saltar, y
+ * dentro de una org `user_id` es sólo "creado por" (ver orgTable.ts).
+ */
+async function getOwnedAvatar(ctx: OrgContext, avatarId: string): Promise<OwnedAvatar> {
+    const { data: avatar, error } = await orgTable(ctx, 'avatars')
+        .select('id, name, face_description, measurements, identity_weight')
         .eq('id', avatarId)
         .maybeSingle()
     if (error) throw new Error(error.message)
     if (!avatar) throw new Error('Avatar not found')
-    if (avatar.user_id && avatar.user_id !== ctx.userId) throw new Error('Not your avatar')
-    return avatar
+    // orgTable devuelve el builder sin tipar (gotcha documentado en
+    // orgTable.ts); el cast va aquí, después del guard.
+    return avatar as OwnedAvatar
+}
+
+interface OwnedAvatar {
+    id: string
+    name: string
+    face_description: string | null
+    measurements: unknown
+    identity_weight: number | null
 }
 
 // ---------------------------------------------------------------------------
@@ -93,11 +118,8 @@ async function getOwnedAvatar(ctx: OrgContext, avatarId: string) {
 export async function getAvatarPersona(avatarId: string): Promise<AgentResult<PersonaDTO | null>> {
     try {
         const ctx = await getOrgContext()
-        const supabase = agentSupabase()
-        const { data, error } = await supabase
-            .from('avatar_personas')
+        const { data, error } = await orgTable(ctx, 'avatar_personas')
             .select('*')
-            .eq('organization_id', ctx.organizationId)
             .eq('avatar_id', avatarId)
             .maybeSingle()
         if (error) throw new Error(error.message)
@@ -111,10 +133,10 @@ export async function upsertAvatarPersona(input: UpsertPersonaInput): Promise<Ag
     try {
         const ctx = await getOrgContext()
         await getOwnedAvatar(ctx, input.avatarId)
-        const supabase = agentSupabase()
 
+        // Sin `organization_id`: lo inyecta `orgUpsert` desde el ctx, nunca
+        // desde el cliente.
         const patch: Record<string, unknown> = {
-            organization_id: ctx.organizationId,
             avatar_id: input.avatarId,
             enabled: input.enabled,
             system_prompt: input.systemPrompt ?? null,
@@ -136,9 +158,12 @@ export async function upsertAvatarPersona(input: UpsertPersonaInput): Promise<Ag
             patch.api_key = input.apiKey?.trim() ? input.apiKey.trim() : null
         }
 
-        const { data, error } = await supabase
-            .from('avatar_personas')
-            .upsert(patch as never, { onConflict: 'avatar_id' })
+        // `onConflict: 'avatar_id'` se mantiene: ese índice único existe
+        // (verificado en la BD real) — cambiarlo es lo que rompió el connect de
+        // Fanvue en 8c1d5f2, no se toca sin comprobarlo.
+        const { data, error } = await orgUpsert(ctx, 'avatar_personas', patch as never, {
+            onConflict: 'avatar_id',
+        })
             .select('*')
             .single()
         if (error) throw new Error(error.message)
@@ -256,11 +281,8 @@ export async function generatePersonaFromAvatar(avatarId: string): Promise<Agent
 export async function testPersonaProvider(avatarId: string): Promise<AgentResult<{ reply: string; latencyMs: number }>> {
     try {
         const ctx = await getOrgContext()
-        const supabase = agentSupabase()
-        const { data: persona } = await supabase
-            .from('avatar_personas')
+        const { data: persona } = await orgTable(ctx, 'avatar_personas')
             .select('*')
-            .eq('organization_id', ctx.organizationId)
             .eq('avatar_id', avatarId)
             .maybeSingle()
         if (!persona) return { success: false, error: 'Save the persona first' }
@@ -287,17 +309,14 @@ export async function testPersonaProvider(avatarId: string): Promise<AgentResult
 export async function listKnowledge(avatarId: string): Promise<AgentResult<KnowledgeItemDTO[]>> {
     try {
         const ctx = await getOrgContext()
-        const supabase = agentSupabase()
-        const { data, error } = await supabase
-            .from('avatar_knowledge')
+        const { data, error } = await orgTable(ctx, 'avatar_knowledge')
             .select('*')
-            .eq('organization_id', ctx.organizationId)
             .eq('avatar_id', avatarId)
             .order('created_at', { ascending: false })
             .limit(500)
         if (error) throw new Error(error.message)
-        const items = (data ?? []).map(toKnowledgeDTO)
-        await attachKnowledgeThumbnails(items)
+        const items = ((data ?? []) as AvatarKnowledgeRow[]).map(toKnowledgeDTO)
+        await attachKnowledgeThumbnails(ctx, items)
         return { success: true, data: items }
     } catch (e) {
         return fail(e)
@@ -316,7 +335,7 @@ export async function listKnowledge(avatarId: string): Promise<AgentResult<Knowl
  * Va en DOS consultas batched (posts y generaciones), no una por fila: con 500
  * entradas la version ingenua serian 1000 viajes.
  */
-async function attachKnowledgeThumbnails(items: KnowledgeItemDTO[]): Promise<void> {
+async function attachKnowledgeThumbnails(ctx: OrgContext, items: KnowledgeItemDTO[]): Promise<void> {
     // Solo `social_posts`: es lo unico que indexa hoy el reindex, y el cliente
     // tipado rechaza un nombre de tabla dinamico (bien: obliga a declarar de
     // donde se lee en vez de construirlo en tiempo de ejecucion).
@@ -328,14 +347,12 @@ async function attachKnowledgeThumbnails(items: KnowledgeItemDTO[]): Promise<voi
     }
     if (byPostId.size === 0) return
 
-    const supabase = agentSupabase()
-    const { data: posts } = await supabase
-        .from('social_posts')
+    const { data: posts } = await orgTable(ctx, 'social_posts')
         .select('id, generation_id')
         .in('id', [...byPostId.keys()])
 
     const genToItems = new Map<string, KnowledgeItemDTO[]>()
-    for (const post of posts ?? []) {
+    for (const post of (posts ?? []) as { id: string; generation_id: string | null }[]) {
         if (!post.generation_id) continue
         genToItems.set(post.generation_id, [
             ...(genToItems.get(post.generation_id) ?? []),
@@ -346,12 +363,14 @@ async function attachKnowledgeThumbnails(items: KnowledgeItemDTO[]): Promise<voi
 
     // '*' para que venga `storage_provider` si la migración R2 ya está aplicada
     // (nombrarlo en el select rompería la query si aún no existe).
-    const { data: gens } = await supabase
-        .from('generations')
+    const { data: gens } = await orgTable(ctx, 'generations')
         .select('*')
         .in('id', [...genToItems.keys()])
 
-    for (const gen of gens ?? []) {
+    for (const gen of (gens ?? []) as (GenerationMediaRow & {
+        id: string
+        media_type: string | null
+    })[]) {
         if (!gen.storage_path) continue
         const url = getRowMediaUrl(gen)
         for (const it of genToItems.get(gen.id) ?? []) {
@@ -374,21 +393,17 @@ export async function addKnowledge(input: {
         if (!content) return { success: false, error: 'Content is required' }
 
         const [embedding] = await embedTexts([content], 'RETRIEVAL_DOCUMENT')
-        const supabase = agentSupabase()
-        const { data, error } = await supabase
-            .from('avatar_knowledge')
-            .insert({
-                organization_id: ctx.organizationId,
-                avatar_id: input.avatarId,
-                kind: input.kind,
-                title: input.title?.trim() || null,
-                content,
-                embedding: JSON.stringify(embedding),
-            })
+        const { data, error } = await orgInsert(ctx, 'avatar_knowledge', {
+            avatar_id: input.avatarId,
+            kind: input.kind,
+            title: input.title?.trim() || null,
+            content,
+            embedding: JSON.stringify(embedding),
+        })
             .select('*')
             .single()
         if (error) throw new Error(error.message)
-        return { success: true, data: toKnowledgeDTO(data) }
+        return { success: true, data: toKnowledgeDTO(data as AvatarKnowledgeRow) }
     } catch (e) {
         return fail(e)
     }
@@ -397,11 +412,8 @@ export async function addKnowledge(input: {
 export async function deleteKnowledge(knowledgeId: string): Promise<AgentResult<{ id: string }>> {
     try {
         const ctx = await getOrgContext()
-        const supabase = agentSupabase()
-        const { error } = await supabase
-            .from('avatar_knowledge')
+        const { error } = await orgTable(ctx, 'avatar_knowledge')
             .delete()
-            .eq('organization_id', ctx.organizationId)
             .eq('id', knowledgeId)
         if (error) throw new Error(error.message)
         return { success: true, data: { id: knowledgeId } }
@@ -431,7 +443,6 @@ export async function reindexAvatarContent(avatarId: string): Promise<AgentResul
     try {
         const ctx = await getOrgContext()
         await getOwnedAvatar(ctx, avatarId)
-        const supabase = agentSupabase()
 
         type Candidate = {
             sourceRef: string
@@ -443,19 +454,17 @@ export async function reindexAvatarContent(avatarId: string): Promise<AgentResul
         const candidates: Candidate[] = []
 
         // 1. Social captions (posts published through this avatar's Upload-Post profile)
-        const { data: profiles } = await supabase
-            .from('social_profiles')
+        const { data: profiles } = await orgTable(ctx, 'social_profiles')
             .select('id')
             .eq('avatar_id', avatarId)
-        const profileIds = (profiles ?? []).map((p) => p.id)
+        const profileIds = ((profiles ?? []) as { id: string }[]).map((p) => p.id)
         if (profileIds.length > 0) {
-            const { data: posts } = await supabase
-                .from('social_posts')
+            const { data: posts } = await orgTable(ctx, 'social_posts')
                 .select('id, caption')
                 .in('social_profile_id', profileIds)
                 .order('created_at', { ascending: false })
                 .limit(200)
-            for (const post of posts ?? []) {
+            for (const post of (posts ?? []) as { id: string; caption: string | null }[]) {
                 if (!post.caption?.trim()) continue
                 candidates.push({
                     sourceRef: `social_posts:${post.id}`,
@@ -468,14 +477,23 @@ export async function reindexAvatarContent(avatarId: string): Promise<AgentResul
         }
 
         // 2. Generations: prompt (sanitized) as media knowledge + Fanvue captions via generation ids
-        const { data: gens } = await supabase
-            .from('generations')
+        // Antes filtraba SÓLO por `avatar_id`: con ids de avatar de otra org
+        // (o si dos orgs comparten un avatar heredado) se indexaba contenido
+        // ajeno dentro del knowledge de este avatar. `orgTable` lo acota.
+        const { data: gens } = await orgTable(ctx, 'generations')
             .select('id, prompt, media_type, storage_path')
             .eq('avatar_id', avatarId)
             .order('created_at', { ascending: false })
             .limit(200)
-        const genIds = (gens ?? []).map((g) => g.id)
-        for (const gen of gens ?? []) {
+        type GenRow = {
+            id: string
+            prompt: string | null
+            media_type: string | null
+            storage_path: string
+        }
+        const genRows = (gens ?? []) as GenRow[]
+        const genIds = genRows.map((g) => g.id)
+        for (const gen of genRows) {
             const cleaned = sanitizeGenerationPrompt(gen.prompt ?? '')
             if (!cleaned) continue
             candidates.push({
@@ -487,12 +505,16 @@ export async function reindexAvatarContent(avatarId: string): Promise<AgentResul
             })
         }
         if (genIds.length > 0) {
-            const { data: fanvuePosts } = await supabase
-                .from('fanvue_posts')
+            // Igual que arriba: `generation_id` solo no acota nada — el filtro
+            // de org va en la propia consulta, no en un `if` posterior.
+            const { data: fanvuePosts } = await orgTable(ctx, 'fanvue_posts')
                 .select('id, caption, generation_id')
                 .in('generation_id', genIds)
                 .limit(200)
-            for (const post of fanvuePosts ?? []) {
+            for (const post of (fanvuePosts ?? []) as {
+                id: string
+                caption: string | null
+            }[]) {
                 if (!post.caption?.trim()) continue
                 candidates.push({
                     sourceRef: `fanvue_posts:${post.id}`,
@@ -507,12 +529,13 @@ export async function reindexAvatarContent(avatarId: string): Promise<AgentResul
         if (candidates.length === 0) return { success: true, data: { indexed: 0, skipped: 0 } }
 
         // Skip already-indexed sources (avoid re-embedding cost)
-        const { data: existing } = await supabase
-            .from('avatar_knowledge')
+        const { data: existing } = await orgTable(ctx, 'avatar_knowledge')
             .select('source_ref')
             .eq('avatar_id', avatarId)
             .not('source_ref', 'is', null)
-        const existingRefs = new Set((existing ?? []).map((r) => r.source_ref))
+        const existingRefs = new Set(
+            ((existing ?? []) as { source_ref: string | null }[]).map((r) => r.source_ref),
+        )
         const fresh = candidates.filter((c) => !existingRefs.has(c.sourceRef))
         const skipped = candidates.length - fresh.length
         if (fresh.length === 0) return { success: true, data: { indexed: 0, skipped } }
@@ -521,8 +544,8 @@ export async function reindexAvatarContent(avatarId: string): Promise<AgentResul
             fresh.map((c) => c.content),
             'RETRIEVAL_DOCUMENT',
         )
+        // Sin `organization_id` en las filas: lo inyecta `orgUpsert`.
         const rows = fresh.map((c, i) => ({
-            organization_id: ctx.organizationId,
             avatar_id: avatarId,
             kind: c.kind,
             title: c.title,
@@ -531,9 +554,9 @@ export async function reindexAvatarContent(avatarId: string): Promise<AgentResul
             metadata: c.metadata as never,
             source_ref: c.sourceRef,
         }))
-        const { error: insErr } = await supabase
-            .from('avatar_knowledge')
-            .upsert(rows as never, { onConflict: 'avatar_id,source_ref' })
+        const { error: insErr } = await orgUpsert(ctx, 'avatar_knowledge', rows as never, {
+            onConflict: 'avatar_id,source_ref',
+        })
         if (insErr) throw new Error(insErr.message)
 
         return { success: true, data: { indexed: fresh.length, skipped } }
