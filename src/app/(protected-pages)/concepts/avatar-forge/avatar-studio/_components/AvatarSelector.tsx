@@ -9,7 +9,7 @@ import Spinner from '@/components/ui/Spinner'
 import ScrollBar from '@/components/ui/ScrollBar'
 import { HiOutlineUser, HiOutlinePlus } from 'react-icons/hi'
 import { apiGetAvatars, apiGetAvatarReferences, getSignedUrl } from '@/services/AvatarForgeService'
-import { getStoragePublicUrl } from '@/lib/storagePaths'
+import { getReferenceMediaUrl } from '@/lib/storagePaths'
 import { createThumbnail } from '@/utils/imageOptimization'
 import type { Avatar, AvatarReference } from '@/@types/supabase'
 import type { ClonedVoice } from '@/@types/voice'
@@ -117,8 +117,13 @@ const AvatarSelector = ({ userId, isOpen, onClose }: AvatarSelectorProps) => {
                     ...refs.filter((r) => r.type === 'angle').sort(byNewest),
                     ...refs.filter((r) => r.type === 'general').sort(byNewest),
                 ]
+                // El provider VIAJA con el path, nunca suelto: las refs
+                // migraron a R2 y sus copias de Supabase ya se drenaron, así
+                // que construir la URL de Supabase a ciegas apaga TODAS las
+                // miniaturas a la vez (pasó el 20-ago). Dos funciones más
+                // abajo el camino lento ya lo hacía bien.
                 const candidates = ordered.map((r) =>
-                    getStoragePublicUrl('avatars', r.storage_path),
+                    getReferenceMediaUrl(r.storage_path, r.storage_provider),
                 )
                 return {
                     ...avatar,
