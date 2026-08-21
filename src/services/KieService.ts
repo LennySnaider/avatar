@@ -278,9 +278,19 @@ const IMAGE_URL_EXT_RE = /\.(png|jpe?g|webp)(\?|#|$)/i
  * Se elige por extensión, con caída a `urls[0]` cuando ninguna la declara
  * (hay CDNs que sirven la media sin extensión) — así ningún motor que hoy
  * devuelve un solo mp4 cambia de comportamiento.
+ *
+ * La caída DESCARTA primero lo que se declara imagen. Sin ese filtro el
+ * fallback reintroducía justo el bug que esta función evita: si el CDN sirve
+ * el vídeo sin extensión (el caso que motiva el fallback) y el frame sí la
+ * trae, `urls[0]` podía ser el PNG y acababa guardado como `.mp4` —
+ * exactamente la tarjeta rota descrita arriba.
  */
 function pickVideoUrl(urls: string[]): string {
-    return urls.find((u) => VIDEO_URL_EXT_RE.test(u)) ?? urls[0]
+    return (
+        urls.find((u) => VIDEO_URL_EXT_RE.test(u)) ??
+        urls.find((u) => !IMAGE_URL_EXT_RE.test(u)) ??
+        urls[0]
+    )
 }
 
 /** El frame de `return_last_frame`, si vino. `null` en todos los demás motores. */

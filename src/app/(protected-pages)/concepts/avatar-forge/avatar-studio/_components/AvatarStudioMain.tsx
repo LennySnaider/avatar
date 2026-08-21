@@ -3846,7 +3846,17 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                                     }),
                                 })
                                 resultUrl = kieVideo.url
-                                if (kieVideo.lastFrameUrl)
+                                // Solo el run EN PRIMER PLANO adopta el frame:
+                                // `adoptLastFrame` pisa `videoInputImage`, que es
+                                // estado global. Un run "en espera" que resuelve
+                                // tarde reemplazaría en silencio la imagen que el
+                                // usuario ya cargó para el clip siguiente — y esa
+                                // se paga. Misma guarda que el resto de escrituras
+                                // globales del cierre (ver más abajo).
+                                if (
+                                    kieVideo.lastFrameUrl &&
+                                    !backgroundedRunsRef.current.has(runId)
+                                )
                                     void adoptLastFrame(kieVideo.lastFrameUrl)
                             }
                         } else {
@@ -4018,7 +4028,12 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                                     }),
                                 })
                                 resultUrl = kieVideo.url
-                                if (kieVideo.lastFrameUrl)
+                                // Ver la nota del otro call site: el frame solo lo
+                                // adopta el run en primer plano.
+                                if (
+                                    kieVideo.lastFrameUrl &&
+                                    !backgroundedRunsRef.current.has(runId)
+                                )
                                     void adoptLastFrame(kieVideo.lastFrameUrl)
                             }
                         } else {
