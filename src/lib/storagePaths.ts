@@ -74,6 +74,32 @@ export function orgOwnsStoragePath(
 }
 
 /**
+ * ESCAPE DE CACHÉ ENVENENADA — súbelo si el síntoma vuelve.
+ *
+ * MEDIDO el 2026-08-20 contra el bucket real:
+ *   GET sin Origin  → 206 · `cache-control: immutable, max-age=31536000` · SIN `Vary`
+ *   GET con Origin  → 206 · `access-control-allow-origin: …` · `Vary: Origin`
+ *
+ * R2 no manda `Vary: Origin` en la respuesta NO-CORS. Así que la entrada que
+ * dejó una petición sin `crossOrigin` se guarda bajo la URL a secas y la
+ * reutiliza la petición CORS de después; como no trae `Access-Control-Allow-
+ * Origin`, el `<video crossOrigin="anonymous">` la rechaza y se queda en
+ * blanco con 0:00 (el recuadro gris de 300×150 = elemento sin fuente).
+ *
+ * El commit f070a7c unificó el modo CORS de todos los `<video>`, y eso impide
+ * envenenamientos NUEVOS — pero no cura los navegadores ya envenenados: esas
+ * entradas están selladas `immutable` un AÑO y ni un reload normal las tira.
+ * Por eso el bug "seguía" solo en los equipos de siempre. Cambiar la URL es la
+ * única forma de escapar: otra clave de caché, entrada nueva, ya con CORS.
+ *
+ * Solo VÍDEO a propósito: las imágenes se ven bien y forzar la re-descarga de
+ * ~4.400 no tiene justificación. Si algún día el síntoma aparece en imágenes,
+ * amplía `ES_VIDEO` y sube el número.
+ */
+const CORS_CACHE_ESCAPE = '2'
+const ES_VIDEO = /\.(mp4|webm|mov)$/i
+
+/**
  * URL pública de la media de una generación, según DÓNDE viva el objeto.
  *
  * Durante la migración a R2 conviven filas viejas (Supabase) y nuevas (R2):
@@ -93,7 +119,8 @@ export function getGenerationMediaUrl(
         const base = process.env.NEXT_PUBLIC_R2_PUBLIC_BASE_URL
         if (base) {
             const encoded = path.split('/').map(encodeURIComponent).join('/')
-            return `${base.replace(/\/$/, '')}/${encoded}`
+            const url = `${base.replace(/\/$/, '')}/${encoded}`
+            return ES_VIDEO.test(path) ? `${url}?v=${CORS_CACHE_ESCAPE}` : url
         }
         // Fila marcada r2 sin base configurada: mejor una URL de Supabase que
         // quizá ya no exista, que reventar el render — y el console.warn deja
