@@ -118,8 +118,14 @@ const eslintConfig = [
   {
     files: ["src/**/*.{js,jsx,mjs,cjs,ts,tsx,mts,cts}"],
     ignores: [
-      // Quien define el cliente y quien lo envuelve.
-      "src/lib/**",
+      // `src/lib/billing/wallet.ts` es el ÚNICO fichero de `src/lib/` que lo
+      // importa, y lo usa para `token_ledger` / `org_wallets`, que no son
+      // tablas tenant. Antes esta línea era `src/lib/**` con el comentario
+      // "quien define y quien envuelve": falso, y el mismo defecto de exentar
+      // por carpeta que ya se corrigió en `src/lib/agent/`. (Quien DEFINE
+      // `orgSupabase` es `src/lib/org/orgTable.ts`, que no necesita exención:
+      // no se importa a sí mismo, así que la regla nunca puede dispararle.)
+      "src/lib/billing/wallet.ts",
       // Sin sesión: resuelven la org por la fila que ya cargaron.
       "src/app/api/webhooks/**",
       "src/app/api/cron/**",
