@@ -46,8 +46,10 @@ import AssignAvatarDialog from './AssignAvatarDialog'
 import VaultDialog from './VaultDialog'
 import { HiOutlineArrowUturnLeft, HiOutlineArrowUturnRight } from 'react-icons/hi2'
 import Tooltip from '@/components/ui/Tooltip'
+import ConfirmDialog from '@/components/shared/ConfirmDialog'
 import Notification from '@/components/ui/Notification'
 import toast from '@/components/ui/toast'
+import { apiDeleteGeneration } from '@/services/AvatarForgeService'
 import type { GeneratedMedia } from '../types'
 import type { AspectRatio } from '@/@types/supabase'
 
@@ -137,6 +139,8 @@ const ImagePreviewModal = ({
     const [isEditing, setIsEditing] = useState(false)
     const [assignMedia, setAssignMedia] = useState<GeneratedMedia | null>(null)
     const [vaultOpen, setVaultOpen] = useState(false)
+    const [deleteOpen, setDeleteOpen] = useState(false)
+    const [isDeleting, setIsDeleting] = useState(false)
     const [editPrompt, setEditPrompt] = useState('')
     const [isDrawingMask, setIsDrawingMask] = useState(false)
     const [maskCanvas, setMaskCanvas] = useState<string | null>(null)
@@ -668,10 +672,45 @@ const ImagePreviewModal = ({
         )
     }
 
+    /**
+     * BORRADO DE VERDAD.
+     *
+     * Hasta 2026-08-20 esto era `removeFromGallery(id)` a secas — un filter
+     * sobre el array de Zustand. La card desaparecía, la FILA seguía en la BD,
+     * y la siguiente sesión la recargaba: "borré esto y volvió". El archivo ni
+     * siquiera importaba `apiDeleteGeneration`; el mismo botón en el
+     * GalleryPanel sí lo llamaba, por eso el síntoma parecía aleatorio —
+     * dependía de por dónde hubieras borrado.
+     *
+     * Ahora confirma antes (el borrado se lleva también los bytes, ver
+     * `apiDeleteGeneration`) y sólo saca la card cuando la BD dijo que sí:
+     * quitarla antes es exactamente el bug que se está arreglando.
+     */
     const handleDelete = () => {
         if (!previewMedia) return
-        removeFromGallery(previewMedia.id)
-        handleClose()
+        setDeleteOpen(true)
+    }
+
+    const handleDeleteConfirmed = async () => {
+        if (!previewMedia) return
+        setIsDeleting(true)
+        try {
+            if (previewMedia.generationId) {
+                await apiDeleteGeneration(previewMedia.generationId)
+            }
+            removeFromGallery(previewMedia.id)
+            setDeleteOpen(false)
+            handleClose()
+        } catch (err) {
+            console.error('Failed to delete generation:', err)
+            toast.push(
+                <Notification type="danger" title="No se pudo borrar">
+                    La generación sigue en la base de datos. Intenta de nuevo.
+                </Notification>,
+            )
+        } finally {
+            setIsDeleting(false)
+        }
     }
 
     const handleStartEdit = () => {
@@ -2377,6 +2416,28 @@ const ImagePreviewModal = ({
                     </div>
                 </div>
             </Dialog>
+
+            {/* Confirmación de borrado — mismo patrón que el GalleryPanel.
+                Ahora hace falta de verdad: el borrado se lleva los BYTES, no
+                sólo la fila, y eso no tiene vuelta atrás. */}
+            <ConfirmDialog
+                isOpen={deleteOpen}
+                type="danger"
+                title="¿Borrar esta generación?"
+                onClose={() => setDeleteOpen(false)}
+                onRequestClose={() => setDeleteOpen(false)}
+                onCancel={() => setDeleteOpen(false)}
+                onConfirm={handleDeleteConfirmed}
+                confirmButtonProps={{ loading: isDeleting }}
+            >
+                <p>
+                    Se quita de la galería
+                    {previewMedia?.generationId
+                        ? ' y se borra de la base de datos y del almacenamiento'
+                        : ''}
+                    . No se puede deshacer.
+                </p>
+            </ConfirmDialog>
 
             {/* Frame Extractor — runs before the Continue dialog */}
             <ExtractFrameDialog

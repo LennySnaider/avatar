@@ -265,6 +265,55 @@ export async function createPresignedPutUrl(
     return signed.url
 }
 
+/**
+ * Borra un objeto de media. Contrapartida de `putMediaObject`.
+ *
+ * POR QUÉ NO EXISTÍA Y QUÉ COSTÓ (medido 2026-08-20): había PUT y no había
+ * DELETE, así que borrar una generación quitaba la FILA y dejaba los bytes en
+ * el bucket para siempre. Consecuencias reales, no teóricas: R2 sólo podía
+ * crecer (11,11 GB contra 10 de free tier) y cualquier rescate de huérfanos
+ * resucitaba justo lo que el usuario había tirado — pasó hoy.
+ *
+ * BEST-EFFORT y SIEMPRE DESPUÉS de que la fila muera. Si falla, queda un
+ * objeto huérfano y lo barre `scripts/purge-r2-unreferenced.mjs`. Al revés
+ * —bytes primero— un fallo al borrar la fila dejaría una card rota apuntando
+ * al vacío: de los dos estados inconsistentes posibles, éste es el barato.
+ *
+ * Sin `provider` prueba los DOS almacenes: el path lógico es el mismo en ambos
+ * y un DELETE donde no está es un no-op. Rendirse con el primero es como se
+ * quedaron ocho avatares sin cara en la migración de `generations`.
+ */
+export async function deleteMediaObject(opts: {
+    path: string
+    provider?: 'r2' | 'supabase' | null
+    /** Las refs viven en `avatars`, no en `generations`. Mismo motivo que en putMediaObject. */
+    supabaseBucket?: string
+}): Promise<boolean> {
+    const { path, provider } = opts
+    let borrado = false
+
+    if (provider !== 'supabase') {
+        const cfg = r2Config()
+        if (cfg) {
+            const res = await getAwsClient(cfg).fetch(r2ObjectUrl(cfg, path), {
+                method: 'DELETE',
+            })
+            // R2 devuelve 204 tanto si existía como si no.
+            if (res.ok || res.status === 404) borrado = true
+        }
+    }
+
+    if (provider !== 'r2') {
+        const supabase = createServerSupabaseClient()
+        const { error } = await supabase.storage
+            .from(opts.supabaseBucket ?? 'generations')
+            .remove([path])
+        if (!error) borrado = true
+    }
+
+    return borrado
+}
+
 /** ¿Existe ya el objeto en R2? (HEAD firmado — para el dedupe de refs.) */
 export async function r2ObjectExists(path: string): Promise<boolean> {
     if (!r2Enabled()) return false

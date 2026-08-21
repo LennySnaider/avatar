@@ -11,6 +11,7 @@
 import { getOrgContext, type OrgContext } from '@/lib/tenant/getOrgContext'
 import {
     putMediaObject,
+    deleteMediaObject,
     r2Enabled,
     createPresignedPutUrl,
     getR2PublicUrl,
@@ -300,14 +301,54 @@ export async function apiUpdateGenerationMetadata(
     return true
 }
 
+/**
+ * Borra la generación Y SUS BYTES.
+ *
+ * Antes borraba sólo la fila: los objetos se quedaban en el bucket para
+ * siempre. Dos efectos medidos (2026-08-20): R2 sólo podía crecer, y un
+ * rescate de huérfanos resucitaba lo que el usuario había tirado, porque un
+ * objeto sin fila por borrado deliberado es indistinguible de uno sin fila
+ * por una pestaña que se cerró.
+ *
+ * ORDEN: fila primero, bytes después y sin bloquear el resultado. Si los
+ * bytes fallan queda un huérfano (barrible); si fuera al revés, un fallo al
+ * borrar la fila dejaría una card apuntando al vacío.
+ */
 export async function apiDeleteGeneration(generationId: string) {
     const ctx = await getOrgContext()
     await assertGenerationInOrg(ctx, generationId)
+
+    // Los paths hay que leerlos ANTES: después del delete la fila ya no dice
+    // dónde vivían sus bytes.
+    // `orgTable` devuelve un builder sin tipar (mismo motivo por el que el
+    // resto del archivo usa `.maybeSingle()` a secas): el cast va después.
+    const { data } = await orgTable(ctx, 'generations')
+        .select('storage_path, thumbnail_path, storage_provider')
+        .eq('id', generationId)
+        .maybeSingle()
+    const fila = data as {
+        storage_path: string | null
+        thumbnail_path: string | null
+        storage_provider: 'r2' | 'supabase' | null
+    } | null
+
     const { error } = await orgTable(ctx, 'generations')
         .delete()
         .eq('id', generationId)
 
     if (error) throw error
+
+    for (const path of [fila?.storage_path, fila?.thumbnail_path]) {
+        if (!path) continue
+        try {
+            await deleteMediaObject({
+                path,
+                provider: fila?.storage_provider ?? null,
+            })
+        } catch (err) {
+            console.warn(`[delete] bytes no borrados (${path}):`, err)
+        }
+    }
     return true
 }
 
