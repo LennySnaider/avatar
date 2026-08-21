@@ -703,9 +703,29 @@ export async function apiCreateGenerationUploadUrl(
     // fuera imagen aunque los bytes fueran PNG (Seedream entrega PNG): el
     // objeto quedaba mal etiquetado y la descarga no abría en macOS.
     fileExt?: string,
+    /**
+     * PARA QUÉ es la subida. `edit-ref` son ENTRADAS, no resultados: el
+     * composite con la máscara morada que se le manda al proveedor para que
+     * sepa qué zona tocar.
+     *
+     * Iban al MISMO `images/` que la galería (2026-08-20) y eso los volvía
+     * indistinguibles de una generación guardada. Consecuencias reales: un
+     * rescate de huérfanos les puso fila y aparecieron 32 fotos con la mancha
+     * morada en la galería del usuario, y cada edición dejaba un composite
+     * más ahí para siempre porque nadie los reclama nunca.
+     *
+     * Con carpeta propia dejan de ser ambiguos: ningún rescate los confunde
+     * con un resultado y la purga los puede barrer por categoría.
+     */
+    purpose: 'gallery' | 'edit-ref' = 'gallery',
 ): Promise<GenerationUploadTicket> {
     const ctx = await getOrgContext()
-    const folder = mediaType === 'IMAGE' ? 'images' : 'videos'
+    const folder =
+        purpose === 'edit-ref'
+            ? 'edit-refs'
+            : mediaType === 'IMAGE'
+              ? 'images'
+              : 'videos'
     const ALLOWED_EXT = ['jpg', 'png', 'webp', 'gif', 'mp4', 'webm']
     const ext =
         fileExt && ALLOWED_EXT.includes(fileExt)

@@ -79,6 +79,10 @@ const NO_ES_RESULTADO = (key) =>
     key.startsWith('thumbs/') ||
     key.startsWith('kie-refs/') ||
     key.includes('/kie-refs/') ||
+    // Composite con la máscara morada que se le manda al proveedor. Vivía en
+    // `images/` y por eso el rescate le puso fila a 32: aparecieron en la
+    // galería con la mancha encima. Es una ENTRADA, nunca un resultado.
+    key.includes('/edit-refs/') ||
     key.startsWith('_tmp-vlm-probe/') ||
     key.endsWith('.emptyFolderPlaceholder')
 

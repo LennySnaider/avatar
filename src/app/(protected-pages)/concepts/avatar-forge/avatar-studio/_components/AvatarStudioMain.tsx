@@ -561,6 +561,15 @@ function withDeadline<T>(p: Promise<T>, ms: number, label: string): Promise<T> {
  * puerta anti-413 del proyecto: el binario va directo a R2 y nunca cruza un
  * server action, así que el tope de 4.5 MB de Vercel ni entra en juego.
  */
+/**
+ * Sube el composite con la máscara para que el proveedor pueda bajarlo.
+ *
+ * Va a `org/{org}/edit-refs/`, NO al `images/` de la galería: es una ENTRADA.
+ * Cuando compartían carpeta eran indistinguibles de una generación guardada —
+ * el rescate de huérfanos les puso fila y salieron 32 fotos con la mancha
+ * morada en la galería. Tampoco lleva miniatura: nadie pinta una card con
+ * esto.
+ */
 async function uploadEditRefToStorage(
     base64: string,
     mimeType: string,
@@ -571,6 +580,7 @@ async function uploadEditRefToStorage(
         'IMAGE',
         blob,
         mimeType,
+        'edit-ref',
     )
     return getGenerationMediaUrl(path, provider)
 }
@@ -579,6 +589,8 @@ async function uploadGenerationWithRetry(
     mediaType: Parameters<typeof apiCreateGenerationUploadUrl>[0],
     blob: Blob,
     contentType: string,
+    /** `edit-ref` = entrada del editor: carpeta propia y SIN miniatura. */
+    purpose: 'gallery' | 'edit-ref' = 'gallery',
 ): Promise<{
     path: string
     provider: 'r2' | 'supabase'
@@ -599,14 +611,21 @@ async function uploadGenerationWithRetry(
             const ticket = await apiCreateGenerationUploadUrl(
                 mediaType,
                 sniffed?.ext,
+                purpose,
             )
             await uploadGenerationTicket(ticket, blob, realContentType)
 
             // MINIATURA (solo imagen, solo con la columna viva = era R2).
             // BEST-EFFORT a proposito: un thumb caido no puede costar la
             // generacion — sin el, la card cae al original como siempre.
+            // Las `edit-ref` no llevan: nadie pinta una card con la entrada
+            // del editor, y el thumb era otro objeto muerto por edición.
             let thumbnailPath: string | undefined
-            if (mediaType === 'IMAGE' && ticket.provider === 'r2') {
+            if (
+                purpose === 'gallery' &&
+                mediaType === 'IMAGE' &&
+                ticket.provider === 'r2'
+            ) {
                 try {
                     const dataUrl = await new Promise<string>((res, rej) => {
                         const r = new FileReader()

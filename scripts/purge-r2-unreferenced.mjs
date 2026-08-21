@@ -37,6 +37,7 @@
  *   node scripts/purge-r2-unreferenced.mjs --dupes    copias redundantes (MD5)
  *   node scripts/purge-r2-unreferenced.mjs --thumbs   miniaturas sin fila
  *   node scripts/purge-r2-unreferenced.mjs --refs     entradas kie-refs viejas
+ *   node scripts/purge-r2-unreferenced.mjs --edit-refs  composites de mascara
  *   node scripts/purge-r2-unreferenced.mjs --tmp      sondas y temporales
  *   DAYS=14 node scripts/purge-r2-unreferenced.mjs --refs
  */
@@ -102,6 +103,24 @@ const CATEGORIAS = {
                 (o) =>
                     !vivos.has(o.key) &&
                     (o.key.startsWith('kie-refs/') || o.key.includes('/kie-refs/')) &&
+                    Date.now() - new Date(o.mod).getTime() <= DAYS * 86_400_000,
+            ),
+    },
+    editrefs: {
+        flag: '--edit-refs',
+        titulo: `composites de máscara del editor de más de ${DAYS} días (entradas, nunca resultados)`,
+        candidatos: (objs, vivos) =>
+            objs.filter(
+                (o) =>
+                    !vivos.has(o.key) &&
+                    o.key.includes('/edit-refs/') &&
+                    Date.now() - new Date(o.mod).getTime() > DAYS * 86_400_000,
+            ),
+        retenidos: (objs, vivos) =>
+            objs.filter(
+                (o) =>
+                    !vivos.has(o.key) &&
+                    o.key.includes('/edit-refs/') &&
                     Date.now() - new Date(o.mod).getTime() <= DAYS * 86_400_000,
             ),
     },
