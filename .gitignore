@@ -52,3 +52,6 @@ next-env.d.ts
 supabase/.temp/
 .backup-supabase/
 .env.backup*
+
+# salida del rescate de huerfanos (inventario, no codigo)
+.rescue-*.json
