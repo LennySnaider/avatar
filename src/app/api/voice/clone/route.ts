@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/auth'
-import { createServerSupabaseClient } from '@/lib/supabase'
+import { orgTable, orgInsert, orgSupabase } from '@/lib/org/orgTable'
 import { uploadAudioForCloning, cloneVoice, generateVoiceId } from '@/services/MiniMaxService'
 import { getOrgContextForUser } from '@/lib/tenant/getOrgContext'
 
@@ -26,17 +26,14 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: 'audio and name are required' }, { status: 400 })
     }
 
-    const supabase = createServerSupabaseClient()
     const userId = session.user.id
 
     try {
         // 0. Verify avatar ownership before accepting a client-supplied avatarId
         if (avatarId) {
-            const { data: ownedAvatar, error: avatarLookupError } = await supabase
-                .from('avatars')
+            const { data: ownedAvatar, error: avatarLookupError } = await orgTable(ctx, 'avatars')
                 .select('id')
                 .eq('id', avatarId)
-                .eq('organization_id', ctx.organizationId)
                 .single()
 
             if (avatarLookupError || !ownedAvatar) {
@@ -44,10 +41,13 @@ export async function POST(req: NextRequest) {
             }
         }
 
-        // 1. Upload original to Supabase Storage (keep original)
+        // 1. Upload original to Supabase Storage (keep original). El bucket no
+        // es tabla tenant (no pasa por orgTable), pero orgSupabase() da el
+        // mismo cliente service-role tipado que ya usa el resto de la ruta.
         const storagePath = `${userId}/voices/${Date.now()}-${audioFile.name}`
         const audioBuffer = Buffer.from(await audioFile.arrayBuffer())
 
+        const supabase = orgSupabase()
         const { error: storageError } = await supabase.storage
             .from('avatars')
             .upload(storagePath, audioBuffer, {
@@ -67,20 +67,17 @@ export async function POST(req: NextRequest) {
         const voiceId = await generateVoiceId(userId, name)
         await cloneVoice(fileId, voiceId, `Hola, esta es una prueba de mi voz clonada.`)
 
-        // 4. Save to DB
-        const { data: voice, error: dbError } = await supabase
-            .from('cloned_voices')
-            .insert({
-                user_id: userId,
-                organization_id: ctx.organizationId,
-                avatar_id: avatarId || null,
-                name,
-                provider: 'minimax',
-                provider_voice_id: voiceId,
-                sample_audio_url: publicUrlData.publicUrl,
-                language,
-                status: 'ready',
-            })
+        // 4. Save to DB (orgInsert inyecta organization_id desde ctx)
+        const { data: voice, error: dbError } = await orgInsert(ctx, 'cloned_voices', {
+            user_id: userId,
+            avatar_id: avatarId || null,
+            name,
+            provider: 'minimax',
+            provider_voice_id: voiceId,
+            sample_audio_url: publicUrlData.publicUrl,
+            language,
+            status: 'ready',
+        })
             .select()
             .single()
 
@@ -89,11 +86,9 @@ export async function POST(req: NextRequest) {
         // 5. Optionally set as the avatar's main voice
         let defaultVoiceSet = false
         if (avatarId && setAsDefault && voice) {
-            const { data: updatedAvatars, error: avatarError } = await supabase
-                .from('avatars')
+            const { data: updatedAvatars, error: avatarError } = await orgTable(ctx, 'avatars')
                 .update({ default_voice_id: voice.id })
                 .eq('id', avatarId)
-                .eq('organization_id', ctx.organizationId)
                 .select('id')
             if (avatarError) {
                 console.error('[voice/clone] Failed to set default voice:', avatarError.message)

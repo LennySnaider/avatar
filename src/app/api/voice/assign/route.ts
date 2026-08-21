@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/auth'
-import { createServerSupabaseClient } from '@/lib/supabase'
+import { orgTable } from '@/lib/org/orgTable'
 import { getOrgContextForUser } from '@/lib/tenant/getOrgContext'
 
 /**
@@ -33,28 +33,24 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: 'voiceId is required' }, { status: 400 })
     }
 
-    const supabase = createServerSupabaseClient()
     const target = avatarId || null
 
-    const { data: voice, error: voiceError } = await supabase
-        .from('cloned_voices')
+    const { data: voice, error: voiceError } = await orgTable(ctx, 'cloned_voices')
         .select('id, avatar_id')
         .eq('id', voiceId)
-        .eq('organization_id', ctx.organizationId)
         .single()
 
     if (voiceError || !voice) {
         return NextResponse.json({ error: 'Voice not found' }, { status: 404 })
     }
 
-    // El avatar destino se valida contra la MISMA organización: sin esto, un
-    // id copiado a mano movería una voz a un avatar ajeno.
+    // El avatar destino se valida contra la MISMA organización (orgTable ya
+    // lo filtra): sin esto, un id copiado a mano movería una voz a un avatar
+    // ajeno.
     if (target) {
-        const { data: owned } = await supabase
-            .from('avatars')
+        const { data: owned } = await orgTable(ctx, 'avatars')
             .select('id')
             .eq('id', target)
-            .eq('organization_id', ctx.organizationId)
             .single()
         if (!owned) {
             return NextResponse.json({ error: 'Avatar not found' }, { status: 400 })
@@ -65,11 +61,9 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ success: true, unchanged: true })
     }
 
-    const { error: moveError } = await supabase
-        .from('cloned_voices')
+    const { error: moveError } = await orgTable(ctx, 'cloned_voices')
         .update({ avatar_id: target })
         .eq('id', voiceId)
-        .eq('organization_id', ctx.organizationId)
 
     if (moveError) {
         return NextResponse.json({ error: moveError.message }, { status: 500 })
@@ -80,11 +74,9 @@ export async function POST(req: NextRequest) {
     // voz secundaria se mueve sin tocar la principal del avatar anterior.
     let clearedFrom: string | null = null
     if (voice.avatar_id) {
-        const { data: cleared } = await supabase
-            .from('avatars')
+        const { data: cleared } = await orgTable(ctx, 'avatars')
             .update({ default_voice_id: null })
             .eq('id', voice.avatar_id)
-            .eq('organization_id', ctx.organizationId)
             .eq('default_voice_id', voiceId)
             .select('name')
         clearedFrom = cleared?.[0]?.name ?? null

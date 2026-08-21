@@ -103,9 +103,11 @@ interface FanvueWebhookBody {
  * F4.2 Tarea 4 — EXENTO de `orgTable` por naturaleza: un webhook no tiene
  * sesión de la que sacar un `ctx`, y ESTA consulta es justamente la que
  * RESUELVE a qué tenant pertenece el evento (avatar → owner → conexión).
- * Filtrar por org aquí sería circular: aún no hay org. A partir del owner, todo
- * lo demás (`resolveTargetAvatar` y sus llamadas) sí filtra por la org ya
- * resuelta vía `getOrgContextForUser`.
+ * Filtrar por org aquí sería circular: aún no hay org. La `organizationId`
+ * que se devuelve sale directo de la fila de `avatars` (columna
+ * `organization_id`), no de `getOrgContextForUser` — a partir de ahí, todo
+ * lo demás (`resolveTargetAvatar` y sus llamadas) filtra con ESA org ya
+ * resuelta.
  */
 async function findConnectionOwner(
     recipientUuid: string | null,

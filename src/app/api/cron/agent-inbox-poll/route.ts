@@ -37,9 +37,10 @@ export async function GET(request: NextRequest) {
 
     // F4.2 Tarea 4 — EXENTO de `orgTable`: el cron corre SIN sesión (lo
     // autoriza CRON_SECRET, no un usuario) y su trabajo es precisamente barrer
-    // TODAS las orgs. No hay `ctx` que resolver aquí; la org de cada avatar se
-    // resuelve fila a fila más abajo (`getOrgContextForUser(avatar.user_id)` y
-    // `resolveTargetAvatar`), y las escrituras cuelgan de esa org resuelta.
+    // TODAS las orgs. No hay `ctx` que resolver aquí; la org de cada avatar
+    // sale de `avatar.organization_id` (la fila ya cargada más abajo) y se
+    // propaga a `resolveTargetAvatar`, y las escrituras cuelgan de esa org
+    // resuelta.
     const supabase = agentSupabase()
     // Avatars whose persona is enabled — the only ones worth polling.
     const { data: personas } = await supabase
@@ -67,11 +68,11 @@ export async function GET(request: NextRequest) {
         if (!connection?.refreshToken && !connection?.accessToken) continue
 
         const creatorUuid = avatar.fanvue_creator_uuid ?? null
-        // La org sale de la FILA que ya está cargada, no de
-        // `getOrgContextForUser(owner)`: esa devuelve la PRIMERA membresía del
-        // owner, que no tiene por qué ser la org del avatar — si no coinciden,
-        // el avatar no se encuentra y el cron falla en silencio. Además evita
-        // volver a consultar `organization_members` para nada.
+        // La org sale de la FILA que ya está cargada (avatar.organization_id),
+        // no de resolver la membresía del owner: la PRIMERA membresía de un
+        // usuario no tiene por qué ser la org de ESTE avatar — si no
+        // coinciden, el avatar no se encuentra y el cron falla en silencio.
+        // Además evita una consulta extra a `organization_members` por avatar.
         const target = await resolveTargetAvatar(
             avatar.user_id,
             creatorUuid,

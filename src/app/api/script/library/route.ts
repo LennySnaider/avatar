@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/auth'
-import { createServerSupabaseClient } from '@/lib/supabase'
+import { orgTable, orgInsert } from '@/lib/org/orgTable'
 import { getOrgContextForUser } from '@/lib/tenant/getOrgContext'
 
 /** Librería de guiones del usuario (tabla audio_scripts). */
@@ -16,11 +16,8 @@ export async function GET() {
         return NextResponse.json({ error: 'No organization membership' }, { status: 403 })
     }
 
-    const supabase = createServerSupabaseClient()
-    const { data: scripts, error } = await supabase
-        .from('audio_scripts')
+    const { data: scripts, error } = await orgTable(ctx, 'audio_scripts')
         .select('*')
-        .eq('organization_id', ctx.organizationId)
         .order('created_at', { ascending: false })
         .limit(50)
 
@@ -46,20 +43,16 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: 'script_text is required' }, { status: 400 })
     }
 
-    const supabase = createServerSupabaseClient()
-    const { data: script, error } = await supabase
-        .from('audio_scripts')
-        .insert({
-            user_id: session.user.id,
-            organization_id: ctx.organizationId,
-            title: title?.trim() || script_text.trim().slice(0, 40),
-            script_text: script_text.trim(),
-            language: language || 'es',
-            tone: tone || 'professional',
-            template_type: template_type || 'custom',
-            duration_target_seconds: duration_target_seconds || 30,
-            context: {},
-        })
+    const { data: script, error } = await orgInsert(ctx, 'audio_scripts', {
+        user_id: session.user.id,
+        title: title?.trim() || script_text.trim().slice(0, 40),
+        script_text: script_text.trim(),
+        language: language || 'es',
+        tone: tone || 'professional',
+        template_type: template_type || 'custom',
+        duration_target_seconds: duration_target_seconds || 30,
+        context: {},
+    })
         .select()
         .single()
 
@@ -85,12 +78,7 @@ export async function DELETE(req: NextRequest) {
         return NextResponse.json({ error: 'id is required' }, { status: 400 })
     }
 
-    const supabase = createServerSupabaseClient()
-    const { error } = await supabase
-        .from('audio_scripts')
-        .delete()
-        .eq('id', id)
-        .eq('organization_id', ctx.organizationId)
+    const { error } = await orgTable(ctx, 'audio_scripts').delete().eq('id', id)
 
     if (error) {
         return NextResponse.json({ error: error.message }, { status: 500 })

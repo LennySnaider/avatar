@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/auth'
-import { createServerSupabaseClient } from '@/lib/supabase'
+import { orgTable } from '@/lib/org/orgTable'
 import { textToSpeech } from '@/services/MiniMaxService'
 import { uploadBufferToGenerations } from '@/lib/mediaPersist'
 import { orgStoragePath } from '@/lib/storagePaths'
@@ -36,12 +36,9 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: 'voiceId is required' }, { status: 400 })
     }
 
-    const supabase = createServerSupabaseClient()
-    const { data: voice, error: voiceError } = await supabase
-        .from('cloned_voices')
+    const { data: voice, error: voiceError } = await orgTable(ctx, 'cloned_voices')
         .select('id, provider_voice_id, language, status, tts_settings, preview_audio_url')
         .eq('id', voiceId)
-        .eq('organization_id', ctx.organizationId)
         .single()
 
     if (voiceError || !voice) {
@@ -72,11 +69,9 @@ export async function POST(req: NextRequest) {
         )
         const previewUrl = await uploadBufferToGenerations(audioBuffer, fileName, 'audio/mpeg')
 
-        const { error: updateError } = await supabase
-            .from('cloned_voices')
+        const { error: updateError } = await orgTable(ctx, 'cloned_voices')
             .update({ preview_audio_url: previewUrl })
             .eq('id', voice.id)
-            .eq('organization_id', ctx.organizationId)
         if (updateError) {
             // El preview ya existe en Storage — devolverlo aunque no se cachee.
             console.error('[voice/preview] Failed to cache preview URL:', updateError.message)
