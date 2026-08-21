@@ -15,7 +15,7 @@ import Notification from '@/components/ui/Notification'
 import toast from '@/components/ui/toast'
 import { useAvatarStudioStore } from '../_store/avatarStudioStore'
 import { apiGetAvatars, apiSetGenerationAvatar } from '@/services/AvatarForgeService'
-import { getStoragePublicUrl } from '@/lib/storagePaths'
+import { getReferenceMediaUrl } from '@/lib/storagePaths'
 import AvatarGridPicker, { type AvatarGridItem } from '../../_shared/AvatarGridPicker'
 import type { GeneratedMedia } from '../types'
 
@@ -48,10 +48,17 @@ const AssignAvatarDialog = ({ media, userId, onClose }: AssignAvatarDialogProps)
                             return {
                                 id: a.id,
                                 name: a.name,
+                                // El provider VIAJA con el path. Construir la
+                                // URL de Supabase a ciegas apaga TODAS las
+                                // miniaturas desde que las refs viven en R2 —
+                                // mismo fallo que se arreglo en AvatarSelector
+                                // el 20-ago y que aqui sobrevivio porque la
+                                // llamada esta partida en varias lineas y el
+                                // grep de una linea no la vio.
                                 thumbnailUrl: thumbRef
-                                    ? getStoragePublicUrl(
-                                          'avatars',
+                                    ? getReferenceMediaUrl(
                                           thumbRef.storage_path,
+                                          thumbRef.storage_provider,
                                       )
                                     : null,
                             }
