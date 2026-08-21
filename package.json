@@ -13,6 +13,7 @@
         "check:prompts": "npx --yes tsx scripts/check-prompts.ts",
         "db:types": "supabase gen types typescript --project-id wiocwfoydyknqmhixpyt > src/@types/database.generated.ts",
         "check:video-cors": "node scripts/check-video-cors.mjs",
+        "check:tenant": "node scripts/check-tenant-access.mjs",
         "test": "npx --yes tsx --test \"src/**/*.test.ts\""
     },
     "dependencies": {

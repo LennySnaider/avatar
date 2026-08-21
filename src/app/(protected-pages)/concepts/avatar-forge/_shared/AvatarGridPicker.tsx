@@ -28,7 +28,6 @@ const CandidateThumb = ({ candidates, alt }: { candidates: string[]; alt: string
         )
     }
     return (
-        // eslint-disable-next-line @next/next/no-img-element
         <img
             src={candidates[idx]}
             alt={alt}
@@ -90,7 +89,6 @@ const AvatarGridPicker = ({
                             alt={item.name}
                         />
                     ) : item.thumbnailUrl ? (
-                        // eslint-disable-next-line @next/next/no-img-element
                         <img
                             src={item.thumbnailUrl}
                             alt={item.name}

@@ -18,9 +18,9 @@ const eslintConfig = [
       "react-hooks/rules-of-hooks": "off"
     },
   },
-  // F4.2.a — candado multitenant (WARN durante la migración; pasa a error en
-  // F4.2.g): los componentes/páginas NO acceden a Supabase directo — todo
-  // dato tenant pasa por server actions con getOrgContext() + orgTable.
+  // F4.2.a — candado multitenant (en ERROR desde la Tarea 6): los
+  // componentes/páginas NO acceden a Supabase directo — todo dato tenant pasa
+  // por server actions con getOrgContext() + orgTable.
   {
     files: ["src/app/**/*.{ts,tsx}", "src/components/**/*.{ts,tsx}"],
     ignores: [
@@ -31,7 +31,7 @@ const eslintConfig = [
     ],
     rules: {
       "no-restricted-imports": [
-        "warn",
+        "error",
         {
           paths: [
             {
@@ -47,9 +47,8 @@ const eslintConfig = [
   // F4.2 Tarea 4 — el MISMO candado para `agentSupabase()`. La regla de arriba
   // sólo prohíbe `@/lib/supabase`, así que `@/lib/agent/db` funcionaba de
   // atajo: exporta un cliente service-role SIN scope de organización y estaba
-  // al alcance de cualquier fichero (43 usos cuando se midió). También en WARN
-  // mientras dura la migración — sube a error en la Tarea 6, no antes, para no
-  // dejar la rama roja a media faena.
+  // al alcance de cualquier fichero (43 usos cuando se midió). En ERROR desde
+  // la Tarea 6, ya con la migración terminada.
   //
   // Dos detalles deliberados:
   //  - Va con el id `@typescript-eslint/no-restricted-imports`, NO con el de
@@ -83,7 +82,7 @@ const eslintConfig = [
     ],
     rules: {
       "@typescript-eslint/no-restricted-imports": [
-        "warn",
+        "error",
         {
           paths: [
             {

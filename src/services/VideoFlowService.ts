@@ -7,12 +7,26 @@
  * null under NextAuth, so save/load silently no-oped). Identity now comes
  * from the NextAuth session; every row access validates ownership.
  *
- * NOTE: `video_flows` is not in the generated Database types yet (known
- * drift, F4.0 fixes it) — hence the local row type + untyped client cast.
+ * F4.2 Tarea 6 — MIGRADO A `orgTable`. Lo destapó el propio candado
+ * (`npm run check:tenant`): este servicio se quedó fuera de las tareas 1-5 y
+ * seguía acotando por `user_id`, que NO es frontera de tenant (es "creado
+ * por", como documenta orgTable). Consecuencias reales del código anterior:
+ *   - `assertFlowOwner` cargaba la fila SIN filtro de org y sólo comparaba
+ *     `user_id`; una fila con `user_id` NULL (las hay: la columna venía del
+ *     cliente anon) pasaba el chequeo desde CUALQUIER organización.
+ *   - El INSERT no fijaba `organization_id` y caía al default de la columna
+ *     (la org 1) — el agujero exacto que la Tarea 7 elimina con DROP DEFAULT,
+ *     y que hasta entonces filtra en silencio.
+ *
+ * CAMBIO DE COMPORTAMIENTO DELIBERADO: el listado pasa de "mis flows" a "los
+ * flows de mi organización", que es la semántica del resto de módulos ya
+ * migrados (apiGetAvatars, generaciones, prompts). `user_id` se sigue
+ * guardando como autoría.
  */
-import type { SupabaseClient } from '@supabase/supabase-js'
-import { requireUserId } from '@/lib/session'
-import { createServerSupabaseClient } from '@/lib/supabase'
+import { getOrgContext } from '@/lib/tenant/getOrgContext'
+import { orgTable, orgInsert } from '@/lib/org/orgTable'
+import type { OrgContext } from '@/lib/tenant/getOrgContext'
+import type { Json } from '@/@types/database.generated'
 
 export interface VideoFlowRow {
     id: string
@@ -23,16 +37,14 @@ export interface VideoFlowRow {
     updated_at: string
 }
 
-const getDb = () => createServerSupabaseClient() as unknown as SupabaseClient
-
-async function assertFlowOwner(db: SupabaseClient, flowId: string, userId: string) {
-    const { data, error } = await db
-        .from('video_flows')
-        .select('id, user_id')
+/** La fila existe DENTRO de la org de la sesión, o no existe para el llamante. */
+async function assertFlowInOrg(ctx: OrgContext, flowId: string) {
+    const { data, error } = await orgTable(ctx, 'video_flows')
+        .select('id')
         .eq('id', flowId)
-        .single()
+        .maybeSingle()
     if (error) throw error
-    if (data.user_id && data.user_id !== userId) throw new Error('Not your flow')
+    if (!data) throw new Error('Not your flow')
 }
 
 /** Create or update a flow. Returns the row id (new or existing). */
@@ -42,40 +54,39 @@ export async function apiSaveVideoFlow(
     nodes: unknown[],
     edges: unknown[],
 ): Promise<{ id: string }> {
-    const userId = await requireUserId()
-    const db = getDb()
+    const ctx = await getOrgContext()
     const payload = {
-        user_id: userId,
         name,
-        nodes,
-        edges,
+        nodes: nodes as Json,
+        edges: edges as Json,
         updated_at: new Date().toISOString(),
     }
 
     if (flowId) {
-        await assertFlowOwner(db, flowId, userId)
-        const { error } = await db.from('video_flows').update(payload).eq('id', flowId)
+        await assertFlowInOrg(ctx, flowId)
+        const { error } = await orgTable(ctx, 'video_flows')
+            .update(payload)
+            .eq('id', flowId)
         if (error) throw error
         return { id: flowId }
     }
 
-    const { data, error } = await db
-        .from('video_flows')
-        .insert(payload)
+    // `user_id` es autoría; la org la inyecta orgInsert desde el ctx.
+    const { data, error } = await orgInsert(ctx, 'video_flows', {
+        ...payload,
+        user_id: ctx.userId,
+    })
         .select('id')
         .single()
     if (error) throw error
     return { id: (data as { id: string }).id }
 }
 
-/** The current user's most recent flows (for the Load menu). */
+/** The org's most recent flows (for the Load menu). */
 export async function apiListVideoFlows(): Promise<{ id: string; name: string }[]> {
-    const userId = await requireUserId()
-    const db = getDb()
-    const { data, error } = await db
-        .from('video_flows')
+    const ctx = await getOrgContext()
+    const { data, error } = await orgTable(ctx, 'video_flows')
         .select('id, name')
-        .eq('user_id', userId)
         .order('updated_at', { ascending: false })
         .limit(20)
     if (error) throw error
@@ -83,15 +94,12 @@ export async function apiListVideoFlows(): Promise<{ id: string; name: string }[
 }
 
 export async function apiGetVideoFlow(flowId: string): Promise<VideoFlowRow> {
-    const userId = await requireUserId()
-    const db = getDb()
-    const { data, error } = await db
-        .from('video_flows')
+    const ctx = await getOrgContext()
+    const { data, error } = await orgTable(ctx, 'video_flows')
         .select('*')
         .eq('id', flowId)
-        .single()
+        .maybeSingle()
     if (error) throw error
-    const row = data as VideoFlowRow
-    if (row.user_id && row.user_id !== userId) throw new Error('Not your flow')
-    return row
+    if (!data) throw new Error('Not your flow')
+    return data as VideoFlowRow
 }
