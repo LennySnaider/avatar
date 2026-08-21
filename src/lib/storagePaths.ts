@@ -158,6 +158,40 @@ export type GenerationMediaRow = {
  * Recibir la FILA en vez de (path, provider) hace imposible volver a olvidar el
  * provider en el sitio de la llamada, que es exactamente cómo pasó.
  */
+/**
+ * URL pública de una REFERENCIA de avatar (cara, angle, hoja del Body Lab),
+ * que vive en el bucket `avatars` — según DÓNDE esté el objeto.
+ *
+ * POR QUÉ EXISTE (fallo de producción, 2026-08-20): el grid del selector de
+ * avatares construía la URL con `getStoragePublicUrl('avatars', path)`, o sea
+ * SIEMPRE la de Supabase, sin mirar `storage_provider`. Mientras las refs
+ * tuvieron copia en los dos sitios el error fue invisible; el día que se
+ * drenaron las 66 copias de Supabase —ya verificadas una a una en R2— TODAS
+ * las miniaturas del selector se apagaron de golpe y quedó el icono gris.
+ *
+ * Es el MISMO fallo que ya costó ocho avatares sin cara en la migración de
+ * `generations`: olvidar el provider en UN solo lector basta. Y el propio
+ * archivo lo hacía bien dos funciones más abajo (`getSignedUrl(..., provider)`)
+ * — se rompió el camino rápido que se añadió después para no esperar al
+ * round-trip, que es justo donde estas cosas se cuelan.
+ *
+ * Client-safe (sólo strings), como el resto de este módulo.
+ */
+export function getReferenceMediaUrl(
+    path: string,
+    provider?: string | null,
+): string {
+    if (provider === 'r2') {
+        const base = process.env.NEXT_PUBLIC_R2_PUBLIC_BASE_URL
+        if (base) {
+            const encoded = path.split('/').map(encodeURIComponent).join('/')
+            return `${base.replace(/\/$/, '')}/${encoded}`
+        }
+        console.warn('[storagePaths] ref r2 sin NEXT_PUBLIC_R2_PUBLIC_BASE_URL')
+    }
+    return getStoragePublicUrl('avatars', path)
+}
+
 export function getRowMediaUrl(row: GenerationMediaRow): string {
     return getGenerationMediaUrl(row.storage_path, row.storage_provider)
 }
