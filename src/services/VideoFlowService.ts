@@ -4,19 +4,22 @@
  * Server actions for the `video_flows` table. Replaces FlowToolbar's inline
  * anon browser client (P0: the anon key reached base tables without effective
  * RLS, and identity came from `supabase.auth.getUser()` — which is always
- * null under NextAuth, so save/load silently no-oped). Identity now comes
- * from the NextAuth session; every row access validates ownership.
+ * null under NextAuth, so save/load silently no-oped). Identity comes from the
+ * NextAuth session; la frontera de acceso es la ORGANIZACIÓN (ver abajo).
  *
  * F4.2 Tarea 6 — MIGRADO A `orgTable`. Lo destapó el propio candado
  * (`npm run check:tenant`): este servicio se quedó fuera de las tareas 1-5 y
  * seguía acotando por `user_id`, que NO es frontera de tenant (es "creado
- * por", como documenta orgTable). Consecuencias reales del código anterior:
- *   - `assertFlowOwner` cargaba la fila SIN filtro de org y sólo comparaba
- *     `user_id`; una fila con `user_id` NULL (las hay: la columna venía del
- *     cliente anon) pasaba el chequeo desde CUALQUIER organización.
- *   - El INSERT no fijaba `organization_id` y caía al default de la columna
- *     (la org 1) — el agujero exacto que la Tarea 7 elimina con DROP DEFAULT,
- *     y que hasta entonces filtra en silencio.
+ * por", como documenta orgTable). Lo que hacía el código anterior, MEDIDO
+ * contra el esquema real:
+ *   - `organization_id` es NOT NULL con DEFAULT a la org 1 y el INSERT no lo
+ *     fijaba; ni el SELECT ni el UPDATE filtraban por org. Resultado: TODO
+ *     flow caía en la org 1 sin importar la sesión. Ése es el agujero que la
+ *     Tarea 7 cierra con DROP DEFAULT, y que hasta entonces filtra en silencio.
+ *   - `assertFlowOwner` cargaba la fila sin filtro de org y comparaba
+ *     `if (data.user_id && data.user_id !== userId)`. Ese `&&` NO era un
+ *     bypass: `user_id` es NOT NULL sin default, así que la rama nula era
+ *     código muerto. Se anota para que nadie lo "arregle" creyendo que lo era.
  *
  * CAMBIO DE COMPORTAMIENTO DELIBERADO: el listado pasa de "mis flows" a "los
  * flows de mi organización", que es la semántica del resto de módulos ya

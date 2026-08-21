@@ -22,7 +22,10 @@ const eslintConfig = [
   // componentes/páginas NO acceden a Supabase directo — todo dato tenant pasa
   // por server actions con getOrgContext() + orgTable.
   {
-    files: ["src/app/**/*.{ts,tsx}", "src/components/**/*.{ts,tsx}"],
+    // Todas las extensiones que Next ejecuta, no sólo TypeScript: un
+    // `route.js` es una ruta válida y quedaba SIN regla aplicable — punto
+    // ciego compartido con el grep de `check:tenant` (allí también se amplió).
+    files: ["src/app/**/*.{js,jsx,mjs,cjs,ts,tsx,mts,cts}", "src/components/**/*.{js,jsx,mjs,cjs,ts,tsx,mts,cts}"],
     ignores: [
       "src/app/api/webhooks/**",
       "src/app/api/cron/**",
@@ -59,7 +62,7 @@ const eslintConfig = [
   //    (AgentChatRow, AvatarPersonaRow…) se siguen importando sin ruido: el
   //    agujero era el cliente, no el esquema.
   {
-    files: ["src/**/*.{ts,tsx}"],
+    files: ["src/**/*.{js,jsx,mjs,cjs,ts,tsx,mts,cts}"],
     ignores: [
       // Mismas exenciones que la regla de `@/lib/supabase`: corren sin sesión.
       "src/app/api/webhooks/**",
@@ -92,6 +95,56 @@ const eslintConfig = [
                 "agentSupabase() es service-role SIN scope de org. Con sesión: getOrgContext() + orgTable/orgInsert/orgUpsert (@/lib/org/orgTable). Sin sesión (webhook/cron): filtra por la org de la fila ya resuelta y documenta el porqué.",
             },
           ],
+        },
+      ],
+    },
+  },
+  // F4.2 Tarea 6 (ronda 2) — TERCER candado: `orgSupabase()`.
+  //
+  // Las dos reglas de arriba tapan `@/lib/supabase` y `agentSupabase`, pero
+  // `orgSupabase()` —exportado por el propio `@/lib/org/orgTable`— devuelve
+  // EXACTAMENTE el mismo cliente service-role sin scope de organización, y no
+  // lo restringía nada: conseguir una puerta sin candado era un import legal
+  // desde cualquier fichero.
+  //
+  // Va con el id `no-restricted-syntax`, un TERCER id distinto. Misma trampa de
+  // flat config que documenta el bloque anterior: reusar cualquiera de los dos
+  // ids de arriba habría anulado ese candado en silencio.
+  //
+  // Las exenciones son las de siempre (lib/, webhooks, crons) más los ficheros
+  // que HOY lo importan con motivo. Las tres primeras sólo lo usan para
+  // Supabase Storage o para tablas que NO son tenant; un helper de Storage sin
+  // capacidad de tocar tablas las sacaría de esta lista — deuda anotada.
+  {
+    files: ["src/**/*.{js,jsx,mjs,cjs,ts,tsx,mts,cts}"],
+    ignores: [
+      // Quien define el cliente y quien lo envuelve.
+      "src/lib/**",
+      // Sin sesión: resuelven la org por la fila que ya cargaron.
+      "src/app/api/webhooks/**",
+      "src/app/api/cron/**",
+      // Sólo Storage (bucket `avatars`), no tablas.
+      "src/app/api/voice/clone/route.ts",
+      "src/server/actions/getAvatars.ts",
+      // Sólo `ai_providers`: catálogo global, no es tabla tenant.
+      "src/server/actions/getAvatarStudioData.ts",
+      // Sólo `pending_generations`: no es tabla tenant.
+      "src/services/PendingGenerationService.ts",
+      // Inserts que fijan organization_id desde ctx (los mismos que
+      // CON_ANCLA_DE_ORG en scripts/check-tenant-access.mjs).
+      "src/services/AvatarForgeService.ts",
+      "src/services/SocialService.ts",
+      "src/services/KieTaskRescueService.ts",
+      "src/services/ReconcileGenerationsService.ts",
+    ],
+    rules: {
+      "no-restricted-syntax": [
+        "error",
+        {
+          selector:
+            "ImportDeclaration[source.value='@/lib/org/orgTable'] > ImportSpecifier[imported.name='orgSupabase']",
+          message:
+            "orgSupabase() es el cliente service-role SIN scope de org. Usa orgTable/orgInsert/orgUpsert, que ya llevan el filtro pegado. Si de verdad necesitas el cliente crudo (Storage, tabla no tenant), añade la ruta a las exenciones de este bloque con el motivo escrito.",
         },
       ],
     },

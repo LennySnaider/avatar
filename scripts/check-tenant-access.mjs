@@ -25,7 +25,11 @@
  *     cuando un cliente ve los datos de otro).
  *   - Sólo se ignoran dos cosas por forma, y ambas son inequívocas:
  *     `supabase.storage.from(...)` (es un BUCKET, no una tabla: hay buckets
- *     llamados `avatars` y `generations`) y las líneas de comentario.
+ *     llamados `avatars` y `generations`) y los comentarios.
+ *   - Se escanean TODAS las extensiones que Next ejecuta (.ts/.tsx/.js/.jsx/
+ *     .mjs/.cjs/.mts/.cts), no sólo TypeScript: un `route.js` es una ruta
+ *     perfectamente válida y sería un punto ciego de los dos candados a la vez
+ *     (ESLint tampoco tenía regla para él; también se amplió allí).
  *
  * LÍMITE CONOCIDO: sólo ve el nombre de tabla escrito como literal. Un
  * `.from(variable)` se le escapa. Medido el 21-ago-2026: los únicos
@@ -44,9 +48,22 @@ const RAIZ_SRC = join(RAIZ_REPO, 'src')
 const FUENTE_TABLAS = join(RAIZ_SRC, 'lib', 'org', 'orgTable.ts')
 
 /**
- * Rutas donde un `.from()` crudo de tabla tenant es legítimo TAL CUAL. Son las
- * mismas exenciones que ya lleva la regla de ESLint (`eslint.config.mjs`): si
- * una cambia, la otra tiene que cambiar con ella.
+ * Rutas donde un `.from()` crudo de tabla tenant es legítimo TAL CUAL.
+ *
+ * Van FICHERO A FICHERO donde se puede, no por carpeta: una carpeta exenta le
+ * da barra libre al fichero que alguien añada mañana, y `src/lib/agent/` es
+ * justo el módulo que más va a crecer (le queda la Fase 4). Las carpetas que
+ * quedan (`webhooks/`, `cron/`, `auth/`) sí van enteras a propósito: su
+ * exención es por CÓMO ENTRAN (sin sesión), no por qué ficheros son, así que
+ * una ruta nueva ahí hereda la misma justificación.
+ *
+ * Espejan las de ESLint (`eslint.config.mjs`) salvo en dos puntos, y no es
+ * descuido: (a) `src/lib/org/` sólo hace falta aquí, porque allí la regla base
+ * únicamente cubre `src/app/**` y `src/components/**`; (b) ESLint exenta
+ * además `lib/agent/db.ts` y `lib/agent/retrieval.ts`, que restringen el
+ * IMPORT de `agentSupabase` — aquí se restringe el `.from()`, y esos dos
+ * ficheros no tienen ninguno (db.ts define el cliente, retrieval.ts sólo llama
+ * a un RPC). Se dejan fuera para que ninguna exención esté muerta.
  */
 const EXENTOS = [
     [
@@ -66,9 +83,16 @@ const EXENTOS = [
         'Igual que los webhooks: sin sesión, barren TODAS las orgs a propósito y resuelven la org fila a fila.',
     ],
     [
-        'src/lib/agent/',
-        'Núcleo compartido que disparan webhook y cron (inboxSync, draftPipeline, autopilot, sendMessage, indexer): entra sin sesión y filtra por la org de la fila ya cargada.',
+        'src/app/api/auth/',
+        'Infra de autenticación: toca la tabla `users`, que no es tenant. Exenta también en ESLint; aquí no dispara hoy, pero se deja para que las dos listas cuenten la misma historia.',
     ],
+    // Núcleo del agente: entra SIN sesión (lo disparan webhook y cron) y filtra
+    // por la org de la fila ya cargada. Uno a uno, no la carpeta.
+    ['src/lib/agent/inboxSync.ts', 'Sincroniza el inbox de Fanvue disparado por webhook/cron; la org sale de la conexión ya resuelta.'],
+    ['src/lib/agent/draftPipeline.ts', 'Genera borradores sin sesión; parte del chat ya cargado y arrastra su organization_id.'],
+    ['src/lib/agent/autopilot.ts', 'Autopilot por cron; recorre chats resolviendo la org fila a fila.'],
+    ['src/lib/agent/sendMessage.ts', 'Envío sin sesión desde el pipeline del agente; la org viene del chat.'],
+    ['src/lib/agent/indexer.ts', 'Indexa conocimiento del avatar; recibe la organizationId ya resuelta por el llamador.'],
 ]
 
 /**
@@ -78,9 +102,12 @@ const EXENTOS = [
  * por parámetro en vez de por ctx.
  *
  * Aquí la exención NO es un cheque en blanco: además de estar en la lista, el
- * acceso tiene que fijar o filtrar `organization_id` de forma explícita en el
- * mismo statement. Así, meter mañana un `.from('generations').select()` pelado
- * en uno de estos ficheros SIGUE saliendo con código 1.
+ * acceso tiene que llevar en el MISMO statement un `.eq('organization_id', …)`
+ * o un `organization_id:` (propiedad de insert/upsert). Mencionar la columna
+ * en un `.select('id, organization_id')` o en un comentario NO cuenta —
+ * seleccionar una columna no filtra nada—. Así, meter mañana un
+ * `.from('generations').select()` pelado en uno de estos ficheros SIGUE
+ * saliendo con código 1.
  */
 const CON_ANCLA_DE_ORG = [
     [
@@ -101,14 +128,34 @@ const CON_ANCLA_DE_ORG = [
     ],
 ]
 
-/** Cuántos caracteres después del `.from(` cuentan como "el mismo statement". */
+/** Techo de caracteres para "el mismo statement" (además se corta antes, ver abajo). */
 const VENTANA_STATEMENT = 900
+
+/**
+ * Qué cuenta como ancla de organización. Antes esto era un `includes(
+ * 'organization_id')` y NO comprobaba lo que decía comprobar: bastaba
+ * MENCIONAR la columna, así que un `.select('id, organization_id')` —lo más
+ * natural del mundo, y no filtra nada— pasaba el candado. Ahora hay que
+ * FIJARLA (propiedad de un insert/upsert) o FILTRARLA (`.eq`).
+ */
+const ANCLA_FILTRO = /\.eq\(\s*['"`]organization_id['"`]/
+const ANCLA_ASIGNACION = /organization_id\s*:/
+
+/**
+ * Un statement nuevo empieza por una de estas palabras. Sirve para cortar la
+ * ventana antes de que se cuele el `organization_id` del código VECINO, que es
+ * otra de las formas de aprobar un acceso que no lo merece.
+ */
+const INICIO_DE_STATEMENT = /\n[ \t]*(const|let|var|return|await|if|for|while|switch|function|export|try)\b/
 
 function* archivos(dir) {
     for (const nombre of readdirSync(dir)) {
         const ruta = join(dir, nombre)
         if (statSync(ruta).isDirectory()) yield* archivos(ruta)
-        else if (/\.tsx?$/.test(nombre)) yield ruta
+        // Todas las extensiones que Next ejecuta, no sólo TypeScript: un
+        // `route.js` con un `.from()` pelado sería invisible para este script
+        // Y para ESLint a la vez.
+        else if (/\.[cm]?[jt]sx?$/.test(nombre)) yield ruta
     }
 }
 
@@ -156,6 +203,36 @@ function buscarExencion(rel, lista) {
     return lista.find(([prefijo]) => coincideRuta(rel, prefijo))
 }
 
+/**
+ * ¿El statement que empieza en `inicio` fija o filtra `organization_id`?
+ *
+ * El trozo que se mira se corta por lo que llegue ANTES de las tres cosas:
+ * el techo de caracteres, el siguiente `.from(` y el arranque del siguiente
+ * statement. Sin ese corte, un acceso pelado se aprobaba con el
+ * `organization_id` del código vecino.
+ *
+ * Del trozo se quitan los comentarios —de línea entera y también los de final
+ * de línea, que antes colaban un `// TODO: falta filtrar por organization_id`
+ * como si fuera un ancla—. Quitar texto sólo puede hacer el check MÁS
+ * estricto, nunca más laxo, que es la dirección segura del error.
+ */
+function tieneAnclaDeOrg(texto, inicio) {
+    let fin = inicio + VENTANA_STATEMENT
+    const siguienteFrom = texto.indexOf('.from(', inicio + 1)
+    if (siguienteFrom !== -1 && siguienteFrom < fin) fin = siguienteFrom
+
+    const bruto = texto.slice(inicio, fin)
+    const corte = bruto.search(INICIO_DE_STATEMENT)
+    const trozo = (corte === -1 ? bruto : bruto.slice(0, corte))
+        .split('\n')
+        .filter((l) => !esComentario(l))
+        // `[^:]` protege el `//` de las URLs (`https://…`).
+        .map((l) => l.replace(/(^|[^:])\/\/.*$/, '$1'))
+        .join('\n')
+
+    return ANCLA_FILTRO.test(trozo) || ANCLA_ASIGNACION.test(trozo)
+}
+
 const TABLAS_TENANT = leerTablasTenant()
 // El literal puede venir con comilla simple, doble o backtick; la backreference
 // obliga a que abra y cierre con la misma.
@@ -196,19 +273,7 @@ for (const ruta of archivos(RAIZ_SRC)) {
 
         const conAncla = buscarExencion(rel, CON_ANCLA_DE_ORG)
         if (conAncla) {
-            // El statement se acota por caracteres y por el siguiente `.from(`:
-            // así un acceso no puede aprobarse con el `organization_id` del
-            // que viene detrás.
-            let fin = m.index + VENTANA_STATEMENT
-            const siguiente = texto.indexOf('.from(', m.index + 1)
-            if (siguiente !== -1 && siguiente < fin) fin = siguiente
-            const trozo = texto
-                .slice(m.index, fin)
-                .split('\n')
-                .filter((l) => !esComentario(l))
-                .join('\n')
-
-            if (trozo.includes('organization_id')) {
+            if (tieneAnclaDeOrg(texto, m.index)) {
                 porExencion.set(conAncla[0], (porExencion.get(conAncla[0]) ?? 0) + 1)
                 continue
             }
@@ -216,7 +281,8 @@ for (const ruta of archivos(RAIZ_SRC)) {
                 rel,
                 linea: nLinea,
                 tabla,
-                motivo: 'fichero exento SOLO con ancla de org, y este acceso no fija ni filtra organization_id',
+                motivo:
+                    "fichero exento SOLO con ancla de org, y este acceso no la tiene: falta un `.eq('organization_id', …)` o un `organization_id:` en el mismo statement (mencionar la columna en un select o en un comentario NO cuenta)",
             })
             continue
         }
