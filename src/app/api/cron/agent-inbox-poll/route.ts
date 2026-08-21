@@ -72,7 +72,6 @@ export async function GET(request: NextRequest) {
         // no de resolver la membresía del owner: la PRIMERA membresía de un
         // usuario no tiene por qué ser la org de ESTE avatar — si no
         // coinciden, el avatar no se encuentra y el cron falla en silencio.
-        // Además evita una consulta extra a `organization_members` por avatar.
         const target = await resolveTargetAvatar(
             avatar.user_id,
             creatorUuid,

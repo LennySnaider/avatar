@@ -262,8 +262,7 @@ export type AvatarKnowledgeRow = AvatarKnowledgeTable['Row']
  * F4.2 Tarea 4 — POR QUÉ SIGUE EXISTIENDO. Este cliente NO tiene scope de
  * organización: quien lo usa ve todas las filas de todas las orgs. Era el
  * agujero por el que se colaba el acceso sin tenant (la regla de ESLint sólo
- * prohibía `@/lib/supabase`), así que ahora está restringido igual — en `warn`
- * mientras dura la migración.
+ * prohibía `@/lib/supabase`), así que ahora está restringido igual — en `error`.
  *
  * La puerta normal para leer/escribir datos tenant es
  * `orgTable`/`orgInsert`/`orgUpsert` de `@/lib/org/orgTable`, con un `ctx` de

@@ -14,7 +14,12 @@ export default async function Page({ params }: PageProps) {
     if (!session?.user?.id) redirect('/sign-in')
 
     const { avatar, persona, knowledgeCount } = await getAvatarAgentData(avatarId)
-    if (!avatar || (avatar.user_id && avatar.user_id !== session.user.id)) {
+    // El filtro por user_id sobra: getAvatarAgentData ya acota por
+    // organizacion, asi que si el avatar no es de tu org, avatar viene null.
+    // Exigir ademas user_id === yo rompia con un segundo miembro en la org:
+    // la lista mostraba el avatar (es de tu org) pero aca rebotaba sin
+    // mensaje, creando un bucle lista -> detalle -> lista.
+    if (!avatar) {
         redirect('/concepts/avatar-forge/agent')
     }
 
