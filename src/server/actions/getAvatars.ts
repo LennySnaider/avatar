@@ -1,5 +1,6 @@
-import { createServerSupabaseClient } from '@/lib/supabase'
 import { getR2PublicUrl } from '@/lib/mediaStore'
+import { getOrgContext } from '@/lib/tenant/getOrgContext'
+import { orgTable, orgSupabase } from '@/lib/org/orgTable'
 import type { AvatarWithReferences } from '@/app/(protected-pages)/concepts/avatar-forge/avatar-list/types'
 import type { Avatar, AvatarReference } from '@/@types/supabase'
 
@@ -19,14 +20,34 @@ const getAvatars = async (_queryParams: {
         userId,
     } = queryParams
 
-    const supabase = createServerSupabaseClient()
     const page = parseInt(pageIndex as string) || 1
     const limit = parseInt(pageSize as string) || 12
     const offset = (page - 1) * limit
 
+    // F4.2 Tarea 3 — avatar-list/page.tsx llama a esta funcion durante el
+    // render SIN gate de sesion propio (a diferencia de
+    // avatar-studio/[slug], que redirige antes de leer datos). Hoy, sin
+    // sesion, `userId` llegaba `undefined`, el `if (userId)` de mas abajo se
+    // saltaba y la query quedaba SIN NINGUN filtro: devolvia avatares de
+    // CUALQUIER organizacion (el hueco que cierra esta tarea). Ese
+    // comportamiento no se replica: sin org resuelta no hay ninguna fila
+    // segura que mostrar, asi que se cae al mismo `{ list: [], total: 0 }`
+    // que ya usa el catch de error mas abajo — no revienta el render (y el
+    // middleware ya bloquea el acceso anonimo a esta ruta de por si).
+    let ctx
+    try {
+        ctx = await getOrgContext()
+    } catch {
+        return {
+            list: [] as AvatarWithReferences[],
+            total: 0,
+        }
+    }
+
+    const supabase = orgSupabase()
+
     // Build query for avatars
-    let avatarsQuery = supabase
-        .from('avatars')
+    let avatarsQuery = orgTable(ctx, 'avatars')
         // El nombre de la voz viene embebido por la FK, no con una consulta
         // extra. Hay DOS relaciones entre avatars y cloned_voices (la voz
         // apunta a su avatar, y el avatar a su voz principal), así que hay que
