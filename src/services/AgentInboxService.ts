@@ -881,10 +881,14 @@ export async function syncFanvueInbox(
             return { success: false, error: 'Fanvue account not connected' }
 
         const creatorUuid = avatar.fanvue_creator_uuid ?? null
+        // La org va EXPLÍCITA: `resolveTargetAvatar` sin ella la deriva de la
+        // PRIMERA membresía del owner, no de la sesión que está pidiendo el
+        // sync. Con el owner en otra org primero, el avatar no aparecería.
         const target = await resolveTargetAvatar(
             ownerUserId,
             creatorUuid,
             connection.fanvueAccountUuid,
+            ctx.organizationId,
         )
         if (!target)
             return { success: false, error: 'Could not resolve avatar target' }

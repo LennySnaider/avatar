@@ -11,7 +11,6 @@
 import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
 import { agentSupabase } from '@/lib/agent/db'
-import { getOrgContextForUser } from '@/lib/tenant/getOrgContext'
 import { loadConnection } from '@/lib/fanvue/tokenStore'
 import {
     ingestMessage,
@@ -54,7 +53,7 @@ export async function GET(request: NextRequest) {
 
     const { data: avatars } = await supabase
         .from('avatars')
-        .select('id, user_id, fanvue_creator_uuid')
+        .select('id, user_id, organization_id, fanvue_creator_uuid')
         .in('id', avatarIds)
 
     let polled = 0
@@ -66,14 +65,18 @@ export async function GET(request: NextRequest) {
         // One connection per owner; skip if not connected.
         const connection = await loadConnection(avatar.user_id)
         if (!connection?.refreshToken && !connection?.accessToken) continue
-        const orgCtx = await getOrgContextForUser(avatar.user_id)
-        if (!orgCtx) continue
 
         const creatorUuid = avatar.fanvue_creator_uuid ?? null
+        // La org sale de la FILA que ya está cargada, no de
+        // `getOrgContextForUser(owner)`: esa devuelve la PRIMERA membresía del
+        // owner, que no tiene por qué ser la org del avatar — si no coinciden,
+        // el avatar no se encuentra y el cron falla en silencio. Además evita
+        // volver a consultar `organization_members` para nada.
         const target = await resolveTargetAvatar(
             avatar.user_id,
             creatorUuid,
             connection.fanvueAccountUuid,
+            avatar.organization_id,
         )
         if (!target || !target.personaEnabled) continue
 

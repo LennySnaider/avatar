@@ -109,18 +109,26 @@ interface FanvueWebhookBody {
  */
 async function findConnectionOwner(
     recipientUuid: string | null,
-): Promise<{ userId: string; accountUuid: string | null } | null> {
+): Promise<{ userId: string; accountUuid: string | null; organizationId: string } | null> {
     const supabase = agentSupabase()
     // Agency mapping: recipient (the creator) → avatar → owner.
     if (recipientUuid) {
+        // Se devuelve también la org DE LA FILA: es la respuesta correcta a
+        // "de qué tenant es este evento". Derivarla luego del owner (primera
+        // membresía) sería apoyarse en un invariante que nadie valida.
         const { data: avatar } = await supabase
             .from('avatars')
-            .select('user_id')
+            .select('user_id, organization_id')
             .eq('fanvue_creator_uuid', recipientUuid)
             .maybeSingle()
         if (avatar?.user_id) {
             const conn = await loadConnection(avatar.user_id)
-            if (conn) return { userId: avatar.user_id, accountUuid: conn.fanvueAccountUuid }
+            if (conn)
+                return {
+                    userId: avatar.user_id,
+                    accountUuid: conn.fanvueAccountUuid,
+                    organizationId: avatar.organization_id,
+                }
         }
     }
     return null
@@ -183,7 +191,12 @@ async function handleNewInbound(payload: FanvueWebhookBody) {
         console.warn('[fanvue webhook] no connection owner for creator', creatorUuid)
         return
     }
-    const target = await resolveTargetAvatar(owner.userId, creatorUuid, owner.accountUuid)
+    const target = await resolveTargetAvatar(
+        owner.userId,
+        creatorUuid,
+        owner.accountUuid,
+        owner.organizationId,
+    )
     if (!target) return
 
     const result = await ingestFanChat({
@@ -214,6 +227,7 @@ async function handleLegacyInbound(payload: FanvueWebhookBody) {
         owner.userId,
         payload.recipientUuid ?? null,
         owner.accountUuid,
+        owner.organizationId,
     )
     if (!target) return
 

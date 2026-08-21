@@ -6,15 +6,14 @@
  * F4.2 Tarea 4 — EXENTO de `orgTable` a propósito: sus dos llamadores
  * principales (webhook de Fanvue y cron de inbox) corren SIN sesión, así que
  * aquí no existe `getOrgContext()`. Se queda con el cliente service-role pero
- * TODA consulta filtra por la org que ya viene resuelta: `orgCtx` de
- * `getOrgContextForUser(userId)` al resolver el target, y
+ * TODA consulta filtra por la org que ya viene resuelta: la que le pasa el
+ * llamador a `resolveTargetAvatar` (sesión, o la fila del avatar del cron), y
  * `ResolvedTarget.organizationId` / `input.organizationId` después. Antes se
  * navegaba por `avatar_id` / `chat_id` sin ningún filtro de tenant, que es lo
  * que convertía un id adivinado en acceso cruzado.
  */
 import { FanvueClient } from '@/lib/fanvue/FanvueClient'
 import { getValidAccessToken } from '@/lib/fanvue/tokenStore'
-import { getOrgContextForUser } from '@/lib/tenant/getOrgContext'
 import { agentSupabase, type AgentChatRow, type AgentMsgDirection } from './db'
 import type { FanvueMessage } from '@/lib/fanvue/types'
 
@@ -32,26 +31,35 @@ export interface ResolvedTarget {
  * creator who received it), find which of our avatars maps to it.
  *  - agency: avatars.fanvue_creator_uuid === recipientUuid
  *  - self:   the connection's own account → avatars whose fanvue_creator_uuid IS NULL
+ *
+ * `organizationId` es OBLIGATORIO y lo pone el llamador con la org que YA
+ * tiene: la sesión (`ctx.organizationId`) o la propia fila del avatar recién
+ * cargada. Antes se derivaba aquí dentro del owner con `getOrgContextForUser`,
+ * que devuelve su PRIMERA fila de `organization_members`: eso apoyaba la
+ * corrección en un invariante que nadie escribió ni valida —"la org del avatar
+ * == primera membresía de su owner"— y el día que un owner tenga su primera
+ * membresía en otra org el avatar no se encuentra (fallo silencioso en el
+ * cron) o, con un homónimo, los chats se escriben en la org equivocada.
+ * Pedirlo por parámetro hace imposible reintroducirlo: sin él no compila.
  */
 export async function resolveTargetAvatar(
     userId: string,
     recipientUuid: string | null,
     connectionAccountUuid: string | null,
+    organizationId: string,
 ): Promise<ResolvedTarget | null> {
     const supabase = agentSupabase()
-    const orgCtx = await getOrgContextForUser(userId)
-    if (!orgCtx) return null
 
     // Prefer an explicit agency mapping.
     if (recipientUuid) {
         const { data: mapped } = await supabase
             .from('avatars')
             .select('id, user_id')
-            .eq('organization_id', orgCtx.organizationId)
+            .eq('organization_id', organizationId)
             .eq('fanvue_creator_uuid', recipientUuid)
             .maybeSingle()
         if (mapped) {
-            return finalize(mapped.id, orgCtx.organizationId, userId, recipientUuid)
+            return finalize(mapped.id, organizationId, userId, recipientUuid)
         }
     }
 
@@ -62,14 +70,14 @@ export async function resolveTargetAvatar(
         const { data: selfAvatar } = await supabase
             .from('avatars')
             .select('id, user_id')
-            .eq('organization_id', orgCtx.organizationId)
+            .eq('organization_id', organizationId)
             .eq('user_id', userId)
             .is('fanvue_creator_uuid', null)
             .order('created_at', { ascending: true })
             .limit(1)
             .maybeSingle()
         if (selfAvatar) {
-            return finalize(selfAvatar.id, orgCtx.organizationId, userId, null)
+            return finalize(selfAvatar.id, organizationId, userId, null)
         }
     }
     return null
