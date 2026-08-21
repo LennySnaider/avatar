@@ -39,7 +39,7 @@ import type {
     FanvuePostAudience,
     UpdatePostInput,
 } from '@/lib/fanvue/types'
-import { getStoragePublicUrl } from '@/lib/storagePaths'
+import { getRowMediaUrl } from '@/lib/storagePaths'
 import type { MediaType } from '@/@types/supabase'
 
 export interface FanvueResult<T> {
@@ -500,12 +500,17 @@ export async function listFanvuePosts(): Promise<
             ),
         )
         if (genIds.length > 0) {
+            // storage_provider en el select: sin el, getStoragePublicUrl
+            // asumia SIEMPRE Supabase y las portadas de generaciones r2
+            // (todas, hoy) salian con URL muerta — ya van tres incidentes
+            // de este mismo olvido, ver storagePaths.ts.
             const { data: gens } = await orgTable(ctx, 'generations')
-                .select('id, storage_path, media_type')
+                .select('id, storage_path, storage_provider, media_type')
                 .in('id', genIds)
             const genRows = (gens ?? []) as {
                 id: string
                 storage_path: string
+                storage_provider: string | null
                 media_type: string | null
             }[]
             const coverById = new Map(
@@ -513,10 +518,10 @@ export async function listFanvuePosts(): Promise<
                     (g): [string, { url: string; mediaType: MediaType | null }] => [
                         g.id,
                         {
-                            url: getStoragePublicUrl(
-                                'generations',
-                                g.storage_path,
-                            ),
+                            url: getRowMediaUrl({
+                                storage_path: g.storage_path,
+                                storage_provider: g.storage_provider,
+                            }),
                             mediaType: (g.media_type ?? null) as MediaType | null,
                         },
                     ],

@@ -9,6 +9,47 @@ const compat = new FlatCompat({
   baseDirectory: __dirname,
 });
 
+// F4.2 — CUARTO candado (getStoragePublicUrl): plugin local con UN rule id
+// nuevo, en vez de reutilizar no-restricted-syntax/no-restricted-imports.
+//
+// POR QUÉ un id nuevo y no uno de los tres de abajo: en flat config, dos
+// bloques con el MISMO id de regla NO se fusionan — gana el último que
+// matchea el archivo (verificado con ficheros sonda: un segundo bloque con
+// el mismo id "no-restricted-syntax" y un `files` solapado hace que el
+// selector del PRIMER bloque deje de dispararse, en silencio). Este candado
+// necesita aplicar casi a todo `src/` (todo menos `src/lib/`), que se solapa
+// por completo con el `files` de los tres bloques de abajo — no hay forma de
+// reusar ninguno de sus tres ids sin pisar alguno en los archivos que
+// comparten. Un id propio (`local/no-raw-storage-public-url`) elimina el
+// riesgo por construcción.
+const localRules = {
+    rules: {
+        'no-raw-storage-public-url': {
+            meta: {
+                type: 'problem',
+                docs: {
+                    description:
+                        'getStoragePublicUrl() siempre arma una URL de Supabase Storage, sin mirar storage_provider. La media de generations/avatars ya vive en R2 (las copias de Supabase se drenaron) y esa URL da 400.',
+                },
+                schema: [],
+            },
+            create(context) {
+                return {
+                    "ImportDeclaration[source.value='@/lib/storagePaths'] > ImportSpecifier[imported.name='getStoragePublicUrl']"(
+                        node,
+                    ) {
+                        context.report({
+                            node,
+                            message:
+                                'getStoragePublicUrl() no sabe de storage_provider — SIEMPRE arma la URL de Supabase, y la media migrada a R2 ya no tiene copia ahi (400). Usa getRowMediaUrl(row) / getRowThumbnailUrl(row) para filas de generations (o getGenerationMediaUrl(path, provider) si no tienes la fila completa), y getReferenceMediaUrl(path, provider) para el bucket avatars.',
+                        })
+                    },
+                }
+            },
+        },
+    },
+}
+
 const eslintConfig = [
   ...compat.extends("next/core-web-vitals", "next/typescript"),
   {
@@ -153,6 +194,37 @@ const eslintConfig = [
             "orgSupabase() es el cliente service-role SIN scope de org. Usa orgTable/orgInsert/orgUpsert, que ya llevan el filtro pegado. Si de verdad necesitas el cliente crudo (Storage, tabla no tenant), añade la ruta a las exenciones de este bloque con el motivo escrito.",
         },
       ],
+    },
+  },
+  // F4.2 — CUARTO candado: `getStoragePublicUrl` fuera de `src/lib/`.
+  //
+  // Historial (no es teórico): la migración de `generations` a R2 dejó ocho
+  // avatares sin cara; 20-ago `AvatarSelector.tsx` (commit 77406c7) y 21-ago
+  // `AssignAvatarDialog.tsx` (commit c2536aa) repitieron el MISMO fallo en el
+  // grid/diálogo de avatares — construir la URL fija a Supabase sin mirar
+  // `storage_provider`. `getStoragePublicUrl` en sí no está mal: es la pieza
+  // interna que SÍ sabe de Supabase; el error es llamarla directo fuera de
+  // `src/lib/`, saltándose los helpers que resuelven r2 vs supabase por fila
+  // (`getRowMediaUrl`/`getRowThumbnailUrl`/`getGenerationMediaUrl` para
+  // generations, `getReferenceMediaUrl` para avatars).
+  //
+  // Va por IMPORT, no por texto de la llamada: el fallo de AssignAvatarDialog
+  // se escapó de un grep de `getStoragePublicUrl('avatars'` porque la llamada
+  // estaba partida en varias líneas. Un selector AST sobre el ImportSpecifier
+  // no depende de cómo se formatee la llamada.
+  {
+    files: ["src/**/*.{js,jsx,mjs,cjs,ts,tsx,mts,cts}"],
+    ignores: [
+      // El propio módulo: es quien define la función y quien la llama para
+      // construir el fallback de getGenerationMediaUrl/getReferenceMediaUrl
+      // cuando no hay provider r2. Cualquier otro fichero de src/lib/ que en
+      // el futuro necesite el crudo también queda exento a propósito — el
+      // límite que pide este candado es la carpeta, no el archivo.
+      "src/lib/**",
+    ],
+    plugins: { local: localRules },
+    rules: {
+      "local/no-raw-storage-public-url": "error",
     },
   },
 ];
