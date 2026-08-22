@@ -4,10 +4,17 @@
  * Agent inbox — human-in-the-loop draft approval for Fanvue chats. All
  * org-scoped; the human edits/approves a draft, we send it as the avatar with
  * a humanized delay.
+ *
+ * F4.2 Tarea 4 — todo el fichero corre CON sesión (son server actions que
+ * llama el Inbox), así que las 14 llamadas a `agentSupabase()` pasan por
+ * `orgTable`. Muchas consultas de segundo salto (mensajes por `chat_id`,
+ * avatar por `avatar_id`, voz por `id`) no llevaban ningún filtro de org: el
+ * chat de entrada sí estaba acotado, pero a partir de ahí se navegaba por ids
+ * sin volver a comprobar el tenant.
  */
 import { getOrgContext } from '@/lib/tenant/getOrgContext'
+import { orgTable, orgInsert } from '@/lib/org/orgTable'
 import {
-    agentSupabase,
     type AgentChatMode,
     type AgentChatRow,
     type AgentMessageRow,
@@ -101,35 +108,26 @@ export interface AgentMetrics {
 export async function getAgentMetrics(): Promise<InboxResult<AgentMetrics>> {
     try {
         const ctx = await getOrgContext()
-        const supabase = agentSupabase()
-        const org = ctx.organizationId
 
+        // `orgTable(...).select(cols, { count, head })` pasa las opciones tal
+        // cual a PostgREST — por eso los conteos no necesitan esquivar la
+        // puerta org-scoped (ver orgTable.ts, Tarea 3).
         const [fanChats, needsAttn, drafts, sentTotal, autoSent] =
             await Promise.all([
-                supabase
-                    .from('agent_chats')
+                orgTable(ctx, 'agent_chats')
                     .select('id', { count: 'exact', head: true })
-                    .eq('organization_id', org)
                     .eq('is_creator', false),
-                supabase
-                    .from('agent_chats')
+                orgTable(ctx, 'agent_chats')
                     .select('id', { count: 'exact', head: true })
-                    .eq('organization_id', org)
                     .eq('needs_attention', true),
-                supabase
-                    .from('agent_messages')
+                orgTable(ctx, 'agent_messages')
                     .select('id', { count: 'exact', head: true })
-                    .eq('organization_id', org)
                     .eq('status', 'draft'),
-                supabase
-                    .from('agent_messages')
+                orgTable(ctx, 'agent_messages')
                     .select('id', { count: 'exact', head: true })
-                    .eq('organization_id', org)
                     .eq('status', 'sent'),
-                supabase
-                    .from('agent_messages')
+                orgTable(ctx, 'agent_messages')
                     .select('id', { count: 'exact', head: true })
-                    .eq('organization_id', org)
                     .eq('status', 'sent')
                     .eq('approved_by', 'autopilot'),
             ])
@@ -160,11 +158,8 @@ export async function listAgentChats(filter?: {
 }): Promise<InboxResult<AgentChatListItem[]>> {
     try {
         const ctx = await getOrgContext()
-        const supabase = agentSupabase()
-        let query = supabase
-            .from('agent_chats')
+        let query = orgTable(ctx, 'agent_chats')
             .select('*')
-            .eq('organization_id', ctx.organizationId)
             .order('last_message_at', { ascending: false, nullsFirst: false })
             .limit(200)
         if (filter?.avatarId) query = query.eq('avatar_id', filter.avatarId)
@@ -177,22 +172,26 @@ export async function listAgentChats(filter?: {
 
         // avatar names
         const avatarIds = [...new Set(rows.map((c) => c.avatar_id))]
-        const { data: avatars } = await supabase
-            .from('avatars')
+        const { data: avatars } = await orgTable(ctx, 'avatars')
             .select('id, name')
             .in('id', avatarIds)
-        const nameById = new Map((avatars ?? []).map((a) => [a.id, a.name]))
+        const nameById = new Map(
+            ((avatars ?? []) as { id: string; name: string }[]).map((a) => [a.id, a.name]),
+        )
 
         // draft + last-message preview per chat
         const chatIds = rows.map((c) => c.id)
-        const { data: msgs } = await supabase
-            .from('agent_messages')
+        const { data: msgs } = await orgTable(ctx, 'agent_messages')
             .select('chat_id, text, status, direction, created_at')
             .in('chat_id', chatIds)
             .order('created_at', { ascending: false })
         const draftChatIds = new Set<string>()
         const previewByChat = new Map<string, string>()
-        for (const m of msgs ?? []) {
+        for (const m of (msgs ?? []) as {
+            chat_id: string
+            text: string | null
+            status: string
+        }[]) {
             if (m.status === 'draft') draftChatIds.add(m.chat_id)
             if (!previewByChat.has(m.chat_id) && m.text)
                 previewByChat.set(m.chat_id, m.text)
@@ -237,31 +236,26 @@ export async function getAgentChatThread(
 > {
     try {
         const ctx = await getOrgContext()
-        const supabase = agentSupabase()
-        const { data: chat } = await supabase
-            .from('agent_chats')
+        const { data: chatRow } = await orgTable(ctx, 'agent_chats')
             .select('*')
-            .eq('organization_id', ctx.organizationId)
             .eq('id', chatId)
             .maybeSingle()
-        if (!chat) return { success: false, error: 'Chat not found' }
+        if (!chatRow) return { success: false, error: 'Chat not found' }
+        const chat = chatRow as AgentChatRow
 
         const [{ data: avatar }, { data: msgs }, { data: memory }] =
             await Promise.all([
-                supabase
-                    .from('avatars')
+                orgTable(ctx, 'avatars')
                     .select('name, default_voice_id')
                     .eq('id', chat.avatar_id)
                     .maybeSingle(),
-                supabase
-                    .from('agent_messages')
+                orgTable(ctx, 'agent_messages')
                     .select('*')
                     .eq('chat_id', chatId)
                     .not('status', 'eq', 'discarded')
                     .order('created_at', { ascending: true })
                     .limit(200),
-                supabase
-                    .from('avatar_fan_memories')
+                orgTable(ctx, 'avatar_fan_memories')
                     .select('summary, facts')
                     .eq('avatar_id', chat.avatar_id)
                     .eq('platform', 'fanvue')
@@ -309,16 +303,14 @@ export async function setChatMode(
 ): Promise<InboxResult<{ id: string; mode: AgentChatMode }>> {
     try {
         const ctx = await getOrgContext()
-        const supabase = agentSupabase()
-        const { data, error } = await supabase
-            .from('agent_chats')
+        const { data, error } = await orgTable(ctx, 'agent_chats')
             .update({ mode, updated_at: new Date().toISOString() })
-            .eq('organization_id', ctx.organizationId)
             .eq('id', chatId)
             .select('id, mode')
             .single()
         if (error) throw new Error(error.message)
-        return { success: true, data: { id: data.id, mode: data.mode } }
+        const updated = data as { id: string; mode: AgentChatMode }
+        return { success: true, data: { id: updated.id, mode: updated.mode } }
     } catch (e) {
         return fail(e)
     }
@@ -329,11 +321,8 @@ export async function regenerateDraft(
 ): Promise<InboxResult<AgentMessageDTO>> {
     try {
         const ctx = await getOrgContext()
-        const supabase = agentSupabase()
-        const { data: chat } = await supabase
-            .from('agent_chats')
+        const { data: chat } = await orgTable(ctx, 'agent_chats')
             .select('id')
-            .eq('organization_id', ctx.organizationId)
             .eq('id', chatId)
             .maybeSingle()
         if (!chat) return { success: false, error: 'Chat not found' }
@@ -343,8 +332,7 @@ export async function regenerateDraft(
                 success: false,
                 error: 'Could not generate a draft (no persona or no fan message)',
             }
-        const { data: row } = await supabase
-            .from('agent_messages')
+        const { data: row } = await orgTable(ctx, 'agent_messages')
             .select('*')
             .eq('id', result.messageId)
             .single()
@@ -359,14 +347,11 @@ export async function discardDraft(
 ): Promise<InboxResult<{ id: string }>> {
     try {
         const ctx = await getOrgContext()
-        const supabase = agentSupabase()
-        const { error } = await supabase
-            .from('agent_messages')
+        const { error } = await orgTable(ctx, 'agent_messages')
             .update({
                 status: 'discarded',
                 updated_at: new Date().toISOString(),
             })
-            .eq('organization_id', ctx.organizationId)
             .eq('id', messageId)
             .eq('status', 'draft')
         if (error) throw new Error(error.message)
@@ -386,14 +371,12 @@ export async function approveAndSend(
 ): Promise<InboxResult<AgentMessageDTO>> {
     try {
         const ctx = await getOrgContext()
-        const supabase = agentSupabase()
-        const { data: msg } = await supabase
-            .from('agent_messages')
+        const { data: msgRow } = await orgTable(ctx, 'agent_messages')
             .select('*')
-            .eq('organization_id', ctx.organizationId)
             .eq('id', messageId)
             .maybeSingle()
-        if (!msg) return { success: false, error: 'Draft not found' }
+        if (!msgRow) return { success: false, error: 'Draft not found' }
+        const msg = msgRow as AgentMessageRow
         if (msg.status !== 'draft')
             return {
                 success: false,
@@ -404,8 +387,7 @@ export async function approveAndSend(
         if (!text) return { success: false, error: 'Message is empty' }
 
         // Approve with the edited text + human approver, clear any attention flag.
-        await supabase
-            .from('agent_messages')
+        await orgTable(ctx, 'agent_messages')
             .update({
                 status: 'approved',
                 approved_by: ctx.userId,
@@ -413,8 +395,7 @@ export async function approveAndSend(
                 updated_at: new Date().toISOString(),
             })
             .eq('id', messageId)
-        await supabase
-            .from('agent_chats')
+        await orgTable(ctx, 'agent_chats')
             .update({ needs_attention: false, attention_reason: null })
             .eq('id', msg.chat_id)
 
@@ -427,8 +408,7 @@ export async function approveAndSend(
         if (!result.success)
             return { success: false, error: `Send failed: ${result.error}` }
 
-        const { data: updated } = await supabase
-            .from('agent_messages')
+        const { data: updated } = await orgTable(ctx, 'agent_messages')
             .select('*')
             .eq('id', messageId)
             .single()
@@ -443,16 +423,14 @@ export async function getAutopilotConfig(
 ): Promise<InboxResult<AutopilotConfig>> {
     try {
         const ctx = await getOrgContext()
-        const supabase = agentSupabase()
-        const { data } = await supabase
-            .from('avatar_personas')
+        const { data } = await orgTable(ctx, 'avatar_personas')
             .select('autopilot')
-            .eq('organization_id', ctx.organizationId)
             .eq('avatar_id', avatarId)
             .maybeSingle()
         return {
             success: true,
-            data: (data?.autopilot ?? {}) as AutopilotConfig,
+            data: ((data as { autopilot?: AutopilotConfig } | null)?.autopilot ??
+                {}) as AutopilotConfig,
         }
     } catch (e) {
         return fail(e)
@@ -465,14 +443,11 @@ export async function setAutopilotConfig(
 ): Promise<InboxResult<AutopilotConfig>> {
     try {
         const ctx = await getOrgContext()
-        const supabase = agentSupabase()
-        const { error } = await supabase
-            .from('avatar_personas')
+        const { error } = await orgTable(ctx, 'avatar_personas')
             .update({
                 autopilot: config as never,
                 updated_at: new Date().toISOString(),
             })
-            .eq('organization_id', ctx.organizationId)
             .eq('avatar_id', avatarId)
         if (error) throw new Error(error.message)
         return { success: true, data: config }
@@ -488,17 +463,18 @@ export async function setAvatarFanvueCreator(
 ): Promise<InboxResult<{ avatarId: string; creatorUuid: string | null }>> {
     try {
         const ctx = await getOrgContext()
-        const supabase = agentSupabase()
-        const { data: avatar } = await supabase
-            .from('avatars')
-            .select('user_id')
+        // Mismo agujero que en AgentService.getOwnedAvatar: la comprobación
+        // `avatar.user_id !== ctx.userId` se saltaba entera con `user_id` null,
+        // así que mapear el avatar de otra org a un creator de Fanvue era
+        // cuestión de mandar su id. Ahora la propia consulta acota por org.
+        const { data: avatar } = await orgTable(ctx, 'avatars')
+            .select('id')
             .eq('id', avatarId)
             .maybeSingle()
-        if (!avatar || (avatar.user_id && avatar.user_id !== ctx.userId)) {
+        if (!avatar) {
             return { success: false, error: 'Not your avatar' }
         }
-        const { error } = await supabase
-            .from('avatars')
+        const { error } = await orgTable(ctx, 'avatars')
             .update({ fanvue_creator_uuid: creatorUuid })
             .eq('id', avatarId)
         if (error) throw new Error(error.message)
@@ -519,14 +495,12 @@ export async function approveAndSendVoiceNote(
 ): Promise<InboxResult<AgentMessageDTO>> {
     try {
         const ctx = await getOrgContext()
-        const supabase = agentSupabase()
-        const { data: msg } = await supabase
-            .from('agent_messages')
+        const { data: msgRow } = await orgTable(ctx, 'agent_messages')
             .select('*')
-            .eq('organization_id', ctx.organizationId)
             .eq('id', messageId)
             .maybeSingle()
-        if (!msg) return { success: false, error: 'Draft not found' }
+        if (!msgRow) return { success: false, error: 'Draft not found' }
+        const msg = msgRow as AgentMessageRow
         if (msg.status !== 'draft')
             return {
                 success: false,
@@ -535,18 +509,25 @@ export async function approveAndSendVoiceNote(
         const text = (editedText ?? msg.text ?? '').trim()
         if (!text) return { success: false, error: 'Message is empty' }
 
-        const { data: chat } = await supabase
-            .from('agent_chats')
+        // Los saltos siguientes (chat → avatar → voz) iban por id SIN filtro de
+        // org: bastaba un draft de la org propia para arrastrar el avatar y la
+        // voz clonada de otra. Todos pasan ya por orgTable.
+        const { data: chatRow } = await orgTable(ctx, 'agent_chats')
             .select('*')
             .eq('id', msg.chat_id)
             .single()
-        if (!chat) return { success: false, error: 'Chat not found' }
+        if (!chatRow) return { success: false, error: 'Chat not found' }
+        const chat = chatRow as AgentChatRow
 
-        const { data: avatar } = await supabase
-            .from('avatars')
+        const { data: avatarRow } = await orgTable(ctx, 'avatars')
             .select('user_id, fanvue_creator_uuid, default_voice_id')
             .eq('id', chat.avatar_id)
             .single()
+        const avatar = avatarRow as {
+            user_id: string | null
+            fanvue_creator_uuid: string | null
+            default_voice_id: string | null
+        } | null
         if (!avatar?.user_id)
             return { success: false, error: 'Avatar has no owner' }
         if (!avatar.default_voice_id) {
@@ -555,11 +536,16 @@ export async function approveAndSendVoiceNote(
                 error: 'This avatar has no voice — clone one in Voice Studio and set it as default',
             }
         }
-        const { data: voice } = await supabase
-            .from('cloned_voices')
+        const { data: voiceRow } = await orgTable(ctx, 'cloned_voices')
             .select('provider_voice_id, tts_settings, language, status')
             .eq('id', avatar.default_voice_id)
             .maybeSingle()
+        const voice = voiceRow as {
+            provider_voice_id: string
+            tts_settings: unknown
+            language: string
+            status: string
+        } | null
         if (!voice || voice.status !== 'ready') {
             return {
                 success: false,
@@ -571,8 +557,7 @@ export async function approveAndSendVoiceNote(
             return { success: false, error: 'Fanvue not connected' }
 
         // Approve, then synthesize + upload + send.
-        await supabase
-            .from('agent_messages')
+        await orgTable(ctx, 'agent_messages')
             .update({
                 status: 'approved',
                 approved_by: ctx.userId,
@@ -580,8 +565,7 @@ export async function approveAndSendVoiceNote(
                 updated_at: new Date().toISOString(),
             })
             .eq('id', messageId)
-        await supabase
-            .from('agent_chats')
+        await orgTable(ctx, 'agent_chats')
             .update({ needs_attention: false, attention_reason: null })
             .eq('id', chat.id)
 
@@ -617,8 +601,7 @@ export async function approveAndSendVoiceNote(
                 chat.external_chat_id,
                 { mediaUuids: [mediaUuid] },
             )
-            const { data: updated } = await supabase
-                .from('agent_messages')
+            const { data: updated } = await orgTable(ctx, 'agent_messages')
                 .update({
                     status: 'sent',
                     external_message_id: res.messageUuid,
@@ -629,8 +612,7 @@ export async function approveAndSendVoiceNote(
                 .eq('id', messageId)
                 .select('*')
                 .single()
-            await supabase
-                .from('agent_chats')
+            await orgTable(ctx, 'agent_chats')
                 .update({ last_message_at: new Date().toISOString() })
                 .eq('id', chat.id)
             void updateFanMemoryFromChat(chat.id)
@@ -640,8 +622,7 @@ export async function approveAndSendVoiceNote(
             }
         } catch (e) {
             const message = e instanceof Error ? e.message : String(e)
-            await supabase
-                .from('agent_messages')
+            await orgTable(ctx, 'agent_messages')
                 .update({
                     status: 'failed',
                     error_message: message,
@@ -676,24 +657,21 @@ export async function suggestPpvOffer(
 ): Promise<InboxResult<PpvSuggestion>> {
     try {
         const ctx = await getOrgContext()
-        const supabase = agentSupabase()
-        const { data: chat } = await supabase
-            .from('agent_chats')
+        const { data: chatRow } = await orgTable(ctx, 'agent_chats')
             .select('*')
-            .eq('organization_id', ctx.organizationId)
             .eq('id', chatId)
             .maybeSingle()
-        if (!chat) return { success: false, error: 'Chat not found' }
+        if (!chatRow) return { success: false, error: 'Chat not found' }
+        const chat = chatRow as AgentChatRow
 
-        const { data: lastFan } = await supabase
-            .from('agent_messages')
+        const { data: lastFan } = await orgTable(ctx, 'agent_messages')
             .select('text')
             .eq('chat_id', chatId)
             .eq('direction', 'in')
             .order('created_at', { ascending: false })
             .limit(1)
             .maybeSingle()
-        const query = lastFan?.text ?? 'exclusive content'
+        const query = (lastFan as { text: string | null } | null)?.text ?? 'exclusive content'
 
         // Media pieces the avatar can actually send.
         const chunks = await retrieveKnowledge(chat.avatar_id, query, {
@@ -773,8 +751,7 @@ export async function suggestPpvOffer(
         // 404 (imagen roja en el diálogo de PPV). El knowledge indexado no
         // guarda el provider, así que se lee la FILA — que además es la fuente
         // de verdad si el backfill la movió después de indexarla.
-        const { data: genRow } = await supabase
-            .from('generations')
+        const { data: genRow } = await orgTable(ctx, 'generations')
             .select('*')
             .eq('id', generationId)
             .maybeSingle()
@@ -786,7 +763,7 @@ export async function suggestPpvOffer(
                 storagePath,
                 mediaType,
                 previewUrl: genRow
-                    ? getRowMediaUrl(genRow)
+                    ? getRowMediaUrl(genRow as Parameters<typeof getRowMediaUrl>[0])
                     : getGenerationMediaUrl(storagePath),
                 teaser: parsed.teaser ?? 'Got something special for you… 😏',
                 priceCents: Math.max(300, Math.round(parsed.priceCents ?? 500)),
@@ -807,22 +784,23 @@ export async function sendPpvOffer(input: {
 }): Promise<InboxResult<{ sent: true }>> {
     try {
         const ctx = await getOrgContext()
-        const supabase = agentSupabase()
-        const { data: chat } = await supabase
-            .from('agent_chats')
+        const { data: chatRow } = await orgTable(ctx, 'agent_chats')
             .select('*')
-            .eq('organization_id', ctx.organizationId)
             .eq('id', input.chatId)
             .maybeSingle()
-        if (!chat) return { success: false, error: 'Chat not found' }
+        if (!chatRow) return { success: false, error: 'Chat not found' }
+        const chat = chatRow as AgentChatRow
         if (input.priceCents < 300)
             return { success: false, error: 'Price must be at least 300 cents' }
 
-        const { data: avatar } = await supabase
-            .from('avatars')
+        const { data: avatarRow } = await orgTable(ctx, 'avatars')
             .select('user_id, fanvue_creator_uuid')
             .eq('id', chat.avatar_id)
             .single()
+        const avatar = avatarRow as {
+            user_id: string | null
+            fanvue_creator_uuid: string | null
+        } | null
         if (!avatar?.user_id)
             return { success: false, error: 'Avatar has no owner' }
         const connection = await loadConnection(avatar.user_id)
@@ -846,8 +824,10 @@ export async function sendPpvOffer(input: {
             },
         )
 
-        await supabase.from('agent_messages').insert({
-            organization_id: chat.organization_id,
+        // `organization_id` lo inyecta orgInsert desde el ctx (antes se copiaba
+        // de la fila del chat; el resultado es el mismo pero la fuente pasa a
+        // ser la sesión, que es la que manda).
+        await orgInsert(ctx, 'agent_messages', {
             chat_id: chat.id,
             direction: 'out',
             external_message_id: res.messageUuid,
@@ -863,8 +843,7 @@ export async function sendPpvOffer(input: {
             approved_by: ctx.userId,
             sent_at: new Date().toISOString(),
         })
-        await supabase
-            .from('agent_chats')
+        await orgTable(ctx, 'agent_chats')
             .update({ last_message_at: new Date().toISOString() })
             .eq('id', chat.id)
         return { success: true, data: { sent: true } }
@@ -879,26 +858,37 @@ export async function syncFanvueInbox(
 ): Promise<InboxResult<{ chats: number; messages: number }>> {
     try {
         const ctx = await getOrgContext()
-        const supabase = agentSupabase()
-        // avatars isn't org-scoped until Phase 4 — gate on ownership for now.
-        const { data: avatarRow } = await supabase
-            .from('avatars')
+        // El avatar ya llega acotado por org (orgTable), que es la frontera
+        // real: el `ownerUserId !== ctx.userId` anterior dejaba fuera a los
+        // compañeros de org — dentro de una org `user_id` es sólo "creado por".
+        // Se sigue leyendo el owner porque la conexión de Fanvue se resuelve a
+        // partir de un usuario (aunque la fila sea de la org, ver tokenStore).
+        const { data: avatarRow } = await orgTable(ctx, 'avatars')
             .select('user_id, fanvue_creator_uuid')
             .eq('id', avatarId)
             .maybeSingle()
-        const ownerUserId = avatarRow?.user_id
-        if (!ownerUserId || ownerUserId !== ctx.userId) {
-            return { success: false, error: 'Not your avatar' }
+        const avatar = avatarRow as {
+            user_id: string | null
+            fanvue_creator_uuid: string | null
+        } | null
+        if (!avatar) return { success: false, error: 'Not your avatar' }
+        const ownerUserId = avatar.user_id
+        if (!ownerUserId) {
+            return { success: false, error: 'Avatar has no owner' }
         }
         const connection = await loadConnection(ownerUserId)
         if (!connection)
             return { success: false, error: 'Fanvue account not connected' }
 
-        const creatorUuid = avatarRow?.fanvue_creator_uuid ?? null
+        const creatorUuid = avatar.fanvue_creator_uuid ?? null
+        // La org va EXPLÍCITA: `resolveTargetAvatar` sin ella la deriva de la
+        // PRIMERA membresía del owner, no de la sesión que está pidiendo el
+        // sync. Con el owner en otra org primero, el avatar no aparecería.
         const target = await resolveTargetAvatar(
             ownerUserId,
             creatorUuid,
             connection.fanvueAccountUuid,
+            ctx.organizationId,
         )
         if (!target)
             return { success: false, error: 'Could not resolve avatar target' }

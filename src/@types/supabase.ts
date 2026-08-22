@@ -13,6 +13,11 @@ export type Database = {
                 Row: {
                     id: string
                     user_id: string | null
+                    /** Tenant al que pertenece la fila (NOT NULL en la BD desde
+                     *  la migración multitenant). Faltaba en este tipo escrito a
+                     *  mano, y por eso el cron no podía ni LEER la columna que
+                     *  ya filtraba. */
+                    organization_id: string
                     name: string
                     identity_weight: number | null
                     face_description: string | null
@@ -26,6 +31,10 @@ export type Database = {
                 Insert: {
                     id?: string
                     user_id?: string | null
+                    /** Opcional a propósito: los inserts que ya existen no lo
+                     *  fijan (lo pone el default de la columna o `orgInsert`);
+                     *  hacerlo obligatorio aquí rompería todos de golpe. */
+                    organization_id?: string
                     name: string
                     identity_weight?: number | null
                     face_description?: string | null
@@ -38,6 +47,7 @@ export type Database = {
                 Update: {
                     id?: string
                     user_id?: string | null
+                    organization_id?: string
                     name?: string
                     identity_weight?: number | null
                     face_description?: string | null

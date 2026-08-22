@@ -11,7 +11,6 @@
 import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
 import { agentSupabase } from '@/lib/agent/db'
-import { getOrgContextForUser } from '@/lib/tenant/getOrgContext'
 import { loadConnection } from '@/lib/fanvue/tokenStore'
 import {
     ingestMessage,
@@ -36,6 +35,12 @@ export async function GET(request: NextRequest) {
         return NextResponse.json({ error: 'unauthorized' }, { status: 401 })
     }
 
+    // F4.2 Tarea 4 — EXENTO de `orgTable`: el cron corre SIN sesión (lo
+    // autoriza CRON_SECRET, no un usuario) y su trabajo es precisamente barrer
+    // TODAS las orgs. No hay `ctx` que resolver aquí; la org de cada avatar
+    // sale de `avatar.organization_id` (la fila ya cargada más abajo) y se
+    // propaga a `resolveTargetAvatar`, y las escrituras cuelgan de esa org
+    // resuelta.
     const supabase = agentSupabase()
     // Avatars whose persona is enabled — the only ones worth polling.
     const { data: personas } = await supabase
@@ -49,7 +54,7 @@ export async function GET(request: NextRequest) {
 
     const { data: avatars } = await supabase
         .from('avatars')
-        .select('id, user_id, fanvue_creator_uuid')
+        .select('id, user_id, organization_id, fanvue_creator_uuid')
         .in('id', avatarIds)
 
     let polled = 0
@@ -61,14 +66,17 @@ export async function GET(request: NextRequest) {
         // One connection per owner; skip if not connected.
         const connection = await loadConnection(avatar.user_id)
         if (!connection?.refreshToken && !connection?.accessToken) continue
-        const orgCtx = await getOrgContextForUser(avatar.user_id)
-        if (!orgCtx) continue
 
         const creatorUuid = avatar.fanvue_creator_uuid ?? null
+        // La org sale de la FILA que ya está cargada (avatar.organization_id),
+        // no de resolver la membresía del owner: la PRIMERA membresía de un
+        // usuario no tiene por qué ser la org de ESTE avatar — si no
+        // coinciden, el avatar no se encuentra y el cron falla en silencio.
         const target = await resolveTargetAvatar(
             avatar.user_id,
             creatorUuid,
             connection.fanvueAccountUuid,
+            avatar.organization_id,
         )
         if (!target || !target.personaEnabled) continue
 

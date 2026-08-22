@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { auth } from '@/auth'
-import { createServerSupabaseClient } from '@/lib/supabase'
+import { orgTable, orgInsert } from '@/lib/org/orgTable'
 import { listProviderClonedVoices } from '@/services/MiniMaxService'
 import { getOrgContextForUser } from '@/lib/tenant/getOrgContext'
 
@@ -48,7 +48,6 @@ export async function POST() {
     }
 
     const userId = session.user.id
-    const supabase = createServerSupabaseClient()
 
     let remote: { voiceId: string; createdTime: string | null }[]
     try {
@@ -60,41 +59,42 @@ export async function POST() {
         )
     }
 
-    const { data: existing, error: readError } = await supabase
-        .from('cloned_voices')
-        .select('provider_voice_id')
-        .eq('organization_id', ctx.organizationId)
+    const { data: existing, error: readError } = await orgTable(ctx, 'cloned_voices').select(
+        'provider_voice_id',
+    )
 
     if (readError) {
         return NextResponse.json({ error: readError.message }, { status: 500 })
     }
 
-    const known = new Set((existing ?? []).map((v) => v.provider_voice_id))
+    // orgTable devuelve el builder sin tipar (ver el gotcha documentado en
+    // orgTable.ts); el cast va aquí, después del guard de error de arriba.
+    const known = new Set(
+        ((existing ?? []) as { provider_voice_id: string }[]).map((v) => v.provider_voice_id),
+    )
     const orphans = remote.filter((v) => !known.has(v.voiceId))
 
     if (orphans.length === 0) {
         return NextResponse.json({ success: true, recovered: 0, voices: [] })
     }
 
-    const { data: inserted, error: insertError } = await supabase
-        .from('cloned_voices')
-        .insert(
-            orphans.map((v) => ({
-                user_id: userId,
-                organization_id: ctx.organizationId,
-                avatar_id: null,
-                name: nameFromVoiceId(v.voiceId, userId, v.createdTime),
-                provider: 'minimax',
-                provider_voice_id: v.voiceId,
-                // La muestra original vivía en nuestro Storage y no se guardó
-                // referencia. La columna es NOT NULL y nadie la lee en la UI,
-                // así que vacía es más honesto que una URL inventada.
-                sample_audio_url: '',
-                language: 'es',
-                status: 'ready',
-            })),
-        )
-        .select('id, name, provider_voice_id')
+    const { data: inserted, error: insertError } = await orgInsert(
+        ctx,
+        'cloned_voices',
+        orphans.map((v) => ({
+            user_id: userId,
+            avatar_id: null,
+            name: nameFromVoiceId(v.voiceId, userId, v.createdTime),
+            provider: 'minimax',
+            provider_voice_id: v.voiceId,
+            // La muestra original vivía en nuestro Storage y no se guardó
+            // referencia. La columna es NOT NULL y nadie la lee en la UI,
+            // así que vacía es más honesto que una URL inventada.
+            sample_audio_url: '',
+            language: 'es',
+            status: 'ready',
+        })),
+    ).select('id, name, provider_voice_id')
 
     if (insertError) {
         return NextResponse.json({ error: insertError.message }, { status: 500 })

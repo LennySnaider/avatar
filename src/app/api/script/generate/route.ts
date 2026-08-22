@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/auth'
-import { createServerSupabaseClient } from '@/lib/supabase'
+import { orgInsert } from '@/lib/org/orgTable'
 import { generateScript } from '@/services/ScriptService'
 import type { ScriptGenerateParams } from '@/@types/voice'
 import { getOrgContextForUser } from '@/lib/tenant/getOrgContext'
@@ -38,20 +38,16 @@ export async function POST(req: NextRequest) {
         // Optionally save to DB
         let savedScript = null
         if (save) {
-            const supabase = createServerSupabaseClient()
-            const { data, error } = await supabase
-                .from('audio_scripts')
-                .insert({
-                    user_id: session.user.id,
-                    organization_id: ctx.organizationId,
-                    title: title || `${template} script`,
-                    script_text: scriptText,
-                    language,
-                    tone,
-                    duration_target_seconds: durationSeconds,
-                    template_type: template,
-                    context: context || {},
-                })
+            const { data, error } = await orgInsert(ctx, 'audio_scripts', {
+                user_id: session.user.id,
+                title: title || `${template} script`,
+                script_text: scriptText,
+                language,
+                tone,
+                duration_target_seconds: durationSeconds,
+                template_type: template,
+                context: context || {},
+            })
                 .select()
                 .single()
 

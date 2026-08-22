@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/auth'
-import { createServerSupabaseClient } from '@/lib/supabase'
+import { orgTable } from '@/lib/org/orgTable'
 import { getOrgContextForUser } from '@/lib/tenant/getOrgContext'
 
 /** Marca una voz clonada como voz principal de su avatar vinculado. */
@@ -20,12 +20,9 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: 'voiceId is required' }, { status: 400 })
     }
 
-    const supabase = createServerSupabaseClient()
-    const { data: voice, error: voiceError } = await supabase
-        .from('cloned_voices')
+    const { data: voice, error: voiceError } = await orgTable(ctx, 'cloned_voices')
         .select('id, avatar_id')
         .eq('id', voiceId)
-        .eq('organization_id', ctx.organizationId)
         .single()
 
     if (voiceError || !voice) {
@@ -35,11 +32,9 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: 'Voice is not linked to an avatar' }, { status: 400 })
     }
 
-    const { data: updatedAvatars, error: updateError } = await supabase
-        .from('avatars')
+    const { data: updatedAvatars, error: updateError } = await orgTable(ctx, 'avatars')
         .update({ default_voice_id: voice.id })
         .eq('id', voice.avatar_id)
-        .eq('organization_id', ctx.organizationId)
         .select('id')
 
     if (updateError) {

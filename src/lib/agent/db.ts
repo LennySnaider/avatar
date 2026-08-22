@@ -102,7 +102,7 @@ interface AvatarKnowledgeTable {
     Relationships: []
 }
 
-/** Minimal view of fanvue_posts (full type lives in FanvueService's local extension). */
+/** Minimal view of fanvue_posts (el tipo completo vive en database.generated.ts). */
 interface FanvuePostsLiteTable {
     Row: {
         id: string
@@ -256,6 +256,31 @@ export type AgentDatabase = BaseDatabase & {
 export type AvatarPersonaRow = AvatarPersonasTable['Row']
 export type AvatarKnowledgeRow = AvatarKnowledgeTable['Row']
 
+/**
+ * Cliente service-role tipado con el schema extendido del módulo agente.
+ *
+ * F4.2 Tarea 4 — POR QUÉ SIGUE EXISTIENDO. Este cliente NO tiene scope de
+ * organización: quien lo usa ve todas las filas de todas las orgs. Era el
+ * agujero por el que se colaba el acceso sin tenant (la regla de ESLint sólo
+ * prohibía `@/lib/supabase`), así que ahora está restringido igual — en `error`.
+ *
+ * La puerta normal para leer/escribir datos tenant es
+ * `orgTable`/`orgInsert`/`orgUpsert` de `@/lib/org/orgTable`, con un `ctx` de
+ * `getOrgContext()`. Sólo pueden seguir usando `agentSupabase()`:
+ *
+ *  1. `src/lib/tenant/getOrgContext.ts` — el bootstrap: lee
+ *     `organization_members` para PODER construir el ctx (pasar por orgTable
+ *     sería circular).
+ *  2. Código que corre SIN sesión y por tanto no puede pedir un ctx: el webhook
+ *     de Fanvue, el cron de inbox y el núcleo compartido de `lib/agent`
+ *     (inboxSync, draftPipeline, autopilot, sendMessage, indexer). Todos ellos
+ *     filtran por la org de la fila que YA resolvieron —nunca navegan por ids
+ *     sueltos— y lo dicen en su cabecera.
+ *  3. `retrieval.ts`, que no toca ninguna tabla: sólo el RPC
+ *     `match_avatar_knowledge` (que orgTable no sabe pre-scopear).
+ *
+ * Cualquier otro sitio: si tiene sesión, va por `orgTable`. Sin excepciones.
+ */
 export function agentSupabase(): SupabaseClient<AgentDatabase> {
     return createServerSupabaseClient() as unknown as SupabaseClient<AgentDatabase>
 }

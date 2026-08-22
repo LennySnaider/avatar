@@ -1,5 +1,6 @@
-import { createServerSupabaseClient } from '@/lib/supabase'
 import { getR2PublicUrl } from '@/lib/mediaStore'
+import { getOrgContext } from '@/lib/tenant/getOrgContext'
+import { orgTable, orgSupabase } from '@/lib/org/orgTable'
 import type { AvatarWithReferences } from '@/app/(protected-pages)/concepts/avatar-forge/avatar-list/types'
 import type { Avatar, AvatarReference } from '@/@types/supabase'
 
@@ -12,21 +13,53 @@ const getAvatars = async (_queryParams: {
     [key: string]: string | string[] | undefined
 }) => {
     const queryParams = _queryParams
+    // `userId` sigue llegando en queryParams (avatar-list/page.tsx lo manda
+    // desde la sesion) pero ya no se usa para filtrar: ver el comentario
+    // junto a `avatarsQuery` mas abajo.
     const {
         pageIndex = '1',
         pageSize = '12',
         query,
-        userId,
     } = queryParams
 
-    const supabase = createServerSupabaseClient()
     const page = parseInt(pageIndex as string) || 1
     const limit = parseInt(pageSize as string) || 12
     const offset = (page - 1) * limit
 
+    // F4.2 Tarea 3 — avatar-list/page.tsx llama a esta funcion durante el
+    // render SIN gate de sesion propio (a diferencia de
+    // avatar-studio/[slug], que redirige antes de leer datos). Antes de esta
+    // migracion, sin sesion la query de avatares quedaba SIN NINGUN filtro:
+    // devolvia avatares de CUALQUIER organizacion (el hueco que cierra esta
+    // tarea). Ese comportamiento no se replica: sin org resuelta no hay
+    // ninguna fila segura que mostrar, asi que se cae al mismo
+    // `{ list: [], total: 0 }` que ya usa el catch de error mas abajo — no
+    // revienta el render (y el middleware ya bloquea el acceso anonimo a
+    // esta ruta de por si).
+    let ctx
+    try {
+        ctx = await getOrgContext()
+    } catch {
+        return {
+            list: [] as AvatarWithReferences[],
+            total: 0,
+        }
+    }
+
+    const supabase = orgSupabase()
+
     // Build query for avatars
-    let avatarsQuery = supabase
-        .from('avatars')
+    //
+    // NO se filtra por user_id (a diferencia de la version anterior de este
+    // archivo): en el modelo de agencia los miembros de una org COMPARTEN
+    // sus avatares, mismo criterio que ya aplican SocialService.ts (acab85d)
+    // y FanvueService.ts (8c1d5f2). La razon de peso no es solo estilo:
+    // apiGetAvatars() en AvatarForgeService.ts YA lista toda la org sin
+    // filtrar por usuario, asi que si esta funcion filtrara por user_id
+    // devolveria una lista DISTINTA para el mismo usuario segun de donde la
+    // pida — dos pantallas que se contradicen entre si (un avatar visible en
+    // una y no en la otra) en cuanto exista una segunda org.
+    let avatarsQuery = orgTable(ctx, 'avatars')
         // El nombre de la voz viene embebido por la FK, no con una consulta
         // extra. Hay DOS relaciones entre avatars y cloned_voices (la voz
         // apunta a su avatar, y el avatar a su voz principal), así que hay que
@@ -36,11 +69,6 @@ const getAvatars = async (_queryParams: {
             { count: 'exact' },
         )
         .order('created_at', { ascending: false })
-
-    // Filter by user if provided
-    if (userId) {
-        avatarsQuery = avatarsQuery.eq('user_id', userId as string)
-    }
 
     // Search filter
     if (query) {

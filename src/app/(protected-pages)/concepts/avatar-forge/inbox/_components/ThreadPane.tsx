@@ -285,7 +285,6 @@ const ThreadPane = ({ thread, onChanged }: ThreadPaneProps) => {
                             {ppv.mediaType === 'VIDEO' ? (
                                 <video src={ppv.previewUrl} crossOrigin="anonymous" className="w-full h-full object-cover blur-sm" />
                             ) : (
-                                // eslint-disable-next-line @next/next/no-img-element
                                 <img src={ppv.previewUrl} alt="" className="w-full h-full object-cover blur-sm" />
                             )}
                             <span className="absolute inset-0 flex items-center justify-center text-white text-lg">🔒</span>

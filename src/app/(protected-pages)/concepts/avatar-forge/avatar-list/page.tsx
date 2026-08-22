@@ -5,19 +5,15 @@ import AvatarGrid from './_components/AvatarGrid'
 import AvatarListActionTools from './_components/AvatarListActionTools'
 import getAvatars from '@/server/actions/getAvatars'
 import type { PageProps } from '@/@types/common'
-import { auth } from '@/auth'
 
 export default async function Page({ searchParams }: PageProps) {
-    const session = await auth()
     const params = await searchParams
 
-    // Add userId to params for filtering
-    const queryParams = {
-        ...params,
-        userId: session?.user?.id,
-    }
-
-    const data = await getAvatars(queryParams)
+    // getAvatars() ya no filtra por user_id (F4.2 Tarea 3, commit 2f963e1):
+    // los avatares son de la org, no del usuario, asi que no hace falta
+    // resolver la sesion aca solo para eso — el scope real lo aplica el
+    // propio server action via getOrgContext()/orgTable().
+    const data = await getAvatars(params)
 
     return (
         <AvatarListProvider avatarList={data.list}>

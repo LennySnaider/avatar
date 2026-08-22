@@ -8,16 +8,23 @@
  *
  * The playground works even when the persona is disabled (enabled=false) —
  * that flag gates CHANNELS (Fanvue inbox), not testing.
+ *
+ * F4.2 Tarea 4 — VERIFICADO que esta ruta corre CON sesión: la llama el
+ * navegador desde el Playground (`useChat({ api: '/api/agent/chat' })` en
+ * agent/[slug]/_components/Playground.tsx) y ya devolvía 401 sin sesión. Por
+ * eso NO es una de las rutas exentas (webhook/cron): resuelve `ctx` con
+ * `getOrgContext()` y lee por `orgTable`, como cualquier server action.
  */
 import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
 import { convertToModelMessages, streamText, type UIMessage } from 'ai'
-import { auth } from '@/auth'
-import { agentSupabase } from '@/lib/agent/db'
+import { getOrgContext, type OrgContext } from '@/lib/tenant/getOrgContext'
+import { orgTable } from '@/lib/org/orgTable'
 import { getChatModel } from '@/lib/agent/chatProvider'
 import { buildSystemPrompt } from '@/lib/agent/promptBuilder'
 import { toPersonaDTO } from '@/lib/agent/personaMapper'
 import { retrieveKnowledge } from '@/lib/agent/retrieval'
+import type { AvatarPersonaRow } from '@/lib/agent/db'
 import type { RetrievedChunk } from '@/lib/agent/types'
 
 export const dynamic = 'force-dynamic'
@@ -41,9 +48,19 @@ function lastUserText(messages: UIMessage[]): string {
 }
 
 export async function POST(req: NextRequest) {
-    const session = await auth()
-    const userId = session?.user?.id
-    if (!userId) return NextResponse.json({ error: 'Not authenticated' }, { status: 401 })
+    // `getOrgContext()` lanza por DOS motivos (sin sesión / sin fila en
+    // organization_members). Los dos son "no puedes pasar" en una ruta de API,
+    // así que se responde 401 con el mensaje real en vez de dejar que el throw
+    // salga como 500 y el playground muestre un error opaco.
+    let ctx: OrgContext
+    try {
+        ctx = await getOrgContext()
+    } catch (e) {
+        return NextResponse.json(
+            { error: e instanceof Error ? e.message : 'Not authenticated' },
+            { status: 401 },
+        )
+    }
 
     let body: ChatRequestBody
     try {
@@ -56,22 +73,22 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: 'avatarId and messages are required' }, { status: 400 })
     }
 
-    const supabase = agentSupabase()
-    const { data: avatar } = await supabase
-        .from('avatars')
-        .select('id, name, user_id')
+    // El chequeo anterior (`avatar.user_id !== userId`) se saltaba entero
+    // cuando `user_id` era null: con el id de un avatar ajeno se podía chatear
+    // con su persona. El `.eq('organization_id', …)` de orgTable no se salta —
+    // fuera de la org el avatar simplemente no existe (404).
+    const { data: avatarRow } = await orgTable(ctx, 'avatars')
+        .select('id, name')
         .eq('id', avatarId)
         .maybeSingle()
+    const avatar = avatarRow as { id: string; name: string } | null
     if (!avatar) return NextResponse.json({ error: 'Avatar not found' }, { status: 404 })
-    if (avatar.user_id && avatar.user_id !== userId) {
-        return NextResponse.json({ error: 'Not your avatar' }, { status: 403 })
-    }
 
-    const { data: personaRow } = await supabase
-        .from('avatar_personas')
+    const { data: personaData } = await orgTable(ctx, 'avatar_personas')
         .select('*')
         .eq('avatar_id', avatarId)
         .maybeSingle()
+    const personaRow = personaData as AvatarPersonaRow | null
     if (!personaRow) {
         return NextResponse.json(
             { error: 'This avatar has no persona yet — create one in the Persona tab first' },

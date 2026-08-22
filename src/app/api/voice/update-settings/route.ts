@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/auth'
-import { createServerSupabaseClient } from '@/lib/supabase'
+import { orgTable } from '@/lib/org/orgTable'
 import type { VoiceTtsSettings } from '@/@types/voice'
 import type { Json } from '@/@types/supabase'
 import { getOrgContextForUser } from '@/lib/tenant/getOrgContext'
@@ -39,12 +39,9 @@ export async function POST(req: NextRequest) {
         clean.useAutoAccent = settings.useAutoAccent
     }
 
-    const supabase = createServerSupabaseClient()
-    const { data: updated, error } = await supabase
-        .from('cloned_voices')
+    const { data: updated, error } = await orgTable(ctx, 'cloned_voices')
         .update({ tts_settings: clean as unknown as Json })
         .eq('id', voiceId)
-        .eq('organization_id', ctx.organizationId)
         .select('id')
 
     if (error) {

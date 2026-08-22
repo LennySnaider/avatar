@@ -65,8 +65,15 @@ export function orgTable<T extends TenantTable>(ctx: OrgContext, table: T) {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const from = () => orgSupabase().from(table) as any
     return {
-        select: (columns = '*') =>
-            from().select(columns).eq('organization_id', ctx.organizationId),
+        // `options` (count/head) pasa directo a PostgREST igual que en
+        // supabase-js; sin él se comporta exactamente como antes (F4.2
+        // Tarea 3: getAvatars/getAvatarAgentData necesitan `{ count: 'exact' }`
+        // para paginación y conteos, y hasta ahora había que esquivar
+        // `orgTable` a mano para eso).
+        select: (
+            columns = '*',
+            options?: { head?: boolean; count?: 'exact' | 'planned' | 'estimated' },
+        ) => from().select(columns, options).eq('organization_id', ctx.organizationId),
         update: (values: Database['public']['Tables'][T]['Update']) =>
             from().update(values).eq('organization_id', ctx.organizationId),
         delete: () => from().delete().eq('organization_id', ctx.organizationId),

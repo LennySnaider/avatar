@@ -993,7 +993,6 @@ const ImagePreviewModal = ({
         // imagen depende de él (maxWidth/maxHeight medidos): si el área se
         // reparte después del primer render, el bitmap tiene que volver a
         // medirse o queda de un tamaño que ya no corresponde.
-        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [isEditing, updateCanvasSize, viewport.w, viewport.h])
 
     // Del rect MOSTRADO al bitmap. Ya no es 1:1: con zoom el canvas se estira

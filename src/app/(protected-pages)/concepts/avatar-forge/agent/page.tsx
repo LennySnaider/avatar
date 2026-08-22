@@ -4,21 +4,58 @@ import Link from 'next/link'
 import Container from '@/components/shared/Container'
 import Card from '@/components/ui/Card'
 import Tag from '@/components/ui/Tag'
-import { agentSupabase } from '@/lib/agent/db'
+import { getOrgContext } from '@/lib/tenant/getOrgContext'
+import { orgTable } from '@/lib/org/orgTable'
+
+interface AvatarCard {
+    id: string
+    name: string
+}
+
+interface PersonaCard {
+    avatar_id: string
+    enabled: boolean
+    chat_provider: string
+    chat_model: string
+}
 
 /** AI Agent index: every avatar with its persona state, linking to its agent page. */
 export default async function Page() {
     const session = await auth()
     if (!session?.user?.id) redirect('/sign-in')
-    const userId = session.user.id
 
-    const supabase = agentSupabase()
-    const [{ data: avatars }, { data: personas }] = await Promise.all([
-        supabase.from('avatars').select('id, name, user_id').order('created_at', { ascending: true }),
-        supabase.from('avatar_personas').select('avatar_id, enabled, chat_provider, chat_model'),
-    ])
-    const mine = (avatars ?? []).filter((a) => !a.user_id || a.user_id === userId)
-    const personaByAvatar = new Map((personas ?? []).map((p) => [p.avatar_id, p]))
+    // El listado ya no filtra por `user_id`: dentro de una org ese campo es
+    // sólo "creado por" (ver orgTable.ts), la frontera real es la org — mismo
+    // criterio que getAvatars() desde 2f963e1.
+    //
+    // El try/catch NO es decorativo: getOrgContext() lanza por dos motivos
+    // (sin sesión, sin fila en organization_members) y el redirect de arriba
+    // sólo cubre el primero. Un usuario autenticado pero sin membresía haría
+    // llegar el throw al render y saldría como 500 genérico (no hay error.tsx
+    // en (protected-pages)). Mismo contrato "vacío, no throw" que
+    // getAvatarStudioData / getAvatarAgentData (685cf32).
+    let avatars: AvatarCard[] = []
+    let personaByAvatar = new Map<string, PersonaCard>()
+    try {
+        const ctx = await getOrgContext()
+        const [{ data: avatarRows }, { data: personaRows }] = await Promise.all([
+            orgTable(ctx, 'avatars')
+                .select('id, name')
+                .order('created_at', { ascending: true }),
+            orgTable(ctx, 'avatar_personas').select(
+                'avatar_id, enabled, chat_provider, chat_model',
+            ),
+        ])
+        avatars = (avatarRows ?? []) as AvatarCard[]
+        personaByAvatar = new Map(
+            ((personaRows ?? []) as PersonaCard[]).map((p) => [p.avatar_id, p]),
+        )
+    } catch (e) {
+        // Estado vacío, PERO con rastro: un catch mudo hace que una caída de
+        // BD se lea como «No avatars yet — create one in Avatar Studio first»
+        // y el usuario crea un avatar duplicado creyendo que no tenía ninguno.
+        console.warn('[agent] no se pudo listar avatares/personas', e)
+    }
 
     return (
         <Container className="py-6">
@@ -28,7 +65,7 @@ export default async function Page() {
                 a playground to chat with it
             </p>
 
-            {mine.length === 0 ? (
+            {avatars.length === 0 ? (
                 <Card>
                     <p className="text-sm text-gray-500">
                         No avatars yet — create one in Avatar Studio first.
@@ -36,7 +73,7 @@ export default async function Page() {
                 </Card>
             ) : (
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                    {mine.map((avatar) => {
+                    {avatars.map((avatar) => {
                         const persona = personaByAvatar.get(avatar.id)
                         return (
                             <Link

@@ -10,6 +10,15 @@
  * Every NEW service (agent module onward) opens with `await getOrgContext()`
  * and writes/filters `organization_id`. Existing single-user services migrate
  * in the multitenant phase.
+ *
+ * F4.2 Tarea 4 — ESTE FICHERO NO PASA POR `orgTable`, y no es un olvido: es el
+ * BOOTSTRAP del tenant. Tiene que leer `organization_members` para poder
+ * CONSTRUIR el `ctx` que `orgTable` exige como primer argumento; hacerlo pasar
+ * por ahí sería una dependencia circular (orgTable necesita el ctx que sólo
+ * esta función sabe producir). Por eso se queda con el cliente service-role
+ * crudo y por eso la regla de ESLint que prohíbe importar `agentSupabase`
+ * exceptúa esta ruta explícitamente. La consulta ya está acotada por lo único
+ * que puede acotarla aquí: el `user_id` de la sesión.
  */
 import { auth } from '@/auth'
 import { agentSupabase, type OrgMemberRole } from '@/lib/agent/db'

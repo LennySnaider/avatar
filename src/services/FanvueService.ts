@@ -4,15 +4,22 @@
  * Server actions for the Fanvue publishing integration (AGENCY multi-creator).
  *
  * SEPARATE from SocialService.ts (Upload-Post) — do not cross-wire the two.
- * All DB access uses the service-role client via `fanvueSupabase()`; OAuth
- * tokens never reach the client. Mirrors SocialService's `fail()` /
- * `requireSession()` conventions.
+ * F4.2.f: las tablas tenant (fanvue_connections, fanvue_creators,
+ * fanvue_posts) pasan por `orgTable`/`orgInsert`/`orgUpsert` — mismo patrón
+ * que SocialService.ts (commit acab85d).
+ *
+ * F4.2 Tarea 4: `generations` (que quedó fuera de la tarea anterior) entra
+ * también. Se autorizaba con `if (g.user_id && g.user_id !== userId)` después
+ * de leer por `.in('id', …)`, y ese chequeo se salta ENTERO cuando `user_id`
+ * es null — que es el caso de casi todas las filas anteriores al multitenant.
+ * Ahora el filtro va DENTRO de la consulta (`orgTable`), donde no se puede
+ * saltar. OAuth tokens never reach the client.
  */
-import { requireUserId } from '@/lib/session'
 import { FanvueClient } from '@/lib/fanvue/FanvueClient'
 import { uploadGenerationMedia } from '@/lib/fanvue/mediaUpload'
 import { indexKnowledgeSource } from '@/lib/agent/indexer'
-import { getOrgContextForUser } from '@/lib/tenant/getOrgContext'
+import { getOrgContext, type OrgContext } from '@/lib/tenant/getOrgContext'
+import { orgTable, orgInsert, orgUpsert } from '@/lib/org/orgTable'
 import {
     buildAuthorizeUrl,
     FANVUE_API_BASE,
@@ -25,18 +32,14 @@ import {
     generateState,
     signPayload,
 } from '@/lib/fanvue/pkce'
-import {
-    fanvueSupabase,
-    getValidAccessToken,
-    loadConnection,
-} from '@/lib/fanvue/tokenStore'
+import { getValidAccessToken, loadConnection } from '@/lib/fanvue/tokenStore'
 import type {
     CreatePostInput,
     FanvueMediaType,
     FanvuePostAudience,
     UpdatePostInput,
 } from '@/lib/fanvue/types'
-import { getStoragePublicUrl } from '@/lib/storagePaths'
+import { getRowMediaUrl } from '@/lib/storagePaths'
 import type { MediaType } from '@/@types/supabase'
 
 export interface FanvueResult<T> {
@@ -128,8 +131,6 @@ const fail = (e: unknown): { success: false; error: string } => ({
     error: e instanceof Error ? e.message : String(e),
 })
 
-const requireSession = requireUserId
-
 function makeClient(userId: string): FanvueClient {
     return new FanvueClient({
         getAccessToken: (opts) => getValidAccessToken(userId, opts),
@@ -143,14 +144,14 @@ export async function getFanvueConnection(): Promise<
     FanvueResult<FanvueConnectionSummary>
 > {
     try {
-        const userId = await requireSession()
-        const supabase = fanvueSupabase()
-        const { data, error } = await supabase
-            .from('fanvue_connections')
+        const ctx = await getOrgContext()
+        // La conexion es de la ORG (unique(organization_id) desde la
+        // migracion 4.1, ver tokenStore.ts) — orgTable ya acota por ahi, sin
+        // filtro adicional por user_id.
+        const { data, error } = await orgTable(ctx, 'fanvue_connections')
             .select(
                 'scopes, fanvue_account_uuid, refresh_token, created_at, updated_at',
             )
-            .eq('user_id', userId)
             .maybeSingle()
         if (error) throw new Error(error.message)
         return {
@@ -173,12 +174,10 @@ export async function listFanvueCreators(): Promise<
     FanvueResult<FanvueCreatorRow[]>
 > {
     try {
-        const userId = await requireSession()
-        const supabase = fanvueSupabase()
-        const connection = await loadConnection(userId)
+        const ctx = await getOrgContext()
+        const connection = await loadConnection(ctx.userId)
         if (!connection) return { success: true, data: [] }
-        const { data, error } = await supabase
-            .from('fanvue_creators')
+        const { data, error } = await orgTable(ctx, 'fanvue_creators')
             .select(
                 'id, creator_user_uuid, display_name, handle, avatar_url, updated_at',
             )
@@ -200,7 +199,7 @@ export async function generateFanvueConnectUrl(): Promise<
     FanvueResult<FanvueConnectInit>
 > {
     try {
-        await requireSession()
+        await getOrgContext()
         if (!process.env.FANVUE_CLIENT_ID) {
             return {
                 success: false,
@@ -238,15 +237,14 @@ export async function syncCreators(): Promise<
     FanvueResult<FanvueCreatorRow[]>
 > {
     try {
-        const userId = await requireSession()
-        const connection = await loadConnection(userId)
+        const ctx = await getOrgContext()
+        const connection = await loadConnection(ctx.userId)
         if (!connection)
             return { success: false, error: 'Connect your Fanvue agency first' }
 
-        const client = makeClient(userId)
+        const client = makeClient(ctx.userId)
         const creators = await client.listAllCreators()
 
-        const supabase = fanvueSupabase()
         const nowIso = new Date().toISOString()
         if (creators.length > 0) {
             const rows = creators.map((c) => ({
@@ -257,9 +255,13 @@ export async function syncCreators(): Promise<
                 avatar_url: c.avatarUrl ?? null,
                 updated_at: nowIso,
             }))
-            const { error } = await supabase
-                .from('fanvue_creators')
-                .upsert(rows, { onConflict: 'connection_id,creator_user_uuid' })
+            // orgUpsert inyecta organization_id por fila; el onConflict NO se
+            // toca (fanvue_creators_connection_creator_key ya es el unique
+            // correcto para esta tabla, distinto del problema de
+            // fanvue_connections — ver tokenStore.ts).
+            const { error } = await orgUpsert(ctx, 'fanvue_creators', rows, {
+                onConflict: 'connection_id,creator_user_uuid',
+            })
             if (error) throw new Error(error.message)
         }
 
@@ -281,14 +283,13 @@ function mapMediaType(mediaType: string): FanvueMediaType {
 export async function createFanvuePost(
     input: CreateFanvuePostInput,
 ): Promise<FanvueResult<FanvuePostRow>> {
-    let userId: string
+    let ctx: OrgContext
     try {
-        userId = await requireSession()
+        ctx = await getOrgContext()
     } catch (e) {
         return fail(e)
     }
-
-    const supabase = fanvueSupabase()
+    const userId = ctx.userId
 
     try {
         // Connection must exist.
@@ -318,8 +319,10 @@ export async function createFanvuePost(
         // THIS connection. In self mode (no creatorUserUuid) we post to the
         // authenticated account, so there is nothing to authorize here.
         if (input.creatorUserUuid) {
-            const { data: creator, error: creatorErr } = await supabase
-                .from('fanvue_creators')
+            const { data: creator, error: creatorErr } = await orgTable(
+                ctx,
+                'fanvue_creators',
+            )
                 .select('creator_user_uuid')
                 .eq('connection_id', connection.id)
                 .eq('creator_user_uuid', input.creatorUserUuid)
@@ -336,25 +339,33 @@ export async function createFanvuePost(
         // Resolve generation(s) + verify ownership. A single id posts as-is;
         // multiple ids form a multi-media gallery (input order preserved, the
         // cover first).
+        // F4.2 Tarea 4: la autorizacion es el filtro de org de la CONSULTA, no
+        // un `if` posterior. El `if (g.user_id && g.user_id !== userId)` que
+        // habia aqui se saltaba ENTERO cuando `user_id` era null (casi todas
+        // las filas anteriores al multitenant), asi que se podia publicar en
+        // Fanvue media de otra org con solo pasar su id. Lo que no es de la org
+        // ya no vuelve de la consulta y cae en el "Generation not found".
         const requestedIds = [
             input.generationId,
             ...(input.generationIds ?? []),
         ].filter((id, i, arr) => Boolean(id) && arr.indexOf(id) === i)
-        const { data: gens, error: genErr } = await supabase
-            .from('generations')
-            .select('id, media_type, storage_path, user_id, avatar_id')
+        const { data: gens, error: genErr } = await orgTable(ctx, 'generations')
+            .select('id, media_type, storage_path, avatar_id')
             .in('id', requestedIds)
         if (genErr) throw new Error(genErr.message)
         if (!gens || gens.length !== requestedIds.length) {
             return { success: false, error: 'Generation not found' }
         }
-        const genById = new Map(gens.map((g) => [g.id, g]))
+        // orgTable devuelve el builder sin tipar (ver orgTable.ts); el cast va
+        // aqui, despues del guard.
+        const genRows = gens as {
+            id: string
+            media_type: string
+            storage_path: string
+            avatar_id: string | null
+        }[]
+        const genById = new Map(genRows.map((g) => [g.id, g]))
         const orderedGens = requestedIds.map((id) => genById.get(id)!)
-        for (const g of orderedGens) {
-            if (g.user_id && g.user_id !== userId) {
-                return { success: false, error: 'Not your media' }
-            }
-        }
         const coverGen = orderedGens[0]
 
         // Upload each media → create one post carrying all of them.
@@ -385,9 +396,10 @@ export async function createFanvuePost(
         )
 
         const status = post.publishAt ? 'scheduled' : 'published'
-        const { data: row, error: insErr } = await supabase
-            .from('fanvue_posts')
-            .insert({
+        const { data: row, error: insErr } = await orgInsert(
+            ctx,
+            'fanvue_posts',
+            {
                 user_id: userId,
                 creator_user_uuid: input.creatorUserUuid ?? null,
                 generation_id: coverGen.id,
@@ -400,7 +412,8 @@ export async function createFanvuePost(
                 scheduled_at: post.publishAt,
                 published_at: post.publishedAt,
                 updated_at: new Date().toISOString(),
-            })
+            },
+        )
             .select(
                 'id, creator_user_uuid, generation_id, caption, audience, price, media_uuids, fanvue_post_uuid, status, scheduled_at, published_at, error_message, created_at',
             )
@@ -412,13 +425,12 @@ export async function createFanvuePost(
         if (input.caption?.trim() && coverGen.avatar_id) {
             const caption = input.caption
             const avatarId = coverGen.avatar_id
+            const organizationId = ctx.organizationId
             const postId = (row as FanvuePostRow).id
             void (async () => {
                 try {
-                    const orgCtx = await getOrgContextForUser(userId)
-                    if (!orgCtx) return
                     await indexKnowledgeSource({
-                        organizationId: orgCtx.organizationId,
+                        organizationId,
                         avatarId,
                         kind: 'post',
                         title: 'Fanvue post',
@@ -437,7 +449,7 @@ export async function createFanvuePost(
         // never let this mask the real error.
         const message = e instanceof Error ? e.message : String(e)
         try {
-            await supabase.from('fanvue_posts').insert({
+            await orgInsert(ctx, 'fanvue_posts', {
                 user_id: userId,
                 creator_user_uuid: input.creatorUserUuid ?? null,
                 generation_id: input.generationId,
@@ -459,17 +471,17 @@ export async function createFanvuePost(
 const POST_COLUMNS =
     'id, creator_user_uuid, generation_id, caption, audience, price, media_uuids, fanvue_post_uuid, status, scheduled_at, published_at, error_message, created_at'
 
-/** Post history for the current user (most recent first), with cover thumbnails. */
+/** Post history for the org (most recent first), with cover thumbnails. */
 export async function listFanvuePosts(): Promise<
     FanvueResult<FanvuePostRow[]>
 > {
     try {
-        const userId = await requireSession()
-        const supabase = fanvueSupabase()
-        const { data, error } = await supabase
-            .from('fanvue_posts')
+        const ctx = await getOrgContext()
+        // fanvue_posts es org-wide (user_id es "quien lo creo", no frontera de
+        // tenant — mismo criterio que SocialService.listSocialPosts): cualquier
+        // miembro de la org ve el historial completo, no solo lo suyo.
+        const { data, error } = await orgTable(ctx, 'fanvue_posts')
             .select(POST_COLUMNS)
-            .eq('user_id', userId)
             .order('created_at', { ascending: false })
             .limit(100)
         if (error) throw new Error(error.message)
@@ -477,7 +489,9 @@ export async function listFanvuePosts(): Promise<
 
         // Resolve each post's cover thumbnail. The row only stores the cover
         // `generation_id`; the actual image lives in `generations.storage_path`.
-        // One batched lookup (scoped to the user's own media) → public URLs.
+        // Escaneada por organization_id (no por user_id): si no, las miniaturas
+        // de posts creados por un companero de la org saldrian en blanco ahora
+        // que el historial de arriba ya es org-wide.
         const genIds = Array.from(
             new Set(
                 rows
@@ -486,25 +500,29 @@ export async function listFanvuePosts(): Promise<
             ),
         )
         if (genIds.length > 0) {
-            const { data: gens } = await supabase
-                .from('generations')
-                .select('id, storage_path, media_type')
-                .eq('user_id', userId)
+            // storage_provider en el select: sin el, getStoragePublicUrl
+            // asumia SIEMPRE Supabase y las portadas de generaciones r2
+            // (todas, hoy) salian con URL muerta — ya van tres incidentes
+            // de este mismo olvido, ver storagePaths.ts.
+            const { data: gens } = await orgTable(ctx, 'generations')
+                .select('id, storage_path, storage_provider, media_type')
                 .in('id', genIds)
+            const genRows = (gens ?? []) as {
+                id: string
+                storage_path: string
+                storage_provider: string | null
+                media_type: string | null
+            }[]
             const coverById = new Map(
-                (gens ?? []).map(
-                    (g: {
-                        id: string
-                        storage_path: string
-                        media_type: MediaType
-                    }) => [
+                genRows.map(
+                    (g): [string, { url: string; mediaType: MediaType | null }] => [
                         g.id,
                         {
-                            url: getStoragePublicUrl(
-                                'generations',
-                                g.storage_path,
-                            ),
-                            mediaType: g.media_type ?? null,
+                            url: getRowMediaUrl({
+                                storage_path: g.storage_path,
+                                storage_provider: g.storage_provider,
+                            }),
+                            mediaType: (g.media_type ?? null) as MediaType | null,
                         },
                     ],
                 ),
@@ -531,16 +549,18 @@ export async function listFanvuePosts(): Promise<
 export async function updateFanvuePost(
     input: UpdateFanvuePostInput,
 ): Promise<FanvueResult<FanvuePostRow>> {
-    const supabase = fanvueSupabase()
     try {
-        const userId = await requireSession()
+        const ctx = await getOrgContext()
+        const userId = ctx.userId
 
-        // Ownership is enforced by matching user_id on the tracked row.
-        const { data: existing, error: exErr } = await supabase
-            .from('fanvue_posts')
+        // Org-wide, no user_id: cualquier miembro de la org puede editar el
+        // historial de posts (mismo criterio que listFanvuePosts arriba).
+        const { data: existing, error: exErr } = await orgTable(
+            ctx,
+            'fanvue_posts',
+        )
             .select('id, creator_user_uuid, fanvue_post_uuid, status')
             .eq('id', input.postId)
-            .eq('user_id', userId)
             .maybeSingle()
         if (exErr) throw new Error(exErr.message)
         if (!existing) return { success: false, error: 'Post not found' }
@@ -600,11 +620,12 @@ export async function updateFanvuePost(
         if (input.publishAt !== undefined) {
             patch.scheduled_at = input.publishAt ?? null
         }
-        const { data: row, error: updErr } = await supabase
-            .from('fanvue_posts')
+        const { data: row, error: updErr } = await orgTable(
+            ctx,
+            'fanvue_posts',
+        )
             .update(patch)
             .eq('id', input.postId)
-            .eq('user_id', userId)
             .select(POST_COLUMNS)
             .single()
         if (updErr) throw new Error(updErr.message)
@@ -622,31 +643,30 @@ export async function updateFanvuePost(
 export async function deleteFanvuePost(
     postId: string,
 ): Promise<FanvueResult<{ id: string }>> {
-    const supabase = fanvueSupabase()
     try {
-        const userId = await requireSession()
-        const { data: existing, error: exErr } = await supabase
-            .from('fanvue_posts')
+        const ctx = await getOrgContext()
+        // Org-wide, no user_id — mismo criterio que updateFanvuePost.
+        const { data: existing, error: exErr } = await orgTable(
+            ctx,
+            'fanvue_posts',
+        )
             .select('id, creator_user_uuid, fanvue_post_uuid')
             .eq('id', postId)
-            .eq('user_id', userId)
             .maybeSingle()
         if (exErr) throw new Error(exErr.message)
         if (!existing) return { success: false, error: 'Post not found' }
 
         if (existing.fanvue_post_uuid) {
-            const client = makeClient(userId)
+            const client = makeClient(ctx.userId)
             await client.deleteCreatorPost(
                 existing.creator_user_uuid,
                 existing.fanvue_post_uuid,
             )
         }
 
-        const { error: delErr } = await supabase
-            .from('fanvue_posts')
+        const { error: delErr } = await orgTable(ctx, 'fanvue_posts')
             .delete()
             .eq('id', postId)
-            .eq('user_id', userId)
         if (delErr) throw new Error(delErr.message)
         return { success: true, data: { id: postId } }
     } catch (e) {
@@ -673,12 +693,13 @@ export async function sendGenerationsToFanvueVault(input: {
     creatorUserUuid?: string | null
     folderName: string
 }): Promise<FanvueResult<{ sent: number; folderName: string }>> {
-    let userId: string
+    let ctx: OrgContext
     try {
-        userId = await requireSession()
+        ctx = await getOrgContext()
     } catch (e) {
         return fail(e)
     }
+    const userId = ctx.userId
 
     const folderName = input.folderName.trim()
     if (!folderName) {
@@ -695,8 +716,6 @@ export async function sendGenerationsToFanvueVault(input: {
         return { success: false, error: 'Select at least one item' }
     }
 
-    const supabase = fanvueSupabase()
-
     try {
         const connection = await loadConnection(userId)
         if (!connection)
@@ -705,8 +724,10 @@ export async function sendGenerationsToFanvueVault(input: {
         // Mismo control que al publicar: en modo agencia el creator tiene que
         // estar gestionado por ESTA conexión.
         if (input.creatorUserUuid) {
-            const { data: creator, error: creatorErr } = await supabase
-                .from('fanvue_creators')
+            const { data: creator, error: creatorErr } = await orgTable(
+                ctx,
+                'fanvue_creators',
+            )
                 .select('creator_user_uuid')
                 .eq('connection_id', connection.id)
                 .eq('creator_user_uuid', input.creatorUserUuid)
@@ -720,19 +741,21 @@ export async function sendGenerationsToFanvueVault(input: {
             }
         }
 
-        const { data: gens, error: genErr } = await supabase
-            .from('generations')
-            .select('id, media_type, storage_path, user_id, metadata')
+        // Mismo cierre que en createFanvuePost: el filtro de org va en la
+        // consulta (el `if` por user_id no autorizaba nada con user_id null).
+        const { data: gens, error: genErr } = await orgTable(ctx, 'generations')
+            .select('id, media_type, storage_path, metadata')
             .in('id', ids)
         if (genErr) throw new Error(genErr.message)
         if (!gens || gens.length !== ids.length) {
             return { success: false, error: 'Generation not found' }
         }
-        for (const g of gens) {
-            if (g.user_id && g.user_id !== userId) {
-                return { success: false, error: 'Not your media' }
-            }
-        }
+        const genRows = gens as {
+            id: string
+            media_type: string
+            storage_path: string
+            metadata: Record<string, unknown> | null
+        }[]
 
         const client = makeClient(userId)
         const creatorUuid = input.creatorUserUuid ?? null
@@ -741,7 +764,7 @@ export async function sendGenerationsToFanvueVault(input: {
         // se falla sin haber gastado una subida por cada imagen.
         await client.createVaultFolder(creatorUuid, folderName)
 
-        const byId = new Map(gens.map((g) => [g.id, g]))
+        const byId = new Map(genRows.map((g) => [g.id, g]))
         const mediaUuids: string[] = []
         for (const id of ids) {
             const g = byId.get(id)!
@@ -773,10 +796,9 @@ export async function sendGenerationsToFanvueVault(input: {
         // hay que FUSIONAR: escribir el objeto entero borraria favorite,
         // nsfw y lo que haya puesto el usuario.
         const sentAt = new Date().toISOString()
-        for (const g of gens) {
+        for (const g of genRows) {
             const prev = (g.metadata ?? {}) as Record<string, unknown>
-            const { error: markError } = await supabase
-                .from('generations')
+            const { error: markError } = await orgTable(ctx, 'generations')
                 .update({
                     metadata: {
                         ...prev,
@@ -813,7 +835,7 @@ export async function listFanvueVaultFolders(
 ): Promise<FanvueResult<{ name: string; mediaCount: number }[]>> {
     let userId: string
     try {
-        userId = await requireSession()
+        userId = (await getOrgContext()).userId
     } catch (e) {
         return fail(e)
     }

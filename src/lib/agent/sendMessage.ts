@@ -2,6 +2,11 @@
  * Core "send an approved agent message to Fanvue" — shared by the manual
  * approve flow (AgentInboxService.approveAndSend) and the autopilot flush.
  * Handles the send, status transitions, counter bump and fan-memory refresh.
+ *
+ * F4.2 Tarea 4 — EXENTO de `orgTable`: el flush de autopilot lo llama desde el
+ * cron, sin sesión. El mensaje (id ya aprobado por nuestro propio flujo) es la
+ * fila que RESUELVE la org; chat, avatar y las transiciones de estado filtran
+ * a partir de ahí por `organization_id` en vez de navegar por ids sueltos.
  */
 import { agentSupabase } from './db'
 import { makeFanvueClient } from './inboxSync'
@@ -41,6 +46,7 @@ export async function sendAgentMessage(messageId: string): Promise<SendAgentMess
     const { data: chat } = await supabase
         .from('agent_chats')
         .select('*')
+        .eq('organization_id', msg.organization_id)
         .eq('id', msg.chat_id)
         .single()
     if (!chat) return { success: false, error: 'Chat not found' }
@@ -48,6 +54,7 @@ export async function sendAgentMessage(messageId: string): Promise<SendAgentMess
     const { data: avatar } = await supabase
         .from('avatars')
         .select('user_id, fanvue_creator_uuid')
+        .eq('organization_id', chat.organization_id)
         .eq('id', chat.avatar_id)
         .single()
     if (!avatar?.user_id) return { success: false, error: 'Avatar has no owner' }
@@ -68,10 +75,12 @@ export async function sendAgentMessage(messageId: string): Promise<SendAgentMess
                 send_after: null,
                 updated_at: new Date().toISOString(),
             })
+            .eq('organization_id', msg.organization_id)
             .eq('id', messageId)
         await supabase
             .from('agent_chats')
             .update({ last_message_at: new Date().toISOString(), updated_at: new Date().toISOString() })
+            .eq('organization_id', chat.organization_id)
             .eq('id', chat.id)
         // Counters (best-effort).
         const period = currentPeriod()
@@ -96,6 +105,7 @@ export async function sendAgentMessage(messageId: string): Promise<SendAgentMess
         await supabase
             .from('agent_messages')
             .update({ status: 'failed', error_message: message, updated_at: new Date().toISOString() })
+            .eq('organization_id', msg.organization_id)
             .eq('id', messageId)
         return { success: false, error: message }
     }

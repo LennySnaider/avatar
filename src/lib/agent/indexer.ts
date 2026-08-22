@@ -2,6 +2,12 @@
  * Knowledge indexing. Auto-index runs as fire-and-forget hooks from the
  * posting services (no DB triggers with HTTP calls); bulk reindex lives in
  * AgentService.reindexAvatarContent.
+ *
+ * F4.2 Tarea 4 — EXENTO de `orgTable`: es un hook fire-and-forget que se
+ * dispara desde flujos con y sin sesión, y no LEE nada que haya que autorizar
+ * — sólo escribe una fila cuya `organization_id` llega por parámetro desde el
+ * llamador, que ya resolvió su `ctx`. El upsert va contra
+ * `(avatar_id, source_ref)`, índice único que existe (verificado en la BD).
  */
 import { agentSupabase } from './db'
 import { embedText } from './embeddings'

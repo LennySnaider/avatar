@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/auth'
-import { createServerSupabaseClient } from '@/lib/supabase'
+import { orgTable } from '@/lib/org/orgTable'
 import { getOrgContextForUser } from '@/lib/tenant/getOrgContext'
 
 /** Tope generoso: el nombre solo etiqueta la voz en la UI, pero sin límite una
@@ -44,12 +44,9 @@ export async function POST(req: NextRequest) {
         )
     }
 
-    const supabase = createServerSupabaseClient()
-    const { data: updated, error } = await supabase
-        .from('cloned_voices')
+    const { data: updated, error } = await orgTable(ctx, 'cloned_voices')
         .update({ name: clean })
         .eq('id', voiceId)
-        .eq('organization_id', ctx.organizationId)
         .select('id, name')
 
     if (error) {
