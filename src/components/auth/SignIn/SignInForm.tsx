@@ -50,9 +50,13 @@ const SignInForm = (props: SignInFormProps) => {
         formState: { errors },
         control,
     } = useForm<SignInFormSchema>({
+        // SIN defaultValues a proposito. La plantilla ECME venia con el usuario
+        // y la contrasena de demo escritos aqui, y eso viajo a produccion: la
+        // pagina de login servia las credenciales del dueno ya tecleadas, a un
+        // clic de entrar. Un formulario de acceso no precarga nada, nunca.
         defaultValues: {
-            email: 'admin-01@ecme.com',
-            password: '123Qwe',
+            email: '',
+            password: '',
         },
         resolver: zodResolver(validationSchema),
     })
