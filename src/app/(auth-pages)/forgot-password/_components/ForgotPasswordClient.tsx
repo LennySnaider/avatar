@@ -1,5 +1,6 @@
 'use client'
 
+import apiErrorMessage from '@/utils/apiErrorMessage'
 import { apiForgotPassword } from '@/services/AuthService'
 import ForgotPassword from '@/components/auth/ForgotPassword'
 import { toast } from '@/components/ui/toast'
@@ -23,7 +24,7 @@ const ForgotPasswordClient = () => {
             )
             setEmailSent(true)
         } catch (error) {
-            setMessage(error as string)
+            setMessage(apiErrorMessage(error))
         } finally {
             setSubmitting(false)
         }

@@ -4,10 +4,12 @@ import { useState, useRef } from 'react'
 import Avatar from '@/components/ui/Avatar'
 import Button from '@/components/ui/Button'
 import Input from '@/components/ui/Input'
+import Notification from '@/components/ui/Notification'
+import { toast } from '@/components/ui/toast'
 import ConfirmDialog from '@/components/shared/ConfirmDialog'
 import { Form, FormItem } from '@/components/ui/Form'
+import changePassword from '@/server/actions/user/changePassword'
 import classNames from '@/utils/classNames'
-import sleep from '@/utils/sleep'
 import isLastChild from '@/utils/isLastChild'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useForm, Controller } from 'react-hook-form'
@@ -40,14 +42,22 @@ const authenticatorList = [
     },
 ]
 
+// El mínimo se duplica aquí a propósito: la fuente de verdad es el servidor
+// (changePassword lo vuelve a comprobar porque la server action es alcanzable
+// sin pasar por este formulario), pero si el cliente no lo exigiera el usuario
+// escribiría una contraseña corta, pulsaría Update, confirmaría el diálogo y
+// SÓLO entonces vería el rechazo. Mismo número en los dos lados = el error
+// aparece donde se escribe.
+const MIN_PASSWORD_LENGTH = 8
+
 const validationSchema = z
     .object({
         currentPassword: z
             .string()
             .min(1, { message: 'Please enter your current password!' }),
-        newPassword: z
-            .string()
-            .min(1, { message: 'Please enter your new password!' }),
+        newPassword: z.string().min(MIN_PASSWORD_LENGTH, {
+            message: `Your new password must be at least ${MIN_PASSWORD_LENGTH} characters long!`,
+        }),
         confirmNewPassword: z
             .string()
             .min(1, { message: 'Please confirm your new password!' }),
@@ -69,6 +79,7 @@ const SettingsSecurity = () => {
     const {
         getValues,
         handleSubmit,
+        reset,
         formState: { errors },
         control,
     } = useForm<PasswordSchema>({
@@ -77,10 +88,54 @@ const SettingsSecurity = () => {
 
     const handlePostSubmit = async () => {
         setIsSubmitting(true)
-        await sleep(1000)
-        console.log('getValues', getValues())
-        setConfirmationOpen(false)
-        setIsSubmitting(false)
+        try {
+            const { currentPassword, newPassword } = getValues()
+            // Sólo viajan las dos contraseñas: el id del usuario lo pone el
+            // servidor desde la sesión. Mandarlo desde aquí convertiría esta
+            // acción en "cambia la contraseña de quien yo diga".
+            const result = await changePassword({
+                currentPassword,
+                newPassword,
+            })
+
+            if (result.success) {
+                // reset() vacía los tres campos: dejar la contraseña nueva
+                // escrita en un input de una pantalla ya guardada no aporta
+                // nada y la deja a la vista de quien pase por delante.
+                reset()
+                toast.push(
+                    <Notification title="Password updated" type="success">
+                        {result.message}
+                    </Notification>,
+                    { placement: 'top-center' },
+                )
+            } else {
+                toast.push(
+                    <Notification
+                        title="Could not update password"
+                        type="danger"
+                    >
+                        {result.message}
+                    </Notification>,
+                    { placement: 'top-center' },
+                )
+            }
+        } catch (error) {
+            // Fallo de transporte / excepción no controlada de la acción. No
+            // se enseña el error crudo: puede llevar detalle de infraestructura.
+            console.error('changePassword failed:', error)
+            toast.push(
+                <Notification title="Could not update password" type="danger">
+                    Something went wrong. Please try again.
+                </Notification>,
+                { placement: 'top-center' },
+            )
+        } finally {
+            // El diálogo se cierra TAMBIÉN cuando falla: el campo que hay que
+            // corregir (la contraseña actual) está detrás de él.
+            setConfirmationOpen(false)
+            setIsSubmitting(false)
+        }
     }
 
     const onSubmit = async () => {

@@ -1,5 +1,6 @@
 'use client'
 
+import apiErrorMessage from '@/utils/apiErrorMessage'
 import ResetPassword from '@/components/auth/ResetPassword'
 import Split from '@/components/layouts/AuthLayout/Split'
 import { apiResetPassword } from '@/services/AuthService'
@@ -24,7 +25,7 @@ const ResetPasswordDemoSplit = () => {
             })
             setResetComplete?.(true)
         } catch (error) {
-            setMessage(error as string)
+            setMessage(apiErrorMessage(error))
         } finally {
             setSubmitting(false)
         }

@@ -1,5 +1,6 @@
 'use client'
 
+import apiErrorMessage from '@/utils/apiErrorMessage'
 import ForgotPassword from '@/components/auth/ForgotPassword'
 import Simple from '@/components/layouts/AuthLayout/Simple'
 import { apiForgotPassword } from '@/services/AuthService'
@@ -17,7 +18,7 @@ const ForgotPasswordDemoSimple = () => {
             await apiForgotPassword(values)
             setEmailSent(true)
         } catch (error) {
-            setMessage(error as string)
+            setMessage(apiErrorMessage(error))
         } finally {
             setSubmitting(false)
         }

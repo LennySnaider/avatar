@@ -1,5 +1,6 @@
 'use client'
 
+import apiErrorMessage from '@/utils/apiErrorMessage'
 import ResetPassword from '@/components/auth/ResetPassword'
 import { apiResetPassword } from '@/services/AuthService'
 import { useSearchParams } from 'next/navigation'
@@ -23,7 +24,7 @@ const ResetPasswordClient = () => {
             })
             setResetComplete?.(true)
         } catch (error) {
-            setMessage(error as string)
+            setMessage(apiErrorMessage(error))
         } finally {
             setSubmitting(false)
         }
