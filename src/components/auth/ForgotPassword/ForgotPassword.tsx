@@ -33,8 +33,17 @@ export const ForgotPassword = ({
                 {emailSent ? (
                     <>
                         <h3 className="mb-2">Check your email</h3>
+                        {/*
+                          "We have sent a password recovery to your email" era
+                          una afirmación que el servidor NO puede respaldar: la
+                          respuesta de forgot-password es idéntica exista o no
+                          la cuenta, precisamente para que el formulario no
+                          delate qué correos están registrados. Esta redacción
+                          condicional es verdad en los dos casos.
+                        */}
                         <p className="font-semibold heading-text">
-                            We have sent a password recovery to your email
+                            If an account exists for that email address, we have
+                            sent it a link to reset the password
                         </p>
                     </>
                 ) : (

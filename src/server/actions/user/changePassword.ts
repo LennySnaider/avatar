@@ -3,6 +3,7 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import { auth } from '@/auth'
 import { createServerSupabaseClient } from '@/lib/supabase'
 import { hashPassword, verifyPassword } from '@/lib/auth/password'
+import { MIN_PASSWORD_LENGTH } from '@/lib/auth/passwordPolicy'
 
 /**
  * Cambio de contraseña del usuario LOGUEADO.
@@ -52,11 +53,17 @@ export interface ChangePasswordResult {
 }
 
 /**
- * Mínimo de longitud aplicado EN SERVIDOR. El zod del formulario sólo exigía
- * `min(1)`, y una validación que sólo vive en el cliente no valida nada: la
- * server action es alcanzable sin pasar por el formulario.
+ * El mínimo de longitud (aplicado EN SERVIDOR: el zod del formulario sólo
+ * exigía `min(1)`, y una validación que sólo vive en el cliente no valida
+ * nada) se mudó a `@/lib/auth/passwordPolicy`.
+ *
+ * POR QUÉ SE MUDÓ: la recuperación por correo tiene que aplicar exactamente
+ * el mismo umbral, y este fichero es `'use server'` — ahí todo export debe ser
+ * async, así que un `export const` no era opción y el número habría acabado
+ * copiado en dos sitios. Dos constantes que deben ser iguales y viven
+ * separadas divergen: el día que una suba a 12, la otra sigue siendo la puerta
+ * ancha.
  */
-const MIN_PASSWORD_LENGTH = 8
 
 /** Fila mínima de `users` que necesita esta acción (la tabla no está en los tipos generados). */
 interface UserPasswordRow {
