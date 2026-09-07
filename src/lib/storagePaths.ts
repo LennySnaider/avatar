@@ -92,9 +92,22 @@ export function orgOwnsStoragePath(
  * Por eso el bug "seguía" solo en los equipos de siempre. Cambiar la URL es la
  * única forma de escapar: otra clave de caché, entrada nueva, ya con CORS.
  *
- * Solo VÍDEO a propósito: las imágenes se ven bien y forzar la re-descarga de
- * ~4.400 no tiene justificación. Si algún día el síntoma aparece en imágenes,
- * amplía `ES_VIDEO` y sube el número.
+ * DÓNDE SE APLICA HOY (y por qué no en todo):
+ *  - VÍDEOS de `generations` — el caso original.
+ *  - REFERENCIAS de avatar (`getReferenceMediaUrl`) — añadido el 07-sep. Aquí
+ *    el envenenador fue NUESTRO: al arreglar el selector (77406c7) esas URLs
+ *    pasaron a pintarse en `<img>` y a precargarse con `new Image()`, las dos
+ *    cosas SIN CORS. El `fetch()` de `AvatarCard` sobre las MISMAS urls
+ *    reutilizaba esa entrada y el navegador la rechazaba: todas las caras de
+ *    la lista de avatares, en blanco.
+ *  - Las IMÁGENES de la galería NO lo llevan: se ven bien, y forzar la
+ *    re-descarga de ~3.400 no tiene justificación.
+ *
+ * LA LECCIÓN, para el próximo: unificar el modo CORS impide envenenamientos
+ * NUEVOS, pero **no cura** los navegadores ya envenenados. Cada vez que una URL
+ * de R2 empiece a pedirse en dos modos distintos hacen falta LAS DOS cosas —
+ * unificar el modo Y cambiar la URL. Si el síntoma vuelve en otro sitio, mete
+ * ese caso aquí y SUBE el número.
  */
 const CORS_CACHE_ESCAPE = '2'
 const ES_VIDEO = /\.(mp4|webm|mov)$/i
@@ -185,7 +198,13 @@ export function getReferenceMediaUrl(
         const base = process.env.NEXT_PUBLIC_R2_PUBLIC_BASE_URL
         if (base) {
             const encoded = path.split('/').map(encodeURIComponent).join('/')
-            return `${base.replace(/\/$/, '')}/${encoded}`
+            // `?v=` ESCAPA de las entradas de cache ya envenenadas. Ver
+            // CORS_CACHE_ESCAPE arriba: unificar el modo CORS impide
+            // envenenamientos NUEVOS, pero no cura los navegadores que ya
+            // guardaron la respuesta sin `Access-Control-Allow-Origin` —
+            // esta sellada `immutable` un ANO y ni un reload la tira. Otra
+            // URL = otra clave de cache = entrada nueva, ya con CORS.
+            return `${base.replace(/\/$/, '')}/${encoded}?v=${CORS_CACHE_ESCAPE}`
         }
         console.warn('[storagePaths] ref r2 sin NEXT_PUBLIC_R2_PUBLIC_BASE_URL')
     }

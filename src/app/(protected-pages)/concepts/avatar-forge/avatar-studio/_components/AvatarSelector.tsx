@@ -50,6 +50,13 @@ const warmThumbnails = (list: { thumbnailUrl?: string | null }[]) => {
         for (const a of list.slice(0, WARM_LIMIT)) {
             if (!a.thumbnailUrl) continue
             const img = new window.Image()
+            // CRITICO: la precarga tambien va en modo CORS. Sin esto, esta
+            // linea era el ENVENENADOR — pedia la imagen sin `Origin`, R2
+            // respondia sin `Vary` y sellado inmutable un ano, y el `fetch()`
+            // de AvatarCard sobre la MISMA url reutilizaba esa entrada sin
+            // `Access-Control-Allow-Origin`. Resultado: todas las caras de la
+            // lista de avatares en blanco.
+            img.crossOrigin = 'anonymous'
             img.decoding = 'async'
             img.src = a.thumbnailUrl
         }

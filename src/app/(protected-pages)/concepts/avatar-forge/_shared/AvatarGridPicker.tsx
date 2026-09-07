@@ -29,6 +29,8 @@ const CandidateThumb = ({ candidates, alt }: { candidates: string[]; alt: string
     }
     return (
         <img
+            // Ver la nota del <img> de abajo: un solo modo CORS para todos.
+            crossOrigin="anonymous"
             src={candidates[idx]}
             alt={alt}
             className="w-full aspect-square object-cover"
@@ -89,7 +91,15 @@ const AvatarGridPicker = ({
                             alt={item.name}
                         />
                     ) : item.thumbnailUrl ? (
+                            // MISMO MODO CORS que el `fetch()` de
+                            // AvatarCard sobre estas mismas URLs. R2 NO manda
+                            // `Vary: Origin` en la respuesta sin CORS, asi que
+                            // un <img> pelado cachea —inmutable un ANO— una
+                            // entrada sin `Access-Control-Allow-Origin`, y el
+                            // fetch posterior la reutiliza y el navegador la
+                            // rechaza. Un modo para todos = una sola entrada.
                         <img
+                            crossOrigin="anonymous"
                             src={item.thumbnailUrl}
                             alt={item.name}
                             className="w-full aspect-square object-cover"
