@@ -26,6 +26,13 @@ export default {
             if (user) {
                 token.authority = user.authority
             }
+            // NOTE: the `trigger === 'update'` branch (re-reads the display
+            // name from `users` after Settings > Profile saves it) deliberately
+            // lives ONLY in src/auth.ts — it hits the database, which this
+            // edge-bundled module must never do. This copy is what middleware
+            // runs, and middleware only decodes an existing token: the update
+            // trigger reaches the /api/auth/session handler, which is built
+            // from src/auth.ts.
             return token
         },
         async session({ session, token }) {

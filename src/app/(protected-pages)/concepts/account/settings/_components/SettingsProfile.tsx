@@ -1,361 +1,251 @@
 'use client'
 
-import { useMemo, useEffect } from 'react'
+import { useEffect, useState } from 'react'
+import { useRouter } from 'next/navigation'
+import { useSession } from 'next-auth/react'
 import Input from '@/components/ui/Input'
 import Alert from '@/components/ui/Alert'
-import Select, { Option as DefaultOption } from '@/components/ui/Select'
-import Avatar from '@/components/ui/Avatar'
+import Button from '@/components/ui/Button'
+import Notification from '@/components/ui/Notification'
+import { toast } from '@/components/ui/toast'
 import { Form, FormItem } from '@/components/ui/Form'
-import NumericInput from '@/components/shared/NumericInput'
-import { countryList } from '@/constants/countries.constant'
-import { components } from 'react-select'
-import type { ControlProps, OptionProps } from 'react-select'
-import { apiGetSettingsProfile } from '@/services/AccontsService'
+import Loading from '@/components/shared/Loading'
+import getProfile from '@/server/actions/user/getProfile'
+import updateProfileName from '@/server/actions/user/updateProfileName'
+import { MAX_DISPLAY_NAME_LENGTH } from '@/lib/auth/profileName'
 import useSWR from 'swr'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useForm, Controller } from 'react-hook-form'
 import { z } from 'zod'
-import { HiOutlineUser } from 'react-icons/hi'
-import type { GetSettingsProfileResponse } from '../types'
 
 type ProfileSchema = {
-    firstName: string
-    lastName: string
-    email: string
-    dialCode: string
-    phoneNumber: string
-    img: string
-    country: string
-    address: string
-    postcode: string
-    city: string
-}
-
-type CountryOption = {
-    label: string
-    dialCode: string
-    value: string
-}
-
-const { Control } = components
-
-// El esquema se conserva aunque hoy no valide nada: es la forma exacta que
-// tendra que aceptar el guardado real, y borrarlo obligaria a redescubrirla.
-const validationSchema = z.object({
-    firstName: z.string().min(1, { message: 'First name required' }),
-    lastName: z.string().min(1, { message: 'Last name required' }),
-    email: z
-        .string()
-        .min(1, { message: 'Email required' })
-        .email({ message: 'Invalid email' }),
-    dialCode: z.string().min(1, { message: 'Please select your country code' }),
-    phoneNumber: z
-        .string()
-        .min(1, { message: 'Please input your mobile number' }),
-    country: z.string().min(1, { message: 'Please select a country' }),
-    address: z.string().min(1, { message: 'Addrress required' }),
-    postcode: z.string().min(1, { message: 'Postcode required' }),
-    city: z.string().min(1, { message: 'City required' }),
-    img: z.string(),
-})
-
-const CustomSelectOption = (
-    props: OptionProps<CountryOption> & { variant: 'country' | 'phone' },
-) => {
-    return (
-        <DefaultOption<CountryOption>
-            {...props}
-            customLabel={(data, label) => (
-                <span className="flex items-center gap-2">
-                    <Avatar
-                        shape="circle"
-                        size={20}
-                        src={`/img/countries/${data.value}.png`}
-                    />
-                    {props.variant === 'country' && <span>{label}</span>}
-                    {props.variant === 'phone' && <span>{data.dialCode}</span>}
-                </span>
-            )}
-        />
-    )
-}
-
-const CustomControl = ({ children, ...props }: ControlProps<CountryOption>) => {
-    const selected = props.getValue()[0]
-    return (
-        <Control {...props}>
-            {selected && (
-                <Avatar
-                    className="ltr:ml-4 rtl:mr-4"
-                    shape="circle"
-                    size={20}
-                    src={`/img/countries/${selected.value}.png`}
-                />
-            )}
-            {children}
-        </Control>
-    )
+    name: string
 }
 
 /**
- * "Personal information" fingia guardar: `onSubmit` hacia `sleep(500)` y luego
- * `mutate({ ...data, ...values }, false)`. Ese `false` es el que hacia el daño:
- * le dice a SWR que actualice la cache SIN revalidar contra el servidor, asi que
- * el formulario se quedaba tan campante con los datos nuevos, el boton salia del
- * estado de carga y todo parecia guardado. Al recargar la pagina volvia lo de
- * antes, porque /api/setting/profile es GET-only sobre `profileData` de
- * src/mock: ni siquiera existia un endpoint donde escribir.
+ * El limite se importa de `@/lib/auth/profileName`, la MISMA constante que
+ * aplica el servidor. La fuente de verdad es la server action (es alcanzable
+ * sin pasar por este formulario), pero si el cliente no lo exigiera el usuario
+ * escribiria 300 caracteres, pulsaria Save y SOLO entonces veria el rechazo.
+ * Mismo numero en los dos lados = el error aparece donde se escribe.
+ */
+const validationSchema = z.object({
+    name: z
+        .string()
+        .trim()
+        .min(1, { message: 'Please enter your name' })
+        .max(MAX_DISPLAY_NAME_LENGTH, {
+            message: `Your name must be at most ${MAX_DISPLAY_NAME_LENGTH} characters long`,
+        }),
+})
+
+/**
+ * "Personal information" — de maqueta a real, y sólo el NOMBRE.
  *
- * Ademas los datos que se enseñaban no eran los del usuario, sino los del mock
- * (otro nombre, otro email, otra direccion), de modo que la pantalla afirmaba
- * dos cosas falsas a la vez: que ese era tu perfil y que lo habias cambiado.
+ * DE DONDE VIENE: este formulario fingia guardar. `onSubmit` hacia un
+ * `sleep(500)` y luego `mutate({ ...data, ...values }, false)`; ese `false` es
+ * el que hacia el daño, porque le dice a SWR que actualice la cache SIN
+ * revalidar contra el servidor: el boton salia del estado de carga, los campos
+ * se quedaban con los valores nuevos y todo parecia guardado. Al recargar
+ * volvia lo de antes, porque `/api/setting/profile` era GET-only sobre
+ * `profileData` de `src/mock`. Y lo que enseñaba tampoco era tu perfil, sino el
+ * del maquetado. Ayer se dejó en sólo lectura; hoy el nombre se guarda de
+ * verdad.
  *
- * Se deja en SOLO LECTURA en vez de esconderla: el formulario ya no acepta datos
- * que iban a la basura, y el aviso explica de donde sale lo que se ve. El
- * "Upload image" tambien se fue — creaba un `URL.createObjectURL` que moria con
- * la pestaña.
+ * POR QUE SOLO EL NOMBRE (la frontera, con su motivo cada una):
  *
- * Esta es, de las seis maquetas, la mas barata de hacer real: existe la tabla
- * `users` con `name` y `email`, y la sesion ya trae el id. Harian falta una
- * server action que tome el id de la SESION (nunca de un parametro, como en
- * changePassword), un GET que lea la fila en vez del mock, y decidir donde viven
- * los campos que la tabla no tiene (telefono, direccion, ciudad, pais): o se
- * añaden columnas o se recorta el formulario a lo que de verdad guardamos.
- * Enseñar campos que no se persisten seria volver a mentir, mas discretamente.
+ *  - `email` se queda VISIBLE pero no editable. Es la credencial de acceso:
+ *    cambiarla sin verificar la direccion nueva deja al usuario fuera de su
+ *    propia cuenta a la primera errata, y verificar exige un proveedor de
+ *    correo que hoy no existe. El aviso dice eso, no un "proximamente" vacio.
+ *  - Telefono, direccion, ciudad, pais y codigo de pais NO vuelven: la tabla
+ *    `users` no tiene esas columnas. Enseñar un campo editable que no se
+ *    persiste es volver a mentir, sólo que mas discretamente.
+ *  - La foto de perfil tampoco: `image` si existe en la tabla, pero subirla
+ *    exige decidir donde viven las fotos, y el bucket `avatars` es de las
+ *    referencias del producto. Fuera de alcance a proposito. (El "Upload image"
+ *    original creaba un `URL.createObjectURL` que moria con la pestaña.)
+ *
+ * LA SESION: el nombre que pintan la cabecera, el menu de usuario y el SideNav
+ * sale del JWT, no de la base. Guardar y no hacer nada mas dejaria al usuario
+ * viendo "Saved" con su nombre viejo en la esquina hasta el siguiente login.
+ * Se resuelve abajo, en `handleSubmit`.
  */
 const SettingsProfile = () => {
-    const { data } = useSWR(
-        '/api/settings/profile/',
-        () => apiGetSettingsProfile<GetSettingsProfileResponse>(),
-        {
-            revalidateOnFocus: false,
-            revalidateIfStale: false,
-            revalidateOnReconnect: false,
-        },
-    )
+    const [isSubmitting, setIsSubmitting] = useState(false)
 
-    const dialCodeList = useMemo(() => {
-        const newCountryList: Array<CountryOption> = JSON.parse(
-            JSON.stringify(countryList),
-        )
+    const router = useRouter()
+    const { update: updateSession } = useSession()
 
-        return newCountryList.map((country) => {
-            country.label = country.dialCode
-            return country
-        })
-    }, [])
+    const {
+        data: result,
+        isLoading,
+        mutate,
+    } = useSWR('settings-profile', () => getProfile(), {
+        revalidateOnFocus: false,
+        revalidateIfStale: false,
+        revalidateOnReconnect: false,
+    })
 
-    const { reset, control } = useForm<ProfileSchema>({
+    const {
+        handleSubmit,
+        reset,
+        formState: { errors },
+        control,
+    } = useForm<ProfileSchema>({
         resolver: zodResolver(validationSchema),
+        defaultValues: { name: '' },
     })
 
     useEffect(() => {
-        if (data) {
-            reset(data)
+        if (result?.success && result.profile) {
+            reset({ name: result.profile.name })
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [data])
+    }, [result])
+
+    // El email y el error de carga se derivan del resultado de la accion. Se
+    // declaran ANTES de `onSubmit` porque este los usa: dejarlos debajo
+    // funcionaba por como cierra el closure, pero invita a romperlo.
+    const email = result?.success ? (result.profile?.email ?? '') : ''
+    const loadError = result && !result.success ? result.message : null
+
+    const onSubmit = async (values: ProfileSchema) => {
+        setIsSubmitting(true)
+        try {
+            // Sólo viaja el nombre: el id del usuario lo pone el servidor desde
+            // la sesion. Mandarlo desde aqui convertiria esta accion en
+            // "renombra a quien yo diga".
+            const response = await updateProfileName({ name: values.name })
+
+            if (response.success) {
+                // El servidor devuelve el nombre ya normalizado (espacios
+                // colapsados, recortado). Se repinta con ESE valor y no con lo
+                // tecleado: si no, el campo enseñaria una cosa y la base tendria
+                // otra — en pequeño, el mismo bug que se está arreglando.
+                const savedName = response.name ?? values.name
+                reset({ name: savedName })
+                mutate(
+                    { success: true, profile: { name: savedName, email } },
+                    false,
+                )
+
+                /**
+                 * Refresco de la sesion, en dos pasos y en este orden:
+                 *
+                 *  1. `updateSession()` dispara `trigger === 'update'` en el
+                 *     callback `jwt` (src/auth.ts), que RELEE el nombre de la
+                 *     base y reemite la cookie del token. No se le pasa el
+                 *     nombre a proposito: lo que mande el cliente aqui no es de
+                 *     fiar, y el servidor ya sabe leerlo.
+                 *  2. `router.refresh()` porque con el paso 1 NO basta. La
+                 *     cabecera y el menu de usuario no leen `useSession()`:
+                 *     leen `useCurrentSession()`, un contexto propio de la
+                 *     plantilla cuyo valor lo fija el layout raiz (server
+                 *     component) de una sola vez. Ese contexto no se entera de
+                 *     nada hasta que el layout se vuelve a renderizar en
+                 *     servidor — que es justo lo que hace `router.refresh()`,
+                 *     ya con la cookie nueva del paso 1.
+                 */
+                await updateSession()
+                router.refresh()
+
+                toast.push(
+                    <Notification title="Profile updated" type="success">
+                        {response.message}
+                    </Notification>,
+                    { placement: 'top-center' },
+                )
+            } else {
+                toast.push(
+                    <Notification
+                        title="Could not update profile"
+                        type="danger"
+                    >
+                        {response.message}
+                    </Notification>,
+                    { placement: 'top-center' },
+                )
+            }
+        } catch (error) {
+            // Fallo de transporte / excepcion no controlada de la accion. No se
+            // enseña el error crudo: puede llevar detalle de infraestructura.
+            console.error('updateProfileName failed:', error)
+            toast.push(
+                <Notification title="Could not update profile" type="danger">
+                    Something went wrong. Please try again.
+                </Notification>,
+                { placement: 'top-center' },
+            )
+        } finally {
+            setIsSubmitting(false)
+        }
+    }
 
     return (
         <>
             <h4 className="mb-4">Personal information</h4>
-            <Alert showIcon type="warning" className="mb-8">
-                Editing your personal information is not available yet
+            {loadError && (
+                <Alert showIcon type="danger" className="mb-6">
+                    {loadError}
+                </Alert>
+            )}
+            <Alert showIcon type="info" className="mb-6">
+                Your name is the only detail you can change here. Your email
+                address is the credential you sign in with, and changing it
+                safely requires verifying the new address first — that needs an
+                email provider this app does not have connected yet, so it stays
+                read-only until then.
             </Alert>
-            <p className="mb-8 leading-relaxed">
-                These fields are read-only and show sample data from the
-                template, not your account. Your sign-in email and password live
-                under Security.
-            </p>
-            {/*
-                El form se queda como contenedor por el layout de FormItem, pero
-                sin onSubmit: no hay nada que enviar y no debe haber forma de
-                intentarlo con la tecla Enter.
-            */}
-            <Form onSubmit={(e) => e.preventDefault()}>
-                <div className="mb-8">
-                    <Controller
-                        name="img"
-                        control={control}
-                        render={({ field }) => (
-                            <Avatar
-                                size={90}
-                                className="border-4 border-white bg-gray-100 text-gray-300 shadow-lg"
-                                icon={<HiOutlineUser />}
-                                src={field.value}
-                            />
-                        )}
-                    />
-                </div>
-                <div className="grid md:grid-cols-2 gap-4">
-                    <FormItem label="First name">
+            <Loading loading={isLoading}>
+                <Form onSubmit={handleSubmit(onSubmit)}>
+                    <FormItem
+                        label="Name"
+                        invalid={Boolean(errors.name)}
+                        errorMessage={errors.name?.message}
+                    >
                         <Controller
-                            name="firstName"
+                            name="name"
                             control={control}
                             render={({ field }) => (
                                 <Input
                                     type="text"
                                     autoComplete="off"
-                                    placeholder="First Name"
+                                    placeholder="Your name"
+                                    maxLength={MAX_DISPLAY_NAME_LENGTH}
+                                    disabled={Boolean(loadError)}
                                     {...field}
-                                    disabled
                                 />
                             )}
                         />
                     </FormItem>
-                    <FormItem label="User name">
-                        <Controller
-                            name="lastName"
-                            control={control}
-                            render={({ field }) => (
-                                <Input
-                                    type="text"
-                                    autoComplete="off"
-                                    placeholder="Last Name"
-                                    {...field}
-                                    disabled
-                                />
-                            )}
+                    <FormItem label="Email">
+                        {/*
+                            Fuera del `Controller` a proposito: no es un campo
+                            del formulario, es un dato que se enseña. Si viviera
+                            en el form, un `disabled` de mas o de menos lo
+                            convertiria en editable sin que nada mas cambie.
+                        */}
+                        <Input
+                            type="email"
+                            autoComplete="off"
+                            value={email}
+                            readOnly
+                            disabled
                         />
                     </FormItem>
-                </div>
-                <FormItem label="Email">
-                    <Controller
-                        name="email"
-                        control={control}
-                        render={({ field }) => (
-                            <Input
-                                type="email"
-                                autoComplete="off"
-                                placeholder="Email"
-                                {...field}
-                                disabled
-                            />
-                        )}
-                    />
-                </FormItem>
-                <div className="flex items-end gap-4 w-full mb-6">
-                    <FormItem>
-                        <label className="form-label mb-2">Phone number</label>
-                        <Controller
-                            name="dialCode"
-                            control={control}
-                            render={({ field }) => (
-                                <Select<CountryOption>
-                                    isDisabled
-                                    instanceId="dial-code"
-                                    options={dialCodeList}
-                                    {...field}
-                                    className="w-[150px]"
-                                    components={{
-                                        Option: (props) => (
-                                            <CustomSelectOption
-                                                variant="phone"
-                                                {...(props as OptionProps<CountryOption>)}
-                                            />
-                                        ),
-                                        Control: CustomControl,
-                                    }}
-                                    placeholder=""
-                                    value={dialCodeList.filter(
-                                        (option) =>
-                                            option.dialCode === field.value,
-                                    )}
-                                />
-                            )}
-                        />
-                    </FormItem>
-                    <FormItem className="w-full">
-                        <Controller
-                            name="phoneNumber"
-                            control={control}
-                            render={({ field }) => (
-                                <NumericInput
-                                    disabled
-                                    autoComplete="off"
-                                    placeholder="Phone Number"
-                                    value={field.value}
-                                />
-                            )}
-                        />
-                    </FormItem>
-                </div>
-                <h4 className="mb-6">Address information</h4>
-                <FormItem label="Country">
-                    <Controller
-                        name="country"
-                        control={control}
-                        render={({ field }) => (
-                            <Select<CountryOption>
-                                isDisabled
-                                instanceId="country"
-                                options={countryList}
-                                {...field}
-                                components={{
-                                    Option: (props) => (
-                                        <CustomSelectOption
-                                            variant="country"
-                                            {...(props as OptionProps<CountryOption>)}
-                                        />
-                                    ),
-                                    Control: CustomControl,
-                                }}
-                                placeholder=""
-                                value={countryList.filter(
-                                    (option) => option.value === field.value,
-                                )}
-                            />
-                        )}
-                    />
-                </FormItem>
-                <FormItem label="Address">
-                    <Controller
-                        name="address"
-                        control={control}
-                        render={({ field }) => (
-                            <Input
-                                type="text"
-                                autoComplete="off"
-                                placeholder="Address"
-                                {...field}
-                                disabled
-                            />
-                        )}
-                    />
-                </FormItem>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <FormItem label="City">
-                        <Controller
-                            name="city"
-                            control={control}
-                            render={({ field }) => (
-                                <Input
-                                    type="text"
-                                    autoComplete="off"
-                                    placeholder="City"
-                                    {...field}
-                                    disabled
-                                />
-                            )}
-                        />
-                    </FormItem>
-                    <FormItem label="Postal Code">
-                        <Controller
-                            name="postcode"
-                            control={control}
-                            render={({ field }) => (
-                                <Input
-                                    type="text"
-                                    autoComplete="off"
-                                    placeholder="Postal Code"
-                                    {...field}
-                                    disabled
-                                />
-                            )}
-                        />
-                    </FormItem>
-                </div>
-            </Form>
+                    <div className="flex justify-end">
+                        <Button
+                            variant="solid"
+                            type="submit"
+                            loading={isSubmitting}
+                            disabled={Boolean(loadError)}
+                        >
+                            Save
+                        </Button>
+                    </div>
+                </Form>
+            </Loading>
         </>
     )
 }
