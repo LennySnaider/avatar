@@ -59,17 +59,25 @@ export default {
             // que se cuela es la navegacion en si: paginas que no consultan
             // nada del servidor, y el hecho de no ser redirigido al login.
             //
-            // FORMAS LIMPIAS DE CERRARLO (ninguna implementada; requieren
-            // decision explicita porque las tres tienen coste):
-            //   1. Mover la lista de revocaciones a un almacen legible desde el
-            //      edge (Vercel Edge Config o un KV). Sin Postgres en el edge,
-            //      pero anade una lectura de red al middleware de CADA request.
-            //   2. Bajar `session.maxAge` para acortar la vida del token. No
-            //      revoca: solo reduce el plazo maximo.
-            //   3. Que un layout de `(protected-pages)` llame a `auth()` en
-            //      servidor y redirija cuando sea `null`. Sin coste de edge y
-            //      cierra la navegacion; hoy PostLoginLayout es un componente de
-            //      cliente y no lo hace.
+            // ESTADO (06-sep-2026): CERRADO por la via 3, la unica sin
+            // coste en el edge. `src/app/(protected-pages)/layout.tsx` es un
+            // server component que llama a `auth()` y redirige cuando devuelve
+            // null. Por ahi pasa TODA pagina protegida, asi que un token
+            // revocado ya no puede navegar: el middleware lo deja entrar, pero
+            // el layout lo echa antes de pintar nada.
+            //
+            // LO QUE SIGUE SIENDO CIERTO Y CONVIENE NO OLVIDAR: este modulo NO
+            // ve las revocaciones y nunca podra verlas mientras se empaquete en
+            // el edge. Si algun dia aparece una pagina protegida FUERA del
+            // grupo `(protected-pages)`, quedara con el mismo hueco que tuvimos
+            // aqui — la proteccion vive en ese layout, no en el middleware.
+            //
+            // Las otras dos salidas quedan descartadas, no pendientes:
+            //   1. Lista de revocaciones en Edge Config / KV: cerraria tambien
+            //      el middleware, pero anade una lectura de RED a cada request
+            //      de la app. Desproporcionado para lo que cierra.
+            //   2. Bajar `session.maxAge`: no revoca nada, solo acorta el
+            //      plazo maximo. Mitiga, no resuelve.
             return token
         },
         async session({ session, token }) {
