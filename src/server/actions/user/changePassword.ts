@@ -4,6 +4,7 @@ import { auth } from '@/auth'
 import { createServerSupabaseClient } from '@/lib/supabase'
 import { hashPassword, verifyPassword } from '@/lib/auth/password'
 import { MIN_PASSWORD_LENGTH } from '@/lib/auth/passwordPolicy'
+import { rememberPasswordChangedAt } from '@/lib/auth/passwordChangedAt'
 
 /**
  * Cambio de contraseña del usuario LOGUEADO.
@@ -35,6 +36,13 @@ import { MIN_PASSWORD_LENGTH } from '@/lib/auth/passwordPolicy'
  *  - Nunca se devuelve ni se registra el hash ni ninguna de las dos
  *    contraseñas. Los `console.error` de abajo llevan sólo el mensaje del
  *    error de base.
+ *
+ *  - SE CIERRAN LAS SESIONES ABIERTAS. El update escribe también
+ *    `users.password_changed_at`, y el callback `jwt` de src/auth.ts expulsa a
+ *    todo token cuya sesión empezara antes de esa marca. Sin esto, el cambio
+ *    quitaba la llave pero dejaba la puerta abierta: una sesión robada seguía
+ *    dentro hasta que el JWT caducara solo, que es justo lo contrario de lo que
+ *    cree haber hecho quien cambia la contraseña por sospecha.
  */
 
 export interface ChangePasswordInput {
@@ -159,11 +167,25 @@ const changePassword = async (
 
     const newHash = await hashPassword(newPassword)
 
+    /**
+     * `password_changed_at` es la MARCA DE INVALIDACIÓN DE SESIONES: el callback
+     * `jwt` de src/auth.ts expulsa a todo token cuya sesión empezara antes de
+     * este instante (ver src/lib/auth/sessionRevocation.ts).
+     *
+     * POR QUÉ VA EN EL MISMO UPDATE que el hash y no en una segunda escritura:
+     * si fueran dos, un fallo entre medias dejaría la contraseña cambiada y las
+     * sesiones abiertas — el estado exacto que este trabajo viene a eliminar, y
+     * además silencioso. En un solo update, o cambian las dos cosas o no cambia
+     * ninguna.
+     */
+    const cambiadaEn = new Date().toISOString()
+
     const { error: updateError } = await supabase
         .from('users')
         .update({
             password_hash: newHash,
-            updated_at: new Date().toISOString(),
+            password_changed_at: cambiadaEn,
+            updated_at: cambiadaEn,
         })
         // El `.eq` con el id de la SESIÓN es lo que impide que un update sin
         // filtro reescriba la tabla entera. No se toca ninguna otra fila.
@@ -177,9 +199,27 @@ const changePassword = async (
         }
     }
 
+    // Siembra la caché de esta instancia con la marca recién escrita: la
+    // expulsión se hace efectiva aquí de inmediato en vez de esperar a que
+    // caduque la ventana de 30 s. En las demás instancias tarda esa ventana.
+    rememberPasswordChangedAt(userId, cambiadaEn)
+
     return {
         success: true,
-        message: 'Your password has been updated.',
+        /**
+         * El mensaje dice que se cierran las sesiones porque a partir de ahora
+         * ES VERDAD, y porque incluye la de quien está leyendo: su token es
+         * anterior al cambio, así que la próxima petición lo devuelve al login.
+         *
+         * POR QUÉ NO SE SALVA LA SESIÓN ACTUAL: desde un JWT no hay forma de
+         * distinguir "esta pestaña" del resto sin volver a firmar el token, y
+         * cualquier atajo para re-sellarlo (por ejemplo desde el trigger
+         * `update`) se lo podría disparar también el intruso desde su navegador
+         * — sería regalarle la renovación justo a quien se quiere echar. Salir
+         * de más es el lado correcto en el que equivocarse; callárselo, no.
+         */
+        message:
+            'Your password has been updated. All sessions have been signed out, including this one — please sign in again.',
     }
 }
 

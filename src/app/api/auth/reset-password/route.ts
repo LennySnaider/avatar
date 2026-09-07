@@ -5,6 +5,7 @@ import { hashPassword } from '@/lib/auth/password'
 import { MIN_PASSWORD_LENGTH } from '@/lib/auth/passwordPolicy'
 import { hashResetToken, isResetTokenUsable } from '@/lib/auth/resetToken'
 import { clientIp, consumeRateLimit } from '@/lib/auth/rateLimit'
+import { rememberPasswordChangedAt } from '@/lib/auth/passwordChangedAt'
 
 /**
  * Consumo del enlace de recuperación: valida el token y fija la contraseña
@@ -39,37 +40,39 @@ import { clientIp, consumeRateLimit } from '@/lib/auth/rateLimit'
  */
 
 /**
- * DEUDA CONOCIDA — ESTO NO CIERRA LAS SESIONES ABIERTAS.
+ * DEUDA CERRADA — ESTO YA CIERRA LAS SESIONES ABIERTAS.
  *
- * NextAuth v5 está configurado SIN adapter (ver src/auth.ts), así que la
- * sesión es un JWT firmado que vive en la cookie del navegador y NO se
- * consulta contra la base en cada petición. Consecuencia: cambiar
- * `users.password_hash` aquí no expulsa a nadie — quien ya tuviera una sesión
- * iniciada sigue dentro hasta que el token expire por su cuenta.
+ * Aquí decía que no las cerraba. El problema era real: NextAuth v5 está
+ * configurado SIN adapter (ver src/auth.ts), así que la sesión es un JWT
+ * firmado que vive en la cookie y NO se consulta contra la base en cada
+ * petición — cambiar `users.password_hash` no expulsaba a nadie. Y el caso
+ * típico de un reset es justamente "creo que alguien entró en mi cuenta": el
+ * intruso se quedaba dentro hasta que su token caducara solo, con la persona
+ * convencida de haberlo echado.
  *
- * POR QUÉ IMPORTA: el caso típico de un reset es "creo que alguien entró en mi
- * cuenta". Si el intruso conserva su sesión, el reset le quita la llave nueva
- * pero le deja la puerta abierta — que es justo lo contrario de lo que la
- * persona cree haber hecho.
+ * De las dos salidas que quedaron escritas se tomó la (a), la marca de
+ * invalidación, porque la (b) —adapter con tabla `sessions` y
+ * `strategy: 'database'`— cambia el modelo de sesión de toda la app:
  *
- * QUÉ HARÍA FALTA (cualquiera de los dos, no los dos):
+ *  - Columna `users.password_changed_at` (migración
+ *    supabase/migrations/20260906190000_users_password_changed_at.sql), escrita
+ *    en el mismo update que el hash, más abajo.
  *
- *  a) Marca de invalidación: una columna `sessions_valid_from timestamptz` en
- *     `users`, puesta a `now()` en este mismo update y también en
- *     `changePassword`. El callback `jwt` de src/configs/auth.config.ts sella
- *     su instante de emisión en el token, y el callback `session` rechaza todo
- *     token emitido antes de esa marca. COSTE: una lectura de `users` por
- *     petición autenticada (o una caché con su propia ventana de retraso), que
- *     es precisamente lo que hoy se ahorra usando JWT.
+ *  - El callback `jwt` de src/auth.ts —NO el de auth.config.ts, que se empaqueta
+ *    en el middleware edge y no puede tocar la base— compara la marca contra el
+ *    claim `sessionStartedAt` que el token sella en el login, y devuelve `null`
+ *    (lo que destruye la sesión y borra la cookie) cuando la sesión es anterior.
  *
- *  b) Sesiones en base de datos: adapter de NextAuth con tabla `sessions` y
- *     `strategy: 'database'`, y borrar aquí las filas del usuario. Más
- *     directo, pero cambia el modelo de sesión de toda la app.
+ *  - El coste que preocupaba —una lectura de `users` por petición autenticada—
+ *    se acota con una caché de 30 s en memoria del proceso
+ *    (src/lib/auth/passwordChangedAt.ts): la expulsión se hace efectiva en menos
+ *    de medio minuto y no añade una lectura por request.
  *
- * No se implementa en este commit porque toca el flujo de autenticación
- * entero, no la recuperación de contraseña; queda escrito aquí, que es donde
- * lo va a leer quien venga a preguntarse si el reset expulsa al intruso. La
- * respuesta hoy es NO.
+ * LO QUE SIGUE SIN CUBRIR, dicho aquí para que no haya que descubrirlo: el
+ * middleware (edge) no puede consultar la base, así que un token ya revocado
+ * SIGUE pasando su comprobación de "hay sesión" hasta que algo en runtime Node
+ * llame a `auth()`. El detalle y las salidas posibles están escritos en
+ * src/configs/auth.config.ts.
  */
 
 /** Misma frase para no-existe, caducado y ya-usado. Ver la cabecera. */
@@ -223,11 +226,23 @@ export async function POST(req: Request) {
         return NextResponse.json({ message: TOKEN_INVALIDO }, { status: 400 })
     }
 
+    /**
+     * `password_changed_at` es la MARCA DE INVALIDACIÓN DE SESIONES (ver la
+     * cabecera). Va en el MISMO update que el hash: si fueran dos escrituras,
+     * un fallo entre medias dejaría la contraseña cambiada y al intruso dentro
+     * — el estado exacto que este endpoint viene a eliminar, y sin avisar.
+     *
+     * Este flujo es el que más lo necesita de los dos: quien llega aquí lo hace
+     * porque perdió el acceso o porque sospecha que alguien más lo tiene.
+     */
+    const cambiadaEn = new Date().toISOString()
+
     const { error: updateError } = await supabase
         .from('users')
         .update({
             password_hash: await hashPassword(newPassword),
-            updated_at: new Date().toISOString(),
+            password_changed_at: cambiadaEn,
+            updated_at: cambiadaEn,
         })
         // El `.eq` con el id que venía DENTRO del token es lo que impide que un
         // update sin filtro reescriba la tabla entera.
@@ -251,10 +266,15 @@ export async function POST(req: Request) {
         )
     }
 
+    // Siembra la caché de esta instancia con la marca recién escrita: aquí la
+    // expulsión es inmediata en vez de esperar la ventana de 30 s. En las demás
+    // instancias tarda esa ventana. No toca la base y no puede fallar.
+    rememberPasswordChangedAt(row.user_id, cambiadaEn)
+
     return NextResponse.json(
         {
             message:
-                'Your password has been updated. You can now sign in with it.',
+                'Your password has been updated and every open session has been signed out. You can now sign in with it.',
         },
         { status: 200 },
     )
