@@ -1,288 +1,61 @@
 'use client'
 
-import { useState } from 'react'
-import Button from '@/components/ui/Button'
-import Tag from '@/components/ui/Tag'
-import Avatar from '@/components/ui/Avatar'
-import Notification from '@/components/ui/Notification'
-import toast from '@/components/ui/toast'
-import CreditCardDialog from '@/components/view/CreditCardDialog'
-import BillingHistory from './BillingHistory'
-import { apiGetSettingsBilling } from '@/services/AccontsService'
-import classNames from '@/utils/classNames'
-import isLastChild from '@/utils/isLastChild'
-import sleep from '@/utils/sleep'
-import { TbPlus } from 'react-icons/tb'
-import useSWR from 'swr'
-import dayjs from 'dayjs'
-import { useRouter } from 'next/navigation'
-import { PiLightningFill } from 'react-icons/pi'
-import { NumericFormat } from 'react-number-format'
+import Alert from '@/components/ui/Alert'
 
-import type {
-    GetSettingsBillingResponse,
-    CreditCard,
-    CreditCardInfo,
-} from '../types'
-
-const months = [
-    'Jan',
-    'Feb',
-    'Mar',
-    'Apr',
-    'May',
-    'Jun',
-    'Jul',
-    'Aug',
-    'Sep',
-    'Oct',
-    'Nov',
-    'Dec',
-]
-
+/**
+ * Esta pestaña era una maqueta de ECME de arriba abajo, y mentia en tres capas
+ * a la vez:
+ *
+ *  1) Afirmaba una suscripcion: pintaba plan, estado "active", ciclo de
+ *     facturacion y "Next payment on <fecha> for $<importe>" leyendo
+ *     /api/setting/billing, que devolvia `billingSettingsData` de src/mock. Es
+ *     decir, la app le decia al usuario que le ibamos a cobrar una cantidad
+ *     concreta en una fecha concreta sin que existiera ni suscripcion ni cargo.
+ *  2) Afirmaba metodos de pago guardados: tarjetas VISA/MASTER de mentira, con
+ *     su "Primary" y su caducidad, y un dialogo de añadir/editar cuyo submit era
+ *     `console.log(values)` + `sleep(500)` + toast "Credit card added!". Al
+ *     recargar la tarjeta desaparecia, porque nunca salio del navegador.
+ *  3) Afirmaba un historial de transacciones: facturas inventadas con importes y
+ *     estados, en un componente BillingHistory que solo vivia aqui.
+ *
+ * Y el boton "Change plan" llevaba a /concepts/account/pricing con
+ * ?subcription=basic&cycle=monthly, que era justo lo que hacia que la pagina de
+ * precios dijera "Current plan". Se retira: era el unico camino desde el menu de
+ * usuario real hasta el checkout falso.
+ *
+ * NO se implementa aqui a proposito — cobrar exige pasarela y el proyecto va en
+ * measure-only (F5.5 del ledger, ENFORCE_LIMITS apagado). Lo que haria falta
+ * para que esta pantalla vuelva a tener contenido:
+ *   - proveedor de pagos + webhook de confirmacion (ver PaymentDialog.tsx, que
+ *     lleva la lista completa),
+ *   - tabla de suscripciones por organizacion, con plan, estado y proximo cargo
+ *     REALES, y su enganche con el ledger de tokens que ya existe,
+ *   - metodos de pago referenciados por token del proveedor: aqui nunca debe
+ *     guardarse un PAN,
+ *   - historial leido de las facturas del proveedor, no de una tabla propia.
+ * Se borraron BillingHistory.tsx, /api/setting/billing y apiGetSettingsBilling
+ * en el mismo cambio: eran los conductos de los datos falsos. La tabla se vuelve
+ * a escribir cuando haya facturas de verdad que enseñar.
+ */
 const SettingsBilling = () => {
-    const router = useRouter()
-
-    const [selectedCard, setSelectedCard] = useState<{
-        type: 'NEW' | 'EDIT' | ''
-        dialogOpen: boolean
-        cardInfo: Partial<CreditCardInfo>
-    }>({
-        type: '',
-        dialogOpen: false,
-        cardInfo: {},
-    })
-
-    const {
-        data = {
-            currentPlan: {
-                plan: '',
-                status: '',
-                billingCycle: '',
-                nextPaymentDate: null,
-                amount: null,
-            },
-            paymentMethods: [],
-            transactionHistory: [],
-        },
-    } = useSWR(
-        '/api/settings/billing/',
-        () => apiGetSettingsBilling<GetSettingsBillingResponse>(),
-        {
-            revalidateOnFocus: false,
-            revalidateIfStale: false,
-            revalidateOnReconnect: false,
-        },
-    )
-
-    const handleEditCreditCard = (card: Partial<CreditCard>) => {
-        setSelectedCard({
-            type: 'EDIT',
-            dialogOpen: true,
-            cardInfo: card,
-        })
-    }
-
-    const handleCreditCardDialogClose = () => {
-        setSelectedCard({
-            type: '',
-            dialogOpen: false,
-            cardInfo: {},
-        })
-    }
-
-    const handleEditCreditCardSubmit = async () => {
-        await sleep(500)
-        handleCreditCardDialogClose()
-        toast.push(
-            <Notification type="success">Credit card updated!</Notification>,
-            { placement: 'top-center' },
-        )
-    }
-
-    const handleAddCreditCardSubmit = async (values: {
-        cardHolderName: string
-        ccNumber: string
-        cardExpiry: string
-        code: string
-    }) => {
-        console.log('Submitted values', values)
-        await sleep(500)
-        handleCreditCardDialogClose()
-        toast.push(
-            <Notification type="success">Credit card added!</Notification>,
-            { placement: 'top-center' },
-        )
-    }
-
-    const handleChangePlan = () => {
-        router.push('/concepts/account/pricing?subcription=basic&cycle=monthly')
-    }
-
     return (
         <div>
             <h4 className="mb-4">Billing</h4>
-            <div className="bg-gray-100 dark:bg-gray-700 rounded-xl p-6">
-                <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
-                    <div className="flex items-center gap-3">
-                        <div>
-                            <Avatar
-                                className="bg-emerald-500"
-                                shape="circle"
-                                icon={<PiLightningFill />}
-                            />
-                        </div>
-                        <div>
-                            <div className="flex items-center gap-2">
-                                <h6 className="font-bold">
-                                    {data.currentPlan.plan}
-                                </h6>
-                                <Tag className="bg-success-subtle text-success rounded-md border-0">
-                                    <span className="capitalize">
-                                        {data.currentPlan.status}
-                                    </span>
-                                </Tag>
-                            </div>
-                            <div className="font-semibold">
-                                <span>
-                                    Billing {data.currentPlan.billingCycle}
-                                </span>
-                                <span> | </span>
-                                <span>
-                                    Next payment on{' '}
-                                    {dayjs
-                                        .unix(
-                                            (data.currentPlan
-                                                .nextPaymentDate as number) ||
-                                                0,
-                                        )
-                                        .format('MM/DD/YYYY')}
-                                </span>
-                                <span>
-                                    <span className="mx-1">for</span>
-                                    <NumericFormat
-                                        className="font-bold heading-text"
-                                        displayType="text"
-                                        value={(
-                                            Math.round(
-                                                (data.currentPlan.amount || 0) *
-                                                    100,
-                                            ) / 100
-                                        ).toFixed(2)}
-                                        prefix={'$'}
-                                        thousandSeparator={true}
-                                    />
-                                </span>
-                            </div>
-                        </div>
-                    </div>
-                    <div className="flex">
-                        <Button
-                            size="sm"
-                            variant="solid"
-                            onClick={handleChangePlan}
-                        >
-                            Change plan
-                        </Button>
-                    </div>
-                </div>
+            <Alert showIcon type="warning">
+                Billing is not available yet
+            </Alert>
+            <div className="mt-4 flex flex-col gap-4 leading-relaxed">
+                <p>
+                    There is no subscription, no payment method and no invoice
+                    attached to this account, and this app cannot take payments:
+                    no payment provider is connected.
+                </p>
+                <p>
+                    Usage is currently metered but not billed, so nothing here
+                    will charge you. Any plan or amount you may have seen on
+                    this screen before was placeholder data from the template.
+                </p>
             </div>
-            <div className="mt-8">
-                <h5>Payment method</h5>
-                <div>
-                    {data.paymentMethods?.map((card, index) => (
-                        <div
-                            key={card.cardId}
-                            className={classNames(
-                                'flex items-center justify-between p-4',
-                                !isLastChild(data.paymentMethods, index) &&
-                                    'border-b border-gray-200 dark:border-gray-600',
-                            )}
-                        >
-                            <div className="flex items-center">
-                                {card.cardType === 'VISA' && (
-                                    <img
-                                        src="/img/others/img-8.png"
-                                        alt="visa"
-                                    />
-                                )}
-                                {card.cardType === 'MASTER' && (
-                                    <img
-                                        src="/img/others/img-9.png"
-                                        alt="master"
-                                    />
-                                )}
-                                <div className="ml-3 rtl:mr-3">
-                                    <div className="flex items-center">
-                                        <div className="text-gray-900 dark:text-gray-100 font-semibold">
-                                            {card.cardHolderName} ••••{' '}
-                                            {card.last4Number}
-                                        </div>
-                                        {card.primary && (
-                                            <Tag className="bg-primary-subtle text-primary rounded-md border-0 mx-2">
-                                                <span className="capitalize">
-                                                    {' '}
-                                                    Primary{' '}
-                                                </span>
-                                            </Tag>
-                                        )}
-                                    </div>
-                                    <span>
-                                        Expired{' '}
-                                        {months[parseInt(card.expMonth) - 1]} 20
-                                        {card.expYear}
-                                    </span>
-                                </div>
-                            </div>
-                            <div className="flex">
-                                <Button
-                                    size="sm"
-                                    type="button"
-                                    onClick={() => handleEditCreditCard(card)}
-                                >
-                                    Edit
-                                </Button>
-                            </div>
-                        </div>
-                    ))}
-                    <Button
-                        variant="plain"
-                        icon={<TbPlus />}
-                        onClick={() => {
-                            setSelectedCard({
-                                type: 'NEW',
-                                dialogOpen: true,
-                                cardInfo: {},
-                            })
-                        }}
-                    >
-                        Add payment method
-                    </Button>
-                </div>
-            </div>
-            <div className="mt-8">
-                <h5>Transaction history</h5>
-                <BillingHistory
-                    className="mt-4"
-                    data={data.transactionHistory}
-                />
-            </div>
-            <CreditCardDialog
-                title={
-                    selectedCard.type === 'NEW'
-                        ? 'Add credit card'
-                        : 'Edit credit card'
-                }
-                defaultValues={selectedCard.cardInfo as CreditCard}
-                dialogOpen={selectedCard.dialogOpen}
-                onDialogClose={handleCreditCardDialogClose}
-                onSubmit={
-                    selectedCard.type === 'NEW'
-                        ? (values) =>
-                              handleAddCreditCardSubmit(values)
-                        : handleEditCreditCardSubmit
-                }
-            />
         </div>
     )
 }

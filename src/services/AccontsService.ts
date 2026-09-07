@@ -13,17 +13,3 @@ export async function apiGetSettingsNotification<T>() {
         method: 'get',
     })
 }
-
-export async function apiGetSettingsBilling<T>() {
-    return ApiService.fetchDataWithAxios<T>({
-        url: '/setting/billing',
-        method: 'get',
-    })
-}
-
-export async function apiGetSettingsIntergration<T>() {
-    return ApiService.fetchDataWithAxios<T>({
-        url: '/setting/intergration',
-        method: 'get',
-    })
-}

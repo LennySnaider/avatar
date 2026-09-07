@@ -4,10 +4,8 @@ import PaymentCycleToggle from './_components/PaymentCycleToggle'
 import Faq from './_components/Faq'
 import PaymentDialog from './_components/PaymentDialog'
 import getPricingPlans from '@/server/actions/getPricingPlans'
-import type { PageProps } from '@/@types/common'
 
-export default async function Page({ searchParams }: PageProps) {
-    const params = await searchParams
+export default async function Page() {
     const data = await getPricingPlans()
 
     return (
@@ -17,11 +15,7 @@ export default async function Page({ searchParams }: PageProps) {
                     <h3>Pricing</h3>
                     <PaymentCycleToggle />
                 </div>
-                <Plans
-                    data={data}
-                    subcription={params.subcription as string}
-                    cycle={params.cycle as string}
-                />
+                <Plans data={data} />
             </Card>
             <Faq />
             <PaymentDialog />

@@ -1,9 +1,8 @@
 'use client'
 
 import { useMemo, useEffect } from 'react'
-import Button from '@/components/ui/Button'
-import Upload from '@/components/ui/Upload'
 import Input from '@/components/ui/Input'
+import Alert from '@/components/ui/Alert'
 import Select, { Option as DefaultOption } from '@/components/ui/Select'
 import Avatar from '@/components/ui/Avatar'
 import { Form, FormItem } from '@/components/ui/Form'
@@ -12,13 +11,11 @@ import { countryList } from '@/constants/countries.constant'
 import { components } from 'react-select'
 import type { ControlProps, OptionProps } from 'react-select'
 import { apiGetSettingsProfile } from '@/services/AccontsService'
-import sleep from '@/utils/sleep'
 import useSWR from 'swr'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useForm, Controller } from 'react-hook-form'
 import { z } from 'zod'
 import { HiOutlineUser } from 'react-icons/hi'
-import { TbPlus } from 'react-icons/tb'
 import type { GetSettingsProfileResponse } from '../types'
 
 type ProfileSchema = {
@@ -42,6 +39,8 @@ type CountryOption = {
 
 const { Control } = components
 
+// El esquema se conserva aunque hoy no valide nada: es la forma exacta que
+// tendra que aceptar el guardado real, y borrarlo obligaria a redescubrirla.
 const validationSchema = z.object({
     firstName: z.string().min(1, { message: 'First name required' }),
     lastName: z.string().min(1, { message: 'Last name required' }),
@@ -98,8 +97,34 @@ const CustomControl = ({ children, ...props }: ControlProps<CountryOption>) => {
     )
 }
 
+/**
+ * "Personal information" fingia guardar: `onSubmit` hacia `sleep(500)` y luego
+ * `mutate({ ...data, ...values }, false)`. Ese `false` es el que hacia el daño:
+ * le dice a SWR que actualice la cache SIN revalidar contra el servidor, asi que
+ * el formulario se quedaba tan campante con los datos nuevos, el boton salia del
+ * estado de carga y todo parecia guardado. Al recargar la pagina volvia lo de
+ * antes, porque /api/setting/profile es GET-only sobre `profileData` de
+ * src/mock: ni siquiera existia un endpoint donde escribir.
+ *
+ * Ademas los datos que se enseñaban no eran los del usuario, sino los del mock
+ * (otro nombre, otro email, otra direccion), de modo que la pantalla afirmaba
+ * dos cosas falsas a la vez: que ese era tu perfil y que lo habias cambiado.
+ *
+ * Se deja en SOLO LECTURA en vez de esconderla: el formulario ya no acepta datos
+ * que iban a la basura, y el aviso explica de donde sale lo que se ve. El
+ * "Upload image" tambien se fue — creaba un `URL.createObjectURL` que moria con
+ * la pestaña.
+ *
+ * Esta es, de las seis maquetas, la mas barata de hacer real: existe la tabla
+ * `users` con `name` y `email`, y la sesion ya trae el id. Harian falta una
+ * server action que tome el id de la SESION (nunca de un parametro, como en
+ * changePassword), un GET que lea la fila en vez del mock, y decidir donde viven
+ * los campos que la tabla no tiene (telefono, direccion, ciudad, pais): o se
+ * añaden columnas o se recorta el formulario a lo que de verdad guardamos.
+ * Enseñar campos que no se persisten seria volver a mentir, mas discretamente.
+ */
 const SettingsProfile = () => {
-    const { data, mutate } = useSWR(
+    const { data } = useSWR(
         '/api/settings/profile/',
         () => apiGetSettingsProfile<GetSettingsProfileResponse>(),
         {
@@ -120,28 +145,7 @@ const SettingsProfile = () => {
         })
     }, [])
 
-    const beforeUpload = (files: FileList | null) => {
-        let valid: string | boolean = true
-
-        const allowedFileType = ['image/jpeg', 'image/png']
-        if (files) {
-            const fileArray = Array.from(files)
-            for (const file of fileArray) {
-                if (!allowedFileType.includes(file.type)) {
-                    valid = 'Please upload a .jpeg or .png file!'
-                }
-            }
-        }
-
-        return valid
-    }
-
-    const {
-        handleSubmit,
-        reset,
-        formState: { errors, isSubmitting },
-        control,
-    } = useForm<ProfileSchema>({
+    const { reset, control } = useForm<ProfileSchema>({
         resolver: zodResolver(validationSchema),
     })
 
@@ -152,73 +156,39 @@ const SettingsProfile = () => {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [data])
 
-    const onSubmit = async (values: ProfileSchema) => {
-        await sleep(500)
-        if (data) {
-            mutate({ ...data, ...values }, false)
-        }
-    }
-
     return (
         <>
-            <h4 className="mb-8">Personal information</h4>
-            <Form onSubmit={handleSubmit(onSubmit)}>
+            <h4 className="mb-4">Personal information</h4>
+            <Alert showIcon type="warning" className="mb-8">
+                Editing your personal information is not available yet
+            </Alert>
+            <p className="mb-8 leading-relaxed">
+                These fields are read-only and show sample data from the
+                template, not your account. Your sign-in email and password live
+                under Security.
+            </p>
+            {/*
+                El form se queda como contenedor por el layout de FormItem, pero
+                sin onSubmit: no hay nada que enviar y no debe haber forma de
+                intentarlo con la tecla Enter.
+            */}
+            <Form onSubmit={(e) => e.preventDefault()}>
                 <div className="mb-8">
                     <Controller
                         name="img"
                         control={control}
                         render={({ field }) => (
-                            <div className="flex items-center gap-4">
-                                <Avatar
-                                    size={90}
-                                    className="border-4 border-white bg-gray-100 text-gray-300 shadow-lg"
-                                    icon={<HiOutlineUser />}
-                                    src={field.value}
-                                />
-                                <div className="flex items-center gap-2">
-                                    <Upload
-                                        showList={false}
-                                        uploadLimit={1}
-                                        beforeUpload={beforeUpload}
-                                        onChange={(files) => {
-                                            if (files.length > 0) {
-                                                field.onChange(
-                                                    URL.createObjectURL(
-                                                        files[0],
-                                                    ),
-                                                )
-                                            }
-                                        }}
-                                    >
-                                        <Button
-                                            variant="solid"
-                                            size="sm"
-                                            type="button"
-                                            icon={<TbPlus />}
-                                        >
-                                            Upload Image
-                                        </Button>
-                                    </Upload>
-                                    <Button
-                                        size="sm"
-                                        type="button"
-                                        onClick={() => {
-                                            field.onChange('')
-                                        }}
-                                    >
-                                        Remove
-                                    </Button>
-                                </div>
-                            </div>
+                            <Avatar
+                                size={90}
+                                className="border-4 border-white bg-gray-100 text-gray-300 shadow-lg"
+                                icon={<HiOutlineUser />}
+                                src={field.value}
+                            />
                         )}
                     />
                 </div>
                 <div className="grid md:grid-cols-2 gap-4">
-                    <FormItem
-                        label="First name"
-                        invalid={Boolean(errors.firstName)}
-                        errorMessage={errors.firstName?.message}
-                    >
+                    <FormItem label="First name">
                         <Controller
                             name="firstName"
                             control={control}
@@ -228,15 +198,12 @@ const SettingsProfile = () => {
                                     autoComplete="off"
                                     placeholder="First Name"
                                     {...field}
+                                    disabled
                                 />
                             )}
                         />
                     </FormItem>
-                    <FormItem
-                        label="User name"
-                        invalid={Boolean(errors.lastName)}
-                        errorMessage={errors.lastName?.message}
-                    >
+                    <FormItem label="User name">
                         <Controller
                             name="lastName"
                             control={control}
@@ -246,16 +213,13 @@ const SettingsProfile = () => {
                                     autoComplete="off"
                                     placeholder="Last Name"
                                     {...field}
+                                    disabled
                                 />
                             )}
                         />
                     </FormItem>
                 </div>
-                <FormItem
-                    label="Email"
-                    invalid={Boolean(errors.email)}
-                    errorMessage={errors.email?.message}
-                >
+                <FormItem label="Email">
                     <Controller
                         name="email"
                         control={control}
@@ -265,23 +229,20 @@ const SettingsProfile = () => {
                                 autoComplete="off"
                                 placeholder="Email"
                                 {...field}
+                                disabled
                             />
                         )}
                     />
                 </FormItem>
                 <div className="flex items-end gap-4 w-full mb-6">
-                    <FormItem
-                        invalid={
-                            Boolean(errors.phoneNumber) ||
-                            Boolean(errors.dialCode)
-                        }
-                    >
+                    <FormItem>
                         <label className="form-label mb-2">Phone number</label>
                         <Controller
                             name="dialCode"
                             control={control}
                             render={({ field }) => (
                                 <Select<CountryOption>
+                                    isDisabled
                                     instanceId="dial-code"
                                     options={dialCodeList}
                                     {...field}
@@ -300,47 +261,33 @@ const SettingsProfile = () => {
                                         (option) =>
                                             option.dialCode === field.value,
                                     )}
-                                    onChange={(option) =>
-                                        field.onChange(option?.dialCode)
-                                    }
                                 />
                             )}
                         />
                     </FormItem>
-                    <FormItem
-                        className="w-full"
-                        invalid={
-                            Boolean(errors.phoneNumber) ||
-                            Boolean(errors.dialCode)
-                        }
-                        errorMessage={errors.phoneNumber?.message}
-                    >
+                    <FormItem className="w-full">
                         <Controller
                             name="phoneNumber"
                             control={control}
                             render={({ field }) => (
                                 <NumericInput
+                                    disabled
                                     autoComplete="off"
                                     placeholder="Phone Number"
                                     value={field.value}
-                                    onChange={field.onChange}
-                                    onBlur={field.onBlur}
                                 />
                             )}
                         />
                     </FormItem>
                 </div>
                 <h4 className="mb-6">Address information</h4>
-                <FormItem
-                    label="Country"
-                    invalid={Boolean(errors.country)}
-                    errorMessage={errors.country?.message}
-                >
+                <FormItem label="Country">
                     <Controller
                         name="country"
                         control={control}
                         render={({ field }) => (
                             <Select<CountryOption>
+                                isDisabled
                                 instanceId="country"
                                 options={countryList}
                                 {...field}
@@ -357,18 +304,11 @@ const SettingsProfile = () => {
                                 value={countryList.filter(
                                     (option) => option.value === field.value,
                                 )}
-                                onChange={(option) =>
-                                    field.onChange(option?.value)
-                                }
                             />
                         )}
                     />
                 </FormItem>
-                <FormItem
-                    label="Address"
-                    invalid={Boolean(errors.address)}
-                    errorMessage={errors.address?.message}
-                >
+                <FormItem label="Address">
                     <Controller
                         name="address"
                         control={control}
@@ -378,16 +318,13 @@ const SettingsProfile = () => {
                                 autoComplete="off"
                                 placeholder="Address"
                                 {...field}
+                                disabled
                             />
                         )}
                     />
                 </FormItem>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <FormItem
-                        label="City"
-                        invalid={Boolean(errors.city)}
-                        errorMessage={errors.city?.message}
-                    >
+                    <FormItem label="City">
                         <Controller
                             name="city"
                             control={control}
@@ -397,15 +334,12 @@ const SettingsProfile = () => {
                                     autoComplete="off"
                                     placeholder="City"
                                     {...field}
+                                    disabled
                                 />
                             )}
                         />
                     </FormItem>
-                    <FormItem
-                        label="Postal Code"
-                        invalid={Boolean(errors.postcode)}
-                        errorMessage={errors.postcode?.message}
-                    >
+                    <FormItem label="Postal Code">
                         <Controller
                             name="postcode"
                             control={control}
@@ -415,19 +349,11 @@ const SettingsProfile = () => {
                                     autoComplete="off"
                                     placeholder="Postal Code"
                                     {...field}
+                                    disabled
                                 />
                             )}
                         />
                     </FormItem>
-                </div>
-                <div className="flex justify-end">
-                    <Button
-                        variant="solid"
-                        type="submit"
-                        loading={isSubmitting}
-                    >
-                        Save
-                    </Button>
                 </div>
             </Form>
         </>

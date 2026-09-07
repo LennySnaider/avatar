@@ -3,9 +3,9 @@
 import Checkbox from '@/components/ui/Checkbox'
 import Radio from '@/components/ui/Radio'
 import Switcher from '@/components/ui/Switcher'
+import Alert from '@/components/ui/Alert'
 import { apiGetSettingsNotification } from '@/services/AccontsService'
 import useSWR from 'swr'
-import cloneDeep from 'lodash/cloneDeep'
 import { TbMessageCircleCheck } from 'react-icons/tb'
 import type { GetSettingsNotificationResponse } from '../types'
 
@@ -64,6 +64,26 @@ const notifyMeOption: {
     },
 ]
 
+/**
+ * Esta era la maqueta mas silenciosa de las seis, y por eso la mas traicionera:
+ * cada handler hacia `mutate(newData, false)` sobre la cache de SWR. Sin toast,
+ * sin boton de guardar, sin latencia — el interruptor cambiaba al instante y
+ * parecia guardado precisamente porque no habia ceremonia ninguna. En realidad
+ * /api/setting/notification es GET-only sobre `notificationSettingsData` de
+ * src/mock: no existia el endpoint donde escribir, y al recargar volvia todo a
+ * su sitio.
+ *
+ * Lo que se rompia por ello: alguien apagaba "Email notification" creyendo que
+ * dejaba de recibir correo. Hoy da igual porque la app no manda esos correos ni
+ * pinta esas notificaciones de escritorio, pero el dia que las mande, este
+ * interruptor no las habria apagado.
+ *
+ * Se deja en SOLO LECTURA con las opciones a la vista, porque enseñan que
+ * preferencias estan previstas. Para hacerlo real harian falta: una tabla de
+ * preferencias por usuario, un PUT que la escriba, y sobre todo que ALGUIEN LAS
+ * LEA — un interruptor que se guarda pero que ningun emisor consulta es la misma
+ * mentira con un viaje a la base de datos en medio.
+ */
 const SettingsNotification = () => {
     const {
         data = {
@@ -72,7 +92,6 @@ const SettingsNotification = () => {
             unreadMessageBadge: false,
             notifymeAbout: '',
         },
-        mutate,
     } = useSWR(
         '/api/settings/notification/',
         () => apiGetSettingsNotification<GetSettingsNotificationResponse>(),
@@ -83,49 +102,17 @@ const SettingsNotification = () => {
         },
     )
 
-    const handleEmailNotificationOptionChange = (values: string[]) => {
-        const newData = cloneDeep(data)
-        newData.email = values
-        mutate(newData, false)
-    }
-
-    const handleEmailNotificationOptionCheckAll = (value: boolean) => {
-        const newData = cloneDeep(data)
-        if (value) {
-            newData.email = [
-                'newsAndUpdate',
-                'tipsAndTutorial',
-                'offerAndPromotion',
-                'followUpReminder',
-            ]
-        } else {
-            newData.email = []
-        }
-
-        mutate(newData, false)
-    }
-
-    const handleDesktopNotificationCheck = (value: boolean) => {
-        const newData = cloneDeep(data)
-        newData.desktop = value
-        mutate(newData, false)
-    }
-
-    const handleUnreadMessagebadgeCheck = (value: boolean) => {
-        const newData = cloneDeep(data)
-        newData.unreadMessageBadge = value
-        mutate(newData, false)
-    }
-
-    const handleNotifyMeChange = (value: string) => {
-        const newData = cloneDeep(data)
-        newData.notifymeAbout = value
-        mutate(newData, false)
-    }
-
     return (
         <div>
-            <h4>Notification</h4>
+            <h4 className="mb-4">Notification</h4>
+            <Alert showIcon type="warning">
+                Notification preferences are not available yet
+            </Alert>
+            <p className="mt-4 leading-relaxed">
+                These settings are read-only: nothing is stored, and no email or
+                desktop notification is sent from this app yet. The values below
+                are sample data from the template.
+            </p>
             <div className="mt-2">
                 <div className="flex items-center justify-between py-6 border-b border-gray-200 dark:border-gray-600">
                     <div>
@@ -136,10 +123,7 @@ const SettingsNotification = () => {
                         </p>
                     </div>
                     <div>
-                        <Switcher
-                            checked={data.desktop}
-                            onChange={handleDesktopNotificationCheck}
-                        />
+                        <Switcher disabled checked={data.desktop} />
                     </div>
                 </div>
                 <div className="flex items-center justify-between py-6 border-b border-gray-200 dark:border-gray-600">
@@ -151,20 +135,17 @@ const SettingsNotification = () => {
                         </p>
                     </div>
                     <div>
-                        <Switcher
-                            checked={data.unreadMessageBadge}
-                            onChange={handleUnreadMessagebadgeCheck}
-                        />
+                        <Switcher disabled checked={data.unreadMessageBadge} />
                     </div>
                 </div>
                 <div className="py-6 border-b border-gray-200 dark:border-gray-600">
                     <h5>Enable unread notification badge</h5>
                     <div className="mt-4">
                         <Radio.Group
+                            disabled
                             vertical
                             className="flex flex-col gap-6"
                             value={data.notifymeAbout}
-                            onChange={handleNotifyMeChange}
                         >
                             {notifyMeOption.map((option) => (
                                 <div key={option.value} className="flex gap-4">
@@ -194,22 +175,18 @@ const SettingsNotification = () => {
                         </p>
                     </div>
                     <div>
-                        <Switcher
-                            checked={data.email.length > 0}
-                            onChange={handleEmailNotificationOptionCheckAll}
-                        />
+                        <Switcher disabled checked={data.email.length > 0} />
                     </div>
                 </div>
                 <Checkbox.Group
                     vertical
                     className="flex flex-col gap-6"
                     value={data.email}
-                    onChange={handleEmailNotificationOptionChange}
                 >
                     {emailNotificationOption.map((option) => (
                         <div key={option.value} className="flex gap-4">
                             <div className="mt-1.5">
-                                <Checkbox value={option.value} />
+                                <Checkbox disabled value={option.value} />
                             </div>
                             <div>
                                 <h6>{option.label}</h6>

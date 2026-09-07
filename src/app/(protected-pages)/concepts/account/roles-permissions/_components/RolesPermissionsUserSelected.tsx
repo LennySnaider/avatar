@@ -1,38 +1,25 @@
 'use client'
 
-import { useState } from 'react'
 import StickyFooter from '@/components/shared/StickyFooter'
-import Button from '@/components/ui/Button'
-import ConfirmDialog from '@/components/shared/ConfirmDialog'
 import { useRolePermissionsStore } from '../_store/rolePermissionsStore'
 import { TbChecks } from 'react-icons/tb'
 
+/**
+ * Aqui habia un "Delete" con ConfirmDialog de tipo danger y el texto "This
+ * action can't be undo", y lo unico que hacia era filtrar el array del store:
+ * las filas desaparecian de la tabla y volvian intactas al recargar. Es la misma
+ * mentira que el resto de esta pagina, pero en la version peor —la pantalla
+ * afirmaba haber BORRADO cuentas— asi que la accion se retira en vez de dejarla
+ * inerte: un boton destructivo que no destruye acaba usandose de verdad el dia
+ * que alguien lo conecte a medias.
+ *
+ * Para que vuelva hace falta lo mismo que para toda la fase de roles (ver
+ * RolesPermissionsAccessDialog.tsx): usuarios reales de la organizacion, una
+ * baja que decida si es borrado o desactivacion, y la comprobacion en servidor.
+ * La seleccion se conserva porque no afirma nada: contar lo marcado es cierto.
+ */
 const RolesPermissionsUserSelected = () => {
-    const userList = useRolePermissionsStore((state) => state.userList)
-    const setSelectAllUser = useRolePermissionsStore(
-        (state) => state.setSelectAllUser,
-    )
     const selectedUser = useRolePermissionsStore((state) => state.selectedUser)
-    const setUserList = useRolePermissionsStore((state) => state.setUserList)
-
-    const [deleteConfirmationOpen, setDeleteConfirmationOpen] = useState(false)
-
-    const handleDelete = () => {
-        setDeleteConfirmationOpen(true)
-    }
-
-    const handleCancel = () => {
-        setDeleteConfirmationOpen(false)
-    }
-
-    const handleConfirmDelete = () => {
-        const newUserList = userList.filter((user) => {
-            return !selectedUser.some((selected) => selected.id === user.id)
-        })
-        setSelectAllUser([])
-        setUserList(newUserList)
-        setDeleteConfirmationOpen(false)
-    }
 
     return (
         <>
@@ -44,54 +31,22 @@ const RolesPermissionsUserSelected = () => {
                 >
                     <div className="container mx-auto">
                         <div className="flex items-center justify-between">
-                            <span>
-                                {selectedUser.length > 0 && (
-                                    <span className="flex items-center gap-2">
-                                        <span className="text-lg text-primary">
-                                            <TbChecks />
-                                        </span>
-                                        <span className="font-semibold flex items-center gap-1">
-                                            <span className="heading-text">
-                                                {selectedUser.length} Users
-                                            </span>
-                                            <span>selected</span>
-                                        </span>
+                            <span className="flex items-center gap-2">
+                                <span className="text-lg text-primary">
+                                    <TbChecks />
+                                </span>
+                                <span className="font-semibold flex items-center gap-1">
+                                    <span className="heading-text">
+                                        {selectedUser.length} Users
                                     </span>
-                                )}
+                                    <span>selected</span>
+                                </span>
                             </span>
-
-                            <div className="flex items-center">
-                                <Button
-                                    size="sm"
-                                    className="ltr:mr-3 rtl:ml-3"
-                                    type="button"
-                                    customColorClass={() =>
-                                        'border-error ring-1 ring-error text-error hover:border-error hover:ring-error hover:text-error'
-                                    }
-                                    onClick={handleDelete}
-                                >
-                                    Delete
-                                </Button>
-                            </div>
+                            <span>No bulk action is available yet</span>
                         </div>
                     </div>
                 </StickyFooter>
             )}
-            <ConfirmDialog
-                isOpen={deleteConfirmationOpen}
-                type="danger"
-                title="Remove users"
-                onClose={handleCancel}
-                onRequestClose={handleCancel}
-                onCancel={handleCancel}
-                onConfirm={handleConfirmDelete}
-            >
-                <p>
-                    {' '}
-                    Are you sure you want to remove these users? This action
-                    can&apos;t be undo.{' '}
-                </p>
-            </ConfirmDialog>
         </>
     )
 }

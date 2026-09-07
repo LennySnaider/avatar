@@ -1,4 +1,5 @@
 import Container from '@/components/shared/Container'
+import Alert from '@/components/ui/Alert'
 import RolesPermissionsGroups from './_components/RolesPermissionsGroups'
 import RolesPermissionsGroupsAction from './_components/RolesPermissionsGroupsAction'
 import RolesPermissionsUserAction from './_components/RolesPermissionsUserAction'
@@ -24,6 +25,19 @@ export default async function Page({ searchParams }: PageProps) {
             status={params.status as string}
         >
             <Container>
+                {/*
+                    El aviso va en la pagina y no en cada componente porque lo
+                    que no existe es la fase entera: los roles, las cuentas y
+                    los permisos que se ven aqui salen de datos mock de la
+                    plantilla (getRolesPermissionsRoles / ...Users). Sin este
+                    cartel, un admin lee la rejilla como el estado real de la
+                    autorizacion de su organizacion.
+                */}
+                <Alert showIcon type="warning" className="mb-6">
+                    Roles &amp; permissions is a preview: the roles and the
+                    accounts below are sample data from the template. Nothing on
+                    this page grants or revokes access.
+                </Alert>
                 <div className="mb-6">
                     <div className="flex items-center justify-between mb-6">
                         <h3>Roles & Permissions</h3>
