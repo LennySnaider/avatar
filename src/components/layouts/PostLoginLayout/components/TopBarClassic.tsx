@@ -6,7 +6,9 @@ import UserProfileDropdown from '@/components//template/UserProfileDropdown'
 import LanguageSelector from '@/components/template/LanguageSelector'
 import Notification from '@/components/template/Notification'
 import HeaderLogo from '@/components/template/HeaderLogo'
-import Search from '@/components/template/Search'
+// El search del navbar se fue (2026-09-10): el que funciona bien es el de
+// generaciones (galería) — este buscaba otra cosa y confundía.
+// import Search from '@/components/template/Search'
 import MobileNav from '@/components/template/MobileNav'
 import HorizontalNav from '@/components/template/HorizontalNav'
 import LayoutBase from '@/components//template/LayoutBase'
@@ -34,7 +36,7 @@ const TopBarClassic = ({ children }: CommonProps) => {
                         headerMiddle={<HorizontalNav />}
                         headerEnd={
                             <ClientOnly>
-                                <Search />
+                                {/* <Search /> */}
                                 <LanguageSelector />
                                 <Notification />
                                 <SidePanel />

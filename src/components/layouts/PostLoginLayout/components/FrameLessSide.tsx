@@ -5,7 +5,9 @@ import Header from '@/components/template/Header'
 import FrameLessGap from '@/components/template/FrameLessGap'
 import SideNavToggle from '@/components/template/SideNavToggle'
 import MobileNav from '@/components/template/MobileNav'
-import Search from '@/components/template/Search'
+// El search del navbar se fue (2026-09-10): el que funciona bien es el de
+// generaciones (galería) — este buscaba otra cosa y confundía.
+// import Search from '@/components/template/Search'
 import LanguageSelector from '@/components/template/LanguageSelector'
 import Notification from '@/components/template/Notification'
 import UserProfileDropdown from '@/components//template/UserProfileDropdown'
@@ -96,7 +98,7 @@ const FrameLessSide = ({ children }: CommonProps) => {
                                 <>
                                     <MobileNav />
                                     <SideNavToggle />
-                                    <Search />
+                                    {/* <Search /> */}
                                 </>
                             }
                             headerEnd={
