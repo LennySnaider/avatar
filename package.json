@@ -14,6 +14,8 @@
         "db:types": "supabase gen types typescript --project-id wiocwfoydyknqmhixpyt > src/@types/database.generated.ts",
         "check:video-cors": "node scripts/check-video-cors.mjs",
         "check:tenant": "node scripts/check-tenant-access.mjs",
+        "preflight:org": "node scripts/preflight-org-counts.mjs",
+        "smoke:org": "node scripts/smoke-org-isolation.mjs",
         "test": "npx --yes tsx --test \"src/**/*.test.ts\""
     },
     "dependencies": {

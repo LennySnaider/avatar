@@ -55,3 +55,4 @@ supabase/.temp/
 
 # salida del rescate de huerfanos (inventario, no codigo)
 .rescue-*.json
+scripts/.preflight-org-counts.snapshot.json
