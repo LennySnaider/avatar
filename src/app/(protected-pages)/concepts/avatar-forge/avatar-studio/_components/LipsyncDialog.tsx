@@ -7,8 +7,11 @@ import { useVoiceStudioStore } from '../../voice-studio/_store/voiceStudioStore'
 import {
     submitLipsyncVideoKieTask,
     checkKieVideoTask,
+    salvageKieTask,
 } from '@/services/KieService'
+import { pollProviderTask } from '../../_utils/pollProviderTask'
 import { apiSaveGeneration } from '@/services/AvatarForgeService'
+import { apiClearPendingGeneration } from '@/services/PendingGenerationService'
 import { downloadMediaUrl } from '../../_utils/mediaDownload'
 import { HiOutlineMicrophone, HiOutlineVolumeUp } from 'react-icons/hi'
 import type { GeneratedMedia } from '../types'
@@ -65,24 +68,34 @@ const LipsyncDialog = ({
             if (!sub.success) {
                 throw new Error(sub.error)
             }
-            const deadlineMs = Date.now() + 30 * 60 * 1000
-            let url: string | null = null
-            while (Date.now() < deadlineMs) {
-                await new Promise((r) => setTimeout(r, 5000))
-                const st = await checkKieVideoTask(sub.taskId)
-                if (st.status === 'done') {
-                    url = st.url
-                    break
-                }
-                if (st.status === 'failed') {
-                    throw new Error(st.error)
-                }
+            const polled = await pollProviderTask({
+                label: `kie-lipsync ${sub.taskId}`,
+                check: () => checkKieVideoTask(sub.taskId),
+                budgetMs: 30 * 60 * 1000,
+                interval: 5000,
+            })
+            if (polled.outcome === 'failed') {
+                throw new Error(polled.error)
             }
-            if (!url) {
-                throw new Error(
-                    `Lipsync timed out (>30 min). Job ${sub.taskId} may still be running on kie.ai/logs.`,
+            let url: string
+            if (polled.outcome === 'done') {
+                url = polled.url
+            } else {
+                // Sin veredicto (plazo agotado o la consulta dejó de
+                // responder): se le pregunta a KIE antes de darlo por perdido.
+                const rescued = await salvageKieTask(sub.taskId, 'VIDEO').catch(
+                    () => null,
                 )
+                if (rescued?.status !== 'done') {
+                    throw new Error(
+                        `${polled.error} Job ${sub.taskId} may still be running on kie.ai/logs — pulsa 🔄 en la galería para reclamarlo.`,
+                    )
+                }
+                url = rescued.url
             }
+            // Entregado: fuera del rastro de reclamables (el submit lo
+            // registra para poder rescatarlo si el poll muere).
+            void apiClearPendingGeneration(sub.taskId, 'delivered')
             setResultUrl(url)
 
             // Register the result in the gallery (the mp4 is already in the

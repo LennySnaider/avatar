@@ -31,6 +31,8 @@ import {
     stripNegatedTattoos,
 } from '@/utils/promptSanitizer'
 import { buildImageRequest } from './kie/dispatch'
+import { probeKieTask } from './kie/taskProbe'
+import { isProviderOutage } from '@/utils/geminiError'
 import type { KieRefWithRole } from './kie/shared'
 import {
     apiTrackPendingGeneration,
@@ -117,13 +119,49 @@ async function trackSyncKieTask(
     prompt: string,
     aspectRatio: string,
 ): Promise<void> {
+    await trackKieTask(taskId, {
+        mediaType: 'IMAGE',
+        model,
+        prompt,
+        aspectRatio,
+        metadata: { syncPoll: true },
+    })
+}
+
+/**
+ * Deja rastro de un taskId EN EL MOMENTO DEL SUBMIT, en el servidor.
+ *
+ * POR QUÉ AQUÍ Y NO EN EL CLIENTE: el camino async lo registraba el navegador
+ * DESPUÉS de recibir el taskId. Si la respuesta de la server action se pierde
+ * —función cortada, 502 del edge, red del móvil— la tarea existe en KIE, se
+ * cobra, y en la app no queda ni el id: el botón de reconciliar contesta
+ * "nada que recuperar" sobre una generación pagada. Registrando aquí, el
+ * rastro existe ANTES de que la respuesta pueda perderse.
+ *
+ * El cliente sigue registrando después (upsert por user_id+task_id) y eso solo
+ * ENRIQUECE la fila con lo que el servidor no sabe (avatar_id, metadata del
+ * run). Nunca duplica.
+ */
+async function trackKieTask(
+    taskId: string,
+    opts: {
+        mediaType: 'IMAGE' | 'VIDEO'
+        model?: string
+        prompt?: string
+        aspectRatio?: string
+        metadata?: Record<string, unknown>
+    },
+): Promise<void> {
     await apiTrackPendingGeneration({
         provider: 'kie',
         taskId,
-        mediaType: 'IMAGE',
-        prompt,
-        aspectRatio,
-        metadata: { model, syncPoll: true },
+        mediaType: opts.mediaType,
+        prompt: opts.prompt,
+        aspectRatio: opts.aspectRatio,
+        metadata: {
+            ...(opts.model ? { model: opts.model } : {}),
+            ...(opts.metadata ?? {}),
+        },
     })
 }
 
@@ -1195,6 +1233,15 @@ export async function submitKieImageTask(
     // Ata el hold al taskId: es la referencia con la que el persist liquida y
     // con la que la reconciliación reembolsa las huérfanas.
     await linkHoldToRef(gate.hold.holdId, 'kie_task', result.taskId)
+    // RASTRO desde el servidor: si esta respuesta no llega al navegador, el
+    // cliente nunca registraría la tarea y la generación quedaría pagada y sin
+    // forma de reclamarla. Ver trackKieTask.
+    await trackKieTask(result.taskId, {
+        mediaType: 'IMAGE',
+        model: params.model,
+        prompt: params.prompt,
+        aspectRatio: params.aspectRatio,
+    })
     return result
 }
 
@@ -1306,6 +1353,17 @@ export async function checkKieImageTask(
         if (r.state === 'fail') return { status: 'failed', error: r.error }
         return { status: 'done', url: r.urls[0] }
     } catch (err) {
+        // Un fallo de RED al consultar NO dice nada de la tarea. Traducirlo a
+        // 'failed' era el bug: el cliente daba de baja el rastro (borrando la
+        // fila que permite rescatarla) y enseñaba un error, mientras la tarea
+        // terminaba bien y su imagen quedaba en el log de KIE. Se responde
+        // 'running' — el poll vuelve a preguntar en el siguiente tick.
+        if (isProviderOutage(err)) {
+            console.warn(
+                `[KIE] recordInfo no respondió (${taskId}): ${err instanceof Error ? err.message : String(err)} — la tarea sigue viva, se reintenta`,
+            )
+            return { status: 'running' }
+        }
         const message = err instanceof Error ? err.message : String(err)
         return { status: 'failed', error: message }
     }
@@ -1331,6 +1389,56 @@ export async function persistKieImageResult(
         const message = err instanceof Error ? err.message : String(err)
         console.error('[KIE] persistKieImageResult failed:', message)
         return { success: false, error: message }
+    }
+}
+
+/**
+ * ÚLTIMA PREGUNTA ANTES DE DAR UNA GENERACIÓN POR PERDIDA.
+ *
+ * El cliente llama a esto cuando su poll se rinde (plazo agotado, o la consulta
+ * de estado dejó de responder). En vez de enseñar "Failed to fetch" y perder
+ * una generación que el usuario ya pagó, se le pregunta a KIE por el taskId:
+ * si allí terminó bien, se baja el resultado y el run continúa como si nada.
+ *
+ * Usa `probeKieTask` (las TRES familias de endpoints), no `checkTaskOnce`: un
+ * taskId de flux-kontext o gpt-4o-image no vive en `/jobs/recordInfo` y
+ * preguntar solo ahí devolvía 404 = "no existe" sobre una tarea terminada.
+ *
+ * El resultado se persiste a Storage porque la URL del CDN de KIE caduca (y no
+ * da CORS): devolver la cruda sería entregar un enlace que muere en horas.
+ */
+export async function salvageKieTask(
+    taskId: string,
+    mediaType: 'IMAGE' | 'VIDEO' = 'IMAGE',
+): Promise<
+    | { status: 'done'; url: string }
+    | { status: 'running' }
+    | { status: 'failed'; error: string }
+> {
+    try {
+        const probe = await probeKieTask(taskId)
+        if (probe.state === 'running') return { status: 'running' }
+        if (probe.state === 'success') {
+            const url =
+                mediaType === 'VIDEO'
+                    ? await persistToSupabase(probe.urls[0], 'mp4', 'kie-videos')
+                    : await persistToSupabase(
+                          probe.urls[0],
+                          inferImageExt(probe.urls[0]),
+                          'kie-images',
+                      )
+            console.log(`[KIE] salvage: ${taskId} recuperada de KIE`)
+            return { status: 'done', url }
+        }
+        return { status: 'failed', error: probe.error }
+    } catch (e) {
+        // Ni siquiera se pudo preguntar: NO es un fallo de la tarea. Se
+        // responde 'running' para que el llamante conserve el rastro y el
+        // botón de reconciliar siga pudiendo rescatarla.
+        console.warn(
+            `[KIE] salvage no pudo consultar ${taskId}: ${e instanceof Error ? e.message : String(e)}`,
+        )
+        return { status: 'running' }
     }
 }
 
@@ -2330,6 +2438,14 @@ export async function submitVideoKieTask(
     try {
         const taskId = await submitVideoKieTaskId(params)
         await linkHoldToRef(gate.hold.holdId, 'kie_task', taskId)
+        // El vídeo es donde MÁS caro sale perder el rastro (minutos de poll y
+        // cobro por segundo) y era justo la ruta que no registraba nada.
+        await trackKieTask(taskId, {
+            mediaType: 'VIDEO',
+            model: params.model,
+            prompt: params.prompt,
+            aspectRatio: params.aspectRatio,
+        })
         return { success: true, taskId }
     } catch (e) {
         await refundHold(gate.hold, 'kie_video_submit_failed')
@@ -2837,6 +2953,11 @@ export async function submitTalkingVideoKieTask(
             'KIE talking-head submit',
         )
         console.log(`[KIE] Talking-head task submitted: ${taskId}`)
+        await trackKieTask(taskId, {
+            mediaType: 'VIDEO',
+            model: kieModel,
+            metadata: { talkingHead: true },
+        })
         return { success: true, taskId }
     } catch (e) {
         const message = e instanceof Error ? e.message : String(e)
@@ -2879,6 +3000,11 @@ export async function submitLipsyncVideoKieTask(
             'KIE lipsync submit',
         )
         console.log(`[KIE] Lipsync task submitted: ${taskId}`)
+        await trackKieTask(taskId, {
+            mediaType: 'VIDEO',
+            model: 'volcengine/video-to-video-lip-sync',
+            metadata: { lipsync: true },
+        })
         return { success: true, taskId }
     } catch (e) {
         const message = e instanceof Error ? e.message : String(e)
@@ -2903,30 +3029,50 @@ export async function checkKieVideoTask(
         const r = await checkTaskOnce(taskId)
         if (r.state === 'running') return { status: 'running' }
         if (r.state === 'fail') return { status: 'failed', error: r.error }
-        const url = await persistToSupabase(
-            pickVideoUrl(r.urls),
-            'mp4',
-            'kie-videos',
-        )
-        // `return_last_frame` (Seedance 2.5): el frame se persiste también. El
-        // de KIE es temporal, y si el encadenado lo va a usar más tarde, una
-        // URL caducada convierte "continuar el clip" en un error tardío.
-        const rawFrame = pickLastFrameUrl(r.urls)
-        if (!rawFrame) return { status: 'done', url }
         try {
-            const lastFrameUrl = await persistToSupabase(
-                rawFrame,
-                'png',
-                'kie-frames',
+            const url = await persistToSupabase(
+                pickVideoUrl(r.urls),
+                'mp4',
+                'kie-videos',
             )
-            return { status: 'done', url, lastFrameUrl }
-        } catch (err) {
-            // El frame es un EXTRA: perderlo no puede tumbar un video que ya
-            // se generó y ya se cobró.
-            console.warn('[KIE] last-frame persist failed:', err)
-            return { status: 'done', url }
+            // `return_last_frame` (Seedance 2.5): el frame se persiste también. El
+            // de KIE es temporal, y si el encadenado lo va a usar más tarde, una
+            // URL caducada convierte "continuar el clip" en un error tardío.
+            const rawFrame = pickLastFrameUrl(r.urls)
+            if (!rawFrame) return { status: 'done', url }
+            try {
+                const lastFrameUrl = await persistToSupabase(
+                    rawFrame,
+                    'png',
+                    'kie-frames',
+                )
+                return { status: 'done', url, lastFrameUrl }
+            } catch (err) {
+                // El frame es un EXTRA: perderlo no puede tumbar un video que ya
+                // se generó y ya se cobró.
+                console.warn('[KIE] last-frame persist failed:', err)
+                return { status: 'done', url }
+            }
+        } catch (e) {
+            // KIE YA entregó el vídeo: que falle la copia a Storage no
+            // convierte la tarea en fallida. Devolver 'failed' aquí daba de
+            // baja el rastro y reembolsaba una generación que existe — y su
+            // URL de KIE sigue viva, así que el siguiente tick la vuelve a
+            // intentar. Solo el plazo del poll decide cuándo rendirse.
+            console.warn(
+                `[KIE] vídeo ${taskId} listo pero no se pudo persistir: ${e instanceof Error ? e.message : String(e)} — se reintenta`,
+            )
+            return { status: 'running' }
         }
     } catch (e) {
+        // Mismo criterio que checkKieImageTask: la red que no responde no es
+        // una tarea fallida.
+        if (isProviderOutage(e)) {
+            console.warn(
+                `[KIE] recordInfo no respondió (${taskId}): ${e instanceof Error ? e.message : String(e)} — la tarea sigue viva, se reintenta`,
+            )
+            return { status: 'running' }
+        }
         const message = e instanceof Error ? e.message : String(e)
         return { status: 'failed', error: message }
     }

@@ -106,7 +106,17 @@ function toTaskStatus(
     return { status: 'running' }
 }
 
-export async function apiReconcilePendingGenerations(): Promise<ReconcileResult> {
+export async function apiReconcilePendingGenerations(options?: {
+    /**
+     * Ignora las tareas MÁS NUEVAS que esto. Existe para el barrido
+     * automático: una tarea que acaba de terminar puede estar siendo
+     * persistida AHORA MISMO por el poll de otra pestaña, y rescatarla en
+     * paralelo la duplicaría en la galería. Con unos minutos de suelo, el
+     * barrido solo toca lo que de verdad quedó huérfano. El botón 🔄 no lo
+     * pasa: cuando el usuario lo pulsa a propósito, quiere TODO.
+     */
+    minAgeMs?: number
+}): Promise<ReconcileResult> {
     const ctx = await getOrgContext()
     const out: ReconcileResult = {
         recovered: 0,
@@ -115,7 +125,13 @@ export async function apiReconcilePendingGenerations(): Promise<ReconcileResult>
         notes: [],
     }
 
-    const pending = await apiListPendingGenerations()
+    const minAgeMs = options?.minAgeMs ?? 0
+    const all = await apiListPendingGenerations()
+    const pending = minAgeMs
+        ? all.filter(
+              (r) => Date.now() - new Date(r.created_at).getTime() >= minAgeMs,
+          )
+        : all
     for (const row of pending) {
         try {
             // El endpoint de consulta depende del MEDIO: preguntar por un

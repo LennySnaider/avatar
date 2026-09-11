@@ -103,7 +103,9 @@ import {
     submitTalkingVideoKieTask,
     submitLipsyncVideoKieTask,
     checkKieVideoTask,
+    salvageKieTask,
 } from '@/services/KieService'
+import { pollProviderTask } from '../../_utils/pollProviderTask'
 import {
     apiTrackPendingGeneration,
     apiClearPendingGeneration,
@@ -221,8 +223,9 @@ async function pollKieImageTask(
         // RASTRO DE RESCATE: el taskId ya existe en KIE (y la generación se
         // cobra) pero solo vivía en esta variable. Si el componente se
         // desmonta —navegar, recargar, cerrar la pestaña— el bucle de abajo
-        // muere y el resultado queda huérfano. Registrarlo AQUÍ, antes de
-        // empezar a sondear, es lo que permite reclamarlo después.
+        // muere y el resultado queda huérfano. El submit YA lo registra en el
+        // servidor (por si esta respuesta no llega); esto lo ENRIQUECE con lo
+        // que solo sabe el cliente: de qué avatar y de qué run era.
         void apiTrackPendingGeneration({
             provider: 'kie',
             taskId: sub.taskId,
@@ -231,65 +234,87 @@ async function pollKieImageTask(
             aspectRatio: pendingCtx?.aspectRatio,
             metadata: pendingCtx?.metadata ?? {},
         })
-        let failMsg = ''
-        const startedAt = Date.now()
-        const deadlineMs = startedAt + 18 * 60 * 1000
-        while (Date.now() < deadlineMs) {
-            // Cadencia ADAPTIVA. recordInfo NO cobra créditos (es un GET de
-            // estado), así que sondear rápido es gratis. Antes: 5s fijo + 5s de
-            // espera antes del 1er check → hasta ~7.5s muertos por generación
-            // (5s inicial + 5s de granularidad al terminar). Seedream/Flux i2i
-            // terminan en ~10-25s, así que sondeamos a 2s los primeros 20s
-            // (1er check a los 2s, no a los 5s; ventana rápida hasta 30s) y
-            // hacemos back-off para tareas largas (nano-banana-pro) que no se
-            // benefician de sondeo agresivo.
-            const elapsed = Date.now() - startedAt
-            const interval =
-                elapsed < 30_000 ? 2000 : elapsed < 90_000 ? 3000 : 5000
-            await new Promise((r) => setTimeout(r, interval))
-            const st = await checkKieImageTask(sub.taskId)
-            if (st.status === 'done') {
-                // PREVIEW INSTANTÁNEO: st.url es el CDN crudo de KIE — se
-                // devuelve YA (antes el server descargaba y re-subía a Supabase
-                // ANTES de responder: 2-6s de spinner con la imagen lista). La
-                // copia estable arranca aquí sin await.
-                const stableUrl = persistKieImageResult(st.url)
-                    .then((r) => (r.success ? r.url : null))
-                    .catch(() => null)
-                // OJO: la baja del rastro NO va aquí (2026-08-20). Recibir la
-                // URL no es haber guardado nada: después de este `return` aún
-                // quedan la copia estable, la subida a la galería y el INSERT
-                // en `generations` — todo en el navegador, que es justo donde
-                // el usuario cierra la pestaña o se va. Darla de baja aquí
-                // borraba el único rastro reclamable y encima liquidaba el
-                // cobro, así que un fallo en ese tramo dejaba la generación
-                // pagada, viva en el CDN de KIE y sin forma de reclamarla.
-                //
-                // Medido en la task a9bfc27a…: hold 17:03:51 → settle 17:16:00
-                // → CERO filas en `generations`. La rama de VÍDEO ya había
-                // aprendido esto ("darlo de baja al terminar el POLL abre una
-                // ventana en la que la tarea ya no es reclamable pero tampoco
-                // está persistida"); la de imagen se quedó sin portarlo.
-                //
-                // Ahora cierra `persistGeneration`, con la fila ya escrita.
+        // Cadencia ADAPTIVA. recordInfo NO cobra créditos (es un GET de
+        // estado), así que sondear rápido es gratis. Seedream/Flux i2i
+        // terminan en ~10-25s, así que sondeamos a 2s los primeros 30s y
+        // hacemos back-off para tareas largas (nano-banana-pro) que no se
+        // benefician de sondeo agresivo.
+        const polled = await pollProviderTask({
+            label: `kie-image ${sub.taskId}`,
+            check: () => checkKieImageTask(sub.taskId),
+            budgetMs: 18 * 60 * 1000,
+            interval: (elapsed) =>
+                elapsed < 30_000 ? 2000 : elapsed < 90_000 ? 3000 : 5000,
+        })
+
+        if (polled.outcome === 'done') {
+            // PREVIEW INSTANTÁNEO: la url es el CDN crudo de KIE — se devuelve
+            // YA (antes el server descargaba y re-subía a Supabase ANTES de
+            // responder: 2-6s de spinner con la imagen lista). La copia
+            // estable arranca aquí sin await.
+            const stableUrl = persistKieImageResult(polled.url)
+                .then((r) => (r.success ? r.url : null))
+                .catch(() => null)
+            // OJO: la baja del rastro NO va aquí (2026-08-20). Recibir la
+            // URL no es haber guardado nada: después de este `return` aún
+            // quedan la copia estable, la subida a la galería y el INSERT
+            // en `generations` — todo en el navegador, que es justo donde
+            // el usuario cierra la pestaña o se va. Darla de baja aquí
+            // borraba el único rastro reclamable y encima liquidaba el
+            // cobro, así que un fallo en ese tramo dejaba la generación
+            // pagada, viva en el CDN de KIE y sin forma de reclamarla.
+            //
+            // Medido en la task a9bfc27a…: hold 17:03:51 → settle 17:16:00
+            // → CERO filas en `generations`. La rama de VÍDEO ya había
+            // aprendido esto ("darlo de baja al terminar el POLL abre una
+            // ventana en la que la tarea ya no es reclamable pero tampoco
+            // está persistida"); la de imagen se quedó sin portarlo.
+            //
+            // Ahora cierra `persistGeneration`, con la fila ya escrita.
+            return {
+                url: polled.url,
+                fullApiPrompt: sub.fullApiPrompt,
+                stableUrl,
+                taskId: sub.taskId,
+            }
+        }
+
+        if (polled.outcome === 'timeout') {
+            // NO se sabe cómo acabó: o se agotó el plazo, o la consulta de
+            // estado dejó de responder ("Failed to fetch"). Antes esto era una
+            // pérdida directa — se enseñaba el error y la imagen se quedaba en
+            // el log de KIE. Ahora se le PREGUNTA a KIE por el id antes de
+            // rendirse; si terminó bien, el run continúa con su resultado.
+            const rescued = await salvageKieTask(sub.taskId, 'IMAGE').catch(
+                () => null,
+            )
+            if (rescued?.status === 'done') {
+                console.warn(
+                    `[KIE] ${sub.taskId} se recuperó tras un fallo de sondeo`,
+                )
+                // La baja tampoco va aquí: también a la rescatada la cierra
+                // `persistGeneration` (vía el taskId devuelto) con la fila
+                // ya escrita.
                 return {
-                    url: st.url,
+                    url: rescued.url,
                     fullApiPrompt: sub.fullApiPrompt,
-                    stableUrl,
+                    // Ya viene persistida en Storage: no hay swap pendiente.
+                    stableUrl: Promise.resolve(rescued.url),
                     taskId: sub.taskId,
                 }
             }
-            if (st.status === 'failed') {
-                failMsg = st.error
-                // Fallo terminal: no hay nada que reclamar, y el cobro se
-                // devuelve (el proveedor no entregó nada).
-                void apiClearPendingGeneration(sub.taskId, 'failed')
-                break
-            }
+            // El rastro se CONSERVA a propósito (nada de clear): la tarea
+            // sigue viva y el 🔄 de la galería puede reclamarla. Y el taskId
+            // viaja en el mensaje para poder rescatarla por id.
+            throw new Error(
+                `${polled.error} La tarea sigue viva en KIE (task ${sub.taskId}): pulsa 🔄 en la galería para reclamarla, o búscala por ese id. NO regeneres — se cobraría dos veces.`,
+            )
         }
-        if (!failMsg) {
-            throw new Error('KIE tardó demasiado (>18 min). Intenta de nuevo.')
-        }
+
+        // Fallo TERMINAL dicho por KIE: no hay nada que reclamar, y el cobro
+        // se devuelve (el proveedor no entregó nada).
+        const failMsg = polled.error
+        void apiClearPendingGeneration(sub.taskId, 'failed')
         if (!/internal error/i.test(failMsg)) {
             throw new Error(failMsg)
         }
@@ -394,19 +419,31 @@ async function pollKieTalkingVideoTask(
     if (!sub.success) {
         throw new Error(sub.error)
     }
-    const deadlineMs = Date.now() + 30 * 60 * 1000
-    while (Date.now() < deadlineMs) {
-        await new Promise((r) => setTimeout(r, 5000))
-        const st = await checkKieVideoTask(sub.taskId)
-        if (st.status === 'done') {
-            return st.url
-        }
-        if (st.status === 'failed') {
-            throw new Error(st.error)
-        }
+    const polled = await pollProviderTask({
+        label: `kie-talking ${sub.taskId}`,
+        check: () => checkKieVideoTask(sub.taskId),
+        budgetMs: 30 * 60 * 1000,
+        interval: 5000,
+    })
+    if (polled.outcome === 'done') {
+        // El mp4 ya está en Storage (checkKieVideoTask persiste al terminar):
+        // deja de ser reclamable y el cobro se confirma. Sin esta baja, el
+        // barrido automático lo rescataría otra vez y saldría DUPLICADO.
+        void apiClearPendingGeneration(sub.taskId, 'delivered')
+        return polled.url
+    }
+    if (polled.outcome === 'failed') {
+        void apiClearPendingGeneration(sub.taskId, 'failed')
+        throw new Error(polled.error)
+    }
+    // Sin veredicto: se le pregunta a KIE antes de dar el vídeo por perdido.
+    const rescued = await salvageKieTask(sub.taskId, 'VIDEO').catch(() => null)
+    if (rescued?.status === 'done') {
+        void apiClearPendingGeneration(sub.taskId, 'delivered')
+        return rescued.url
     }
     throw new Error(
-        `KIE tardó demasiado (>30 min). El job ${sub.taskId} puede seguir corriendo en kie.ai/logs.`,
+        `${polled.error} El job ${sub.taskId} puede seguir corriendo en kie.ai/logs — pulsa 🔄 en la galería para reclamarlo.`,
     )
 }
 
@@ -449,26 +486,35 @@ async function genVideoKie(
         }
         // KIE video can take minutes; poll up to 30 min. Each request is short,
         // so no single call can time out — the taskId survives on KIE regardless.
-        let failMsg = ''
-        const deadlineMs = Date.now() + 30 * 60 * 1000
-        while (Date.now() < deadlineMs) {
-            await new Promise((r) => setTimeout(r, 5000))
-            const st = await checkKieVideoTask(sub.taskId)
-            if (st.status === 'done') {
-                // lastFrameUrl solo llega con `return_last_frame` (Seedance
-                // 2.5); en los demás motores viaja undefined y nadie lo mira.
-                return { url: st.url, lastFrameUrl: st.lastFrameUrl }
-            }
-            if (st.status === 'failed') {
-                failMsg = st.error
-                break
-            }
+        const polled = await pollProviderTask({
+            label: `kie-video ${sub.taskId}`,
+            check: () => checkKieVideoTask(sub.taskId),
+            budgetMs: 30 * 60 * 1000,
+            interval: 5000,
+        })
+        if (polled.outcome === 'done') {
+            // Entregado y ya persistido en Storage: fuera del rastro (si no, el
+            // barrido lo rescataría de nuevo y saldría duplicado).
+            void apiClearPendingGeneration(sub.taskId, 'delivered')
+            // lastFrameUrl solo llega con `return_last_frame` (Seedance
+            // 2.5); en los demás motores viaja undefined y nadie lo mira.
+            return { url: polled.url, lastFrameUrl: polled.lastFrameUrl }
         }
-        if (!failMsg) {
+        if (polled.outcome === 'timeout') {
+            // Se le pregunta a KIE antes de rendirse; el rastro se conserva.
+            const rescued = await salvageKieTask(sub.taskId, 'VIDEO').catch(
+                () => null,
+            )
+            if (rescued?.status === 'done') {
+                void apiClearPendingGeneration(sub.taskId, 'delivered')
+                return { url: rescued.url }
+            }
             throw new Error(
-                `KIE tardó demasiado (>30 min). El job ${sub.taskId} puede seguir corriendo en kie.ai/logs.`,
+                `${polled.error} El job ${sub.taskId} puede seguir corriendo en kie.ai/logs — pulsa 🔄 en la galería para reclamarlo. NO regeneres: se cobraría dos veces.`,
             )
         }
+        const failMsg = polled.error
+        void apiClearPendingGeneration(sub.taskId, 'failed')
         if (!/internal error/i.test(failMsg) || attempt === 2) {
             throw new Error(failMsg)
         }
@@ -2668,36 +2714,36 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                                 aspectRatio,
                                 metadata: { tier: mrTier },
                             })
-                            let mrUrl = ''
-                            const mrStart = Date.now()
-                            while (Date.now() - mrStart < 180_000) {
-                                await new Promise((r) => setTimeout(r, 6000))
-                                const st = await checkMuleRouterImageTask(
-                                    sub.taskId,
-                                    mrTier,
-                                )
-                                if (st.status === 'done') {
-                                    mrUrl = st.url
-                                    // La baja NO va aquí (2026-08-20, mismo
-                                    // arreglo que la rama KIE): tener la URL no
-                                    // es tener la generación guardada. La cierra
-                                    // persistGeneration con la fila ya escrita —
-                                    // hasta entonces sigue siendo reclamable
-                                    // con 🔄 y su cobro solo retenido.
-                                    break
-                                }
-                                if (st.status === 'failed') {
-                                    void apiClearPendingGeneration(
+                            const mrPolled = await pollProviderTask({
+                                label: `mulerouter-image ${sub.taskId}`,
+                                check: () =>
+                                    checkMuleRouterImageTask(
                                         sub.taskId,
-                                        'failed',
-                                    )
-                                    throw new Error(st.error)
-                                }
-                            }
-                            if (!mrUrl)
-                                throw new Error(
-                                    'MuleRouter tardó demasiado (>3 min)',
+                                        mrTier,
+                                    ),
+                                budgetMs: 180_000,
+                                interval: 6000,
+                            })
+                            if (mrPolled.outcome === 'failed') {
+                                void apiClearPendingGeneration(
+                                    sub.taskId,
+                                    'failed',
                                 )
+                                throw new Error(mrPolled.error)
+                            }
+                            if (mrPolled.outcome === 'timeout')
+                                // Sin veredicto: el rastro se CONSERVA (nada
+                                // de clear) para poder reclamarla con el 🔄.
+                                throw new Error(
+                                    `${mrPolled.error} La tarea sigue viva en MuleRouter (${sub.taskId}) — pulsa 🔄 en la galería para reclamarla.`,
+                                )
+                            const mrUrl = mrPolled.url
+                            // La baja NO va aquí (2026-08-20, mismo arreglo
+                            // que la rama KIE): tener la URL no es tener la
+                            // generación guardada. La cierra persistGeneration
+                            // (vía generationMeta.providerTaskId) con la fila
+                            // ya escrita — hasta entonces sigue siendo
+                            // reclamable con 🔄 y su cobro solo retenido.
                             // ── FASE 2 (solo con clone de lienzo): FACE-SWAP ──
                             // Con el clone de Image 1, Edit Max clava escena Y
                             // cuerpo pero conserva la CARA del lienzo — ninguna
@@ -2784,22 +2830,19 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                                             tier: mrTier,
                                         })
                                     if (sub2.success) {
-                                        const t2 = Date.now()
-                                        while (Date.now() - t2 < 180_000) {
-                                            await new Promise((r) =>
-                                                setTimeout(r, 6000),
-                                            )
-                                            const st2 =
-                                                await checkMuleRouterImageTask(
+                                        const p2 = await pollProviderTask({
+                                            label: `mulerouter-swap ${sub2.taskId}`,
+                                            check: () =>
+                                                checkMuleRouterImageTask(
                                                     sub2.taskId,
                                                     mrTier,
-                                                )
-                                            if (st2.status === 'done') {
-                                                mrFinalUrl = st2.url
-                                                mrPrompt = `[FASE 1 · escena+cuerpo]\n${sub.fullApiPrompt}\n\n[FASE 2 · face-swap]\n${sub2.fullApiPrompt}`
-                                                break
-                                            }
-                                            if (st2.status === 'failed') break
+                                                ),
+                                            budgetMs: 180_000,
+                                            interval: 6000,
+                                        })
+                                        if (p2.outcome === 'done') {
+                                            mrFinalUrl = p2.url
+                                            mrPrompt = `[FASE 1 · escena+cuerpo]\n${sub.fullApiPrompt}\n\n[FASE 2 · face-swap]\n${sub2.fullApiPrompt}`
                                         }
                                     }
                                 } catch (e) {
@@ -3295,36 +3338,34 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                                 aspectRatio,
                                 metadata: { model: 'wan2.6-i2v', speak: true },
                             })
-                            let wanUrl = ''
-                            const t0 = Date.now()
-                            while (Date.now() - t0 < 12 * 60 * 1000) {
-                                await new Promise((r) => setTimeout(r, 8000))
-                                const st = await checkMuleRouterVideoTask(
-                                    sub.taskId,
-                                    'wan2.6-i2v',
-                                )
-                                if (st.status === 'done') {
-                                    wanUrl = st.url
-                                    // OJO: la baja del rastro NO va aquí. El
-                                    // vídeo aún no está guardado, y darlo de
-                                    // baja al terminar el POLL abre una ventana
-                                    // en la que la tarea ya no es reclamable
-                                    // pero tampoco está persistida — que es
-                                    // justo donde se perdió el vídeo de prueba.
-                                    break
-                                }
-                                if (st.status === 'failed') {
-                                    void apiClearPendingGeneration(
+                            // OJO: la baja del rastro NO va en el 'done'. El
+                            // vídeo aún no está guardado, y darlo de baja al
+                            // terminar el POLL abre una ventana en la que la
+                            // tarea ya no es reclamable pero tampoco está
+                            // persistida — justo donde se perdió el vídeo de
+                            // prueba. Se da de baja tras el persist.
+                            const wanPolled = await pollProviderTask({
+                                label: `mulerouter-speak ${sub.taskId}`,
+                                check: () =>
+                                    checkMuleRouterVideoTask(
                                         sub.taskId,
-                                        'failed',
-                                    )
-                                    throw new Error(st.error)
-                                }
-                            }
-                            if (!wanUrl)
-                                throw new Error(
-                                    `Wan 2.6 tardó demasiado (>12 min). El audio quedó generado: ${audioUrl}. Pulsa 🔄 en la galería para reclamar el vídeo.`,
+                                        'wan2.6-i2v',
+                                    ),
+                                budgetMs: 12 * 60 * 1000,
+                                interval: 8000,
+                            })
+                            if (wanPolled.outcome === 'failed') {
+                                void apiClearPendingGeneration(
+                                    sub.taskId,
+                                    'failed',
                                 )
+                                throw new Error(wanPolled.error)
+                            }
+                            if (wanPolled.outcome === 'timeout')
+                                throw new Error(
+                                    `${wanPolled.error} El audio quedó generado: ${audioUrl}. La tarea sigue viva en MuleRouter (${sub.taskId}) — pulsa 🔄 en la galería para reclamar el vídeo.`,
+                                )
+                            const wanUrl = wanPolled.url
                             // El navegador NO puede bajar la URL de
                             // MuleRouter (CORS): el auto-save hace
                             // fetch(media.url) y revienta con "Failed to
@@ -3396,32 +3437,44 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                                             `Lipsync step failed to start: ${lipsyncSub.error}. Silent Kling video was generated: ${resultUrl}`,
                                         )
                                     }
-                                    const lipsyncDeadline =
-                                        Date.now() + 30 * 60 * 1000
-                                    let lipsyncedUrl: string | null = null
-                                    while (Date.now() < lipsyncDeadline) {
-                                        await new Promise((r) =>
-                                            setTimeout(r, 5000),
-                                        )
-                                        const st = await checkKieVideoTask(
+                                    const lipPolled = await pollProviderTask({
+                                        label: `kie-lipsync ${lipsyncSub.taskId}`,
+                                        check: () =>
+                                            checkKieVideoTask(
+                                                lipsyncSub.taskId,
+                                            ),
+                                        budgetMs: 30 * 60 * 1000,
+                                        interval: 5000,
+                                    })
+                                    if (lipPolled.outcome === 'failed') {
+                                        void apiClearPendingGeneration(
                                             lipsyncSub.taskId,
+                                            'failed',
                                         )
-                                        if (st.status === 'done') {
-                                            lipsyncedUrl = st.url
-                                            break
-                                        }
-                                        if (st.status === 'failed') {
+                                        throw new Error(
+                                            `Lipsync step failed: ${lipPolled.error}. Silent Kling video was generated: ${resultUrl}`,
+                                        )
+                                    }
+                                    if (lipPolled.outcome === 'timeout') {
+                                        // Antes de perderlo: preguntar a KIE.
+                                        const salvagedLip =
+                                            await salvageKieTask(
+                                                lipsyncSub.taskId,
+                                                'VIDEO',
+                                            ).catch(() => null)
+                                        if (salvagedLip?.status !== 'done') {
                                             throw new Error(
-                                                `Lipsync step failed: ${st.error}. Silent Kling video was generated: ${resultUrl}`,
+                                                `${lipPolled.error} Silent Kling video was generated: ${resultUrl}. Task ${lipsyncSub.taskId} — pulsa 🔄 en la galería para reclamarlo.`,
                                             )
                                         }
+                                        resultUrl = salvagedLip.url
+                                    } else {
+                                        resultUrl = lipPolled.url
                                     }
-                                    if (!lipsyncedUrl) {
-                                        throw new Error(
-                                            `Lipsync step timed out (>30 min). Silent Kling video was generated: ${resultUrl}`,
-                                        )
-                                    }
-                                    resultUrl = lipsyncedUrl
+                                    void apiClearPendingGeneration(
+                                        lipsyncSub.taskId,
+                                        'delivered',
+                                    )
                                 }
                             } catch (speakErr) {
                                 // El audio ya quedó generado y persistido; que el error lo diga
@@ -3766,36 +3819,31 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                                     model: wanModel,
                                 },
                             })
-                            let wanUrl = ''
-                            const wanStart = Date.now()
-                            while (Date.now() - wanStart < 12 * 60 * 1000) {
-                                await new Promise((r) => setTimeout(r, 8000))
-                                const st = await checkMuleRouterVideoTask(
-                                    sub.taskId,
-                                    wanModel,
-                                )
-                                if (st.status === 'done') {
-                                    wanUrl = st.url
-                                    // OJO: la baja del rastro NO va aquí. El
-                                    // vídeo aún no está guardado, y darlo de
-                                    // baja al terminar el POLL abre una ventana
-                                    // en la que la tarea ya no es reclamable
-                                    // pero tampoco está persistida — que es
-                                    // justo donde se perdió el vídeo de prueba.
-                                    break
-                                }
-                                if (st.status === 'failed') {
-                                    void apiClearPendingGeneration(
+                            // La baja del rastro NO va en el 'done': hasta
+                            // que el vídeo no está en Storage sigue siendo
+                            // reclamable (ver el persist de abajo).
+                            const wanPolled = await pollProviderTask({
+                                label: `mulerouter-video ${sub.taskId}`,
+                                check: () =>
+                                    checkMuleRouterVideoTask(
                                         sub.taskId,
-                                        'failed',
-                                    )
-                                    throw new Error(st.error)
-                                }
-                            }
-                            if (!wanUrl)
-                                throw new Error(
-                                    'Wan 2.6 tardó demasiado (>12 min). La tarea sigue viva en MuleRouter — pulsa 🔄 en la galería para reclamarla.',
+                                        wanModel,
+                                    ),
+                                budgetMs: 12 * 60 * 1000,
+                                interval: 8000,
+                            })
+                            if (wanPolled.outcome === 'failed') {
+                                void apiClearPendingGeneration(
+                                    sub.taskId,
+                                    'failed',
                                 )
+                                throw new Error(wanPolled.error)
+                            }
+                            if (wanPolled.outcome === 'timeout')
+                                throw new Error(
+                                    `${wanPolled.error} La tarea sigue viva en MuleRouter (${sub.taskId}) — pulsa 🔄 en la galería para reclamarla.`,
+                                )
+                            const wanUrl = wanPolled.url
                             // El navegador NO puede bajar la URL de
                             // MuleRouter (CORS): el auto-save hace
                             // fetch(media.url) y revienta con "Failed to

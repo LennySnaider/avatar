@@ -120,6 +120,41 @@ const GalleryPanel = ({
     // Con el taskId a mano se pueden recuperar igual.
     const [rescueOpen, setRescueOpen] = useState(false)
 
+    // BARRIDO AUTOMÁTICO al abrir el Studio. El rescate existía pero dependía
+    // de que el usuario supiera de un botón escondido tras la lupa: mientras
+    // tanto, la URL del CDN del proveedor caduca y la generación —ya pagada—
+    // se pierde de verdad. Aquí se reclama sola.
+    //
+    // Con suelo de 3 minutos: una tarea recién terminada puede estar
+    // persistiéndose en otra pestaña, y bajarla en paralelo la duplicaría en
+    // la galería. Silencioso salvo que RECUPERE algo — en estado sano la tabla
+    // de reclamables está vacía y esto es un select que no molesta a nadie.
+    const autoSweptRef = useRef(false)
+    useEffect(() => {
+        if (autoSweptRef.current) return
+        autoSweptRef.current = true
+        void apiReconcilePendingGenerations({ minAgeMs: 3 * 60 * 1000 })
+            .then((r) => {
+                if (!r.recovered) return
+                reloadGallery()
+                toast.push(
+                    <Notification
+                        type="success"
+                        title="Generaciones recuperadas"
+                    >
+                        {`${r.recovered} generación${r.recovered === 1 ? '' : 'es'} que el proveedor terminó pero no llegó${r.recovered === 1 ? '' : 'aron'} a guardarse.`}
+                    </Notification>,
+                )
+            })
+            .catch((e) => {
+                // Un barrido que falla no debe molestar: el botón 🔄 sigue ahí.
+                console.warn('[gallery] barrido automático:', e)
+            })
+        // Una sola vez por montaje — reloadGallery cambia de identidad y no
+        // debe re-disparar el barrido.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [])
+
     useEffect(() => {
         const el = scrollBarRef.current?.getScrollElement()
         if (!el) return

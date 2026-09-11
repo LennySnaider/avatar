@@ -111,6 +111,56 @@ export async function apiInspectKieTask(
     return out
 }
 
+/**
+ * Tope de ids por llamada. El cliente trocea listas largas y va enseñando el
+ * avance; el tope existe para que una server action no se quede minutos
+ * abierta (que es el fallo que originó todo esto) y para no barrer la API de
+ * KIE con 300 consultas de golpe.
+ */
+const MAX_IDS_PER_CALL = 10
+
+/**
+ * Diagnóstico de VARIOS taskIds a la vez — la auditoría de "revisa todo lo que
+ * hay en el panel de KIE y dime qué falta aquí".
+ *
+ * KIE no tiene endpoint para LISTAR tareas: su histórico solo existe en
+ * kie.ai/logs y la API solo sabe responder por id. Así que la auditoría es
+ * necesariamente "traer los ids del panel y preguntar por cada uno" — esto es
+ * ese bucle, con las consultas en paralelo dentro del lote.
+ */
+export async function apiInspectKieTasks(
+    taskIds: string[],
+): Promise<KieTaskDiagnosis[]> {
+    const clean = taskIds.map((t) => t.trim()).filter(Boolean)
+    if (clean.length > MAX_IDS_PER_CALL) {
+        throw new Error(
+            `Demasiados ids en una sola consulta (${clean.length} > ${MAX_IDS_PER_CALL}). Trocea la lista.`,
+        )
+    }
+    // Un id que reviente (KIE caído, id con basura) NO debe tumbar el lote
+    // entero: se devuelve como 'unknown' con su motivo y la auditoría sigue.
+    return Promise.all(
+        clean.map(async (taskId) => {
+            try {
+                return await apiInspectKieTask(taskId)
+            } catch (e) {
+                const out: KieTaskDiagnosis = {
+                    taskId,
+                    kieState: 'unknown',
+                    family: null,
+                    urls: [],
+                    error: e instanceof Error ? e.message : 'error',
+                    tracked: false,
+                    alreadySaved: false,
+                    hasOpenHold: false,
+                    verdict: `No se pudo consultar: ${e instanceof Error ? e.message : 'error'}`,
+                }
+                return out
+            }
+        }),
+    )
+}
+
 /** Traduce el diagnóstico a la frase que responde "¿por qué no la veo?". */
 function explainDiagnosis(d: KieTaskDiagnosis): string {
     if (d.kieState === 'unknown') {
@@ -282,4 +332,41 @@ export async function apiRescueKieTask(params: {
             message: e instanceof Error ? e.message : 'Error al rescatar',
         }
     }
+}
+
+/** Resultado de un rescate dentro de un lote — el id, para poder mapearlo. */
+export interface BulkRescueResult extends RescueResult {
+    taskId: string
+}
+
+/**
+ * Rescata VARIAS tareas. En SERIE a propósito: cada rescate baja megabytes del
+ * CDN de KIE y los vuelve a subir a Storage, y hacerlo en paralelo satura la
+ * función y multiplica los timeouts — que es justo el fallo del que venimos.
+ *
+ * Nunca lanza por una: un rescate imposible (URL del CDN ya caducada) se
+ * devuelve como fallo suyo y el resto del lote continúa.
+ */
+export async function apiRescueKieTasks(
+    taskIds: string[],
+): Promise<BulkRescueResult[]> {
+    const clean = taskIds.map((t) => t.trim()).filter(Boolean)
+    if (clean.length > MAX_IDS_PER_CALL) {
+        throw new Error(
+            `Demasiados ids en un solo rescate (${clean.length} > ${MAX_IDS_PER_CALL}). Trocea la lista.`,
+        )
+    }
+    const out: BulkRescueResult[] = []
+    for (const taskId of clean) {
+        try {
+            out.push({ ...(await apiRescueKieTask({ taskId })), taskId })
+        } catch (e) {
+            out.push({
+                taskId,
+                success: false,
+                message: e instanceof Error ? e.message : 'Error al rescatar',
+            })
+        }
+    }
+    return out
 }
