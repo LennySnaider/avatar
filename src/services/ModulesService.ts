@@ -64,11 +64,14 @@ async function setModuleStatus(
             {
                 module_slug: slug,
                 status,
-                installed_by: ctx.userId,
                 // Reinstalar reabre la MISMA fila: el historial de cuándo se
                 // instaló y se desinstaló no se pierde al borrar y recrear.
+                // `installed_by` sólo se toca al instalar: es la auditoría de
+                // quién instaló (ver migración), y escribirlo también al
+                // desinstalar la pisaba con el usuario que se va, perdiendo el
+                // dato desde la primera desinstalación.
                 ...(status === 'installed'
-                    ? { installed_at: now, uninstalled_at: null }
+                    ? { installed_at: now, uninstalled_at: null, installed_by: ctx.userId }
                     : { uninstalled_at: now }),
                 updated_at: now,
             },
