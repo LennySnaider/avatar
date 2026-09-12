@@ -182,6 +182,29 @@ const eslintConfig = [
       // global sin organization_id — mismo par que check-tenant-access.mjs.
       "src/lib/modules/entitlements.ts",
       "src/lib/modules/catalog.ts",
+      // loadTelegramSettings (variante sin sesión, para el webhook y los
+      // crones): filtra por avatar_id, que es UNIQUE en avatar_telegram_settings
+      // (migración de la Tarea 1) — no necesita organizationId de entrada para
+      // identificar la fila. La otra variante del fichero, con ctx, va por
+      // orgTable y no dispara esta regla.
+      "src/lib/telegram/settings.ts",
+      // F4.2 Tarea 4 — recordStarsSale corre disparado por el webhook, sin
+      // sesión. La organizationId no se adivina: llega ya resuelta en el
+      // propio StarsSaleEvent (la fila que la transición atómica del webhook
+      // acaba de devolver), y cada consulta la usa como filtro explícito.
+      "src/lib/telegram/sales.ts",
+      // Task 5 — deliverPaidMedia, mismo perfil que sales.ts: sin sesión,
+      // recibe el chat ya resuelto y acotado por su llamador
+      // (sendPaidMediaFromInbox), y cada acceso usa esa organizationId como
+      // filtro o como campo fijado. Ver check-tenant-access.mjs (misma
+      // exención, motivo completo allí).
+      "src/lib/telegram/paidMedia.ts",
+      // Task 6 — telegramUnitActivity, mismo perfil que moduleFees.ts: sin
+      // sesión (lo dispara el cron de cuotas), la organizationId llega por
+      // parámetro y la única consulta del fichero la filtra con
+      // .eq('organization_id', ...). Ver check-tenant-access.mjs (misma
+      // exención, motivo completo allí).
+      "src/lib/telegram/bots.ts",
       // Sin sesión: resuelven la org por la fila que ya cargaron.
       "src/app/api/webhooks/**",
       "src/app/api/cron/**",

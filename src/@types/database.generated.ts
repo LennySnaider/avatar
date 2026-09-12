@@ -589,6 +589,72 @@ export type Database = {
           },
         ]
       }
+      avatar_telegram_settings: {
+        Row: {
+          avatar_id: string
+          bot_id: number
+          bot_token: string
+          bot_username: string | null
+          connected_at: string | null
+          created_at: string
+          disconnected_at: string | null
+          enabled: boolean
+          id: string
+          last_error: string | null
+          last_update_at: string | null
+          organization_id: string
+          updated_at: string
+          webhook_secret: string
+        }
+        Insert: {
+          avatar_id: string
+          bot_id: number
+          bot_token: string
+          bot_username?: string | null
+          connected_at?: string | null
+          created_at?: string
+          disconnected_at?: string | null
+          enabled?: boolean
+          id?: string
+          last_error?: string | null
+          last_update_at?: string | null
+          organization_id: string
+          updated_at?: string
+          webhook_secret: string
+        }
+        Update: {
+          avatar_id?: string
+          bot_id?: number
+          bot_token?: string
+          bot_username?: string | null
+          connected_at?: string | null
+          created_at?: string
+          disconnected_at?: string | null
+          enabled?: boolean
+          id?: string
+          last_error?: string | null
+          last_update_at?: string | null
+          organization_id?: string
+          updated_at?: string
+          webhook_secret?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "avatar_telegram_settings_avatar_id_fkey"
+            columns: ["avatar_id"]
+            isOneToOne: true
+            referencedRelation: "avatars"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "avatar_telegram_settings_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       avatars: {
         Row: {
           created_at: string | null
@@ -1463,6 +1529,234 @@ export type Database = {
             columns: ["organization_id"]
             isOneToOne: false
             referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      telegram_paid_media_items: {
+        Row: {
+          avatar_id: string
+          caption: string | null
+          created_at: string
+          enabled: boolean
+          generation_id: string | null
+          id: string
+          media_kind: string
+          offers_count: number
+          organization_id: string
+          sales_count: number
+          sort_order: number
+          star_price: number
+          stars_total: number
+          storage_path: string
+          storage_provider: string | null
+          telegram_file_id: string | null
+          telegram_file_id_bot_id: number | null
+          title: string
+          updated_at: string
+        }
+        Insert: {
+          avatar_id: string
+          caption?: string | null
+          created_at?: string
+          enabled?: boolean
+          generation_id?: string | null
+          id?: string
+          media_kind: string
+          offers_count?: number
+          organization_id: string
+          sales_count?: number
+          sort_order?: number
+          star_price: number
+          stars_total?: number
+          storage_path: string
+          storage_provider?: string | null
+          telegram_file_id?: string | null
+          telegram_file_id_bot_id?: number | null
+          title: string
+          updated_at?: string
+        }
+        Update: {
+          avatar_id?: string
+          caption?: string | null
+          created_at?: string
+          enabled?: boolean
+          generation_id?: string | null
+          id?: string
+          media_kind?: string
+          offers_count?: number
+          organization_id?: string
+          sales_count?: number
+          sort_order?: number
+          star_price?: number
+          stars_total?: number
+          storage_path?: string
+          storage_provider?: string | null
+          telegram_file_id?: string | null
+          telegram_file_id_bot_id?: number | null
+          title?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "telegram_paid_media_items_avatar_id_fkey"
+            columns: ["avatar_id"]
+            isOneToOne: false
+            referencedRelation: "avatars"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "telegram_paid_media_items_generation_id_fkey"
+            columns: ["generation_id"]
+            isOneToOne: false
+            referencedRelation: "generations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "telegram_paid_media_items_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      telegram_stars_sales: {
+        Row: {
+          avatar_id: string
+          chat_id: string
+          commission_ledger_id: string | null
+          commission_pct: number | null
+          commission_settled_at: string | null
+          commission_tokens: number | null
+          commission_usd: number | null
+          created_at: string
+          id: string
+          item_id: string | null
+          offered_at: string
+          organization_id: string
+          payload: string
+          purchased_at: string | null
+          refunded_at: string | null
+          sold_by: string
+          source: string
+          star_usd: number | null
+          stars: number
+          status: string
+          telegram_message_id: number | null
+          telegram_user_id: number
+          updated_at: string
+        }
+        Insert: {
+          avatar_id: string
+          chat_id: string
+          commission_ledger_id?: string | null
+          commission_pct?: number | null
+          commission_settled_at?: string | null
+          commission_tokens?: number | null
+          commission_usd?: number | null
+          created_at?: string
+          id?: string
+          item_id?: string | null
+          offered_at?: string
+          organization_id: string
+          payload: string
+          purchased_at?: string | null
+          refunded_at?: string | null
+          sold_by: string
+          source: string
+          star_usd?: number | null
+          stars: number
+          status?: string
+          telegram_message_id?: number | null
+          telegram_user_id: number
+          updated_at?: string
+        }
+        Update: {
+          avatar_id?: string
+          chat_id?: string
+          commission_ledger_id?: string | null
+          commission_pct?: number | null
+          commission_settled_at?: string | null
+          commission_tokens?: number | null
+          commission_usd?: number | null
+          created_at?: string
+          id?: string
+          item_id?: string | null
+          offered_at?: string
+          organization_id?: string
+          payload?: string
+          purchased_at?: string | null
+          refunded_at?: string | null
+          sold_by?: string
+          source?: string
+          star_usd?: number | null
+          stars?: number
+          status?: string
+          telegram_message_id?: number | null
+          telegram_user_id?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "telegram_stars_sales_avatar_id_fkey"
+            columns: ["avatar_id"]
+            isOneToOne: false
+            referencedRelation: "avatars"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "telegram_stars_sales_chat_id_fkey"
+            columns: ["chat_id"]
+            isOneToOne: false
+            referencedRelation: "agent_chats"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "telegram_stars_sales_commission_ledger_id_fkey"
+            columns: ["commission_ledger_id"]
+            isOneToOne: false
+            referencedRelation: "token_ledger"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "telegram_stars_sales_item_id_fkey"
+            columns: ["item_id"]
+            isOneToOne: false
+            referencedRelation: "telegram_paid_media_items"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "telegram_stars_sales_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      telegram_webhook_events: {
+        Row: {
+          avatar_id: string
+          received_at: string
+          update_id: number
+        }
+        Insert: {
+          avatar_id: string
+          received_at?: string
+          update_id: number
+        }
+        Update: {
+          avatar_id?: string
+          received_at?: string
+          update_id?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "telegram_webhook_events_avatar_id_fkey"
+            columns: ["avatar_id"]
+            isOneToOne: false
+            referencedRelation: "avatars"
             referencedColumns: ["id"]
           },
         ]

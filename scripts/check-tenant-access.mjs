@@ -111,6 +111,22 @@ const EXENTOS = [
         'src/lib/billing/moduleFees.ts',
         'Cron de cuotas: barre TODAS las orgs a propósito y resuelve la org fila a fila (org_modules.organization_id), igual que el resto de crons.',
     ],
+    [
+        'src/lib/telegram/settings.ts',
+        'loadTelegramSettings (variante sin sesión, para el webhook y los crones) filtra por avatar_id, que es UNIQUE en avatar_telegram_settings (migración de la Tarea 1) — no necesita organizationId de entrada para identificar la fila. La otra variante del fichero, con ctx, va por orgTable y no dispara este candado.',
+    ],
+    [
+        'src/lib/telegram/sales.ts',
+        'recordStarsSale corre disparado por el webhook de Telegram, sin sesión. La organizationId no se adivina: llega ya resuelta en el propio StarsSaleEvent (la fila que la transición atómica del webhook acaba de devolver tras el offered→purchased), y cada consulta la usa como filtro explícito.',
+    ],
+    [
+        'src/lib/telegram/paidMedia.ts',
+        'deliverPaidMedia (Task 5) es sin sesión a propósito — mismo perfil que sales.ts, no un service con ctx —: recibe el chat ya resuelto y acotado por su llamador (hoy sendPaidMediaFromInbox en AgentTelegramService.ts, que ya comprobó dueño de avatar y conversación). La organizationId nunca se adivina: sale de ese chat ya cargado, y las 7 llamadas de este fichero la usan como filtro (.eq) o como campo fijado (organization_id:) explícito.',
+    ],
+    [
+        'src/lib/telegram/bots.ts',
+        'telegramUnitActivity (Task 6, informe de unidades para la cuota prorrateada) corre sin sesión, disparada por el cron de module-fees — mismo perfil que moduleFees.ts. La organizationId llega por parámetro (la resuelve chargeModuleFees fila a fila desde org_modules) y la única consulta del fichero la filtra explícitamente con .eq(\'organization_id\', organizationId).',
+    ],
 ]
 
 /**
