@@ -556,7 +556,10 @@ export async function chargeTokens(args: {
     idempotencyKey: string
     costUsd?: number | null
     metadata?: Record<string, unknown>
-}): Promise<{ ok: true; ledgerId: string; replayed: boolean } | { ok: false; reason: string }> {
+}): Promise<
+    | { ok: true; ledgerId: string; replayed: boolean; tokens: number }
+    | { ok: false; reason: string }
+> {
     if (!(args.tokens > 0)) return { ok: false, reason: 'non_positive_tokens' }
 
     const { data, error } = await billingDb().rpc('wallet_charge', {
@@ -578,9 +581,21 @@ export async function chargeTokens(args: {
         reason?: string
         ledger_id?: string
         replayed?: boolean
+        tokens?: number
     } | null
     if (!res?.ok || !res.ledger_id) {
         return { ok: false, reason: res?.reason ?? 'wallet_charge returned no id' }
     }
-    return { ok: true, ledgerId: res.ledger_id, replayed: Boolean(res.replayed) }
+    return {
+        ok: true,
+        ledgerId: res.ledger_id,
+        replayed: Boolean(res.replayed),
+        // `wallet_charge` devuelve `tokens` tanto en el asiento nuevo como en
+        // el replay (en ese caso, `abs(v_existing.tokens)` del asiento viejo).
+        // Se propaga para que un futuro replay de comisión (plan siguiente,
+        // tras editar el % del catálogo) pueda escribir en la fila de la
+        // venta la cifra que el ledger dice de verdad, no una que el caller
+        // tuvo que recalcular y que podría no coincidir con el asiento real.
+        tokens: res.tokens ?? args.tokens,
+    }
 }
