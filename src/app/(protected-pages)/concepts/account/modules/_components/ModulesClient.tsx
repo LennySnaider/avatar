@@ -22,16 +22,19 @@ const UNIT_LABEL: Record<string, string> = {
 /**
  * Módulos con funcionalidad real detrás de la tarjeta. El catálogo puede
  * sembrar un módulo (precio, comisiones) antes de que exista una sola línea
- * de código para él — es lo que pasó con `telegram` — y la tarjeta no puede
- * dejar que eso se confunda con "instalar esto activa algo". `telegram` sale
- * de este set el día que aterrice su canal (ver docs/superpowers/specs/
- * 2026-09-11-telegram-telestars-module-design.md); hasta entonces se anuncia
- * pero se marca "Próximamente".
+ * de código para él — es lo que pasó con `telegram` hasta la rama
+ * feat/telegram-comision-cobrable — y la tarjeta no puede dejar que eso se
+ * confunda con "instalar esto activa algo". `telegram` entró a este set ahí:
+ * el canal (conectar bot, webhook, galería y cobro de Stars — ver
+ * docs/superpowers/specs/2026-09-11-telegram-telestars-module-design.md) ya
+ * funciona y ya factura, así que seguir marcándolo "Próximamente" sería la
+ * mentira contraria. Un módulo nuevo que se siembre en el catálogo antes de
+ * tener código se marca aquí "Próximamente" hasta que aterrice el suyo.
  *
  * Deliberadamente NO es una columna de `module_catalog`: es un hecho sobre el
  * REPOSITORIO (¿existe el código?), no sobre los datos.
  */
-const AVAILABLE_MODULES = new Set<string>([])
+const AVAILABLE_MODULES = new Set<string>(['telegram'])
 
 interface Props {
     catalog: ModuleCatalogRow[]
