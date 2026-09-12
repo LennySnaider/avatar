@@ -9,6 +9,7 @@ import {
     PiUserDuotone,
     PiGearDuotone,
     PiPulseDuotone,
+    PiPuzzlePieceDuotone,
     PiSignOutDuotone,
 } from 'react-icons/pi'
 
@@ -35,6 +36,11 @@ const dropdownItemList: DropdownList[] = [
         label: 'Activity Log',
         path: '/concepts/account/activity-log',
         icon: <PiPulseDuotone />,
+    },
+    {
+        label: 'Modules',
+        path: '/concepts/account/modules',
+        icon: <PiPuzzlePieceDuotone />,
     },
 ]
 
