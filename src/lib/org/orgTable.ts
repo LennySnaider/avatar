@@ -43,6 +43,9 @@ export const TENANT_TABLES = [
     'avatar_fan_memories',
     'agent_usage_counters',
     'org_modules',
+    'avatar_telegram_settings',
+    'telegram_paid_media_items',
+    'telegram_stars_sales',
 ] as const
 
 export type TenantTable = (typeof TENANT_TABLES)[number]
