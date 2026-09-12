@@ -28,9 +28,12 @@ export default async function RootLayout({
 
     const messages = await getMessages()
 
-    const navigationTree = await getNavigation()
-
+    // Una sola resolución de módulos instalados por render: se pasa a
+    // getNavigation para podar el árbol en vez de dejar que la recalcule por
+    // su cuenta (antes eran dos resoluciones de sesión + membresía en serie
+    // para lo mismo).
     const installedModules = await getInstalledModules()
+    const navigationTree = await getNavigation(installedModules)
 
     const theme = await getTheme()
 
