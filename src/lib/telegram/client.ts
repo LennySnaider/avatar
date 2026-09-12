@@ -327,6 +327,28 @@ export async function getMe(token: string): Promise<TelegramUser> {
     return callJson<TelegramUser>(token, 'getMe')
 }
 
+/** Respaldo local cuando `NEXT_PUBLIC_APP_URL` no está definida — mismo
+ *  puerto que usa `npm run dev` (ver CLAUDE.md). */
+const APP_BASE_URL_FALLBACK = 'http://localhost:3030'
+
+/**
+ * Dirección a la que Telegram debe entregar los updates de un avatar.
+ *
+ * Vive aquí y no en el servicio porque ese fichero es `'use server'` y allí
+ * todo export tiene que ser asíncrono: una función pura de cálculo se
+ * convertiría, sin necesidad, en una acción invocable desde el navegador.
+ *
+ * Tiene UN solo sitio a propósito: la pantalla del canal compara esta misma
+ * dirección contra la que Telegram dice tener registrada, para avisar de que
+ * un bot quedó apuntando a un sitio muerto. Si hubiera dos copias y una
+ * cambiara, ese aviso saltaría para todos los bots correctos y dejaría de
+ * significar nada.
+ */
+export function buildTelegramWebhookUrl(avatarId: string): string {
+    const base = process.env.NEXT_PUBLIC_APP_URL || APP_BASE_URL_FALLBACK
+    return `${base}/api/webhooks/telegram/${avatarId}`
+}
+
 export interface SetWebhookParams {
     url: string
     /** Telegram lo devuelve en cada petición en `X-Telegram-Bot-Api-Secret-Token`. */

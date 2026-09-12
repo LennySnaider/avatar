@@ -102,6 +102,7 @@ import {
     type TelegramSettings,
 } from '@/lib/telegram/settings'
 import {
+    buildTelegramWebhookUrl,
     deleteWebhook,
     getMe,
     getWebhookInfo,
@@ -312,9 +313,8 @@ export async function connectTelegramBot(
         // caído, URL rechazada), la fila QUEDA en `enabled: false`: nunca
         // llegó a decir "conectada", así que no hay nada que deshacer — el
         // error simplemente se propaga tal cual a través de `fail()`.
-        const base = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3030'
         await setWebhook(token, {
-            url: `${base}/api/webhooks/telegram/${avatarId}`,
+            url: buildTelegramWebhookUrl(avatarId),
             secretToken: webhookSecret,
         })
 

@@ -5,7 +5,7 @@ import { getOrgContext, type OrgContext } from '@/lib/tenant/getOrgContext'
 import { orgTable } from '@/lib/org/orgTable'
 import { getGenerationMediaUrl } from '@/lib/storagePaths'
 import { loadTelegramBotToken } from '@/lib/telegram/settings'
-import { getMyStarBalance } from '@/lib/telegram/client'
+import { buildTelegramWebhookUrl, getMyStarBalance } from '@/lib/telegram/client'
 import {
     getTelegramStatus,
     getTelegramWebhookInfo,
@@ -79,14 +79,9 @@ export default async function Page({ params }: PageProps) {
     // que agent/[slug]/page.tsx (evita el bucle lista → detalle → lista).
     if (!avatar) redirect('/concepts/avatar-forge/telegram')
 
-    // La URL que espera el webhook. TIENE que construirse EXACTAMENTE igual
-    // que en `connectTelegramBot` (AgentTelegramService.ts) — es la misma
-    // fórmula duplicada a propósito, no una nueva: ese fichero es de la Tarea
-    // 3 y esta pantalla sólo lo consume, no lo modifica. Si algún día una de
-    // las dos cambia sin la otra, esta comparación empieza a mentir — por eso
-    // vive aquí, al lado de donde se USA, con esta nota.
-    const base = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3030'
-    const expectedWebhookUrl = `${base}/api/webhooks/telegram/${avatarId}`
+    // La URL que espera el webhook, para comparar contra la que Telegram dice
+    // tener registrada y avisar si el bot quedó apuntando a un sitio muerto.
+    const expectedWebhookUrl = buildTelegramWebhookUrl(avatarId)
 
     const [statusResult, webhookResult, mediaResult] = await Promise.all([
         getTelegramStatus(avatarId),
