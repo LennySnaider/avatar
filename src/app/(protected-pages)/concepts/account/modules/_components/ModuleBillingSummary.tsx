@@ -2,6 +2,7 @@
  * Cuota y comisiones del mes en curso para un módulo, más el saldo. Server
  * component: lee el ledger directamente, sin pasar por una action.
  */
+import Alert from '@/components/ui/Alert'
 import Card from '@/components/ui/Card'
 import { getModuleBillingSummary } from '@/lib/billing/moduleSummary'
 
@@ -16,6 +17,12 @@ export default async function ModuleBillingSummary({
 
     return (
         <div className="flex flex-col gap-4">
+            {summary.truncated && (
+                <Alert type="warning" showIcon>
+                    Hay más movimientos este mes de los que se pudieron leer de una vez: los
+                    totales de abajo pueden estar incompletos.
+                </Alert>
+            )}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <Card>
                     <span>Cuota del mes</span>
