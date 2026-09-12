@@ -6,7 +6,7 @@
  */
 import { orgSupabase } from '@/lib/org/orgTable'
 import { MODULE_SKU, TOKEN_USD } from './catalog'
-import { currentPeriodUtc } from './moduleFees'
+import { currentPeriodUtc } from './period'
 
 export interface LedgerEntry {
     id: string
