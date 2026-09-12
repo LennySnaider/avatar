@@ -30,14 +30,19 @@ export interface StarsCommissionResult {
     replayed: boolean
 }
 
-const EMPTY: StarsCommissionResult = {
+// Congelado: se devuelve tal cual (por referencia) desde varias ramas de
+// settleStarsCommission, así que todos los llamadores comparten el mismo
+// objeto — sin freeze, que uno de ellos lo mutara "sin querer" (p.ej. para
+// completar un campo antes de loguearlo) corrompería el valor que ven todos
+// los demás.
+const EMPTY: StarsCommissionResult = Object.freeze({
     ledgerId: null,
     commissionPct: 0,
     commissionUsd: 0,
     commissionTokens: 0,
     starUsd: STAR_USD,
     replayed: false,
-}
+})
 
 export async function settleStarsCommission(
     input: StarsCommissionInput,
