@@ -123,6 +123,10 @@ const EXENTOS = [
         'src/lib/telegram/paidMedia.ts',
         'deliverPaidMedia (Task 5) es sin sesión a propósito — mismo perfil que sales.ts, no un service con ctx —: recibe el chat ya resuelto y acotado por su llamador (hoy sendPaidMediaFromInbox en AgentTelegramService.ts, que ya comprobó dueño de avatar y conversación). La organizationId nunca se adivina: sale de ese chat ya cargado, y las 7 llamadas de este fichero la usan como filtro (.eq) o como campo fijado (organization_id:) explícito.',
     ],
+    [
+        'src/lib/telegram/bots.ts',
+        'telegramUnitActivity (Task 6, informe de unidades para la cuota prorrateada) corre sin sesión, disparada por el cron de module-fees — mismo perfil que moduleFees.ts. La organizationId llega por parámetro (la resuelve chargeModuleFees fila a fila desde org_modules) y la única consulta del fichero la filtra explícitamente con .eq(\'organization_id\', organizationId).',
+    ],
 ]
 
 /**
