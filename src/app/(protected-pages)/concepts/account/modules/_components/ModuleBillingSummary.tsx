@@ -1,10 +1,11 @@
 /**
- * Cuota y comisiones del mes en curso para un módulo, más el saldo. Server
- * component: lee el ledger directamente, sin pasar por una action.
+ * Cuota y comisiones del mes en curso para un módulo. Server component: lee
+ * el ledger directamente, sin pasar por una action.
  */
 import Alert from '@/components/ui/Alert'
 import Card from '@/components/ui/Card'
 import { getModuleBillingSummary } from '@/lib/billing/moduleSummary'
+import { MODULE_SKU } from '@/lib/billing/catalog'
 
 export default async function ModuleBillingSummary({
     organizationId,
@@ -13,7 +14,24 @@ export default async function ModuleBillingSummary({
     organizationId: string
     slug: string
 }) {
-    const summary = await getModuleBillingSummary(organizationId, slug)
+    let summary: Awaited<ReturnType<typeof getModuleBillingSummary>> | null = null
+    try {
+        summary = await getModuleBillingSummary(organizationId, slug)
+    } catch (e) {
+        // Pantalla de dinero: no puede tumbar la página de módulos entera.
+        // ModulesClient (instalar/desinstalar) ya se renderizó arriba y no
+        // depende de esta lectura, y esta ruta no tiene error.tsx propio que
+        // aísle sólo esta sección — así que el aislamiento se hace aquí.
+        console.error(`[modules] ModuleBillingSummary(${slug}):`, e)
+        return (
+            <Alert type="warning" showIcon>
+                No se pudo cargar el resumen de facturación de este módulo. Instalar y
+                desinstalar no se ven afectados.
+            </Alert>
+        )
+    }
+
+    const feeSku = MODULE_SKU.fee(slug)
 
     return (
         <div className="flex flex-col gap-4">
@@ -55,7 +73,7 @@ export default async function ModuleBillingSummary({
                                 {summary.entries.map((e) => (
                                     <tr key={e.id}>
                                         <td>{new Date(e.createdAt).toLocaleDateString()}</td>
-                                        <td>{e.sku.startsWith('module_fee') ? 'Cuota mensual' : 'Comisión de venta'}</td>
+                                        <td>{e.sku === feeSku ? 'Cuota mensual' : 'Comisión de venta'}</td>
                                         <td className="text-right">{Math.abs(e.tokens).toLocaleString()}</td>
                                     </tr>
                                 ))}
