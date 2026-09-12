@@ -68,7 +68,13 @@ export interface TelegramSettings {
     botId: number
     botUsername: string | null
     enabled: boolean
-    connectedAt: string
+    /** Fecha de la PRIMERA activación con éxito (Telegram confirmó
+     *  `setWebhook`), no de cuándo se creó la fila. `null` = el bot nunca se
+     *  activó → NUNCA FACTURABLE, no "cero días" (ver CANDADO 1 en
+     *  `AgentTelegramService.ts` y la migración
+     *  `avatar_telegram_connected_at_nullable`): cualquier informe que agregue
+     *  esta columna para facturar debe saltarse las filas nulas. */
+    connectedAt: string | null
     disconnectedAt: string | null
     lastUpdateAt: string | null
     lastError: string | null

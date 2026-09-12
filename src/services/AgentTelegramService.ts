@@ -16,14 +16,36 @@
  * galería y el envío añaden los suyos propios en su propio docblock, no
  * renumerados aquí para no mezclar los dos grupos):
  *
- *  1. `connected_at` se conserva al reconectar. Es la fecha que factura la
- *     cuota prorrateada por días: reiniciarla regalaría los días ya
- *     consumidos. El mecanismo es el mismo que `setModuleStatus` usa para
- *     `installed_at` en ModulesService.ts: el upsert por `avatar_id` sólo pisa
- *     las columnas presentes en el objeto que se le pasa, así que
- *     `connected_at` simplemente NO se incluye en el payload de
- *     `connectTelegramBot` — sobrevive intacta si la fila ya existía, y el
- *     default `now()` de la columna la rellena si es la primera vez.
+ *  1. `connected_at` se conserva al reconectar Y arranca en NULL, no en la
+ *     fecha del primer intento. Es la fecha que factura la cuota prorrateada
+ *     por días, así que dos cosas tienen que ser ciertas a la vez: que
+ *     reconectar no la reinicie (regalaría los días ya consumidos) y que no
+ *     se ancle a un intento que todavía no sabemos si funcionó. Hasta la
+ *     migración `avatar_telegram_connected_at_nullable` la columna era
+ *     `not null default now()`, así que ese default la estampaba en la
+ *     PRIMERA escritura (FASE 1 más abajo, `enabled: false`, antes de que
+ *     Telegram confirme nada); si `setWebhook` fallaba después (red, Telegram
+ *     caído, URL rechazada), esa fecha quedaba anclada para siempre — el
+ *     candado protegía las reconexiones pero no la primera conexión fallida.
+ *     El mecanismo actual, sin `NOT NULL` ni `DEFAULT` en la columna, en dos
+ *     mitades:
+ *       - NINGUNA escritura de FASE 1 la incluye en su payload (mismo patrón
+ *         que `setModuleStatus` usa para `installed_at` en ModulesService.ts:
+ *         el upsert por `avatar_id` sólo pisa las columnas presentes en el
+ *         objeto). Sin `default`, eso deja la columna en NULL si la fila es
+ *         nueva, y la deja intacta si ya existía.
+ *       - SÓLO FASE 3 (la que activa, tras confirmar `setWebhook`) la
+ *         estampa, y sólo si seguía en NULL — ver el `if` sobre
+ *         `upserted.connected_at` en `connectTelegramBot`. Así la primera
+ *         activación con éxito de un avatar la ancla, y todas las
+ *         reconexiones posteriores la dejan intacta: exactamente lo que este
+ *         candado pretendía desde el principio, ahora también para el primer
+ *         intento.
+ *     NULL significa "este avatar nunca activó su bot con éxito" y por tanto
+ *     NUNCA FACTURABLE — no es lo mismo que "cero días". Cualquier lectura que
+ *     agregue esta columna para facturar (el informe de unidades de la cuota
+ *     prorrateada, de otra tarea) debe SALTARSE las filas con `connected_at`
+ *     nulo en vez de tratarlas como coste cero.
  *
  *  2. El token no vuelve a salir jamás. `loadTelegramSettingsForOrg` (y por
  *     tanto `toStatus` más abajo) nunca trae `bot_token` — ver settings.ts.
@@ -62,9 +84,10 @@
  * orden real es: `getMe` (sólo lectura, no efecto colateral) → upsert local
  * con `enabled: false` (aquí revienta el choque de `bot_id` si lo hay, ANTES
  * de tocar Telegram) → `setWebhook` → sólo si eso tuvo éxito, un segundo
- * update que pone `enabled: true` y limpia `disconnected_at`. La fila nunca
- * dice "conectada" hasta que Telegram confirmó — así que un fallo de
- * `setWebhook` no necesita deshacer nada, porque nunca llegó a mentir.
+ * update que pone `enabled: true`, limpia `disconnected_at` y estampa
+ * `connected_at` si aún estaba vacía (CANDADO 1). La fila nunca dice
+ * "conectada" hasta que Telegram confirmó — así que un fallo de `setWebhook`
+ * no necesita deshacer nada, porque nunca llegó a mentir.
  */
 import { randomBytes } from 'node:crypto'
 import { getOrgContext, type OrgContext } from '@/lib/tenant/getOrgContext'
@@ -100,7 +123,11 @@ export interface TelegramBotStatus {
     connected: boolean
     botUsername: string | null
     enabled: boolean
-    /** Fecha de conexión ORIGINAL — sobrevive a desconectar/reconectar (CANDADO 1). */
+    /** Fecha de la PRIMERA activación con éxito — sobrevive a desconectar/
+     *  reconectar (CANDADO 1). `null` = el bot nunca llegó a activarse
+     *  (nunca hubo un `setWebhook` exitoso): NUNCA FACTURABLE, no "cero
+     *  días" — quien agregue esta columna para facturar debe SALTARSE las
+     *  filas nulas, no tratarlas como coste cero. */
     connectedAt: string | null
 }
 
@@ -206,10 +233,10 @@ function toStatus(settings: TelegramSettings | null): TelegramBotStatus {
 /**
  * Conecta (o reconecta) el bot de un avatar: valida el token contra la Bot
  * API, persiste los ajustes y sólo ENTONCES registra el webhook. Ver CANDADO 1
- * sobre por qué `connected_at` no se toca aquí, y la nota "ORDEN DE ESCRITURA"
- * en la cabecera del fichero sobre por qué el upsert local va ANTES que
- * `setWebhook` y por qué `enabled` se activa en una segunda escritura, no en
- * la primera.
+ * sobre por qué `connected_at` no se toca en FASE 1 pero SÍ en FASE 3 (sólo si
+ * seguía vacía), y la nota "ORDEN DE ESCRITURA" en la cabecera del fichero
+ * sobre por qué el upsert local va ANTES que `setWebhook` y por qué `enabled`
+ * se activa en una segunda escritura, no en la primera.
  */
 export async function connectTelegramBot(
     avatarId: string,
@@ -235,7 +262,23 @@ export async function connectTelegramBot(
         // Si `bot_id` ya pertenece a otro avatar, el choque revienta AQUÍ,
         // antes de que Telegram se entere de que existimos: su webhook sigue
         // apuntando a quien ya lo tenía.
-        const { error } = await orgUpsert(
+        //
+        // `connected_at` OMITIDO A PROPÓSITO (CANDADO 1): la columna ya no
+        // tiene `not null default now()` (migración
+        // `avatar_telegram_connected_at_nullable`), así que si la fila es
+        // nueva queda en NULL — "nunca se activó" — en vez de anclarse a un
+        // intento que todavía no sabemos si va a funcionar; si ya existía
+        // (reconexión), sobrevive intacta con lo que tuviera.
+        // `disconnected_at` TAMBIÉN OMITIDO: si esto es una reconexión tras
+        // una baja, su fecha sobrevive intacta mientras `enabled` siga en
+        // `false` — coherente con el CANDADO 4, no queda una fila "no
+        // habilitada" con fecha de baja en blanco.
+        //
+        // Se pide `connected_at` de vuelta con `.select()`: es la misma fila
+        // que se acaba de escribir (no una consulta ni una carrera aparte), y
+        // FASE 3 la necesita para saber si esta activación es la PRIMERA con
+        // éxito (columna en NULL) o una reconexión (columna ya poblada).
+        const { data: upserted, error } = await orgUpsert(
             ctx,
             'avatar_telegram_settings',
             {
@@ -246,14 +289,11 @@ export async function connectTelegramBot(
                 webhook_secret: webhookSecret,
                 enabled: false,
                 updated_at: new Date().toISOString(),
-                // connected_at OMITIDO A PROPÓSITO (CANDADO 1) y
-                // disconnected_at TAMBIÉN OMITIDO: si esto es una reconexión
-                // tras una baja, su fecha sobrevive intacta mientras
-                // `enabled` siga en `false` — coherente con el CANDADO 4, no
-                // queda una fila "no habilitada" con fecha de baja en blanco.
             },
             { onConflict: 'avatar_id' },
         )
+            .select('connected_at')
+            .single()
         if (error) {
             // `bot_id` también es UNIQUE (un bot pertenece a un solo avatar).
             // El conflicto declarado arriba es `avatar_id`, así que un choque
@@ -280,9 +320,21 @@ export async function connectTelegramBot(
 
         // FASE 3 — Telegram confirmó: ahora sí se marca activa y se limpia la
         // fecha de baja (si la había). Único punto de todo el fichero donde
-        // `enabled` pasa a `true`.
+        // `enabled` pasa a `true`. `connected_at` se estampa AQUÍ sólo si
+        // `upserted.connected_at` (leído en FASE 1, misma fila) seguía en
+        // NULL — CANDADO 1: la primera activación con éxito la ancla, una
+        // reconexión la deja intacta porque el `if` ni siquiera la incluye en
+        // el payload.
+        const activatePayload: Database['public']['Tables']['avatar_telegram_settings']['Update'] = {
+            enabled: true,
+            disconnected_at: null,
+            updated_at: new Date().toISOString(),
+        }
+        if (!upserted.connected_at) {
+            activatePayload.connected_at = new Date().toISOString()
+        }
         const { error: activateError } = await orgTable(ctx, 'avatar_telegram_settings')
-            .update({ enabled: true, disconnected_at: null, updated_at: new Date().toISOString() })
+            .update(activatePayload)
             .eq('avatar_id', avatarId)
         if (activateError) throw new Error(activateError.message)
 

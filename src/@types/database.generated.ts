@@ -595,7 +595,7 @@ export type Database = {
           bot_id: number
           bot_token: string
           bot_username: string | null
-          connected_at: string
+          connected_at: string | null
           created_at: string
           disconnected_at: string | null
           enabled: boolean
@@ -611,7 +611,7 @@ export type Database = {
           bot_id: number
           bot_token: string
           bot_username?: string | null
-          connected_at?: string
+          connected_at?: string | null
           created_at?: string
           disconnected_at?: string | null
           enabled?: boolean
@@ -627,7 +627,7 @@ export type Database = {
           bot_id?: number
           bot_token?: string
           bot_username?: string | null
-          connected_at?: string
+          connected_at?: string | null
           created_at?: string
           disconnected_at?: string | null
           enabled?: boolean
