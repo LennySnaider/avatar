@@ -34,7 +34,7 @@ insert into module_catalog
 values
     ('telegram', 'Telegram',
      'Próximamente: conecta tu bot de Telegram y vende contenido con Telegram Stars.',
-     29.90, 'bot', 15.00, 5.00, 1)
+     9.00, 'bot', 20.00, 7.00, 1)
 on conflict (slug) do nothing;
 
 create table if not exists org_modules (
