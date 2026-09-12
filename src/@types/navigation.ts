@@ -29,6 +29,13 @@ export interface NavigationTree {
             translateKey: string
             label: string
         }
+        /**
+         * Slug de `module_catalog` que la organización debe tener instalado
+         * para ver este ítem. El filtro se aplica en servidor
+         * (`filterNavigationByModules`); el gate real de acceso vive en el
+         * layout de la ruta y en cada server action.
+         */
+        requiredModule?: string
     }
 }
 
