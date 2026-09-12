@@ -1,10 +1,16 @@
 /**
  * Cuota mensual de cada módulo instalado, cobrada por unidades reales.
  *
- * Idempotente por (organización, módulo, mes): el cron corre a diario y sólo
- * el primer pase del mes con unidades activas cobra. Correr a diario es
- * tolerancia a fallos del día 1, no prorrateo — un bot conectado a mitad de
- * mes empieza a pagar el mes siguiente.
+ * Idempotente por (organización, módulo, mes): el cron corre a diario, y el
+ * PRIMER pase que encuentra unidades activas dentro del mes asienta la cuota
+ * COMPLETA de ese mes — sin importar qué día sea. Un bot conectado el 28 de
+ * septiembre paga septiembre entero, no una fracción ni "empieza a pagar en
+ * octubre". Los pases posteriores del mismo mes son no-op por la
+ * idempotencia de `chargeTokens` (misma `idempotencyKey`).
+ *
+ * Prorratear (cobrar sólo los días con unidades activas) sería un cambio de
+ * producto posterior sobre esta función, no algo que este comentario deba
+ * prometer por adelantado.
  *
  * Recorre TODAS las organizaciones a propósito (es un cron sin sesión) y
  * resuelve la org fila a fila.
@@ -73,8 +79,22 @@ export async function chargeModuleFees(period = currentPeriodUtc()): Promise<Mod
             continue
         }
         const price = Number(def.price_usd_month_per_unit ?? 0)
+        if (price <= 0) {
+            // Caso legítimo: módulo gratis (o aún sin precio fijado). No
+            // merece aviso — es la configuración, no un agujero.
+            result.skipped++
+            continue
+        }
+
         const counter = UNIT_COUNTERS.get(raw.module_slug)
-        if (price <= 0 || !counter) {
+        if (!counter) {
+            // Éste SÍ es el camino mudo que preocupa: un módulo instalado con
+            // precio > 0 pero sin contador de unidades registrado se salta
+            // en silencio y podría seguir así para siempre — el cron corre a
+            // diario y nada distingue "hoy no tocaba" de "esto nunca cobra".
+            console.warn(
+                `[module-fees] módulo "${raw.module_slug}" (org ${raw.organization_id}) tiene precio > 0 pero ningún contador de unidades registrado — no se está cobrando su cuota.`,
+            )
             result.skipped++
             continue
         }
