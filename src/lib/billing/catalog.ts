@@ -32,6 +32,40 @@ export function tokensForCostUsd(costUsd: number): number {
     return Math.ceil((costUsd * COST_MARGIN) / TOKEN_USD)
 }
 
+/**
+ * Lo que Telegram ACREDITA al desarrollador por cada Star (doc de Telegram
+ * Stars / Fragment). No es lo que paga el fan: en tienda una Star le cuesta
+ * ~$0.02 porque Apple y Google cobran lo suyo por encima.
+ *
+ * Se guarda ademas en cada asiento (`metadata.star_usd`) para poder revalorar
+ * ventas antiguas si la tasa cambia, sin perder la verdad de lo que se cobro.
+ */
+export const STAR_USD = 0.013
+
+/** Telegram Stars → USD acreditados al creador. */
+export function starsToUsd(stars: number): number {
+    return stars * STAR_USD
+}
+
+/**
+ * USD de INGRESO → tokens. A diferencia de `tokensForCostUsd`, no aplica
+ * `COST_MARGIN`: aquel convierte el costo de un proveedor en precio de venta,
+ * y una comision o una cuota YA es precio.
+ */
+export function usdToTokens(usd: number): number {
+    if (!(usd > 0)) return 0
+    return Math.ceil(usd / TOKEN_USD)
+}
+
+/**
+ * Sku de los asientos de modulo. Son la clave de lectura de "cuanto me ha
+ * costado este modulo", asi que tienen que ser estables.
+ */
+export const MODULE_SKU = {
+    fee: (slug: string) => `module_fee:${slug}`,
+    commission: (slug: string) => `commission:${slug}`,
+}
+
 type CostEntry = {
     /**
      * USD por imagen, o USD por SEGUNDO en los de video.
