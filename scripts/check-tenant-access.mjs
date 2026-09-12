@@ -107,6 +107,10 @@ const EXENTOS = [
         'src/lib/modules/catalog.ts',
         'module_catalog es un catálogo GLOBAL sin organization_id (precios y comisiones de la plataforma): no hay org por la que filtrar.',
     ],
+    [
+        'src/lib/billing/moduleFees.ts',
+        'Cron de cuotas: barre TODAS las orgs a propósito y resuelve la org fila a fila (org_modules.organization_id), igual que el resto de crons.',
+    ],
 ]
 
 /**
