@@ -1,7 +1,8 @@
 /**
  * Carga de `avatar_telegram_settings` — un bot de Telegram por avatar.
  *
- * DOS variantes, mismo patrón que `src/lib/agent/inboxSync.ts`:
+ * TRES funciones, cada una con un contrato distinto sobre `bot_token`:
+ *
  *  - `loadTelegramSettings(avatarId)`: SIN sesión, para el webhook y los
  *    crones. Usa el cliente service-role (`orgSupabase`) filtrando por
  *    `avatar_id` — que es UNIQUE en esta tabla (migración de la Tarea 1), así
@@ -11,19 +12,31 @@
  *    venta) sale de la propia fila que esta función devuelve.
  *  - `loadTelegramSettingsForOrg(ctx, avatarId)`: CON contexto, vía `orgTable`
  *    (que ya inyecta el filtro `organization_id = ctx.organizationId`).
+ *  - `loadTelegramBotToken(avatarId)`: el ÚNICO punto de acceso al token.
  *
- * `bot_token` NUNCA sale de aquí. Las dos variantes devuelven `TelegramSettings`,
- * que no tiene ese campo — ni seleccionando `*` se cuela: el único punto de
- * conversión fila→DTO (`toSettings`, más abajo) lo omite explícitamente, así
- * que da igual qué columnas traiga la consulta. Un llamador que de verdad
- * necesite las credenciales para invocar la Bot API (`@/lib/telegram/client`)
- * tiene que leer `bot_token` con su propia consulta puntual — a propósito:
- * que mover el token fuera de esta capa sea un acto explícito de quien lo
- * necesita, no un `return` que lo arrastra sin querer dentro de un objeto más
- * grande (p.ej. una server action que un componente cliente llama directo).
+ * Las dos primeras devuelven `TelegramSettings`, que NUNCA incluye `bot_token`
+ * — ni seleccionando `*` se cuela: el único punto de conversión fila→DTO
+ * (`toSettings`, más abajo) lo omite explícitamente, así que da igual qué
+ * columnas traiga la consulta. Están pensadas para todo lo que pueda acabar
+ * cerca de un componente de cliente (estado de conexión, info de webhook para
+ * pantalla): la frontera que protegen es "hacia el cliente [de navegador]",
+ * no "fuera del servidor" — el servidor sí necesita el token para invocar la
+ * Bot API.
+ *
+ * Por eso existe `loadTelegramBotToken`: es EL sitio que sabe leer esa
+ * columna — a propósito uno solo, no uno por cada llamador. La alternativa
+ * (que cada consumidor que necesite el token — conectar el bot, mandar
+ * contenido de pago...) haga su propia consulta puntual multiplicaría por N
+ * las oportunidades de filtrarlo, justo donde la regla quiere lo contrario:
+ * UN sitio que lee y maneja el token, no varios. Devuelve una cadena suelta,
+ * no un objeto: así no puede colarse en un DTO por arrastre de propiedades
+ * (`{...settings}`), y el nombre de la función avisa del peligro en el propio
+ * call site. Quien la use: nunca pasar el resultado a un componente de
+ * cliente, a un log, ni a un mensaje de error — la URL de la Bot API lleva el
+ * token dentro (`@/lib/telegram/client` ya se encarga de no filtrarlo por ahí).
  *
  * Exenciones (candado F4.2 / `check:tenant`): este fichero usa `orgSupabase()`
- * crudo en la variante sin sesión — motivo escrito en
+ * crudo en las variantes sin sesión — motivo escrito en
  * `scripts/check-tenant-access.mjs` y en el bloque `no-restricted-syntax` de
  * `eslint.config.mjs`.
  */
@@ -84,6 +97,27 @@ export async function loadTelegramSettings(avatarId: string): Promise<TelegramSe
     if (error) throw new Error(error.message)
     if (!data) return null
     return toSettings(data)
+}
+
+/**
+ * SÓLO SERVIDOR. Devuelve el token para poder llamar a la Bot API.
+ *
+ * Está separada de `loadTelegramSettings` a propósito, y devuelve una cadena
+ * suelta en vez de un objeto: así el token no puede colarse en un DTO por
+ * arrastre de propiedades, y el nombre de la función avisa de lo que hace.
+ *
+ * NUNCA lo pases a un componente de cliente, a un log ni a un mensaje de
+ * error: la URL de Telegram lleva el token dentro, así que registrar una URL
+ * fallida lo publica en claro.
+ */
+export async function loadTelegramBotToken(avatarId: string): Promise<string | null> {
+    const { data, error } = await orgSupabase()
+        .from('avatar_telegram_settings')
+        .select('bot_token')
+        .eq('avatar_id', avatarId)
+        .maybeSingle()
+    if (error) throw new Error(error.message)
+    return data?.bot_token ?? null
 }
 
 /** Variante CON contexto — `orgTable` ya inyecta `organization_id = ctx.organizationId`. */
