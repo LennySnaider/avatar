@@ -81,7 +81,12 @@ export interface DeliverPaidMediaInput {
     stars?: number
     /** Sobrescribe `telegram_paid_media_items.caption` SÓLO para esta entrega. */
     caption?: string
-    soldBy: 'ai' | 'manual'
+    /** De aquí se DERIVA `soldBy` (20% comisión IA / 7% manual, catálogo
+     *  `telegram`) — ver el comentario junto a esa derivación más abajo. No
+     *  se acepta `soldBy` como parámetro independiente a propósito: dejar que
+     *  el llamador lo fije abriría la puerta a un `source: 'inbox'` con
+     *  `soldBy: 'ai'` (o viceversa) cobrando la comisión equivocada sobre una
+     *  venta, sin que nada lo detectara. */
     source: 'inbox' | 'agent' | 'script' | 'broadcast'
     /** Quién autoriza el envío — `ctx.userId` para un envío manual desde el
      *  inbox, o `'autopilot'`/similar para un futuro envío automático. Mismo
@@ -201,7 +206,14 @@ async function loadItemForDelivery(
 }
 
 export async function deliverPaidMedia(input: DeliverPaidMediaInput): Promise<DeliverPaidMediaResult> {
-    const { chat, itemId, caption, soldBy, source, approvedBy } = input
+    const { chat, itemId, caption, source, approvedBy } = input
+
+    // `soldBy` se DERIVA de `source` aquí dentro, a propósito, en vez de
+    // recibirse como parámetro — ver el comentario en `DeliverPaidMediaInput`.
+    // La regla la fija el diseño y no puede vivir en dos sitios que se
+    // puedan contradecir: `agent`/`script` es venta cerrada por la IA;
+    // `inbox`/`broadcast` es venta manual (un humano la cerró o la disparó).
+    const soldBy: 'ai' | 'manual' = source === 'agent' || source === 'script' ? 'ai' : 'manual'
 
     // PASO 1 — cargar el ítem y los ajustes; validar habilitado y precio.
     const item = await loadItemForDelivery(chat.organizationId, chat.avatarId, itemId)
@@ -329,7 +341,7 @@ export async function deliverPaidMedia(input: DeliverPaidMediaInput): Promise<De
                 direction: 'out',
                 external_message_id: String(message.message_id),
                 text: caption ?? item.caption ?? null,
-                media: [{ kind: item.mediaKind, itemId: item.id, stars }],
+                media: [{ type: 'paid_media', itemId: item.id, stars, saleId }],
                 status: 'sent',
                 approved_by: approvedBy ?? null,
                 sent_at: new Date().toISOString(),

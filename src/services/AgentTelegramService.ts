@@ -628,8 +628,10 @@ export interface SendPaidMediaFromInboxResult {
 
 /**
  * Envía un ítem de la galería a una conversación de Telegram desde el inbox
- * (acción manual de un humano de la organización — `soldBy: 'manual'`,
- * `source: 'inbox'`, fijos: esta función ES ese camino, no uno genérico).
+ * (acción manual de un humano de la organización — `source: 'inbox'` fijo:
+ * esta función ES ese camino, no uno genérico. `deliverPaidMedia` deriva de
+ * ahí `soldBy: 'manual'` para la comisión; no se pasa aquí — ver el
+ * comentario junto a esa derivación en `paidMedia.ts`).
  *
  * Resuelve y verifica la conversación ANTES de delegar en `deliverPaidMedia`
  * (que no tiene sesión y confía en que su llamador ya hizo esto — mismo
@@ -673,7 +675,6 @@ export async function sendPaidMediaFromInbox(
             itemId: input.itemId,
             stars: input.stars,
             caption: input.caption,
-            soldBy: 'manual',
             source: 'inbox',
             approvedBy: ctx.userId,
         })
