@@ -89,7 +89,12 @@ alter table telegram_stars_sales enable row level security;
 
 -- Telegram reintenta el mismo update hasta recibir un 200. Los mensajes se
 -- deduplican por su identificador externo, pero una compra no tiene ninguno.
--- Tabla técnica: sin organization_id, no va en TENANT_TABLES, se poda sola.
+-- Tabla técnica: sin organization_id, no va en TENANT_TABLES. NADIE LA PODA:
+-- crece una fila por cada actualización recibida, para siempre. El diseño
+-- original (docs/superpowers/specs/2026-09-11-telegram-telestars-module-
+-- design.md) preveía podarla a 7 días desde el futuro runner de broadcasts
+-- (`next_run_at`), pero ese runner es un plan que todavía no se ha escrito.
+-- Hasta que exista, la poda queda pendiente — de él o de un cron aparte.
 create table if not exists telegram_webhook_events (
     avatar_id uuid not null references avatars(id) on delete cascade,
     update_id bigint not null,
