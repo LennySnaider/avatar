@@ -119,6 +119,10 @@ const EXENTOS = [
         'src/lib/telegram/sales.ts',
         'recordStarsSale corre disparado por el webhook de Telegram, sin sesión. La organizationId no se adivina: llega ya resuelta en el propio StarsSaleEvent (la fila que la transición atómica del webhook acaba de devolver tras el offered→purchased), y cada consulta la usa como filtro explícito.',
     ],
+    [
+        'src/lib/telegram/paidMedia.ts',
+        'deliverPaidMedia (Task 5) es sin sesión a propósito — mismo perfil que sales.ts, no un service con ctx —: recibe el chat ya resuelto y acotado por su llamador (hoy sendPaidMediaFromInbox en AgentTelegramService.ts, que ya comprobó dueño de avatar y conversación). La organizationId nunca se adivina: sale de ese chat ya cargado, y las 7 llamadas de este fichero la usan como filtro (.eq) o como campo fijado (organization_id:) explícito.',
+    ],
 ]
 
 /**

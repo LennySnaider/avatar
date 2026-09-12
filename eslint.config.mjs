@@ -193,6 +193,12 @@ const eslintConfig = [
       // propio StarsSaleEvent (la fila que la transición atómica del webhook
       // acaba de devolver), y cada consulta la usa como filtro explícito.
       "src/lib/telegram/sales.ts",
+      // Task 5 — deliverPaidMedia, mismo perfil que sales.ts: sin sesión,
+      // recibe el chat ya resuelto y acotado por su llamador
+      // (sendPaidMediaFromInbox), y cada acceso usa esa organizationId como
+      // filtro o como campo fijado. Ver check-tenant-access.mjs (misma
+      // exención, motivo completo allí).
+      "src/lib/telegram/paidMedia.ts",
       // Sin sesión: resuelven la org por la fila que ya cargaron.
       "src/app/api/webhooks/**",
       "src/app/api/cron/**",

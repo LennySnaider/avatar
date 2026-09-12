@@ -1,13 +1,20 @@
 'use server'
 
 /**
- * Conectar y desconectar el bot de Telegram de un avatar.
+ * Conectar y desconectar el bot de Telegram de un avatar, la galería de
+ * contenido de pago (Task 5: `listPaidMediaItems`/`upsertPaidMediaItem`/
+ * `deletePaidMediaItem`) y su envío a una conversación
+ * (`sendPaidMediaFromInbox`, que delega en `deliverPaidMedia` de
+ * `@/lib/telegram/paidMedia` — ahí vive el orden obligatorio de la entrega y
+ * el porqué).
  *
  * Todos los exports son async porque el fichero es `'use server'`: un export
  * síncrono aquí sólo revienta en el build, ni tsc ni eslint lo ven (verificar
  * con `grep -n "^export" src/services/AgentTelegramService.ts`).
  *
- * CUATRO CANDADOS de este fichero:
+ * CUATRO CANDADOS de este fichero (del connect/disconnect original — la
+ * galería y el envío añaden los suyos propios en su propio docblock, no
+ * renumerados aquí para no mezclar los dos grupos):
  *
  *  1. `connected_at` se conserva al reconectar. Es la fecha que factura la
  *     cuota prorrateada por días: reiniciarla regalaría los días ya
@@ -61,8 +68,11 @@
  */
 import { randomBytes } from 'node:crypto'
 import { getOrgContext, type OrgContext } from '@/lib/tenant/getOrgContext'
-import { orgTable, orgUpsert } from '@/lib/org/orgTable'
+import { orgInsert, orgTable, orgUpsert } from '@/lib/org/orgTable'
 import { requireModule } from '@/lib/modules/entitlements'
+import { getMediaObject } from '@/lib/mediaStore'
+import { getGenerationMediaUrl } from '@/lib/storagePaths'
+import type { Database } from '@/@types/database.generated'
 import {
     loadTelegramBotToken,
     loadTelegramSettingsForOrg,
@@ -75,6 +85,7 @@ import {
     setWebhook,
     type TelegramWebhookInfo,
 } from '@/lib/telegram/client'
+import { deliverPaidMedia } from '@/lib/telegram/paidMedia'
 
 export interface TelegramResult<T> {
     success: boolean
@@ -97,6 +108,71 @@ const fail = (e: unknown): { success: false; error: string } => ({
     success: false,
     error: e instanceof Error ? e.message : String(e),
 })
+
+/**
+ * Vista de galería de un ítem de contenido de pago. Deliberadamente sin
+ * `telegram_file_id`/`telegram_file_id_bot_id`: son mecánica interna de
+ * caché (ver `paidMedia.ts`), no algo que la pantalla necesite pintar — mismo
+ * criterio que `TelegramBotStatus` omite `bot_token`.
+ */
+export interface PaidMediaItemView {
+    id: string
+    avatarId: string
+    generationId: string | null
+    title: string
+    caption: string | null
+    starPrice: number
+    mediaKind: 'photo' | 'video'
+    enabled: boolean
+    sortOrder: number
+    storagePath: string
+    storageProvider: string | null
+    /** URL pública lista para pintar la miniatura — mismo helper que usa el
+     *  resto de la galería de generaciones (`getGenerationMediaUrl`). Es la
+     *  vista de administración del propio dueño del contenido, no el envío a
+     *  Telegram: ese SIEMPRE va por bytes (ver `paidMedia.ts`), nunca por
+     *  esta URL. */
+    mediaUrl: string
+    offersCount: number
+    salesCount: number
+    starsTotal: number
+    createdAt: string
+    updatedAt: string
+}
+
+/** Único punto fila→DTO de la galería — mismo patrón que `toStatus`. */
+function toPaidMediaItem(
+    row: Database['public']['Tables']['telegram_paid_media_items']['Row'],
+): PaidMediaItemView {
+    return {
+        id: row.id,
+        avatarId: row.avatar_id,
+        generationId: row.generation_id,
+        title: row.title,
+        caption: row.caption,
+        starPrice: row.star_price,
+        mediaKind: row.media_kind as 'photo' | 'video',
+        enabled: row.enabled,
+        sortOrder: row.sort_order,
+        storagePath: row.storage_path,
+        storageProvider: row.storage_provider,
+        mediaUrl: getGenerationMediaUrl(row.storage_path, row.storage_provider),
+        offersCount: row.offers_count,
+        salesCount: row.sales_count,
+        starsTotal: row.stars_total,
+        createdAt: row.created_at,
+        updatedAt: row.updated_at,
+    }
+}
+
+/** 10 MB — mismo límite que Telegram acepta por multipart para fotos. */
+const MAX_PHOTO_BYTES = 10 * 1024 * 1024
+/** 50 MB — ídem para el resto (vídeo). */
+const MAX_VIDEO_BYTES = 50 * 1024 * 1024
+
+function formatMb(bytes: number): string {
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+}
 
 /**
  * Confirma que `avatarId` pertenece a la organización del contexto. Mismo
@@ -307,6 +383,257 @@ export async function getTelegramWebhookInfo(
 
         const info = await getWebhookInfo(token)
         return { success: true, data: info }
+    } catch (e) {
+        return fail(e)
+    }
+}
+
+/** Galería de contenido de pago de un avatar, ordenada como la pantalla la
+ *  pinta (`sort_order`). */
+export async function listPaidMediaItems(avatarId: string): Promise<TelegramResult<PaidMediaItemView[]>> {
+    try {
+        const ctx = await getOrgContext()
+        await requireModule(ctx, 'telegram')
+        if (!avatarId) return { success: false, error: 'Falta el avatar.' }
+        await assertOwnedAvatar(ctx, avatarId)
+
+        const { data, error } = await orgTable(ctx, 'telegram_paid_media_items')
+            .select('*')
+            .eq('avatar_id', avatarId)
+            .order('sort_order', { ascending: true })
+        if (error) throw new Error(error.message)
+        return { success: true, data: (data ?? []).map(toPaidMediaItem) }
+    } catch (e) {
+        return fail(e)
+    }
+}
+
+/**
+ * Da de alta o edita un ítem de la galería.
+ *
+ * `id` presente ⇒ EDITAR: sólo metadatos (`title`/`caption`/`starPrice`/
+ * `enabled`/`sortOrder`). El contenido en sí (`generationId` → `storagePath`/
+ * `mediaKind`) es INMUTABLE una vez creado — no se reemplaza aquí. Por eso
+ * `enabled`/`sortOrder` son obligatorios en el tipo de entrada y no llevan
+ * valor por defecto: si fueran opcionales con un default, una edición que
+ * sólo toca el precio y omite `enabled` reactivaría en silencio un ítem que
+ * el usuario había deshabilitado a propósito.
+ *
+ * `id` ausente ⇒ DAR DE ALTA desde una generación existente (`generationId`
+ * obligatorio). CANDADO — Step 2 del brief: el tamaño del objeto se valida
+ * AQUÍ, ANTES de guardar la fila, contra los mismos límites que
+ * `deliverPaidMedia` necesita para poder enviarlo por multipart (10 MB foto /
+ * 50 MB vídeo — ver cabecera de `paidMedia.ts`). Un ítem que no se puede
+ * enviar no debe poder crearse: descubrirlo en el momento de vender es
+ * descubrirlo delante del cliente. La unicidad parcial `(avatar_id,
+ * generation_id)` de la migración (Task 1) impide dar de alta el mismo
+ * contenido dos veces en el mismo avatar; el choque (23505) se traduce a un
+ * mensaje legible en vez de propagar el error crudo de Postgres.
+ */
+export interface UpsertPaidMediaItemInput {
+    /** Presente = editar ese ítem; ausente = dar de alta uno nuevo. */
+    id?: string
+    avatarId: string
+    /** Sólo se usa al DAR DE ALTA — de qué generación sale el contenido. */
+    generationId?: string
+    title: string
+    caption?: string | null
+    starPrice: number
+    enabled: boolean
+    sortOrder: number
+}
+
+export async function upsertPaidMediaItem(
+    input: UpsertPaidMediaItemInput,
+): Promise<TelegramResult<PaidMediaItemView>> {
+    try {
+        const ctx = await getOrgContext()
+        await requireModule(ctx, 'telegram')
+        if (!input.avatarId) return { success: false, error: 'Falta el avatar.' }
+        const title = input.title?.trim()
+        if (!title) return { success: false, error: 'Falta el título.' }
+        if (!Number.isInteger(input.starPrice) || input.starPrice < 1 || input.starPrice > 25_000) {
+            return {
+                success: false,
+                error: `El precio debe ser un entero entre 1 y 25000 Stars (recibido: ${input.starPrice}).`,
+            }
+        }
+
+        await assertOwnedAvatar(ctx, input.avatarId)
+
+        if (input.id) {
+            const { data, error } = await orgTable(ctx, 'telegram_paid_media_items')
+                .update({
+                    title,
+                    caption: input.caption ?? null,
+                    star_price: input.starPrice,
+                    enabled: input.enabled,
+                    sort_order: input.sortOrder,
+                    updated_at: new Date().toISOString(),
+                })
+                .eq('avatar_id', input.avatarId)
+                .eq('id', input.id)
+                .select('*')
+                .maybeSingle()
+            if (error) throw new Error(error.message)
+            if (!data) return { success: false, error: 'Contenido no encontrado en este avatar.' }
+            return { success: true, data: toPaidMediaItem(data) }
+        }
+
+        if (!input.generationId) return { success: false, error: 'Falta la generación de origen.' }
+
+        const { data: generation, error: genError } = await orgTable(ctx, 'generations')
+            .select('id, avatar_id, storage_path, storage_provider, media_type')
+            .eq('avatar_id', input.avatarId)
+            .eq('id', input.generationId)
+            .maybeSingle()
+        if (genError) throw new Error(genError.message)
+        if (!generation) return { success: false, error: 'Generación no encontrada en este avatar.' }
+
+        const mediaKind: 'photo' | 'video' = generation.media_type === 'VIDEO' ? 'video' : 'photo'
+
+        // CANDADO — tamaño validado AL DAR DE ALTA, no al vender (ver docblock).
+        const bytes = await getMediaObject({
+            path: generation.storage_path,
+            provider: generation.storage_provider,
+        })
+        const limit = mediaKind === 'video' ? MAX_VIDEO_BYTES : MAX_PHOTO_BYTES
+        if (bytes.byteLength > limit) {
+            const kindLabel = mediaKind === 'video' ? 'vídeo' : 'foto'
+            return {
+                success: false,
+                error: `Ese ${kindLabel} pesa ${formatMb(bytes.byteLength)}; el límite de Telegram para ${kindLabel} es ${formatMb(limit)}.`,
+            }
+        }
+
+        const { data, error } = await orgInsert(ctx, 'telegram_paid_media_items', {
+            avatar_id: input.avatarId,
+            generation_id: generation.id,
+            storage_path: generation.storage_path,
+            storage_provider: generation.storage_provider,
+            media_kind: mediaKind,
+            title,
+            caption: input.caption ?? null,
+            star_price: input.starPrice,
+            enabled: input.enabled,
+            sort_order: input.sortOrder,
+        })
+            .select('*')
+            .single()
+        if (error) {
+            // Unicidad parcial (avatar_id, generation_id) — Task 1.
+            if (error.code === '23505') {
+                return {
+                    success: false,
+                    error: 'Este contenido ya está dado de alta en la galería de este avatar.',
+                }
+            }
+            throw new Error(error.message)
+        }
+        return { success: true, data: toPaidMediaItem(data) }
+    } catch (e) {
+        return fail(e)
+    }
+}
+
+/** Borra un ítem de la galería. Las ventas ya hechas sobreviven: `item_id` en
+ *  `telegram_stars_sales` es `on delete set null` (Task 1) — borrar el
+ *  catálogo no borra el historial de ingresos. */
+export async function deletePaidMediaItem(avatarId: string, itemId: string): Promise<TelegramResult<void>> {
+    try {
+        const ctx = await getOrgContext()
+        await requireModule(ctx, 'telegram')
+        if (!avatarId) return { success: false, error: 'Falta el avatar.' }
+        if (!itemId) return { success: false, error: 'Falta el contenido a borrar.' }
+        await assertOwnedAvatar(ctx, avatarId)
+
+        const { error } = await orgTable(ctx, 'telegram_paid_media_items')
+            .delete()
+            .eq('avatar_id', avatarId)
+            .eq('id', itemId)
+        if (error) throw new Error(error.message)
+        return { success: true }
+    } catch (e) {
+        return fail(e)
+    }
+}
+
+export interface SendPaidMediaFromInboxInput {
+    avatarId: string
+    chatId: string
+    itemId: string
+    /** Sobrescribe el precio de catálogo SÓLO para esta entrega. */
+    stars?: number
+    /** Sobrescribe el caption de catálogo SÓLO para esta entrega. */
+    caption?: string
+}
+
+export interface SendPaidMediaFromInboxResult {
+    saleId: string
+    stars: number
+    telegramMessageId: number
+}
+
+/**
+ * Envía un ítem de la galería a una conversación de Telegram desde el inbox
+ * (acción manual de un humano de la organización — `soldBy: 'manual'`,
+ * `source: 'inbox'`, fijos: esta función ES ese camino, no uno genérico).
+ *
+ * Resuelve y verifica la conversación ANTES de delegar en `deliverPaidMedia`
+ * (que no tiene sesión y confía en que su llamador ya hizo esto — mismo
+ * reparto de responsabilidades que `recordStarsSale` confiando en el
+ * `StarsSaleEvent` que arma el webhook): pertenece a este avatar (y por tanto
+ * a esta organización, vía `assertOwnedAvatar`) y es efectivamente una
+ * conversación de TELEGRAM — `agent_chats` es una tabla compartida con
+ * Fanvue, y enviar Stars a un `external_chat_id` que en realidad es un uuid
+ * de Fanvue sería un envío a un destinatario inexistente en Telegram.
+ */
+export async function sendPaidMediaFromInbox(
+    input: SendPaidMediaFromInboxInput,
+): Promise<TelegramResult<SendPaidMediaFromInboxResult>> {
+    try {
+        const ctx = await getOrgContext()
+        await requireModule(ctx, 'telegram')
+        if (!input.avatarId) return { success: false, error: 'Falta el avatar.' }
+        if (!input.chatId) return { success: false, error: 'Falta la conversación.' }
+        if (!input.itemId) return { success: false, error: 'Falta el contenido a enviar.' }
+
+        await assertOwnedAvatar(ctx, input.avatarId)
+
+        const { data: chatRow, error: chatError } = await orgTable(ctx, 'agent_chats')
+            .select('*')
+            .eq('id', input.chatId)
+            .eq('avatar_id', input.avatarId)
+            .maybeSingle()
+        if (chatError) throw new Error(chatError.message)
+        if (!chatRow) return { success: false, error: 'Conversación no encontrada en este avatar.' }
+        if (chatRow.platform !== 'telegram') {
+            return { success: false, error: 'Esta conversación no es de Telegram.' }
+        }
+
+        const result = await deliverPaidMedia({
+            chat: {
+                id: chatRow.id,
+                organizationId: chatRow.organization_id,
+                avatarId: chatRow.avatar_id,
+                externalChatId: chatRow.external_chat_id,
+            },
+            itemId: input.itemId,
+            stars: input.stars,
+            caption: input.caption,
+            soldBy: 'manual',
+            source: 'inbox',
+            approvedBy: ctx.userId,
+        })
+
+        return {
+            success: true,
+            data: {
+                saleId: result.saleId,
+                stars: result.stars,
+                telegramMessageId: result.telegramMessageId,
+            },
+        }
     } catch (e) {
         return fail(e)
     }
