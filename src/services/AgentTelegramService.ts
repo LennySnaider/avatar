@@ -7,7 +7,7 @@
  * síncrono aquí sólo revienta en el build, ni tsc ni eslint lo ven (verificar
  * con `grep -n "^export" src/services/AgentTelegramService.ts`).
  *
- * TRES CANDADOS de este fichero:
+ * CUATRO CANDADOS de este fichero:
  *
  *  1. `connected_at` se conserva al reconectar. Es la fecha que factura la
  *     cuota prorrateada por días: reiniciarla regalaría los días ya
@@ -34,6 +34,30 @@
  *     cron) no filtra por organización. Sin ese paso previo, cualquier
  *     organización con el módulo instalado podría leer el webhook de OTRO
  *     avatar adivinando su uuid.
+ *
+ *  4. Desconectar es idempotente en la fecha de baja (ronda de revisión 1).
+ *     `disconnected_at` cierra el periodo facturable, igual que `connected_at`
+ *     lo abre — así que empujarla hacia adelante en una segunda llamada (doble
+ *     clic, reintento de red, reenvío de la misma petición) cobraría días en
+ *     los que el bot ya estaba apagado. `disconnectTelegramBot` por eso lee el
+ *     estado ANTES de escribir: si ya estaba `enabled: false`, no vuelve a
+ *     tocar la fecha — es un no-op exitoso, no un error, exactamente el mismo
+ *     criterio que protege `connected_at` en el candado 1.
+ *
+ * ORDEN DE ESCRITURA EN `connectTelegramBot` (ronda de revisión 1): Telegram
+ * mantiene UN SOLO webhook por token y lo sobrescribe incondicionalmente en
+ * cuanto `setWebhook` responde 200 — no hay forma de "reservarlo" antes. Si el
+ * mismo token se conecta a un segundo avatar, y `setWebhook` se llamara antes
+ * de confirmar que la escritura local es válida, el bot del PRIMER avatar
+ * quedaría mudo para siempre en el momento en que Telegram acepta el segundo
+ * `setWebhook` — silencioso, sin error en ningún lado, aunque el upsert local
+ * del segundo avatar SÍ falle después por el `unique(bot_id)`. Por eso el
+ * orden real es: `getMe` (sólo lectura, no efecto colateral) → upsert local
+ * con `enabled: false` (aquí revienta el choque de `bot_id` si lo hay, ANTES
+ * de tocar Telegram) → `setWebhook` → sólo si eso tuvo éxito, un segundo
+ * update que pone `enabled: true` y limpia `disconnected_at`. La fila nunca
+ * dice "conectada" hasta que Telegram confirmó — así que un fallo de
+ * `setWebhook` no necesita deshacer nada, porque nunca llegó a mentir.
  */
 import { randomBytes } from 'node:crypto'
 import { getOrgContext, type OrgContext } from '@/lib/tenant/getOrgContext'
@@ -105,8 +129,11 @@ function toStatus(settings: TelegramSettings | null): TelegramBotStatus {
 
 /**
  * Conecta (o reconecta) el bot de un avatar: valida el token contra la Bot
- * API, registra el webhook y persiste los ajustes. Ver CANDADO 1 sobre por
- * qué `connected_at` no se toca aquí.
+ * API, persiste los ajustes y sólo ENTONCES registra el webhook. Ver CANDADO 1
+ * sobre por qué `connected_at` no se toca aquí, y la nota "ORDEN DE ESCRITURA"
+ * en la cabecera del fichero sobre por qué el upsert local va ANTES que
+ * `setWebhook` y por qué `enabled` se activa en una segunda escritura, no en
+ * la primera.
  */
 export async function connectTelegramBot(
     avatarId: string,
@@ -124,15 +151,14 @@ export async function connectTelegramBot(
         await assertOwnedAvatar(ctx, avatarId)
 
         // getMe valida el token Y trae bot_id (unique en la tabla) + username.
+        // Es de sólo lectura — no tiene el problema de orden de setWebhook.
         const me = await getMe(token)
-
         const webhookSecret = randomBytes(32).toString('hex')
-        const base = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3030'
-        await setWebhook(token, {
-            url: `${base}/api/webhooks/telegram/${avatarId}`,
-            secretToken: webhookSecret,
-        })
 
+        // FASE 1 — escritura LOCAL primero, con `enabled: false` a propósito.
+        // Si `bot_id` ya pertenece a otro avatar, el choque revienta AQUÍ,
+        // antes de que Telegram se entere de que existimos: su webhook sigue
+        // apuntando a quien ya lo tenía.
         const { error } = await orgUpsert(
             ctx,
             'avatar_telegram_settings',
@@ -142,11 +168,13 @@ export async function connectTelegramBot(
                 bot_username: me.username ?? null,
                 bot_token: token,
                 webhook_secret: webhookSecret,
-                enabled: true,
-                disconnected_at: null,
+                enabled: false,
                 updated_at: new Date().toISOString(),
-                // connected_at OMITIDO A PROPÓSITO — ver CANDADO 1 en la
-                // cabecera del fichero.
+                // connected_at OMITIDO A PROPÓSITO (CANDADO 1) y
+                // disconnected_at TAMBIÉN OMITIDO: si esto es una reconexión
+                // tras una baja, su fecha sobrevive intacta mientras
+                // `enabled` siga en `false` — coherente con el CANDADO 4, no
+                // queda una fila "no habilitada" con fecha de baja en blanco.
             },
             { onConflict: 'avatar_id' },
         )
@@ -163,6 +191,24 @@ export async function connectTelegramBot(
             }
             throw new Error(error.message)
         }
+
+        // FASE 2 — sólo ahora se toca Telegram. Si esto falla (red, Telegram
+        // caído, URL rechazada), la fila QUEDA en `enabled: false`: nunca
+        // llegó a decir "conectada", así que no hay nada que deshacer — el
+        // error simplemente se propaga tal cual a través de `fail()`.
+        const base = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3030'
+        await setWebhook(token, {
+            url: `${base}/api/webhooks/telegram/${avatarId}`,
+            secretToken: webhookSecret,
+        })
+
+        // FASE 3 — Telegram confirmó: ahora sí se marca activa y se limpia la
+        // fecha de baja (si la había). Único punto de todo el fichero donde
+        // `enabled` pasa a `true`.
+        const { error: activateError } = await orgTable(ctx, 'avatar_telegram_settings')
+            .update({ enabled: true, disconnected_at: null, updated_at: new Date().toISOString() })
+            .eq('avatar_id', avatarId)
+        if (activateError) throw new Error(activateError.message)
 
         const settings = await loadTelegramSettingsForOrg(ctx, avatarId)
         return { success: true, data: toStatus(settings) }
@@ -189,6 +235,15 @@ export async function disconnectTelegramBot(avatarId: string): Promise<TelegramR
         const settings = await loadTelegramSettingsForOrg(ctx, avatarId)
         if (!settings) {
             return { success: false, error: 'Este avatar no tiene un bot de Telegram conectado.' }
+        }
+
+        // CANDADO 4 — idempotencia de `disconnected_at`. Ver cabecera del
+        // fichero: esa fecha cierra el periodo facturable, así que un doble
+        // clic / reintento / reenvío sobre un avatar YA desconectado no debe
+        // reescribirla. Éxito silencioso, no error: desconectar algo que ya
+        // está desconectado no es una operación inválida.
+        if (!settings.enabled) {
+            return { success: true, data: toStatus(settings) }
         }
 
         const { error } = await orgTable(ctx, 'avatar_telegram_settings')
