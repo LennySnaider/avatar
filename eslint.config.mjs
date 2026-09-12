@@ -167,6 +167,11 @@ const eslintConfig = [
       // `orgSupabase` es `src/lib/org/orgTable.ts`, que no necesita exención:
       // no se importa a sí mismo, así que la regla nunca puede dispararle.)
       "src/lib/billing/wallet.ts",
+      // Entitlement de módulos: hasModuleForOrg/listInstalledSlugsForOrg reciben
+      // la org por parámetro (cron/webhooks) y module_catalog es un catálogo
+      // global sin organization_id — mismo par que check-tenant-access.mjs.
+      "src/lib/modules/entitlements.ts",
+      "src/lib/modules/catalog.ts",
       // Sin sesión: resuelven la org por la fila que ya cargaron.
       "src/app/api/webhooks/**",
       "src/app/api/cron/**",
