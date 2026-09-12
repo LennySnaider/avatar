@@ -111,6 +111,10 @@ const EXENTOS = [
         'src/lib/billing/moduleFees.ts',
         'Cron de cuotas: barre TODAS las orgs a propósito y resuelve la org fila a fila (org_modules.organization_id), igual que el resto de crons.',
     ],
+    [
+        'src/lib/telegram/settings.ts',
+        'loadTelegramSettings (variante sin sesión, para el webhook y los crones) filtra por avatar_id, que es UNIQUE en avatar_telegram_settings (migración de la Tarea 1) — no necesita organizationId de entrada para identificar la fila. La otra variante del fichero, con ctx, va por orgTable y no dispara este candado.',
+    ],
 ]
 
 /**
