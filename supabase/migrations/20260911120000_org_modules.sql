@@ -33,7 +33,7 @@ insert into module_catalog
      commission_ai_pct, commission_manual_pct, sort_order)
 values
     ('telegram', 'Telegram',
-     'Conecta tu bot de Telegram y vende contenido con Telegram Stars.',
+     'Próximamente: conecta tu bot de Telegram y vende contenido con Telegram Stars.',
      29.90, 'bot', 15.00, 5.00, 1)
 on conflict (slug) do nothing;
 
