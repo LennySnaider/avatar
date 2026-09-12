@@ -100,6 +100,7 @@ import {
     PiMicrophoneDuotone,
     PiFlowArrowDuotone,
     PiInstagramLogoDuotone,
+    PiTelegramLogoDuotone,
 } from 'react-icons/pi'
 
 import type { JSX } from 'react'
@@ -220,6 +221,7 @@ const navigationIcon: NavigationIcons = {
     voiceStudio: <PiMicrophoneDuotone />,
     videoFlows: <PiFlowArrowDuotone />,
     avatarSocial: <PiShareNetworkDuotone />,
+    telegram: <PiTelegramLogoDuotone />,
 }
 
 export default navigationIcon

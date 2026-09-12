@@ -35,7 +35,9 @@
             "fanvue": "Fanvue",
             "fanvueAccounts": "Fanvue 账号",
             "fanvueComposer": "Fanvue 发布",
-            "fanvuePosts": "Fanvue 帖子"
+            "fanvuePosts": "Fanvue 帖子",
+            "telegram": "Telegram",
+            "telegramDesc": "连接机器人，通过 Stars 销售付费内容"
         },
         "dashboard": {
             "dashboard": "仪表板",

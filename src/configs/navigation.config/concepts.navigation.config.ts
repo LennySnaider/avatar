@@ -165,6 +165,27 @@ const conceptsNavigationConfig: NavigationTree[] = [
                 ],
             },
             {
+                key: 'avatarForge.telegram',
+                path: `${CONCEPTS_PREFIX_PATH}/avatar-forge/telegram`,
+                title: 'Telegram',
+                translateKey: 'nav.avatarForge.telegram',
+                icon: 'telegram',
+                type: NAV_ITEM_TYPE_ITEM,
+                authority: [ADMIN, USER],
+                meta: {
+                    description: {
+                        translateKey: 'nav.avatarForge.telegramDesc',
+                        label: 'Connect a bot and sell paid content with Stars',
+                    },
+                    // Oculto si la organización no tiene el módulo instalado
+                    // (filterNavigationByModules, src/lib/modules/navigation.ts).
+                    // El gate real de acceso vive en el layout de la ruta y en
+                    // cada server action de AgentTelegramService.ts.
+                    requiredModule: 'telegram',
+                },
+                subMenu: [],
+            },
+            {
                 key: 'avatarForge.providers',
                 path: `${CONCEPTS_PREFIX_PATH}/avatar-forge/providers`,
                 title: 'AI Providers',

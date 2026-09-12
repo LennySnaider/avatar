@@ -338,6 +338,25 @@ const conceptsRoute: Routes = {
             footer: false,
         },
     },
+    '/concepts/avatar-forge/telegram': {
+        key: 'concepts.avatarForge.telegram',
+        authority: [ADMIN, USER],
+        meta: {
+            pageContainerType: 'gutterless',
+            pageBackgroundType: 'plain',
+            footer: false,
+        },
+    },
+    '/concepts/avatar-forge/telegram/[slug]': {
+        key: 'concepts.avatarForge.telegramEdit',
+        authority: [ADMIN, USER],
+        meta: {
+            pageContainerType: 'gutterless',
+            pageBackgroundType: 'plain',
+            footer: false,
+        },
+        dynamicRoute: true,
+    },
 }
 
 export default conceptsRoute
