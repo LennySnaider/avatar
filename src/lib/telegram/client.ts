@@ -87,6 +87,56 @@ interface TgChat {
     title?: string
 }
 
+/** Un tamaño de foto dentro de `TgPaidMedia` — sólo lo que este canal usa hoy
+ *  (cachear el `file_id` reutilizable tras el primer envío). */
+interface TgPhotoSize {
+    file_id: string
+    file_unique_id: string
+    width: number
+    height: number
+    file_size?: number
+}
+
+/** Un vídeo dentro de `TgPaidMedia` — mismo criterio que `TgPhotoSize`. */
+interface TgVideo {
+    file_id: string
+    file_unique_id: string
+    width: number
+    height: number
+    duration: number
+    file_size?: number
+}
+
+/**
+ * Un elemento de `PaidMediaInfo.paid_media` (documentado en
+ * https://core.telegram.org/bots/api#paidmedia), RECORTADO a lo que este
+ * canal puede recibir de vuelta — no las variantes que existen en la API.
+ * Verificado contra la documentación oficial (no inventado): el union real de
+ * Telegram tiene CUATRO miembros (`PaidMediaPreview`, `PaidMediaPhoto`,
+ * `PaidMediaVideo`, `PaidMediaLivePhoto`); aquí sólo van tres.
+ * `PaidMediaLivePhoto` se omite a propósito: `InputPaidMedia` (más abajo) sólo
+ * sabe ENVIAR `photo`/`video`, así que la respuesta a NUESTRO `sendPaidMedia`
+ * nunca puede traer ese tipo — igual que `preview`, que es la vista de un
+ * comprador que TODAVÍA no pagó y por tanto tampoco puede volver en la
+ * respuesta al BOT que acaba de enviar. Se declara de todos modos (mismo
+ * criterio que `TgMessage`: "sólo los campos que este canal usa hoy") para
+ * que `extractFileId` (paidMedia.ts) pueda descartarla con seguridad si algún
+ * día apareciera igual; un `type` que no sea NINGUNO de los tres de aquí
+ * abajo (incluido `live_photo`) cae por el mismo camino defensivo.
+ */
+type TgPaidMedia =
+    | { type: 'preview' }
+    | { type: 'photo'; photo: TgPhotoSize[] }
+    | { type: 'video'; video: TgVideo }
+
+/** `PaidMediaInfo`, documentado en
+ *  https://core.telegram.org/bots/api#paidmediainfo — lo que trae
+ *  `TgMessage.paid_media` tras un `sendPaidMedia` con éxito. */
+interface TgPaidMediaInfo {
+    star_count: number
+    paid_media: TgPaidMedia[]
+}
+
 /**
  * Mensaje de Telegram — sólo los campos que este canal usa hoy (texto y
  * multimedia con Stars). `allowed_updates` de este plan es únicamente
@@ -100,6 +150,11 @@ export interface TgMessage {
     from?: TelegramUser
     text?: string
     caption?: string
+    /** Presente cuando este mensaje es la respuesta de `sendPaidMedia` — trae
+     *  el/los `file_id` reutilizables del contenido recién enviado. Campo
+     *  real de la API (`Message.paid_media`); `paidMedia.ts` lo lee para
+     *  cachear el `file_id` sin necesitar un cast local. */
+    paid_media?: TgPaidMediaInfo
 }
 
 /** Update `purchased_paid_media`: alguien compró el contenido identificado
@@ -207,20 +262,57 @@ async function callJson<T>(token: string, method: string, params?: Record<string
     return parseResponse<T>(method, res)
 }
 
+/** Extensión de fichero por content-type — mismo criterio que
+ *  `contentTypeFor` en `paidMedia.ts` para el problema inverso: sólo lo que
+ *  de verdad circula por este canal hoy, con `bin` de respaldo para
+ *  cualquier otra cosa. */
+const EXTENSION_BY_CONTENT_TYPE: Record<string, string> = {
+    'image/jpeg': 'jpg',
+    'image/png': 'png',
+    'image/webp': 'webp',
+    'video/mp4': 'mp4',
+}
+
+/** Nombre de fichero razonable a partir del content-type de un `Blob`, para
+ *  cuando el llamador de `callMultipart` no tiene uno mejor que darle. Sólo
+ *  hace falta que sea plausible y con una extensión coherente: Telegram
+ *  identifica el tipo real de cada `media[]` por su propio campo `type` en el
+ *  JSON (ver `SendPaidMediaParams`), no por este nombre. */
+function filenameForContentType(contentType: string): string {
+    const ext = EXTENSION_BY_CONTENT_TYPE[contentType] ?? 'bin'
+    return `file.${ext}`
+}
+
+/** Un fichero a subir por multipart: un `Blob` a secas cuando el llamador no
+ *  tiene un nombre mejor que darle (`callMultipart` lo deriva de su
+ *  `type` — ver `filenameForContentType`), o el par `{blob, filename}` cuando
+ *  sí lo sabe (p.ej. `paidMedia.ts` ya sabe si es foto o vídeo). */
+export type MultipartFile = Blob | { blob: Blob; filename: string }
+
 /**
  * Transporte multipart — para subir bytes. Los campos que no son texto plano
  * (arrays/objetos, p.ej. `media`) van como STRING con JSON dentro, tal como
  * exige la Bot API cuando se mezclan parámetros con ficheros adjuntos.
+ *
+ * Cada fichero lleva SIEMPRE un nombre en su `Content-Disposition`
+ * (`form.append(name, blob, filename)`, nunca los dos argumentos a secas):
+ * sin él hay partes que Telegram puede no reconocer como una subida de
+ * fichero real, y ese fallo sólo se ve contra la API real, no en ningún test
+ * local — es justo lo que hacía esta función antes de este arreglo.
  */
 async function callMultipart<T>(
     token: string,
     method: string,
     fields: Record<string, string>,
-    files: Record<string, Blob>,
+    files: Record<string, MultipartFile>,
 ): Promise<T> {
     const form = new FormData()
     for (const [key, value] of Object.entries(fields)) form.append(key, value)
-    for (const [name, blob] of Object.entries(files)) form.append(name, blob)
+    for (const [name, file] of Object.entries(files)) {
+        const blob = file instanceof Blob ? file : file.blob
+        const filename = file instanceof Blob ? filenameForContentType(blob.type) : file.filename
+        form.append(name, blob, filename)
+    }
 
     let res: Response
     try {
@@ -281,9 +373,10 @@ export interface SendPaidMediaParams {
     /** 1-10 elementos. */
     media: InputPaidMedia[]
     /** Bytes para los `media[].media` que valen `attach://<nombre>`, indexados
-     *  por ese mismo nombre. Si se omite, la llamada va por JSON puro (los
+     *  por ese mismo nombre — ver `MultipartFile` sobre el nombre de fichero
+     *  de cada entrada. Si se omite, la llamada va por JSON puro (los
      *  `media[].media` deben ser entonces `file_id` o URLs http(s)). */
-    files?: Record<string, Blob>
+    files?: Record<string, MultipartFile>
     /** 0-128 bytes, NO se muestra al usuario — para correlacionar la venta. */
     payload?: string
     /** 0-1024 caracteres. */

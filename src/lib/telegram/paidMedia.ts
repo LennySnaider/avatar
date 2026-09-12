@@ -59,7 +59,7 @@ import { randomUUID } from 'node:crypto'
 import { orgSupabase } from '@/lib/org/orgTable'
 import { getMediaObject } from '@/lib/mediaStore'
 import { loadTelegramBotToken, loadTelegramSettings } from '@/lib/telegram/settings'
-import { sendPaidMedia, type InputPaidMedia, type TgMessage } from '@/lib/telegram/client'
+import { sendPaidMedia, type InputPaidMedia, type MultipartFile, type TgMessage } from '@/lib/telegram/client'
 
 /** Conversación ya resuelta y acotada por el llamador — ver cabecera. */
 export interface DeliverPaidMediaChat {
@@ -114,44 +114,39 @@ function contentTypeFor(mediaKind: 'photo' | 'video'): string {
     return mediaKind === 'video' ? 'video/mp4' : 'image/jpeg'
 }
 
+/** Nombre de fichero para el multipart de `sendPaidMedia`, coherente con
+ *  `contentTypeFor` de arriba (misma extensión). Este llamador SÍ sabe si es
+ *  foto o vídeo, así que se lo pasa explícito a `callMultipart` (vía
+ *  `MultipartFile` en client.ts) en vez de dejar que lo derive del
+ *  content-type del Blob. */
+function filenameFor(mediaKind: 'photo' | 'video'): string {
+    return mediaKind === 'video' ? 'video.mp4' : 'photo.jpg'
+}
+
 /**
  * `sendPaidMedia` devuelve un `Message` de Telegram cuyo campo `paid_media`
  * (tipo `PaidMediaInfo`, documentado en
  * https://core.telegram.org/bots/api#paidmediainfo) trae el `file_id`
- * reutilizable. `TgMessage` (client.ts) NO declara ese campo a propósito: es
- * el tipo genérico compartido por todo el canal, y client.ts está fuera del
- * alcance de esta tarea (el brief sólo lista `paidMedia.ts` y
- * `AgentTelegramService.ts` para tocar, y así queda también el `git add` del
- * commit). El objeto real SÍ trae el campo en runtime; este tipo local sólo
- * documenta la porción que necesitamos para leerlo con un cast acotado, sin
- * ampliar un tipo compartido por una necesidad de un único caller.
+ * reutilizable. `TgMessage` (client.ts) ya lo declara — es un campo real de
+ * la respuesta, no una necesidad de un único caller, así que se amplió el
+ * tipo compartido (arreglo agrupado previo a la prueba con dinero real) en
+ * vez de leerlo aquí con un cast local.
  *
  * `PaidMediaPreview` (sin `photo`/`video`, para quien aún no pagó) existe en
  * la API pero no debería aparecer aquí: esta respuesta es la que Telegram le
  * da al BOT que acaba de enviar, no la vista de un comprador. Si algún día
- * apareciera igualmente, `extractFileId` devuelve `null` con seguridad.
+ * apareciera igualmente (`entry.type === 'preview'`), `extractFileId`
+ * devuelve `null` con seguridad — ninguna de las dos ramas de abajo la cubre.
  */
-interface RawPaidMediaMessage {
-    paid_media?: {
-        paid_media?: Array<
-            | { type: 'photo'; photo?: Array<{ file_id: string }> }
-            | { type: 'video'; video?: { file_id: string } }
-            | { type: string }
-        >
-    }
-}
-
-/** `null` si Telegram no devolvió el campo esperado — no es un error, sólo
- *  significa que esta entrega en concreto no se podrá cachear. */
 function extractFileId(message: TgMessage): string | null {
-    const entry = (message as unknown as RawPaidMediaMessage).paid_media?.paid_media?.[0]
+    const entry = message.paid_media?.paid_media?.[0]
     if (!entry) return null
-    if (entry.type === 'photo' && 'photo' in entry && entry.photo && entry.photo.length > 0) {
+    if (entry.type === 'photo' && entry.photo.length > 0) {
         // Telegram manda varios tamaños del mismo file_id lógico; el último
         // es el de mayor resolución (mismo orden que usa el resto de la Bot API).
         return entry.photo[entry.photo.length - 1].file_id
     }
-    if (entry.type === 'video' && 'video' in entry && entry.video) {
+    if (entry.type === 'video') {
         return entry.video.file_id
     }
     return null
@@ -277,10 +272,15 @@ export async function deliverPaidMedia(input: DeliverPaidMediaInput): Promise<De
     const mediaEntry: InputPaidMedia =
         item.mediaKind === 'video' ? { type: 'video', media: mediaRef } : { type: 'photo', media: mediaRef }
 
-    let files: Record<string, Blob> | undefined
+    let files: Record<string, MultipartFile> | undefined
     if (!canReuse) {
         const bytes = await getMediaObject({ path: item.storagePath, provider: item.storageProvider })
-        files = { [ATTACH_NAME]: new Blob([bytes], { type: contentTypeFor(item.mediaKind) }) }
+        files = {
+            [ATTACH_NAME]: {
+                blob: new Blob([bytes], { type: contentTypeFor(item.mediaKind) }),
+                filename: filenameFor(item.mediaKind),
+            },
+        }
     }
 
     // PASO 4 — enviar. Los 4 límites de la llamada los valida client.ts; no
