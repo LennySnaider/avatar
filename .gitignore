@@ -55,3 +55,6 @@ supabase/.temp/
 
 # salida del rescate de huerfanos (inventario, no codigo)
 .rescue-*.json
+
+# Maquetas y documentos de diseño (se publican como artifacts, no son código)
+.design/

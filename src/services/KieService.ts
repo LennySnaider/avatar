@@ -1533,6 +1533,18 @@ export interface GenerateVideoKieParams {
         url?: string
         mimeType?: string
     }>
+    /**
+     * Duración SUMADA de `referenceVideos`, en segundos. Es PRECIO, no metadato:
+     * Seedance 2.5 factura entrada + salida cuando la petición lleva vídeos de
+     * referencia, así que 5s de clip con 30s de referencia cuestan 4× lo mismo
+     * sin ella.
+     *
+     * Lo manda el cliente porque es el único que puede: el submit tendría que
+     * descargar los vídeos para medirlos, y la barra de controles ya los mide
+     * para validar el tope de 30s. Sin este dato se cobra sólo la salida — de
+     * menos, nunca de más — y queda un aviso en el log.
+     */
+    referenceVideosSeconds?: number
     /** Audios de referencia (`reference_audio_urls`). Máx 3 y ≤30s SUMADOS. */
     referenceAudios?: Array<{
         base64?: string
@@ -2311,6 +2323,27 @@ export async function generateVideoKie(
  * `submitKieImageTask` / `submitTalkingVideoKieTask`). Returns a taskId fast;
  * the client then polls `checkKieVideoTask` until the mp4 is ready.
  */
+/**
+ * Segundos de vídeo de referencia que entran en el precio.
+ *
+ * Devuelve 0 cuando hay referencias pero nadie midió su duración: cobrar de
+ * menos es preferible a cobrarle al usuario 30s que a lo mejor no puso, y el
+ * aviso deja el hueco a la vista en vez de esconderlo en una estimación.
+ */
+function segundosDeVideosDeReferencia(params: GenerateVideoKieParams): number {
+    const n = params.referenceVideos?.length ?? 0
+    if (n === 0) return 0
+    if (params.referenceVideosSeconds && params.referenceVideosSeconds > 0) {
+        return params.referenceVideosSeconds
+    }
+    console.warn(
+        `[billing] ${n} vídeo(s) de referencia sin duración: se cobra sólo la ` +
+            `salida. El proveedor factura entrada + salida, así que este run se ` +
+            `cobra de menos.`,
+    )
+    return 0
+}
+
 export async function submitVideoKieTask(
     params: GenerateVideoKieParams,
 ): Promise<
@@ -2319,10 +2352,17 @@ export async function submitVideoKieTask(
     // F5.0 — CHOKEPOINT. El video cobra POR SEGUNDO, así que la duración es
     // parte del precio: sin ella un clip de 10s costaría lo mismo que uno de 5
     // (el quote asume el clip mínimo si no llega, nunca gratis).
+    //
+    // La RESOLUCIÓN también es precio, no sólo calidad: en Seedance 2.5 el
+    // segundo cuesta $0.14 a 480p y $0.57 a 1080p. Y los vídeos de referencia
+    // se FACTURAN: ese modelo cobra entrada + salida cuando los lleva, así que
+    // sus segundos van al quote aunque no salgan en el clip final.
     const gate = await holdForOperation({
         kind: 'video',
         providerId: resolveVideoProviderId(params.model),
         seconds: params.duration ?? 5,
+        resolution: params.resolution,
+        inputSeconds: segundosDeVideosDeReferencia(params),
     })
     if (!gate.ok) {
         return { success: false, error: insufficientTokensMessage(gate) }
