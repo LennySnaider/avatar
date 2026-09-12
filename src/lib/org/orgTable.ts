@@ -42,6 +42,7 @@ export const TENANT_TABLES = [
     'agent_messages',
     'avatar_fan_memories',
     'agent_usage_counters',
+    'org_modules',
 ] as const
 
 export type TenantTable = (typeof TENANT_TABLES)[number]

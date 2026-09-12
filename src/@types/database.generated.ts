@@ -1,16 +1,3 @@
-/**
- * TIPOS GENERADOS del schema real de Supabase (F4.0.2 — resuelve el drift del
- * archivo a mano). Fuente de verdad para tablas/columnas nuevas.
- *
- * REGENERAR: `npm run db:types` (requiere `supabase login` una vez, o
- * SUPABASE_ACCESS_TOKEN en el entorno). Alternativa sin CLI: la tool MCP
- * `generate_typescript_types` produce este mismo contenido.
- *
- * NOTA: `src/@types/supabase.ts` (a mano) sigue siendo el archivo APP-facing
- * porque enriquece columnas jsonb (measurements: PhysicalMeasurements, etc.).
- * Para tablas nuevas del multitenant usar estos tipos directamente.
- */
-
 export type Json =
   | string
   | number
@@ -23,7 +10,7 @@ export type Database = {
   // Allows to automatically instantiate createClient with right options
   // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
   __InternalSupabase: {
-    PostgrestVersion: "13.0.5"
+    PostgrestVersion: "14.5"
   }
   public: {
     Tables: {
@@ -294,7 +281,7 @@ export type Database = {
           generation_id?: string | null
           id?: string
           language?: string
-          organization_id?: string
+          organization_id: string
           script_text: string
           template_type?: string
           title: string
@@ -331,6 +318,27 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      auth_rate_limits: {
+        Row: {
+          attempts: number
+          bucket: string
+          updated_at: string
+          window_started_at: string
+        }
+        Insert: {
+          attempts?: number
+          bucket: string
+          updated_at?: string
+          window_started_at?: string
+        }
+        Update: {
+          attempts?: number
+          bucket?: string
+          updated_at?: string
+          window_started_at?: string
+        }
+        Relationships: []
       }
       avatar_fan_memories: {
         Row: {
@@ -541,6 +549,7 @@ export type Database = {
           mime_type: string
           organization_id: string
           storage_path: string
+          storage_provider: string
           type: string
         }
         Insert: {
@@ -548,8 +557,9 @@ export type Database = {
           created_at?: string | null
           id?: string
           mime_type: string
-          organization_id?: string
+          organization_id: string
           storage_path: string
+          storage_provider?: string
           type: string
         }
         Update: {
@@ -559,6 +569,7 @@ export type Database = {
           mime_type?: string
           organization_id?: string
           storage_path?: string
+          storage_provider?: string
           type?: string
         }
         Relationships: [
@@ -601,7 +612,7 @@ export type Database = {
           identity_weight?: number | null
           measurements?: Json | null
           name: string
-          organization_id?: string
+          organization_id: string
           updated_at?: string | null
           user_id?: string | null
         }
@@ -658,7 +669,7 @@ export type Database = {
           id?: string
           language?: string
           name: string
-          organization_id?: string
+          organization_id: string
           preview_audio_url?: string | null
           provider?: string
           provider_voice_id: string
@@ -719,7 +730,7 @@ export type Database = {
           created_at?: string
           fanvue_account_uuid?: string | null
           id?: string
-          organization_id?: string
+          organization_id: string
           refresh_token?: string | null
           scopes?: string[] | null
           token_expires_at?: string | null
@@ -766,7 +777,7 @@ export type Database = {
           display_name?: string | null
           handle?: string | null
           id?: string
-          organization_id?: string
+          organization_id: string
           updated_at?: string
         }
         Update: {
@@ -825,7 +836,7 @@ export type Database = {
           generation_id?: string | null
           id?: string
           media_uuids?: string[] | null
-          organization_id?: string
+          organization_id: string
           price?: number | null
           published_at?: string | null
           scheduled_at?: string | null
@@ -872,6 +883,8 @@ export type Database = {
           organization_id: string
           prompt: string
           storage_path: string
+          storage_provider: string
+          thumbnail_path: string | null
           user_id: string | null
         }
         Insert: {
@@ -881,9 +894,11 @@ export type Database = {
           id?: string
           media_type: string
           metadata?: Json | null
-          organization_id?: string
+          organization_id: string
           prompt: string
           storage_path: string
+          storage_provider?: string
+          thumbnail_path?: string | null
           user_id?: string | null
         }
         Update: {
@@ -896,6 +911,8 @@ export type Database = {
           organization_id?: string
           prompt?: string
           storage_path?: string
+          storage_provider?: string
+          thumbnail_path?: string | null
           user_id?: string | null
         }
         Relationships: [
@@ -910,6 +927,137 @@ export type Database = {
             foreignKeyName: "generations_organization_id_fkey"
             columns: ["organization_id"]
             isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      module_catalog: {
+        Row: {
+          commission_ai_pct: number
+          commission_manual_pct: number
+          created_at: string
+          description: string | null
+          is_public: boolean
+          name: string
+          price_usd_month_per_unit: number
+          slug: string
+          sort_order: number
+          unit: string
+          updated_at: string
+        }
+        Insert: {
+          commission_ai_pct?: number
+          commission_manual_pct?: number
+          created_at?: string
+          description?: string | null
+          is_public?: boolean
+          name: string
+          price_usd_month_per_unit?: number
+          slug: string
+          sort_order?: number
+          unit?: string
+          updated_at?: string
+        }
+        Update: {
+          commission_ai_pct?: number
+          commission_manual_pct?: number
+          created_at?: string
+          description?: string | null
+          is_public?: boolean
+          name?: string
+          price_usd_month_per_unit?: number
+          slug?: string
+          sort_order?: number
+          unit?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      org_modules: {
+        Row: {
+          created_at: string
+          id: string
+          installed_at: string
+          installed_by: string | null
+          module_slug: string
+          organization_id: string
+          settings: Json
+          status: string
+          uninstalled_at: string | null
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          installed_at?: string
+          installed_by?: string | null
+          module_slug: string
+          organization_id: string
+          settings?: Json
+          status?: string
+          uninstalled_at?: string | null
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          installed_at?: string
+          installed_by?: string | null
+          module_slug?: string
+          organization_id?: string
+          settings?: Json
+          status?: string
+          uninstalled_at?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "org_modules_module_slug_fkey"
+            columns: ["module_slug"]
+            isOneToOne: false
+            referencedRelation: "module_catalog"
+            referencedColumns: ["slug"]
+          },
+          {
+            foreignKeyName: "org_modules_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      org_wallets: {
+        Row: {
+          held_balance: number
+          included_balance: number
+          organization_id: string
+          period_start: string | null
+          purchased_balance: number
+          updated_at: string
+        }
+        Insert: {
+          held_balance?: number
+          included_balance?: number
+          organization_id: string
+          period_start?: string | null
+          purchased_balance?: number
+          updated_at?: string
+        }
+        Update: {
+          held_balance?: number
+          included_balance?: number
+          organization_id?: string
+          period_start?: string | null
+          purchased_balance?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "org_wallets_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: true
             referencedRelation: "organizations"
             referencedColumns: ["id"]
           },
@@ -950,26 +1098,99 @@ export type Database = {
       organizations: {
         Row: {
           created_at: string
+          current_period_end: string | null
+          current_period_start: string | null
           id: string
           name: string
+          payment_customer_id: string | null
+          payment_provider: string | null
+          payment_subscription_id: string | null
+          plan_slug: string | null
           slug: string
+          subscription_status: string
+          trial_ends_at: string | null
           updated_at: string
         }
         Insert: {
           created_at?: string
+          current_period_end?: string | null
+          current_period_start?: string | null
           id?: string
           name: string
+          payment_customer_id?: string | null
+          payment_provider?: string | null
+          payment_subscription_id?: string | null
+          plan_slug?: string | null
           slug: string
+          subscription_status?: string
+          trial_ends_at?: string | null
           updated_at?: string
         }
         Update: {
           created_at?: string
+          current_period_end?: string | null
+          current_period_start?: string | null
           id?: string
           name?: string
+          payment_customer_id?: string | null
+          payment_provider?: string | null
+          payment_subscription_id?: string | null
+          plan_slug?: string | null
           slug?: string
+          subscription_status?: string
+          trial_ends_at?: string | null
           updated_at?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "organizations_plan_slug_fkey"
+            columns: ["plan_slug"]
+            isOneToOne: false
+            referencedRelation: "plan_configurations"
+            referencedColumns: ["slug"]
+          },
+        ]
+      }
+      password_reset_tokens: {
+        Row: {
+          created_at: string
+          expires_at: string
+          id: string
+          requested_ip: string | null
+          requested_user_agent: string | null
+          token_hash: string
+          used_at: string | null
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          expires_at: string
+          id?: string
+          requested_ip?: string | null
+          requested_user_agent?: string | null
+          token_hash: string
+          used_at?: string | null
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          expires_at?: string
+          id?: string
+          requested_ip?: string | null
+          requested_user_agent?: string | null
+          token_hash?: string
+          used_at?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "password_reset_tokens_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       pending_generations: {
         Row: {
@@ -1021,6 +1242,45 @@ export type Database = {
           },
         ]
       }
+      plan_configurations: {
+        Row: {
+          created_at: string
+          is_public: boolean
+          max_avatars: number | null
+          max_seats: number | null
+          name: string
+          price_usd_month: number
+          slug: string
+          sort_order: number
+          tokens_included: number
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          is_public?: boolean
+          max_avatars?: number | null
+          max_seats?: number | null
+          name: string
+          price_usd_month?: number
+          slug: string
+          sort_order?: number
+          tokens_included?: number
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          is_public?: boolean
+          max_avatars?: number | null
+          max_seats?: number | null
+          name?: string
+          price_usd_month?: number
+          slug?: string
+          sort_order?: number
+          tokens_included?: number
+          updated_at?: string
+        }
+        Relationships: []
+      }
       prompts: {
         Row: {
           category: string | null
@@ -1040,7 +1300,7 @@ export type Database = {
           is_pinned?: boolean | null
           media_type: string
           name: string
-          organization_id?: string
+          organization_id: string
           text: string
           user_id?: string | null
         }
@@ -1096,7 +1356,7 @@ export type Database = {
           hashtags?: string[]
           id?: string
           media_urls?: string[]
-          organization_id?: string
+          organization_id: string
           platforms?: Json
           published_at?: string | null
           scheduled_at?: string | null
@@ -1173,7 +1433,7 @@ export type Database = {
           created_at?: string
           id?: string
           last_synced_at?: string | null
-          organization_id?: string
+          organization_id: string
           status?: string
           upload_post_metadata?: Json | null
           upload_post_username: string
@@ -1206,6 +1466,105 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      token_ledger: {
+        Row: {
+          cost_usd: number | null
+          created_at: string
+          from_included: number
+          from_purchased: number
+          hold_id: string | null
+          id: string
+          idempotency_key: string | null
+          kind: string
+          metadata: Json
+          organization_id: string
+          ref_id: string | null
+          ref_type: string | null
+          sku: string | null
+          tokens: number
+          user_id: string | null
+        }
+        Insert: {
+          cost_usd?: number | null
+          created_at?: string
+          from_included?: number
+          from_purchased?: number
+          hold_id?: string | null
+          id?: string
+          idempotency_key?: string | null
+          kind: string
+          metadata?: Json
+          organization_id: string
+          ref_id?: string | null
+          ref_type?: string | null
+          sku?: string | null
+          tokens: number
+          user_id?: string | null
+        }
+        Update: {
+          cost_usd?: number | null
+          created_at?: string
+          from_included?: number
+          from_purchased?: number
+          hold_id?: string | null
+          id?: string
+          idempotency_key?: string | null
+          kind?: string
+          metadata?: Json
+          organization_id?: string
+          ref_id?: string | null
+          ref_type?: string | null
+          sku?: string | null
+          tokens?: number
+          user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "token_ledger_hold_id_fkey"
+            columns: ["hold_id"]
+            isOneToOne: false
+            referencedRelation: "token_ledger"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "token_ledger_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      token_packs: {
+        Row: {
+          created_at: string
+          is_public: boolean
+          name: string
+          price_usd: number
+          slug: string
+          sort_order: number
+          tokens: number
+        }
+        Insert: {
+          created_at?: string
+          is_public?: boolean
+          name: string
+          price_usd: number
+          slug: string
+          sort_order?: number
+          tokens: number
+        }
+        Update: {
+          created_at?: string
+          is_public?: boolean
+          name?: string
+          price_usd?: number
+          slug?: string
+          sort_order?: number
+          tokens?: number
+        }
+        Relationships: []
       }
       trending_sounds: {
         Row: {
@@ -1270,6 +1629,7 @@ export type Database = {
           image: string | null
           is_platform_admin: boolean
           name: string | null
+          password_changed_at: string | null
           password_hash: string | null
           provider: string
           provider_account_id: string | null
@@ -1283,6 +1643,7 @@ export type Database = {
           image?: string | null
           is_platform_admin?: boolean
           name?: string | null
+          password_changed_at?: string | null
           password_hash?: string | null
           provider?: string
           provider_account_id?: string | null
@@ -1296,6 +1657,7 @@ export type Database = {
           image?: string | null
           is_platform_admin?: boolean
           name?: string | null
+          password_changed_at?: string | null
           password_hash?: string | null
           provider?: string
           provider_account_id?: string | null
@@ -1325,7 +1687,7 @@ export type Database = {
           is_template?: boolean | null
           name: string
           nodes?: Json
-          organization_id?: string
+          organization_id: string
           thumbnail_url?: string | null
           updated_at?: string | null
           user_id: string
@@ -1358,6 +1720,10 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      consume_auth_rate_limit: {
+        Args: { p_bucket: string; p_limit: number; p_window_seconds: number }
+        Returns: Json
+      }
       increment_agent_counter: {
         Args: {
           p_avatar: string
@@ -1383,6 +1749,68 @@ export type Database = {
           similarity: number
           title: string
         }[]
+      }
+      wallet_charge: {
+        Args: {
+          p_cost_usd?: number
+          p_enforce?: boolean
+          p_idempotency_key?: string
+          p_metadata?: Json
+          p_org: string
+          p_ref_id?: string
+          p_ref_type?: string
+          p_sku: string
+          p_tokens: number
+          p_user: string
+        }
+        Returns: Json
+      }
+      wallet_credit: {
+        Args: {
+          p_cost_usd?: number
+          p_idempotency_key?: string
+          p_kind?: string
+          p_org: string
+          p_ref_id?: string
+          p_ref_type?: string
+          p_tokens: number
+        }
+        Returns: Json
+      }
+      wallet_hold: {
+        Args: {
+          p_cost_usd?: number
+          p_enforce?: boolean
+          p_idempotency_key?: string
+          p_org: string
+          p_ref_id?: string
+          p_ref_type?: string
+          p_sku: string
+          p_tokens: number
+          p_user: string
+        }
+        Returns: Json
+      }
+      wallet_refund: {
+        Args: { p_hold_id: string; p_org: string; p_reason?: string }
+        Returns: Json
+      }
+      wallet_settle: {
+        Args: {
+          p_cost_usd?: number
+          p_hold_id: string
+          p_org: string
+          p_tokens_final?: number
+        }
+        Returns: Json
+      }
+      wallet_start_period: {
+        Args: {
+          p_org: string
+          p_period_start?: string
+          p_tokens_included: number
+        }
+        Returns: Json
       }
     }
     Enums: {
@@ -1411,12 +1839,12 @@ export type Tables<
   DefaultSchemaTableNameOrOptions extends
     | keyof (DefaultSchema["Tables"] & DefaultSchema["Views"])
     | { schema: keyof DatabaseWithoutInternals },
-  TableName extends DefaultSchemaTableNameOrOptions extends {
+  TableName extends (DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof (DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"] &
         DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Views"])
-    : never = never,
+    : never) = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -1440,11 +1868,11 @@ export type TablesInsert<
   DefaultSchemaTableNameOrOptions extends
     | keyof DefaultSchema["Tables"]
     | { schema: keyof DatabaseWithoutInternals },
-  TableName extends DefaultSchemaTableNameOrOptions extends {
+  TableName extends (DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
-    : never = never,
+    : never) = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -1465,11 +1893,11 @@ export type TablesUpdate<
   DefaultSchemaTableNameOrOptions extends
     | keyof DefaultSchema["Tables"]
     | { schema: keyof DatabaseWithoutInternals },
-  TableName extends DefaultSchemaTableNameOrOptions extends {
+  TableName extends (DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
-    : never = never,
+    : never) = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -1490,11 +1918,11 @@ export type Enums<
   DefaultSchemaEnumNameOrOptions extends
     | keyof DefaultSchema["Enums"]
     | { schema: keyof DatabaseWithoutInternals },
-  EnumName extends DefaultSchemaEnumNameOrOptions extends {
+  EnumName extends (DefaultSchemaEnumNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"]
-    : never = never,
+    : never) = never,
 > = DefaultSchemaEnumNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -1507,11 +1935,11 @@ export type CompositeTypes<
   PublicCompositeTypeNameOrOptions extends
     | keyof DefaultSchema["CompositeTypes"]
     | { schema: keyof DatabaseWithoutInternals },
-  CompositeTypeName extends PublicCompositeTypeNameOrOptions extends {
+  CompositeTypeName extends (PublicCompositeTypeNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"]
-    : never = never,
+    : never) = never,
 > = PublicCompositeTypeNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }

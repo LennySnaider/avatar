@@ -32,11 +32,80 @@ export function tokensForCostUsd(costUsd: number): number {
     return Math.ceil((costUsd * COST_MARGIN) / TOKEN_USD)
 }
 
+/**
+ * Lo que Telegram ACREDITA al desarrollador por cada Star (doc de Telegram
+ * Stars / Fragment). No es lo que paga el fan: en tienda una Star le cuesta
+ * ~$0.02 porque Apple y Google cobran lo suyo por encima.
+ *
+ * Se guarda ademas en cada asiento (`metadata.star_usd`) para poder revalorar
+ * ventas antiguas si la tasa cambia, sin perder la verdad de lo que se cobro.
+ */
+export const STAR_USD = 0.013
+
+/** Telegram Stars → USD acreditados al creador. */
+export function starsToUsd(stars: number): number {
+    return stars * STAR_USD
+}
+
+/**
+ * USD de INGRESO → tokens. A diferencia de `tokensForCostUsd`, no aplica
+ * `COST_MARGIN`: aquel convierte el costo de un proveedor en precio de venta,
+ * y una comision o una cuota YA es precio.
+ */
+export function usdToTokens(usd: number): number {
+    if (!(usd > 0)) return 0
+    return Math.ceil(usd / TOKEN_USD)
+}
+
+/**
+ * Sku de los asientos de modulo. Son la clave de lectura de "cuanto me ha
+ * costado este modulo", asi que tienen que ser estables.
+ */
+export const MODULE_SKU = {
+    fee: (slug: string) => `module_fee:${slug}`,
+    commission: (slug: string) => `commission:${slug}`,
+}
+
 type CostEntry = {
-    /** USD por imagen, o USD por SEGUNDO en los de video. */
+    /**
+     * USD por imagen, o USD por SEGUNDO en los de video.
+     *
+     * Cuando hay `porResolucion`, este número es el TRAMO QUE GENERAMOS HOY por
+     * defecto — no un promedio. Existe porque no todos los call sites saben la
+     * resolución, y un quote sin resolución tiene que seguir dando el precio
+     * real del camino habitual, no uno inventado.
+     */
     usd: number
     /** true = no medido en vivo; a calibrar con el measure-only. */
     estimated?: boolean
+    /**
+     * Precio por RESOLUCIÓN, para los proveedores que cobran distinto por cada
+     * una. Sin esto el catálogo MIENTE en cuanto alguien sube la calidad:
+     * Seedream 5 Pro pasa de $0.035 a $0.07 entre 1K y 2K, y Seedance 2.5 va de
+     * $0.14 a $0.57 por segundo entre 480p y 1080p — un factor CUATRO que un
+     * único número no puede expresar. Las claves son las mismas que manda el
+     * submit ('1K'/'2K' en imagen, '480p'/'720p'/'1080p' en video).
+     */
+    porResolucion?: Record<string, TramoPrecio>
+    /**
+     * USD por cada imagen de referencia ADICIONAL a la primera (la primera es
+     * gratis). Seedream 5 Pro cobra $0.0025, y Clone Ref manda varias, así que
+     * ignorarlo es cobrar de menos en el camino más usado de la app.
+     */
+    usdPorReferenciaExtra?: number
+}
+
+type TramoPrecio = {
+    /** USD por imagen, o por segundo de SALIDA en video. */
+    usd: number
+    /**
+     * Precio unitario cuando la petición lleva video de referencia. OJO, no es
+     * un descuento: con video de entrada el proveedor cobra
+     * `unitario × (entrada + salida)`, así que el unitario baja pero la
+     * duración facturable sube. Un clip de 5s con 30s de referencia sale MÁS
+     * caro que el mismo clip sin referencia.
+     */
+    usdConVideoEntrada?: number
 }
 
 /**
@@ -56,7 +125,15 @@ export const IMAGE_COST_USD: Record<string, CostEntry> = {
     'kie-seedream-4-5': { usd: 0.033 },
     'kie-flux-2-pro': { usd: 0.035 },
     'kie-seedream-5-lite': { usd: 0.028 },
-    'kie-seedream-5-pro': { usd: 0.035 },
+    // Tarifa de KIE leída de su tabla de precios (2026-09-11): 7cr a 1K y 14cr
+    // a 2K, con la misma tarifa en t2i, i2i y layer decomposition. Generamos a
+    // 736×1312 (0,97 MP), o sea el tramo 1K — por eso es el `usd` por defecto.
+    // El día que se active el 2K, el coste se DUPLICA.
+    'kie-seedream-5-pro': {
+        usd: 0.035,
+        porResolucion: { '1K': { usd: 0.035 }, '2K': { usd: 0.07 } },
+        usdPorReferenciaExtra: 0.0025,
+    },
     'kie-qwen-image': { usd: 0.02, estimated: true },
     'mulerouter-qwen-edit-max': { usd: 0.075 },
     // Mismo API, tier económico (docs MuleRouter 2026-07-25).
@@ -86,14 +163,22 @@ export const VIDEO_COST_USD_PER_SECOND: Record<string, CostEntry> = {
     'kling-v1-5': { usd: 0.07, estimated: true },
     // Seedance 2.0 a 720p en KIE.
     'kie-seedance-2': { usd: 0.125 },
-    // Seedance 2.5: KIE NO publica su precio (no está en la doc del modelo y
-    // kie.ai/pricing responde 403 — verificado 2026-08-17). Se siembra con el
-    // del 2.0 para que el hold no caiga al fallback caro, marcado `estimated`
-    // hasta medirlo: primer run → kie.ai/logs → `creditsConsumed × $0.005`.
-    // Medirlo DOS veces: la doc dice explícitamente que activar el audio
-    // ("Enabling audio will increase the generation cost") sube el costo, así
-    // que con generate_audio ON el número real puede ser otro.
-    'kie-seedance-2-5': { usd: 0.125, estimated: true },
+    // Seedance 2.5 — MEDIDO 2026-09-11 contra la tabla de precios de KIE, que
+    // publica SEIS tarifas para este modelo. Estuvo sembrado con el precio del
+    // 2.0 ($0.125/s) desde que se cableó: eso cobraba de MENOS por un factor
+    // 2,5 en 720p y 4,6 en 1080p. Era el peor agujero del catálogo.
+    //
+    // 720p es el default de la API, así que es el `usd` por defecto.
+    // Los `usdConVideoEntrada` son el precio de la fila "with video" de KIE, y
+    // sólo se aplican con la duración de entrada sumada (ver `quote`).
+    'kie-seedance-2-5': {
+        usd: 0.315,
+        porResolucion: {
+            '480p': { usd: 0.14, usdConVideoEntrada: 0.085 },
+            '720p': { usd: 0.315, usdConVideoEntrada: 0.19 },
+            '1080p': { usd: 0.57, usdConVideoEntrada: 0.3425 },
+        },
+    },
     'kie-wan-2-7': { usd: 0.08, estimated: true },
     // PROVIDER_COST los tenía como "~$0.50 / 5s".
     'mulerouter-wan26-i2v': { usd: 0.1, estimated: true },
@@ -209,8 +294,28 @@ export function resolveVideoProviderId(model: string): string {
 
 /** Operación que consume tokens. La UNIDAD del cobro. */
 export type PaidOperation =
-    | { kind: 'image'; providerId: string; count?: number }
-    | { kind: 'video'; providerId: string; seconds: number }
+    | {
+          kind: 'image'
+          providerId: string
+          count?: number
+          /** '1K' / '2K'. Sin ella se cobra el tramo por defecto del proveedor. */
+          resolution?: string
+          /** Cuántas imágenes de referencia lleva (la primera suele ser gratis). */
+          referenceImages?: number
+      }
+    | {
+          kind: 'video'
+          providerId: string
+          seconds: number
+          /** '480p' / '720p' / '1080p'. Sin ella, el tramo por defecto. */
+          resolution?: string
+          /**
+           * Segundos de video de REFERENCIA. Algunos proveedores facturan
+           * entrada + salida cuando hay video de entrada; pasarlo a 0 (o no
+           * pasarlo) cobra sólo la salida.
+           */
+          inputSeconds?: number
+      }
     | { kind: 'tts'; characters: number }
     | { kind: 'voice_clone' }
     | { kind: 'agent_message' }
@@ -239,7 +344,15 @@ export function quote(op: PaidOperation): Quote {
                 )
             }
             const count = Math.max(1, op.count ?? 1)
-            const costUsd = (entry?.usd ?? UNKNOWN_IMAGE_USD) * count
+            const tramo = op.resolution
+                ? entry?.porResolucion?.[op.resolution]
+                : undefined
+            const unitario = tramo?.usd ?? entry?.usd ?? UNKNOWN_IMAGE_USD
+            // La PRIMERA referencia es gratis en los proveedores que las
+            // cobran; sólo se factura a partir de la segunda.
+            const refsExtra = Math.max(0, (op.referenceImages ?? 0) - 1)
+            const costUsd =
+                unitario * count + refsExtra * (entry?.usdPorReferenciaExtra ?? 0)
             return {
                 sku: `image:${op.providerId}`,
                 tokens: tokensForCostUsd(costUsd),
@@ -257,8 +370,19 @@ export function quote(op: PaidOperation): Quote {
             // Un video de 0s no existe: sin duración se cobra el clip mínimo
             // típico (5s) en vez de salir gratis.
             const seconds = op.seconds > 0 ? op.seconds : 5
-            const costUsd =
-                (entry?.usd ?? UNKNOWN_VIDEO_USD_PER_SECOND) * seconds
+            const tramo = op.resolution
+                ? entry?.porResolucion?.[op.resolution]
+                : undefined
+            const entrada = Math.max(0, op.inputSeconds ?? 0)
+            // Con video de referencia el proveedor cobra un unitario más bajo
+            // pero sobre entrada + salida. NO es un descuento: 5s de salida con
+            // 30s de referencia salen más caros que los mismos 5s a secas.
+            const conEntrada = entrada > 0 && tramo?.usdConVideoEntrada != null
+            const unitario = conEntrada
+                ? (tramo.usdConVideoEntrada as number)
+                : (tramo?.usd ?? entry?.usd ?? UNKNOWN_VIDEO_USD_PER_SECOND)
+            const facturables = conEntrada ? seconds + entrada : seconds
+            const costUsd = unitario * facturables
             return {
                 sku: `video:${op.providerId}`,
                 tokens: tokensForCostUsd(costUsd),

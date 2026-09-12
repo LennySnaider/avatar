@@ -207,6 +207,13 @@ const conceptsRoute: Routes = {
             pageContainerType: 'contained',
         },
     },
+    '/concepts/account/modules': {
+        key: 'concepts.account.modules',
+        authority: [ADMIN, USER],
+        meta: {
+            pageContainerType: 'contained',
+        },
+    },
     '/concepts/account/roles-permissions': {
         key: 'concepts.account.rolesPermissions',
         authority: [ADMIN, USER],

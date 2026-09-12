@@ -99,6 +99,18 @@ const EXENTOS = [
     ['src/lib/agent/autopilot.ts', 'Autopilot por cron; recorre chats resolviendo la org fila a fila.'],
     ['src/lib/agent/sendMessage.ts', 'Envío sin sesión desde el pipeline del agente; la org viene del chat.'],
     ['src/lib/agent/indexer.ts', 'Indexa conocimiento del avatar; recibe la organizationId ya resuelta por el llamador.'],
+    [
+        'src/lib/modules/entitlements.ts',
+        'Entitlement de módulos: sus variantes sin sesión (hasModuleForOrg/listInstalledSlugsForOrg) las llaman cron y webhooks con la org YA resuelta de la fila, que se pasa por parámetro y se filtra explícitamente.',
+    ],
+    [
+        'src/lib/modules/catalog.ts',
+        'module_catalog es un catálogo GLOBAL sin organization_id (precios y comisiones de la plataforma): no hay org por la que filtrar.',
+    ],
+    [
+        'src/lib/billing/moduleFees.ts',
+        'Cron de cuotas: barre TODAS las orgs a propósito y resuelve la org fila a fila (org_modules.organization_id), igual que el resto de crons.',
+    ],
 ]
 
 /**
