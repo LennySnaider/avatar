@@ -4,7 +4,10 @@ import ThemeProvider from '@/components/template/Theme/ThemeProvider'
 import pageMetaConfig from '@/configs/page-meta.config'
 import LocaleProvider from '@/components/template/LocaleProvider'
 import NavigationProvider from '@/components/template/Navigation/NavigationProvider'
-import { getNavigation } from '@/server/actions/navigation/getNavigation'
+import {
+    getNavigation,
+    getInstalledModules,
+} from '@/server/actions/navigation/getNavigation'
 import { getTheme } from '@/server/actions/theme'
 import { getLocale, getMessages } from 'next-intl/server'
 import type { ReactNode } from 'react'
@@ -27,6 +30,8 @@ export default async function RootLayout({
 
     const navigationTree = await getNavigation()
 
+    const installedModules = await getInstalledModules()
+
     const theme = await getTheme()
 
     return (
@@ -40,7 +45,10 @@ export default async function RootLayout({
                 <body suppressHydrationWarning>
                     <LocaleProvider locale={locale} messages={messages}>
                         <ThemeProvider locale={locale} theme={theme}>
-                            <NavigationProvider navigationTree={navigationTree}>
+                            <NavigationProvider
+                                navigationTree={navigationTree}
+                                installedModules={installedModules}
+                            >
                                 {children}
                             </NavigationProvider>
                         </ThemeProvider>
