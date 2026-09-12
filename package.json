@@ -14,7 +14,7 @@
         "db:types": "supabase gen types typescript --project-id wiocwfoydyknqmhixpyt > src/@types/database.generated.ts",
         "check:video-cors": "node scripts/check-video-cors.mjs",
         "check:tenant": "node scripts/check-tenant-access.mjs",
-        "test": "npx --yes tsx --env-file-if-exists=.env --test \"src/**/*.test.ts\""
+        "test": "npx --yes tsx --test \"src/**/*.test.ts\""
     },
     "dependencies": {
         "@ai-sdk/google": "^3.0.91",

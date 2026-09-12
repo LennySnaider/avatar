@@ -1,7 +1,7 @@
-// src/lib/billing/moduleFees.test.ts
+// src/lib/billing/period.test.ts
 import { test, mock } from 'node:test'
 import assert from 'node:assert/strict'
-import { previousPeriodUtc, unitDaysInPeriod, type UnitActivity } from './moduleFees.ts'
+import { previousPeriodUtc, unitDaysInPeriod, type UnitActivity } from './period.ts'
 
 test('una unidad activa todo el mes cobra los dias del mes (septiembre: 30)', () => {
     const activity: UnitActivity = { activeFrom: '2026-09-01T00:00:00.000Z', activeUntil: null }
