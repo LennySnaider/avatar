@@ -1,7 +1,13 @@
 // src/lib/billing/period.test.ts
 import { test, mock } from 'node:test'
 import assert from 'node:assert/strict'
-import { previousPeriodUtc, unitDaysInPeriod, type UnitActivity } from './period.ts'
+import {
+    previousPeriodUtc,
+    unitDaysInPeriod,
+    periodBounds,
+    isUnitActivityValid,
+    type UnitActivity,
+} from './period.ts'
 
 test('una unidad activa todo el mes cobra los dias del mes (septiembre: 30)', () => {
     const activity: UnitActivity = { activeFrom: '2026-09-01T00:00:00.000Z', activeUntil: null }
@@ -73,4 +79,65 @@ test('febrero de año bisiesto tiene 29 dias, uno normal 28', () => {
 
     const activeNormal: UnitActivity = { activeFrom: '2026-02-01T00:00:00.000Z', activeUntil: null }
     assert.equal(unitDaysInPeriod(activeNormal, '2026-02'), 28) // 2026 no lo es
+})
+
+test('activeFrom no interpretable da 0 dias (dato roto, no "sin actividad")', () => {
+    const activity: UnitActivity = { activeFrom: 'esto-no-es-una-fecha', activeUntil: null }
+    assert.equal(unitDaysInPeriod(activity, '2026-09'), 0)
+})
+
+test('activeUntil no interpretable da 0 dias: ya NO cuenta como "activa hasta el cierre"', () => {
+    // Antes de este arreglo, un activeUntil roto caia en la misma rama que
+    // null y devolvia el mes entero (30) -- cobro de MAS por un dato basura.
+    // Es exactamente la asimetria que este test existe para que no vuelva.
+    const activity: UnitActivity = {
+        activeFrom: '2026-09-01T00:00:00.000Z',
+        activeUntil: 'esto-tampoco-es-una-fecha',
+    }
+    assert.equal(unitDaysInPeriod(activity, '2026-09'), 0)
+})
+
+test('fechas invertidas o iguales (fin no posterior al inicio) dan 0 dias', () => {
+    const invertida: UnitActivity = {
+        activeFrom: '2026-09-20T00:00:00.000Z',
+        activeUntil: '2026-09-10T00:00:00.000Z',
+    }
+    assert.equal(unitDaysInPeriod(invertida, '2026-09'), 0)
+
+    const iguales: UnitActivity = {
+        activeFrom: '2026-09-10T00:00:00.000Z',
+        activeUntil: '2026-09-10T00:00:00.000Z',
+    }
+    assert.equal(unitDaysInPeriod(iguales, '2026-09'), 0)
+})
+
+test('isUnitActivityValid acepta los dos casos validos y rechaza los tres rotos', () => {
+    // Validos: sigue activa (activeUntil null), y ventana cerrada normal.
+    assert.equal(isUnitActivityValid({ activeFrom: '2026-09-01T00:00:00.000Z', activeUntil: null }), true)
+    assert.equal(
+        isUnitActivityValid({ activeFrom: '2026-09-01T00:00:00.000Z', activeUntil: '2026-09-10T00:00:00.000Z' }),
+        true,
+    )
+
+    // Rotos: activeFrom ilegible, activeUntil ilegible, fin <= inicio.
+    assert.equal(isUnitActivityValid({ activeFrom: 'basura', activeUntil: null }), false)
+    assert.equal(isUnitActivityValid({ activeFrom: '2026-09-01T00:00:00.000Z', activeUntil: 'basura' }), false)
+    assert.equal(
+        isUnitActivityValid({
+            activeFrom: '2026-09-10T00:00:00.000Z',
+            activeUntil: '2026-09-10T00:00:00.000Z',
+        }),
+        false,
+    )
+})
+
+test('periodBounds lanza con un mes fuera de rango', () => {
+    assert.throws(() => periodBounds('2026-13'), /período inválido/)
+    assert.throws(() => periodBounds('2026-00'), /período inválido/)
+})
+
+test('periodBounds lanza con una cadena mal formada', () => {
+    assert.throws(() => periodBounds('esto-no-es-un-periodo'), /período inválido/)
+    assert.throws(() => periodBounds('2026-9'), /período inválido/) // sin cero a la izquierda
+    assert.throws(() => periodBounds(''), /período inválido/)
 })

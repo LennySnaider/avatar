@@ -18,7 +18,16 @@
  * La aritmética de fechas (`periodBounds`, `unitDaysInPeriod`,
  * `previousPeriodUtc`, `currentPeriodUtc`, `UnitActivity`) vive en
  * `./period`, un módulo puro sin cliente de datos — aquí se importa y se
- * re-exporta para no romper a quien ya la pedía de este fichero.
+ * re-exporta para no romper a quien ya la pedía de este fichero. `period.ts`
+ * es puro y por eso NUNCA avisa de nada; si una organización manda entradas
+ * de actividad rotas (fechas ilegibles o invertidas), avisarlo con contexto
+ * de organización y módulo es responsabilidad de este fichero, no de aquél.
+ *
+ * `periodBounds(period)` se resuelve una sola vez, antes del bucle: si
+ * alguna vez `period` llega roto desde fuera (hoy sólo lo generan
+ * `previousPeriodUtc`/`currentPeriodUtc`, pero esto ya es una función
+ * exportada sin más guardas), falla una vez y de forma clara en vez de
+ * fallar org por org dentro del `catch`.
  *
  * Recorre TODAS las organizaciones a propósito (es un cron sin sesión) y
  * resuelve la org fila a fila.
@@ -26,7 +35,7 @@
 import { orgSupabase } from '@/lib/org/orgTable'
 import { chargeTokens } from './wallet'
 import { MODULE_SKU, usdToTokens } from './catalog'
-import { currentPeriodUtc, previousPeriodUtc, periodBounds, unitDaysInPeriod } from './period'
+import { currentPeriodUtc, previousPeriodUtc, periodBounds, unitDaysInPeriod, isUnitActivityValid } from './period'
 import type { UnitActivity } from './period'
 
 export { currentPeriodUtc, previousPeriodUtc, unitDaysInPeriod }
@@ -46,6 +55,14 @@ export interface ModuleFeesResult {
     charged: number
     replayed: number
     skipped: number
+    /**
+     * Organizaciones donde TODA la actividad reportada del módulo era
+     * inválida (fechas ilegibles o invertidas) — no "sin actividad este
+     * mes" (eso es `skipped`, y es normal), sino "lo que llegó está roto".
+     * Se cuenta aparte para que no se confunda un canal con datos corruptos
+     * con uno que simplemente está tranquilo.
+     */
+    invalidActivity: number
     failed: number
     tokens: number
 }
@@ -60,11 +77,17 @@ interface InstalledModuleRow {
 }
 
 export async function chargeModuleFees(period = previousPeriodUtc()): Promise<ModuleFeesResult> {
+    // Falla aquí, una vez, si `period` no es "YYYY-MM" válido — antes de
+    // tocar la base de datos y antes de que un periodo roto se disfrace de
+    // "fallo" en cada organización dentro del bucle.
+    const { days: daysInPeriod } = periodBounds(period)
+
     const result: ModuleFeesResult = {
         period,
         charged: 0,
         replayed: 0,
         skipped: 0,
+        invalidActivity: 0,
         failed: 0,
         tokens: 0,
     }
@@ -104,8 +127,28 @@ export async function chargeModuleFees(period = previousPeriodUtc()): Promise<Mo
 
         try {
             const activity = await report(raw.organization_id)
-            const { days: daysInPeriod } = periodBounds(period)
-            const unitDays = activity.reduce((acc, a) => acc + unitDaysInPeriod(a, period), 0)
+            const validActivity = activity.filter(isUnitActivityValid)
+            const discardedUnits = activity.length - validActivity.length
+
+            if (discardedUnits > 0) {
+                // Dato roto, no ausente: activeFrom/activeUntil ilegibles, o
+                // un fin que no es posterior a su propio inicio. Se descarta
+                // (nunca se adivina, ni de más ni de menos), pero queda
+                // registrado porque el origen del dato tiene un bug real.
+                console.warn(
+                    `[module-fees] módulo "${raw.module_slug}" (org ${raw.organization_id}): ${discardedUnits} de ${activity.length} entrada(s) de actividad inválida(s) — descartadas del prorrateo.`,
+                )
+            }
+
+            if (activity.length > 0 && validActivity.length === 0) {
+                // Ninguna entrada es utilizable: no es "sin actividad este
+                // mes" (eso es un skipped normal), es "la actividad que
+                // llegó está rota". Se cuenta aparte, no como skipped.
+                result.invalidActivity++
+                continue
+            }
+
+            const unitDays = validActivity.reduce((acc, a) => acc + unitDaysInPeriod(a, period), 0)
             if (unitDays <= 0) {
                 result.skipped++
                 continue
@@ -128,11 +171,12 @@ export async function chargeModuleFees(period = previousPeriodUtc()): Promise<Mo
                 metadata: {
                     period,
                     unit: def.unit,
-                    units: activity.length,
+                    units: validActivity.length,
                     unit_days: unitDays,
                     days_in_period: daysInPeriod,
                     price_per_unit: price,
                     prorated: true,
+                    discarded_units: discardedUnits,
                 },
             })
 
