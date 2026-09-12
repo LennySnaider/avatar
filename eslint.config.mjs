@@ -188,6 +188,11 @@ const eslintConfig = [
       // identificar la fila. La otra variante del fichero, con ctx, va por
       // orgTable y no dispara esta regla.
       "src/lib/telegram/settings.ts",
+      // F4.2 Tarea 4 — recordStarsSale corre disparado por el webhook, sin
+      // sesión. La organizationId no se adivina: llega ya resuelta en el
+      // propio StarsSaleEvent (la fila que la transición atómica del webhook
+      // acaba de devolver), y cada consulta la usa como filtro explícito.
+      "src/lib/telegram/sales.ts",
       // Sin sesión: resuelven la org por la fila que ya cargaron.
       "src/app/api/webhooks/**",
       "src/app/api/cron/**",

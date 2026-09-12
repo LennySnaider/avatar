@@ -115,6 +115,10 @@ const EXENTOS = [
         'src/lib/telegram/settings.ts',
         'loadTelegramSettings (variante sin sesión, para el webhook y los crones) filtra por avatar_id, que es UNIQUE en avatar_telegram_settings (migración de la Tarea 1) — no necesita organizationId de entrada para identificar la fila. La otra variante del fichero, con ctx, va por orgTable y no dispara este candado.',
     ],
+    [
+        'src/lib/telegram/sales.ts',
+        'recordStarsSale corre disparado por el webhook de Telegram, sin sesión. La organizationId no se adivina: llega ya resuelta en el propio StarsSaleEvent (la fila que la transición atómica del webhook acaba de devolver tras el offered→purchased), y cada consulta la usa como filtro explícito.',
+    ],
 ]
 
 /**

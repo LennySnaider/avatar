@@ -104,6 +104,41 @@ export async function resolveTargetAvatar(
     }
 }
 
+/**
+ * Resolve an avatar directly by id — no external recipient to map from.
+ *
+ * F4.2 Tarea 4 (telegram-comision-cobrable) — el webhook de Telegram YA
+ * conoce el avatar por la URL (`/api/webhooks/telegram/[avatarId]`), a
+ * diferencia de Fanvue, donde `resolveTargetAvatar` tiene que ADIVINAR el
+ * avatar a partir del `recipientUuid` que trae el payload. Devuelve el mismo
+ * `ResolvedTarget` que usan `upsertChat`/`ingestMessage`/`touchFanMemory` —
+ * `creatorUuid` va siempre `null` (es un concepto de Fanvue, no aplica aquí).
+ */
+export async function resolveAvatarTargetById(avatarId: string): Promise<ResolvedTarget | null> {
+    const supabase = agentSupabase()
+    const { data: avatar } = await supabase
+        .from('avatars')
+        .select('id, user_id, organization_id')
+        .eq('id', avatarId)
+        .maybeSingle()
+    if (!avatar?.user_id) return null
+
+    const { data: persona } = await supabase
+        .from('avatar_personas')
+        .select('enabled')
+        .eq('organization_id', avatar.organization_id)
+        .eq('avatar_id', avatarId)
+        .maybeSingle()
+
+    return {
+        avatarId: avatar.id,
+        organizationId: avatar.organization_id,
+        userId: avatar.user_id,
+        creatorUuid: null,
+        personaEnabled: Boolean(persona?.enabled),
+    }
+}
+
 /** Upsert a chat row for (avatar, fan). Returns the chat id. */
 export async function upsertChat(input: {
     target: ResolvedTarget
@@ -116,14 +151,20 @@ export async function upsertChat(input: {
     /** Counterpart is a creator/bot (spam) — start such chats OFF so the agent
      * never auto-drafts to them. */
     isCreator?: boolean
+    /** F4.2 Tarea 4 — default `'fanvue'` a propósito: NINGÚN llamador actual
+     *  lo pasa, así que su comportamiento no cambia. El webhook de Telegram sí
+     *  lo pasa (`'telegram'`) para que la fila caiga en la fila correcta de la
+     *  unicidad `(avatar_id, platform, external_chat_id)`. */
+    platform?: string
 }): Promise<AgentChatRow> {
+    const platform = input.platform ?? 'fanvue'
     const supabase = agentSupabase()
     const { data: existing } = await supabase
         .from('agent_chats')
         .select('*')
         .eq('organization_id', input.target.organizationId)
         .eq('avatar_id', input.target.avatarId)
-        .eq('platform', 'fanvue')
+        .eq('platform', platform)
         .eq('external_chat_id', input.fanUuid)
         .maybeSingle()
 
@@ -151,7 +192,7 @@ export async function upsertChat(input: {
         .insert({
             organization_id: input.target.organizationId,
             avatar_id: input.target.avatarId,
-            platform: 'fanvue',
+            platform,
             external_chat_id: input.fanUuid,
             fan_display_name: input.fanDisplayName ?? null,
             fan_handle: input.fanHandle ?? null,
@@ -207,8 +248,17 @@ export async function ingestMessage(input: {
     return { inserted: true }
 }
 
-/** Update the fan's memory row's last-seen (cheap heartbeat; facts filled by the LLM pass). */
-export async function touchFanMemory(target: ResolvedTarget, fanUuid: string, displayName?: string | null) {
+/**
+ * Update the fan's memory row's last-seen (cheap heartbeat; facts filled by
+ * the LLM pass). `platform` default `'fanvue'` — F4.2 Tarea 4, mismo motivo
+ * que en `upsertChat`: ningún llamador actual lo pasa, así que no cambia.
+ */
+export async function touchFanMemory(
+    target: ResolvedTarget,
+    fanUuid: string,
+    displayName?: string | null,
+    platform: string = 'fanvue',
+) {
     const supabase = agentSupabase()
     await supabase
         .from('avatar_fan_memories')
@@ -216,7 +266,7 @@ export async function touchFanMemory(target: ResolvedTarget, fanUuid: string, di
             {
                 organization_id: target.organizationId,
                 avatar_id: target.avatarId,
-                platform: 'fanvue',
+                platform,
                 external_fan_id: fanUuid,
                 display_name: displayName ?? null,
                 last_seen_at: new Date().toISOString(),

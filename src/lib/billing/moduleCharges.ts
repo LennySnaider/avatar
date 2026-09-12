@@ -19,6 +19,20 @@ export interface StarsCommissionInput {
     /** Por si otro canal vende en Stars algún día. */
     moduleSlug?: string
     userId?: string | null
+    /**
+     * Metadata extra que se funde en la del asiento (`token_ledger.metadata`).
+     * GENÉRICO a propósito: esta librería no debe conocer conceptos de
+     * Telegram ni de ningún canal concreto — el llamador decide qué hace
+     * falta para reconstruir la venta si su propia fila desaparece.
+     *
+     * Por qué existe (F4.2 Tarea 1, revisión): `telegram_stars_sales.avatar_id`
+     * cae en CASCADA si se borra el avatar, y esa fila es la única que sabe
+     * quién compró y qué se vendió. El asiento del ledger sobrevive siempre
+     * (no cuelga de `avatar_id`), así que es el único sitio donde esos datos
+     * pueden quedar aunque la venta desaparezca — de ahí que valga la pena
+     * pasarlos aquí en vez de darlos por perdidos con la fila.
+     */
+    extraMetadata?: Record<string, unknown>
 }
 
 export interface StarsCommissionResult {
@@ -81,6 +95,9 @@ export async function settleStarsCommission(
                 star_usd: STAR_USD,
                 gross_usd: grossUsd,
                 avatar_id: input.avatarId,
+                // Fusionado AL FINAL: si algún día una clave choca, gana lo
+                // que trae el llamador específico, no el genérico de arriba.
+                ...input.extraMetadata,
             },
         })
 
