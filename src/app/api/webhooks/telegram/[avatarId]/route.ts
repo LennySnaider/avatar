@@ -12,29 +12,50 @@
  * ORDEN OBLIGATORIO (cada paso decide su propio código de respuesta y NUNCA
  * se salta al siguiente si el actual ya respondió):
  *
- *   1. Cargar ajustes por `avatarId`. Sin fila o `enabled = false` → 200 EN
- *      SILENCIO. Nunca 404: un 404 hace que Telegram acumule reintentos
- *      indefinidamente sobre una URL que para nosotros es, simplemente, "no
- *      hay nada que hacer aquí".
+ *   1. Cargar ajustes por `avatarId`. Si la carga en sí revienta (fallo de
+ *      base) → 200, registrado. Si no revienta, su resultado TODAVÍA no
+ *      decide nada — eso es el paso 3, no éste. Decidir aquí (como hacía una
+ *      versión anterior de este fichero) es justo el bug que describe el
+ *      paso 2.
  *   2. Comparar `x-telegram-bot-api-secret-token` contra el secreto guardado,
- *      en tiempo constante (`crypto.timingSafeEqual`). Si no coincide → 401 Y
- *      PARA AHÍ: nada de logs ni de más trabajo. Es la ÚNICA respuesta
- *      distinta de 200 que existe en este fichero — a propósito, es la única
- *      vez que de verdad hace falta que el cliente SEPA que algo está mal
- *      (todo lo demás es "no hay nada que hacer" o "ya hubo un error de
- *      nuestro lado", y ninguno de los dos es asunto de quien llama).
+ *      en tiempo constante (`crypto.timingSafeEqual`), SIEMPRE — exista o no
+ *      la fila, esté o no habilitada. Si no hay fila (y por tanto no hay
+ *      secreto real que leer) se compara contra uno FICTICIO generado al
+ *      vuelo, sólo para que la comparación ocurra igual: nunca va a coincidir
+ *      con ninguna cabecera, así que el resultado es el mismo 401 que con un
+ *      secreto real equivocado. Si no coincide → 401 Y PARA AHÍ: nada de logs
+ *      ni de más trabajo. Es la ÚNICA respuesta distinta de 200 que existe en
+ *      este fichero — a propósito, es la única vez que de verdad hace falta
+ *      que el cliente SEPA que algo está mal (todo lo demás es "no hay nada
+ *      que hacer" o "ya hubo un error de nuestro lado", y ninguno de los dos
+ *      es asunto de quien llama).
  *      Quien tenga este secreto puede fabricar un `purchased_paid_media` e
  *      inventarse una comisión real contra el monedero de la organización —
- *      por eso se compara ANTES de cualquier otro efecto, y por eso ni la
- *      respuesta ni ningún log de este bloque mencionan si el avatar existe,
- *      si tiene bot, ni ningún dato de los ajustes ya cargados.
- *   3. JSON mal formado (incluido un cuerpo vacío) → 200. Ya pasamos el
+ *      por eso se compara ANTES de mirar si hay fila o si está habilitada.
+ *      Una versión anterior de este fichero miraba primero: sin fila o con
+ *      `enabled = false` respondía 200 SIN comparar el secreto, así que un
+ *      401 sólo era posible cuando el avatar ya tenía el canal activo — el
+ *      CÓDIGO DE RESPUESTA delataba ese booleano a quien ya conociera el
+ *      `avatarId`, aunque ni el cuerpo ni ningún log lo dijeran. Comparando
+ *      siempre primero, un secreto incorrecto se rechaza igual exista o no la
+ *      fila, esté o no habilitada, y ni la respuesta ni ningún log de este
+ *      bloque delatan ya nada de los ajustes.
+ *      Invertir el orden no reabre la tormenta de reintentos que motivó el
+ *      orden original (ver `disconnectTelegramBot` en
+ *      `AgentTelegramService.ts`): desconectar NUNCA borra `webhook_secret`,
+ *      así que un reintento real de Telegram contra un bot ya desconectado
+ *      sigue trayendo el secreto correcto, pasa este paso, y cae en el 200
+ *      silencioso del paso 3 — no en este 401.
+ *   3. Sin fila o `enabled = false` → 200 EN SILENCIO. Nunca 404: un 404 hace
+ *      que Telegram acumule reintentos indefinidamente sobre una URL que para
+ *      nosotros es, simplemente, "no hay nada que hacer aquí".
+ *   4. JSON mal formado (incluido un cuerpo vacío) → 200. Ya pasamos el
  *      secreto: esto es un bug propio o un capricho de Telegram, no un
  *      ataque, así que sí es aceptable registrar el motivo.
- *   4. Idempotencia: `telegram_webhook_events` tiene PK `(avatar_id,
+ *   5. Idempotencia: `telegram_webhook_events` tiene PK `(avatar_id,
  *      update_id)`. Un choque de esa clave es Telegram reintentando un update
  *      que YA vimos → 200 inmediato, sin reprocesar.
- *   5. Procesar, con un `try/catch` GLOBAL que registra y responde 200. Un
+ *   6. Procesar, con un `try/catch` GLOBAL que registra y responde 200. Un
  *      500 aquí dispararía una tormenta de reintentos sobre un evento que ya
  *      falló una vez — no lo arregla, sólo lo repite.
  *
@@ -101,7 +122,8 @@ async function isDuplicateUpdate(avatarId: string, updateId: number): Promise<bo
 export async function POST(req: NextRequest, { params }: { params: Promise<{ avatarId: string }> }) {
     const { avatarId } = await params
 
-    // 1. Ajustes del avatar.
+    // 1. Ajustes del avatar. Se cargan siempre, pero SU RESULTADO no decide
+    //    nada todavía — eso es el paso 3, después del secreto. Ver cabecera.
     let settings: TelegramSettings | null
     try {
         settings = await loadTelegramSettings(avatarId)
@@ -109,20 +131,32 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ ava
         console.error('[telegram webhook] loadTelegramSettings', e)
         return OK()
     }
+
+    // 2. Secreto. SIEMPRE se compara — exista o no la fila, esté habilitada o
+    //    no — ver cabecera del fichero sobre por qué el orden importa. Sin
+    //    fila (o si por lo que sea no hay secreto que leer) se compara contra
+    //    uno FICTICIO generado al vuelo, sólo para que la comparación en
+    //    tiempo constante ocurra igual: nunca coincide con ninguna cabecera,
+    //    así que el resultado es el mismo 401 que con un secreto real
+    //    equivocado.
+    const header = req.headers.get('x-telegram-bot-api-secret-token')
+    let secret: string | null = null
+    try {
+        secret = settings ? await loadTelegramWebhookSecret(avatarId) : null
+    } catch (e) {
+        console.error('[telegram webhook] loadTelegramWebhookSecret', e)
+        return OK()
+    }
+    if (!secretMatches(header, secret ?? crypto.randomBytes(32).toString('hex'))) {
+        return new NextResponse(null, { status: 401 })
+    }
+
+    // 3. Sin fila o `enabled = false` → 200 EN SILENCIO. Nunca 404 (ver cabecera).
     if (!settings || !settings.enabled) {
         return OK()
     }
 
-    // 2. Secreto. A partir de aquí, si no coincide, el ÚNICO camino es 401 —
-    //    ver cabecera del fichero sobre por qué ni el log de este bloque
-    //    lleva nada de lo que acabamos de cargar.
-    const header = req.headers.get('x-telegram-bot-api-secret-token')
-    const secret = await loadTelegramWebhookSecret(avatarId)
-    if (!secretMatches(header, secret)) {
-        return new NextResponse(null, { status: 401 })
-    }
-
-    // 3. JSON mal formado (cuerpo vacío incluido).
+    // 4. JSON mal formado (cuerpo vacío incluido).
     const rawBody = await req.text()
     let update: TelegramUpdate
     try {
@@ -135,12 +169,12 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ ava
         return OK()
     }
 
-    // 4. Idempotencia.
+    // 5. Idempotencia.
     if (await isDuplicateUpdate(avatarId, update.update_id)) {
         return OK()
     }
 
-    // 5. Procesar.
+    // 6. Procesar.
     try {
         if (update.message) {
             await handleMessage(settings, update.message)
