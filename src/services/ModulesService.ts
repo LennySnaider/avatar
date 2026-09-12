@@ -15,6 +15,7 @@ import { getOrgContext, type OrgContext } from '@/lib/tenant/getOrgContext'
 import { orgTable, orgUpsert } from '@/lib/org/orgTable'
 import { getModuleCatalog, getModuleDefinition, type ModuleCatalogRow } from '@/lib/modules/catalog'
 import { listOrgModules, type OrgModuleRow } from '@/lib/modules/entitlements'
+import { getWalletBalance } from '@/lib/billing/wallet'
 
 export interface ModulesResult<T> {
     success: boolean
@@ -116,4 +117,17 @@ export async function installModule(slug: string): Promise<ModulesResult<OrgModu
 
 export async function uninstallModule(slug: string): Promise<ModulesResult<OrgModuleRow>> {
     return setModuleStatus(slug, 'uninstalled')
+}
+
+/** Saldo + módulos instalados, para Settings → Billing (que es cliente y no puede leer el server directo). */
+export async function getBillingOverview(): Promise<
+    ModulesResult<{ balance: Awaited<ReturnType<typeof getWalletBalance>>; installed: OrgModuleRow[] }>
+> {
+    try {
+        const ctx = await getOrgContext()
+        const [balance, installed] = await Promise.all([getWalletBalance(ctx), listOrgModules(ctx)])
+        return { success: true, data: { balance, installed } }
+    } catch (e) {
+        return fail(e instanceof Error ? e.message : String(e))
+    }
 }

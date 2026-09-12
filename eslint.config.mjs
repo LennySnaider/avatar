@@ -172,6 +172,10 @@ const eslintConfig = [
       // corren sin sesión.
       "src/lib/billing/moduleFees.ts",
       "src/lib/billing/moduleCharges.ts",
+      // Resumen de cobro por módulo (cuota + comisión del mes en curso): misma
+      // tabla no tenant que wallet.ts (`token_ledger`), filtrada a mano por
+      // organization_id — que aquí llega ya resuelto por parámetro, no por ctx.
+      "src/lib/billing/moduleSummary.ts",
       // Entitlement de módulos: hasModuleForOrg/listInstalledSlugsForOrg reciben
       // la org por parámetro (cron/webhooks) y module_catalog es un catálogo
       // global sin organization_id — mismo par que check-tenant-access.mjs.
