@@ -32,6 +32,20 @@ function fail(message: string): ModulesResult<never> {
     return { success: false, error: message }
 }
 
+/**
+ * Igual que `fail`, pero para excepciones: además de traducirlas al contrato
+ * de retorno, las deja escritas en el log del servidor.
+ *
+ * Existe separado de `fail` a propósito. `fail` también expresa rechazos
+ * legítimos ("no eres administrador", "ese módulo no existe"), que son
+ * respuestas normales y no deben ensuciar el log: si todo se registra como
+ * error, nada destaca. Aquí sólo entra lo que de verdad se rompió.
+ */
+function failFromError(where: string, e: unknown): ModulesResult<never> {
+    console.error(`[modules] ${where}:`, e)
+    return fail(e instanceof Error ? e.message : String(e))
+}
+
 export async function listModules(): Promise<
     ModulesResult<{ catalog: ModuleCatalogRow[]; installed: OrgModuleRow[]; canManage: boolean }>
 > {
@@ -40,7 +54,7 @@ export async function listModules(): Promise<
         const [catalog, installed] = await Promise.all([getModuleCatalog(), listOrgModules(ctx)])
         return { success: true, data: { catalog, installed, canManage: canManage(ctx) } }
     } catch (e) {
-        return fail(e instanceof Error ? e.message : String(e))
+        return failFromError('listModules', e)
     }
 }
 
@@ -110,7 +124,7 @@ async function setModuleStatus(
             },
         }
     } catch (e) {
-        return fail(e instanceof Error ? e.message : String(e))
+        return failFromError('setModuleStatus', e)
     }
 }
 
@@ -131,6 +145,6 @@ export async function getBillingOverview(): Promise<
         const [balance, installed] = await Promise.all([getWalletBalance(ctx), listOrgModules(ctx)])
         return { success: true, data: { balance, installed } }
     } catch (e) {
-        return fail(e instanceof Error ? e.message : String(e))
+        return failFromError('getBillingOverview', e)
     }
 }
