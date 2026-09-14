@@ -2,10 +2,13 @@
  * Lo que ve quien entra por URL a un módulo que su organización no tiene.
  * No es un 404 a propósito: la ruta existe y la respuesta útil es cómo
  * activarla, no negar que exista.
+ *
+ * Este fichero es `async`, así que Next lo trata como Server Component de
+ * verdad. Por eso NO importa aquí ningún componente de `@/components/ui`:
+ * toda la parte visual vive en `ModuleNotInstalledCard`, que sí es cliente.
+ * El porqué exacto está explicado en la cabecera de ese fichero.
  */
-import Link from 'next/link'
-import Card from '@/components/ui/Card'
-import Button from '@/components/ui/Button'
+import ModuleNotInstalledCard from './ModuleNotInstalledCard'
 import { getModuleDefinition } from '@/lib/modules/catalog'
 
 export default async function ModuleNotInstalled({
@@ -16,27 +19,17 @@ export default async function ModuleNotInstalled({
     suspended?: boolean
 }) {
     const def = await getModuleDefinition(slug)
+
+    const pricing = def
+        ? `$${def.priceUsdMonthPerUnit.toFixed(2)} por ${def.unit} al mes · comisión ` +
+          `${def.commissionAiPct}% (IA) / ${def.commissionManualPct}% (manual)`
+        : undefined
+
     return (
-        <div className="flex justify-center p-6">
-            <Card className="max-w-xl">
-                <h4>{def?.name ?? slug}</h4>
-                <p className="mt-2">
-                    {suspended
-                        ? 'Este módulo está suspendido. Revisa tu saldo para reactivarlo.'
-                        : 'Este módulo no está instalado en tu organización.'}
-                </p>
-                {def && (
-                    <p className="mt-2">
-                        ${def.priceUsdMonthPerUnit.toFixed(2)} por {def.unit} al mes · comisión{' '}
-                        {def.commissionAiPct}% (IA) / {def.commissionManualPct}% (manual)
-                    </p>
-                )}
-                <div className="mt-4">
-                    <Link href={suspended ? '/concepts/account/settings?tab=billing' : '/concepts/account/modules'}>
-                        <Button asElement="div" variant="solid">{suspended ? 'Ver saldo' : 'Ir a Módulos'}</Button>
-                    </Link>
-                </div>
-            </Card>
-        </div>
+        <ModuleNotInstalledCard
+            title={def?.name ?? slug}
+            suspended={suspended}
+            pricing={pricing}
+        />
     )
 }
