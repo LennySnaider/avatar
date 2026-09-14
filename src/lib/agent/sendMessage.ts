@@ -44,8 +44,20 @@ export async function sendAgentMessage(messageId: string): Promise<SendAgentMess
     if (!msg) return { success: false, error: 'Message not found' }
     if (msg.status !== 'approved') return { success: false, error: `Message is ${msg.status}, not approved` }
 
+    // Los dos returns de aquí abajo marcan `failed` antes de salir: el reclamo
+    // atómico del flush ya no reintenta, así que un `approved` que nunca va a
+    // poder salir tiene que quedar visible y no mudo en la cola.
     const text = (msg.text ?? '').trim()
-    if (!text) return { success: false, error: 'Empty message' }
+    if (!text) {
+        console.error('[agent] send failed', { messageId }, 'Empty message')
+        await supabase
+            .from('agent_messages')
+            .update({ status: 'failed', error_message: 'Empty message', updated_at: new Date().toISOString() })
+            .eq('organization_id', msg.organization_id)
+            .eq('id', messageId)
+            .eq('status', 'approved')
+        return { success: false, error: 'Empty message' }
+    }
 
     const { data: chat } = await supabase
         .from('agent_chats')
@@ -53,7 +65,16 @@ export async function sendAgentMessage(messageId: string): Promise<SendAgentMess
         .eq('organization_id', msg.organization_id)
         .eq('id', msg.chat_id)
         .single()
-    if (!chat) return { success: false, error: 'Chat not found' }
+    if (!chat) {
+        console.error('[agent] send failed', { messageId }, 'Chat not found')
+        await supabase
+            .from('agent_messages')
+            .update({ status: 'failed', error_message: 'Chat not found', updated_at: new Date().toISOString() })
+            .eq('organization_id', msg.organization_id)
+            .eq('id', messageId)
+            .eq('status', 'approved')
+        return { success: false, error: 'Chat not found' }
+    }
 
     // "Avatar has no owner" / "Fanvue not connected" ya no salen con { success: false }
     // en silencio: lanzan dentro del try y el catch los deja `failed` con el motivo.
