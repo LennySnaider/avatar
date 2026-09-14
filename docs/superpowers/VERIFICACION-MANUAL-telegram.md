@@ -96,6 +96,25 @@ Sobre el token único: la conversión redondea hacia arriba, así que una estrel
 
 Será la comisión manual del siete por ciento, no la del veinte. El veinte exige que el agente responda en Telegram, y eso es el plan siguiente.
 
+**Si pruebas con una organización exenta de cobro** (`organizations.billing_exempt = true` — es el caso de la organización del dueño de la plataforma, que vende por su propio Telegram como cualquier cliente): la fila NO va a mostrar la tabla de arriba. Vas a ver `commission_tokens = 0` y `commission_ledger_id` nulo (el `left join` con `token_ledger` no encuentra nada, porque una organización exenta no genera NINGÚN asiento — ver la migración `billing_exemption`), pero `commission_pct` sigue en `7.00`: es el % REAL que se habría cobrado, no cero, para que quede constancia de cuánto se dejó de cobrar. Eso es lo esperado, no un fallo.
+
+Para distinguirlo de un fallo real, añade `commission_exempt` y `commission_settled_at` a la consulta:
+
+```sql
+select s.status, s.commission_pct, s.commission_tokens, s.commission_ledger_id,
+       s.commission_exempt, s.commission_settled_at
+from telegram_stars_sales s
+order by s.offered_at desc limit 1;
+```
+
+| Caso | `commission_ledger_id` | `commission_exempt` | `commission_settled_at` |
+|---|---|---|---|
+| Cobrada normal | no nulo | `false` | sellado |
+| **Exenta (esperado en la org del dueño)** | nulo | **`true`** | **sellado** |
+| Fallo real (sin resolver) | nulo | `false` | **nulo** |
+
+La columna que separa "exenta" de "fallo" es `commission_settled_at`: en una exención SÍ se sella, porque la comisión quedó resuelta (lo resuelto es que no había nada que cobrar); en un fallo real queda nula, y esa es la fila que la reconciliación de la última sección ("Lo que ya sabemos que falta") debe seguir señalando — la consulta de ahí (`status = 'purchased' and commission_settled_at is null`) ya excluye a las exentas precisamente porque éstas sí sellan la fecha.
+
 ---
 
 ## 6. Comprobar que no se cobra dos veces

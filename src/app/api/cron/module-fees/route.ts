@@ -32,9 +32,9 @@ export async function GET(request: NextRequest) {
 
     try {
         const result = await chargeModuleFees()
-        if (result.charged > 0 || result.failed > 0 || result.invalidActivity > 0) {
+        if (result.charged > 0 || result.failed > 0 || result.invalidActivity > 0 || result.exempt > 0) {
             console.log(
-                `[module-fees] ${result.period}: ${result.charged} cobradas · ${result.tokens} tokens · ${result.replayed} repetidas · ${result.failed} fallidas · ${result.invalidActivity} con actividad inválida`,
+                `[module-fees] ${result.period}: ${result.charged} cobradas · ${result.tokens} tokens · ${result.replayed} repetidas · ${result.failed} fallidas · ${result.invalidActivity} con actividad inválida · ${result.exempt} exentas`,
             )
         }
         return NextResponse.json(result)

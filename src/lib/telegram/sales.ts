@@ -20,6 +20,7 @@
  */
 import { orgSupabase } from '@/lib/org/orgTable'
 import { settleStarsCommission } from '@/lib/billing/moduleCharges'
+import { commissionSaleFields } from './salesCommissionFields'
 
 export interface StarsSaleEvent {
     saleId: string
@@ -136,18 +137,31 @@ export async function recordStarsSale(event: StarsSaleEvent): Promise<void> {
         })
         // settleStarsCommission NUNCA LANZA (ver su cabecera): ledgerId sale
         // null si el módulo no está en catálogo, si la comisión redondeó a 0
-        // tokens, o si chargeTokens falló. En esos casos se guardan el % y el
-        // USD calculados (diagnóstico) pero NI el id de asiento NI la fecha de
-        // asentado — así "no asentada" nunca se confunde con "comisión cero".
+        // tokens, si chargeTokens falló, o si la organización está EXENTA
+        // (`result.exempt`, ver `src/lib/billing/exemption.ts`). En los tres
+        // primeros casos se guardan el % y el USD calculados (diagnóstico)
+        // pero NI el id de asiento NI la fecha de asentado — así "no
+        // asentada" nunca se confunde con "comisión cero". La exención es la
+        // EXCEPCIÓN a "sin ledgerId, sin fecha": `commissionSaleFields` (ver
+        // `./salesCommissionFields.ts`, con su propio test) SÍ marca
+        // `settled` cuando es exenta, y por eso aquí SÍ se estampa
+        // `commission_settled_at` — la comisión de esta venta quedó
+        // RESUELTA, aunque no haya asiento: lo resuelto es que no había nada
+        // que cobrar. Sin ese estampado, la reconciliación de fallos
+        //   select * from telegram_stars_sales
+        //   where status = 'purchased' and commission_settled_at is null;
+        // marcaría como rota cada venta del dueño de la plataforma.
+        const fields = commissionSaleFields(result)
         const { error } = await orgSupabase()
             .from('telegram_stars_sales')
             .update({
-                commission_pct: result.commissionPct,
-                commission_usd: result.commissionUsd,
-                commission_tokens: result.commissionTokens,
-                star_usd: result.starUsd,
-                commission_ledger_id: result.ledgerId,
-                commission_settled_at: result.ledgerId ? new Date().toISOString() : null,
+                commission_pct: fields.commission_pct,
+                commission_usd: fields.commission_usd,
+                commission_tokens: fields.commission_tokens,
+                star_usd: fields.star_usd,
+                commission_ledger_id: fields.commission_ledger_id,
+                commission_exempt: fields.commission_exempt,
+                commission_settled_at: fields.settled ? new Date().toISOString() : null,
                 updated_at: new Date().toISOString(),
             })
             .eq('organization_id', event.organizationId)

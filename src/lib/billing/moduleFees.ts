@@ -36,6 +36,7 @@ import { orgSupabase } from '@/lib/org/orgTable'
 import { chargeTokens } from './wallet'
 import { MODULE_SKU, usdToTokens } from './catalog'
 import { currentPeriodUtc, previousPeriodUtc, periodBounds, unitDaysInPeriod, isUnitActivityValid } from './period'
+import { isBillingExempt } from './exemption'
 import type { UnitActivity } from './period'
 
 export { currentPeriodUtc, previousPeriodUtc, unitDaysInPeriod }
@@ -63,6 +64,14 @@ export interface ModuleFeesResult {
      * con uno que simplemente está tranquilo.
      */
     invalidActivity: number
+    /**
+     * Organizaciones exentas de cobro (`organizations.billing_exempt`): no
+     * se llamó a `chargeTokens`, así que no se asentó nada en el ledger — ver
+     * `src/lib/billing/exemption.ts` para el porqué. Se cuenta aparte para
+     * poder ver cuánta cuota se dejó de cobrar sin que se confunda con un
+     * fallo (`failed`) ni con "sin actividad este mes" (`skipped`).
+     */
+    exempt: number
     failed: number
     tokens: number
 }
@@ -88,6 +97,7 @@ export async function chargeModuleFees(period = previousPeriodUtc()): Promise<Mo
         replayed: 0,
         skipped: 0,
         invalidActivity: 0,
+        exempt: 0,
         failed: 0,
         tokens: 0,
     }
@@ -99,6 +109,25 @@ export async function chargeModuleFees(period = previousPeriodUtc()): Promise<Mo
     if (error) throw new Error(error.message)
 
     for (const raw of (data ?? []) as unknown as InstalledModuleRow[]) {
+        // Antes de calcular nada: una organización exenta no genera NINGÚN
+        // asiento (ver `src/lib/billing/exemption.ts`), así que ni siquiera
+        // vale la pena resolver el catálogo del módulo o pedir su actividad.
+        // Try/catch propio: que falle ESTA comprobación no puede tumbar el
+        // pase entero — misma razón que el try/catch de más abajo.
+        try {
+            if (await isBillingExempt(raw.organization_id)) {
+                result.exempt++
+                console.log(
+                    `[module-fees] módulo "${raw.module_slug}" (org ${raw.organization_id}): organización exenta de cobro — no se asienta cuota.`,
+                )
+                continue
+            }
+        } catch (e) {
+            result.failed++
+            console.error(`[module-fees] ${raw.module_slug} org ${raw.organization_id}: comprobando exención`, e)
+            continue
+        }
+
         const def = raw.module_catalog
         if (!def) {
             result.skipped++

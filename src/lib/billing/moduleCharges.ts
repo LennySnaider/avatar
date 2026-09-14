@@ -9,6 +9,7 @@
 import { chargeTokens } from './wallet'
 import { MODULE_SKU, STAR_USD, starsToUsd, usdToTokens } from './catalog'
 import { getModuleDefinition } from '@/lib/modules/catalog'
+import { isBillingExempt } from './exemption'
 
 export interface StarsCommissionInput {
     organizationId: string
@@ -42,6 +43,15 @@ export interface StarsCommissionResult {
     commissionTokens: number
     starUsd: number
     replayed: boolean
+    /**
+     * true = la organización está exenta de cobro (`organizations.billing_exempt`)
+     * y NO se llamó a `chargeTokens` — ver `src/lib/billing/exemption.ts`. En
+     * ese caso `commissionPct`/`commissionUsd` siguen siendo el % y el importe
+     * REALES que se habrían cobrado (para saber cuánto se dejó de cobrar);
+     * sólo `commissionTokens` es 0 y `ledgerId` es null, porque eso sí es lo
+     * que de verdad no se asentó.
+     */
+    exempt: boolean
 }
 
 // Congelado: se devuelve tal cual (por referencia) desde varias ramas de
@@ -56,6 +66,7 @@ const EMPTY: StarsCommissionResult = Object.freeze({
     commissionTokens: 0,
     starUsd: STAR_USD,
     replayed: false,
+    exempt: false,
 })
 
 export async function settleStarsCommission(
@@ -72,6 +83,17 @@ export async function settleStarsCommission(
         const pct = input.soldBy === 'ai' ? def.commissionAiPct : def.commissionManualPct
         const grossUsd = starsToUsd(input.stars)
         const commissionUsd = (grossUsd * pct) / 100
+
+        // Antes de asentar nada: una organización exenta no genera NINGÚN
+        // asiento (ver `src/lib/billing/exemption.ts` y la migración
+        // `billing_exemption`). `commissionPct`/`commissionUsd` quedan con el
+        // valor REAL que se habría cobrado — no cero — para que quede
+        // registrado cuánto se dejó de cobrar; sólo `commissionTokens` es 0 y
+        // `ledgerId` null, que es lo único que de verdad no se asentó.
+        if (await isBillingExempt(input.organizationId)) {
+            return { ...EMPTY, commissionPct: pct, commissionUsd, exempt: true }
+        }
+
         const tokens = usdToTokens(commissionUsd)
 
         // Una venta de 1 Star al 5% son $0.00065: menos de un token. Asentar 0
@@ -113,6 +135,7 @@ export async function settleStarsCommission(
             commissionTokens: tokens,
             starUsd: STAR_USD,
             replayed: res.replayed,
+            exempt: false,
         }
     } catch (e) {
         console.error(`[billing] comisión ${slug} venta ${input.saleId}:`, e)

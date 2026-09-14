@@ -173,6 +173,12 @@ const eslintConfig = [
       // regla nunca podría dispararle — exentarlo sería una exención muerta,
       // justo lo que prohíbe la cabecera de check-tenant-access.mjs.)
       "src/lib/billing/moduleFees.ts",
+      // Lector de la exención de cobro (isBillingExempt): consulta
+      // `organizations`, que NO es tabla tenant (no tiene organization_id —
+      // es la propia identidad del tenant), filtrando por el id que llega
+      // por parámetro. Sin sesión: lo llaman el cron de cuotas y la comisión
+      // de venta, igual que moduleFees.ts.
+      "src/lib/billing/exemption.ts",
       // Resumen de cobro por módulo (cuota + comisión del mes en curso): misma
       // tabla no tenant que wallet.ts (`token_ledger`), filtrada a mano por
       // organization_id — que aquí llega ya resuelto por parámetro, no por ctx.

@@ -1163,6 +1163,7 @@ export type Database = {
       }
       organizations: {
         Row: {
+          billing_exempt: boolean
           created_at: string
           current_period_end: string | null
           current_period_start: string | null
@@ -1178,6 +1179,7 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          billing_exempt?: boolean
           created_at?: string
           current_period_end?: string | null
           current_period_start?: string | null
@@ -1193,6 +1195,7 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          billing_exempt?: boolean
           created_at?: string
           current_period_end?: string | null
           current_period_start?: string | null
@@ -1625,6 +1628,7 @@ export type Database = {
         Row: {
           avatar_id: string
           chat_id: string
+          commission_exempt: boolean
           commission_ledger_id: string | null
           commission_pct: number | null
           commission_settled_at: string | null
@@ -1650,6 +1654,7 @@ export type Database = {
         Insert: {
           avatar_id: string
           chat_id: string
+          commission_exempt?: boolean
           commission_ledger_id?: string | null
           commission_pct?: number | null
           commission_settled_at?: string | null
@@ -1675,6 +1680,7 @@ export type Database = {
         Update: {
           avatar_id?: string
           chat_id?: string
+          commission_exempt?: boolean
           commission_ledger_id?: string | null
           commission_pct?: number | null
           commission_settled_at?: string | null
