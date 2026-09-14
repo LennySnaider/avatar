@@ -189,11 +189,16 @@ export async function maybeAutopilotSend(chatId: string, draftMessageId: string)
 }
 
 /**
- * Send every autopilot message whose delay has elapsed. Called by the poll cron.
+ * Send every autopilot message whose delay has elapsed. La llama el cron por
+ * minuto (`agent-autopilot-flush`), ÚNICO dueño de la cola.
  *
  * Deliberadamente SIN filtro de org: es un barrido de cron para TODAS las orgs
  * (no hay sesión de la que sacar una). Cada envío vuelve a resolver su propia
  * org dentro de `sendAgentMessage`, que sí acota por la fila del mensaje.
+ *
+ * Que hoy la llame un solo cron NO es la garantía de que un mensaje no salga
+ * dos veces — un cron puede solaparse consigo mismo si una corrida se alarga.
+ * La garantía es el RECLAMO ATÓMICO de abajo.
  */
 export async function flushDueAutopilotMessages(): Promise<{ sent: number; failed: number }> {
     const supabase = agentSupabase()
@@ -209,6 +214,26 @@ export async function flushDueAutopilotMessages(): Promise<{ sent: number; faile
     let sent = 0
     let failed = 0
     for (const row of due ?? []) {
+        // RECLAMO ATÓMICO. Sin esto, dos barridos concurrentes (o uno que
+        // muere entre el envío y el update a `sent`) envían el mismo mensaje
+        // dos veces — y en Telegram, la misma media de pago dos veces.
+        // Postgres serializa el UPDATE ... WHERE por fila: sólo un barrido
+        // consigue la fila; el otro ve 0 filas y sigue. `send_after` a null
+        // es el reclamo (el select de arriba exige que no sea null) y
+        // `sendAgentMessage` no lo mira, así que no cambia nada más.
+        const { data: claimed, error: claimError } = await supabase
+            .from('agent_messages')
+            .update({ send_after: null, updated_at: nowIso })
+            .eq('id', row.id)
+            .eq('status', 'approved')
+            .not('send_after', 'is', null)
+            .select('id')
+        if (claimError) {
+            console.error('[agent] autopilot flush: no se pudo reclamar el mensaje', { messageId: row.id }, claimError)
+            failed++
+            continue
+        }
+        if (!claimed || claimed.length === 0) continue // otro barrido ya lo tomó
         const res = await sendAgentMessage(row.id)
         if (res.success) sent++
         else failed++

@@ -1,13 +1,19 @@
 /**
  * GET /api/cron/agent-autopilot-flush
  *
- * Envía los mensajes de autopilot cuyo retardo humano ya venció. Es el
- * MISMO flush que corre al final de `agent-inbox-poll`, sacado a su propio
- * cron porque aquél pasa cada 5 minutos: para Fanvue vale, pero un fan de
- * Telegram que espera cinco minutos más el retardo cree que el bot está
- * roto. Idempotente: `flushDueAutopilotMessages` sólo toca filas
- * `approved` con `send_after` vencido, y `sendAgentMessage` sólo actúa
- * sobre `approved` — dos crones pisándose no envían dos veces.
+ * Envía los mensajes de autopilot cuyo retardo humano ya venció. Nació
+ * dentro de `agent-inbox-poll` y salió a su propio cron porque aquél pasa
+ * cada 5 minutos: para Fanvue vale, pero un fan de Telegram que espera cinco
+ * minutos más el retardo cree que el bot está roto.
+ *
+ * Es el ÚNICO dueño de la cola: `agent-inbox-poll` ya no la barre. Lo que
+ * impide enviar dos veces NO es eso —un cron puede solaparse consigo mismo si
+ * una corrida se alarga— sino el RECLAMO ATÓMICO de
+ * `flushDueAutopilotMessages`, que se queda la fila con un `UPDATE ... WHERE
+ * status='approved' AND send_after IS NOT NULL` antes de enviarla. Antes se
+ * afirmaba aquí que bastaba con que `sendAgentMessage` sólo actuase sobre
+ * `approved`: era falso, porque entre su lectura y su escritura de `sent`
+ * cabía entero el otro barrido.
  *
  * Gated by CRON_SECRET (Bearer), same as the other crons.
  */

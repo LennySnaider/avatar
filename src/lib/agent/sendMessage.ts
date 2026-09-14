@@ -59,6 +59,11 @@ export async function sendAgentMessage(messageId: string): Promise<SendAgentMess
     // en silencio: lanzan dentro del try y el catch los deja `failed` con el motivo.
     try {
         const res = await deliverAgentText(chat, text)
+        // `.eq('status', 'approved')` es defensa en profundidad: quien reclama
+        // la fila es el flush (`flushDueAutopilotMessages`), pero si por
+        // cualquier vía este mensaje llegara aquí dos veces, la segunda no
+        // pisa el `sent` de la primera — ni su `external_message_id`, que es
+        // el del envío que de verdad ocurrió.
         await supabase
             .from('agent_messages')
             .update({
@@ -70,6 +75,7 @@ export async function sendAgentMessage(messageId: string): Promise<SendAgentMess
             })
             .eq('organization_id', msg.organization_id)
             .eq('id', messageId)
+            .eq('status', 'approved')
         await supabase
             .from('agent_chats')
             .update({ last_message_at: new Date().toISOString(), updated_at: new Date().toISOString() })
@@ -125,11 +131,16 @@ export async function sendAgentMessage(messageId: string): Promise<SendAgentMess
     } catch (e) {
         const message = e instanceof Error ? e.message : String(e)
         console.error('[agent] send failed', { messageId, chatId: chat.id, platform: chat.platform }, message)
+        // Misma guarda que en el camino de éxito, y por un motivo más fuerte:
+        // sin ella, un envío que falló aquí podría marcar `failed` un mensaje
+        // que OTRO barrido ya dejó `sent` — borrando del registro un mensaje
+        // que el fan sí recibió.
         await supabase
             .from('agent_messages')
             .update({ status: 'failed', error_message: message, updated_at: new Date().toISOString() })
             .eq('organization_id', msg.organization_id)
             .eq('id', messageId)
+            .eq('status', 'approved')
         return { success: false, error: message }
     }
 }
