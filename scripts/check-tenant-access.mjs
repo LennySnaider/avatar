@@ -98,6 +98,10 @@ const EXENTOS = [
     ['src/lib/agent/draftPipeline.ts', 'Genera borradores sin sesión; parte del chat ya cargado y arrastra su organization_id.'],
     ['src/lib/agent/autopilot.ts', 'Autopilot por cron; recorre chats resolviendo la org fila a fila.'],
     ['src/lib/agent/sendMessage.ts', 'Envío sin sesión desde el pipeline del agente; la org viene del chat.'],
+    [
+        'src/lib/agent/channelDelivery.ts',
+        'F4.2 Tarea 4 — lo llama el flush de autopilot desde el cron, sin sesión; el chat llega resuelto por organization_id desde sendAgentMessage.',
+    ],
     ['src/lib/agent/indexer.ts', 'Indexa conocimiento del avatar; recibe la organizationId ya resuelta por el llamador.'],
     [
         'src/lib/modules/entitlements.ts',

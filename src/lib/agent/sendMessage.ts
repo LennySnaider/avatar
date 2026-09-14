@@ -1,7 +1,9 @@
 /**
- * Core "send an approved agent message to Fanvue" — shared by the manual
- * approve flow (AgentInboxService.approveAndSend) and the autopilot flush.
- * Handles the send, status transitions, counter bump and fan-memory refresh.
+ * Core "send an approved agent message por el canal del chat (Fanvue o
+ * Telegram)" — shared by the manual approve flow
+ * (AgentInboxService.approveAndSend) and the autopilot flush. Handles the
+ * status transitions, counter bump and fan-memory refresh; POR DÓNDE sale el
+ * texto lo decide `channelDelivery.ts` a partir de `chat.platform`.
  *
  * F4.2 Tarea 4 — EXENTO de `orgTable`: el flush de autopilot lo llama desde el
  * cron, sin sesión. El mensaje (id ya aprobado por nuestro propio flujo) es la
@@ -9,9 +11,8 @@
  * a partir de ahí por `organization_id` en vez de navegar por ids sueltos.
  */
 import { agentSupabase } from './db'
-import { makeFanvueClient } from './inboxSync'
 import { updateFanMemoryFromChat } from './draftPipeline'
-import { loadConnection } from '@/lib/fanvue/tokenStore'
+import { deliverAgentText } from './channelDelivery'
 
 export interface SendAgentMessageResult {
     success: boolean
@@ -51,26 +52,15 @@ export async function sendAgentMessage(messageId: string): Promise<SendAgentMess
         .single()
     if (!chat) return { success: false, error: 'Chat not found' }
 
-    const { data: avatar } = await supabase
-        .from('avatars')
-        .select('user_id, fanvue_creator_uuid')
-        .eq('organization_id', chat.organization_id)
-        .eq('id', chat.avatar_id)
-        .single()
-    if (!avatar?.user_id) return { success: false, error: 'Avatar has no owner' }
-    const connection = await loadConnection(avatar.user_id)
-    if (!connection) return { success: false, error: 'Fanvue not connected' }
-
-    const client = makeFanvueClient(avatar.user_id)
+    // "Avatar has no owner" / "Fanvue not connected" ya no salen con { success: false }
+    // en silencio: lanzan dentro del try y el catch los deja `failed` con el motivo.
     try {
-        const res = await client.sendChatMessage(avatar.fanvue_creator_uuid ?? null, chat.external_chat_id, {
-            text,
-        })
+        const res = await deliverAgentText(chat, text)
         await supabase
             .from('agent_messages')
             .update({
                 status: 'sent',
-                external_message_id: res.messageUuid,
+                external_message_id: res.externalMessageId,
                 sent_at: new Date().toISOString(),
                 send_after: null,
                 updated_at: new Date().toISOString(),
@@ -99,7 +89,7 @@ export async function sendAgentMessage(messageId: string): Promise<SendAgentMess
             })
         }
         void updateFanMemoryFromChat(chat.id)
-        return { success: true, externalMessageId: res.messageUuid }
+        return { success: true, externalMessageId: res.externalMessageId }
     } catch (e) {
         const message = e instanceof Error ? e.message : String(e)
         await supabase
