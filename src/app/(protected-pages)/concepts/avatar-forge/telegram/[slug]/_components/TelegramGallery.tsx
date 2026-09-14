@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import { HiOutlineSparkles } from 'react-icons/hi'
 import Card from '@/components/ui/Card'
 import Button from '@/components/ui/Button'
 import Input from '@/components/ui/Input'
@@ -8,10 +9,12 @@ import Tag from '@/components/ui/Tag'
 import Dialog from '@/components/ui/Dialog'
 import Switcher from '@/components/ui/Switcher'
 import Notification from '@/components/ui/Notification'
+import Alert from '@/components/ui/Alert'
 import toast from '@/components/ui/toast'
 import ConfirmDialog from '@/components/shared/ConfirmDialog'
 import { upsertPaidMediaItem, deletePaidMediaItem } from '@/services/AgentTelegramService'
 import type { PaidMediaItemView } from '@/services/AgentTelegramService'
+import { generateSocialCaption } from '@/services/GeminiService'
 import type { GenerationPickerItem } from './types'
 
 interface TelegramGalleryProps {
@@ -35,6 +38,8 @@ const TelegramGallery = ({ avatarId, items, onItemsChange, generations }: Telegr
     const [caption, setCaption] = useState('')
     const [starPrice, setStarPrice] = useState('50')
     const [isSaving, setIsSaving] = useState(false)
+    const [isGeneratingAi, setIsGeneratingAi] = useState(false)
+    const [aiError, setAiError] = useState<string | null>(null)
 
     // --- Edit ---
     const [editTarget, setEditTarget] = useState<PaidMediaItemView | null>(null)
@@ -56,11 +61,45 @@ const TelegramGallery = ({ avatarId, items, onItemsChange, generations }: Telegr
         setTitle('')
         setCaption('')
         setStarPrice('50')
+        setAiError(null)
     }
 
     const openAdd = () => {
         resetAddForm()
         setAddOpen(true)
+    }
+
+    // "Generate with AI" del modal de añadir: pide título + caption a la vez
+    // (withTitle: true) sobre la generación ya seleccionada. Tono pícaro
+    // porque es contenido de pago para fans, igual que el toggle 🌶️ del
+    // PostModal; sceneDescription es el PLAN B si Gemini veta la imagen en
+    // la entrada (ver los comentarios de generateSocialCaption).
+    const handleGenerateWithAi = async () => {
+        const gen = generations.find((g) => g.id === selectedGenerationId)
+        if (!gen) return
+        setIsGeneratingAi(true)
+        setAiError(null)
+        try {
+            const result = await generateSocialCaption({
+                mediaUrl: gen.mediaUrl,
+                mediaType: gen.mediaType,
+                withTitle: true,
+                spicy: true,
+                language: 'es',
+                draft: caption.trim() || undefined,
+                sceneDescription: gen.prompt,
+            })
+            if (result.success) {
+                setTitle(result.title ?? title)
+                setCaption(result.caption ?? caption)
+            } else {
+                setAiError(result.error ?? 'AI generation failed')
+            }
+        } catch (err) {
+            setAiError(err instanceof Error ? err.message : String(err))
+        } finally {
+            setIsGeneratingAi(false)
+        }
     }
 
     const handleAdd = async () => {
@@ -286,88 +325,116 @@ const TelegramGallery = ({ avatarId, items, onItemsChange, generations }: Telegr
                 onClose={() => setAddOpen(false)}
                 onRequestClose={() => setAddOpen(false)}
             >
-                <h5 className="mb-4">Add paid content</h5>
-                {generations.length === 0 ? (
-                    <p className="text-sm text-gray-500">
-                        No generations in this avatar&apos;s gallery yet.
-                    </p>
-                ) : (
-                    <div className="flex flex-col gap-3">
-                        <div>
-                            <p className="text-xs text-gray-500 mb-1">Pick a generation</p>
-                            <div className="flex flex-wrap gap-2 max-h-48 overflow-y-auto p-1">
-                                {generations.map((gen) => (
-                                    <button
-                                        key={gen.id}
-                                        type="button"
-                                        onClick={() => setSelectedGenerationId(gen.id)}
-                                        title={gen.prompt}
-                                        className={`relative w-16 h-16 shrink-0 rounded-lg overflow-hidden border-2 transition-colors ${
-                                            gen.id === selectedGenerationId
-                                                ? 'border-primary'
-                                                : 'border-transparent hover:border-primary/50'
-                                        }`}
-                                    >
-                                        {gen.mediaType === 'VIDEO' ? (
-                                            <video
-                                                crossOrigin="anonymous"
-                                                src={gen.mediaUrl}
-                                                className="w-full h-full object-cover"
-                                            />
-                                        ) : (
-                                            <img
-                                                src={gen.mediaUrl}
-                                                alt="Generation"
-                                                className="w-full h-full object-cover"
-                                            />
-                                        )}
-                                    </button>
-                                ))}
+                {/* max-h + cuerpo scrolleable: en móvil el formulario es más
+                    alto que el viewport y Cancel/Add quedaban fuera sin
+                    scroll que los alcance. Cabecera y pie fijos; solo el
+                    cuerpo scrollea. */}
+                <div className="flex flex-col max-h-[82vh]">
+                    <h5 className="mb-4 shrink-0">Add paid content</h5>
+                    <div className="flex-1 min-h-0 overflow-y-auto thin-scrollbar">
+                        {generations.length === 0 ? (
+                            <p className="text-sm text-gray-500">
+                                No generations in this avatar&apos;s gallery yet.
+                            </p>
+                        ) : (
+                            <div className="flex flex-col gap-3">
+                                <div>
+                                    <p className="text-xs text-gray-500 mb-1">Pick a generation</p>
+                                    {/* max-h-48 propio: dos scrolls anidados a propósito, la
+                                        rejilla de miniaturas no debe empujar el resto del
+                                        formulario fuera de la pantalla. */}
+                                    <div className="flex flex-wrap gap-2 max-h-48 overflow-y-auto p-1">
+                                        {generations.map((gen) => (
+                                            <button
+                                                key={gen.id}
+                                                type="button"
+                                                onClick={() => setSelectedGenerationId(gen.id)}
+                                                title={gen.prompt}
+                                                className={`relative w-16 h-16 shrink-0 rounded-lg overflow-hidden border-2 transition-colors ${
+                                                    gen.id === selectedGenerationId
+                                                        ? 'border-primary'
+                                                        : 'border-transparent hover:border-primary/50'
+                                                }`}
+                                            >
+                                                {gen.mediaType === 'VIDEO' ? (
+                                                    <video
+                                                        crossOrigin="anonymous"
+                                                        src={gen.mediaUrl}
+                                                        className="w-full h-full object-cover"
+                                                    />
+                                                ) : (
+                                                    <img
+                                                        src={gen.mediaUrl}
+                                                        alt="Generation"
+                                                        className="w-full h-full object-cover"
+                                                    />
+                                                )}
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
+                                <div>
+                                    <div className="flex items-center justify-between mb-1">
+                                        <p className="text-xs text-gray-500">Title</p>
+                                        <Button
+                                            size="xs"
+                                            variant="plain"
+                                            loading={isGeneratingAi}
+                                            disabled={isGeneratingAi || !selectedGenerationId}
+                                            icon={<HiOutlineSparkles />}
+                                            onClick={handleGenerateWithAi}
+                                        >
+                                            {isGeneratingAi ? 'Generating…' : 'Generate with AI'}
+                                        </Button>
+                                    </div>
+                                    <Input value={title} onChange={(e) => setTitle(e.target.value)} />
+                                </div>
+                                {aiError && (
+                                    <Alert type="danger" showIcon duration={0} title="AI generation failed">
+                                        {aiError}
+                                    </Alert>
+                                )}
+                                <div>
+                                    <p className="text-xs text-gray-500 mb-1">Price (Stars, 1-25000)</p>
+                                    <Input
+                                        type="number"
+                                        min={1}
+                                        max={25000}
+                                        value={starPrice}
+                                        onChange={(e) => setStarPrice(e.target.value)}
+                                    />
+                                </div>
+                                <div>
+                                    <p className="text-xs text-gray-500 mb-1">Caption (optional)</p>
+                                    <Input
+                                        textArea
+                                        rows={3}
+                                        value={caption}
+                                        onChange={(e) => setCaption(e.target.value)}
+                                        placeholder="Shown to the fan alongside the paid content…"
+                                    />
+                                </div>
+                                <p className="text-xs text-gray-400">
+                                    Photos up to 10 MB, videos up to 50 MB — Telegram&apos;s own limit for
+                                    paid media. Larger files are rejected when you hit Add, with the exact
+                                    size shown.
+                                </p>
                             </div>
-                        </div>
-                        <div>
-                            <p className="text-xs text-gray-500 mb-1">Title</p>
-                            <Input value={title} onChange={(e) => setTitle(e.target.value)} />
-                        </div>
-                        <div>
-                            <p className="text-xs text-gray-500 mb-1">Price (Stars, 1-25000)</p>
-                            <Input
-                                type="number"
-                                min={1}
-                                max={25000}
-                                value={starPrice}
-                                onChange={(e) => setStarPrice(e.target.value)}
-                            />
-                        </div>
-                        <div>
-                            <p className="text-xs text-gray-500 mb-1">Caption (optional)</p>
-                            <Input
-                                textArea
-                                rows={3}
-                                value={caption}
-                                onChange={(e) => setCaption(e.target.value)}
-                                placeholder="Shown to the fan alongside the paid content…"
-                            />
-                        </div>
-                        <p className="text-xs text-gray-400">
-                            Photos up to 10 MB, videos up to 50 MB — Telegram&apos;s own limit for
-                            paid media. Larger files are rejected when you hit Add, with the exact
-                            size shown.
-                        </p>
+                        )}
                     </div>
-                )}
-                <div className="flex items-center justify-end gap-2 mt-4">
-                    <Button variant="plain" onClick={() => setAddOpen(false)} disabled={isSaving}>
-                        Cancel
-                    </Button>
-                    <Button
-                        variant="solid"
-                        loading={isSaving}
-                        disabled={!selectedGenerationId || !title.trim()}
-                        onClick={handleAdd}
-                    >
-                        Add
-                    </Button>
+                    <div className="flex items-center justify-end gap-2 mt-4 shrink-0">
+                        <Button variant="plain" onClick={() => setAddOpen(false)} disabled={isSaving}>
+                            Cancel
+                        </Button>
+                        <Button
+                            variant="solid"
+                            loading={isSaving}
+                            disabled={!selectedGenerationId || !title.trim()}
+                            onClick={handleAdd}
+                        >
+                            Add
+                        </Button>
+                    </div>
                 </div>
             </Dialog>
 
@@ -376,45 +443,53 @@ const TelegramGallery = ({ avatarId, items, onItemsChange, generations }: Telegr
                 onClose={() => setEditTarget(null)}
                 onRequestClose={() => setEditTarget(null)}
             >
-                <h5 className="mb-4">Edit content</h5>
-                <div className="flex flex-col gap-3">
-                    <div>
-                        <p className="text-xs text-gray-500 mb-1">Title</p>
-                        <Input value={editTitle} onChange={(e) => setEditTitle(e.target.value)} />
+                {/* Mismo problema que el modal de añadir: en móvil el
+                    formulario es más alto que el viewport y Cancel/Save
+                    quedaban fuera sin scroll que los alcance. Cabecera y pie
+                    fijos; solo el cuerpo scrollea. */}
+                <div className="flex flex-col max-h-[82vh]">
+                    <h5 className="mb-4 shrink-0">Edit content</h5>
+                    <div className="flex-1 min-h-0 overflow-y-auto thin-scrollbar">
+                        <div className="flex flex-col gap-3">
+                            <div>
+                                <p className="text-xs text-gray-500 mb-1">Title</p>
+                                <Input value={editTitle} onChange={(e) => setEditTitle(e.target.value)} />
+                            </div>
+                            <div>
+                                <p className="text-xs text-gray-500 mb-1">Price (Stars, 1-25000)</p>
+                                <Input
+                                    type="number"
+                                    min={1}
+                                    max={25000}
+                                    value={editStarPrice}
+                                    onChange={(e) => setEditStarPrice(e.target.value)}
+                                />
+                            </div>
+                            <div>
+                                <p className="text-xs text-gray-500 mb-1">Caption (optional)</p>
+                                <Input
+                                    textArea
+                                    rows={3}
+                                    value={editCaption}
+                                    onChange={(e) => setEditCaption(e.target.value)}
+                                />
+                            </div>
+                            <div className="flex items-center gap-2">
+                                <Switcher checked={editEnabled} onChange={(c) => setEditEnabled(c)} />
+                                <span className="text-sm">
+                                    {editEnabled ? 'Enabled — visible for sale' : 'Disabled — hidden from sale'}
+                                </span>
+                            </div>
+                        </div>
                     </div>
-                    <div>
-                        <p className="text-xs text-gray-500 mb-1">Price (Stars, 1-25000)</p>
-                        <Input
-                            type="number"
-                            min={1}
-                            max={25000}
-                            value={editStarPrice}
-                            onChange={(e) => setEditStarPrice(e.target.value)}
-                        />
+                    <div className="flex items-center justify-end gap-2 mt-4 shrink-0">
+                        <Button variant="plain" onClick={() => setEditTarget(null)} disabled={isEditSaving}>
+                            Cancel
+                        </Button>
+                        <Button variant="solid" loading={isEditSaving} onClick={handleEditSave}>
+                            Save
+                        </Button>
                     </div>
-                    <div>
-                        <p className="text-xs text-gray-500 mb-1">Caption (optional)</p>
-                        <Input
-                            textArea
-                            rows={3}
-                            value={editCaption}
-                            onChange={(e) => setEditCaption(e.target.value)}
-                        />
-                    </div>
-                    <div className="flex items-center gap-2">
-                        <Switcher checked={editEnabled} onChange={(c) => setEditEnabled(c)} />
-                        <span className="text-sm">
-                            {editEnabled ? 'Enabled — visible for sale' : 'Disabled — hidden from sale'}
-                        </span>
-                    </div>
-                </div>
-                <div className="flex items-center justify-end gap-2 mt-4">
-                    <Button variant="plain" onClick={() => setEditTarget(null)} disabled={isEditSaving}>
-                        Cancel
-                    </Button>
-                    <Button variant="solid" loading={isEditSaving} onClick={handleEditSave}>
-                        Save
-                    </Button>
                 </div>
             </Dialog>
 

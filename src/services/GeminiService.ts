@@ -674,9 +674,34 @@ Also report the video's approximate duration in seconds.
 
 export interface SocialCaptionResult {
     success: boolean
+    title?: string
     caption?: string
     hashtags?: string[]
     error?: string
+}
+
+/**
+ * Schema de respuesta de `generateSocialCaption`. Un solo constructor para
+ * las DOS llamadas que hace la función (la principal y el PLAN B de más
+ * abajo): si sólo se ajustara la principal, el plan B devolvería un objeto
+ * sin `title` y ese fallo sería silencioso justo en la media que más lo
+ * necesita — la que Gemini vetó en la entrada.
+ */
+function buildSocialCaptionSchema(withTitle: boolean) {
+    return {
+        type: Type.OBJECT,
+        properties: {
+            ...(withTitle ? { title: { type: Type.STRING } } : {}),
+            caption: { type: Type.STRING },
+            hashtags: {
+                type: Type.ARRAY,
+                items: { type: Type.STRING },
+            },
+        },
+        required: withTitle
+            ? ['title', 'caption', 'hashtags']
+            : ['caption', 'hashtags'],
+    }
 }
 
 /**
@@ -684,6 +709,9 @@ export interface SocialCaptionResult {
  * caption + hashtag set for it. Used by the social composer's "Generate with
  * AI" button — the generation PROMPT is never a caption (it's full of
  * [BODY]/[FACE] harness text). Error-as-data.
+ *
+ * `withTitle` reuses this same call for the Telegram paid-content modal,
+ * which also needs a short pre-paywall hook title.
  */
 export async function generateSocialCaption(input: {
     mediaUrl: string
@@ -702,6 +730,10 @@ export async function generateSocialCaption(input: {
      * de mirando la foto. Sin esto, esa media simplemente no tiene caption.
      */
     sceneDescription?: string
+    /** Además del caption, pide también un `title` corto — el gancho que el
+     * fan ve ANTES de pagar (paid content de Telegram). Por defecto false:
+     * el composer de redes no lo pide y su comportamiento no cambia. */
+    withTitle?: boolean
 }): Promise<SocialCaptionResult> {
     try {
         // blob:/data: URIs only exist in the browser — undici fails on them
@@ -748,7 +780,16 @@ You are the social media manager for an AI influencer. ${
 ${noun.toUpperCase()}: ${scene}`
                 : `Look at this ${noun} and write the post for it.`
         }
-
+${
+    input.withTitle
+        ? `
+TITLE:
+- A short hook the fan sees BEFORE paying, max 60 characters.
+- First person, teasing, makes them want to unlock it. 0-2 emojis.
+- It must NOT describe explicit content — it is the ad, not the product.
+`
+        : ''
+}
 CAPTION:
 - First person, as if the influencer herself is posting.
 - 1-3 short sentences, engaging and scroll-stopping. Tasteful emojis (0-3).
@@ -772,17 +813,9 @@ HASHTAGS:
             // analizadores de refs (c7f6e8d).
             safetySettings: ANALYSIS_SAFETY_SETTINGS,
             responseMimeType: 'application/json',
-            responseSchema: {
-                type: Type.OBJECT,
-                properties: {
-                    caption: { type: Type.STRING },
-                    hashtags: {
-                        type: Type.ARRAY,
-                        items: { type: Type.STRING },
-                    },
-                },
-                required: ['caption', 'hashtags'],
-            },
+            // Un solo builder para las dos llamadas (principal + PLAN B) —
+            // ver el comentario de `buildSocialCaptionSchema` más arriba.
+            responseSchema: buildSocialCaptionSchema(Boolean(input.withTitle)),
         }
 
         const response = await askGemini(ai, {
@@ -851,6 +884,7 @@ HASHTAGS:
             }
         }
         const parsed = JSON.parse(raw) as {
+            title?: string
             caption: string
             hashtags: string[]
         }
@@ -859,6 +893,7 @@ HASHTAGS:
         }
         return {
             success: true,
+            title: parsed.title?.trim() || undefined,
             caption: parsed.caption.trim(),
             hashtags: (parsed.hashtags ?? [])
                 .map((h) => h.replace(/^#/, '').trim())
