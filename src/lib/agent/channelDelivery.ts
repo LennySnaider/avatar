@@ -19,7 +19,7 @@ import { agentSupabase } from './db'
 import { makeFanvueClient } from './inboxSync'
 import { resolveDeliveryChannel } from './channelRouting'
 import { loadConnection } from '@/lib/fanvue/tokenStore'
-import { loadTelegramBotToken } from '@/lib/telegram/settings'
+import { loadTelegramBotToken, loadTelegramSettings } from '@/lib/telegram/settings'
 import { sendMessage as telegramSendMessage } from '@/lib/telegram/client'
 
 export interface DeliverableChat {
@@ -41,6 +41,14 @@ export async function deliverAgentText(chat: DeliverableChat, text: string): Pro
 }
 
 async function deliverViaTelegram(chat: DeliverableChat, text: string): Promise<DeliveryResult> {
+    // Desconectar un bot (`disconnectTelegramBot`) pone `enabled = false` pero
+    // CONSERVA el token, para poder reconectar sin volver a pedírselo al
+    // creador. Mirar sólo si hay token, por tanto, no es mirar si el bot está
+    // conectado: un bot que el creador apagó seguía contestando por él. El
+    // mensaje queda `failed` con este motivo, que es lo correcto — no se
+    // entregó, y el inbox lo enseña.
+    const settings = await loadTelegramSettings(chat.avatar_id)
+    if (!settings?.enabled) throw new Error('Telegram bot not connected')
     const token = await loadTelegramBotToken(chat.avatar_id)
     if (!token) throw new Error('Telegram bot not connected')
     const sent = await telegramSendMessage(token, {

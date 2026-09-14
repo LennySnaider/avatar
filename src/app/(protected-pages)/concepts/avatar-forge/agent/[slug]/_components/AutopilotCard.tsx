@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import Alert from '@/components/ui/Alert'
 import Card from '@/components/ui/Card'
 import Button from '@/components/ui/Button'
 import Input from '@/components/ui/Input'
@@ -16,6 +17,7 @@ interface AutopilotCardProps {
 
 const AutopilotCard = ({ avatarId }: AutopilotCardProps) => {
     const [loaded, setLoaded] = useState(false)
+    const [loadError, setLoadError] = useState<string | null>(null)
     const [enabled, setEnabled] = useState(false)
     const [start, setStart] = useState('09:00')
     const [end, setEnd] = useState('23:00')
@@ -30,21 +32,41 @@ const AutopilotCard = ({ avatarId }: AutopilotCardProps) => {
     const [offerCooldownHours, setOfferCooldownHours] = useState('')
     const [isSaving, setIsSaving] = useState(false)
 
+    // Una carga fallida NO puede tratarse como "sin configuración": los
+    // valores del formulario se quedarían en sus defaults y el siguiente
+    // "Save autopilot" los guardaría encima de la configuración real,
+    // borrando los topes de dinero del creador. Si no se pudo leer, se dice
+    // y se bloquea el guardado.
     useEffect(() => {
-        getAutopilotConfig(avatarId).then((r) => {
-            const c = r.success ? (r.data ?? {}) : {}
-            setEnabled(!!c.enabled)
-            if (c.activeHours?.start) setStart(c.activeHours.start)
-            if (c.activeHours?.end) setEnd(c.activeHours.end)
-            if (c.activeHours?.timezone) setTimezone(c.activeHours.timezone)
-            if (c.delaySecondsMin != null) setDelayMin(String(c.delaySecondsMin))
-            if (c.delaySecondsMax != null) setDelayMax(String(c.delaySecondsMax))
-            if (c.dailyMessageLimit != null) setDailyLimit(String(c.dailyMessageLimit))
-            setAllowPaidMediaOffers(!!c.allowPaidMediaOffers)
-            if (c.maxOfferStars != null) setMaxOfferStars(String(c.maxOfferStars))
-            if (c.offerCooldownHours != null) setOfferCooldownHours(String(c.offerCooldownHours))
-            setLoaded(true)
-        })
+        getAutopilotConfig(avatarId)
+            .then((r) => {
+                if (!r.success) {
+                    console.error('[autopilot] no se pudo cargar la configuración', {
+                        avatarId,
+                        error: r.error,
+                    })
+                    setLoadError(r.error ?? 'No se pudo cargar la configuración')
+                    setLoaded(true)
+                    return
+                }
+                const c = r.data ?? {}
+                setEnabled(!!c.enabled)
+                if (c.activeHours?.start) setStart(c.activeHours.start)
+                if (c.activeHours?.end) setEnd(c.activeHours.end)
+                if (c.activeHours?.timezone) setTimezone(c.activeHours.timezone)
+                if (c.delaySecondsMin != null) setDelayMin(String(c.delaySecondsMin))
+                if (c.delaySecondsMax != null) setDelayMax(String(c.delaySecondsMax))
+                if (c.dailyMessageLimit != null) setDailyLimit(String(c.dailyMessageLimit))
+                setAllowPaidMediaOffers(!!c.allowPaidMediaOffers)
+                if (c.maxOfferStars != null) setMaxOfferStars(String(c.maxOfferStars))
+                if (c.offerCooldownHours != null) setOfferCooldownHours(String(c.offerCooldownHours))
+                setLoaded(true)
+            })
+            .catch((e) => {
+                console.error('[autopilot] no se pudo cargar la configuración', { avatarId }, e)
+                setLoadError(e instanceof Error ? e.message : 'No se pudo cargar la configuración')
+                setLoaded(true)
+            })
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [])
 
@@ -60,8 +82,16 @@ const AutopilotCard = ({ avatarId }: AutopilotCardProps) => {
                 // Safety escalations are ALWAYS on (hard-coded in the classifier).
                 escalate: { payment: true, complaint: true, sensitive: true, minors: true },
                 allowPaidMediaOffers,
-                maxOfferStars: Math.max(0, Number(maxOfferStars) || 0),
-                offerCooldownHours: Math.max(0, Number(offerCooldownHours) || 0),
+                // VACÍO ≠ CERO. Vacío es "sin tope" / "usa el default de 6 h"
+                // y viaja como `undefined`, que `JSON.stringify` borra del
+                // objeto antes de que `setAutopilotConfig` reemplace el jsonb
+                // entero: el campo queda AUSENTE en la base, que es
+                // exactamente lo que `parseAutopilot` lee como "no puesto".
+                // Un 0 escrito a mano sí es una orden: "no ofrezcas nada" y
+                // "sin enfriamiento" respectivamente.
+                maxOfferStars: maxOfferStars.trim() === '' ? undefined : Math.max(0, Number(maxOfferStars) || 0),
+                offerCooldownHours:
+                    offerCooldownHours.trim() === '' ? undefined : Math.max(0, Number(offerCooldownHours) || 0),
             }
             const result = await setAutopilotConfig(avatarId, config)
             toast.push(
@@ -90,6 +120,13 @@ const AutopilotCard = ({ avatarId }: AutopilotCardProps) => {
 
     return (
         <Card className="max-w-4xl mt-4">
+            {loadError && (
+                <Alert type="danger" showIcon className="mb-3">
+                    No se pudo cargar la configuración de autopilot ({loadError}). Guardar está
+                    desactivado para no escribir valores por defecto encima de la tuya — recarga la
+                    página.
+                </Alert>
+            )}
             <div className="flex items-center gap-3 mb-2">
                 <Switcher checked={enabled} onChange={(c) => setEnabled(c)} />
                 <div>
@@ -146,9 +183,13 @@ const AutopilotCard = ({ avatarId }: AutopilotCardProps) => {
                         <p className="text-xs text-gray-500 mb-1">Max Stars the AI may offer</p>
                         <Input
                             type="number"
+                            placeholder="no limit"
                             value={maxOfferStars}
                             onChange={(e) => setMaxOfferStars(e.target.value)}
                         />
+                        <p className="text-[11px] text-gray-400 mt-1">
+                            Empty = no limit. 0 = the AI offers nothing.
+                        </p>
                     </div>
                     <div>
                         <p className="text-xs text-gray-500 mb-1">Hours between offers</p>
@@ -158,6 +199,9 @@ const AutopilotCard = ({ avatarId }: AutopilotCardProps) => {
                             value={offerCooldownHours}
                             onChange={(e) => setOfferCooldownHours(e.target.value)}
                         />
+                        <p className="text-[11px] text-gray-400 mt-1">
+                            Empty = every 6 h. 0 = no wait between offers.
+                        </p>
                     </div>
                 </div>
             </div>
@@ -168,7 +212,13 @@ const AutopilotCard = ({ avatarId }: AutopilotCardProps) => {
             </p>
 
             <div className="flex justify-end mt-3">
-                <Button variant="solid" size="sm" loading={isSaving} onClick={handleSave}>
+                <Button
+                    variant="solid"
+                    size="sm"
+                    loading={isSaving}
+                    disabled={loadError !== null}
+                    onClick={handleSave}
+                >
                     Save autopilot
                 </Button>
             </div>

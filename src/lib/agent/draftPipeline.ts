@@ -99,7 +99,7 @@ export async function generateDraftReply(chatId: string): Promise<DraftResult | 
     // camino). Filtrado por organización de la fila ya resuelta.
     let paidCatalog: { title: string; stars: number }[] | undefined
     if (chat.platform.startsWith('telegram')) {
-        const { data: items } = await supabase
+        const { data: items, error: itemsError } = await supabase
             .from('telegram_paid_media_items')
             .select('title, star_price')
             .eq('organization_id', chat.organization_id)
@@ -107,6 +107,13 @@ export async function generateDraftReply(chatId: string): Promise<DraftResult | 
             .eq('enabled', true)
             .order('sort_order', { ascending: true })
             .limit(20)
+        // Un fallo aquí NO corta el borrador —se responde igual, sólo que sin
+        // mencionar el contenido exclusivo—, pero tiene que dejar rastro: sin
+        // esto, "el agente dejó de vender" es indistinguible de "el agente
+        // decidió no vender", y nadie sabría dónde mirar.
+        if (itemsError) {
+            console.error('[agent] catálogo de pago no disponible para el prompt', { chatId }, itemsError)
+        }
         paidCatalog = (items ?? []).map((i) => ({ title: i.title, stars: i.star_price }))
     }
 

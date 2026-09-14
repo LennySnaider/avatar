@@ -30,6 +30,8 @@ import {
 import { sendAgentMessage } from '@/lib/agent/sendMessage'
 import type { AutopilotConfig } from '@/lib/agent/autopilot'
 import { findPaidMediaOffer } from '@/lib/telegram/offerGate'
+import { fanMemoryPlatform } from '@/lib/agent/fanMemoryPlatform'
+import { resolveDeliveryChannel } from '@/lib/agent/channelRouting'
 import { updateFanMemoryFromChat } from '@/lib/agent/draftPipeline'
 import { retrieveKnowledge } from '@/lib/agent/retrieval'
 import { AGENT_UTILITY_MODEL } from '@/lib/agent/models'
@@ -267,10 +269,16 @@ export async function getAgentChatThread(
                     .not('status', 'eq', 'discarded')
                     .order('created_at', { ascending: true })
                     .limit(200),
+                // `platform` DERIVADA del chat, no fija a 'fanvue': el
+                // webhook de Telegram guarda su memoria bajo 'telegram'
+                // (`touchFanMemory`), así que con la clave cableada el inbox
+                // no enseñaba NADA de lo que el agente recuerda de un fan de
+                // Telegram — la misma derivación que ya usa `draftPipeline`
+                // para construir el prompt.
                 orgTable(ctx, 'avatar_fan_memories')
                     .select('summary, facts')
                     .eq('avatar_id', chat.avatar_id)
-                    .eq('platform', 'fanvue')
+                    .eq('platform', fanMemoryPlatform(chat.platform))
                     .eq('external_fan_id', chat.external_chat_id)
                     .maybeSingle(),
             ])
@@ -378,7 +386,14 @@ export async function discardDraft(
 export async function removeDraftOffer(messageId: string): Promise<InboxResult<AgentMessageDTO>> {
     try {
         const ctx = await getOrgContext()
-        const { data: msg } = await orgTable(ctx, 'agent_messages').select('*').eq('id', messageId).maybeSingle()
+        // El `error` se mira: un parpadeo de la base deja `msg` en null igual
+        // que un id inexistente, y reportar "Message not found" por un fallo
+        // transitorio manda al creador a buscar un mensaje que sí está.
+        const { data: msg, error: readError } = await orgTable(ctx, 'agent_messages')
+            .select('*')
+            .eq('id', messageId)
+            .maybeSingle()
+        if (readError) throw new Error(readError.message)
         if (!msg) return { success: false, error: 'Message not found' }
         if (msg.status !== 'draft') return { success: false, error: 'Only drafts can be edited' }
         const media = Array.isArray(msg.media) ? msg.media.filter((m: { type?: string }) => m?.type !== 'paid_media_offer') : []
@@ -551,6 +566,13 @@ export async function approveAndSendVoiceNote(
             .single()
         if (!chatRow) return { success: false, error: 'Chat not found' }
         const chat = chatRow as AgentChatRow
+        // Sólo-Fanvue: la entrega es un audio subido a Fanvue, que en un chat
+        // de Telegram no existe. El corte va ANTES de sintetizar: sin él, el
+        // texto se mandaba a MiniMax y se pagaba el TTS para después fallar al
+        // entregar. Se quemaba saldo real por un botón que no podía funcionar.
+        if (resolveDeliveryChannel(chat.platform) === 'telegram') {
+            return { success: false, error: 'Esta acción es sólo para Fanvue.' }
+        }
 
         const { data: avatarRow } = await orgTable(ctx, 'avatars')
             .select('user_id, fanvue_creator_uuid, default_voice_id')
@@ -696,6 +718,14 @@ export async function suggestPpvOffer(
             .maybeSingle()
         if (!chatRow) return { success: false, error: 'Chat not found' }
         const chat = chatRow as AgentChatRow
+        // Sólo-Fanvue: el PPV es el mecanismo de pago de Fanvue (precio en
+        // centavos sobre media subida allí); en Telegram se cobra con Stars y
+        // por otro camino. El corte va ANTES de la búsqueda en el índice y de
+        // la llamada al modelo, que se gastaban en preparar una oferta que
+        // este chat nunca habría podido enviar.
+        if (resolveDeliveryChannel(chat.platform) === 'telegram') {
+            return { success: false, error: 'Esta acción es sólo para Fanvue.' }
+        }
 
         const { data: lastFan } = await orgTable(ctx, 'agent_messages')
             .select('text')
@@ -823,6 +853,12 @@ export async function sendPpvOffer(input: {
             .maybeSingle()
         if (!chatRow) return { success: false, error: 'Chat not found' }
         const chat = chatRow as AgentChatRow
+        // Sólo-Fanvue: esto sube media a Fanvue y le pone precio en centavos.
+        // En un chat de Telegram no hay dónde entregarlo —el pago va por
+        // Stars— así que se corta antes de subir nada.
+        if (resolveDeliveryChannel(chat.platform) === 'telegram') {
+            return { success: false, error: 'Esta acción es sólo para Fanvue.' }
+        }
         if (input.priceCents < 300)
             return { success: false, error: 'Price must be at least 300 cents' }
 

@@ -8,8 +8,12 @@
  * Gates, en orden y todos fallando cerrado:
  *   1. el chat es de Telegram y `ai_offers_enabled` está encendido;
  *   2. hay catálogo habilitado, filtrado por `maxOfferStars` y sin lo que
- *      este fan ya compró;
- *   3. no estamos en enfriamiento (`offerCooldownHours`, default 6);
+ *      este fan ya compró. Ese tope tiene TRES lecturas, no dos: ausente =
+ *      sin tope, `0` = no ofrecer nada, `> 0` = tope inclusivo (ver
+ *      `filterOfferCandidates`);
+ *   3. no estamos en enfriamiento. `offerCooldownHours` ausente = 6 h; un `0`
+ *      explícito es SIN enfriamiento, y por eso se resuelve con `??` y no con
+ *      `||`, que trataría ese cero como "no puesto";
  *   4. el modelo dice que sí, con un índice válido.
  * Si cualquier cosa falla (JSON roto, índice fuera de rango, error de red)
  * no se ofrece y se loguea: una oferta mal puesta es dinero mal cobrado.

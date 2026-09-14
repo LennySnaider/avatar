@@ -129,7 +129,7 @@ const EXENTOS = [
     ],
     [
         'src/lib/telegram/offerEngine.ts',
-        'F4.2 Tarea 4 — lo llama el webhook de Telegram sin sesión; todo cuelga de chat.organization_id. maybeAttachPaidMediaOffer parte del borrador que nuestro propio pipeline acaba de crear (esa fila es la que RESUELVE la org) y las seis consultas siguientes —chat, persona, historial, enfriamiento, catálogo, ventas del fan— la usan como filtro .eq explícito.',
+        'F4.2 Tarea 4 — lo llama el webhook de Telegram sin sesión; todo cuelga de chat.organization_id. maybeAttachPaidMediaOffer parte del borrador que nuestro propio pipeline acaba de crear (esa fila es la que RESUELVE la org) y las siete consultas siguientes —chat, persona, enfriamiento, catálogo, ventas del fan, transcripción y la escritura de la oferta— la usan como filtro .eq explícito. Son OCHO .from() en total contando el propio borrador, que es la cifra que reporta este script.',
     ],
     [
         'src/lib/telegram/bots.ts',

@@ -24,19 +24,38 @@ export interface PaidMediaOffer {
     caption: string
 }
 
+/**
+ * Qué puede ofrecer la IA por sí sola. Las TRES lecturas de `maxOfferStars`,
+ * que son tres cosas distintas y no dos:
+ *
+ *  - `undefined` → sin tope: el creador no puso límite.
+ *  - `0` → NO OFRECER NADA. Es lo que un creador espera de un campo
+ *    "Max Stars" puesto a cero, y antes era justo lo contrario: el `> 0`
+ *    de la condición desactivaba el filtro entero y se ofrecía el catálogo
+ *    completo, el ítem de 500 Stars incluido.
+ *  - `> 0` → tope INCLUSIVO: un ítem que cuesta exactamente el tope se
+ *    ofrece (`stars <= max`).
+ */
 export function filterOfferCandidates(
     items: OfferCandidate[],
     opts: { maxOfferStars: number | undefined; purchasedItemIds: string[] },
 ): OfferCandidate[] {
+    if (opts.maxOfferStars === 0) return []
     const bought = new Set(opts.purchasedItemIds)
     return items.filter((i) => {
         if (bought.has(i.id)) return false
-        if (opts.maxOfferStars !== undefined && opts.maxOfferStars > 0 && i.stars > opts.maxOfferStars) return false
+        if (opts.maxOfferStars !== undefined && i.stars > opts.maxOfferStars) return false
         return true
     })
 }
 
-/** `lastOfferAt` ISO o null; `nowMs` epoch ms; `cooldownHours` > 0. */
+/**
+ * `lastOfferAt` ISO o null; `nowMs` epoch ms.
+ *
+ * `cooldownHours` a `0` significa SIN enfriamiento (la ventana mide cero, así
+ * que nada cae dentro), no "usa el default": quien decide el default es su
+ * llamador (`offerEngine`, 6 h) y sólo cuando el ajuste viene ausente.
+ */
 export function isOfferOnCooldown(lastOfferAt: string | null, nowMs: number, cooldownHours: number): boolean {
     if (!lastOfferAt) return false
     const last = Date.parse(lastOfferAt)

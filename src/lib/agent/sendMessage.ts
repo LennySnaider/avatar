@@ -90,10 +90,19 @@ export async function sendAgentMessage(messageId: string): Promise<SendAgentMess
         // que un fallo ANTES de esa inserción no descuadra nada; un fallo
         // DESPUÉS deja la fila en `offered`, que el barrido de reconciliación
         // (deuda anotada) recogerá.
+        //
+        // EL PRECIO ES EL DEL CATÁLOGO EN EL MOMENTO DE ENTREGAR, no el que
+        // llevaba el borrador: por eso NO se pasa `stars`, que en
+        // `deliverPaidMedia` es un override puntual. Un borrador en modo
+        // `draft` puede esperar días a que un humano lo apruebe, y si el
+        // creador subió o bajó el precio entretanto, congelarlo aquí cobraría
+        // el viejo. Cuando los dos no coinciden se deja rastro: el borrador
+        // enseñó una cifra y Telegram cobró otra, y eso el creador tiene que
+        // poder verlo.
         const offer = findPaidMediaOffer(msg.media)
         if (offer && resolveDeliveryChannel(chat.platform) === 'telegram') {
             try {
-                await deliverPaidMedia({
+                const delivered = await deliverPaidMedia({
                     chat: {
                         id: chat.id,
                         organizationId: chat.organization_id,
@@ -101,11 +110,18 @@ export async function sendAgentMessage(messageId: string): Promise<SendAgentMess
                         externalChatId: chat.external_chat_id,
                     },
                     itemId: offer.itemId,
-                    stars: offer.stars,
                     caption: offer.caption || undefined,
                     source: 'agent',
                     approvedBy: msg.approved_by ?? null,
                 })
+                if (delivered.stars !== offer.stars) {
+                    console.warn('[agent] precio de catálogo distinto al del borrador', {
+                        messageId,
+                        itemId: offer.itemId,
+                        draft: offer.stars,
+                        charged: delivered.stars,
+                    })
+                }
             } catch (e) {
                 console.error('[agent] oferta adjunta no entregada', { messageId, itemId: offer.itemId }, e)
             }

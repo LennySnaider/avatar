@@ -171,6 +171,8 @@ Necesitas lo mismo que en las secciones anteriores (túnel activo, bot conectado
     ```
 
     Debe salir `ai` / `agent` / `offered`. Si sale `manual` o `inbox`, la oferta salió por el camino de la venta manual — revisa el paso 2 antes de seguir.
+
+    Ojo con el caso intermedio: aprobar A MANO un borrador que ya lleva oferta adjunta sigue siendo venta de IA (`source: 'agent'` → 20%), porque la oferta la eligió la IA y no tú. Para vender al 7% hay que quitar la oferta del borrador ("Remove offer") y enviar el contenido desde la galería del inbox.
 7. Cómprala desde la segunda cuenta. La fila pasa a `status = purchased` y, si la organización no está exenta de cobro, se asienta una comisión `commission:telegram` **al 20%** — no al 7% de la venta manual (sección 5). Ese salto de porcentaje es la prueba de que el sistema sabe distinguir quién vendió.
 
 ---

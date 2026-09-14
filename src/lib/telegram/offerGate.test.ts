@@ -50,3 +50,18 @@ test('detecta una oferta dentro de media aunque venga con otras cosas', () => {
     assert.equal(hasPaidMediaOffer(null), false)
     assert.equal(hasPaidMediaOffer('garbage'), false)
 })
+
+test('el tope es inclusivo: un item que cuesta exactamente el tope se ofrece', () => {
+    assert.deepEqual(
+        filterOfferCandidates(items, { maxOfferStars: 99, purchasedItemIds: [] }).map((i) => i.id),
+        ['a', 'c'],
+    )
+})
+
+test('tope 0 = no ofrecer nada', () => {
+    assert.deepEqual(filterOfferCandidates(items, { maxOfferStars: 0, purchasedItemIds: [] }), [])
+})
+
+test('enfriamiento 0 = sin enfriamiento, aunque la oferta fuera hace un segundo', () => {
+    assert.equal(isOfferOnCooldown('2026-09-14T11:59:59Z', Date.parse('2026-09-14T12:00:00Z'), 0), false)
+})
