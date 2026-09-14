@@ -62,8 +62,11 @@
  * `message`: sólo chats privados y sólo si el emisor no es un bot. Registra
  * la conversación (`upsertChat` + `ingestMessage`) y, si `shouldDraftTelegramReply`
  * (gate del canal, `aiGate.ts`) lo autoriza, genera el borrador DESPUÉS de
- * responder a Telegram (`after()`, ver `handleMessage`) y lo programa con
- * autopilot si el chat quedó en modo `auto`.
+ * responder a Telegram (`after()`, ver `handleMessage`); si `ai_offers_enabled`
+ * está encendido, el motor de oferta (`offerEngine.ts`) decide si ese borrador
+ * lleva contenido de pago adjunto; y por último lo programa con autopilot si el
+ * chat quedó en modo `auto`. Ese orden importa: autopilot lee la media que el
+ * motor acaba de escribir para decidir si el borrador puede salir solo.
  *
  * `purchased_paid_media`: la venta se busca por `paid_media_payload` con una
  * transición ATÓMICA condicionada a su estado anterior (`offered` →
@@ -86,6 +89,7 @@ import { after } from 'next/server'
 import { generateDraftReply } from '@/lib/agent/draftPipeline'
 import { maybeAutopilotSend } from '@/lib/agent/autopilot'
 import { shouldDraftTelegramReply } from '@/lib/telegram/aiGate'
+import { maybeAttachPaidMediaOffer } from '@/lib/telegram/offerEngine'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 60
@@ -246,7 +250,15 @@ async function handleMessage(settings: TelegramSettings, message: TgMessage): Pr
     after(async () => {
         try {
             const draft = await generateDraftReply(chat.id)
-            if (draft && chat.mode === 'auto') {
+            if (!draft) return
+            // Spec A4: el motor de oferta decide si este borrador sale con
+            // contenido de pago adjunto. Va ANTES de autopilot a propósito —
+            // autopilot mira la media ya escrita para decidir si el borrador
+            // puede salir solo o escala a humano.
+            if (settings.aiOffersEnabled) {
+                await maybeAttachPaidMediaOffer(draft.messageId)
+            }
+            if (chat.mode === 'auto') {
                 await maybeAutopilotSend(chat.id, draft.messageId)
             }
         } catch (e) {

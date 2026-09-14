@@ -216,8 +216,17 @@ interface AvatarFanMemoriesTable {
 /**
  * Vista mínima de `telegram_paid_media_items` (el tipo completo vive en
  * `database.generated.ts`, usado por `orgTable`). Sólo las columnas que lee
- * `draftPipeline.ts` para armar el catálogo del prompt de Telegram — motor de
- * oferta (tarea posterior) reutiliza este mismo tipo en vez de duplicarlo.
+ * `draftPipeline.ts` para armar el catálogo del prompt de Telegram.
+ *
+ * ÚNICO consumidor, a propósito. Una versión anterior de este comentario
+ * anunciaba que el motor de oferta (Tarea 8) reutilizaría esta vista; no lo
+ * hace, y conviene saber por qué antes de volver a intentarlo: ese motor cruza
+ * el catálogo con `telegram_stars_sales`, que NO está declarada aquí, así que
+ * con `agentSupabase()` no compila (TS2769). Declararla habría significado
+ * duplicar una tabla que `database.generated.ts` ya tipa entera — justo lo que
+ * esta vista quiere evitar —, así que `offerEngine.ts` va por `orgSupabase()`,
+ * como el resto de `src/lib/telegram/`. Ampliar esta vista sólo tiene sentido
+ * para un consumidor que ya esté en `agentSupabase()`.
  */
 interface TelegramPaidMediaItemsTable {
     Row: {

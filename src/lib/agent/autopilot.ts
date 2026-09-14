@@ -12,6 +12,7 @@
 import { agentSupabase, type AvatarPersonaRow } from './db'
 import { classifyInboundMessage } from './classifier'
 import { sendAgentMessage } from './sendMessage'
+import { hasPaidMediaOffer } from '@/lib/telegram/offerGate'
 
 export interface AutopilotConfig {
     enabled?: boolean
@@ -20,11 +21,22 @@ export interface AutopilotConfig {
     delaySecondsMax?: number
     dailyMessageLimit?: number
     escalate?: { payment?: boolean; complaint?: boolean; sensitive?: boolean; minors?: boolean }
+    /** Telegram: si un borrador con oferta de contenido de pago puede salir
+     *  solo. false/undefined = escala a humano (ofrecer es vender). */
+    allowPaidMediaOffers?: boolean
+    /** Telegram: tope de Stars que la IA puede ofrecer por sí sola. */
+    maxOfferStars?: number
+    /** Telegram: horas mínimas entre dos ofertas al mismo fan. Default 6. */
+    offerCooldownHours?: number
 }
 
 export type AutopilotOutcome = 'scheduled' | 'escalated' | 'skipped'
 
-function parseAutopilot(row: AvatarPersonaRow): AutopilotConfig {
+/** Exportada para el motor de oferta (`@/lib/telegram/offerEngine`), que lee
+ *  los mismos ajustes (`maxOfferStars`, `offerCooldownHours`) ANTES de
+ *  adjuntar nada. Una segunda lectura del JSON en otro fichero se
+ *  desincronizaría el día que esta forma cambie. */
+export function parseAutopilot(row: AvatarPersonaRow): AutopilotConfig {
     return (row.autopilot ?? {}) as AutopilotConfig
 }
 
@@ -92,6 +104,18 @@ export async function maybeAutopilotSend(chatId: string, draftMessageId: string)
     if (!persona) return 'skipped'
     const cfg = parseAutopilot(persona as AvatarPersonaRow)
     if (!cfg.enabled) return 'skipped'
+
+    // Spec A4: un borrador con oferta de contenido de pago sólo sale solo si
+    // el creador lo permitió expresamente. Ofrecer es vender.
+    const { data: draftRow } = await supabase
+        .from('agent_messages')
+        .select('media')
+        .eq('organization_id', chat.organization_id)
+        .eq('id', draftMessageId)
+        .maybeSingle()
+    if (hasPaidMediaOffer(draftRow?.media) && !cfg.allowPaidMediaOffers) {
+        return escalate(chat.organization_id, chatId, 'Paid media offer needs approval')
+    }
 
     // Classify the latest fan message (fail-closed).
     const { data: lastFan } = await supabase
