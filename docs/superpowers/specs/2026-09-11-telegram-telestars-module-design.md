@@ -124,6 +124,28 @@ Handlers en `src/lib/telegram/webhookHandlers.ts`:
 
 `afterInbound(chat, text, settings)`: `touchFanMemory` → pausar runs con `stop_on_reply` (`fan_replied`) → keyword match → gate IA `inserted && text && mode!=='off' && personaEnabled && !(human_takeover_until>now) && !is_creator` → `generateDraftReply` → `maybeAttachPaidMediaOffer` → si `auto` → `maybeAutopilotSend`. Business en `auto`: `sendChatAction('typing')` antes.
 
+### A3-bis. Interruptor por canal (decisión del 14-sep)
+
+**Hecho que lo motiva:** el usuario quiere el agente apagado en Fanvue y encendido sólo en Telegram. Hoy el único interruptor es `avatar_personas.enabled` ("Agent enabled"), que gata el inbox de Fanvue y nada más; `generateDraftReply` no lo comprueba por dentro ("Assumes the persona is enabled"), así que el gate es siempre del llamador. Eso permite que cada canal tenga el suyo sin tocar el de Fanvue.
+
+**Decisión:** el gate de Telegram es **independiente** de `avatar_personas.enabled`. Vive en `avatar_telegram_settings`:
+
+- `ai_replies_enabled boolean not null default false` — si la IA genera borradores para los mensajes que llegan por el bot. `false` por defecto: conectar un bot no enciende la IA; se enciende a propósito.
+- `ai_default_chat_mode text not null default 'auto' check (ai_default_chat_mode in ('auto','draft'))` — el modo con que nacen los chats nuevos de Telegram. `upsertChat` fija el modo sólo al crear el chat y nunca lo pisa (`inboxSync.ts:178-202`), así que este valor decide si un fan nuevo recibe respuesta sola (`auto`) o deja un borrador para aprobar (`draft`). Los chats ya existentes conservan el modo que tengan; se cambian uno a uno desde el inbox, como en Fanvue.
+
+**Matriz resultante:**
+
+| Quiero | `avatar_personas.enabled` | `ai_replies_enabled` | Autopilot |
+|---|---|---|---|
+| Fanvue apagado, Telegram contestando solo | OFF | ON | ON |
+| Fanvue apagado, Telegram deja borradores | OFF | ON (modo `draft`) | cualquiera |
+| Los dos encendidos | ON | ON | ON |
+| Telegram mudo (sólo vender a mano) | cualquiera | OFF | cualquiera |
+
+**Autopilot sigue siendo uno solo.** Horario, retardos, límite diario y clasificador de riesgo son los mismos para los dos canales: son propiedades de la persona, no del canal. Con la persona apagada Fanvue no produce borradores, así que Autopilot no tiene nada que enviar por ese lado. El texto del interruptor "Agent enabled" ya dice "Gates channels (Fanvue inbox)"; se deja tal cual, ahora es exacto.
+
+**Alcance de este cambio:** sólo `platform = 'telegram'` (bot directo). El modo secretaría (`telegram_business`), los guiones y los envíos masivos siguen fuera, en planes posteriores.
+
 ### A4. Pipeline (cambios mínimos)
 - `channelDelivery.ts` `deliverAgentText(chat, text)`: `'telegram'` → `sendMessage`; `'telegram_business'` → exige `business_is_enabled` + connection id, y si `last_fan_message_at < now()-24h` lanza `'Outside the 24h Business reply window'` (queda `failed` legible); 403 blocked → `telegram_blocked=true` + rethrow; default → bloque Fanvue actual sin cambios.
 - `sendMessage.ts`: L54-68 → `deliverAgentText`; después, si `msg.media` tiene `{type:'paid_media_offer', itemId, stars, caption}` y `platform.startsWith('telegram')` → `deliverPaidMedia(soldBy:'ai', source:'agent')`. Así inbox y flush de autopilot mandan texto + media pagada sin código nuevo.
