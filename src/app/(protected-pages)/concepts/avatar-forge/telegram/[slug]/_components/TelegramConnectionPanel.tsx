@@ -6,6 +6,8 @@ import Button from '@/components/ui/Button'
 import Input from '@/components/ui/Input'
 import Tag from '@/components/ui/Tag'
 import Alert from '@/components/ui/Alert'
+import Switcher from '@/components/ui/Switcher'
+import Segment from '@/components/ui/Segment'
 import Notification from '@/components/ui/Notification'
 import toast from '@/components/ui/toast'
 import ConfirmDialog from '@/components/shared/ConfirmDialog'
@@ -14,8 +16,9 @@ import {
     connectTelegramBot,
     disconnectTelegramBot,
     getTelegramWebhookInfo,
+    updateTelegramAiSettings,
 } from '@/services/AgentTelegramService'
-import type { TelegramBotStatus } from '@/services/AgentTelegramService'
+import type { TelegramBotStatus, TelegramAiSettingsPatch } from '@/services/AgentTelegramService'
 import type { TelegramWebhookInfo } from '@/lib/telegram/client'
 
 /**
@@ -62,6 +65,8 @@ const TelegramConnectionPanel = ({
 
     const [confirmDisconnect, setConfirmDisconnect] = useState(false)
     const [isDisconnecting, setIsDisconnecting] = useState(false)
+
+    const [savingAi, setSavingAi] = useState<keyof TelegramAiSettingsPatch | null>(null)
 
     const refreshWebhookInfo = async () => {
         setIsRefreshingWebhook(true)
@@ -146,6 +151,25 @@ const TelegramConnectionPanel = ({
         } finally {
             setIsDisconnecting(false)
             setConfirmDisconnect(false)
+        }
+    }
+
+    const saveAi = async (patch: TelegramAiSettingsPatch) => {
+        const key = Object.keys(patch)[0] as keyof TelegramAiSettingsPatch
+        setSavingAi(key)
+        try {
+            const result = await updateTelegramAiSettings(avatarId, patch)
+            if (result.success && result.data) {
+                onStatusChange(result.data)
+            } else {
+                toast.push(
+                    <Notification type="danger" title="Could not save AI settings">
+                        {result.success ? 'Empty response.' : result.error}
+                    </Notification>,
+                )
+            }
+        } finally {
+            setSavingAi(null)
         }
     }
 
@@ -308,6 +332,63 @@ const TelegramConnectionPanel = ({
                             : {webhook.info.last_error_message}
                         </p>
                     )}
+                </Card>
+            )}
+
+            {status?.connected && (
+                <Card>
+                    <p className="text-sm font-semibold mb-1">AI on Telegram</p>
+                    <p className="text-xs text-gray-500 mb-4">
+                        This switch is independent from &quot;Agent enabled&quot; on the AI Agent page,
+                        which only gates the Fanvue inbox. Turn the AI on here and off there to reply
+                        on Telegram only.
+                    </p>
+
+                    <div className="flex items-center justify-between gap-3 mb-4">
+                        <div>
+                            <p className="text-sm">AI replies</p>
+                            <p className="text-xs text-gray-400">
+                                The persona drafts a reply to every fan message that arrives through
+                                the bot.
+                            </p>
+                        </div>
+                        <Switcher
+                            checked={status.aiRepliesEnabled}
+                            isLoading={savingAi === 'aiRepliesEnabled'}
+                            onChange={(checked) => saveAi({ aiRepliesEnabled: checked })}
+                        />
+                    </div>
+
+                    <div className="mb-4">
+                        <p className="text-sm mb-1">New chats start in</p>
+                        <p className="text-xs text-gray-400 mb-2">
+                            Auto sends by itself after the risk check and Autopilot rules (schedule,
+                            delays, daily limit). Draft leaves a reply for you to approve. Existing
+                            chats keep their own mode — change it from the inbox.
+                        </p>
+                        <Segment
+                            value={status.aiDefaultChatMode}
+                            onChange={(val) => saveAi({ aiDefaultChatMode: val as 'auto' | 'draft' })}
+                        >
+                            <Segment.Item value="auto">Auto</Segment.Item>
+                            <Segment.Item value="draft">Draft</Segment.Item>
+                        </Segment>
+                    </div>
+
+                    <div className="flex items-center justify-between gap-3">
+                        <div>
+                            <p className="text-sm">Let the AI offer paid content</p>
+                            <p className="text-xs text-gray-400">
+                                When the conversation warms up, the AI may attach an item from your
+                                gallery. Sales closed this way count as AI sales.
+                            </p>
+                        </div>
+                        <Switcher
+                            checked={status.aiOffersEnabled}
+                            isLoading={savingAi === 'aiOffersEnabled'}
+                            onChange={(checked) => saveAi({ aiOffersEnabled: checked })}
+                        />
+                    </div>
                 </Card>
             )}
 
