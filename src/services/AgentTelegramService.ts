@@ -130,6 +130,9 @@ export interface TelegramBotStatus {
      *  días" — quien agregue esta columna para facturar debe SALTARSE las
      *  filas nulas, no tratarlas como coste cero. */
     connectedAt: string | null
+    aiRepliesEnabled: boolean
+    aiDefaultChatMode: 'auto' | 'draft'
+    aiOffersEnabled: boolean
 }
 
 /**
@@ -254,13 +257,24 @@ async function assertOwnedAvatar(ctx: OrgContext, avatarId: string): Promise<voi
 /** Único punto fila-de-ajustes → estado de pantalla. */
 function toStatus(settings: TelegramSettings | null): TelegramBotStatus {
     if (!settings) {
-        return { connected: false, botUsername: null, enabled: false, connectedAt: null }
+        return {
+            connected: false,
+            botUsername: null,
+            enabled: false,
+            connectedAt: null,
+            aiRepliesEnabled: false,
+            aiDefaultChatMode: 'auto',
+            aiOffersEnabled: false,
+        }
     }
     return {
         connected: settings.enabled,
         botUsername: settings.botUsername,
         enabled: settings.enabled,
         connectedAt: settings.connectedAt,
+        aiRepliesEnabled: settings.aiRepliesEnabled,
+        aiDefaultChatMode: settings.aiDefaultChatMode,
+        aiOffersEnabled: settings.aiOffersEnabled,
     }
 }
 
@@ -722,5 +736,51 @@ export async function sendPaidMediaFromInbox(
         }
     } catch (e) {
         return fail('sendPaidMediaFromInbox', e)
+    }
+}
+
+export interface TelegramAiSettingsPatch {
+    aiRepliesEnabled?: boolean
+    aiDefaultChatMode?: 'auto' | 'draft'
+    aiOffersEnabled?: boolean
+}
+
+/**
+ * Guarda los ajustes de IA del canal (spec A3-bis). Sólo esas tres columnas:
+ * ni el token, ni `enabled`, ni `connected_at` (CANDADO 1) se tocan desde
+ * aquí. Exige bot conectado: sin fila no hay nada que encender.
+ */
+export async function updateTelegramAiSettings(
+    avatarId: string,
+    patch: TelegramAiSettingsPatch,
+): Promise<TelegramResult<TelegramBotStatus>> {
+    try {
+        const ctx = await getOrgContext()
+        await requireModule(ctx, 'telegram')
+        if (!avatarId) return { success: false, error: 'Falta el avatar.' }
+        await assertOwnedAvatar(ctx, avatarId)
+
+        const update: Record<string, unknown> = { updated_at: new Date().toISOString() }
+        if (patch.aiRepliesEnabled !== undefined) update.ai_replies_enabled = patch.aiRepliesEnabled
+        if (patch.aiDefaultChatMode !== undefined) {
+            if (patch.aiDefaultChatMode !== 'auto' && patch.aiDefaultChatMode !== 'draft') {
+                return { success: false, error: 'Modo no válido.' }
+            }
+            update.ai_default_chat_mode = patch.aiDefaultChatMode
+        }
+        if (patch.aiOffersEnabled !== undefined) update.ai_offers_enabled = patch.aiOffersEnabled
+
+        const { data, error } = await orgTable(ctx, 'avatar_telegram_settings')
+            .update(update)
+            .eq('avatar_id', avatarId)
+            .select('id')
+            .maybeSingle()
+        if (error) throw new Error(error.message)
+        if (!data) return { success: false, error: 'Este avatar no tiene un bot conectado.' }
+
+        const settings = await loadTelegramSettingsForOrg(ctx, avatarId)
+        return { success: true, data: toStatus(settings) }
+    } catch (e) {
+        return fail('updateTelegramAiSettings', e)
     }
 }
