@@ -12,6 +12,7 @@ import {
     listPaidMediaItems,
 } from '@/services/AgentTelegramService'
 import TelegramAvatarView from './_components/TelegramAvatarView'
+import type { WebhookState } from './_components/TelegramConnectionPanel'
 import type {
     GenerationPickerItem,
     TelegramChatListItem,
@@ -89,7 +90,16 @@ export default async function Page({ params }: PageProps) {
         listPaidMediaItems(avatarId),
     ])
     const status = statusResult.success ? (statusResult.data ?? null) : null
-    const webhookInfo = webhookResult.success ? (webhookResult.data ?? null) : null
+    // Un fallo aquí es DESCONOCIMIENTO, no ausencia: si se colapsara a `null` la
+    // pantalla acusaría a Telegram de no tener webhook cuando lo que pasó es que
+    // no pudimos preguntarle.
+    const initialWebhook: WebhookState = !webhookResult.success
+        ? { status: 'unknown', error: webhookResult.error ?? null }
+        : !webhookResult.data
+          ? { status: 'unknown', error: 'Telegram devolvió una respuesta vacía.' }
+          : webhookResult.data.state === 'no_bot'
+            ? { status: 'no_bot' }
+            : { status: 'answered', info: webhookResult.data.info }
     const items = mediaResult.success ? (mediaResult.data ?? []) : []
 
     // Balance de Stars del bot. `loadTelegramBotToken` es la variante SIN
@@ -183,7 +193,7 @@ export default async function Page({ params }: PageProps) {
             <TelegramAvatarView
                 avatarId={avatarId}
                 initialStatus={status}
-                initialWebhookInfo={webhookInfo}
+                initialWebhook={initialWebhook}
                 expectedWebhookUrl={expectedWebhookUrl}
                 initialItems={items}
                 generations={generations}

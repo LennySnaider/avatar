@@ -132,10 +132,43 @@ export interface TelegramBotStatus {
     connectedAt: string | null
 }
 
-const fail = (e: unknown): { success: false; error: string } => ({
-    success: false,
-    error: e instanceof Error ? e.message : String(e),
-})
+/**
+ * Qué contestó Telegram cuando le preguntamos por el webhook.
+ *
+ * Existe porque `TelegramWebhookInfo | null` MENTÍA: ese `null` significaba a
+ * la vez "este avatar no tiene bot", "Telegram contestó que no hay webhook" y
+ * "no pudimos preguntar", y la pantalla afirmaba la segunda para las tres.
+ * Un fallo de red acababa acusando a Telegram de algo que no había dicho.
+ *
+ * "No pudimos preguntar" NO es un estado de este tipo a propósito: viaja por
+ * la rama `{success:false, error}` de `TelegramResult`, que es donde ya vive
+ * todo lo que falla. Quien consuma esto debe tratar ese fallo como
+ * DESCONOCIMIENTO, nunca como ausencia.
+ */
+export type TelegramWebhookCheck =
+    /** No hay bot configurado en este avatar: no había nada que preguntar. */
+    | { state: 'no_bot' }
+    /** Telegram contestó. Ojo: `info.url === ''` es su forma de decir "no
+     *  tengo webhook registrado", y ESE sí es un problema real. */
+    | { state: 'answered'; info: TelegramWebhookInfo }
+
+/**
+ * Traduce una excepción al contrato `TelegramResult` **y la deja escrita en
+ * el log del servidor**.
+ *
+ * El log no es adorno. Sin él, un fallo de esta capa sólo existía como un
+ * string dentro de una tarjeta de la UI, y eso fue lo que hizo invisible
+ * durante toda una sesión que "no pude preguntarle a Telegram" se estuviera
+ * pintando como "Telegram no tiene webhook". El prefijo `[telegram]` sigue la
+ * convención de `src/lib/billing/moduleCharges.ts`.
+ */
+const fail = (where: string, e: unknown): { success: false; error: string } => {
+    console.error(`[telegram] ${where}:`, e)
+    return {
+        success: false,
+        error: e instanceof Error ? e.message : String(e),
+    }
+}
 
 /**
  * Vista de galería de un ítem de contenido de pago. Deliberadamente sin
@@ -341,7 +374,7 @@ export async function connectTelegramBot(
         const settings = await loadTelegramSettingsForOrg(ctx, avatarId)
         return { success: true, data: toStatus(settings) }
     } catch (e) {
-        return fail(e)
+        return fail('connectTelegramBot', e)
     }
 }
 
@@ -398,7 +431,7 @@ export async function disconnectTelegramBot(avatarId: string): Promise<TelegramR
         const updated = await loadTelegramSettingsForOrg(ctx, avatarId)
         return { success: true, data: toStatus(updated) }
     } catch (e) {
-        return fail(e)
+        return fail('disconnectTelegramBot', e)
     }
 }
 
@@ -410,7 +443,7 @@ export async function getTelegramStatus(avatarId: string): Promise<TelegramResul
         const settings = await loadTelegramSettingsForOrg(ctx, avatarId)
         return { success: true, data: toStatus(settings) }
     } catch (e) {
-        return fail(e)
+        return fail('getTelegramStatus', e)
     }
 }
 
@@ -422,21 +455,21 @@ export async function getTelegramStatus(avatarId: string): Promise<TelegramResul
  */
 export async function getTelegramWebhookInfo(
     avatarId: string,
-): Promise<TelegramResult<TelegramWebhookInfo | null>> {
+): Promise<TelegramResult<TelegramWebhookCheck>> {
     try {
         const ctx = await getOrgContext()
         await requireModule(ctx, 'telegram')
 
         const settings = await loadTelegramSettingsForOrg(ctx, avatarId)
-        if (!settings) return { success: true, data: null }
+        if (!settings) return { success: true, data: { state: 'no_bot' } }
 
         const token = await loadTelegramBotToken(avatarId)
-        if (!token) return { success: true, data: null }
+        if (!token) return { success: true, data: { state: 'no_bot' } }
 
         const info = await getWebhookInfo(token)
-        return { success: true, data: info }
+        return { success: true, data: { state: 'answered', info } }
     } catch (e) {
-        return fail(e)
+        return fail('getTelegramWebhookInfo', e)
     }
 }
 
@@ -456,7 +489,7 @@ export async function listPaidMediaItems(avatarId: string): Promise<TelegramResu
         if (error) throw new Error(error.message)
         return { success: true, data: (data ?? []).map(toPaidMediaItem) }
     } catch (e) {
-        return fail(e)
+        return fail('listPaidMediaItems', e)
     }
 }
 
@@ -584,7 +617,7 @@ export async function upsertPaidMediaItem(
         }
         return { success: true, data: toPaidMediaItem(data) }
     } catch (e) {
-        return fail(e)
+        return fail('upsertPaidMediaItem', e)
     }
 }
 
@@ -606,7 +639,7 @@ export async function deletePaidMediaItem(avatarId: string, itemId: string): Pro
         if (error) throw new Error(error.message)
         return { success: true }
     } catch (e) {
-        return fail(e)
+        return fail('deletePaidMediaItem', e)
     }
 }
 
@@ -688,6 +721,6 @@ export async function sendPaidMediaFromInbox(
             },
         }
     } catch (e) {
-        return fail(e)
+        return fail('sendPaidMediaFromInbox', e)
     }
 }

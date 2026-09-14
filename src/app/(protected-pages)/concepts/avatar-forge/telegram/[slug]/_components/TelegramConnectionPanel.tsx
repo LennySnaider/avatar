@@ -18,11 +18,23 @@ import {
 import type { TelegramBotStatus } from '@/services/AgentTelegramService'
 import type { TelegramWebhookInfo } from '@/lib/telegram/client'
 
+/**
+ * Lo que esta pantalla sabe del webhook AHORA MISMO.
+ *
+ * `unknown` es el estado que faltaba y por el que existe este tipo: significa
+ * "no he conseguido preguntárselo a Telegram", que no es lo mismo que "no hay
+ * webhook". Antes ambas cosas eran `null` y se pintaban como la segunda.
+ */
+export type WebhookState =
+    | { status: 'unknown'; error: string | null }
+    | { status: 'no_bot' }
+    | { status: 'answered'; info: TelegramWebhookInfo }
+
 interface TelegramConnectionPanelProps {
     avatarId: string
     status: TelegramBotStatus | null
     onStatusChange: (status: TelegramBotStatus | null) => void
-    initialWebhookInfo: TelegramWebhookInfo | null
+    initialWebhook: WebhookState
     /** Fórmula construida en `[slug]/page.tsx`, idéntica a la que usa
      *  `connectTelegramBot` — ver esa nota antes de tocar cualquiera de las
      *  dos. */
@@ -39,10 +51,10 @@ const TelegramConnectionPanel = ({
     avatarId,
     status,
     onStatusChange,
-    initialWebhookInfo,
+    initialWebhook,
     expectedWebhookUrl,
 }: TelegramConnectionPanelProps) => {
-    const [webhookInfo, setWebhookInfo] = useState<TelegramWebhookInfo | null>(initialWebhookInfo)
+    const [webhook, setWebhook] = useState<WebhookState>(initialWebhook)
     const [isRefreshingWebhook, setIsRefreshingWebhook] = useState(false)
 
     const [token, setToken] = useState('')
@@ -53,14 +65,25 @@ const TelegramConnectionPanel = ({
 
     const refreshWebhookInfo = async () => {
         setIsRefreshingWebhook(true)
+        // Se borra lo que sabíamos ANTES de preguntar. Si no, durante el viaje de
+        // ida y vuelta la tarjeta seguiría afirmando el estado anterior — que es
+        // justo lo que pasó al conectar: `status.connected` ya era `true` y el
+        // webhook todavía era el de antes de existir el bot.
+        setWebhook({ status: 'unknown', error: null })
         try {
             const result = await getTelegramWebhookInfo(avatarId)
-            if (result.success) {
-                setWebhookInfo(result.data ?? null)
+            if (result.success && result.data) {
+                setWebhook(
+                    result.data.state === 'no_bot'
+                        ? { status: 'no_bot' }
+                        : { status: 'answered', info: result.data.info },
+                )
             } else {
+                const error = result.success ? 'Telegram devolvió una respuesta vacía.' : result.error
+                setWebhook({ status: 'unknown', error: error ?? null })
                 toast.push(
                     <Notification type="danger" title="Could not read webhook status">
-                        {result.error}
+                        {error}
                     </Notification>,
                 )
             }
@@ -126,11 +149,21 @@ const TelegramConnectionPanel = ({
         }
     }
 
-    const registeredUrl = webhookInfo?.url ?? ''
-    const hasNoWebhook = status?.connected === true && registeredUrl === ''
+    const answeredUrl = webhook.status === 'answered' ? webhook.info.url : null
+    // `isRefreshingWebhook` va DELANTE de todo: mientras preguntamos no
+    // afirmamos nada.
+    const webhookChecking = status?.connected === true && isRefreshingWebhook
+    const webhookUnknown =
+        status?.connected === true && !isRefreshingWebhook && webhook.status !== 'answered'
+    const hasNoWebhook = status?.connected === true && !isRefreshingWebhook && answeredUrl === ''
     const webhookMismatch =
-        status?.connected === true && registeredUrl !== '' && registeredUrl !== expectedWebhookUrl
-    const webhookOk = status?.connected === true && registeredUrl === expectedWebhookUrl
+        status?.connected === true &&
+        !isRefreshingWebhook &&
+        answeredUrl !== null &&
+        answeredUrl !== '' &&
+        answeredUrl !== expectedWebhookUrl
+    const webhookOk =
+        status?.connected === true && !isRefreshingWebhook && answeredUrl === expectedWebhookUrl
 
     return (
         <div className="flex flex-col gap-4 max-w-2xl">
@@ -210,6 +243,27 @@ const TelegramConnectionPanel = ({
                         </Button>
                     </div>
 
+                    {webhookChecking && (
+                        <Alert type="info" showIcon duration={0}>
+                            Checking with Telegram…
+                        </Alert>
+                    )}
+
+                    {webhookUnknown && (
+                        <Alert type="warning" showIcon duration={0} title="Couldn't check the webhook">
+                            <p className="mb-1">
+                                We could not ask Telegram where it delivers updates for this bot, so we
+                                don&apos;t know whether it is registered. This says nothing about the bot
+                                itself — it may well be working.
+                            </p>
+                            {webhook.status === 'unknown' && webhook.error && (
+                                <p className="text-xs mt-2">
+                                    <span className="font-semibold">Reason:</span> {webhook.error}
+                                </p>
+                            )}
+                        </Alert>
+                    )}
+
                     {webhookOk && (
                         <Alert type="success" showIcon duration={0}>
                             Telegram is delivering updates to the expected address.
@@ -236,7 +290,7 @@ const TelegramConnectionPanel = ({
                                 <span className="font-semibold">Expected:</span> {expectedWebhookUrl}
                             </p>
                             <p className="text-xs">
-                                <span className="font-semibold">Registered:</span> {registeredUrl}
+                                <span className="font-semibold">Registered:</span> {answeredUrl ?? ''}
                             </p>
                             <p className="text-xs mt-2">
                                 Reconnecting from this environment will re-register the correct
@@ -245,13 +299,13 @@ const TelegramConnectionPanel = ({
                         </Alert>
                     )}
 
-                    {webhookInfo?.last_error_message && (
+                    {webhook.status === 'answered' && webhook.info.last_error_message && (
                         <p className="text-xs text-gray-500 mt-3">
                             Telegram&apos;s last delivery error
-                            {webhookInfo.last_error_date
-                                ? ` (${formatTelegramDate(webhookInfo.last_error_date)})`
+                            {webhook.info.last_error_date
+                                ? ` (${formatTelegramDate(webhook.info.last_error_date)})`
                                 : ''}
-                            : {webhookInfo.last_error_message}
+                            : {webhook.info.last_error_message}
                         </p>
                     )}
                 </Card>

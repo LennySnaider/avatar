@@ -7,7 +7,7 @@ import TelegramGallery from './TelegramGallery'
 import TelegramInbox from './TelegramInbox'
 import TelegramSalesPanel from './TelegramSalesPanel'
 import type { TelegramBotStatus, PaidMediaItemView } from '@/services/AgentTelegramService'
-import type { TelegramWebhookInfo } from '@/lib/telegram/client'
+import type { WebhookState } from './TelegramConnectionPanel'
 import type { GenerationPickerItem, TelegramChatListItem, TelegramSaleRow } from './types'
 
 const { TabList, TabNav, TabContent } = Tabs
@@ -15,7 +15,7 @@ const { TabList, TabNav, TabContent } = Tabs
 interface TelegramAvatarViewProps {
     avatarId: string
     initialStatus: TelegramBotStatus | null
-    initialWebhookInfo: TelegramWebhookInfo | null
+    initialWebhook: WebhookState
     expectedWebhookUrl: string
     initialItems: PaidMediaItemView[]
     generations: GenerationPickerItem[]
@@ -27,7 +27,7 @@ interface TelegramAvatarViewProps {
 const TelegramAvatarView = ({
     avatarId,
     initialStatus,
-    initialWebhookInfo,
+    initialWebhook,
     expectedWebhookUrl,
     initialItems,
     generations,
@@ -61,7 +61,7 @@ const TelegramAvatarView = ({
                         avatarId={avatarId}
                         status={status}
                         onStatusChange={setStatus}
-                        initialWebhookInfo={initialWebhookInfo}
+                        initialWebhook={initialWebhook}
                         expectedWebhookUrl={expectedWebhookUrl}
                     />
                 </TabContent>
