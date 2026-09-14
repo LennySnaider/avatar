@@ -91,13 +91,23 @@ async function setModuleStatus(
             },
             { onConflict: 'organization_id,module_slug' },
         )
-        if (error) return fail(error.message)
+        if (error) {
+            // Un fallo de escritura es del sistema, no del usuario: tiene que
+            // dejar rastro. No pasa por `failFromError` porque un error de
+            // PostgREST no es `instanceof Error` y su mensaje util se
+            // perderia convertido en "[object Object]".
+            console.error('[modules] setModuleStatus: fallo al guardar', error)
+            return fail(error.message)
+        }
 
         const { data, error: readError } = await orgTable(ctx, 'org_modules')
             .select('module_slug, status, installed_at, uninstalled_at, settings')
             .eq('module_slug', slug)
             .maybeSingle()
-        if (readError) return fail(readError.message)
+        if (readError) {
+            console.error('[modules] setModuleStatus: fallo al releer', readError)
+            return fail(readError.message)
+        }
 
         // El árbol de navegación se calcula en el layout raíz: sin esto el menú
         // sigue mostrando (u ocultando) el módulo hasta la siguiente recarga dura.
@@ -111,7 +121,12 @@ async function setModuleStatus(
             uninstalled_at: string | null
             settings: Record<string, unknown> | null
         } | null
-        if (!row) return fail('El módulo se guardó pero no se pudo releer.')
+        if (!row) {
+            // Escribimos y la relectura no devolvio nada: es una anomalia, no
+            // un rechazo esperado.
+            console.error('[modules] setModuleStatus: guardado pero sin fila al releer', { slug, status })
+            return fail('El módulo se guardó pero no se pudo releer.')
+        }
 
         return {
             success: true,
