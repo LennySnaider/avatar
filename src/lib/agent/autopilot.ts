@@ -107,12 +107,28 @@ export async function maybeAutopilotSend(chatId: string, draftMessageId: string)
 
     // Spec A4: un borrador con oferta de contenido de pago sólo sale solo si
     // el creador lo permitió expresamente. Ofrecer es vender.
-    const { data: draftRow } = await supabase
+    //
+    // El `error` NO se descarta, y es la diferencia entre fallar cerrado y
+    // fallar abierto: sin mirarlo, un fallo transitorio de Supabase deja
+    // `draftRow` en null, `hasPaidMediaOffer(undefined)` responde `false`, la
+    // escalada no ocurre y un borrador que SÍ lleva oferta sale solo sin
+    // permiso del creador. Como la entrega ya cobra la oferta adjunta, eso
+    // sería dinero cobrado sin autorización por un error de red. Si no se
+    // puede COMPROBAR que el borrador está limpio, se escala.
+    const { data: draftRow, error: draftError } = await supabase
         .from('agent_messages')
         .select('media')
         .eq('organization_id', chat.organization_id)
         .eq('id', draftMessageId)
         .maybeSingle()
+    if (draftError) {
+        console.error(
+            '[agent] autopilot: no se pudo leer el borrador para comprobar la oferta',
+            { chatId, draftMessageId },
+            draftError,
+        )
+        return escalate(chat.organization_id, chatId, 'Could not verify paid offer — needs review')
+    }
     if (hasPaidMediaOffer(draftRow?.media) && !cfg.allowPaidMediaOffers) {
         return escalate(chat.organization_id, chatId, 'Paid media offer needs approval')
     }
