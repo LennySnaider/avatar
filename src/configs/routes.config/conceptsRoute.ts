@@ -342,7 +342,7 @@ const conceptsRoute: Routes = {
         key: 'concepts.avatarForge.telegram',
         authority: [ADMIN, USER],
         meta: {
-            pageContainerType: 'gutterless',
+            pageContainerType: 'contained',
             pageBackgroundType: 'plain',
             footer: false,
         },
@@ -351,7 +351,7 @@ const conceptsRoute: Routes = {
         key: 'concepts.avatarForge.telegramEdit',
         authority: [ADMIN, USER],
         meta: {
-            pageContainerType: 'gutterless',
+            pageContainerType: 'contained',
             pageBackgroundType: 'plain',
             footer: false,
         },
