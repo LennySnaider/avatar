@@ -13,6 +13,9 @@
 import { agentSupabase } from './db'
 import { updateFanMemoryFromChat } from './draftPipeline'
 import { deliverAgentText } from './channelDelivery'
+import { resolveDeliveryChannel } from './channelRouting'
+import { findPaidMediaOffer } from '@/lib/telegram/offerGate'
+import { deliverPaidMedia } from '@/lib/telegram/paidMedia'
 
 export interface SendAgentMessageResult {
     success: boolean
@@ -72,6 +75,35 @@ export async function sendAgentMessage(messageId: string): Promise<SendAgentMess
             .update({ last_message_at: new Date().toISOString(), updated_at: new Date().toISOString() })
             .eq('organization_id', chat.organization_id)
             .eq('id', chat.id)
+        // Oferta adjunta (offerEngine, Telegram): se entrega DESPUÉS del texto
+        // y con `source: 'agent'`, que es lo que `deliverPaidMedia` convierte
+        // en `sold_by = 'ai'` (comisión del 20%). Si falla, el texto ya salió
+        // y el mensaje ya es `sent`: se loguea y no se marca `failed`, porque
+        // el fan sí recibió la respuesta. La venta no se crea de más: la crea
+        // `deliverPaidMedia` al ofrecer (PASO 2, antes de tocar Telegram), así
+        // que un fallo ANTES de esa inserción no descuadra nada; un fallo
+        // DESPUÉS deja la fila en `offered`, que el barrido de reconciliación
+        // (deuda anotada) recogerá.
+        const offer = findPaidMediaOffer(msg.media)
+        if (offer && resolveDeliveryChannel(chat.platform) === 'telegram') {
+            try {
+                await deliverPaidMedia({
+                    chat: {
+                        id: chat.id,
+                        organizationId: chat.organization_id,
+                        avatarId: chat.avatar_id,
+                        externalChatId: chat.external_chat_id,
+                    },
+                    itemId: offer.itemId,
+                    stars: offer.stars,
+                    caption: offer.caption || undefined,
+                    source: 'agent',
+                    approvedBy: msg.approved_by ?? null,
+                })
+            } catch (e) {
+                console.error('[agent] oferta adjunta no entregada', { messageId, itemId: offer.itemId }, e)
+            }
+        }
         // Counters (best-effort).
         const period = currentPeriod()
         await supabase.rpc('increment_agent_counter', {
