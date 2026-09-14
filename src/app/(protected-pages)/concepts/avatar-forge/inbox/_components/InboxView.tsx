@@ -151,6 +151,11 @@ const InboxView = ({ initialChats, loadError }: InboxViewProps) => {
                                             {c.fanDisplayName ?? c.fanHandle ?? 'Fan'}
                                         </span>
                                         <div className="flex items-center gap-1 shrink-0">
+                                            {c.platform.startsWith('telegram') && (
+                                                <Tag className="bg-sky-100 text-sky-600 dark:bg-sky-500/20 dark:text-sky-100 border-0 text-[10px]">
+                                                    Telegram
+                                                </Tag>
+                                            )}
                                             {c.needsAttention && (
                                                 <span title={c.attentionReason ?? 'Needs your attention'}>
                                                     <Tag className="bg-red-100 text-red-600 dark:bg-red-500/20 dark:text-red-100 border-0 text-[10px]">

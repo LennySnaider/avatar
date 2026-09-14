@@ -153,6 +153,28 @@ El webhook queda apuntando a una dirección muerta y el bot deja de recibir, sin
 
 ---
 
+## 9. El agente contesta y vende
+
+Las secciones 1-8 prueban la venta **manual**: tú eliges el ítem y lo envías desde la galería. Esta prueba la venta **por IA**: el agente adjunta él solo una oferta a su propio borrador y Autopilot lo despacha sin que lo toques — el escenario que sube la comisión del 7% al 20%.
+
+Necesitas lo mismo que en las secciones anteriores (túnel activo, bot conectado, segunda cuenta) más al menos un ítem de pago cargado en la galería.
+
+1. **AI Agent → "Agent enabled" OFF.** Este interruptor sólo gobierna la bandeja de Fanvue; la propia pantalla de Telegram lo avisa ("This switch is independent from 'Agent enabled' on the AI Agent page"). Apagarlo aquí y comprobar que aun así contesta en Telegram demuestra que son dos interruptores de verdad, no uno disfrazado de dos.
+2. **Telegram → bot:** "AI replies" **ON**, "New chats start in" **Auto**, "Let the AI offer paid content" **ON**.
+3. **Autopilot** (pantalla del avatar) **ON**, con "Allow paid offers on autopilot" **ON** y "Max Stars the AI may offer" en **100**.
+4. Desde la segunda cuenta, manda `/start` y espera el saludo — hasta **4 minutos**: el cron de Autopilot (`agent-autopilot-flush`) corre cada minuto y el retraso humanizado que añade por defecto llega hasta 180 segundos, así que 3+1 minutos es el peor caso, no un cuelgue.
+5. Manda tres mensajes cálidos seguidos ("me encantas", "quiero ver más de ti"…) y espera la respuesta. Debe llegar el texto y, detrás, una foto de pago: la oferta que el propio agente decidió adjuntar.
+6. Comprueba en SQL que quedó anotada como generada por la IA, no por ti:
+
+    ```sql
+    select sold_by, source, status from telegram_stars_sales order by offered_at desc limit 1;
+    ```
+
+    Debe salir `ai` / `agent` / `offered`. Si sale `manual` o `inbox`, la oferta salió por el camino de la venta manual — revisa el paso 2 antes de seguir.
+7. Cómprala desde la segunda cuenta. La fila pasa a `status = purchased` y, si la organización no está exenta de cobro, se asienta una comisión `commission:telegram` **al 20%** — no al 7% de la venta manual (sección 5). Ese salto de porcentaje es la prueba de que el sistema sabe distinguir quién vendió.
+
+---
+
 ## Lo que ya sabemos que falta
 
 Un **barrido de reconciliación** sobre la tabla de ventas. Tres situaciones dejan una venta descuadrada sin que nada avise, y las tres se detectan así:

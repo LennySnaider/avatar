@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import Button from '@/components/ui/Button'
 import Input from '@/components/ui/Input'
 import Segment from '@/components/ui/Segment'
+import Tag from '@/components/ui/Tag'
 import Notification from '@/components/ui/Notification'
 import toast from '@/components/ui/toast'
 import {
@@ -12,6 +13,7 @@ import {
     discardDraft,
     getAgentChatThread,
     regenerateDraft,
+    removeDraftOffer,
     sendPpvOffer,
     setChatMode,
     suggestPpvOffer,
@@ -32,7 +34,7 @@ const ThreadPane = ({ thread, onChanged }: ThreadPaneProps) => {
     const conversation = messages.filter((m) => m.status !== 'draft')
 
     const [draftText, setDraftText] = useState(draft?.text ?? '')
-    const [busy, setBusy] = useState<'send' | 'voice' | 'regen' | 'discard' | null>(null)
+    const [busy, setBusy] = useState<'send' | 'voice' | 'regen' | 'discard' | 'removeOffer' | null>(null)
     const [showMemory, setShowMemory] = useState(false)
 
     // PPV offer state
@@ -193,6 +195,24 @@ const ThreadPane = ({ thread, onChanged }: ThreadPaneProps) => {
         }
     }
 
+    const handleRemoveOffer = async (messageId: string) => {
+        setBusy('removeOffer')
+        try {
+            const result = await removeDraftOffer(messageId)
+            if (result.success) {
+                onChanged()
+            } else {
+                toast.push(
+                    <Notification type="danger" title="Could not remove offer">
+                        {result.error}
+                    </Notification>,
+                )
+            }
+        } finally {
+            setBusy(null)
+        }
+    }
+
     const factEntries = Object.entries(fanMemory?.facts ?? {})
 
     return (
@@ -257,7 +277,7 @@ const ThreadPane = ({ thread, onChanged }: ThreadPaneProps) => {
                 {conversation.map((m: AgentMessageDTO) => (
                     <div
                         key={m.id}
-                        className={`flex ${m.direction === 'out' ? 'justify-end' : 'justify-start'}`}
+                        className={`flex flex-col ${m.direction === 'out' ? 'items-end' : 'items-start'}`}
                     >
                         <div
                             className={`px-3 py-2 rounded-2xl max-w-[80%] text-sm whitespace-pre-wrap ${
@@ -273,6 +293,18 @@ const ThreadPane = ({ thread, onChanged }: ThreadPaneProps) => {
                                 </span>
                             )}
                         </div>
+                        {m.paidOffer && (
+                            <div className="mt-1 flex items-center gap-2 text-xs">
+                                <Tag className="bg-amber-100 text-amber-700 dark:bg-amber-500/20 dark:text-amber-100 border-0">
+                                    ⭐ Paid offer · {m.paidOffer.stars} Stars
+                                </Tag>
+                                {m.status === 'draft' && (
+                                    <Button size="xs" variant="plain" onClick={() => handleRemoveOffer(m.id)}>
+                                        Remove offer
+                                    </Button>
+                                )}
+                            </div>
+                        )}
                     </div>
                 ))}
             </div>
@@ -336,6 +368,18 @@ const ThreadPane = ({ thread, onChanged }: ThreadPaneProps) => {
                                 </span>
                             )}
                         </div>
+                        {draft.paidOffer && (
+                            <div className="mb-2 flex items-center gap-2 text-xs">
+                                <Tag className="bg-amber-100 text-amber-700 dark:bg-amber-500/20 dark:text-amber-100 border-0">
+                                    ⭐ Paid offer · {draft.paidOffer.stars} Stars
+                                </Tag>
+                                {draft.status === 'draft' && (
+                                    <Button size="xs" variant="plain" onClick={() => handleRemoveOffer(draft.id)}>
+                                        Remove offer
+                                    </Button>
+                                )}
+                            </div>
+                        )}
                         <Input
                             textArea
                             rows={3}

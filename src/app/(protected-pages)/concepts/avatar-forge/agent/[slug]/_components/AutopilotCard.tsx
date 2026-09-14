@@ -25,6 +25,9 @@ const AutopilotCard = ({ avatarId }: AutopilotCardProps) => {
     const [delayMin, setDelayMin] = useState('30')
     const [delayMax, setDelayMax] = useState('180')
     const [dailyLimit, setDailyLimit] = useState('40')
+    const [allowPaidMediaOffers, setAllowPaidMediaOffers] = useState(false)
+    const [maxOfferStars, setMaxOfferStars] = useState('')
+    const [offerCooldownHours, setOfferCooldownHours] = useState('')
     const [isSaving, setIsSaving] = useState(false)
 
     useEffect(() => {
@@ -37,6 +40,9 @@ const AutopilotCard = ({ avatarId }: AutopilotCardProps) => {
             if (c.delaySecondsMin != null) setDelayMin(String(c.delaySecondsMin))
             if (c.delaySecondsMax != null) setDelayMax(String(c.delaySecondsMax))
             if (c.dailyMessageLimit != null) setDailyLimit(String(c.dailyMessageLimit))
+            setAllowPaidMediaOffers(!!c.allowPaidMediaOffers)
+            if (c.maxOfferStars != null) setMaxOfferStars(String(c.maxOfferStars))
+            if (c.offerCooldownHours != null) setOfferCooldownHours(String(c.offerCooldownHours))
             setLoaded(true)
         })
         // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -53,6 +59,9 @@ const AutopilotCard = ({ avatarId }: AutopilotCardProps) => {
                 dailyMessageLimit: Math.max(0, Number(dailyLimit) || 0),
                 // Safety escalations are ALWAYS on (hard-coded in the classifier).
                 escalate: { payment: true, complaint: true, sensitive: true, minors: true },
+                allowPaidMediaOffers,
+                maxOfferStars: Math.max(0, Number(maxOfferStars) || 0),
+                offerCooldownHours: Math.max(0, Number(offerCooldownHours) || 0),
             }
             const result = await setAutopilotConfig(avatarId, config)
             toast.push(
@@ -116,6 +125,40 @@ const AutopilotCard = ({ avatarId }: AutopilotCardProps) => {
                 <div>
                     <p className="text-xs text-gray-500 mb-1">Daily send limit</p>
                     <Input type="number" value={dailyLimit} onChange={(e) => setDailyLimit(e.target.value)} />
+                </div>
+            </div>
+
+            <div className="mt-4 pt-4 border-t border-gray-100 dark:border-gray-700">
+                <p className="text-sm font-semibold mb-1">Telegram offers</p>
+                <p className="text-xs text-gray-400 mb-3">
+                    Whether a Telegram autopilot reply may carry a paid content offer by itself, and how
+                    much it can offer without you.
+                </p>
+                <div className="flex items-center justify-between gap-3 mb-3">
+                    <p className="text-sm">Allow paid offers on autopilot</p>
+                    <Switcher
+                        checked={allowPaidMediaOffers}
+                        onChange={(c) => setAllowPaidMediaOffers(c)}
+                    />
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                    <div>
+                        <p className="text-xs text-gray-500 mb-1">Max Stars the AI may offer</p>
+                        <Input
+                            type="number"
+                            value={maxOfferStars}
+                            onChange={(e) => setMaxOfferStars(e.target.value)}
+                        />
+                    </div>
+                    <div>
+                        <p className="text-xs text-gray-500 mb-1">Hours between offers</p>
+                        <Input
+                            type="number"
+                            placeholder="6"
+                            value={offerCooldownHours}
+                            onChange={(e) => setOfferCooldownHours(e.target.value)}
+                        />
+                    </div>
                 </div>
             </div>
 
