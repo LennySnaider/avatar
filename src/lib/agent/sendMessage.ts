@@ -92,6 +92,7 @@ export async function sendAgentMessage(messageId: string): Promise<SendAgentMess
         return { success: true, externalMessageId: res.externalMessageId }
     } catch (e) {
         const message = e instanceof Error ? e.message : String(e)
+        console.error('[agent] send failed', { messageId, chatId: chat.id, platform: chat.platform }, message)
         await supabase
             .from('agent_messages')
             .update({ status: 'failed', error_message: message, updated_at: new Date().toISOString() })
