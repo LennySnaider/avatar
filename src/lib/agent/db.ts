@@ -213,9 +213,36 @@ interface AvatarFanMemoriesTable {
     Relationships: []
 }
 
+/**
+ * Vista mínima de `telegram_paid_media_items` (el tipo completo vive en
+ * `database.generated.ts`, usado por `orgTable`). Sólo las columnas que lee
+ * `draftPipeline.ts` para armar el catálogo del prompt de Telegram — motor de
+ * oferta (tarea posterior) reutiliza este mismo tipo en vez de duplicarlo.
+ */
+interface TelegramPaidMediaItemsTable {
+    Row: {
+        id: string
+        organization_id: string
+        avatar_id: string
+        title: string
+        star_price: number
+        enabled: boolean
+        sort_order: number
+    }
+    Insert: Partial<TelegramPaidMediaItemsTable['Row']> & {
+        organization_id: string
+        avatar_id: string
+        title: string
+        star_price: number
+    }
+    Update: Partial<TelegramPaidMediaItemsTable['Row']>
+    Relationships: []
+}
+
 export type AgentChatRow = AgentChatsTable['Row']
 export type AgentMessageRow = AgentMessagesTable['Row']
 export type AvatarFanMemoryRow = AvatarFanMemoriesTable['Row']
+export type TelegramPaidMediaItemRow = TelegramPaidMediaItemsTable['Row']
 
 export type AgentDatabase = BaseDatabase & {
     public: BaseDatabase['public'] & {
@@ -228,6 +255,7 @@ export type AgentDatabase = BaseDatabase & {
             agent_chats: AgentChatsTable
             agent_messages: AgentMessagesTable
             avatar_fan_memories: AvatarFanMemoriesTable
+            telegram_paid_media_items: TelegramPaidMediaItemsTable
         }
         Functions: {
             match_avatar_knowledge: {

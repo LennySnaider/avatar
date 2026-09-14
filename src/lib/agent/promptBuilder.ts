@@ -10,7 +10,9 @@ export interface BuildSystemPromptInput {
     avatarName: string
     ragChunks?: RetrievedChunk[]
     fanMemory?: { summary: string | null; facts: Record<string, string> } | null
-    channel: 'playground' | 'fanvue'
+    channel: 'playground' | 'fanvue' | 'telegram'
+    /** Contenido de pago disponible (sólo Telegram). Título y precio en Stars. */
+    paidCatalog?: { title: string; stars: number }[]
 }
 
 const LENGTH_RULES: Record<string, string> = {
@@ -35,7 +37,7 @@ const OBJECTIVE_RULES: Record<string, string> = {
 }
 
 export function buildSystemPrompt(input: BuildSystemPromptInput): string {
-    const { persona, avatarName, ragChunks, fanMemory, channel } = input
+    const { persona, avatarName, ragChunks, fanMemory, channel, paidCatalog } = input
 
     // Manual override wins wholesale — power users own the whole prompt, but
     // RAG/fan context still gets appended so retrieval keeps working.
@@ -81,12 +83,33 @@ export function buildSystemPrompt(input: BuildSystemPromptInput): string {
         sections.push(`## THINGS YOU KNOW (your own life and content — reference naturally, never dump)\n${facts}`)
     }
 
-    if (channel === 'fanvue' && fanMemory) {
+    if ((channel === 'fanvue' || channel === 'telegram') && fanMemory) {
         const factLines = Object.entries(fanMemory.facts ?? {})
             .map(([k, v]) => `- ${k}: ${v}`)
             .join('\n')
         const memoryBlock = [fanMemory.summary?.trim(), factLines].filter(Boolean).join('\n')
         if (memoryBlock) sections.push(`## ABOUT THIS FAN (remember them — it matters)\n${memoryBlock}`)
+    }
+
+    if (channel === 'telegram') {
+        sections.push(
+            '## CHANNEL: TELEGRAM\n' +
+                'You are chatting on Telegram, in a private chat with a fan. Messaging style: short, ' +
+                'one to three sentences, like texting. If the last fan message is "/start", they just ' +
+                'opened the chat for the first time: greet them warmly, introduce yourself in one line ' +
+                'and ask their name or what brought them here. Never mention bots, commands or that ' +
+                'this is Telegram.',
+        )
+        if (paidCatalog && paidCatalog.length > 0) {
+            const list = paidCatalog.map((i) => `- ${i.title} (${i.stars} Stars)`).join('\n')
+            sections.push(
+                '## YOUR EXCLUSIVE PAID CONTENT (unlockable with Telegram Stars)\n' +
+                    list +
+                    '\nYou have this content. Tease it naturally when the conversation warms up — ' +
+                    'never dump the list, never invent titles or prices, never pressure. The actual ' +
+                    'offer is attached by the system; you only build desire in words.',
+            )
+        }
     }
 
     sections.push(
