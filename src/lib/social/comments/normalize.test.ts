@@ -5,6 +5,7 @@ import {
     normalizeCommentsPage,
     normalizeHistoryEntry,
     isReauthRequiredBody,
+    toIsoTimestamp,
 } from './normalize.ts'
 
 // ---------------------------------------------------------------------------
@@ -21,7 +22,7 @@ test('normaliza la forma de la doc: user.id / user.username', () => {
     assert.deepEqual(comment, {
         id: 'c1',
         text: 'hola!',
-        timestamp: '2026-09-16T12:00:00Z',
+        timestamp: '2026-09-16T12:00:00.000Z',
         authorId: 'u1',
         authorUsername: 'fan_uno',
     })
@@ -66,7 +67,7 @@ test('shape alternativo from.username (en vez de user.username)', () => {
     assert.deepEqual(comment, {
         id: 'c2',
         text: 'otra forma de texto',
-        timestamp: '2026-09-16T13:00:00Z',
+        timestamp: '2026-09-16T13:00:00.000Z',
         authorId: 'u9',
         authorUsername: 'otro_fan',
     })
@@ -101,7 +102,7 @@ test('entrada de historial con success=false y ids nulos', () => {
         postCaption: 'caption de prueba',
         requestId: 'req-1',
         jobId: null,
-        uploadTimestamp: '2026-09-16T10:00:00Z',
+        uploadTimestamp: '2026-09-16T10:00:00.000Z',
     })
 })
 
@@ -140,4 +141,38 @@ test('status fuera de 400/401/409 nunca es reauth, aunque el code matchee', () =
         isReauthRequiredBody(500, { code: 'instagram_reauth_required' }),
         false,
     )
+})
+
+// ---------------------------------------------------------------------------
+// toIsoTimestamp
+// ---------------------------------------------------------------------------
+
+test('ISO pasa (normalizado a ISO con milisegundos)', () => {
+    assert.equal(toIsoTimestamp('2026-09-16T12:00:00Z'), '2026-09-16T12:00:00.000Z')
+})
+
+test('epoch en SEGUNDOS como cadena (< 1e12) se interpreta en segundos', () => {
+    assert.equal(toIsoTimestamp('1758000000'), '2025-09-16T05:20:00.000Z')
+})
+
+test('epoch en MILISEGUNDOS como número (>= 1e12) da el mismo instante', () => {
+    assert.equal(toIsoTimestamp(1758000000000), '2025-09-16T05:20:00.000Z')
+})
+
+test('una cadena que no es fecha da null (no rompe el INSERT timestamptz)', () => {
+    assert.equal(toIsoTimestamp('garbage'), null)
+})
+
+test('null entra, null sale', () => {
+    assert.equal(toIsoTimestamp(null), null)
+})
+
+test('el comentario con timestamp epoch en segundos llega normalizado a ISO', () => {
+    const comment = normalizeComment('instagram', {
+        id: 'c-epoch',
+        text: 'hola',
+        timestamp: 1758000000,
+        user: { id: 'u1', username: 'fan' },
+    })
+    assert.equal(comment?.timestamp, '2025-09-16T05:20:00.000Z')
 })

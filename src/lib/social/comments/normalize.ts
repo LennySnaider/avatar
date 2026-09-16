@@ -29,6 +29,68 @@ function asRecord(v: unknown): Record<string, unknown> {
     return v && typeof v === 'object' ? (v as Record<string, unknown>) : {}
 }
 
+/** Frontera epoch segundos vs. milisegundos: 1e12 ms = 2001-09-09. Cualquier
+ *  epoch en SEGUNDOS que nos importe (2001..33658) queda por debajo, y
+ *  cualquier epoch en MILISEGUNDOS moderno queda por encima. */
+const EPOCH_MS_THRESHOLD = 1e12
+
+/**
+ * Cualquier forma de timestamp que devuelva una red → ISO 8601 UTC, o `null`
+ * si no hay forma de interpretarla.
+ *
+ * Por qué: estos valores terminan en columnas `timestamptz`
+ * (`agent_messages.external_created_at`, `agent_chats.last_message_at`). Un
+ * epoch numérico (Instagram/Facebook mandan segundos en varios endpoints) o
+ * una cadena basura pasada tal cual rompe el INSERT y ese target queda sin
+ * poder ingerir NUNCA MÁS — un fallo permanente por un campo cosmético. Mejor
+ * `null` (la columna lo acepta) que un INSERT que revienta.
+ *
+ * Reglas: número o cadena puramente numérica → epoch (`< 1e12` se toma como
+ * SEGUNDOS, si no como milisegundos); cualquier otra cosa → `Date.parse`;
+ * inválido → `null`.
+ */
+export function toIsoTimestamp(raw: unknown): string | null {
+    if (raw === undefined || raw === null || raw === '') return null
+
+    let ms: number
+    if (typeof raw === 'number') {
+        if (!Number.isFinite(raw)) return null
+        ms = raw < EPOCH_MS_THRESHOLD ? raw * 1000 : raw
+    } else if (typeof raw === 'string' && /^-?\d+(\.\d+)?$/.test(raw.trim())) {
+        const n = Number(raw.trim())
+        if (!Number.isFinite(n)) return null
+        ms = n < EPOCH_MS_THRESHOLD ? n * 1000 : n
+    } else if (raw instanceof Date) {
+        ms = raw.getTime()
+    } else if (typeof raw === 'string') {
+        ms = Date.parse(raw)
+    } else {
+        return null
+    }
+
+    if (!Number.isFinite(ms)) return null
+    try {
+        return new Date(ms).toISOString()
+    } catch {
+        // Fuera del rango representable de Date (±8.64e15 ms).
+        return null
+    }
+}
+
+/** `toIsoTimestamp` + un aviso cuando venía ALGO y no se pudo interpretar:
+ *  un timestamp perdido en silencio es el tipo de cosa que después nadie
+ *  sabe dónde mirar. */
+function toIsoTimestampLogged(platform: string, raw: unknown): string | null {
+    const iso = toIsoTimestamp(raw)
+    if (iso === null && raw !== undefined && raw !== null && raw !== '') {
+        console.warn(
+            `[social/comments] ${platform}: timestamp no interpretable, se guarda null —`,
+            typeof raw === 'object' ? JSON.stringify(raw).slice(0, 120) : String(raw).slice(0, 120),
+        )
+    }
+    return iso
+}
+
 /**
  * Normaliza un comentario crudo de cualquier plataforma. Nunca tira: una
  * forma desconocida (o sin id) se descarta con un console.warn compacto en
@@ -58,7 +120,7 @@ export function normalizeComment(platform: Platform, raw: unknown): SocialCommen
     return {
         id: String(idRaw),
         text: textRaw === undefined ? '' : String(textRaw),
-        timestamp: toStringOrNull(timestampRaw),
+        timestamp: toIsoTimestampLogged(platform, timestampRaw),
         authorId: toStringOrNull(authorIdRaw),
         authorUsername: toStringOrNull(authorUsernameRaw),
     }
@@ -94,8 +156,9 @@ export function normalizeCommentsPage(platform: Platform, body: unknown): Social
  */
 export function normalizeHistoryEntry(raw: unknown): UploadPostHistoryEntry {
     const r = asRecord(raw)
+    const platform = String(r.platform ?? '')
     return {
-        platform: String(r.platform ?? ''),
+        platform,
         success: Boolean(r.success),
         errorCode: toStringOrNull(r.error_code),
         platformPostId: toStringOrNull(r.platform_post_id),
@@ -103,7 +166,7 @@ export function normalizeHistoryEntry(raw: unknown): UploadPostHistoryEntry {
         postCaption: toStringOrNull(r.post_caption),
         requestId: toStringOrNull(r.request_id),
         jobId: toStringOrNull(r.job_id),
-        uploadTimestamp: toStringOrNull(r.upload_timestamp),
+        uploadTimestamp: toIsoTimestampLogged(platform || 'history', r.upload_timestamp),
     }
 }
 
