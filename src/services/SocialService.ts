@@ -9,10 +9,14 @@ import { indexKnowledgeSource } from '@/lib/agent/indexer'
 import { UploadPostProvider } from '@/lib/social/providers/UploadPostProvider'
 import { validatePostForPlatforms } from '@/lib/social/platformValidators'
 import { appendHashtagsToCaption } from '@/lib/social/hashtagHelpers'
+import { validateSocialCommentSettingsPatch } from '@/lib/social/comments/settingsValidation'
 import { ALL_PLATFORMS } from '@/@types/social'
 import type { Platform, PlatformTarget } from '@/@types/social'
 import type { PublishResponse, ScheduledPost } from '@/lib/social/providers/SocialProvider'
 import type { Database, Json } from '@/@types/supabase'
+import type { SocialCommentSettingsPatch } from '@/lib/social/comments/settingsValidation'
+
+export type { SocialCommentSettingsPatch }
 
 export interface SocialResult<T> { success: boolean; data?: T; error?: string }
 
@@ -34,6 +38,12 @@ export interface SocialProfileSummary {
     /** api_key NULL + status 'active' → legacy row running on env UPLOAD_POST_API_KEY. */
     usesEnvKey: boolean
     apiKeyLast4: string | null
+    /** "IA en comentarios" (Task 6) — ver `updateSocialCommentSettings` más abajo. */
+    aiCommentRepliesEnabled: boolean
+    aiCommentDefaultChatMode: 'auto' | 'draft'
+    aiCommentDmEnabled: boolean
+    aiCommentDmText: string | null
+    aiCommentDmButtons: { title: string; url: string }[]
 }
 
 export interface AvatarSocialAccountRow {
@@ -94,6 +104,26 @@ function toValidatedPlatforms(raw: string[]): { platforms: Platform[]; invalid: 
     return { platforms, invalid }
 }
 
+/**
+ * `social_profiles.ai_comment_dm_buttons` (jsonb libre) → forma tipada para
+ * el DTO cliente. A diferencia de `sanitizeDmButtons` (dmEligibility.ts, que
+ * también valida longitud/URL para lo que se manda al proveedor), aquí sólo
+ * importa que cada entrada tenga `title`/`url` de tipo string — el guardado
+ * (`updateSocialCommentSettings`) ya garantiza que lo que queda en la fila
+ * cumple las reglas; esto es sólo una guarda defensiva ante datos corruptos.
+ */
+function toDmButtons(raw: unknown): { title: string; url: string }[] {
+    if (!Array.isArray(raw)) return []
+    const out: { title: string; url: string }[] = []
+    for (const item of raw) {
+        if (!item || typeof item !== 'object') continue
+        const title = (item as Record<string, unknown>).title
+        const url = (item as Record<string, unknown>).url
+        if (typeof title === 'string' && typeof url === 'string') out.push({ title, url })
+    }
+    return out
+}
+
 function toSummary(row: SocialProfileDbRow): SocialProfileSummary {
     const usesEnvKey = !row.api_key && row.status === 'active'
     return {
@@ -108,6 +138,11 @@ function toSummary(row: SocialProfileDbRow): SocialProfileSummary {
         hasApiKey: Boolean(row.api_key) || usesEnvKey,
         usesEnvKey,
         apiKeyLast4: row.api_key ? row.api_key.slice(-4) : null,
+        aiCommentRepliesEnabled: row.ai_comment_replies_enabled,
+        aiCommentDefaultChatMode: row.ai_comment_default_chat_mode === 'auto' ? 'auto' : 'draft',
+        aiCommentDmEnabled: row.ai_comment_dm_enabled,
+        aiCommentDmText: row.ai_comment_dm_text,
+        aiCommentDmButtons: toDmButtons(row.ai_comment_dm_buttons),
     }
 }
 
@@ -396,6 +431,64 @@ export async function disconnectUploadPostAccount(avatarId: string): Promise<Soc
         await getOwnedAvatar(ctx, avatarId)
         const { data, error } = await orgTable(ctx, 'social_profiles')
             .update({ status: 'disconnected', api_key: null, connected_platforms: toJson([]) })
+            .eq('avatar_id', avatarId)
+            .select('*')
+            .single()
+        if (error) throw new Error(error.message)
+        return { success: true, data: toSummary(data as SocialProfileDbRow) }
+    } catch (e) {
+        return fail(e)
+    }
+}
+
+/**
+ * Guarda los ajustes de "IA en comentarios" (Task 6): responder con IA,
+ * modo inicial de los hilos nuevos y el DM privado de Instagram
+ * (`ai_comment_*` en `social_profiles`). Exige cuenta Upload-Post activa —
+ * sin perfil no hay canal que gatear (mismo criterio que
+ * `updateTelegramAiSettings` en AgentTelegramService.ts, que exige bot
+ * conectado). La validación (modo, botones, "no DM sin texto") vive en
+ * `validateSocialCommentSettingsPatch` — puro, testeado sin Supabase — para
+ * que un patch inválido se RECHACE con un error legible en vez de guardarse
+ * a medias o descartar silenciosamente lo que no cumple.
+ */
+export async function updateSocialCommentSettings(
+    avatarId: string,
+    patch: SocialCommentSettingsPatch,
+): Promise<SocialResult<SocialProfileSummary>> {
+    try {
+        const ctx = await getOrgContext()
+        if (!avatarId) return { success: false, error: 'Avatar is required' }
+        await getOwnedAvatar(ctx, avatarId)
+
+        const { data: profile, error: profErr } = await orgTable(ctx, 'social_profiles')
+            .select('*')
+            .eq('avatar_id', avatarId)
+            .maybeSingle()
+        if (profErr) throw new Error(profErr.message)
+        const row = profile as SocialProfileDbRow | null
+        if (!row || row.status !== 'active') {
+            return { success: false, error: 'This avatar has no active Upload-Post account' }
+        }
+
+        const validated = validateSocialCommentSettingsPatch(patch, {
+            aiCommentDmText: row.ai_comment_dm_text,
+        })
+        if (!validated.ok) return { success: false, error: validated.error }
+
+        // Patch vacío (o que sólo repite lo ya guardado): nada que escribir,
+        // se devuelve la fila tal cual en vez de golpear la BD sin motivo.
+        if (Object.keys(validated.update).length === 0) {
+            return { success: true, data: toSummary(row) }
+        }
+
+        const dbUpdate: Record<string, unknown> = { ...validated.update }
+        if (validated.update.ai_comment_dm_buttons !== undefined) {
+            dbUpdate.ai_comment_dm_buttons = toJson(validated.update.ai_comment_dm_buttons)
+        }
+
+        const { data, error } = await orgTable(ctx, 'social_profiles')
+            .update(dbUpdate)
             .eq('avatar_id', avatarId)
             .select('*')
             .single()

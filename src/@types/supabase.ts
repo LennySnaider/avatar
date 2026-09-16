@@ -306,6 +306,12 @@ export type Database = {
                     api_key: string | null
                     last_synced_at: string | null
                     created_at: string
+                    /** "IA en comentarios" (Task 6, migración 20260916100000_social_comments_ia). */
+                    ai_comment_replies_enabled: boolean
+                    ai_comment_default_chat_mode: string
+                    ai_comment_dm_enabled: boolean
+                    ai_comment_dm_text: string | null
+                    ai_comment_dm_buttons: Json
                 }
                 Insert: {
                     id?: string
@@ -317,6 +323,11 @@ export type Database = {
                     api_key?: string | null
                     last_synced_at?: string | null
                     created_at?: string
+                    ai_comment_replies_enabled?: boolean
+                    ai_comment_default_chat_mode?: string
+                    ai_comment_dm_enabled?: boolean
+                    ai_comment_dm_text?: string | null
+                    ai_comment_dm_buttons?: Json
                 }
                 Update: {
                     id?: string
@@ -328,6 +339,11 @@ export type Database = {
                     api_key?: string | null
                     last_synced_at?: string | null
                     created_at?: string
+                    ai_comment_replies_enabled?: boolean
+                    ai_comment_default_chat_mode?: string
+                    ai_comment_dm_enabled?: boolean
+                    ai_comment_dm_text?: string | null
+                    ai_comment_dm_buttons?: Json
                 }
                 Relationships: []
             }
