@@ -25,6 +25,25 @@ create index if not exists idx_social_post_targets_published_at on social_post_t
 comment on table social_post_targets is
     'Un post por plataforma con su platform_post_id real, tomado del historial de Upload-Post (solo entradas success=true). social_posts.status=''published'' puede ser verdad para una plataforma y falso para otra, por eso esta tabla existe aparte.';
 
+comment on column social_post_targets.id is
+    'Identificador del target (un post publicado en una plataforma concreta).';
+comment on column social_post_targets.organization_id is
+    'Organizacion dueña del social_posts al que pertenece este target.';
+comment on column social_post_targets.social_post_id is
+    'Post de social_posts del que este registro es la version publicada en una plataforma. Un social_posts puede tener varios targets, uno por plataforma.';
+comment on column social_post_targets.platform is
+    'Plataforma de Upload-Post de este target (instagram, tiktok, etc.).';
+comment on column social_post_targets.platform_post_id is
+    'Id real del post en la plataforma, tal como lo reporta el history de Upload-Post (campo platform_post_id). Es lo que se usa para leer y responder comentarios en esa plataforma.';
+comment on column social_post_targets.post_url is
+    'URL publica del post en la plataforma, cuando Upload-Post la entrega en el history. NULL si no vino.';
+comment on column social_post_targets.published_at is
+    'Fecha de publicacion de ESTE target segun Upload-Post; puede diferir entre plataformas del mismo social_posts (una plataforma publica antes que otra, o falla).';
+comment on column social_post_targets.last_comments_poll_at is
+    'Ultima vez que el poller de comentarios reviso este target. NULL = todavia no se sondeo nunca.';
+comment on column social_post_targets.created_at is
+    'Fecha en que se creo este registro, al detectarse el target (success=true) en el history de Upload-Post.';
+
 -- Mismo patron que social_posts / social_profiles: todo el acceso va por
 -- server actions con el cliente service-role. RLS on, sin policies.
 alter table social_post_targets enable row level security;
@@ -79,5 +98,28 @@ create index if not exists idx_social_comment_dms_avatar_post on social_comment_
 
 comment on table social_comment_dms is
     'Historial de DMs privados mandados a comentaristas tras responder su comentario en publico. comment_id es unico: evita mandar el mismo DM dos veces si el poller vuelve a ver el comentario.';
+
+comment on column social_comment_dms.id is
+    'Identificador del intento de DM.';
+comment on column social_comment_dms.organization_id is
+    'Organizacion dueña del avatar que respondio el comentario y mando el DM.';
+comment on column social_comment_dms.avatar_id is
+    'Avatar (cuenta de social_profiles) que respondio el comentario en publico y disparo este DM.';
+comment on column social_comment_dms.platform is
+    'Plataforma del comentario y del DM (hoy solo Instagram lo soporta via Upload-Post).';
+comment on column social_comment_dms.platform_post_id is
+    'Id del post en la plataforma (platform_post_id de social_post_targets) al que pertenece el comentario respondido.';
+comment on column social_comment_dms.comment_id is
+    'Id del comentario de Upload-Post al que se respondio con este DM. Unico: garantiza un solo DM por comentario aunque el poller lo vuelva a ver.';
+comment on column social_comment_dms.commenter_id is
+    'Id del usuario que dejo el comentario (comentarista), segun lo reporta Upload-Post.';
+comment on column social_comment_dms.status is
+    'sent = el DM se envio correctamente; failed = fallo el envio.';
+comment on column social_comment_dms.error is
+    'Mensaje de error del proveedor cuando status=''failed''. Nunca vacio en ese caso; NULL cuando status=''sent''.';
+comment on column social_comment_dms.sent_at is
+    'Fecha en que se envio el DM. NULL si status=''failed'' y nunca llego a enviarse.';
+comment on column social_comment_dms.created_at is
+    'Fecha en que se creo el registro de este intento de DM.';
 
 alter table social_comment_dms enable row level security;
