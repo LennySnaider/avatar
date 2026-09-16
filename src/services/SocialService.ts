@@ -473,6 +473,7 @@ export async function updateSocialCommentSettings(
 
         const validated = validateSocialCommentSettingsPatch(patch, {
             aiCommentDmText: row.ai_comment_dm_text,
+            aiCommentDmEnabled: row.ai_comment_dm_enabled,
         })
         if (!validated.ok) return { success: false, error: validated.error }
 

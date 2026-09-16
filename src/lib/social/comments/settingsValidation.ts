@@ -26,11 +26,17 @@ export interface SocialCommentSettingsPatch {
     aiCommentDmButtons?: SocialCommentDmButtonInput[]
 }
 
-/** Lo que el validador necesita saber de la fila actual — sólo el texto del
- *  DM, que es el único campo cuyo valor guardado importa para validar OTRO
- *  campo del mismo patch (encender el DM sin texto, propio o heredado). */
+/** Lo que el validador necesita saber de la fila actual — el texto y el
+ *  interruptor del DM, los dos únicos campos cuyo valor GUARDADO importa
+ *  para validar el patch: el invariante "DM encendido ⇒ texto no vacío" se
+ *  comprueba sobre el estado RESULTANTE (lo que trae el patch, heredando lo
+ *  que no trae), no sólo sobre lo que el patch toca explícitamente — si no,
+ *  un "Save DM" con textarea en blanco sobre un DM YA encendido (el patch ni
+ *  siquiera menciona `aiCommentDmEnabled`) se colaba y dejaba
+ *  `ai_comment_dm_enabled=true` + `ai_comment_dm_text=null`. */
 export interface SocialCommentSettingsCurrent {
     aiCommentDmText: string | null
+    aiCommentDmEnabled: boolean
 }
 
 export interface SocialCommentSettingsUpdate {
@@ -109,10 +115,30 @@ export function validateSocialCommentSettingsPatch(
         update.ai_comment_dm_text = resolvedDmText
     }
 
-    if (patch.aiCommentDmEnabled !== undefined) {
-        if (patch.aiCommentDmEnabled && (!resolvedDmText || resolvedDmText.trim() === '')) {
-            return { ok: false, error: 'Write the DM text before enabling the private reply' }
+    // El interruptor RESULTANTE: lo que trae el patch, o si el patch no lo
+    // toca, lo que ya estaba guardado — un "Save DM" que sólo manda texto y
+    // botones (el switch ya estaba encendido de antes) hereda `true` acá.
+    const resolvedDmEnabled =
+        patch.aiCommentDmEnabled !== undefined ? patch.aiCommentDmEnabled : current.aiCommentDmEnabled
+    const dmTextIsEmpty = !resolvedDmText || resolvedDmText.trim() === ''
+
+    if (resolvedDmEnabled && dmTextIsEmpty) {
+        // Dos mensajes para el mismo invariante según qué generó el hueco:
+        // encender el switch sin texto (el patch SÍ lo enciende) vs. vaciar
+        // el texto mientras el switch ya estaba encendido de antes (el
+        // patch no lo toca) — apagarlo explícitamente en el mismo patch
+        // (`aiCommentDmEnabled:false`) nunca cae acá, porque entonces
+        // `resolvedDmEnabled` ya es `false`.
+        return {
+            ok: false,
+            error:
+                patch.aiCommentDmEnabled === true
+                    ? 'Write the DM text before enabling the private reply'
+                    : 'Disable the private reply before removing the DM text',
         }
+    }
+
+    if (patch.aiCommentDmEnabled !== undefined) {
         update.ai_comment_dm_enabled = patch.aiCommentDmEnabled
     }
 

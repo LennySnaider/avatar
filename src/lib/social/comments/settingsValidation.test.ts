@@ -2,7 +2,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { validateSocialCommentSettingsPatch } from './settingsValidation.ts'
 
-const NO_DM_TEXT = { aiCommentDmText: null }
+const NO_DM_TEXT = { aiCommentDmText: null, aiCommentDmEnabled: false }
 
 test('patch válido: enciende respuestas, cambia el modo y guarda un botón', () => {
     const res = validateSocialCommentSettingsPatch(
@@ -89,7 +89,7 @@ test('encender el DM sin texto (ni en el patch ni ya guardado) se rechaza', () =
 test('encender el DM con texto ya guardado (no en este patch) se acepta', () => {
     const res = validateSocialCommentSettingsPatch(
         { aiCommentDmEnabled: true },
-        { aiCommentDmText: 'Gracias por comentar' },
+        { aiCommentDmText: 'Gracias por comentar', aiCommentDmEnabled: false },
     )
     assert.equal(res.ok, true)
     if (!res.ok) return
@@ -97,7 +97,10 @@ test('encender el DM con texto ya guardado (no en este patch) se acepta', () => 
 })
 
 test('encender el DM con texto sólo espacios ya guardado también se rechaza', () => {
-    const res = validateSocialCommentSettingsPatch({ aiCommentDmEnabled: true }, { aiCommentDmText: '   ' })
+    const res = validateSocialCommentSettingsPatch(
+        { aiCommentDmEnabled: true },
+        { aiCommentDmText: '   ', aiCommentDmEnabled: false },
+    )
     assert.deepEqual(res, {
         ok: false,
         error: 'Write the DM text before enabling the private reply',
@@ -139,10 +142,10 @@ test('el texto se recorta y el string vacío se guarda como null', () => {
     assert.deepEqual(res2.update, { ai_comment_dm_text: 'Hola' })
 })
 
-test('poner el texto en null explícito se guarda como null', () => {
+test('poner el texto en null explícito se guarda como null (DM ya apagado)', () => {
     const res = validateSocialCommentSettingsPatch(
         { aiCommentDmText: null },
-        { aiCommentDmText: 'texto viejo' },
+        { aiCommentDmText: 'texto viejo', aiCommentDmEnabled: false },
     )
     assert.equal(res.ok, true)
     if (!res.ok) return
@@ -162,4 +165,42 @@ test('los botones se recortan (trim) antes de guardarse', () => {
     assert.equal(res.ok, true)
     if (!res.ok) return
     assert.deepEqual(res.update.ai_comment_dm_buttons, [{ title: 'Chat', url: 'https://t.me/x' }])
+})
+
+// --- Ronda 2 de revisión: el DM ya encendido (de antes) + "Save DM" con la
+// textarea en blanco dejaba `ai_comment_dm_enabled=true` con
+// `ai_comment_dm_text=null` porque el patch de "Save DM" nunca toca
+// `aiCommentDmEnabled` — el invariante sólo se chequeaba cuando el switch
+// SÍ venía en el patch. Ahora se calcula sobre el estado RESULTANTE
+// (heredando lo guardado cuando el patch no lo toca).
+
+test('DM ya encendido + "Save DM" con texto en blanco (el patch no toca el switch) se rechaza', () => {
+    const res = validateSocialCommentSettingsPatch(
+        { aiCommentDmText: '', aiCommentDmButtons: [] },
+        { aiCommentDmText: 'Gracias por comentar', aiCommentDmEnabled: true },
+    )
+    assert.deepEqual(res, {
+        ok: false,
+        error: 'Disable the private reply before removing the DM text',
+    })
+})
+
+test('DM ya encendido + apagarlo Y vaciar el texto en el MISMO patch se acepta', () => {
+    const res = validateSocialCommentSettingsPatch(
+        { aiCommentDmEnabled: false, aiCommentDmText: '' },
+        { aiCommentDmText: 'Gracias por comentar', aiCommentDmEnabled: true },
+    )
+    assert.equal(res.ok, true)
+    if (!res.ok) return
+    assert.deepEqual(res.update, { ai_comment_dm_enabled: false, ai_comment_dm_text: null })
+})
+
+test('DM ya apagado + texto en blanco se acepta (no hay nada encendido que exija texto)', () => {
+    const res = validateSocialCommentSettingsPatch(
+        { aiCommentDmText: '' },
+        { aiCommentDmText: null, aiCommentDmEnabled: false },
+    )
+    assert.equal(res.ok, true)
+    if (!res.ok) return
+    assert.deepEqual(res.update, { ai_comment_dm_text: null })
 })
