@@ -495,6 +495,13 @@ export async function updateSocialCommentSettings(
         if (error) throw new Error(error.message)
         return { success: true, data: toSummary(data as SocialProfileDbRow) }
     } catch (e) {
+        // fail(e) no loguea (patrón conocido de este archivo) — acá sí, para
+        // no sumar otro catch mudo (regla de global-constraints.md).
+        console.error(
+            '[SocialService.updateSocialCommentSettings]',
+            { avatarId },
+            e instanceof Error ? e.message : e,
+        )
         return fail(e)
     }
 }
