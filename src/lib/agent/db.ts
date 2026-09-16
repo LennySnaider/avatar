@@ -281,11 +281,43 @@ interface SocialProfilesTable {
     Relationships: []
 }
 
+/**
+ * Vista mínima de `social_comment_dms` (el tipo completo vive en
+ * `database.generated.ts`). Un DM por (avatar, post, comentarista) —
+ * `comment_id` es UNIQUE en la BD como cinturón adicional.
+ */
+interface SocialCommentDmsTable {
+    Row: {
+        id: string
+        organization_id: string
+        avatar_id: string
+        platform: string
+        platform_post_id: string
+        comment_id: string
+        commenter_id: string | null
+        status: string
+        error: string | null
+        sent_at: string | null
+        created_at: string
+    }
+    Insert: Partial<SocialCommentDmsTable['Row']> & {
+        organization_id: string
+        avatar_id: string
+        platform: string
+        platform_post_id: string
+        comment_id: string
+        status: string
+    }
+    Update: Partial<SocialCommentDmsTable['Row']>
+    Relationships: []
+}
+
 export type AgentChatRow = AgentChatsTable['Row']
 export type AgentMessageRow = AgentMessagesTable['Row']
 export type AvatarFanMemoryRow = AvatarFanMemoriesTable['Row']
 export type TelegramPaidMediaItemRow = TelegramPaidMediaItemsTable['Row']
 export type SocialProfileRow = SocialProfilesTable['Row']
+export type SocialCommentDmRow = SocialCommentDmsTable['Row']
 
 export type AgentDatabase = BaseDatabase & {
     public: BaseDatabase['public'] & {
@@ -300,6 +332,7 @@ export type AgentDatabase = BaseDatabase & {
             avatar_fan_memories: AvatarFanMemoriesTable
             telegram_paid_media_items: TelegramPaidMediaItemsTable
             social_profiles: SocialProfilesTable
+            social_comment_dms: SocialCommentDmsTable
         }
         Functions: {
             match_avatar_knowledge: {

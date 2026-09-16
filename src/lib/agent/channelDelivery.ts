@@ -31,6 +31,7 @@ import { sendMessage as telegramSendMessage } from '@/lib/telegram/client'
 import { platformFromChat } from '@/lib/social/comments/ids'
 import { resolveProfileKey } from '@/lib/social/profileKey'
 import { getSocialProvider } from '@/lib/social/provider'
+import { maybeSendCommentDm } from '@/lib/social/comments/privateReply'
 import type { Platform } from '@/@types/social'
 
 export interface DeliverableChat {
@@ -96,8 +97,9 @@ async function deliverViaTelegram(chat: DeliverableChat, text: string): Promise<
  * `chat.context`, el `post_id` (TikTok lo exige incluso al responder —
  * inofensivo para el resto de redes).
  *
- * El DM privado de Instagram tras la respuesta pública se añade aparte
- * (`maybeSendCommentDm`, best-effort, su propio try/catch).
+ * Tras el envío público, intenta el DM privado de Instagram
+ * (`maybeSendCommentDm`) dentro de SU PROPIO try/catch: un fallo ahí sólo se
+ * loguea — la respuesta pública ya salió y no se vuelve atrás por eso.
  */
 async function deliverViaSocialComment(chat: DeliverableChat, text: string): Promise<DeliveryResult> {
     const supabase = agentSupabase()
@@ -146,6 +148,32 @@ async function deliverViaSocialComment(chat: DeliverableChat, text: string): Pro
         commentId,
         postId,
     })
+
+    try {
+        const outcome = await maybeSendCommentDm({
+            chat,
+            profileRow: profile,
+            provider,
+            commentId,
+            commentTimestamp: lastInbound?.external_created_at ?? null,
+        })
+        if (outcome === 'failed') {
+            console.error('[social] DM privado quedó `failed` (ver fila en social_comment_dms)', {
+                avatarId: chat.avatar_id,
+                chatId: chat.id,
+                commentId,
+            })
+        }
+    } catch (e) {
+        // `maybeSendCommentDm` ya captura sus propios fallos de proveedor/BD
+        // y nunca debería llegar hasta aquí — este catch es el cinturón: pase
+        // lo que pase, la respuesta pública que YA salió no se marca fallida.
+        console.error(
+            '[social] DM privado: fallo inesperado no capturado por privateReply.ts',
+            { avatarId: chat.avatar_id, chatId: chat.id, commentId },
+            e,
+        )
+    }
 
     return { externalMessageId: res.id }
 }

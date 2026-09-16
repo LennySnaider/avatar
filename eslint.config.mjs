@@ -123,6 +123,15 @@ const eslintConfig = [
       "src/lib/agent/indexer.ts",
       // Sólo usa el RPC match_avatar_knowledge; orgTable no pre-scopea RPCs.
       "src/lib/agent/retrieval.ts",
+      // F4.2 Tarea 4 (comentarios-ia-social) — maybeSendCommentDm, mismo
+      // perfil que el resto de esta lista: lo llama `channelDelivery.ts` sin
+      // sesión (webhook/cron), y el `chat` que recibe ya llegó resuelto y
+      // acotado por `organization_id` desde `sendAgentMessage`. Está fuera de
+      // `src/lib/agent/` (vive junto a `dmEligibility.ts`/`ids.ts`, el resto
+      // de comentarios-ia-social) así que no cae en el import RELATIVO
+      // `./db` que usa `channelDelivery.ts` para esquivar esta regla sin
+      // proponérselo — aquí el import es `@/lib/agent/db` explícito.
+      "src/lib/social/comments/privateReply.ts",
     ],
     rules: {
       "@typescript-eslint/no-restricted-imports": [
