@@ -58,6 +58,12 @@ export interface ShouldStopPagingInput {
     page: number
     /** `hasNext` de la página que se acaba de procesar. */
     hasNext: boolean
+    /** true si la página trajo un `nextCursor` utilizable. `hasNext:true`
+     *  con esto en `false` es una página que DICE que hay más pero no da
+     *  con qué pedirlas — sin esto, el llamador reintentaría la MISMA
+     *  página (sin `after`) en vez de parar, contando los mismos
+     *  comentarios dos veces. */
+    hasCursor: boolean
     /** true si esa página trajo al menos un comentario que ya teníamos
      *  ingerido (`ingestMessage(...).inserted === false`). */
     sawKnown: boolean
@@ -66,14 +72,16 @@ export interface ShouldStopPagingInput {
 const MAX_PAGES = 3
 
 /**
- * ¿Hay que dejar de paginar este target? Tres motivos, cualquiera basta:
- * no hay más páginas, la página trajo un comentario ya conocido (llegamos
- * al punto donde el sondeo anterior se quedó), o se llegó al tope de 3
- * páginas por target (cap duro, X puede devolver páginas vacías con
- * `has_next:true` para siempre).
+ * ¿Hay que dejar de paginar este target? Cuatro motivos, cualquiera basta:
+ * no hay más páginas, hay más páginas pero sin cursor real con el que
+ * pedirlas, la página trajo un comentario ya conocido (llegamos al punto
+ * donde el sondeo anterior se quedó), o se llegó al tope de 3 páginas por
+ * target (cap duro, X puede devolver páginas vacías con `has_next:true`
+ * para siempre).
  */
 export function shouldStopPaging(input: ShouldStopPagingInput): boolean {
     if (!input.hasNext) return true
+    if (!input.hasCursor) return true
     if (input.sawKnown) return true
     if (input.page >= MAX_PAGES) return true
     return false

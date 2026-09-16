@@ -116,6 +116,11 @@ async function pollOneTarget(
             limit: PAGE_LIMIT,
             after,
         })
+        // Se cuenta el target como "procesado" recién aquí — se llegó a
+        // pedir (y recibir respuesta de) su primera página. Si el rate
+        // limit corta ANTES de este punto (arriba), o la propia petición
+        // lanza, el target nunca llega a esta línea y no se cuenta.
+        if (page === 1) result.targets++
 
         for (const comment of commentsPage.comments) {
             result.comments++
@@ -169,12 +174,9 @@ async function pollOneTarget(
             result.newComments++
             await touchFanMemory(resolvedTarget, commenterId, comment.authorUsername, target.platform)
 
-            // `aiRepliesEnabled: true` literal: `listPollableProfiles` ya
-            // filtró por `ai_comment_replies_enabled=true` antes de llegar
-            // aquí — este perfil no estaría en el sondeo si no lo tuviera.
             if (
                 shouldDraftCommentReply({
-                    aiRepliesEnabled: true,
+                    aiRepliesEnabled: settings.aiRepliesEnabled,
                     inserted,
                     isOwnComment: false,
                     chatMode: chat.mode,
@@ -198,7 +200,15 @@ async function pollOneTarget(
             }
         }
 
-        if (shouldStopPaging({ page, hasNext: commentsPage.hasNext, sawKnown })) break
+        if (
+            shouldStopPaging({
+                page,
+                hasNext: commentsPage.hasNext,
+                hasCursor: Boolean(commentsPage.nextCursor),
+                sawKnown,
+            })
+        )
+            break
         after = commentsPage.nextCursor ?? undefined
     }
 
@@ -230,13 +240,12 @@ export async function pollProfileComments(profileRow: SocialProfileRow): Promise
         return result
     }
 
-    const targets = await listPollableTargets(profileRow.id, SINCE_DAYS, TARGET_CAP)
+    const targets = await listPollableTargets(profileRow.id, profileRow.organization_id, SINCE_DAYS, TARGET_CAP)
     const reauthPlatforms = new Set<string>()
 
     for (const target of targets) {
         if (reauthPlatforms.has(target.platform)) continue
 
-        result.targets++
         try {
             const outcome = await pollOneTarget(target, { resolvedTarget, settings, provider, result })
             if (outcome === 'rate_limited') {

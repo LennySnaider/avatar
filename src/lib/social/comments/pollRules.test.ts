@@ -55,20 +55,26 @@ test('pickCommenterId: null cuando no hay ninguno', () => {
 })
 
 test('shouldStopPaging: para cuando hasNext es false', () => {
-    assert.equal(shouldStopPaging({ page: 1, hasNext: false, sawKnown: false }), true)
+    assert.equal(shouldStopPaging({ page: 1, hasNext: false, hasCursor: false, sawKnown: false }), true)
+})
+
+test('shouldStopPaging: para cuando hasNext es true pero no hay cursor con el que pedir la siguiente página', () => {
+    // X puede devolver has_next:true sin next_cursor — pedir de nuevo sin
+    // `after` repetiría la MISMA página (doble conteo), así que para.
+    assert.equal(shouldStopPaging({ page: 1, hasNext: true, hasCursor: false, sawKnown: false }), true)
 })
 
 test('shouldStopPaging: para cuando la página trajo un comentario ya conocido', () => {
-    assert.equal(shouldStopPaging({ page: 1, hasNext: true, sawKnown: true }), true)
+    assert.equal(shouldStopPaging({ page: 1, hasNext: true, hasCursor: true, sawKnown: true }), true)
 })
 
 test('shouldStopPaging: para al llegar a la página 3 aunque haya más', () => {
-    assert.equal(shouldStopPaging({ page: 3, hasNext: true, sawKnown: false }), true)
+    assert.equal(shouldStopPaging({ page: 3, hasNext: true, hasCursor: true, sawKnown: false }), true)
 })
 
-test('shouldStopPaging: sigue paginando antes de la página 3 con hasNext y sin comentario conocido', () => {
-    assert.equal(shouldStopPaging({ page: 1, hasNext: true, sawKnown: false }), false)
-    assert.equal(shouldStopPaging({ page: 2, hasNext: true, sawKnown: false }), false)
+test('shouldStopPaging: sigue paginando antes de la página 3 con hasNext+cursor y sin comentario conocido', () => {
+    assert.equal(shouldStopPaging({ page: 1, hasNext: true, hasCursor: true, sawKnown: false }), false)
+    assert.equal(shouldStopPaging({ page: 2, hasNext: true, hasCursor: true, sawKnown: false }), false)
 })
 
 test('rateLimitLow: true cuando remaining < 5', () => {

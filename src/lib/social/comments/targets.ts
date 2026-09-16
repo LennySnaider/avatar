@@ -5,21 +5,36 @@
  * (`social_posts`/`social_profiles`), nunca de un id suelto.
  *
  * Fichero con IO — no se testea unitariamente (regla de
- * `global-constraints.md`: "Delivery/DB/cron code is not unit-tested"). El
- * import de `agentSupabase` es estático a propósito, a diferencia de
- * `settings.ts`: ningún test intenta importar este fichero.
+ * `global-constraints.md`: "pure files get tests, no mocks of Supabase" — lo
+ * que le falta a este fichero es justo eso, ser puro). El import de
+ * `agentSupabase` es estático a propósito, a diferencia de `settings.ts`:
+ * ningún test intenta importar este fichero.
  *
  * @see docs/superpowers/specs — task-5-brief.md / global-constraints.md (comentarios-ia-social)
  */
 import { agentSupabase, type SocialProfileRow } from '@/lib/agent/db'
 import { getSocialProvider } from '@/lib/social/provider'
 import { resolveProfileKey } from '@/lib/social/profileKey'
+import { UploadPostProviderError } from '@/lib/social/providers/UploadPostProvider'
+import { rateLimitLow } from './pollRules'
 
 const DAY_MS = 24 * 60 * 60 * 1000
-/** Tope de posts publicados considerados por corrida — un perfil con miles
- *  de posts publicados no debe convertir un sondeo de 15 minutos en un
- *  barrido sin fin; el resto se recoge en la corrida siguiente. */
+/**
+ * Tope de posts a los que de verdad hay que llamarles `listHistory` por
+ * corrida — se aplica DESPUÉS de descartar los que ya tienen target para
+ * todas sus plataformas (ver `postsNeedingSync` abajo), no sobre el total de
+ * posts publicados en la ventana. Aplicarlo antes (como en la primera
+ * versión de este fichero) dejaba los posts incompletos MÁS VIEJOS fuera del
+ * slice para siempre en un perfil con más de este número de posts publicados
+ * en 7 días: el corte era estable entre corridas y nunca les llegaba el
+ * turno.
+ */
 const POSTS_PER_RUN_CAP = 50
+/** Techo de seguridad sobre cuántos posts publicados se leen ANTES de saber
+ *  cuáles necesitan sincronizarse — no es el tope real (ese es
+ *  `POSTS_PER_RUN_CAP`, aplicado después de filtrar). Sólo actúa si un
+ *  perfil publica más de 500 veces en 7 días, lo cual no pasa hoy. */
+const CANDIDATE_POSTS_CAP = 500
 
 /** Narrow `social_posts.platforms` (jsonb, guardado como `Platform[]` — ver
  *  `social-reconcile/route.ts`) a un `Set<string>` para comparar. */
@@ -33,6 +48,11 @@ export interface SyncPostTargetsResult {
     synced: number
     /** Entradas del history con `success=false` (publicó bien en una red, falló en otra). */
     failedEntries: number
+    /** true si un 401 `*_reauth_required` cortó el resto de la sincronización
+     *  de este perfil en esta corrida (todas las plataformas comparten el
+     *  mismo `listHistory`, a diferencia del sondeo de comentarios — no hay
+     *  una plataforma concreta a la que atribuírselo). */
+    reauth: boolean
 }
 
 /**
@@ -48,11 +68,11 @@ export interface SyncPostTargetsResult {
  * guardar.
  */
 export async function syncPostTargets(profileRow: SocialProfileRow, sinceDays = 7): Promise<SyncPostTargetsResult> {
-    const result: SyncPostTargetsResult = { synced: 0, failedEntries: 0 }
+    const result: SyncPostTargetsResult = { synced: 0, failedEntries: 0, reauth: false }
     const supabase = agentSupabase()
     const sinceIso = new Date(Date.now() - sinceDays * DAY_MS).toISOString()
 
-    const { data: posts, error: postsError } = await supabase
+    const { data: candidatePosts, error: postsError } = await supabase
         .from('social_posts')
         .select('id, organization_id, platforms, published_at, upload_post_request_id, caption')
         .eq('social_profile_id', profileRow.id)
@@ -60,7 +80,8 @@ export async function syncPostTargets(profileRow: SocialProfileRow, sinceDays = 
         .eq('status', 'published')
         .not('upload_post_request_id', 'is', null)
         .gte('published_at', sinceIso)
-        .limit(POSTS_PER_RUN_CAP)
+        .order('published_at', { ascending: false })
+        .limit(CANDIDATE_POSTS_CAP)
     if (postsError) {
         console.error(
             '[social-comments] no se pudieron listar los posts publicados para sincronizar targets',
@@ -69,13 +90,14 @@ export async function syncPostTargets(profileRow: SocialProfileRow, sinceDays = 
         )
         return result
     }
-    if (!posts || posts.length === 0) return result
+    if (!candidatePosts || candidatePosts.length === 0) return result
 
-    const postIds = posts.map((p) => p.id)
+    const candidateIds = candidatePosts.map((p) => p.id)
     const { data: existingTargets, error: targetsError } = await supabase
         .from('social_post_targets')
         .select('social_post_id, platform')
-        .in('social_post_id', postIds)
+        .eq('organization_id', profileRow.organization_id)
+        .in('social_post_id', candidateIds)
     if (targetsError) {
         console.error(
             '[social-comments] no se pudieron leer los targets existentes',
@@ -91,6 +113,17 @@ export async function syncPostTargets(profileRow: SocialProfileRow, sinceDays = 
         existingByPost.set(t.social_post_id, set)
     }
 
+    // Sólo los posts a los que de verdad les falta algo, más recientes
+    // primero (candidatePosts ya viene ordenado) — el tope real se aplica
+    // AQUÍ, sobre lo que hace falta trabajar, no sobre el total publicado.
+    const postsNeedingSync = candidatePosts.filter((post) => {
+        const requestedPlatforms = toPlatformSet(post.platforms)
+        const known = existingByPost.get(post.id) ?? new Set<string>()
+        return requestedPlatforms.size === 0 || [...requestedPlatforms].some((p) => !known.has(p))
+    })
+    if (postsNeedingSync.length === 0) return result
+    const postsToSync = postsNeedingSync.slice(0, POSTS_PER_RUN_CAP)
+
     let provider
     try {
         provider = getSocialProvider(resolveProfileKey(profileRow))
@@ -99,13 +132,16 @@ export async function syncPostTargets(profileRow: SocialProfileRow, sinceDays = 
         return result
     }
 
-    for (const post of posts) {
-        const requestedPlatforms = toPlatformSet(post.platforms)
-        const known = existingByPost.get(post.id) ?? new Set<string>()
-        // Ya tiene target para TODAS sus plataformas pedidas — nada que sincronizar.
-        const missing = [...requestedPlatforms].some((p) => !known.has(p))
-        if (requestedPlatforms.size > 0 && !missing) continue
+    for (const post of postsToSync) {
         if (!post.upload_post_request_id) continue // ya filtrado en el SELECT, cinturón para el tipo
+
+        if (rateLimitLow(provider.getLastRateLimit())) {
+            console.warn('[social-comments] rate limit bajo, se corta la sincronización de targets de este perfil', {
+                profileId: profileRow.id,
+                remaining: provider.getLastRateLimit()?.remaining,
+            })
+            break
+        }
 
         try {
             const entries = await provider.listHistory({
@@ -146,6 +182,18 @@ export async function syncPostTargets(profileRow: SocialProfileRow, sinceDays = 
                 result.synced++
             }
         } catch (e) {
+            if (e instanceof UploadPostProviderError && e.isReauthRequired) {
+                // Un 401 reauth de listHistory no es "esta plataforma" (a
+                // diferencia de listComments): el history de un post cubre
+                // TODAS sus plataformas en una sola llamada, así que no hay
+                // una plataforma concreta a la que atribuírselo — se corta
+                // la sincronización del PERFIL entero en esta corrida.
+                console.warn('[social-comments] reauth requerido, se corta la sincronización de targets de este perfil', {
+                    profileId: profileRow.id,
+                })
+                result.reauth = true
+                break
+            }
             console.warn(
                 '[social-comments] listHistory falló para un post, se salta (el resto sigue)',
                 { profileId: profileRow.id, socialPostId: post.id, requestId: post.upload_post_request_id },
@@ -180,8 +228,20 @@ const TARGET_CAP = 20
  * (tope de 20 targets por perfil por corrida, del diseño). Dos consultas en
  * vez de un join embebido: `supabase-js` no tiene un patrón establecido en
  * este repo para filtrar por una columna de la tabla relacionada.
+ *
+ * La primera consulta (posts publicados) va ordenada por `published_at desc`
+ * y acotada a 200 — un techo de seguridad, no el tope real (ese es `cap`,
+ * sobre los targets ya ordenados por `last_comments_poll_at`): si un perfil
+ * tuviera más de 200 posts publicados en la ventana, los de targets más
+ * antiguos podrían quedar fuera de este lote, pero la SIGUIENTE corrida los
+ * recoge igual (el orden es determinista, no una porción arbitraria).
  */
-export async function listPollableTargets(profileId: string, sinceDays = 7, cap = TARGET_CAP): Promise<PollableTarget[]> {
+export async function listPollableTargets(
+    profileId: string,
+    organizationId: string,
+    sinceDays = 7,
+    cap = TARGET_CAP,
+): Promise<PollableTarget[]> {
     const supabase = agentSupabase()
     const sinceIso = new Date(Date.now() - sinceDays * DAY_MS).toISOString()
 
@@ -189,8 +249,10 @@ export async function listPollableTargets(profileId: string, sinceDays = 7, cap 
         .from('social_posts')
         .select('id, caption')
         .eq('social_profile_id', profileId)
+        .eq('organization_id', organizationId)
         .eq('status', 'published')
         .gte('published_at', sinceIso)
+        .order('published_at', { ascending: false })
         .limit(200)
     if (postsError) {
         console.error('[social-comments] no se pudieron listar los posts publicados del perfil', { profileId }, postsError)
@@ -203,6 +265,7 @@ export async function listPollableTargets(profileId: string, sinceDays = 7, cap 
     const { data: targets, error: targetsError } = await supabase
         .from('social_post_targets')
         .select('*')
+        .eq('organization_id', organizationId)
         .in('social_post_id', postIds)
         .order('last_comments_poll_at', { ascending: true, nullsFirst: true })
         .limit(cap)

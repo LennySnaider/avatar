@@ -33,6 +33,10 @@ export async function GET(request: NextRequest) {
     const profiles = await listPollableProfiles()
 
     let synced = 0
+    /** Entradas del history con `success=false` de `syncPostTargets`
+     *  (publicó bien en una red, falló en otra) — visibilidad operativa,
+     *  distinto de `errors` (que son fallos de ESTE sondeo, no del post). */
+    let historyFailed = 0
     let targets = 0
     let comments = 0
     let newComments = 0
@@ -46,6 +50,14 @@ export async function GET(request: NextRequest) {
         try {
             const syncResult = await syncPostTargets(row)
             synced += syncResult.synced
+            historyFailed += syncResult.failedEntries
+            if (syncResult.reauth) {
+                // `listHistory` no es por plataforma (una llamada cubre
+                // todas las del post) — se marca con 'history' en vez de
+                // una plataforma concreta, a diferencia de lo que reporta
+                // pollProfileComments más abajo.
+                reauthRequired.push({ profile: settings.uploadPostUsername, platform: 'history' })
+            }
         } catch (e) {
             errors++
             console.warn('[social-comments-poll] syncPostTargets falló para un perfil, se salta (el resto sigue)', {
@@ -76,6 +88,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({
         profiles: profiles.length,
         synced,
+        historyFailed,
         targets,
         comments,
         newComments,
