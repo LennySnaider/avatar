@@ -567,10 +567,15 @@ export async function approveAndSendVoiceNote(
         if (!chatRow) return { success: false, error: 'Chat not found' }
         const chat = chatRow as AgentChatRow
         // Sólo-Fanvue: la entrega es un audio subido a Fanvue, que en un chat
-        // de Telegram no existe. El corte va ANTES de sintetizar: sin él, el
-        // texto se mandaba a MiniMax y se pagaba el TTS para después fallar al
-        // entregar. Se quemaba saldo real por un botón que no podía funcionar.
-        if (resolveDeliveryChannel(chat.platform) === 'telegram') {
+        // de Telegram o de comentarios sociales no existe. El corte va ANTES
+        // de sintetizar: sin él, el texto se mandaba a MiniMax y se pagaba el
+        // TTS para después fallar al entregar. Se quemaba saldo real por un
+        // botón que no podía funcionar. F4.2 Tarea 4 — el guard era
+        // `=== 'telegram'`: un chat `social:*` no es 'telegram' y colaba de
+        // largo hasta `makeFanvueClient` más abajo (sin dueño ni conexión
+        // Fanvue reales, así que fallaba, pero tarde y con un TTS ya pagado).
+        // `!== 'fanvue'` es la forma correcta de decir "sólo Fanvue".
+        if (resolveDeliveryChannel(chat.platform) !== 'fanvue') {
             return { success: false, error: 'Esta acción es sólo para Fanvue.' }
         }
 
@@ -720,10 +725,13 @@ export async function suggestPpvOffer(
         const chat = chatRow as AgentChatRow
         // Sólo-Fanvue: el PPV es el mecanismo de pago de Fanvue (precio en
         // centavos sobre media subida allí); en Telegram se cobra con Stars y
-        // por otro camino. El corte va ANTES de la búsqueda en el índice y de
-        // la llamada al modelo, que se gastaban en preparar una oferta que
-        // este chat nunca habría podido enviar.
-        if (resolveDeliveryChannel(chat.platform) === 'telegram') {
+        // en un chat de comentarios sociales no hay PPV. El corte va ANTES de
+        // la búsqueda en el índice y de la llamada al modelo, que se gastaban
+        // en preparar una oferta que este chat nunca habría podido enviar.
+        // F4.2 Tarea 4 — `!== 'fanvue'` (no sólo `=== 'telegram'`) para que
+        // `social:*` también quede fuera: ver el mismo fix en
+        // `approveAndSendVoiceNote`.
+        if (resolveDeliveryChannel(chat.platform) !== 'fanvue') {
             return { success: false, error: 'Esta acción es sólo para Fanvue.' }
         }
 
@@ -854,9 +862,11 @@ export async function sendPpvOffer(input: {
         if (!chatRow) return { success: false, error: 'Chat not found' }
         const chat = chatRow as AgentChatRow
         // Sólo-Fanvue: esto sube media a Fanvue y le pone precio en centavos.
-        // En un chat de Telegram no hay dónde entregarlo —el pago va por
-        // Stars— así que se corta antes de subir nada.
-        if (resolveDeliveryChannel(chat.platform) === 'telegram') {
+        // En un chat de Telegram o de comentarios sociales no hay dónde
+        // entregarlo —el pago va por Stars, o no existe— así que se corta
+        // antes de subir nada. F4.2 Tarea 4 — `!== 'fanvue'`, mismo fix que
+        // en `approveAndSendVoiceNote` / `suggestPpvOffer`.
+        if (resolveDeliveryChannel(chat.platform) !== 'fanvue') {
             return { success: false, error: 'Esta acción es sólo para Fanvue.' }
         }
         if (input.priceCents < 300)

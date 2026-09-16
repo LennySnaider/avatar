@@ -160,6 +160,13 @@ export async function upsertChat(input: {
      *  elegido por el usuario nunca se pisa (ver más abajo). Default 'draft'
      *  = comportamiento histórico de Fanvue, que no pasa este campo. */
     defaultMode?: AgentChatMode
+    /** F4.2 Tarea 4 (comentarios-ia-social) — `{ socialPostTargetId,
+     *  platformPostId, postUrl, caption }` de un chat `social:*`. `undefined`
+     *  = "no lo toques" (Fanvue/Telegram no lo pasan, así que su
+     *  comportamiento no cambia); se guarda al CREAR y, al actualizar, se
+     *  refresca SÓLO si viene explícito — un `caption` puede cambiar tras
+     *  publicar y el llamador de Tarea 5 lo repasa en cada poll. */
+    context?: Record<string, unknown> | null
 }): Promise<AgentChatRow> {
     const platform = input.platform ?? 'fanvue'
     const supabase = agentSupabase()
@@ -181,6 +188,7 @@ export async function upsertChat(input: {
         if (input.lastFanMessageAt) patch.last_fan_message_at = input.lastFanMessageAt
         // Keep the creator flag fresh, but NEVER override a mode the user set.
         if (input.isCreator !== undefined) patch.is_creator = input.isCreator
+        if (input.context !== undefined) patch.context = input.context
         const { data } = await supabase
             .from('agent_chats')
             .update(patch)
@@ -206,6 +214,7 @@ export async function upsertChat(input: {
             mode: input.isCreator ? 'off' : (input.defaultMode ?? 'draft'),
             last_message_at: input.lastMessageAt ?? null,
             last_fan_message_at: input.lastFanMessageAt ?? null,
+            context: (input.context ?? null) as never,
         })
         .select('*')
         .single()

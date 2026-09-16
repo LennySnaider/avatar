@@ -148,6 +148,11 @@ interface AgentChatsTable {
         last_message_at: string | null
         last_fan_message_at: string | null
         unread_count: number
+        /** F4.2 Tarea 4 — sólo lo usan chats `social:*`:
+         *  `{ socialPostTargetId, platformPostId, postUrl, caption }` (ver
+         *  `src/lib/social/comments/ids.ts`). Fanvue/Telegram nunca lo
+         *  escriben ni lo leen — siempre `null` para ellos. */
+        context: Json | null
         created_at: string
         updated_at: string
     }
@@ -248,10 +253,39 @@ interface TelegramPaidMediaItemsTable {
     Relationships: []
 }
 
+/**
+ * Vista mínima de `social_profiles` (el tipo completo vive en
+ * `database.generated.ts`). Sólo las columnas que necesita el módulo agente
+ * para entregar una respuesta pública y el DM privado (Tarea 4): la cuenta de
+ * Upload-Post del avatar y los ajustes `ai_comment_*` de la red del post.
+ */
+interface SocialProfilesTable {
+    Row: {
+        id: string
+        organization_id: string
+        avatar_id: string | null
+        status: string
+        api_key: string | null
+        upload_post_username: string
+        ai_comment_replies_enabled: boolean
+        ai_comment_default_chat_mode: string
+        ai_comment_dm_enabled: boolean
+        ai_comment_dm_text: string | null
+        ai_comment_dm_buttons: Json
+    }
+    Insert: Partial<SocialProfilesTable['Row']> & {
+        organization_id: string
+        upload_post_username: string
+    }
+    Update: Partial<SocialProfilesTable['Row']>
+    Relationships: []
+}
+
 export type AgentChatRow = AgentChatsTable['Row']
 export type AgentMessageRow = AgentMessagesTable['Row']
 export type AvatarFanMemoryRow = AvatarFanMemoriesTable['Row']
 export type TelegramPaidMediaItemRow = TelegramPaidMediaItemsTable['Row']
+export type SocialProfileRow = SocialProfilesTable['Row']
 
 export type AgentDatabase = BaseDatabase & {
     public: BaseDatabase['public'] & {
@@ -265,6 +299,7 @@ export type AgentDatabase = BaseDatabase & {
             agent_messages: AgentMessagesTable
             avatar_fan_memories: AvatarFanMemoriesTable
             telegram_paid_media_items: TelegramPaidMediaItemsTable
+            social_profiles: SocialProfilesTable
         }
         Functions: {
             match_avatar_knowledge: {

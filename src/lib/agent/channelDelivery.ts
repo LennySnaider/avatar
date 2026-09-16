@@ -6,6 +6,13 @@
  * decide por dónde sale el mensaje. La rama de Fanvue es el bloque original
  * movido tal cual: mismo cliente, mismas llamadas, mismo resultado.
  *
+ * F4.2 Tarea 4 (comentarios-ia-social) — `deliverAgentText` despacha con un
+ * `switch` EXHAUSTIVO (guarda `never`) en vez del `if/else` de dos ramas de
+ * antes: ese `if/else` mandaba CUALQUIER cosa que no fuera Telegram por
+ * Fanvue, y un chat `social:*` es justamente "cualquier cosa que no sea
+ * Telegram" — se habría entregado en el chat privado de Fanvue de otra
+ * persona. La revisión de la Tarea 3 lo marcó; se cierra aquí.
+ *
  * F4.2 Tarea 4 — EXENTO de `orgTable` por el mismo motivo que
  * `sendMessage.ts`: lo llama el flush de autopilot desde el cron, sin
  * sesión. `chat` llega ya resuelto y acotado por `organization_id` desde
@@ -21,6 +28,10 @@ import { resolveDeliveryChannel } from './channelRouting'
 import { loadConnection } from '@/lib/fanvue/tokenStore'
 import { loadTelegramBotToken, loadTelegramSettings } from '@/lib/telegram/settings'
 import { sendMessage as telegramSendMessage } from '@/lib/telegram/client'
+import { platformFromChat } from '@/lib/social/comments/ids'
+import { resolveProfileKey } from '@/lib/social/profileKey'
+import { getSocialProvider } from '@/lib/social/provider'
+import type { Platform } from '@/@types/social'
 
 export interface DeliverableChat {
     id: string
@@ -28,6 +39,12 @@ export interface DeliverableChat {
     avatar_id: string
     platform: string
     external_chat_id: string
+    /** Contexto del post bajo el que se comenta — sólo lo USAN los chats
+     *  `social:*` (`agent_chats.context`), pero la columna existe (y viaja)
+     *  para cualquier chat: siempre `null` en Fanvue/Telegram. `unknown` a
+     *  propósito: este fichero no impone su forma, `deliverViaSocialComment`
+     *  sí. */
+    context: unknown
 }
 
 export interface DeliveryResult {
@@ -36,8 +53,22 @@ export interface DeliveryResult {
 
 export async function deliverAgentText(chat: DeliverableChat, text: string): Promise<DeliveryResult> {
     const channel = resolveDeliveryChannel(chat.platform)
-    if (channel === 'telegram') return deliverViaTelegram(chat, text)
-    return deliverViaFanvue(chat, text)
+    switch (channel) {
+        case 'telegram':
+            return deliverViaTelegram(chat, text)
+        case 'social_comment':
+            return deliverViaSocialComment(chat, text)
+        case 'fanvue':
+            return deliverViaFanvue(chat, text)
+        default: {
+            // Guarda `never`: si `DeliveryChannel` gana un valor nuevo y este
+            // switch no se actualiza, esto deja de compilar en vez de caer
+            // en silencio a Fanvue — que es justo el bug que la revisión de
+            // la Tarea 3 marcó (un chat `social:*` entregándose por Fanvue).
+            const exhaustive: never = channel
+            throw new Error(`Canal de entrega sin manejar: ${exhaustive}`)
+        }
+    }
 }
 
 async function deliverViaTelegram(chat: DeliverableChat, text: string): Promise<DeliveryResult> {
@@ -56,6 +87,67 @@ async function deliverViaTelegram(chat: DeliverableChat, text: string): Promise<
         text,
     })
     return { externalMessageId: String(sent.message_id) }
+}
+
+/**
+ * Entrega de un chat `social:*`: responde en PÚBLICO al comentario vía
+ * Upload-Post (`comments/create`), usando como `comment_id` el ÚLTIMO
+ * mensaje entrante del chat (Instagram lo exige) y, si el post lo trae en
+ * `chat.context`, el `post_id` (TikTok lo exige incluso al responder —
+ * inofensivo para el resto de redes).
+ *
+ * El DM privado de Instagram tras la respuesta pública se añade aparte
+ * (`maybeSendCommentDm`, best-effort, su propio try/catch).
+ */
+async function deliverViaSocialComment(chat: DeliverableChat, text: string): Promise<DeliveryResult> {
+    const supabase = agentSupabase()
+    const { data: profile } = await supabase
+        .from('social_profiles')
+        .select('*')
+        .eq('avatar_id', chat.avatar_id)
+        .eq('organization_id', chat.organization_id)
+        .maybeSingle()
+    if (!profile || profile.status !== 'active') {
+        throw new Error('Upload-Post account not connected')
+    }
+    const key = resolveProfileKey(profile)
+    const provider = getSocialProvider(key)
+
+    const platform = platformFromChat(chat.platform)
+    if (!platform) throw new Error(`Chat platform is not a social comment channel: ${chat.platform}`)
+
+    // El comentario a responder es el último mensaje entrante RECIBIDO del
+    // chat, no cualquiera: un `draft`/`sent` de nuestro lado no es un
+    // comentario ajeno. `external_created_at desc nulls last, created_at
+    // desc` porque el poll de Tarea 5 puede ingerir comentarios fuera de
+    // orden cronológico (páginas de la API) — `created_at` (cuándo LO
+    // VIMOS nosotros) desempata cuando ese dato falta.
+    const { data: lastInbound } = await supabase
+        .from('agent_messages')
+        .select('external_message_id, external_created_at')
+        .eq('organization_id', chat.organization_id)
+        .eq('chat_id', chat.id)
+        .eq('direction', 'in')
+        .eq('status', 'received')
+        .order('external_created_at', { ascending: false, nullsFirst: false })
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle()
+    const commentId = lastInbound?.external_message_id
+    if (!commentId) throw new Error('No comment to reply to')
+
+    const context = (chat.context ?? {}) as { platformPostId?: string | null }
+    const postId = context.platformPostId || undefined
+
+    const res = await provider.createComment({
+        username: profile.upload_post_username,
+        platform: platform as Platform,
+        message: text,
+        commentId,
+        postId,
+    })
+
+    return { externalMessageId: res.id }
 }
 
 /** Bloque ORIGINAL de `sendAgentMessage` (líneas 47-64 antes de este cambio), sin tocar. */

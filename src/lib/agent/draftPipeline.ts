@@ -11,11 +11,13 @@ import { generateText, type ModelMessage } from 'ai'
 import { GoogleGenAI, Type } from '@google/genai'
 import { agentSupabase, type AvatarPersonaRow } from './db'
 import { getChatModel } from './chatProvider'
-import { buildSystemPrompt } from './promptBuilder'
+import { buildSystemPrompt, type BuildSystemPromptInput } from './promptBuilder'
 import { fanMemoryPlatform } from './fanMemoryPlatform'
+import { promptChannelFor } from './channelRouting'
 import { toPersonaDTO } from './personaMapper'
 import { retrieveKnowledge } from './retrieval'
 import { AGENT_UTILITY_MODEL } from './models'
+import { commenterIdFromChat, platformFromChat } from '@/lib/social/comments/ids'
 import type { RetrievedChunk } from './types'
 
 const HISTORY_LIMIT = 20
@@ -84,21 +86,29 @@ export async function generateDraftReply(chatId: string): Promise<DraftResult | 
     } catch {
         ragChunks = []
     }
+    // `commenterIdFromChat` es identidad para Fanvue/Telegram (su
+    // `external_chat_id` nunca trae ':') y extrae al comentarista para
+    // `social:*` (`'<postId>:<commenterId>'`) — la memoria de un fan social
+    // es POR PERSONA, no por post: el mismo comentarista en dos posts
+    // distintos es el mismo fan.
     const { data: memory } = await supabase
         .from('avatar_fan_memories')
         .select('summary, facts')
         .eq('organization_id', chat.organization_id)
         .eq('avatar_id', chat.avatar_id)
         .eq('platform', fanMemoryPlatform(chat.platform))
-        .eq('external_fan_id', chat.external_chat_id)
+        .eq('external_fan_id', commenterIdFromChat(chat.external_chat_id))
         .maybeSingle()
+
+    const promptChannel = promptChannelFor(chat.platform)
 
     // Catálogo de contenido de pago, SÓLO para Telegram: el prompt le dice a
     // la persona que tiene contenido exclusivo y qué es, para que provoque
-    // interés sin inventar precios. Fanvue no cambia (su PPV va por otro
-    // camino). Filtrado por organización de la fila ya resuelta.
+    // interés sin inventar precios. Fanvue y los comentarios sociales no
+    // cambian (su venta, si la hay, va por otro camino). Filtrado por
+    // organización de la fila ya resuelta.
     let paidCatalog: { title: string; stars: number }[] | undefined
-    if (chat.platform.startsWith('telegram')) {
+    if (promptChannel === 'telegram') {
         const { data: items, error: itemsError } = await supabase
             .from('telegram_paid_media_items')
             .select('title, star_price')
@@ -117,6 +127,19 @@ export async function generateDraftReply(chatId: string): Promise<DraftResult | 
         paidCatalog = (items ?? []).map((i) => ({ title: i.title, stars: i.star_price }))
     }
 
+    // Contexto del post bajo el que se comenta — sólo para `social_comment`.
+    // `chat.context` es `{ socialPostTargetId, platformPostId, postUrl,
+    // caption }` (Tarea 1); aquí sólo interesan caption/postUrl/la red.
+    let postContext: BuildSystemPromptInput['postContext']
+    if (promptChannel === 'social_comment') {
+        const context = (chat.context ?? {}) as { caption?: string | null; postUrl?: string | null }
+        postContext = {
+            platform: platformFromChat(chat.platform) ?? 'social media',
+            caption: context.caption ?? null,
+            postUrl: context.postUrl ?? null,
+        }
+    }
+
     const system = buildSystemPrompt({
         persona,
         avatarName: avatar?.name ?? 'the creator',
@@ -127,8 +150,9 @@ export async function generateDraftReply(chatId: string): Promise<DraftResult | 
                   facts: (memory.facts ?? {}) as Record<string, string>,
               }
             : null,
-        channel: chat.platform.startsWith('telegram') ? 'telegram' : 'fanvue',
+        channel: promptChannel,
         paidCatalog,
+        postContext,
     })
 
     const { text } = await generateText({
@@ -234,13 +258,17 @@ export async function updateFanMemoryFromChat(chatId: string): Promise<void> {
         if (!raw) return
         const parsed = JSON.parse(raw) as { facts?: Record<string, unknown>; summary?: string }
 
+        // Mismo motivo que en `generateDraftReply`: para `social:*` la
+        // memoria es del COMENTARISTA, no del post (`external_chat_id` trae
+        // `'<postId>:<commenterId>'`); para Fanvue/Telegram es identidad.
+        const commenterId = commenterIdFromChat(chat.external_chat_id)
         const { data: existing } = await supabase
             .from('avatar_fan_memories')
             .select('facts')
             .eq('organization_id', chat.organization_id)
             .eq('avatar_id', chat.avatar_id)
             .eq('platform', fanMemoryPlatform(chat.platform))
-            .eq('external_fan_id', chat.external_chat_id)
+            .eq('external_fan_id', commenterId)
             .maybeSingle()
         const mergedFacts = {
             ...((existing?.facts as Record<string, unknown>) ?? {}),
@@ -251,7 +279,7 @@ export async function updateFanMemoryFromChat(chatId: string): Promise<void> {
                 organization_id: chat.organization_id,
                 avatar_id: chat.avatar_id,
                 platform: fanMemoryPlatform(chat.platform),
-                external_fan_id: chat.external_chat_id,
+                external_fan_id: commenterId,
                 display_name: chat.fan_display_name ?? null,
                 facts: mergedFacts as never,
                 summary: parsed.summary ?? null,
