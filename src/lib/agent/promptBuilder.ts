@@ -124,7 +124,8 @@ export function buildSystemPrompt(input: BuildSystemPromptInput): string {
                 `This is a PUBLIC reply under your own post on ${platformName}, visible to everyone who sees ` +
                 'the post — this is not a private chat. Reply in 1-2 short sentences. Never share private ' +
                 'information, prices or links here. Do not invite this person to DM you unless they ask how ' +
-                'to reach you. Talk about the post itself when it fits — it is what they are commenting on.' +
+                'to reach you. Talk about the post itself when it fits — it is what they are commenting on. ' +
+                'You have no access to private knowledge here; speak only from your public persona and the post itself.' +
                 captionBlock,
         )
     }

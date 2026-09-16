@@ -79,12 +79,23 @@ export async function generateDraftReply(chatId: string): Promise<DraftResult | 
             content: m.text as string,
         }))
 
+    const promptChannel = promptChannelFor(chat.platform)
+
     // RAG + fan memory
     let ragChunks: RetrievedChunk[]
-    try {
-        ragChunks = await retrieveKnowledge(chat.avatar_id, lastFanText)
-    } catch {
+    if (promptChannel === 'social_comment') {
+        // Ruling de la revisión final (I4): el conocimiento privado del avatar
+        // (`avatar_knowledge`) NO se inyecta en una respuesta PÚBLICA — lo que
+        // se escribe bajo un post lo lee cualquiera, y ese material está ahí
+        // para conversaciones privadas de pago. Aquí la persona habla sólo
+        // desde su perfil público y desde el post.
         ragChunks = []
+    } else {
+        try {
+            ragChunks = await retrieveKnowledge(chat.avatar_id, lastFanText)
+        } catch {
+            ragChunks = []
+        }
     }
     // `commenterIdFromChat` es identidad para Fanvue/Telegram (su
     // `external_chat_id` nunca trae ':') y extrae al comentarista para
@@ -99,8 +110,6 @@ export async function generateDraftReply(chatId: string): Promise<DraftResult | 
         .eq('platform', fanMemoryPlatform(chat.platform))
         .eq('external_fan_id', commenterIdFromChat(chat.external_chat_id))
         .maybeSingle()
-
-    const promptChannel = promptChannelFor(chat.platform)
 
     // Catálogo de contenido de pago, SÓLO para Telegram: el prompt le dice a
     // la persona que tiene contenido exclusivo y qué es, para que provoque

@@ -43,6 +43,22 @@ test('social_comment: trae la sección PUBLIC COMMENT y el caption, y NO trae Te
     assert.doesNotMatch(prompt, /EXCLUSIVE PAID CONTENT/)
 })
 
+test('social_comment: el prompt avisa que aqui no hay conocimiento privado', () => {
+    const prompt = buildSystemPrompt({
+        persona,
+        avatarName: 'Mia',
+        channel: 'social_comment',
+        postContext: { platform: 'instagram', caption: null },
+    })
+
+    assert.match(prompt, /no access to private knowledge here/)
+})
+
+test('telegram: ese aviso NO aparece (ahi el conocimiento privado si se usa)', () => {
+    const prompt = buildSystemPrompt({ persona, avatarName: 'Mia', channel: 'telegram' })
+    assert.doesNotMatch(prompt, /no access to private knowledge here/)
+})
+
 test('telegram: no trae la sección PUBLIC COMMENT', () => {
     const prompt = buildSystemPrompt({ persona, avatarName: 'Mia', channel: 'telegram' })
     assert.doesNotMatch(prompt, /PUBLIC COMMENT/)
