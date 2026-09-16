@@ -12,6 +12,8 @@
 import { agentSupabase, type AvatarPersonaRow } from './db'
 import { classifyInboundMessage } from './classifier'
 import { sendAgentMessage } from './sendMessage'
+import { resolveDeliveryChannel } from './channelRouting'
+import { hasPaidMediaOffer } from '@/lib/telegram/offerGate'
 
 export interface AutopilotConfig {
     enabled?: boolean
@@ -20,11 +22,22 @@ export interface AutopilotConfig {
     delaySecondsMax?: number
     dailyMessageLimit?: number
     escalate?: { payment?: boolean; complaint?: boolean; sensitive?: boolean; minors?: boolean }
+    /** Telegram: si un borrador con oferta de contenido de pago puede salir
+     *  solo. false/undefined = escala a humano (ofrecer es vender). */
+    allowPaidMediaOffers?: boolean
+    /** Telegram: tope de Stars que la IA puede ofrecer por sí sola. */
+    maxOfferStars?: number
+    /** Telegram: horas mínimas entre dos ofertas al mismo fan. Default 6. */
+    offerCooldownHours?: number
 }
 
 export type AutopilotOutcome = 'scheduled' | 'escalated' | 'skipped'
 
-function parseAutopilot(row: AvatarPersonaRow): AutopilotConfig {
+/** Exportada para el motor de oferta (`@/lib/telegram/offerEngine`), que lee
+ *  los mismos ajustes (`maxOfferStars`, `offerCooldownHours`) ANTES de
+ *  adjuntar nada. Una segunda lectura del JSON en otro fichero se
+ *  desincronizaría el día que esta forma cambie. */
+export function parseAutopilot(row: AvatarPersonaRow): AutopilotConfig {
     return (row.autopilot ?? {}) as AutopilotConfig
 }
 
@@ -93,6 +106,43 @@ export async function maybeAutopilotSend(chatId: string, draftMessageId: string)
     const cfg = parseAutopilot(persona as AvatarPersonaRow)
     if (!cfg.enabled) return 'skipped'
 
+    // Spec A4: un borrador con oferta de contenido de pago sólo sale solo si
+    // el creador lo permitió expresamente. Ofrecer es vender.
+    //
+    // GATEADO A TELEGRAM a propósito: las ofertas adjuntas (`offerEngine`)
+    // sólo existen en ese canal, y sólo `sendAgentMessage` las cobra cuando
+    // el chat es de Telegram. Para Fanvue esta lectura no podía encontrar
+    // nada, pero sí podía FALLAR — y entonces escalaba un chat de Fanvue con
+    // un motivo de Telegram ("Could not verify paid offer"), una consulta por
+    // borrador que a ese canal no le sirve de nada.
+    if (resolveDeliveryChannel(chat.platform) === 'telegram') {
+        // El `error` NO se descarta, y es la diferencia entre fallar cerrado y
+        // fallar abierto: sin mirarlo, un fallo transitorio de Supabase deja
+        // `draftRow` en null, `hasPaidMediaOffer(undefined)` responde `false`,
+        // la escalada no ocurre y un borrador que SÍ lleva oferta sale solo
+        // sin permiso del creador. Como la entrega ya cobra la oferta
+        // adjunta, eso sería dinero cobrado sin autorización por un error de
+        // red. Si no se puede COMPROBAR que el borrador está limpio, se
+        // escala.
+        const { data: draftRow, error: draftError } = await supabase
+            .from('agent_messages')
+            .select('media')
+            .eq('organization_id', chat.organization_id)
+            .eq('id', draftMessageId)
+            .maybeSingle()
+        if (draftError) {
+            console.error(
+                '[agent] autopilot: no se pudo leer el borrador para comprobar la oferta',
+                { chatId, draftMessageId },
+                draftError,
+            )
+            return escalate(chat.organization_id, chatId, 'Could not verify paid offer — needs review')
+        }
+        if (hasPaidMediaOffer(draftRow?.media) && !cfg.allowPaidMediaOffers) {
+            return escalate(chat.organization_id, chatId, 'Paid media offer needs approval')
+        }
+    }
+
     // Classify the latest fan message (fail-closed).
     const { data: lastFan } = await supabase
         .from('agent_messages')
@@ -149,11 +199,16 @@ export async function maybeAutopilotSend(chatId: string, draftMessageId: string)
 }
 
 /**
- * Send every autopilot message whose delay has elapsed. Called by the poll cron.
+ * Send every autopilot message whose delay has elapsed. La llama el cron por
+ * minuto (`agent-autopilot-flush`), ÚNICO dueño de la cola.
  *
  * Deliberadamente SIN filtro de org: es un barrido de cron para TODAS las orgs
  * (no hay sesión de la que sacar una). Cada envío vuelve a resolver su propia
  * org dentro de `sendAgentMessage`, que sí acota por la fila del mensaje.
+ *
+ * Que hoy la llame un solo cron NO es la garantía de que un mensaje no salga
+ * dos veces — un cron puede solaparse consigo mismo si una corrida se alarga.
+ * La garantía es el RECLAMO ATÓMICO de abajo.
  */
 export async function flushDueAutopilotMessages(): Promise<{ sent: number; failed: number }> {
     const supabase = agentSupabase()
@@ -169,6 +224,26 @@ export async function flushDueAutopilotMessages(): Promise<{ sent: number; faile
     let sent = 0
     let failed = 0
     for (const row of due ?? []) {
+        // RECLAMO ATÓMICO. Sin esto, dos barridos concurrentes (o uno que
+        // muere entre el envío y el update a `sent`) envían el mismo mensaje
+        // dos veces — y en Telegram, la misma media de pago dos veces.
+        // Postgres serializa el UPDATE ... WHERE por fila: sólo un barrido
+        // consigue la fila; el otro ve 0 filas y sigue. `send_after` a null
+        // es el reclamo (el select de arriba exige que no sea null) y
+        // `sendAgentMessage` no lo mira, así que no cambia nada más.
+        const { data: claimed, error: claimError } = await supabase
+            .from('agent_messages')
+            .update({ send_after: null, updated_at: nowIso })
+            .eq('id', row.id)
+            .eq('status', 'approved')
+            .not('send_after', 'is', null)
+            .select('id')
+        if (claimError) {
+            console.error('[agent] autopilot flush: no se pudo reclamar el mensaje', { messageId: row.id }, claimError)
+            failed++
+            continue
+        }
+        if (!claimed || claimed.length === 0) continue // otro barrido ya lo tomó
         const res = await sendAgentMessage(row.id)
         if (res.success) sent++
         else failed++

@@ -14,7 +14,7 @@
  */
 import { FanvueClient } from '@/lib/fanvue/FanvueClient'
 import { getValidAccessToken } from '@/lib/fanvue/tokenStore'
-import { agentSupabase, type AgentChatRow, type AgentMsgDirection } from './db'
+import { agentSupabase, type AgentChatMode, type AgentChatRow, type AgentMsgDirection } from './db'
 import type { FanvueMessage } from '@/lib/fanvue/types'
 
 /** Resolve the avatar (+ its owner user + fanvue mode) for a connection's creator recipient. */
@@ -156,6 +156,10 @@ export async function upsertChat(input: {
      *  lo pasa (`'telegram'`) para que la fila caiga en la fila correcta de la
      *  unicidad `(avatar_id, platform, external_chat_id)`. */
     platform?: string
+    /** Modo con que nace un chat NUEVO. Sólo se aplica al crear: un modo ya
+     *  elegido por el usuario nunca se pisa (ver más abajo). Default 'draft'
+     *  = comportamiento histórico de Fanvue, que no pasa este campo. */
+    defaultMode?: AgentChatMode
 }): Promise<AgentChatRow> {
     const platform = input.platform ?? 'fanvue'
     const supabase = agentSupabase()
@@ -199,7 +203,7 @@ export async function upsertChat(input: {
             fan_avatar_url: input.fanAvatarUrl ?? null,
             is_creator: input.isCreator ?? false,
             // Creator/bot spam starts OFF; real fans start in draft mode.
-            mode: input.isCreator ? 'off' : 'draft',
+            mode: input.isCreator ? 'off' : (input.defaultMode ?? 'draft'),
             last_message_at: input.lastMessageAt ?? null,
             last_fan_message_at: input.lastFanMessageAt ?? null,
         })

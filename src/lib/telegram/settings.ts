@@ -68,6 +68,14 @@ export interface TelegramSettings {
     botId: number
     botUsername: string | null
     enabled: boolean
+    /** Gate de la IA en ESTE canal. Independiente de `avatar_personas.enabled`,
+     *  que gata Fanvue (spec A3-bis). */
+    aiRepliesEnabled: boolean
+    /** Modo con que nacen los chats nuevos de Telegram. `upsertChat` lo fija
+     *  sólo al crear y nunca lo pisa. */
+    aiDefaultChatMode: 'auto' | 'draft'
+    /** Si el motor de oferta puede adjuntar contenido de pago a un borrador. */
+    aiOffersEnabled: boolean
     /** Fecha de la PRIMERA activación con éxito (Telegram confirmó
      *  `setWebhook`), no de cuándo se creó la fila. `null` = el bot nunca se
      *  activó → NUNCA FACTURABLE, no "cero días" (ver CANDADO 1 en
@@ -92,6 +100,9 @@ function toSettings(row: TelegramSettingsRow): TelegramSettings {
         botId: row.bot_id,
         botUsername: row.bot_username,
         enabled: row.enabled,
+        aiRepliesEnabled: Boolean(row.ai_replies_enabled),
+        aiDefaultChatMode: row.ai_default_chat_mode === 'draft' ? 'draft' : 'auto',
+        aiOffersEnabled: Boolean(row.ai_offers_enabled),
         connectedAt: row.connected_at,
         disconnectedAt: row.disconnected_at,
         lastUpdateAt: row.last_update_at,

@@ -211,6 +211,15 @@ const eslintConfig = [
       // .eq('organization_id', ...). Ver check-tenant-access.mjs (misma
       // exención, motivo completo allí).
       "src/lib/telegram/bots.ts",
+      // Task 8 — motor de oferta, mismo perfil que paidMedia.ts: sin sesión
+      // (lo dispara el webhook dentro de su `after()`), parte del borrador que
+      // nuestro propio pipeline acaba de crear —esa fila RESUELVE la org— y
+      // cada consulta posterior la usa como filtro .eq. Cruza el catálogo con
+      // `telegram_stars_sales`, que el schema extendido de `@/lib/agent/db` NO
+      // declara, así que `agentSupabase()` ni siquiera compila ahí (medido,
+      // TS2769). Ver check-tenant-access.mjs (misma exención, motivo completo
+      // allí) y la cabecera del propio fichero.
+      "src/lib/telegram/offerEngine.ts",
       // Sin sesión: resuelven la org por la fila que ya cargaron.
       "src/app/api/webhooks/**",
       "src/app/api/cron/**",

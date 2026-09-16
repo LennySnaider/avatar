@@ -98,6 +98,10 @@ const EXENTOS = [
     ['src/lib/agent/draftPipeline.ts', 'Genera borradores sin sesión; parte del chat ya cargado y arrastra su organization_id.'],
     ['src/lib/agent/autopilot.ts', 'Autopilot por cron; recorre chats resolviendo la org fila a fila.'],
     ['src/lib/agent/sendMessage.ts', 'Envío sin sesión desde el pipeline del agente; la org viene del chat.'],
+    [
+        'src/lib/agent/channelDelivery.ts',
+        'F4.2 Tarea 4 — lo llama el flush de autopilot desde el cron, sin sesión; el chat llega resuelto por organization_id desde sendAgentMessage.',
+    ],
     ['src/lib/agent/indexer.ts', 'Indexa conocimiento del avatar; recibe la organizationId ya resuelta por el llamador.'],
     [
         'src/lib/modules/entitlements.ts',
@@ -122,6 +126,10 @@ const EXENTOS = [
     [
         'src/lib/telegram/paidMedia.ts',
         'deliverPaidMedia (Task 5) es sin sesión a propósito — mismo perfil que sales.ts, no un service con ctx —: recibe el chat ya resuelto y acotado por su llamador (hoy sendPaidMediaFromInbox en AgentTelegramService.ts, que ya comprobó dueño de avatar y conversación). La organizationId nunca se adivina: sale de ese chat ya cargado, y las 7 llamadas de este fichero la usan como filtro (.eq) o como campo fijado (organization_id:) explícito.',
+    ],
+    [
+        'src/lib/telegram/offerEngine.ts',
+        'F4.2 Tarea 4 — lo llama el webhook de Telegram sin sesión; todo cuelga de chat.organization_id. maybeAttachPaidMediaOffer parte del borrador que nuestro propio pipeline acaba de crear (esa fila es la que RESUELVE la org) y las siete consultas siguientes —chat, persona, enfriamiento, catálogo, ventas del fan, transcripción y la escritura de la oferta— la usan como filtro .eq explícito. Son OCHO .from() en total contando el propio borrador, que es la cifra que reporta este script.',
     ],
     [
         'src/lib/telegram/bots.ts',

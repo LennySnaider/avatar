@@ -591,6 +591,9 @@ export type Database = {
       }
       avatar_telegram_settings: {
         Row: {
+          ai_default_chat_mode: string
+          ai_offers_enabled: boolean
+          ai_replies_enabled: boolean
           avatar_id: string
           bot_id: number
           bot_token: string
@@ -607,6 +610,9 @@ export type Database = {
           webhook_secret: string
         }
         Insert: {
+          ai_default_chat_mode?: string
+          ai_offers_enabled?: boolean
+          ai_replies_enabled?: boolean
           avatar_id: string
           bot_id: number
           bot_token: string
@@ -623,6 +629,9 @@ export type Database = {
           webhook_secret: string
         }
         Update: {
+          ai_default_chat_mode?: string
+          ai_offers_enabled?: boolean
+          ai_replies_enabled?: boolean
           avatar_id?: string
           bot_id?: number
           bot_token?: string

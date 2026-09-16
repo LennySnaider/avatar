@@ -12,6 +12,7 @@ import { GoogleGenAI, Type } from '@google/genai'
 import { agentSupabase, type AvatarPersonaRow } from './db'
 import { getChatModel } from './chatProvider'
 import { buildSystemPrompt } from './promptBuilder'
+import { fanMemoryPlatform } from './fanMemoryPlatform'
 import { toPersonaDTO } from './personaMapper'
 import { retrieveKnowledge } from './retrieval'
 import { AGENT_UTILITY_MODEL } from './models'
@@ -88,9 +89,33 @@ export async function generateDraftReply(chatId: string): Promise<DraftResult | 
         .select('summary, facts')
         .eq('organization_id', chat.organization_id)
         .eq('avatar_id', chat.avatar_id)
-        .eq('platform', 'fanvue')
+        .eq('platform', fanMemoryPlatform(chat.platform))
         .eq('external_fan_id', chat.external_chat_id)
         .maybeSingle()
+
+    // Catálogo de contenido de pago, SÓLO para Telegram: el prompt le dice a
+    // la persona que tiene contenido exclusivo y qué es, para que provoque
+    // interés sin inventar precios. Fanvue no cambia (su PPV va por otro
+    // camino). Filtrado por organización de la fila ya resuelta.
+    let paidCatalog: { title: string; stars: number }[] | undefined
+    if (chat.platform.startsWith('telegram')) {
+        const { data: items, error: itemsError } = await supabase
+            .from('telegram_paid_media_items')
+            .select('title, star_price')
+            .eq('organization_id', chat.organization_id)
+            .eq('avatar_id', chat.avatar_id)
+            .eq('enabled', true)
+            .order('sort_order', { ascending: true })
+            .limit(20)
+        // Un fallo aquí NO corta el borrador —se responde igual, sólo que sin
+        // mencionar el contenido exclusivo—, pero tiene que dejar rastro: sin
+        // esto, "el agente dejó de vender" es indistinguible de "el agente
+        // decidió no vender", y nadie sabría dónde mirar.
+        if (itemsError) {
+            console.error('[agent] catálogo de pago no disponible para el prompt', { chatId }, itemsError)
+        }
+        paidCatalog = (items ?? []).map((i) => ({ title: i.title, stars: i.star_price }))
+    }
 
     const system = buildSystemPrompt({
         persona,
@@ -102,7 +127,8 @@ export async function generateDraftReply(chatId: string): Promise<DraftResult | 
                   facts: (memory.facts ?? {}) as Record<string, string>,
               }
             : null,
-        channel: 'fanvue',
+        channel: chat.platform.startsWith('telegram') ? 'telegram' : 'fanvue',
+        paidCatalog,
     })
 
     const { text } = await generateText({
@@ -150,7 +176,7 @@ export async function updateFanMemoryFromChat(chatId: string): Promise<void> {
         const supabase = agentSupabase()
         const { data: chat } = await supabase
             .from('agent_chats')
-            .select('organization_id, avatar_id, external_chat_id, fan_display_name')
+            .select('organization_id, avatar_id, external_chat_id, fan_display_name, platform')
             .eq('id', chatId)
             .maybeSingle()
         if (!chat) return
@@ -213,7 +239,7 @@ export async function updateFanMemoryFromChat(chatId: string): Promise<void> {
             .select('facts')
             .eq('organization_id', chat.organization_id)
             .eq('avatar_id', chat.avatar_id)
-            .eq('platform', 'fanvue')
+            .eq('platform', fanMemoryPlatform(chat.platform))
             .eq('external_fan_id', chat.external_chat_id)
             .maybeSingle()
         const mergedFacts = {
@@ -224,7 +250,7 @@ export async function updateFanMemoryFromChat(chatId: string): Promise<void> {
             {
                 organization_id: chat.organization_id,
                 avatar_id: chat.avatar_id,
-                platform: 'fanvue',
+                platform: fanMemoryPlatform(chat.platform),
                 external_fan_id: chat.external_chat_id,
                 display_name: chat.fan_display_name ?? null,
                 facts: mergedFacts as never,

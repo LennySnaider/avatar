@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import Button from '@/components/ui/Button'
 import Input from '@/components/ui/Input'
 import Segment from '@/components/ui/Segment'
+import Tag from '@/components/ui/Tag'
 import Notification from '@/components/ui/Notification'
 import toast from '@/components/ui/toast'
 import {
@@ -12,6 +13,7 @@ import {
     discardDraft,
     getAgentChatThread,
     regenerateDraft,
+    removeDraftOffer,
     sendPpvOffer,
     setChatMode,
     suggestPpvOffer,
@@ -26,13 +28,49 @@ interface ThreadPaneProps {
     onChanged: () => void
 }
 
+/**
+ * La etiqueta "Paid offer" de un mensaje, con o sin el botón de quitarla.
+ *
+ * Estaba escrita dos veces, y las dos copias arrastraban una guarda
+ * `status === 'draft'` que no decidía nada: en el historial sólo se pintan
+ * mensajes que NO son borrador (siempre falsa — el botón no podía salir
+ * nunca), y en el compositor sólo se pinta el borrador (siempre cierta). Quien
+ * decide ahora es quien llama: si pasa `onRemove`, hay botón.
+ */
+const OfferTag = ({
+    offer,
+    className,
+    onRemove,
+}: {
+    offer: NonNullable<AgentMessageDTO['paidOffer']>
+    className?: string
+    onRemove?: () => void
+}) => (
+    <div className={`flex items-center gap-2 text-xs ${className ?? ''}`}>
+        <Tag className="bg-amber-100 text-amber-700 dark:bg-amber-500/20 dark:text-amber-100 border-0">
+            ⭐ Paid offer · {offer.stars} Stars
+        </Tag>
+        {onRemove && (
+            <Button size="xs" variant="plain" onClick={onRemove}>
+                Remove offer
+            </Button>
+        )}
+    </div>
+)
+
 const ThreadPane = ({ thread, onChanged }: ThreadPaneProps) => {
     const { chat, messages, fanMemory, hasVoice } = thread
     const draft = messages.find((m) => m.status === 'draft')
     const conversation = messages.filter((m) => m.status !== 'draft')
 
+    // Acciones que sólo hablan Fanvue (nota de voz por TTS, PPV con precio en
+    // centavos). En un chat de Telegram no pueden funcionar, así que tampoco
+    // se enseñan: el servicio las rechaza igualmente, pero un botón que
+    // siempre falla es una promesa falsa.
+    const isTelegram = chat.platform.startsWith('telegram')
+
     const [draftText, setDraftText] = useState(draft?.text ?? '')
-    const [busy, setBusy] = useState<'send' | 'voice' | 'regen' | 'discard' | null>(null)
+    const [busy, setBusy] = useState<'send' | 'voice' | 'regen' | 'discard' | 'removeOffer' | null>(null)
     const [showMemory, setShowMemory] = useState(false)
 
     // PPV offer state
@@ -193,6 +231,24 @@ const ThreadPane = ({ thread, onChanged }: ThreadPaneProps) => {
         }
     }
 
+    const handleRemoveOffer = async (messageId: string) => {
+        setBusy('removeOffer')
+        try {
+            const result = await removeDraftOffer(messageId)
+            if (result.success) {
+                onChanged()
+            } else {
+                toast.push(
+                    <Notification type="danger" title="Could not remove offer">
+                        {result.error}
+                    </Notification>,
+                )
+            }
+        } finally {
+            setBusy(null)
+        }
+    }
+
     const factEntries = Object.entries(fanMemory?.facts ?? {})
 
     return (
@@ -257,7 +313,7 @@ const ThreadPane = ({ thread, onChanged }: ThreadPaneProps) => {
                 {conversation.map((m: AgentMessageDTO) => (
                     <div
                         key={m.id}
-                        className={`flex ${m.direction === 'out' ? 'justify-end' : 'justify-start'}`}
+                        className={`flex flex-col ${m.direction === 'out' ? 'items-end' : 'items-start'}`}
                     >
                         <div
                             className={`px-3 py-2 rounded-2xl max-w-[80%] text-sm whitespace-pre-wrap ${
@@ -273,12 +329,13 @@ const ThreadPane = ({ thread, onChanged }: ThreadPaneProps) => {
                                 </span>
                             )}
                         </div>
+                        {m.paidOffer && <OfferTag offer={m.paidOffer} className="mt-1" />}
                     </div>
                 ))}
             </div>
 
             {/* PPV offer suggestion */}
-            {ppv && (
+            {ppv && !isTelegram && (
                 <div className="p-3 border-t border-primary/30 bg-primary/5">
                     <div className="flex items-start gap-3">
                         <div className="w-16 h-16 rounded-lg overflow-hidden bg-gray-200 dark:bg-gray-700 shrink-0 relative">
@@ -336,6 +393,13 @@ const ThreadPane = ({ thread, onChanged }: ThreadPaneProps) => {
                                 </span>
                             )}
                         </div>
+                        {draft.paidOffer && (
+                            <OfferTag
+                                offer={draft.paidOffer}
+                                className="mb-2"
+                                onRemove={() => handleRemoveOffer(draft.id)}
+                            />
+                        )}
                         <Input
                             textArea
                             rows={3}
@@ -352,7 +416,7 @@ const ThreadPane = ({ thread, onChanged }: ThreadPaneProps) => {
                             >
                                 Approve &amp; Send
                             </Button>
-                            {hasVoice && (
+                            {hasVoice && !isTelegram && (
                                 <Button
                                     size="sm"
                                     loading={busy === 'voice'}
@@ -380,17 +444,19 @@ const ThreadPane = ({ thread, onChanged }: ThreadPaneProps) => {
                             >
                                 Discard
                             </Button>
-                            <Button
-                                variant="plain"
-                                size="sm"
-                                loading={isSuggestingPpv}
-                                disabled={busy !== null || !!ppv}
-                                onClick={handleSuggestPpv}
-                                className="ml-auto"
-                                title="Suggest a pay-per-view offer from this avatar's content"
-                            >
-                                💰 Suggest PPV
-                            </Button>
+                            {!isTelegram && (
+                                <Button
+                                    variant="plain"
+                                    size="sm"
+                                    loading={isSuggestingPpv}
+                                    disabled={busy !== null || !!ppv}
+                                    onClick={handleSuggestPpv}
+                                    className="ml-auto"
+                                    title="Suggest a pay-per-view offer from this avatar's content"
+                                >
+                                    💰 Suggest PPV
+                                </Button>
+                            )}
                         </div>
                     </>
                 ) : (

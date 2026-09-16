@@ -1,7 +1,9 @@
 /**
- * Core "send an approved agent message to Fanvue" — shared by the manual
- * approve flow (AgentInboxService.approveAndSend) and the autopilot flush.
- * Handles the send, status transitions, counter bump and fan-memory refresh.
+ * Core "send an approved agent message por el canal del chat (Fanvue o
+ * Telegram)" — shared by the manual approve flow
+ * (AgentInboxService.approveAndSend) and the autopilot flush. Handles the
+ * status transitions, counter bump and fan-memory refresh; POR DÓNDE sale el
+ * texto lo decide `channelDelivery.ts` a partir de `chat.platform`.
  *
  * F4.2 Tarea 4 — EXENTO de `orgTable`: el flush de autopilot lo llama desde el
  * cron, sin sesión. El mensaje (id ya aprobado por nuestro propio flujo) es la
@@ -9,9 +11,11 @@
  * a partir de ahí por `organization_id` en vez de navegar por ids sueltos.
  */
 import { agentSupabase } from './db'
-import { makeFanvueClient } from './inboxSync'
 import { updateFanMemoryFromChat } from './draftPipeline'
-import { loadConnection } from '@/lib/fanvue/tokenStore'
+import { deliverAgentText } from './channelDelivery'
+import { resolveDeliveryChannel } from './channelRouting'
+import { findPaidMediaOffer } from '@/lib/telegram/offerGate'
+import { deliverPaidMedia } from '@/lib/telegram/paidMedia'
 
 export interface SendAgentMessageResult {
     success: boolean
@@ -40,8 +44,20 @@ export async function sendAgentMessage(messageId: string): Promise<SendAgentMess
     if (!msg) return { success: false, error: 'Message not found' }
     if (msg.status !== 'approved') return { success: false, error: `Message is ${msg.status}, not approved` }
 
+    // Los dos returns de aquí abajo marcan `failed` antes de salir: el reclamo
+    // atómico del flush ya no reintenta, así que un `approved` que nunca va a
+    // poder salir tiene que quedar visible y no mudo en la cola.
     const text = (msg.text ?? '').trim()
-    if (!text) return { success: false, error: 'Empty message' }
+    if (!text) {
+        console.error('[agent] send failed', { messageId }, 'Empty message')
+        await supabase
+            .from('agent_messages')
+            .update({ status: 'failed', error_message: 'Empty message', updated_at: new Date().toISOString() })
+            .eq('organization_id', msg.organization_id)
+            .eq('id', messageId)
+            .eq('status', 'approved')
+        return { success: false, error: 'Empty message' }
+    }
 
     const { data: chat } = await supabase
         .from('agent_chats')
@@ -49,39 +65,88 @@ export async function sendAgentMessage(messageId: string): Promise<SendAgentMess
         .eq('organization_id', msg.organization_id)
         .eq('id', msg.chat_id)
         .single()
-    if (!chat) return { success: false, error: 'Chat not found' }
+    if (!chat) {
+        console.error('[agent] send failed', { messageId }, 'Chat not found')
+        await supabase
+            .from('agent_messages')
+            .update({ status: 'failed', error_message: 'Chat not found', updated_at: new Date().toISOString() })
+            .eq('organization_id', msg.organization_id)
+            .eq('id', messageId)
+            .eq('status', 'approved')
+        return { success: false, error: 'Chat not found' }
+    }
 
-    const { data: avatar } = await supabase
-        .from('avatars')
-        .select('user_id, fanvue_creator_uuid')
-        .eq('organization_id', chat.organization_id)
-        .eq('id', chat.avatar_id)
-        .single()
-    if (!avatar?.user_id) return { success: false, error: 'Avatar has no owner' }
-    const connection = await loadConnection(avatar.user_id)
-    if (!connection) return { success: false, error: 'Fanvue not connected' }
-
-    const client = makeFanvueClient(avatar.user_id)
+    // "Avatar has no owner" / "Fanvue not connected" ya no salen con { success: false }
+    // en silencio: lanzan dentro del try y el catch los deja `failed` con el motivo.
     try {
-        const res = await client.sendChatMessage(avatar.fanvue_creator_uuid ?? null, chat.external_chat_id, {
-            text,
-        })
+        const res = await deliverAgentText(chat, text)
+        // `.eq('status', 'approved')` es defensa en profundidad: quien reclama
+        // la fila es el flush (`flushDueAutopilotMessages`), pero si por
+        // cualquier vía este mensaje llegara aquí dos veces, la segunda no
+        // pisa el `sent` de la primera — ni su `external_message_id`, que es
+        // el del envío que de verdad ocurrió.
         await supabase
             .from('agent_messages')
             .update({
                 status: 'sent',
-                external_message_id: res.messageUuid,
+                external_message_id: res.externalMessageId,
                 sent_at: new Date().toISOString(),
                 send_after: null,
                 updated_at: new Date().toISOString(),
             })
             .eq('organization_id', msg.organization_id)
             .eq('id', messageId)
+            .eq('status', 'approved')
         await supabase
             .from('agent_chats')
             .update({ last_message_at: new Date().toISOString(), updated_at: new Date().toISOString() })
             .eq('organization_id', chat.organization_id)
             .eq('id', chat.id)
+        // Oferta adjunta (offerEngine, Telegram): se entrega DESPUÉS del texto
+        // y con `source: 'agent'`, que es lo que `deliverPaidMedia` convierte
+        // en `sold_by = 'ai'` (comisión del 20%). Si falla, el texto ya salió
+        // y el mensaje ya es `sent`: se loguea y no se marca `failed`, porque
+        // el fan sí recibió la respuesta. La venta no se crea de más: la crea
+        // `deliverPaidMedia` al ofrecer (PASO 2, antes de tocar Telegram), así
+        // que un fallo ANTES de esa inserción no descuadra nada; un fallo
+        // DESPUÉS deja la fila en `offered`, que el barrido de reconciliación
+        // (deuda anotada) recogerá.
+        //
+        // EL PRECIO ES EL DEL CATÁLOGO EN EL MOMENTO DE ENTREGAR, no el que
+        // llevaba el borrador: por eso NO se pasa `stars`, que en
+        // `deliverPaidMedia` es un override puntual. Un borrador en modo
+        // `draft` puede esperar días a que un humano lo apruebe, y si el
+        // creador subió o bajó el precio entretanto, congelarlo aquí cobraría
+        // el viejo. Cuando los dos no coinciden se deja rastro: el borrador
+        // enseñó una cifra y Telegram cobró otra, y eso el creador tiene que
+        // poder verlo.
+        const offer = findPaidMediaOffer(msg.media)
+        if (offer && resolveDeliveryChannel(chat.platform) === 'telegram') {
+            try {
+                const delivered = await deliverPaidMedia({
+                    chat: {
+                        id: chat.id,
+                        organizationId: chat.organization_id,
+                        avatarId: chat.avatar_id,
+                        externalChatId: chat.external_chat_id,
+                    },
+                    itemId: offer.itemId,
+                    caption: offer.caption || undefined,
+                    source: 'agent',
+                    approvedBy: msg.approved_by ?? null,
+                })
+                if (delivered.stars !== offer.stars) {
+                    console.warn('[agent] precio de catálogo distinto al del borrador', {
+                        messageId,
+                        itemId: offer.itemId,
+                        draft: offer.stars,
+                        charged: delivered.stars,
+                    })
+                }
+            } catch (e) {
+                console.error('[agent] oferta adjunta no entregada', { messageId, itemId: offer.itemId }, e)
+            }
+        }
         // Counters (best-effort).
         const period = currentPeriod()
         await supabase.rpc('increment_agent_counter', {
@@ -99,14 +164,20 @@ export async function sendAgentMessage(messageId: string): Promise<SendAgentMess
             })
         }
         void updateFanMemoryFromChat(chat.id)
-        return { success: true, externalMessageId: res.messageUuid }
+        return { success: true, externalMessageId: res.externalMessageId }
     } catch (e) {
         const message = e instanceof Error ? e.message : String(e)
+        console.error('[agent] send failed', { messageId, chatId: chat.id, platform: chat.platform }, message)
+        // Misma guarda que en el camino de éxito, y por un motivo más fuerte:
+        // sin ella, un envío que falló aquí podría marcar `failed` un mensaje
+        // que OTRO barrido ya dejó `sent` — borrando del registro un mensaje
+        // que el fan sí recibió.
         await supabase
             .from('agent_messages')
             .update({ status: 'failed', error_message: message, updated_at: new Date().toISOString() })
             .eq('organization_id', msg.organization_id)
             .eq('id', messageId)
+            .eq('status', 'approved')
         return { success: false, error: message }
     }
 }

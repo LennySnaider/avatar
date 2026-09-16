@@ -60,10 +60,13 @@
  *      falló una vez — no lo arregla, sólo lo repite.
  *
  * `message`: sólo chats privados y sólo si el emisor no es un bot. Registra
- * la conversación (`upsertChat` + `ingestMessage`) para que exista un chat al
- * que ofrecer contenido — **no genera ningún borrador**: el agente respondiendo
- * en Telegram es del plan siguiente (generalizar `draftPipeline`/`autopilot`/
- * `sendMessage` está fuera de esta tarea a propósito).
+ * la conversación (`upsertChat` + `ingestMessage`) y, si `shouldDraftTelegramReply`
+ * (gate del canal, `aiGate.ts`) lo autoriza, genera el borrador DESPUÉS de
+ * responder a Telegram (`after()`, ver `handleMessage`); si `ai_offers_enabled`
+ * está encendido, el motor de oferta (`offerEngine.ts`) decide si ese borrador
+ * lleva contenido de pago adjunto; y por último lo programa con autopilot si el
+ * chat quedó en modo `auto`. Ese orden importa: autopilot lee la media que el
+ * motor acaba de escribir para decidir si el borrador puede salir solo.
  *
  * `purchased_paid_media`: la venta se busca por `paid_media_payload` con una
  * transición ATÓMICA condicionada a su estado anterior (`offered` →
@@ -74,7 +77,7 @@
  * compra, junto con la clave de idempotencia del propio ledger
  * (`stars_sale:<saleId>` en `settleStarsCommission`).
  */
-import { NextResponse } from 'next/server'
+import { after, NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
 import crypto from 'node:crypto'
 import { orgSupabase } from '@/lib/org/orgTable'
@@ -82,6 +85,10 @@ import { loadTelegramSettings, loadTelegramWebhookSecret, type TelegramSettings 
 import type { PaidMediaPurchased, TelegramUpdate, TgMessage } from '@/lib/telegram/client'
 import { ingestMessage, resolveAvatarTargetById, touchFanMemory, upsertChat } from '@/lib/agent/inboxSync'
 import { recordStarsSale, type StarsSaleEvent } from '@/lib/telegram/sales'
+import { generateDraftReply } from '@/lib/agent/draftPipeline'
+import { maybeAutopilotSend } from '@/lib/agent/autopilot'
+import { shouldDraftTelegramReply } from '@/lib/telegram/aiGate'
+import { maybeAttachPaidMediaOffer } from '@/lib/telegram/offerEngine'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 60
@@ -201,6 +208,7 @@ async function handleMessage(settings: TelegramSettings, message: TgMessage): Pr
         [message.from?.first_name, message.from?.last_name].filter(Boolean).join(' ') || null
     const fanHandle = message.from?.username ?? null
     const sentAt = new Date(message.date * 1000).toISOString()
+    const text = message.text ?? message.caption ?? null
 
     const chat = await upsertChat({
         target,
@@ -210,19 +218,52 @@ async function handleMessage(settings: TelegramSettings, message: TgMessage): Pr
         fanHandle,
         lastMessageAt: sentAt,
         lastFanMessageAt: sentAt,
+        // Spec A3-bis: los chats nuevos de Telegram nacen en el modo que el
+        // creador eligió para el canal. Los existentes conservan el suyo.
+        defaultMode: settings.aiDefaultChatMode,
     })
-    await ingestMessage({
+    const { inserted } = await ingestMessage({
         organizationId: target.organizationId,
         chatId: chat.id,
         direction: 'in',
         externalMessageId: String(message.message_id),
-        text: message.text ?? message.caption ?? null,
+        text,
         externalCreatedAt: sentAt,
     })
     await touchFanMemory(target, fanUuid, fanDisplayName, 'telegram')
-    // Nada de borradores aquí: el agente respondiendo en Telegram es del plan
-    // siguiente. Esto sólo deja que exista una conversación a la que ofrecer
-    // contenido de pago.
+
+    // Gate del CANAL (aiGate.ts, spec A3-bis): independiente de
+    // avatar_personas.enabled, que es el interruptor de Fanvue.
+    const wantsDraft = shouldDraftTelegramReply({
+        aiRepliesEnabled: settings.aiRepliesEnabled,
+        chatMode: chat.mode,
+        isCreator: chat.is_creator,
+        text,
+        inserted,
+    })
+    if (!wantsDraft) return
+
+    // El LLM tarda 10-20 s y Telegram reintenta si no ve el 200 a tiempo:
+    // el borrador se genera DESPUÉS de responder. `after()` mantiene viva la
+    // función en Vercel hasta que esto termine (Next 15.5, estable).
+    after(async () => {
+        try {
+            const draft = await generateDraftReply(chat.id)
+            if (!draft) return
+            // Spec A4: el motor de oferta decide si este borrador sale con
+            // contenido de pago adjunto. Va ANTES de autopilot a propósito —
+            // autopilot mira la media ya escrita para decidir si el borrador
+            // puede salir solo o escala a humano.
+            if (settings.aiOffersEnabled) {
+                await maybeAttachPaidMediaOffer(draft.messageId)
+            }
+            if (chat.mode === 'auto') {
+                await maybeAutopilotSend(chat.id, draft.messageId)
+            }
+        } catch (e) {
+            console.error('[telegram webhook] borrador/autopilot', e)
+        }
+    })
 }
 
 /**

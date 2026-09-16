@@ -213,9 +213,45 @@ interface AvatarFanMemoriesTable {
     Relationships: []
 }
 
+/**
+ * Vista mínima de `telegram_paid_media_items` (el tipo completo vive en
+ * `database.generated.ts`, usado por `orgTable`). Sólo las columnas que lee
+ * `draftPipeline.ts` para armar el catálogo del prompt de Telegram.
+ *
+ * ÚNICO consumidor, a propósito. Una versión anterior de este comentario
+ * anunciaba que el motor de oferta (Tarea 8) reutilizaría esta vista; no lo
+ * hace, y conviene saber por qué antes de volver a intentarlo: ese motor cruza
+ * el catálogo con `telegram_stars_sales`, que NO está declarada aquí, así que
+ * con `agentSupabase()` no compila (TS2769). Declararla habría significado
+ * duplicar una tabla que `database.generated.ts` ya tipa entera — justo lo que
+ * esta vista quiere evitar —, así que `offerEngine.ts` va por `orgSupabase()`,
+ * como el resto de `src/lib/telegram/`. Ampliar esta vista sólo tiene sentido
+ * para un consumidor que ya esté en `agentSupabase()`.
+ */
+interface TelegramPaidMediaItemsTable {
+    Row: {
+        id: string
+        organization_id: string
+        avatar_id: string
+        title: string
+        star_price: number
+        enabled: boolean
+        sort_order: number
+    }
+    Insert: Partial<TelegramPaidMediaItemsTable['Row']> & {
+        organization_id: string
+        avatar_id: string
+        title: string
+        star_price: number
+    }
+    Update: Partial<TelegramPaidMediaItemsTable['Row']>
+    Relationships: []
+}
+
 export type AgentChatRow = AgentChatsTable['Row']
 export type AgentMessageRow = AgentMessagesTable['Row']
 export type AvatarFanMemoryRow = AvatarFanMemoriesTable['Row']
+export type TelegramPaidMediaItemRow = TelegramPaidMediaItemsTable['Row']
 
 export type AgentDatabase = BaseDatabase & {
     public: BaseDatabase['public'] & {
@@ -228,6 +264,7 @@ export type AgentDatabase = BaseDatabase & {
             agent_chats: AgentChatsTable
             agent_messages: AgentMessagesTable
             avatar_fan_memories: AvatarFanMemoriesTable
+            telegram_paid_media_items: TelegramPaidMediaItemsTable
         }
         Functions: {
             match_avatar_knowledge: {
