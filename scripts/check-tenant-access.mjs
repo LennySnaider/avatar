@@ -183,6 +183,14 @@ const CON_ANCLA_DE_ORG = [
         'src/services/ReconcileGenerationsService.ts',
         'Reconciliador de generaciones pendientes: inserta la fila recuperada con organization_id de ctx.',
     ],
+    // Éste va aquí y no en EXENTOS aunque corra SIN sesión: sus tres accesos a
+    // social_comment_dms ya anclan la org en el propio statement, así que la
+    // comprobación estricta de esta lista no le cuesta nada y sí protege del
+    // `.from('social_comment_dms')` pelado que alguien añada mañana.
+    [
+        'src/lib/social/comments/privateReply.ts',
+        'DM privado de Instagram (Tarea 4, comentarios-ia-social): lo llama la entrega sin sesión (cron/webhook) con la fila del chat ya resuelta; el dedupe filtra con .eq(\'organization_id\', chat.organization_id) y los dos inserts escriben organization_id de esa misma fila.',
+    ],
 ]
 
 /** Techo de caracteres para "el mismo statement" (además se corta antes, ver abajo). */

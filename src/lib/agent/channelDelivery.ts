@@ -178,7 +178,10 @@ async function deliverViaSocialComment(chat: DeliverableChat, text: string): Pro
         // `uq_agent_messages_external` en la SEGUNDA respuesta pública de este
         // chat (dos filas con external_message_id='') y ese segundo mensaje
         // se quedaría `approved` para siempre, en silencio.
-        throw new Error('Upload-Post no devolvió el id del comentario creado')
+        throw new Error(
+            'Upload-Post no devolvió el id del comentario creado' +
+                ' — la respuesta pública puede haberse publicado; comprueba el post antes de reintentar',
+        )
     }
 
     try {

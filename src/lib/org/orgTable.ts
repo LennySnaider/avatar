@@ -50,6 +50,9 @@ export const TENANT_TABLES = [
     // organization_id NOT NULL (migración 20260916100000_social_comments_ia)
     // y se le había quedado fuera de esta lista desde que se creó.
     'social_post_targets',
+    // F4.2 Tarea 4 (comentarios-ia-social) — también tiene organization_id
+    // NOT NULL (misma migración 20260916100000_social_comments_ia).
+    'social_comment_dms',
 ] as const
 
 export type TenantTable = (typeof TENANT_TABLES)[number]

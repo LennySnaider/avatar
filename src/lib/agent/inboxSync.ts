@@ -189,13 +189,26 @@ export async function upsertChat(input: {
         // Keep the creator flag fresh, but NEVER override a mode the user set.
         if (input.isCreator !== undefined) patch.is_creator = input.isCreator
         if (input.context !== undefined) patch.context = input.context
-        const { data } = await supabase
+        const { data, error } = await supabase
             .from('agent_chats')
             .update(patch)
             .eq('organization_id', input.target.organizationId)
             .eq('id', existing.id)
             .select('*')
             .single()
+        // Este update dejó de ser cosmético: además de los datos del fan
+        // refresca `context` (caption/postUrl del post comentado), que es lo
+        // que el prompt de comentarios públicos usa para saber de qué se está
+        // hablando. Si falla y se devuelve `existing` en silencio, el borrador
+        // se genera con el contexto viejo y nadie se entera.
+        if (error) {
+            console.error(
+                '[agent] no se pudo actualizar el chat existente',
+                { chatId: existing.id, organizationId: input.target.organizationId },
+                error,
+            )
+            throw new Error(`Supabase: ${error.message}`)
+        }
         return (data ?? existing) as AgentChatRow
     }
 

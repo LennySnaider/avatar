@@ -72,7 +72,7 @@ alter table social_profiles
 comment on column social_profiles.ai_comment_replies_enabled is
     'Gate de la IA en comentarios de redes, independiente de avatar_personas.enabled (que gata el inbox de Fanvue). false = los comentarios se leen pero nadie los contesta solo.';
 comment on column social_profiles.ai_comment_default_chat_mode is
-    'Modo con que nacen los chats de comentarios (siempre ''draft'': un comentario publico se contesta con revision antes de publicar, nunca en automatico puro). No afecta hilos existentes.';
+    'Modo con el que NACEN los hilos de comentarios de este avatar. ''draft'' (por defecto) = la IA deja un borrador para aprobar antes de publicar. ''auto'' = responde sola, tras el clasificador de riesgo y los limites del autopilot. No afecta a hilos existentes: cambiarlo solo se aplica a los que se creen despues.';
 comment on column social_profiles.ai_comment_dm_enabled is
     'Si al responder un comentario en publico tambien se manda un DM privado al comentarista (hoy solo Instagram lo soporta via Upload-Post).';
 comment on column social_profiles.ai_comment_dm_text is
