@@ -296,7 +296,16 @@ export async function POST(req: NextRequest) {
                 const requestId = payload.request_id ?? payload.requestId
                 if (requestId) {
                     const jobId = extractJobId(payload)
-                    const { data: postRow } = await supabase
+                    // `upload_post_request_id` NO es único (columna + índice
+                    // simples, migración `20260707_social_media.sql`): puede
+                    // haber más de una fila de `social_posts` con el mismo
+                    // request_id. `.select()` SIN `.single()/.maybeSingle()`
+                    // — con cualquiera de esos dos, más de una fila hace que
+                    // PostgREST devuelva 406 y haga ROLLBACK del UPDATE
+                    // entero (era una única sentencia UPDATE...RETURNING),
+                    // así que el post JAMÁS quedaba `published`. El error SÍ
+                    // se comprueba ahora (antes se descartaba en silencio).
+                    const { data: updatedPosts, error: updateError } = await supabase
                         .from('social_posts')
                         .update({
                             status: 'published',
@@ -308,13 +317,20 @@ export async function POST(req: NextRequest) {
                         })
                         .eq('upload_post_request_id', requestId)
                         .select('id, organization_id, published_at')
-                        .maybeSingle()
+                    if (updateError) {
+                        console.error('[upload-post webhook] publish_success update failed', { requestId }, updateError.message)
+                    }
 
                     // Best-effort, en su propio try/catch: nunca debe tumbar
                     // el resto del webhook (ya 200 siempre, pero tampoco
-                    // queremos perder el log de arriba si esto explota).
+                    // queremos perder el log de arriba si esto explota). Se
+                    // repite por cada fila que haya compartido este
+                    // request_id — inofensivo: cada upsert es idempotente,
+                    // keyed por (social_post_id, platform).
                     try {
-                        await upsertTargetFromWebhook(supabase, postRow, payload)
+                        for (const postRow of updatedPosts ?? []) {
+                            await upsertTargetFromWebhook(supabase, postRow, payload)
+                        }
                     } catch (e) {
                         console.warn('[upload-post webhook] upsertTargetFromWebhook falló inesperadamente', e)
                     }
