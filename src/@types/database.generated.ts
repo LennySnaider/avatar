@@ -18,6 +18,7 @@ export type Database = {
         Row: {
           attention_reason: string | null
           avatar_id: string
+          context: Json | null
           created_at: string
           external_chat_id: string
           fan_avatar_url: string | null
@@ -37,6 +38,7 @@ export type Database = {
         Insert: {
           attention_reason?: string | null
           avatar_id: string
+          context?: Json | null
           created_at?: string
           external_chat_id: string
           fan_avatar_url?: string | null
@@ -56,6 +58,7 @@ export type Database = {
         Update: {
           attention_reason?: string | null
           avatar_id?: string
+          context?: Json | null
           created_at?: string
           external_chat_id?: string
           fan_avatar_url?: string | null
@@ -1403,6 +1406,114 @@ export type Database = {
           },
         ]
       }
+      social_comment_dms: {
+        Row: {
+          avatar_id: string
+          comment_id: string
+          commenter_id: string | null
+          created_at: string
+          error: string | null
+          id: string
+          organization_id: string
+          platform: string
+          platform_post_id: string
+          sent_at: string | null
+          status: string
+        }
+        Insert: {
+          avatar_id: string
+          comment_id: string
+          commenter_id?: string | null
+          created_at?: string
+          error?: string | null
+          id?: string
+          organization_id: string
+          platform: string
+          platform_post_id: string
+          sent_at?: string | null
+          status: string
+        }
+        Update: {
+          avatar_id?: string
+          comment_id?: string
+          commenter_id?: string | null
+          created_at?: string
+          error?: string | null
+          id?: string
+          organization_id?: string
+          platform?: string
+          platform_post_id?: string
+          sent_at?: string | null
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "social_comment_dms_avatar_id_fkey"
+            columns: ["avatar_id"]
+            isOneToOne: false
+            referencedRelation: "avatars"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "social_comment_dms_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      social_post_targets: {
+        Row: {
+          created_at: string
+          id: string
+          last_comments_poll_at: string | null
+          organization_id: string
+          platform: string
+          platform_post_id: string
+          post_url: string | null
+          published_at: string | null
+          social_post_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          last_comments_poll_at?: string | null
+          organization_id: string
+          platform: string
+          platform_post_id: string
+          post_url?: string | null
+          published_at?: string | null
+          social_post_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          last_comments_poll_at?: string | null
+          organization_id?: string
+          platform?: string
+          platform_post_id?: string
+          post_url?: string | null
+          published_at?: string | null
+          social_post_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "social_post_targets_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "social_post_targets_social_post_id_fkey"
+            columns: ["social_post_id"]
+            isOneToOne: false
+            referencedRelation: "social_posts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       social_posts: {
         Row: {
           caption: string
@@ -1493,6 +1604,11 @@ export type Database = {
       }
       social_profiles: {
         Row: {
+          ai_comment_default_chat_mode: string
+          ai_comment_dm_buttons: Json
+          ai_comment_dm_enabled: boolean
+          ai_comment_dm_text: string | null
+          ai_comment_replies_enabled: boolean
           api_key: string | null
           avatar_id: string | null
           connected_platforms: Json
@@ -1505,6 +1621,11 @@ export type Database = {
           upload_post_username: string
         }
         Insert: {
+          ai_comment_default_chat_mode?: string
+          ai_comment_dm_buttons?: Json
+          ai_comment_dm_enabled?: boolean
+          ai_comment_dm_text?: string | null
+          ai_comment_replies_enabled?: boolean
           api_key?: string | null
           avatar_id?: string | null
           connected_platforms?: Json
@@ -1517,6 +1638,11 @@ export type Database = {
           upload_post_username: string
         }
         Update: {
+          ai_comment_default_chat_mode?: string
+          ai_comment_dm_buttons?: Json
+          ai_comment_dm_enabled?: boolean
+          ai_comment_dm_text?: string | null
+          ai_comment_replies_enabled?: boolean
           api_key?: string | null
           avatar_id?: string | null
           connected_platforms?: Json
