@@ -18,3 +18,8 @@ test('cualquier otra cosa, incluido vacío, cae en fanvue: es el comportamiento 
     assert.equal(resolveDeliveryChannel(''), 'fanvue')
     assert.equal(resolveDeliveryChannel('instagram'), 'fanvue')
 })
+
+test('social:<red> va por social_comment', () => {
+    assert.equal(resolveDeliveryChannel('social:instagram'), 'social_comment')
+    assert.equal(resolveDeliveryChannel('social:x'), 'social_comment')
+})
