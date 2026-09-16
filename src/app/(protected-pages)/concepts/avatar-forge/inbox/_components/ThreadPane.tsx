@@ -64,10 +64,25 @@ const ThreadPane = ({ thread, onChanged }: ThreadPaneProps) => {
     const conversation = messages.filter((m) => m.status !== 'draft')
 
     // Acciones que sólo hablan Fanvue (nota de voz por TTS, PPV con precio en
-    // centavos). En un chat de Telegram no pueden funcionar, así que tampoco
-    // se enseñan: el servicio las rechaza igualmente, pero un botón que
-    // siempre falla es una promesa falsa.
-    const isTelegram = chat.platform.startsWith('telegram')
+    // centavos). En un chat de Telegram o de comentarios sociales no pueden
+    // funcionar, así que tampoco se enseñan: el servicio las rechaza
+    // igualmente, pero un botón que siempre falla es una promesa falsa.
+    // Task 7 — antes esto miraba sólo `chat.platform.startsWith('telegram')`,
+    // así que un chat `social:*` (que tampoco es Fanvue) se colaba de largo y
+    // mostraba Voice note / Suggest PPV igual que un chat de Fanvue real,
+    // ambos condenados a fallar del lado del servicio (mismo corte que ya
+    // usa `AgentInboxService` en `approveAndSendVoiceNote`/`suggestPpvOffer`).
+    const isTelegram = chat.channel !== 'fanvue'
+
+    // Comentario en un post social: cabecera con la red, el caption y el
+    // enlace al post original. Sólo los chats `social:*` traen `context`.
+    const captionPreview =
+        chat.context?.caption && chat.context.caption.length > 120
+            ? `${chat.context.caption.slice(0, 120)}…`
+            : (chat.context?.caption ?? null)
+    const socialLabel = chat.socialPlatform
+        ? `${chat.socialPlatform.charAt(0).toUpperCase()}${chat.socialPlatform.slice(1)}`
+        : 'social'
 
     const [draftText, setDraftText] = useState(draft?.text ?? '')
     const [busy, setBusy] = useState<'send' | 'voice' | 'regen' | 'discard' | 'removeOffer' | null>(null)
@@ -280,6 +295,30 @@ const ThreadPane = ({ thread, onChanged }: ThreadPaneProps) => {
                     <Segment.Item value="auto">Auto</Segment.Item>
                 </Segment>
             </div>
+
+            {chat.context && (
+                <div className="p-2 bg-violet-50 dark:bg-violet-900/20 border-b border-violet-200 dark:border-violet-800 flex items-center justify-between gap-2">
+                    <p
+                        className="text-xs text-violet-700 dark:text-violet-200 truncate"
+                        title={chat.context.caption ?? undefined}
+                    >
+                        Comment on your {socialLabel} post
+                        {captionPreview ? `: “${captionPreview}”` : ''}
+                    </p>
+                    {chat.context.postUrl && (
+                        <a
+                            href={chat.context.postUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="shrink-0"
+                        >
+                            <Button size="xs" variant="plain">
+                                Open post
+                            </Button>
+                        </a>
+                    )}
+                </div>
+            )}
 
             {chat.needsAttention && (
                 <div className="p-2 bg-red-50 dark:bg-red-900/30 border-b border-red-200 dark:border-red-700">
