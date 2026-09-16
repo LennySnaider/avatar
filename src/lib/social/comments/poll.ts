@@ -33,12 +33,33 @@ import { encodeCommentChatId, toSocialChatPlatform } from './ids'
 import { shouldDraftCommentReply } from './gate'
 import { toSocialCommentSettings } from './settings'
 import { listPollableTargets, type PollableTarget } from './targets'
-import { isOwnComment, pickCommenterId, rateLimitLow, shouldStopPaging } from './pollRules'
+import { filterOutOwnReplies, isOwnComment, pickCommenterId, rateLimitLow, shouldStopPaging } from './pollRules'
 import type { Platform } from '@/@types/social'
 
 const SINCE_DAYS = 7
 const TARGET_CAP = 20
 const PAGE_LIMIT = 50
+
+/**
+ * Tope de borradores (llamadas al LLM) por perfil y por corrida.
+ *
+ * Por qué 30: sin tope, un perfil con 20 targets × 3 páginas × 50
+ * comentarios podía disparar hasta 3.000 llamadas al modelo dentro de una
+ * función con `maxDuration = 120` — se corta a la mitad por timeout, con la
+ * mitad de la factura gastada y sin dejar rastro de qué quedó sin hacer. 30
+ * borradores caben de sobra en 120 s (≈2-3 s cada uno) y cubren el volumen
+ * real de comentarios entre dos corridas del cron (cada 15 min).
+ *
+ * Pasado el tope los comentarios SE SIGUEN INGIRIENDO (no se pierde
+ * ninguno): sólo se deja el hilo marcado `needs_attention` para que el humano
+ * lo vea en el Inbox y regenere el borrador a mano.
+ */
+const DRAFT_BUDGET_PER_PROFILE = 30
+
+/** Motivo que se deja en `agent_chats.attention_reason` cuando el hilo se
+ *  quedó sin borrador (presupuesto agotado o el LLM falló). En inglés, igual
+ *  que los motivos que escribe el autopilot — es lo que se muestra en el Inbox. */
+const NO_DRAFT_REASON = 'Comment without draft — regenerate from the Inbox'
 
 export interface PollProfileOptions {
     /** Ventana de días hacia atrás para buscar posts publicados —
@@ -59,6 +80,9 @@ export interface PollProfileResult {
     drafts: number
     autoQueued: number
     skippedOwn: number
+    /** Comentarios ingeridos que se quedaron SIN borrador por haberse agotado
+     *  `DRAFT_BUDGET_PER_PROFILE` — su hilo queda `needs_attention`. */
+    draftBudgetExhausted: number
     /** Plataformas con reauth requerido en esta corrida (una por plataforma afectada, sin duplicar). */
     reauthRequired: string[]
     errors: number
@@ -72,9 +96,58 @@ function emptyResult(): PollProfileResult {
         drafts: 0,
         autoQueued: 0,
         skippedOwn: 0,
+        draftBudgetExhausted: 0,
         reauthRequired: [],
         errors: 0,
     }
+}
+
+/**
+ * Deja el hilo marcado para revisión humana: el comentario está ingerido
+ * pero no tiene borrador (presupuesto agotado, o el LLM falló). Sin esto, ese
+ * comentario quedaría en el Inbox indistinguible de uno ya atendido.
+ * Un fallo aquí se loguea y no corta la ingesta del resto.
+ */
+async function flagChatNeedsAttention(organizationId: string, chatId: string): Promise<void> {
+    const supabase = agentSupabase()
+    const { error } = await supabase
+        .from('agent_chats')
+        .update({
+            needs_attention: true,
+            attention_reason: NO_DRAFT_REASON,
+            updated_at: new Date().toISOString(),
+        })
+        .eq('organization_id', organizationId)
+        .eq('id', chatId)
+    if (error) {
+        console.warn('[social-comments] no se pudo marcar el hilo como needs_attention', { chatId }, error)
+    }
+}
+
+/**
+ * Ids de ESTA página que ya existen como mensaje SALIENTE nuestro en la org.
+ * Una sola consulta por página (ver `filterOutOwnReplies` para el porqué).
+ * Un fallo de la consulta devuelve un set vacío: se pierde el cinturón, no la
+ * ingesta — `isOwnComment` sigue siendo el primer filtro.
+ */
+async function loadOwnOutboundIds(organizationId: string, commentIds: string[]): Promise<Set<string>> {
+    if (commentIds.length === 0) return new Set()
+    const supabase = agentSupabase()
+    const { data, error } = await supabase
+        .from('agent_messages')
+        .select('external_message_id')
+        .eq('organization_id', organizationId)
+        .eq('direction', 'out')
+        .in('external_message_id', commentIds)
+    if (error) {
+        console.warn('[social-comments] no se pudo comprobar si la página trae respuestas nuestras', { organizationId }, error)
+        return new Set()
+    }
+    const ids = new Set<string>()
+    for (const row of data ?? []) {
+        if (row.external_message_id) ids.add(row.external_message_id)
+    }
+    return ids
 }
 
 async function markTargetPolled(targetId: string, organizationId: string): Promise<void> {
@@ -99,9 +172,12 @@ async function pollOneTarget(
         settings: ReturnType<typeof toSocialCommentSettings>
         provider: ReturnType<typeof getSocialProvider>
         result: PollProfileResult
+        /** Borradores ya intentados en ESTE perfil, compartido entre targets
+         *  (el presupuesto es por perfil y corrida, no por target). */
+        draftBudget: { used: number }
     },
 ): Promise<'rate_limited' | 'done'> {
-    const { resolvedTarget, settings, provider, result } = ctx
+    const { resolvedTarget, settings, provider, result, draftBudget } = ctx
     if (!resolvedTarget) throw new Error('resolvedTarget ausente') // no debería pasar, ver llamador
 
     let after: string | undefined
@@ -131,9 +207,21 @@ async function pollOneTarget(
         // lanza, el target nunca llega a esta línea y no se cuenta.
         if (page === 1) result.targets++
 
-        for (const comment of commentsPage.comments) {
-            result.comments++
+        result.comments += commentsPage.comments.length
 
+        // Cinturón contra el bucle de auto-respuesta ANTES de ingerir nada:
+        // una respuesta pública nuestra que vuelve en el listado (X la
+        // devuelve por el timeline de menciones, donde `accountName` es el
+        // nombre para mostrar y no siempre casa con el @handle) se
+        // reconocería como "fan nuevo" y se contestaría a sí misma.
+        const knownOutboundIds = await loadOwnOutboundIds(
+            resolvedTarget.organizationId,
+            commentsPage.comments.map((c) => c.id),
+        )
+        const pageComments = filterOutOwnReplies(commentsPage.comments, knownOutboundIds)
+        result.skippedOwn += commentsPage.comments.length - pageComments.length
+
+        for (const comment of pageComments) {
             if (isOwnComment(comment, settings.ownAccounts, target.platform)) {
                 result.skippedOwn++
                 continue
@@ -192,6 +280,15 @@ async function pollOneTarget(
                     text: comment.text,
                 })
             ) {
+                if (draftBudget.used >= DRAFT_BUDGET_PER_PROFILE) {
+                    // Presupuesto agotado: el comentario YA quedó ingerido, sólo
+                    // se salta el LLM. El hilo queda marcado para que el humano
+                    // lo encuentre en el Inbox y regenere el borrador.
+                    result.draftBudgetExhausted++
+                    await flagChatNeedsAttention(resolvedTarget.organizationId, chat.id)
+                    continue
+                }
+                draftBudget.used++
                 try {
                     const draft = await generateDraftReply(chat.id)
                     if (draft) {
@@ -203,8 +300,10 @@ async function pollOneTarget(
                     }
                 } catch (e) {
                     // Un fallo del LLM/autopilot no puede tumbar la ingesta
-                    // del resto de comentarios de este target.
+                    // del resto de comentarios de este target — pero tampoco
+                    // puede dejar el hilo mudo y sin avisar a nadie.
                     console.warn('[social-comments] draft/autopilot falló', { profileId: settings.profileId, chatId: chat.id }, e)
+                    await flagChatNeedsAttention(resolvedTarget.organizationId, chat.id)
                 }
             }
         }
@@ -255,12 +354,20 @@ export async function pollProfileComments(
 
     const targets = await listPollableTargets(profileRow.id, profileRow.organization_id, sinceDays, TARGET_CAP)
     const reauthPlatforms = new Set<string>()
+    const draftBudget = { used: 0 }
 
     for (const target of targets) {
-        if (reauthPlatforms.has(target.platform)) continue
+        if (reauthPlatforms.has(target.platform)) {
+            // Se salta por la reauth de su plataforma, pero SÍ se le estampa
+            // `last_comments_poll_at`: si no, estos targets se quedan
+            // eternamente primeros en la cola (`asc nulls first`) y se comen
+            // el cupo de 20 de cada corrida sin dejar sitio a los demás.
+            await markTargetPolled(target.id, target.organizationId)
+            continue
+        }
 
         try {
-            const outcome = await pollOneTarget(target, { resolvedTarget, settings, provider, result })
+            const outcome = await pollOneTarget(target, { resolvedTarget, settings, provider, result, draftBudget })
             if (outcome === 'rate_limited') {
                 // El límite ya se logueó dentro de pollOneTarget. Este target
                 // se deja SIN marcar como sondeado (se procesó parcial o
@@ -276,6 +383,7 @@ export async function pollProfileComments(
                 })
                 reauthPlatforms.add(target.platform)
                 result.reauthRequired.push(target.platform)
+                await markTargetPolled(target.id, target.organizationId)
                 continue
             }
             result.errors++
@@ -284,6 +392,10 @@ export async function pollProfileComments(
                 { profileId: profileRow.id, targetId: target.id, platform: target.platform },
                 e,
             )
+            // Mismo motivo que arriba: un target que falla siempre no puede
+            // acaparar el cupo de 20 corrida tras corrida. Se reintenta en la
+            // rotación normal, no el primero de la fila.
+            await markTargetPolled(target.id, target.organizationId)
         }
     }
 

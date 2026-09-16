@@ -3,6 +3,7 @@ import assert from 'node:assert/strict'
 import {
     chunk,
     clampSinceDays,
+    filterOutOwnReplies,
     isOwnComment,
     pickCommenterId,
     postNeedsSync,
@@ -183,4 +184,24 @@ test('postNeedsSync: con un target pero sin publishedAt, no hace falta (no hay e
 test('postNeedsSync: publishedAt inválido con targets se trata igual que ausente', () => {
     const now = new Date('2026-09-16T12:00:00Z')
     assert.equal(postNeedsSync({ publishedAt: 'no-es-una-fecha', targetCount: 1, now }), false)
+})
+
+// ---------------------------------------------------------------------------
+// filterOutOwnReplies (cinturón contra el bucle de auto-respuesta)
+// ---------------------------------------------------------------------------
+
+test('saca los comentarios cuyo id ya es un mensaje saliente nuestro', () => {
+    const comments = [{ id: 'c1' }, { id: 'nuestra-respuesta' }, { id: 'c2' }]
+    const kept = filterOutOwnReplies(comments, new Set(['nuestra-respuesta']))
+    assert.deepEqual(kept.map((c) => c.id), ['c1', 'c2'])
+})
+
+test('sin ids conocidos devuelve la misma lista (misma referencia, sin copiar)', () => {
+    const comments = [{ id: 'c1' }, { id: 'c2' }]
+    assert.equal(filterOutOwnReplies(comments, new Set()), comments)
+})
+
+test('si TODA la página es nuestra, la lista queda vacía (no se ingiere nada)', () => {
+    const comments = [{ id: 'a' }, { id: 'b' }]
+    assert.deepEqual(filterOutOwnReplies(comments, new Set(['a', 'b'])), [])
 })

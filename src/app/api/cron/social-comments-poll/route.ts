@@ -53,6 +53,10 @@ export async function GET(request: NextRequest) {
     let drafts = 0
     let autoQueued = 0
     let skippedOwn = 0
+    /** Comentarios ingeridos que se quedaron sin borrador por agotarse el
+     *  presupuesto de borradores del perfil (`DRAFT_BUDGET_PER_PROFILE`);
+     *  sus hilos quedan `needs_attention` en el Inbox. */
+    let draftBudgetExhausted = 0
     let errors = 0
     const reauthRequired: { profile: string; platform: string }[] = []
 
@@ -83,6 +87,7 @@ export async function GET(request: NextRequest) {
             drafts += pollResult.drafts
             autoQueued += pollResult.autoQueued
             skippedOwn += pollResult.skippedOwn
+            draftBudgetExhausted += pollResult.draftBudgetExhausted
             errors += pollResult.errors
             for (const platform of pollResult.reauthRequired) {
                 reauthRequired.push({ profile: settings.uploadPostUsername, platform })
@@ -106,6 +111,7 @@ export async function GET(request: NextRequest) {
         drafts,
         autoQueued,
         skippedOwn,
+        draftBudgetExhausted,
         reauthRequired,
         errors,
     })

@@ -47,6 +47,31 @@ export function isOwnComment(comment: CommentAuthorLike, ownAccounts: OwnAccount
     return false
 }
 
+/** Lo mínimo de un `SocialComment` para poder identificarlo por id. */
+export interface CommentIdLike {
+    id: string
+}
+
+/**
+ * Cinturón contra el bucle de auto-respuesta: saca de la página los
+ * comentarios cuyo id ya figura como mensaje SALIENTE nuestro
+ * (`agent_messages.direction='out'`, `external_message_id = <comment_id>`).
+ *
+ * Por qué hace falta además de `isOwnComment`: ese compara contra las
+ * cuentas propias declaradas en el perfil y para X el `accountName` es el
+ * NOMBRE PARA MOSTRAR, no el @handle — si no coincide, nuestra propia
+ * respuesta pública vuelve en el siguiente sondeo como "comentario nuevo de
+ * un fan", se le genera borrador, se contesta, y así hasta el infinito.
+ * La BD, en cambio, no se equivoca: si publicamos ese comentario, su id
+ * quedó guardado.
+ *
+ * Puro: el llamador hace UNA consulta por página y pasa el set resultante.
+ */
+export function filterOutOwnReplies<T extends CommentIdLike>(comments: T[], knownOutboundIds: Set<string>): T[] {
+    if (knownOutboundIds.size === 0) return comments
+    return comments.filter((c) => !knownOutboundIds.has(c.id))
+}
+
 /** `authorId` si lo trae; si no, `authorUsername`; si ninguno, `null` (no hay
  *  a quién asociar el hilo — el llamador lo salta con un warning). */
 export function pickCommenterId(comment: CommentAuthorLike): string | null {

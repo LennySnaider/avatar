@@ -235,6 +235,32 @@ export interface PollableTarget {
 
 const TARGET_CAP = 20
 
+/** Misma razón que `EXISTING_TARGETS_CHUNK_SIZE`: hasta 200 ids de posts en un
+ *  solo `.in(...)` son ~7KB de query string. */
+const POLLABLE_TARGETS_CHUNK_SIZE = 100
+
+/** Fila cruda de `social_post_targets` — sólo las columnas que este módulo
+ *  mira para ordenar y mapear (el select es `*`). */
+type PollableTargetRow = {
+    id: string
+    organization_id: string
+    social_post_id: string
+    platform: string
+    platform_post_id: string
+    post_url: string | null
+    published_at: string | null
+    last_comments_poll_at: string | null
+}
+
+/** `last_comments_poll_at asc nulls first`, en JS: el mismo orden que pedía
+ *  la consulta única, rehecho sobre la unión de las tandas. */
+function pollOrder(a: PollableTargetRow, b: PollableTargetRow): number {
+    if (a.last_comments_poll_at === b.last_comments_poll_at) return 0
+    if (a.last_comments_poll_at === null) return -1
+    if (b.last_comments_poll_at === null) return 1
+    return a.last_comments_poll_at < b.last_comments_poll_at ? -1 : 1
+}
+
 /**
  * Targets de `profileId` a sondear esta corrida: de sus posts publicados en
  * la ventana de `sinceDays`, ordenados por `last_comments_poll_at asc nulls
@@ -276,19 +302,31 @@ export async function listPollableTargets(
     if (postIds.length === 0) return []
     const captionByPost = new Map((posts ?? []).map((p) => [p.id, p.caption]))
 
-    const { data: targets, error: targetsError } = await supabase
-        .from('social_post_targets')
-        .select('*')
-        .eq('organization_id', organizationId)
-        .in('social_post_id', postIds)
-        .order('last_comments_poll_at', { ascending: true, nullsFirst: true })
-        .limit(cap)
-    if (targetsError) {
-        console.error('[social-comments] no se pudieron listar los targets a sondear', { profileId }, targetsError)
-        return []
+    // En tandas de 100 ids, igual que `syncPostTargets` — hasta 200 posts en
+    // un solo `.in(...)` son ~7KB de query string, cerca del límite de URL de
+    // PostgREST/Kong. Cada tanda trae ya ordenada y acotada a `cap` sus
+    // propios candidatos; el orden GLOBAL (y el corte a `cap`) se rehace
+    // abajo sobre la unión, que es lo que la BD hacía en una sola consulta.
+    const targets: PollableTargetRow[] = []
+    for (const idsChunk of chunk(postIds, POLLABLE_TARGETS_CHUNK_SIZE)) {
+        const { data, error: targetsError } = await supabase
+            .from('social_post_targets')
+            .select('*')
+            .eq('organization_id', organizationId)
+            .in('social_post_id', idsChunk)
+            .order('last_comments_poll_at', { ascending: true, nullsFirst: true })
+            .limit(cap)
+        if (targetsError) {
+            console.error('[social-comments] no se pudieron listar los targets a sondear', { profileId }, targetsError)
+            return []
+        }
+        targets.push(...((data ?? []) as PollableTargetRow[]))
     }
 
-    return (targets ?? []).map((t) => ({
+    return targets
+        .sort(pollOrder)
+        .slice(0, cap)
+        .map((t) => ({
         id: t.id,
         organizationId: t.organization_id,
         socialPostId: t.social_post_id,
