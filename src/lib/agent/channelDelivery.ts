@@ -28,11 +28,11 @@ import { resolveDeliveryChannel } from './channelRouting'
 import { loadConnection } from '@/lib/fanvue/tokenStore'
 import { loadTelegramBotToken, loadTelegramSettings } from '@/lib/telegram/settings'
 import { sendMessage as telegramSendMessage } from '@/lib/telegram/client'
-import { platformFromChat } from '@/lib/social/comments/ids'
+import { platformFromChat, postIdFromChat } from '@/lib/social/comments/ids'
 import { resolveProfileKey } from '@/lib/social/profileKey'
 import { getSocialProvider } from '@/lib/social/provider'
 import { maybeSendCommentDm } from '@/lib/social/comments/privateReply'
-import type { Platform } from '@/@types/social'
+import { ALL_PLATFORMS, type Platform } from '@/@types/social'
 
 export interface DeliverableChat {
     id: string
@@ -103,12 +103,20 @@ async function deliverViaTelegram(chat: DeliverableChat, text: string): Promise<
  */
 async function deliverViaSocialComment(chat: DeliverableChat, text: string): Promise<DeliveryResult> {
     const supabase = agentSupabase()
-    const { data: profile } = await supabase
+    const { data: profile, error: profileError } = await supabase
         .from('social_profiles')
         .select('*')
         .eq('avatar_id', chat.avatar_id)
         .eq('organization_id', chat.organization_id)
         .maybeSingle()
+    if (profileError) {
+        console.error(
+            '[social-comment] no se pudo leer social_profiles',
+            { chatId: chat.id, avatarId: chat.avatar_id, orgId: chat.organization_id },
+            profileError.message,
+        )
+        throw new Error(`Supabase: ${profileError.message}`)
+    }
     if (!profile || profile.status !== 'active') {
         throw new Error('Upload-Post account not connected')
     }
@@ -117,6 +125,9 @@ async function deliverViaSocialComment(chat: DeliverableChat, text: string): Pro
 
     const platform = platformFromChat(chat.platform)
     if (!platform) throw new Error(`Chat platform is not a social comment channel: ${chat.platform}`)
+    if (!ALL_PLATFORMS.includes(platform as Platform)) {
+        throw new Error(`Unsupported social platform: ${platform}`)
+    }
 
     // El comentario a responder es el último mensaje entrante RECIBIDO del
     // chat, no cualquiera: un `draft`/`sent` de nuestro lado no es un
@@ -124,7 +135,7 @@ async function deliverViaSocialComment(chat: DeliverableChat, text: string): Pro
     // desc` porque el poll de Tarea 5 puede ingerir comentarios fuera de
     // orden cronológico (páginas de la API) — `created_at` (cuándo LO
     // VIMOS nosotros) desempata cuando ese dato falta.
-    const { data: lastInbound } = await supabase
+    const { data: lastInbound, error: lastInboundError } = await supabase
         .from('agent_messages')
         .select('external_message_id, external_created_at')
         .eq('organization_id', chat.organization_id)
@@ -135,11 +146,23 @@ async function deliverViaSocialComment(chat: DeliverableChat, text: string): Pro
         .order('created_at', { ascending: false })
         .limit(1)
         .maybeSingle()
+    if (lastInboundError) {
+        console.error(
+            '[social-comment] no se pudo leer el último comentario entrante',
+            { chatId: chat.id, avatarId: chat.avatar_id, orgId: chat.organization_id },
+            lastInboundError.message,
+        )
+        throw new Error(`Supabase: ${lastInboundError.message}`)
+    }
     const commentId = lastInbound?.external_message_id
     if (!commentId) throw new Error('No comment to reply to')
 
+    // Mismo fallback que `privateReply.ts` (postIdFromChat): si el chat no
+    // trae `platformPostId` en `context` (no debería pasar para un chat
+    // social bien formado, pero el campo es `unknown`), se recupera del
+    // propio `external_chat_id` (`'<postId>:<commenterId>'`) antes de rendirse.
     const context = (chat.context ?? {}) as { platformPostId?: string | null }
-    const postId = context.platformPostId || undefined
+    const postId = context.platformPostId || postIdFromChat(chat.external_chat_id) || undefined
 
     const res = await provider.createComment({
         username: profile.upload_post_username,
@@ -148,6 +171,15 @@ async function deliverViaSocialComment(chat: DeliverableChat, text: string): Pro
         commentId,
         postId,
     })
+    if (!res.id) {
+        // El provider normaliza `res?.id ?? res?.result?.comment_id ?? ''` —
+        // un '' aquí no es "no hubo id", es "el proveedor no lo devolvió".
+        // Guardarlo como `external_message_id` chocaría con
+        // `uq_agent_messages_external` en la SEGUNDA respuesta pública de este
+        // chat (dos filas con external_message_id='') y ese segundo mensaje
+        // se quedaría `approved` para siempre, en silencio.
+        throw new Error('Upload-Post no devolvió el id del comentario creado')
+    }
 
     try {
         const outcome = await maybeSendCommentDm({
