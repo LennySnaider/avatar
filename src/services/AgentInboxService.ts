@@ -33,6 +33,7 @@ import { findPaidMediaOffer } from '@/lib/telegram/offerGate'
 import { fanMemoryPlatform } from '@/lib/agent/fanMemoryPlatform'
 import { resolveDeliveryChannel } from '@/lib/agent/channelRouting'
 import { updateFanMemoryFromChat } from '@/lib/agent/draftPipeline'
+import { commenterIdFromChat } from '@/lib/social/comments/ids'
 import { retrieveKnowledge } from '@/lib/agent/retrieval'
 import { AGENT_UTILITY_MODEL } from '@/lib/agent/models'
 import {
@@ -274,12 +275,17 @@ export async function getAgentChatThread(
                 // (`touchFanMemory`), así que con la clave cableada el inbox
                 // no enseñaba NADA de lo que el agente recuerda de un fan de
                 // Telegram — la misma derivación que ya usa `draftPipeline`
-                // para construir el prompt.
+                // para construir el prompt. Y `external_fan_id` va por
+                // `commenterIdFromChat`, no por el `external_chat_id` crudo:
+                // en un chat de comentarios ese id trae `<postId>:<commenterId>`
+                // pegados, así que comparar contra el string entero nunca
+                // habría encontrado la memoria (identidad para Fanvue/Telegram,
+                // que no codifican nada).
                 orgTable(ctx, 'avatar_fan_memories')
                     .select('summary, facts')
                     .eq('avatar_id', chat.avatar_id)
                     .eq('platform', fanMemoryPlatform(chat.platform))
-                    .eq('external_fan_id', chat.external_chat_id)
+                    .eq('external_fan_id', commenterIdFromChat(chat.external_chat_id))
                     .maybeSingle(),
             ])
 
