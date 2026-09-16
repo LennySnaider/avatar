@@ -16,7 +16,7 @@ import { agentSupabase, type SocialProfileRow } from '@/lib/agent/db'
 import { getSocialProvider } from '@/lib/social/provider'
 import { resolveProfileKey } from '@/lib/social/profileKey'
 import { UploadPostProviderError } from '@/lib/social/providers/UploadPostProvider'
-import { rateLimitLow } from './pollRules'
+import { chunk, postNeedsSync, rateLimitLow } from './pollRules'
 
 const DAY_MS = 24 * 60 * 60 * 1000
 /**
@@ -35,13 +35,10 @@ const POSTS_PER_RUN_CAP = 50
  *  `POSTS_PER_RUN_CAP`, aplicado después de filtrar). Sólo actúa si un
  *  perfil publica más de 500 veces en 7 días, lo cual no pasa hoy. */
 const CANDIDATE_POSTS_CAP = 500
-
-/** Narrow `social_posts.platforms` (jsonb, guardado como `Platform[]` — ver
- *  `social-reconcile/route.ts`) a un `Set<string>` para comparar. */
-function toPlatformSet(platforms: unknown): Set<string> {
-    if (!Array.isArray(platforms)) return new Set()
-    return new Set(platforms.filter((p): p is string => typeof p === 'string'))
-}
+/** `.in('social_post_id', ids)` se manda en tandas de a lo sumo esto — con
+ *  hasta `CANDIDATE_POSTS_CAP` ids en una sola llamada, el query string
+ *  (~18KB con 500 UUIDs) puede pegarle al límite de URL de PostgREST/Kong. */
+const EXISTING_TARGETS_CHUNK_SIZE = 100
 
 export interface SyncPostTargetsResult {
     /** Targets creados o actualizados (entradas `success && platformPostId` del history). */
@@ -59,13 +56,16 @@ export interface SyncPostTargetsResult {
  * Un post `published` puede tener publicaciones reales en varias
  * plataformas (una por elemento de `social_posts.platforms`) y a cada una le
  * corresponde su propio `platform_post_id` real. Esta función busca los
- * posts publicados de `profileRow` en la ventana de `sinceDays` que todavía
- * les falte el target de AL MENOS una de sus plataformas, pide el history de
+ * posts publicados de `profileRow` en la ventana de `sinceDays` que
+ * `postNeedsSync` (pollRules.ts) marca como pendientes — sin NINGÚN target
+ * todavía, o publicados hace menos de 2 horas —, pide el history de
  * Upload-Post por `request_id` (una llamada cubre todas las plataformas de
  * ESE post) y upsertea un target por cada entrada `success=true` con
  * `platformPostId`. Las entradas `success=false` (falló en esa plataforma
  * concreta) se loguean, no se guardan — no hay `platform_post_id` real que
- * guardar.
+ * guardar, y un post asentado (≥1 target, publicado hace más de 2h) no
+ * vuelve a pedirse aunque le falte una plataforma: esa falta ya quedó
+ * logueada la primera vez que se vio.
  */
 export async function syncPostTargets(profileRow: SocialProfileRow, sinceDays = 7): Promise<SyncPostTargetsResult> {
     const result: SyncPostTargetsResult = { synced: 0, failedEntries: 0, reauth: false }
@@ -74,7 +74,7 @@ export async function syncPostTargets(profileRow: SocialProfileRow, sinceDays = 
 
     const { data: candidatePosts, error: postsError } = await supabase
         .from('social_posts')
-        .select('id, organization_id, platforms, published_at, upload_post_request_id, caption')
+        .select('id, organization_id, published_at, upload_post_request_id, caption')
         .eq('social_profile_id', profileRow.id)
         .eq('organization_id', profileRow.organization_id)
         .eq('status', 'published')
@@ -93,34 +93,48 @@ export async function syncPostTargets(profileRow: SocialProfileRow, sinceDays = 
     if (!candidatePosts || candidatePosts.length === 0) return result
 
     const candidateIds = candidatePosts.map((p) => p.id)
-    const { data: existingTargets, error: targetsError } = await supabase
-        .from('social_post_targets')
-        .select('social_post_id, platform')
-        .eq('organization_id', profileRow.organization_id)
-        .in('social_post_id', candidateIds)
-    if (targetsError) {
-        console.error(
-            '[social-comments] no se pudieron leer los targets existentes',
-            { profileId: profileRow.id },
-            targetsError,
-        )
-        return result
-    }
+    // En tandas de 100 ids por llamada, no una sola con hasta
+    // CANDIDATE_POSTS_CAP (500) — ver EXISTING_TARGETS_CHUNK_SIZE. Un fallo
+    // en CUALQUIER tanda aborta la sincronización de este perfil (igual que
+    // antes con la única consulta): sin saber qué targets ya existen no se
+    // puede decidir con seguridad qué posts necesitan `listHistory`.
     const existingByPost = new Map<string, Set<string>>()
-    for (const t of existingTargets ?? []) {
-        const set = existingByPost.get(t.social_post_id) ?? new Set<string>()
-        set.add(t.platform)
-        existingByPost.set(t.social_post_id, set)
+    for (const idsChunk of chunk(candidateIds, EXISTING_TARGETS_CHUNK_SIZE)) {
+        const { data: existingTargets, error: targetsError } = await supabase
+            .from('social_post_targets')
+            .select('social_post_id, platform')
+            .eq('organization_id', profileRow.organization_id)
+            .in('social_post_id', idsChunk)
+        if (targetsError) {
+            console.error(
+                '[social-comments] no se pudieron leer los targets existentes',
+                { profileId: profileRow.id },
+                targetsError,
+            )
+            return result
+        }
+        for (const t of existingTargets ?? []) {
+            const set = existingByPost.get(t.social_post_id) ?? new Set<string>()
+            set.add(t.platform)
+            existingByPost.set(t.social_post_id, set)
+        }
     }
 
-    // Sólo los posts a los que de verdad les falta algo, más recientes
-    // primero (candidatePosts ya viene ordenado) — el tope real se aplica
-    // AQUÍ, sobre lo que hace falta trabajar, no sobre el total publicado.
-    const postsNeedingSync = candidatePosts.filter((post) => {
-        const requestedPlatforms = toPlatformSet(post.platforms)
-        const known = existingByPost.get(post.id) ?? new Set<string>()
-        return requestedPlatforms.size === 0 || [...requestedPlatforms].some((p) => !known.has(p))
-    })
+    // Sólo los posts que `postNeedsSync` marca como pendientes, más
+    // recientes primero (candidatePosts ya viene ordenado) — el tope real
+    // se aplica AQUÍ, sobre lo que hace falta trabajar, no sobre el total
+    // publicado. Medido en vivo (2026-09-16, Emily, `?sinceDays=30`): sin
+    // este corte por edad, un post con una plataforma que FALLÓ (nunca iba
+    // a tener target) se re-enviaba a `listHistory` en cada corrida del
+    // cron, para siempre.
+    const now = new Date()
+    const postsNeedingSync = candidatePosts.filter((post) =>
+        postNeedsSync({
+            publishedAt: post.published_at,
+            targetCount: (existingByPost.get(post.id) ?? new Set<string>()).size,
+            now,
+        }),
+    )
     if (postsNeedingSync.length === 0) return result
     const postsToSync = postsNeedingSync.slice(0, POSTS_PER_RUN_CAP)
 

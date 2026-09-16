@@ -1,6 +1,14 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { clampSinceDays, isOwnComment, pickCommenterId, rateLimitLow, shouldStopPaging } from './pollRules.ts'
+import {
+    chunk,
+    clampSinceDays,
+    isOwnComment,
+    pickCommenterId,
+    postNeedsSync,
+    rateLimitLow,
+    shouldStopPaging,
+} from './pollRules.ts'
 
 test('isOwnComment: true cuando el authorId coincide en la misma red', () => {
     const own = isOwnComment(
@@ -113,4 +121,66 @@ test('clampSinceDays: por debajo del mínimo (incluido 0) se acota a 1', () => {
 test('clampSinceDays: no numérico cae al default de 7', () => {
     assert.equal(clampSinceDays('abc'), 7)
     assert.equal(clampSinceDays(''), 7)
+})
+
+test('chunk: array vacío da lista de trozos vacía', () => {
+    assert.deepEqual(chunk([], 100), [])
+})
+
+test('chunk: 250 elementos en trozos de 100 da [100, 100, 50]', () => {
+    const arr = Array.from({ length: 250 }, (_, i) => i)
+    const chunks = chunk(arr, 100)
+    assert.deepEqual(
+        chunks.map((c) => c.length),
+        [100, 100, 50],
+    )
+    // El orden y el contenido se conservan — sin huecos ni duplicados.
+    assert.deepEqual(chunks.flat(), arr)
+})
+
+test('chunk: un array más chico que size da un solo trozo', () => {
+    assert.deepEqual(chunk([1, 2, 3], 100), [[1, 2, 3]])
+})
+
+test('chunk: size que divide exacto no deja un trozo final vacío', () => {
+    const arr = Array.from({ length: 200 }, (_, i) => i)
+    assert.deepEqual(
+        chunk(arr, 100).map((c) => c.length),
+        [100, 100],
+    )
+})
+
+test('postNeedsSync: sin ningún target todavía, sí hace falta (sin importar la edad)', () => {
+    const now = new Date('2026-09-16T12:00:00Z')
+    assert.equal(postNeedsSync({ publishedAt: null, targetCount: 0, now }), true)
+    assert.equal(
+        postNeedsSync({ publishedAt: '2020-01-01T00:00:00Z', targetCount: 0, now }),
+        true,
+    )
+})
+
+test('postNeedsSync: con un target y publicado hace 30 minutos, sí hace falta (puede faltar otra plataforma)', () => {
+    const now = new Date('2026-09-16T12:00:00Z')
+    assert.equal(
+        postNeedsSync({ publishedAt: '2026-09-16T11:30:00Z', targetCount: 1, now }),
+        true,
+    )
+})
+
+test('postNeedsSync: con un target y publicado hace 3 horas, ya no hace falta (asentado)', () => {
+    const now = new Date('2026-09-16T12:00:00Z')
+    assert.equal(
+        postNeedsSync({ publishedAt: '2026-09-16T09:00:00Z', targetCount: 1, now }),
+        false,
+    )
+})
+
+test('postNeedsSync: con un target pero sin publishedAt, no hace falta (no hay edad que evaluar)', () => {
+    const now = new Date('2026-09-16T12:00:00Z')
+    assert.equal(postNeedsSync({ publishedAt: null, targetCount: 1, now }), false)
+})
+
+test('postNeedsSync: publishedAt inválido con targets se trata igual que ausente', () => {
+    const now = new Date('2026-09-16T12:00:00Z')
+    assert.equal(postNeedsSync({ publishedAt: 'no-es-una-fecha', targetCount: 1, now }), false)
 })

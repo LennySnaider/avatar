@@ -117,3 +117,57 @@ export function clampSinceDays(raw: string | null): number {
     if (!Number.isFinite(n)) return SINCE_DAYS_DEFAULT
     return Math.min(SINCE_DAYS_MAX, Math.max(SINCE_DAYS_MIN, n))
 }
+
+/**
+ * Parte `arr` en trozos de a lo sumo `size` elementos, en orden. Usado por
+ * `targets.ts` para leer `social_post_targets` con `.in('social_post_id',
+ * ids)` en tandas de 100 en vez de mandar hasta `CANDIDATE_POSTS_CAP` (500)
+ * UUIDs en un solo GET — un query string así de largo (~18KB) puede pegarle
+ * al límite de URL de PostgREST/Kong. `size <= 0` no rompe: devuelve `[arr]`
+ * tal cual (no hay forma sensata de "trozos de tamaño 0").
+ */
+export function chunk<T>(arr: T[], size: number): T[][] {
+    if (size <= 0) return arr.length ? [arr] : []
+    const out: T[][] = []
+    for (let i = 0; i < arr.length; i += size) {
+        out.push(arr.slice(i, i + size))
+    }
+    return out
+}
+
+export interface PostNeedsSyncInput {
+    /** `social_posts.published_at` de ESTE post. */
+    publishedAt: string | null
+    /** Cuántas filas de `social_post_targets` tiene ya este post (una por
+     *  plataforma que sí logró un `platform_post_id`). */
+    targetCount: number
+    now: Date
+}
+
+const SYNC_GRACE_MS = 2 * 60 * 60 * 1000 // 2 horas
+
+/**
+ * ¿Hay que volver a pedirle `listHistory` a este post? Medido en vivo
+ * (2026-09-16 con Emily, `?sinceDays=30`): un post con una plataforma que
+ * FALLÓ (p.ej. Instagram con `account_reauth_required`) nunca iba a tener
+ * `platform_post_id` — sin este corte, cada corrida del cron (cada 15 min,
+ * para siempre) lo volvía a mandar a `listHistory` porque "le falta
+ * Instagram", gastando una llamada al proveedor por nada: la falla ya
+ * quedó logueada la primera vez que se vio.
+ *
+ * Regla: sin NINGÚN target todavía, sí (puede que Upload-Post aún no haya
+ * terminado de publicar, o que el sondeo anterior no llegara a este post).
+ * Con al menos un target, sólo si se publicó hace menos de 2 horas — una
+ * plataforma que tarda más que eso en resolver (éxito o fallo) es rara,
+ * pero le da margen a publicaciones que terminan tarde en unas pocas
+ * plataformas. Pasadas esas 2 horas, un post con ≥1 target se considera
+ * asentado aunque le falte alguna plataforma: esa falta ya se vio y logueó
+ * la primera vez, no hace falta seguir preguntando.
+ */
+export function postNeedsSync(input: PostNeedsSyncInput): boolean {
+    if (input.targetCount === 0) return true
+    if (!input.publishedAt) return false
+    const publishedTime = new Date(input.publishedAt).getTime()
+    if (!Number.isFinite(publishedTime)) return false
+    return input.now.getTime() - publishedTime < SYNC_GRACE_MS
+}
