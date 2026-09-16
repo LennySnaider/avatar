@@ -11,9 +11,14 @@
 import type {
   AnalyticsSnapshot,
   ConnectedAccount,
+  CreateCommentResult,
+  InstagramDmButton,
   Platform,
   PlatformTarget,
+  PrivateReplyResult,
   QueueSettings,
+  SocialCommentsPage,
+  UploadPostHistoryEntry,
 } from '@/@types/social'
 
 // ---------------------------------------------------------------------------
@@ -163,6 +168,40 @@ export interface SocialProvider {
   // --- Status + history ---
   getRequestStatus(requestId: string): Promise<RequestStatus>
   getHistory(username: string, limit?: number): Promise<HistoryEntry[]>
+  // listHistory usa `profile_username` (getHistory de arriba manda `username`,
+  // que la doc real no reconoce — ver comentario en UploadPostProvider).
+  listHistory(input: {
+    profileUsername: string
+    requestId?: string
+    jobId?: string
+    platform?: string
+    limit?: 10 | 20 | 50 | 100
+  }): Promise<UploadPostHistoryEntry[]>
+
+  // --- Comentarios / respuestas ---
+  listComments(input: {
+    username: string
+    platform: Platform
+    postId?: string
+    postUrl?: string
+    limit?: number
+    after?: string
+    commentId?: string
+  }): Promise<SocialCommentsPage>
+  createComment(input: {
+    username: string
+    platform: Platform
+    message: string
+    commentId?: string
+    postId?: string
+    postUrl?: string
+  }): Promise<CreateCommentResult>
+  sendInstagramPrivateReply(input: {
+    username: string
+    commentId: string
+    message: string
+    buttons?: InstagramDmButton[]
+  }): Promise<PrivateReplyResult>
 
   // --- Scheduling ---
   listScheduled(username: string): Promise<ScheduledPost[]>

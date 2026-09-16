@@ -4,6 +4,7 @@ import { getOrgContext, type OrgContext } from '@/lib/tenant/getOrgContext'
 import { orgTable, orgSupabase } from '@/lib/org/orgTable'
 import { getRowMediaUrl } from '@/lib/storagePaths'
 import { getSocialProvider, deriveUploadPostUsername } from '@/lib/social/provider'
+import { resolveProfileKey } from '@/lib/social/profileKey'
 import { indexKnowledgeSource } from '@/lib/agent/indexer'
 import { UploadPostProvider } from '@/lib/social/providers/UploadPostProvider'
 import { validatePostForPlatforms } from '@/lib/social/platformValidators'
@@ -108,17 +109,6 @@ function toSummary(row: SocialProfileDbRow): SocialProfileSummary {
         usesEnvKey,
         apiKeyLast4: row.api_key ? row.api_key.slice(-4) : null,
     }
-}
-
-/**
- * Resolve which API key a profile row runs on. `null` means "fall back to env
- * UPLOAD_POST_API_KEY" — allowed ONLY while the row is active (the legacy
- * migrated row); a disconnected row without a key has no usable account.
- */
-function resolveProfileKey(row: Pick<SocialProfileDbRow, 'api_key' | 'status'>): string | null {
-    if (row.api_key) return row.api_key
-    if (row.status === 'active') return null
-    throw new Error("This avatar's Upload-Post account is disconnected — reconnect it first")
 }
 
 function webhookCallbackUrl(): string {
