@@ -98,3 +98,22 @@ export function rateLimitLow(rl: RateLimitLike | null | undefined): boolean {
     if (!rl || rl.remaining === null) return false
     return rl.remaining < 5
 }
+
+const SINCE_DAYS_DEFAULT = 7
+const SINCE_DAYS_MIN = 1
+const SINCE_DAYS_MAX = 30
+
+/**
+ * Query param `sinceDays` del cron (override manual para probar el sondeo
+ * contra datos reales sin esperar la ventana de 7 días por defecto —
+ * Vercel Scheduled Functions llama sin query string, así que en producción
+ * esto siempre cae al default) → entero acotado a `[1, 30]`. Puro: cualquier
+ * entrada rara (`null`, vacía, no numérica, fuera de rango) cae a un valor
+ * seguro en vez de tirar o dejar pasar una ventana absurda (0 días, o miles).
+ */
+export function clampSinceDays(raw: string | null): number {
+    if (raw === null) return SINCE_DAYS_DEFAULT
+    const n = Number.parseInt(raw, 10)
+    if (!Number.isFinite(n)) return SINCE_DAYS_DEFAULT
+    return Math.min(SINCE_DAYS_MAX, Math.max(SINCE_DAYS_MIN, n))
+}

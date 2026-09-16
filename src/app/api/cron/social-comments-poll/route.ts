@@ -12,6 +12,13 @@
  * Resiliencia POR PERFIL: un perfil que falla no tumba el resto (mismo
  * patrón que `agent-inbox-poll`/`social-reconcile`).
  *
+ * Override manual `?sinceDays=N` (acotado a 1..30, default 7 —
+ * `clampSinceDays`): para probar el sondeo contra datos reales sin esperar
+ * la ventana de 7 días por defecto (p.ej. el último post de un perfil es
+ * más viejo que eso y con el default no hay nada que sincronizar). Vercel
+ * Scheduled Functions llama sin query string, así que en producción esto
+ * siempre cae al default — no cambia el comportamiento programado.
+ *
  * Gated por `CRON_SECRET` (Bearer), igual que el resto de los crons.
  */
 import { NextResponse } from 'next/server'
@@ -19,6 +26,7 @@ import type { NextRequest } from 'next/server'
 import { listPollableProfiles } from '@/lib/social/comments/settings'
 import { syncPostTargets } from '@/lib/social/comments/targets'
 import { pollProfileComments } from '@/lib/social/comments/poll'
+import { clampSinceDays } from '@/lib/social/comments/pollRules'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 120
@@ -29,6 +37,8 @@ export async function GET(request: NextRequest) {
     if (secret && authHeader !== `Bearer ${secret}`) {
         return NextResponse.json({ error: 'unauthorized' }, { status: 401 })
     }
+
+    const sinceDays = clampSinceDays(request.nextUrl.searchParams.get('sinceDays'))
 
     const profiles = await listPollableProfiles()
 
@@ -48,7 +58,7 @@ export async function GET(request: NextRequest) {
 
     for (const { row, settings } of profiles) {
         try {
-            const syncResult = await syncPostTargets(row)
+            const syncResult = await syncPostTargets(row, sinceDays)
             synced += syncResult.synced
             historyFailed += syncResult.failedEntries
             if (syncResult.reauth) {
@@ -66,7 +76,7 @@ export async function GET(request: NextRequest) {
         }
 
         try {
-            const pollResult = await pollProfileComments(row)
+            const pollResult = await pollProfileComments(row, { sinceDays })
             targets += pollResult.targets
             comments += pollResult.comments
             newComments += pollResult.newComments
@@ -87,6 +97,7 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({
         profiles: profiles.length,
+        sinceDays,
         synced,
         historyFailed,
         targets,

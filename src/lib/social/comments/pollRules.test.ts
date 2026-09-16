@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { isOwnComment, pickCommenterId, rateLimitLow, shouldStopPaging } from './pollRules.ts'
+import { clampSinceDays, isOwnComment, pickCommenterId, rateLimitLow, shouldStopPaging } from './pollRules.ts'
 
 test('isOwnComment: true cuando el authorId coincide en la misma red', () => {
     const own = isOwnComment(
@@ -91,4 +91,26 @@ test('rateLimitLow: false sin dato (null o ausente) — no hay señal de la que 
     assert.equal(rateLimitLow(null), false)
     assert.equal(rateLimitLow(undefined), false)
     assert.equal(rateLimitLow({ remaining: null }), false)
+})
+
+test('clampSinceDays: null (sin query param) cae al default de 7', () => {
+    assert.equal(clampSinceDays(null), 7)
+})
+
+test('clampSinceDays: un valor dentro de rango se respeta', () => {
+    assert.equal(clampSinceDays('30'), 30)
+})
+
+test('clampSinceDays: por encima del máximo se acota a 30', () => {
+    assert.equal(clampSinceDays('99'), 30)
+})
+
+test('clampSinceDays: por debajo del mínimo (incluido 0) se acota a 1', () => {
+    assert.equal(clampSinceDays('0'), 1)
+    assert.equal(clampSinceDays('-5'), 1)
+})
+
+test('clampSinceDays: no numérico cae al default de 7', () => {
+    assert.equal(clampSinceDays('abc'), 7)
+    assert.equal(clampSinceDays(''), 7)
 })

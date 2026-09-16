@@ -40,6 +40,15 @@ const SINCE_DAYS = 7
 const TARGET_CAP = 20
 const PAGE_LIMIT = 50
 
+export interface PollProfileOptions {
+    /** Ventana de días hacia atrás para buscar posts publicados —
+     *  default `SINCE_DAYS` (7). Override para pruebas manuales del cron
+     *  (query param `sinceDays`, acotado por `clampSinceDays`); Vercel
+     *  Scheduled Functions llama sin query string, así que en producción
+     *  esto siempre cae al default. */
+    sinceDays?: number
+}
+
 export interface PollProfileResult {
     /** Targets efectivamente procesados (se llegó a pedir al menos su primera página). */
     targets: number
@@ -215,7 +224,11 @@ async function pollOneTarget(
     return 'done'
 }
 
-export async function pollProfileComments(profileRow: SocialProfileRow): Promise<PollProfileResult> {
+export async function pollProfileComments(
+    profileRow: SocialProfileRow,
+    options: PollProfileOptions = {},
+): Promise<PollProfileResult> {
+    const sinceDays = options.sinceDays ?? SINCE_DAYS
     const result = emptyResult()
     if (!profileRow.avatar_id) {
         console.warn('[social-comments] perfil sin avatar_id, se omite el sondeo', { profileId: profileRow.id })
@@ -240,7 +253,7 @@ export async function pollProfileComments(profileRow: SocialProfileRow): Promise
         return result
     }
 
-    const targets = await listPollableTargets(profileRow.id, profileRow.organization_id, SINCE_DAYS, TARGET_CAP)
+    const targets = await listPollableTargets(profileRow.id, profileRow.organization_id, sinceDays, TARGET_CAP)
     const reauthPlatforms = new Set<string>()
 
     for (const target of targets) {
