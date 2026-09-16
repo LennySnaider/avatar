@@ -135,6 +135,21 @@ const EXENTOS = [
         'src/lib/telegram/bots.ts',
         'telegramUnitActivity (Task 6, informe de unidades para la cuota prorrateada) corre sin sesión, disparada por el cron de module-fees — mismo perfil que moduleFees.ts. La organizationId llega por parámetro (la resuelve chargeModuleFees fila a fila desde org_modules) y la única consulta del fichero la filtra explícitamente con .eq(\'organization_id\', organizationId).',
     ],
+    // Tarea 5 (comentarios-ia-social) — sondeo de comentarios, sin sesión
+    // (lo dispara el cron `social-comments-poll`), mismo perfil que el resto
+    // de `src/lib/agent/` de arriba.
+    [
+        'src/lib/social/comments/settings.ts',
+        'listPollableProfiles barre TODAS las orgs a propósito (status=active and ai_comment_replies_enabled=true), igual que agent-inbox-poll con avatar_personas — es la lista de perfiles con la que arranca el cron, no una consulta acotada a una org. toSocialCommentSettings es puro y no toca Supabase.',
+    ],
+    [
+        'src/lib/social/comments/targets.ts',
+        'syncPostTargets/listPollableTargets reciben el profileRow o el profileId ya resueltos por el llamador (el cron, vía listPollableProfiles) y cada consulta a social_posts/social_post_targets filtra por ese profileId o por profileRow.organization_id explícito.',
+    ],
+    [
+        'src/lib/social/comments/poll.ts',
+        'pollProfileComments recibe el profileRow ya resuelto; resolveAvatarTargetById entrega un ResolvedTarget con organizationId que ancla upsertChat/ingestMessage/touchFanMemory (de inboxSync.ts, ya exento arriba), y markTargetPolled filtra social_post_targets con .eq(\'organization_id\', ...) explícito.',
+    ],
 ]
 
 /**

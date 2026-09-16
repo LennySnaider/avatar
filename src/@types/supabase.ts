@@ -337,6 +337,10 @@ export type Database = {
                     social_profile_id: string | null
                     generation_id: string | null
                     user_id: string | null
+                    /** Tenant al que pertenece la fila. Faltaba en este tipo
+                     *  escrito a mano (F4.2 Tarea 5, mismo motivo que
+                     *  `avatars.organization_id` arriba). */
+                    organization_id: string
                     caption: string
                     hashtags: string[]
                     content_type: string
@@ -357,6 +361,7 @@ export type Database = {
                     social_profile_id?: string | null
                     generation_id?: string | null
                     user_id?: string | null
+                    organization_id?: string
                     caption?: string
                     hashtags?: string[]
                     content_type: string
@@ -377,6 +382,7 @@ export type Database = {
                     social_profile_id?: string | null
                     generation_id?: string | null
                     user_id?: string | null
+                    organization_id?: string
                     caption?: string
                     hashtags?: string[]
                     content_type?: string
@@ -391,6 +397,46 @@ export type Database = {
                     error_message?: string | null
                     created_at?: string
                     updated_at?: string
+                }
+                Relationships: []
+            }
+            /** F4.2 Tarea 5 (comentarios-ia-social) — tabla nueva de la
+             *  migración `20260916100000_social_comments_ia.sql`: un post por
+             *  plataforma con su `platform_post_id` real, tomado del history
+             *  de Upload-Post. */
+            social_post_targets: {
+                Row: {
+                    id: string
+                    organization_id: string
+                    social_post_id: string
+                    platform: string
+                    platform_post_id: string
+                    post_url: string | null
+                    published_at: string | null
+                    last_comments_poll_at: string | null
+                    created_at: string
+                }
+                Insert: {
+                    id?: string
+                    organization_id: string
+                    social_post_id: string
+                    platform: string
+                    platform_post_id: string
+                    post_url?: string | null
+                    published_at?: string | null
+                    last_comments_poll_at?: string | null
+                    created_at?: string
+                }
+                Update: {
+                    id?: string
+                    organization_id?: string
+                    social_post_id?: string
+                    platform?: string
+                    platform_post_id?: string
+                    post_url?: string | null
+                    published_at?: string | null
+                    last_comments_poll_at?: string | null
+                    created_at?: string
                 }
                 Relationships: []
             }

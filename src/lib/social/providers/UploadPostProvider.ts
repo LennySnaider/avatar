@@ -41,6 +41,7 @@ import type {
   ProfileDetails,
   PublishResponse,
   QueueSlotPreview,
+  RateLimitInfo,
   RequestStatus,
   ScheduledPost,
   SocialProvider,
@@ -49,12 +50,10 @@ import type {
   WebhookConfigResult,
 } from './SocialProvider'
 
-/** Último snapshot de rate-limit visto en cualquier respuesta del proveedor. */
-export interface RateLimitInfo {
-  limit: number | null
-  remaining: number | null
-  reset: number | null
-}
+// `RateLimitInfo` vive en `SocialProvider.ts` (F4.2 Tarea 5): la interfaz
+// declara `getLastRateLimit()` y este archivo re-exporta el tipo por
+// compatibilidad con quien ya lo importaba desde aquí.
+export type { RateLimitInfo } from './SocialProvider'
 
 const DEFAULT_BASE_URL = 'https://api.upload-post.com'
 

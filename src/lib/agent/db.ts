@@ -258,6 +258,11 @@ interface TelegramPaidMediaItemsTable {
  * `database.generated.ts`). Sólo las columnas que necesita el módulo agente
  * para entregar una respuesta pública y el DM privado (Tarea 4): la cuenta de
  * Upload-Post del avatar y los ajustes `ai_comment_*` de la red del post.
+ *
+ * F4.2 Tarea 5 (comentarios-ia-social) — se sumó `connected_platforms`: el
+ * sondeo (`src/lib/social/comments/settings.ts`) lo necesita para saber qué
+ * cuenta es "propia" (comentarios del propio avatar/creador que no hay que
+ * contestar).
  */
 interface SocialProfilesTable {
     Row: {
@@ -267,6 +272,7 @@ interface SocialProfilesTable {
         status: string
         api_key: string | null
         upload_post_username: string
+        connected_platforms: Json
         ai_comment_replies_enabled: boolean
         ai_comment_default_chat_mode: string
         ai_comment_dm_enabled: boolean

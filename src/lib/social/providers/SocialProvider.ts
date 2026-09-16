@@ -25,6 +25,19 @@ import type {
 // Shared value types
 // ---------------------------------------------------------------------------
 
+/**
+ * Último snapshot de rate-limit visto en cualquier respuesta del proveedor
+ * (headers `x-ratelimit-*`). F4.2 Tarea 5 (comentarios-ia-social): vivía sólo
+ * en `UploadPostProvider.ts` (única implementación); se sube a la interfaz
+ * porque el sondeo de comentarios (`src/lib/social/comments/poll.ts`) lo
+ * necesita a través del tipo `SocialProvider`, no de la clase concreta.
+ */
+export interface RateLimitInfo {
+  limit: number | null
+  remaining: number | null
+  reset: number | null
+}
+
 export interface ProfileDetails {
   username: string
   connectedAccounts: ConnectedAccount[]
@@ -177,6 +190,11 @@ export interface SocialProvider {
     platform?: string
     limit?: 10 | 20 | 50 | 100
   }): Promise<UploadPostHistoryEntry[]>
+
+  /** Snapshot de rate-limit de la última respuesta HTTP, o null si aún no
+   *  se hizo ninguna. El sondeo de comentarios lo consulta antes de cada
+   *  página para frenar cuando `remaining < 5` (ver `pollRules.rateLimitLow`). */
+  getLastRateLimit(): RateLimitInfo | null
 
   // --- Comentarios / respuestas ---
   listComments(input: {

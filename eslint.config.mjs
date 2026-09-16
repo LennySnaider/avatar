@@ -132,6 +132,14 @@ const eslintConfig = [
       // `./db` que usa `channelDelivery.ts` para esquivar esta regla sin
       // proponérselo — aquí el import es `@/lib/agent/db` explícito.
       "src/lib/social/comments/privateReply.ts",
+      // Tarea 5 (comentarios-ia-social) — mismo perfil que privateReply.ts:
+      // sin sesión (cron `social-comments-poll`), filtran por la org de la
+      // fila ya resuelta (documentado en la cabecera de cada fichero).
+      // `settings.ts` no necesita entrar aquí: importa `agentSupabase` de
+      // forma DINÁMICA (`await import(...)`), así que esta regla —que sólo
+      // mira imports estáticos— nunca la dispara.
+      "src/lib/social/comments/targets.ts",
+      "src/lib/social/comments/poll.ts",
     ],
     rules: {
       "@typescript-eslint/no-restricted-imports": [
