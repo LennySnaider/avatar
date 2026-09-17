@@ -11,6 +11,7 @@
  * a partir de ahí por `organization_id` en vez de navegar por ids sueltos.
  */
 import { agentSupabase } from './db'
+import { shouldClearAttention } from './attentionClear'
 import { updateFanMemoryFromChat } from './draftPipeline'
 import { deliverAgentText } from './channelDelivery'
 import { resolveDeliveryChannel } from './channelRouting'
@@ -98,21 +99,51 @@ export async function sendAgentMessage(messageId: string): Promise<SendAgentMess
             .eq('organization_id', msg.organization_id)
             .eq('id', messageId)
             .eq('status', 'approved')
-        // Un envío del autopilot LIMPIA la bandera de atención. Visto en vivo:
-        // el `/start` que el clasificador escalaba dejaba `needs_attention` con
-        // el motivo pegado ("Autopilot paused") y nadie lo bajaba nunca —
-        // aunque el autopilot siguiera contestando solo, el inbox mostraba a
-        // todos los fans nuevos como si esperasen a un humano. La bandera dice
-        // "aquí hace falta una persona"; si el autopilot acaba de responder,
-        // ya no hace falta. Un envío aprobado a mano NO la toca: ahí el humano
-        // ya estaba dentro y es él quien decide cuándo cerrar el caso.
-        const sentByAutopilot = msg.approved_by === 'autopilot'
+        // Un envío del autopilot LIMPIA la bandera de atención — con una
+        // condición más, ver `shouldClearAttention` (attentionClear.ts), donde
+        // vive el porqué de las dos mitades de la decisión.
+        //
+        // La mitad nueva: entre que el autopilot escribe el borrador y el
+        // `send_after` lo deja salir pueden pasar minutos, y en ese hueco el
+        // fan puede haber escrito OTRA cosa que escale el chat (un pago, una
+        // queja, un tema sensible). Bajar aquí la bandera borraría una
+        // escalada levantada por un mensaje que este envío ni siquiera
+        // contesta. Por eso se pregunta primero si hay algo entrante más nuevo
+        // que `msg`; si lo hay, la bandera se queda.
+        let newerInboundExists = false
+        if (msg.approved_by === 'autopilot') {
+            const { data: newerInbound, error: newerInboundError } = await supabase
+                .from('agent_messages')
+                .select('id')
+                .eq('organization_id', msg.organization_id)
+                .eq('chat_id', msg.chat_id)
+                .eq('direction', 'in')
+                .gt('created_at', msg.created_at)
+                .limit(1)
+            if (newerInboundError) {
+                // Fallar CERRADO: si no se pudo comprobar, no se baja. Dejar
+                // la bandera de más cuesta una mirada humana; quitarla de
+                // menos entierra una escalada real.
+                console.error(
+                    '[agent] no se pudo comprobar si hay entrantes más nuevos; la bandera de atención se queda',
+                    { messageId, chatId: msg.chat_id },
+                    newerInboundError,
+                )
+                newerInboundExists = true
+            } else {
+                newerInboundExists = (newerInbound?.length ?? 0) > 0
+            }
+        }
+        const clearAttention = shouldClearAttention({
+            approvedBy: msg.approved_by,
+            newerInboundExists,
+        })
         await supabase
             .from('agent_chats')
             .update({
                 last_message_at: new Date().toISOString(),
                 updated_at: new Date().toISOString(),
-                ...(sentByAutopilot ? { needs_attention: false, attention_reason: null } : {}),
+                ...(clearAttention ? { needs_attention: false, attention_reason: null } : {}),
             })
             .eq('organization_id', chat.organization_id)
             .eq('id', chat.id)

@@ -176,7 +176,9 @@ export async function maybeAutopilotSendScheduled(
     const now = new Date()
     if (!withinActiveHours(cfg, now)) return { outcome: 'skipped', sendAfter: null }
 
-    // Daily limit (messages actually sent today for this avatar).
+    // Daily limit (messages actually sent today by the whole ORGANIZATION —
+    // el conteo no filtra por avatar: la fila de `agent_messages` no lo lleva
+    // y hacerlo pediría un join con `agent_chats`. Deuda anotada).
     if (cfg.dailyMessageLimit && cfg.dailyMessageLimit > 0) {
         const dayStart = now.toISOString().slice(0, 10) + 'T00:00:00.000Z'
         // Las filas de ENTREGA DE MEDIA no gastan cupo: un teaser gratis (o una
