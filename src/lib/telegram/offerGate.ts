@@ -44,7 +44,8 @@ export function filterOfferCandidates(
     const bought = new Set(opts.purchasedItemIds)
     return items.filter((i) => {
         if (bought.has(i.id)) return false
-        if (opts.maxOfferStars !== undefined && i.stars > opts.maxOfferStars) return false
+        if (opts.maxOfferStars !== undefined && i.stars > opts.maxOfferStars)
+            return false
         return true
     })
 }
@@ -56,7 +57,11 @@ export function filterOfferCandidates(
  * que nada cae dentro), no "usa el default": quien decide el default es su
  * llamador (`offerEngine`, 6 h) y sólo cuando el ajuste viene ausente.
  */
-export function isOfferOnCooldown(lastOfferAt: string | null, nowMs: number, cooldownHours: number): boolean {
+export function isOfferOnCooldown(
+    lastOfferAt: string | null,
+    nowMs: number,
+    cooldownHours: number,
+): boolean {
     if (!lastOfferAt) return false
     const last = Date.parse(lastOfferAt)
     if (!Number.isFinite(last)) return false
@@ -71,7 +76,12 @@ export function isOfferOnCooldown(lastOfferAt: string | null, nowMs: number, coo
  */
 export function findPaidMediaOffer(media: unknown): PaidMediaOffer | null {
     if (!Array.isArray(media)) return null
-    const hit = media.find((m) => m && typeof m === 'object' && (m as { type?: string }).type === 'paid_media_offer')
+    const hit = media.find(
+        (m) =>
+            m &&
+            typeof m === 'object' &&
+            (m as { type?: string }).type === 'paid_media_offer',
+    )
     return (hit as PaidMediaOffer | undefined) ?? null
 }
 
@@ -84,4 +94,79 @@ export function findPaidMediaOffer(media: unknown): PaidMediaOffer | null {
  */
 export function hasPaidMediaOffer(media: unknown): boolean {
     return findPaidMediaOffer(media) !== null
+}
+
+/**
+ * Forma del elemento que el motor añade a `agent_messages.media` para un
+ * teaser GRATIS. Mismo criterio que `PaidMediaOffer`: es una INTENCIÓN, no
+ * una entrega — quien la manda de verdad es `deliverFreeMedia` (freeMedia.ts,
+ * Tarea 3), que es la única que produce el envío real y bloquea repetirlo.
+ */
+export interface FreeMediaOffer {
+    type: 'free_media_offer'
+    itemId: string
+    caption: string
+}
+
+/** Equivalente de `findPaidMediaOffer` para el teaser gratis — mismo criterio
+ *  de `media` como `unknown` (columna `Json`, forma no garantizada). */
+export function findFreeMediaOffer(media: unknown): FreeMediaOffer | null {
+    if (!Array.isArray(media)) return null
+    const hit = media.find(
+        (m) =>
+            m &&
+            typeof m === 'object' &&
+            (m as { type?: string }).type === 'free_media_offer',
+    )
+    return (hit as FreeMediaOffer | undefined) ?? null
+}
+
+/** Equivalente de `hasPaidMediaOffer` para el teaser gratis. Devuelve `false`
+ *  para un `media` que sólo lleva `paid_media_offer`/`paid_media` — son tipos
+ *  distintos a propósito (ver `hasPaidMediaOffer` más arriba), el autopilot
+ *  depende de que NO se mezclen (test explícito en offerGate.test.ts). */
+export function hasFreeMediaOffer(media: unknown): boolean {
+    return findFreeMediaOffer(media) !== null
+}
+
+/**
+ * Candidatos gratis para ESTE fan: el catálogo gratis del avatar menos lo que
+ * ya se le mandó a esta conversación. A diferencia de `filterOfferCandidates`
+ * (pago) no hay tope de Stars que aplicar — un teaser gratis no cuesta nada,
+ * así que la única regla es "nunca dos veces el mismo ítem al mismo fan"
+ * (ver global-constraints.md).
+ */
+export function filterFreeCandidates<T extends { id: string; title: string }>(
+    items: T[],
+    alreadySentItemIds: string[],
+): T[] {
+    const sent = new Set(alreadySentItemIds)
+    return items.filter((i) => !sent.has(i.id))
+}
+
+/** Los cuatro `type` de `agent_messages.media` que cuentan como "hubo oferta"
+ *  para el enfriamiento común — ver `isOfferMedia`. */
+const OFFER_MEDIA_TYPES = new Set([
+    'paid_media_offer',
+    'paid_media',
+    'free_media_offer',
+    'free_media',
+])
+
+/**
+ * ¿Este `media` lleva CUALQUIER oferta — pagada o gratis, sólo prometida
+ * (`*_offer`) o ya entregada? La Tarea 4 la usa para calcular el enfriamiento
+ * COMÚN (`offerCooldownHours`): pagado y gratis comparten una sola ventana de
+ * "no ofrecer nada más por un rato" (global-constraints.md), así que el motor
+ * necesita saber "¿hubo oferta de cualquier tipo?" sin repetir la búsqueda
+ * cuatro veces con `findPaidMediaOffer`/`findFreeMediaOffer` por separado.
+ */
+export function isOfferMedia(media: unknown): boolean {
+    if (!Array.isArray(media)) return false
+    return media.some(
+        (m) =>
+            m &&
+            typeof m === 'object' &&
+            OFFER_MEDIA_TYPES.has((m as { type?: string }).type ?? ''),
+    )
 }
