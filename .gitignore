@@ -56,3 +56,6 @@ supabase/.temp/
 # salida del rescate de huerfanos (inventario, no codigo)
 .rescue-*.json
 scripts/.preflight-org-counts.snapshot.json
+
+# Maquetas y documentos de diseño (se publican como artifacts, no son código)
+.design/

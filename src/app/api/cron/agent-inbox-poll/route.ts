@@ -6,6 +6,11 @@
  * account, so drafts still appear if a webhook is missed (or not configured in
  * dev). Reuses AgentInboxService.syncFanvueInbox per avatar via its owner.
  *
+ * NO despacha la cola de autopilot: de eso se ocupa `agent-autopilot-flush`
+ * (cada minuto), su ÚNICO dueño. Cuando este cron también la barría, los dos
+ * seleccionaban la misma lista en los minutos :00/:05/:10… y el mismo mensaje
+ * — y la misma media de pago — salía dos veces.
+ *
  * Gated by CRON_SECRET (Bearer), same as the other crons.
  */
 import { NextResponse } from 'next/server'
@@ -20,10 +25,7 @@ import {
     upsertChat,
 } from '@/lib/agent/inboxSync'
 import { generateDraftReply } from '@/lib/agent/draftPipeline'
-import {
-    flushDueAutopilotMessages,
-    maybeAutopilotSend,
-} from '@/lib/agent/autopilot'
+import { maybeAutopilotSend } from '@/lib/agent/autopilot'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 120
@@ -177,14 +179,5 @@ export async function GET(request: NextRequest) {
         }
     }
 
-    // Send any autopilot messages whose humanized delay has elapsed.
-    const flushed = await flushDueAutopilotMessages()
-
-    return NextResponse.json({
-        polled,
-        chats: chatCount,
-        drafts,
-        autoSent: flushed.sent,
-        autoFailed: flushed.failed,
-    })
+    return NextResponse.json({ polled, chats: chatCount, drafts })
 }

@@ -12,6 +12,8 @@
 import { agentSupabase, type AvatarPersonaRow } from './db'
 import { classifyInboundMessage } from './classifier'
 import { sendAgentMessage } from './sendMessage'
+import { resolveDeliveryChannel } from './channelRouting'
+import { hasPaidMediaOffer } from '@/lib/telegram/offerGate'
 
 export interface AutopilotConfig {
     enabled?: boolean
@@ -20,11 +22,22 @@ export interface AutopilotConfig {
     delaySecondsMax?: number
     dailyMessageLimit?: number
     escalate?: { payment?: boolean; complaint?: boolean; sensitive?: boolean; minors?: boolean }
+    /** Telegram: si un borrador con oferta de contenido de pago puede salir
+     *  solo. false/undefined = escala a humano (ofrecer es vender). */
+    allowPaidMediaOffers?: boolean
+    /** Telegram: tope de Stars que la IA puede ofrecer por sí sola. */
+    maxOfferStars?: number
+    /** Telegram: horas mínimas entre dos ofertas al mismo fan. Default 6. */
+    offerCooldownHours?: number
 }
 
 export type AutopilotOutcome = 'scheduled' | 'escalated' | 'skipped'
 
-function parseAutopilot(row: AvatarPersonaRow): AutopilotConfig {
+/** Exportada para el motor de oferta (`@/lib/telegram/offerEngine`), que lee
+ *  los mismos ajustes (`maxOfferStars`, `offerCooldownHours`) ANTES de
+ *  adjuntar nada. Una segunda lectura del JSON en otro fichero se
+ *  desincronizaría el día que esta forma cambie. */
+export function parseAutopilot(row: AvatarPersonaRow): AutopilotConfig {
     return (row.autopilot ?? {}) as AutopilotConfig
 }
 
@@ -75,13 +88,27 @@ async function escalate(organizationId: string, chatId: string, reason: string):
  * send_after; the flush cron does the actual send.
  */
 export async function maybeAutopilotSend(chatId: string, draftMessageId: string): Promise<AutopilotOutcome> {
+    const { outcome } = await maybeAutopilotSendScheduled(chatId, draftMessageId)
+    return outcome
+}
+
+/**
+ * Igual que `maybeAutopilotSend`, pero devuelve también el `send_after` que
+ * dejó escrito cuando el resultado es `scheduled`. Lo usa el webhook de
+ * Telegram para decidir si puede enviar él mismo sin esperar al cron
+ * (`immediateSend.ts`). Los demás llamadores siguen con la firma corta.
+ */
+export async function maybeAutopilotSendScheduled(
+    chatId: string,
+    draftMessageId: string,
+): Promise<{ outcome: AutopilotOutcome; sendAfter: string | null }> {
     const supabase = agentSupabase()
     // El chat se busca por id sin filtro de org porque ESTE id lo acaba de
     // producir nuestro propio pipeline (draft recién creado); es la fila que
     // RESUELVE la org, no una que haya que autorizar. De aquí en adelante todo
     // cuelga de `chat.organization_id`.
     const { data: chat } = await supabase.from('agent_chats').select('*').eq('id', chatId).maybeSingle()
-    if (!chat || chat.mode !== 'auto' || chat.is_creator) return 'skipped'
+    if (!chat || chat.mode !== 'auto' || chat.is_creator) return { outcome: 'skipped', sendAfter: null }
 
     const { data: persona } = await supabase
         .from('avatar_personas')
@@ -89,9 +116,46 @@ export async function maybeAutopilotSend(chatId: string, draftMessageId: string)
         .eq('organization_id', chat.organization_id)
         .eq('avatar_id', chat.avatar_id)
         .maybeSingle()
-    if (!persona) return 'skipped'
+    if (!persona) return { outcome: 'skipped', sendAfter: null }
     const cfg = parseAutopilot(persona as AvatarPersonaRow)
-    if (!cfg.enabled) return 'skipped'
+    if (!cfg.enabled) return { outcome: 'skipped', sendAfter: null }
+
+    // Spec A4: un borrador con oferta de contenido de pago sólo sale solo si
+    // el creador lo permitió expresamente. Ofrecer es vender.
+    //
+    // GATEADO A TELEGRAM a propósito: las ofertas adjuntas (`offerEngine`)
+    // sólo existen en ese canal, y sólo `sendAgentMessage` las cobra cuando
+    // el chat es de Telegram. Para Fanvue esta lectura no podía encontrar
+    // nada, pero sí podía FALLAR — y entonces escalaba un chat de Fanvue con
+    // un motivo de Telegram ("Could not verify paid offer"), una consulta por
+    // borrador que a ese canal no le sirve de nada.
+    if (resolveDeliveryChannel(chat.platform) === 'telegram') {
+        // El `error` NO se descarta, y es la diferencia entre fallar cerrado y
+        // fallar abierto: sin mirarlo, un fallo transitorio de Supabase deja
+        // `draftRow` en null, `hasPaidMediaOffer(undefined)` responde `false`,
+        // la escalada no ocurre y un borrador que SÍ lleva oferta sale solo
+        // sin permiso del creador. Como la entrega ya cobra la oferta
+        // adjunta, eso sería dinero cobrado sin autorización por un error de
+        // red. Si no se puede COMPROBAR que el borrador está limpio, se
+        // escala.
+        const { data: draftRow, error: draftError } = await supabase
+            .from('agent_messages')
+            .select('media')
+            .eq('organization_id', chat.organization_id)
+            .eq('id', draftMessageId)
+            .maybeSingle()
+        if (draftError) {
+            console.error(
+                '[agent] autopilot: no se pudo leer el borrador para comprobar la oferta',
+                { chatId, draftMessageId },
+                draftError,
+            )
+            return { outcome: await escalate(chat.organization_id, chatId, 'Could not verify paid offer — needs review'), sendAfter: null }
+        }
+        if (hasPaidMediaOffer(draftRow?.media) && !cfg.allowPaidMediaOffers) {
+            return { outcome: await escalate(chat.organization_id, chatId, 'Paid media offer needs approval'), sendAfter: null }
+        }
+    }
 
     // Classify the latest fan message (fail-closed).
     const { data: lastFan } = await supabase
@@ -105,29 +169,54 @@ export async function maybeAutopilotSend(chatId: string, draftMessageId: string)
         .maybeSingle()
     const risk = await classifyInboundMessage(lastFan?.text ?? '')
     if (!risk.autopilotSafe) {
-        return escalate(chat.organization_id, chatId, `${risk.category}: ${risk.reason}`)
+        return { outcome: await escalate(chat.organization_id, chatId, `${risk.category}: ${risk.reason}`), sendAfter: null }
     }
 
     // Active hours.
     const now = new Date()
-    if (!withinActiveHours(cfg, now)) return 'skipped'
+    if (!withinActiveHours(cfg, now)) return { outcome: 'skipped', sendAfter: null }
 
-    // Daily limit (messages actually sent today for this avatar).
+    // Daily limit (messages actually sent today by the whole ORGANIZATION —
+    // el conteo no filtra por avatar: la fila de `agent_messages` no lo lleva
+    // y hacerlo pediría un join con `agent_chats`. Deuda anotada).
     if (cfg.dailyMessageLimit && cfg.dailyMessageLimit > 0) {
         const dayStart = now.toISOString().slice(0, 10) + 'T00:00:00.000Z'
-        const { count } = await supabase
+        // Las filas de ENTREGA DE MEDIA no gastan cupo: un teaser gratis (o una
+        // media de pago) escribe su propia fila `sent`/`autopilot` además de la
+        // del texto que la acompañaba, y sin excluirlas un solo mensaje con
+        // foto consumía dos del límite diario. `freeMedia.ts`/`paidMedia.ts`
+        // las marcan con `generated_by.kind = 'media_delivery'`; los mensajes
+        // escritos por la IA llevan ahí `{provider, model}` (sin `kind`) y los
+        // antiguos llevan `null`, así que el filtro es "sin kind".
+        const { count, error: countError } = await supabase
             .from('agent_messages')
             .select('id', { count: 'exact', head: true })
             .eq('organization_id', chat.organization_id)
             .eq('status', 'sent')
             .eq('approved_by', 'autopilot')
+            .is('generated_by->>kind', null)
             .gte('sent_at', dayStart)
-        if ((count ?? 0) >= cfg.dailyMessageLimit) {
-            return escalate(
-                chat.organization_id,
-                chatId,
-                'Daily autopilot limit reached — sending paused',
+        // Un error aquí deja `count` en undefined y el límite NO dispara: el
+        // comportamiento es el de siempre (permisivo), pero ya no es MUDO —
+        // sin este log, "el autopilot se pasó del límite diario" no tendría
+        // dónde mirarse. Es también el aviso de que el filtro de arriba dejó
+        // de ser válido.
+        if (countError) {
+            console.error(
+                '[agent] autopilot: no se pudo contar el límite diario (sigue sin bloquear)',
+                { chatId, organizationId: chat.organization_id },
+                countError,
             )
+        }
+        if ((count ?? 0) >= cfg.dailyMessageLimit) {
+            return {
+                outcome: await escalate(
+                    chat.organization_id,
+                    chatId,
+                    'Daily autopilot limit reached — sending paused',
+                ),
+                sendAfter: null,
+            }
         }
     }
 
@@ -145,15 +234,20 @@ export async function maybeAutopilotSend(chatId: string, draftMessageId: string)
         .eq('organization_id', chat.organization_id)
         .eq('id', draftMessageId)
         .eq('status', 'draft')
-    return 'scheduled'
+    return { outcome: 'scheduled', sendAfter }
 }
 
 /**
- * Send every autopilot message whose delay has elapsed. Called by the poll cron.
+ * Send every autopilot message whose delay has elapsed. La llama el cron por
+ * minuto (`agent-autopilot-flush`), ÚNICO dueño de la cola.
  *
  * Deliberadamente SIN filtro de org: es un barrido de cron para TODAS las orgs
  * (no hay sesión de la que sacar una). Cada envío vuelve a resolver su propia
  * org dentro de `sendAgentMessage`, que sí acota por la fila del mensaje.
+ *
+ * Que hoy la llame un solo cron NO es la garantía de que un mensaje no salga
+ * dos veces — un cron puede solaparse consigo mismo si una corrida se alarga.
+ * La garantía es el RECLAMO ATÓMICO de abajo.
  */
 export async function flushDueAutopilotMessages(): Promise<{ sent: number; failed: number }> {
     const supabase = agentSupabase()
@@ -169,9 +263,45 @@ export async function flushDueAutopilotMessages(): Promise<{ sent: number; faile
     let sent = 0
     let failed = 0
     for (const row of due ?? []) {
-        const res = await sendAgentMessage(row.id)
-        if (res.success) sent++
-        else failed++
+        const res = await flushOneApprovedMessage(row.id)
+        if (res === 'sent') sent++
+        else if (res === 'failed') failed++
     }
     return { sent, failed }
+}
+
+/**
+ * Reclama y envía UN mensaje aprobado por el autopilot. Lo usan el cron (en
+ * bucle) y el webhook de Telegram (envío inmediato cuando el `send_after`
+ * cabe en el presupuesto de la función, ver `immediateSend.ts`).
+ *
+ * RECLAMO ATÓMICO. Sin esto, dos barridos concurrentes (o uno que muere
+ * entre el envío y el update a `sent`) envían el mismo mensaje dos veces — y
+ * en Telegram, la misma media de pago dos veces. Postgres serializa el
+ * UPDATE ... WHERE por fila: sólo un llamador consigue la fila; el otro ve 0
+ * filas y sigue. `send_after` a null es el reclamo (el select del cron exige
+ * que no sea null) y `sendAgentMessage` no lo mira, así que no cambia nada
+ * más. Es exactamente lo que hace que webhook y cron puedan convivir sobre
+ * la misma fila sin coordinarse.
+ *
+ * `taken` = otro llamador ya lo reclamó (o el mensaje ya no está en
+ * `approved`): no es un error.
+ */
+export async function flushOneApprovedMessage(messageId: string): Promise<'sent' | 'failed' | 'taken'> {
+    const supabase = agentSupabase()
+    const nowIso = new Date().toISOString()
+    const { data: claimed, error: claimError } = await supabase
+        .from('agent_messages')
+        .update({ send_after: null, updated_at: nowIso })
+        .eq('id', messageId)
+        .eq('status', 'approved')
+        .not('send_after', 'is', null)
+        .select('id')
+    if (claimError) {
+        console.error('[agent] autopilot flush: no se pudo reclamar el mensaje', { messageId }, claimError)
+        return 'failed'
+    }
+    if (!claimed || claimed.length === 0) return 'taken'
+    const res = await sendAgentMessage(messageId)
+    return res.success ? 'sent' : 'failed'
 }

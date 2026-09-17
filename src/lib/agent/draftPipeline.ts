@@ -11,10 +11,13 @@ import { generateText, type ModelMessage } from 'ai'
 import { GoogleGenAI, Type } from '@google/genai'
 import { agentSupabase, type AvatarPersonaRow } from './db'
 import { getChatModel } from './chatProvider'
-import { buildSystemPrompt } from './promptBuilder'
+import { buildSystemPrompt, type BuildSystemPromptInput } from './promptBuilder'
+import { fanMemoryPlatform } from './fanMemoryPlatform'
+import { promptChannelFor } from './channelRouting'
 import { toPersonaDTO } from './personaMapper'
 import { retrieveKnowledge } from './retrieval'
 import { AGENT_UTILITY_MODEL } from './models'
+import { commenterIdFromChat, platformFromChat } from '@/lib/social/comments/ids'
 import type { RetrievedChunk } from './types'
 
 const HISTORY_LIMIT = 20
@@ -76,21 +79,87 @@ export async function generateDraftReply(chatId: string): Promise<DraftResult | 
             content: m.text as string,
         }))
 
+    const promptChannel = promptChannelFor(chat.platform)
+
     // RAG + fan memory
     let ragChunks: RetrievedChunk[]
-    try {
-        ragChunks = await retrieveKnowledge(chat.avatar_id, lastFanText)
-    } catch {
+    if (promptChannel === 'social_comment') {
+        // Ruling de la revisión final (I4): el conocimiento privado del avatar
+        // (`avatar_knowledge`) NO se inyecta en una respuesta PÚBLICA — lo que
+        // se escribe bajo un post lo lee cualquiera, y ese material está ahí
+        // para conversaciones privadas de pago. Aquí la persona habla sólo
+        // desde su perfil público y desde el post.
         ragChunks = []
+    } else {
+        try {
+            ragChunks = await retrieveKnowledge(chat.avatar_id, lastFanText)
+        } catch {
+            ragChunks = []
+        }
     }
+    // `commenterIdFromChat` es identidad para Fanvue/Telegram (su
+    // `external_chat_id` nunca trae ':') y extrae al comentarista para
+    // `social:*` (`'<postId>:<commenterId>'`) — la memoria de un fan social
+    // es POR PERSONA, no por post: el mismo comentarista en dos posts
+    // distintos es el mismo fan.
     const { data: memory } = await supabase
         .from('avatar_fan_memories')
         .select('summary, facts')
         .eq('organization_id', chat.organization_id)
         .eq('avatar_id', chat.avatar_id)
-        .eq('platform', 'fanvue')
-        .eq('external_fan_id', chat.external_chat_id)
+        .eq('platform', fanMemoryPlatform(chat.platform))
+        .eq('external_fan_id', commenterIdFromChat(chat.external_chat_id))
         .maybeSingle()
+
+    // Catálogo de Telegram, SÓLO para ese canal: el prompt le dice a la
+    // persona qué contenido tiene —exclusivo de pago y teasers gratis— para
+    // que provoque interés sin inventar títulos ni precios. Fanvue y los
+    // comentarios sociales no cambian (su venta, si la hay, va por otro
+    // camino). Filtrado por organización de la fila ya resuelta.
+    //
+    // UNA sola consulta para las dos listas: `is_free` las separa aquí. Dos
+    // consultas con el mismo filtro serían dos viajes para el mismo dato.
+    let paidCatalog: { title: string; stars: number }[] | undefined
+    let freeCatalog: { title: string }[] | undefined
+    if (promptChannel === 'telegram') {
+        const { data: items, error: itemsError } = await supabase
+            .from('telegram_paid_media_items')
+            .select('title, star_price, is_free')
+            .eq('organization_id', chat.organization_id)
+            .eq('avatar_id', chat.avatar_id)
+            .eq('enabled', true)
+            // Los gratis PRIMERO: el `limit` es un tope común a las dos listas
+            // y el catálogo gratis suele ser mucho más corto. Con el orden
+            // sólo por `sort_order`, un catálogo de pago largo podía comerse
+            // el tope entero y dejar al prompt sin teasers que enseñar.
+            .order('is_free', { ascending: false })
+            .order('sort_order', { ascending: true })
+            .limit(40)
+        // Un fallo aquí NO corta el borrador —se responde igual, sólo que sin
+        // mencionar el contenido exclusivo—, pero tiene que dejar rastro: sin
+        // esto, "el agente dejó de vender" es indistinguible de "el agente
+        // decidió no vender", y nadie sabría dónde mirar.
+        if (itemsError) {
+            console.error('[agent] catálogo de Telegram no disponible para el prompt', { chatId }, itemsError)
+        }
+        paidCatalog = (items ?? [])
+            .filter((i) => !i.is_free)
+            .map((i) => ({ title: i.title, stars: i.star_price }))
+        freeCatalog = (items ?? []).filter((i) => i.is_free).map((i) => ({ title: i.title }))
+    }
+
+    // Contexto del post bajo el que se comenta — sólo para `social_comment`.
+    // `chat.context` es `{ socialPostTargetId, platformPostId, postUrl,
+    // caption }` (Tarea 1); aquí sólo interesan caption/postUrl/la red.
+    let postContext: BuildSystemPromptInput['postContext']
+    if (promptChannel === 'social_comment') {
+        const context = (chat.context ?? {}) as { caption?: string | null; postUrl?: string | null }
+        postContext = {
+            platform: platformFromChat(chat.platform) ?? 'social media',
+            caption: context.caption ?? null,
+            postUrl: context.postUrl ?? null,
+        }
+    }
 
     const system = buildSystemPrompt({
         persona,
@@ -102,7 +171,10 @@ export async function generateDraftReply(chatId: string): Promise<DraftResult | 
                   facts: (memory.facts ?? {}) as Record<string, string>,
               }
             : null,
-        channel: 'fanvue',
+        channel: promptChannel,
+        paidCatalog,
+        freeCatalog,
+        postContext,
     })
 
     const { text } = await generateText({
@@ -150,7 +222,7 @@ export async function updateFanMemoryFromChat(chatId: string): Promise<void> {
         const supabase = agentSupabase()
         const { data: chat } = await supabase
             .from('agent_chats')
-            .select('organization_id, avatar_id, external_chat_id, fan_display_name')
+            .select('organization_id, avatar_id, external_chat_id, fan_display_name, platform')
             .eq('id', chatId)
             .maybeSingle()
         if (!chat) return
@@ -208,13 +280,17 @@ export async function updateFanMemoryFromChat(chatId: string): Promise<void> {
         if (!raw) return
         const parsed = JSON.parse(raw) as { facts?: Record<string, unknown>; summary?: string }
 
+        // Mismo motivo que en `generateDraftReply`: para `social:*` la
+        // memoria es del COMENTARISTA, no del post (`external_chat_id` trae
+        // `'<postId>:<commenterId>'`); para Fanvue/Telegram es identidad.
+        const commenterId = commenterIdFromChat(chat.external_chat_id)
         const { data: existing } = await supabase
             .from('avatar_fan_memories')
             .select('facts')
             .eq('organization_id', chat.organization_id)
             .eq('avatar_id', chat.avatar_id)
-            .eq('platform', 'fanvue')
-            .eq('external_fan_id', chat.external_chat_id)
+            .eq('platform', fanMemoryPlatform(chat.platform))
+            .eq('external_fan_id', commenterId)
             .maybeSingle()
         const mergedFacts = {
             ...((existing?.facts as Record<string, unknown>) ?? {}),
@@ -224,8 +300,8 @@ export async function updateFanMemoryFromChat(chatId: string): Promise<void> {
             {
                 organization_id: chat.organization_id,
                 avatar_id: chat.avatar_id,
-                platform: 'fanvue',
-                external_fan_id: chat.external_chat_id,
+                platform: fanMemoryPlatform(chat.platform),
+                external_fan_id: commenterId,
                 display_name: chat.fan_display_name ?? null,
                 facts: mergedFacts as never,
                 summary: parsed.summary ?? null,

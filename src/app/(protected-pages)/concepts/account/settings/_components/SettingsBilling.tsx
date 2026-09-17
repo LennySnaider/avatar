@@ -1,6 +1,15 @@
 'use client'
 
+import { useEffect, useState } from 'react'
+import Link from 'next/link'
 import Alert from '@/components/ui/Alert'
+import Card from '@/components/ui/Card'
+import Button from '@/components/ui/Button'
+import Skeleton from '@/components/ui/Skeleton'
+import { getBillingOverview } from '@/services/ModulesService'
+
+/** Lo que sí existe hoy aunque no haya pasarela: saldo real y módulos instalados. */
+type BillingOverview = NonNullable<Awaited<ReturnType<typeof getBillingOverview>>['data']>
 
 /**
  * Esta pestaña era una maqueta de ECME de arriba abajo, y mentia en tres capas
@@ -38,6 +47,28 @@ import Alert from '@/components/ui/Alert'
  * a escribir cuando haya facturas de verdad que enseñar.
  */
 const SettingsBilling = () => {
+    const [overview, setOverview] = useState<BillingOverview | null>(null)
+    const [error, setError] = useState<string | null>(null)
+    const [loading, setLoading] = useState(true)
+
+    useEffect(() => {
+        let active = true
+        getBillingOverview().then((res) => {
+            if (!active) return
+            if (res.success && res.data) {
+                setOverview(res.data)
+            } else {
+                setError(res.error ?? 'No se pudo cargar el saldo.')
+            }
+            setLoading(false)
+        })
+        return () => {
+            active = false
+        }
+    }, [])
+
+    const installedModules = overview?.installed.filter((m) => m.status === 'installed') ?? []
+
     return (
         <div>
             <h4 className="mb-4">Billing</h4>
@@ -55,6 +86,50 @@ const SettingsBilling = () => {
                     will charge you. Any plan or amount you may have seen on
                     this screen before was placeholder data from the template.
                 </p>
+            </div>
+
+            {/* Saldo real y módulos instalados: lo único que SÍ existe hoy, medido
+                pero no facturado. No sustituye al Alert de arriba, lo complementa. */}
+            <div className="mt-6 flex flex-col gap-3">
+                <h5>Saldo y módulos</h5>
+                {loading && (
+                    <div className="flex flex-col gap-2">
+                        <Skeleton height={20} width={160} />
+                        <Skeleton height={20} width={240} />
+                    </div>
+                )}
+                {!loading && error && (
+                    <Alert showIcon type="danger">
+                        {error}
+                    </Alert>
+                )}
+                {!loading && !error && overview && (
+                    <Card>
+                        <div className="flex flex-col gap-1">
+                            <span>Tokens disponibles</span>
+                            <h4>{overview.balance.available.toLocaleString()}</h4>
+                        </div>
+                        <div className="mt-4 flex flex-col gap-1">
+                            <span>Módulos instalados</span>
+                            {installedModules.length === 0 ? (
+                                <span>Ninguno todavía.</span>
+                            ) : (
+                                <ul className="list-disc list-inside">
+                                    {installedModules.map((m) => (
+                                        <li key={m.moduleSlug}>{m.moduleSlug}</li>
+                                    ))}
+                                </ul>
+                            )}
+                        </div>
+                        <div className="mt-4">
+                            <Link href="/concepts/account/modules">
+                                <Button asElement="div" variant="plain">
+                                    Ir a Módulos
+                                </Button>
+                            </Link>
+                        </div>
+                    </Card>
+                )}
             </div>
         </div>
     )

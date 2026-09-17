@@ -533,3 +533,69 @@ export async function withTokens<T>(
         throw err
     }
 }
+
+/**
+ * Cargo instantáneo contra el wallet: cuota de módulo o comisión de venta.
+ *
+ * NO recibe `ctx`: sus dos llamadores (el webhook de compras y el cron de
+ * cuotas) corren SIN sesión y traen la org ya resuelta de la fila. Pedir un
+ * OrgContext aquí obligaría a inventarlo desde el owner, que es justo el bug
+ * que documenta `resolveTargetAvatar`.
+ *
+ * Nunca fuerza: `p_enforce` va en false. El hecho ya ocurrió (la venta se
+ * cobró en Telegram, el mes ya pasó); negarse a asentarlo sólo perdería la
+ * deuda. El sobregiro queda anotado en `metadata.measure_only_shortfall`.
+ */
+export async function chargeTokens(args: {
+    organizationId: string
+    userId?: string | null
+    tokens: number
+    sku: string
+    refType: string
+    refId: string
+    idempotencyKey: string
+    costUsd?: number | null
+    metadata?: Record<string, unknown>
+}): Promise<
+    | { ok: true; ledgerId: string; replayed: boolean; tokens: number }
+    | { ok: false; reason: string }
+> {
+    if (!(args.tokens > 0)) return { ok: false, reason: 'non_positive_tokens' }
+
+    const { data, error } = await billingDb().rpc('wallet_charge', {
+        p_org: args.organizationId,
+        p_user: args.userId ?? null,
+        p_tokens: args.tokens,
+        p_sku: args.sku,
+        p_ref_type: args.refType,
+        p_ref_id: args.refId,
+        p_idempotency_key: args.idempotencyKey,
+        p_cost_usd: args.costUsd ?? null,
+        p_metadata: args.metadata ?? {},
+        p_enforce: false,
+    })
+    if (error) return { ok: false, reason: error.message }
+
+    const res = data as {
+        ok?: boolean
+        reason?: string
+        ledger_id?: string
+        replayed?: boolean
+        tokens?: number
+    } | null
+    if (!res?.ok || !res.ledger_id) {
+        return { ok: false, reason: res?.reason ?? 'wallet_charge returned no id' }
+    }
+    return {
+        ok: true,
+        ledgerId: res.ledger_id,
+        replayed: Boolean(res.replayed),
+        // `wallet_charge` devuelve `tokens` tanto en el asiento nuevo como en
+        // el replay (en ese caso, `abs(v_existing.tokens)` del asiento viejo).
+        // Se propaga para que un futuro replay de comisión (plan siguiente,
+        // tras editar el % del catálogo) pueda escribir en la fila de la
+        // venta la cifra que el ledger dice de verdad, no una que el caller
+        // tuvo que recalcular y que podría no coincidir con el asiento real.
+        tokens: res.tokens ?? args.tokens,
+    }
+}

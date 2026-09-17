@@ -123,6 +123,23 @@ const eslintConfig = [
       "src/lib/agent/indexer.ts",
       // Sólo usa el RPC match_avatar_knowledge; orgTable no pre-scopea RPCs.
       "src/lib/agent/retrieval.ts",
+      // F4.2 Tarea 4 (comentarios-ia-social) — maybeSendCommentDm, mismo
+      // perfil que el resto de esta lista: lo llama `channelDelivery.ts` sin
+      // sesión (webhook/cron), y el `chat` que recibe ya llegó resuelto y
+      // acotado por `organization_id` desde `sendAgentMessage`. Está fuera de
+      // `src/lib/agent/` (vive junto a `dmEligibility.ts`/`ids.ts`, el resto
+      // de comentarios-ia-social) así que no cae en el import RELATIVO
+      // `./db` que usa `channelDelivery.ts` para esquivar esta regla sin
+      // proponérselo — aquí el import es `@/lib/agent/db` explícito.
+      "src/lib/social/comments/privateReply.ts",
+      // Tarea 5 (comentarios-ia-social) — mismo perfil que privateReply.ts:
+      // sin sesión (cron `social-comments-poll`), filtran por la org de la
+      // fila ya resuelta (documentado en la cabecera de cada fichero).
+      // `settings.ts` no necesita entrar aquí: importa `agentSupabase` de
+      // forma DINÁMICA (`await import(...)`), así que esta regla —que sólo
+      // mira imports estáticos— nunca la dispara.
+      "src/lib/social/comments/targets.ts",
+      "src/lib/social/comments/poll.ts",
     ],
     rules: {
       "@typescript-eslint/no-restricted-imports": [
@@ -167,6 +184,65 @@ const eslintConfig = [
       // `orgSupabase` es `src/lib/org/orgTable.ts`, que no necesita exención:
       // no se importa a sí mismo, así que la regla nunca puede dispararle.)
       "src/lib/billing/wallet.ts",
+      // Cron de cuotas: mismo caso que wallet.ts — la org llega por parámetro
+      // (fila de org_modules) y corre sin sesión. (`moduleCharges.ts` NO va
+      // aquí: no importa `orgSupabase` ni tiene un solo `.from()`, así que la
+      // regla nunca podría dispararle — exentarlo sería una exención muerta,
+      // justo lo que prohíbe la cabecera de check-tenant-access.mjs.)
+      "src/lib/billing/moduleFees.ts",
+      // Lector de la exención de cobro (isBillingExempt): consulta
+      // `organizations`, que NO es tabla tenant (no tiene organization_id —
+      // es la propia identidad del tenant), filtrando por el id que llega
+      // por parámetro. Sin sesión: lo llaman el cron de cuotas y la comisión
+      // de venta, igual que moduleFees.ts.
+      "src/lib/billing/exemption.ts",
+      // Resumen de cobro por módulo (cuota + comisión del mes en curso): misma
+      // tabla no tenant que wallet.ts (`token_ledger`), filtrada a mano por
+      // organization_id — que aquí llega ya resuelto por parámetro, no por ctx.
+      "src/lib/billing/moduleSummary.ts",
+      // Entitlement de módulos: hasModuleForOrg/listInstalledSlugsForOrg reciben
+      // la org por parámetro (cron/webhooks) y module_catalog es un catálogo
+      // global sin organization_id — mismo par que check-tenant-access.mjs.
+      "src/lib/modules/entitlements.ts",
+      "src/lib/modules/catalog.ts",
+      // loadTelegramSettings (variante sin sesión, para el webhook y los
+      // crones): filtra por avatar_id, que es UNIQUE en avatar_telegram_settings
+      // (migración de la Tarea 1) — no necesita organizationId de entrada para
+      // identificar la fila. La otra variante del fichero, con ctx, va por
+      // orgTable y no dispara esta regla.
+      "src/lib/telegram/settings.ts",
+      // F4.2 Tarea 4 — recordStarsSale corre disparado por el webhook, sin
+      // sesión. La organizationId no se adivina: llega ya resuelta en el
+      // propio StarsSaleEvent (la fila que la transición atómica del webhook
+      // acaba de devolver), y cada consulta la usa como filtro explícito.
+      "src/lib/telegram/sales.ts",
+      // Task 5 — deliverPaidMedia, mismo perfil que sales.ts: sin sesión,
+      // recibe el chat ya resuelto y acotado por su llamador
+      // (sendPaidMediaFromInbox), y cada acceso usa esa organizationId como
+      // filtro o como campo fijado. Ver check-tenant-access.mjs (misma
+      // exención, motivo completo allí).
+      "src/lib/telegram/paidMedia.ts",
+      // Task 3 (fotos gratis) — deliverFreeMedia, mismo perfil que
+      // paidMedia.ts: sin sesión, recibe el chat ya resuelto y acotado por su
+      // llamador, y las 5 llamadas del fichero usan esa organizationId como
+      // filtro (.eq) o como campo fijado (organization_id:) explícito. Ver
+      // check-tenant-access.mjs (misma exención, motivo completo allí).
+      "src/lib/telegram/freeMedia.ts",
+      // Task 6 — telegramUnitActivity, mismo perfil que moduleFees.ts: sin
+      // sesión (lo dispara el cron de cuotas), la organizationId llega por
+      // parámetro y la única consulta del fichero la filtra con
+      // .eq('organization_id', ...). Ver check-tenant-access.mjs (misma
+      // exención, motivo completo allí).
+      "src/lib/telegram/bots.ts",
+      // Task 8 — motor de oferta, mismo perfil que paidMedia.ts: sin sesión
+      // (lo dispara el webhook dentro de su `after()`), parte del borrador que
+      // nuestro propio pipeline acaba de crear —esa fila RESUELVE la org— y
+      // cada consulta posterior la usa como filtro .eq. Cruza el catálogo con
+      // `telegram_stars_sales`, que el schema extendido de `@/lib/agent/db` NO
+      // declara, así que `agentSupabase()` ni siquiera compila ahí (medido,
+      // TS2769). Ver check-tenant-access.mjs (misma exención, motivo completo
+      // allí) y la cabecera del propio fichero.
+      "src/lib/telegram/offerEngine.ts",
       // Sin sesión: resuelven la org por la fila que ya cargaron.
       "src/app/api/webhooks/**",
       "src/app/api/cron/**",

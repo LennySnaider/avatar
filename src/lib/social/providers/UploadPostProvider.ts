@@ -14,10 +14,20 @@ import crypto from 'crypto'
 import type {
   AnalyticsSnapshot,
   ConnectedAccount,
+  CreateCommentResult,
+  InstagramDmButton,
   Platform,
   PlatformTarget,
+  PrivateReplyResult,
   QueueSettings,
+  SocialCommentsPage,
+  UploadPostHistoryEntry,
 } from '@/@types/social'
+import {
+  normalizeCommentsPage,
+  normalizeHistoryEntry,
+  isReauthRequiredBody,
+} from '@/lib/social/comments/normalize'
 import type {
   DocumentPostParams,
   FFmpegConsumption,
@@ -31,6 +41,7 @@ import type {
   ProfileDetails,
   PublishResponse,
   QueueSlotPreview,
+  RateLimitInfo,
   RequestStatus,
   ScheduledPost,
   SocialProvider,
@@ -38,6 +49,11 @@ import type {
   VideoPostParams,
   WebhookConfigResult,
 } from './SocialProvider'
+
+// `RateLimitInfo` vive en `SocialProvider.ts` (F4.2 Tarea 5): la interfaz
+// declara `getLastRateLimit()` y este archivo re-exporta el tipo por
+// compatibilidad con quien ya lo importaba desde aquí.
+export type { RateLimitInfo } from './SocialProvider'
 
 const DEFAULT_BASE_URL = 'https://api.upload-post.com'
 
@@ -57,6 +73,17 @@ export class UploadPostProviderError extends Error {
     // Restore prototype chain (ES5 transpile safety)
     Object.setPrototypeOf(this, UploadPostProviderError.prototype)
   }
+
+  /**
+   * true cuando este error significa "hay que reconectar la cuenta social"
+   * en vez de un fallo cualquiera — medido en vivo (2026-09-16) contra
+   * Instagram con la sesión vencida: 401 + `code: "instagram_reauth_required"`.
+   * Delega en isReauthRequiredBody (normalize.ts) para poder testear la
+   * detección sin construir un UploadPostProviderError.
+   */
+  get isReauthRequired(): boolean {
+    return isReauthRequiredBody(this.statusCode, this.body)
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -66,10 +93,18 @@ export class UploadPostProviderError extends Error {
 export class UploadPostProvider implements SocialProvider {
   private readonly apiKey: string
   private readonly baseUrl: string
+  // Último `x-ratelimit-*` visto en CUALQUIER respuesta (no solo comentarios)
+  // — el poll de comentarios lo usa para frenar cuando remaining < 5.
+  private lastRateLimit: RateLimitInfo | null = null
 
   constructor(apiKey: string, baseUrl: string = DEFAULT_BASE_URL) {
     this.apiKey = apiKey
     this.baseUrl = baseUrl.replace(/\/$/, '')
+  }
+
+  /** Snapshot de rate-limit de la última respuesta HTTP, o null si aún no se hizo ninguna. */
+  getLastRateLimit(): RateLimitInfo | null {
+    return this.lastRateLimit
   }
 
   // -------------------------------------------------------------------------
@@ -130,6 +165,20 @@ export class UploadPostProvider implements SocialProvider {
     }
 
     const res = await fetch(url, { method, headers, body })
+
+    // Rate-limit headers vienen en TODAS las respuestas (confirmado en vivo
+    // 2026-09-16), no solo en las de comentarios — se capturan siempre para
+    // que el poll pueda frenar cuando remaining < 5.
+    const rlLimit = res.headers.get('x-ratelimit-limit')
+    const rlRemaining = res.headers.get('x-ratelimit-remaining')
+    const rlReset = res.headers.get('x-ratelimit-reset')
+    if (rlLimit !== null || rlRemaining !== null || rlReset !== null) {
+      this.lastRateLimit = {
+        limit: rlLimit !== null ? Number(rlLimit) : null,
+        remaining: rlRemaining !== null ? Number(rlRemaining) : null,
+        reset: rlReset !== null ? Number(rlReset) : null,
+      }
+    }
 
     const text = await res.text()
     let parsed: unknown = null
@@ -491,6 +540,143 @@ export class UploadPostProvider implements SocialProvider {
         createdAt: String(r.created_at ?? r.createdAt ?? ''),
       }
     })
+  }
+
+  /**
+   * Historial por profile_username, verificado en vivo hoy (2026-09-16)
+   * contra la key de Emily. `getHistory` de arriba manda `username` — la
+   * doc real no reconoce ese parámetro (lo ignora silenciosamente, no
+   * tira error, simplemente no filtra) — este método manda el nombre
+   * correcto: `profile_username`. `limit` SOLO acepta 10/20/50/100
+   * (`limit=4` devuelve 400 `{"error":"Invalid limit"}`), por eso el
+   * default acá es 50 en vez de 20.
+   */
+  async listHistory(input: {
+    profileUsername: string
+    requestId?: string
+    jobId?: string
+    platform?: string
+    limit?: 10 | 20 | 50 | 100
+  }): Promise<UploadPostHistoryEntry[]> {
+    const res = await this.request<{ history?: unknown[] }>(
+      '/api/uploadposts/history',
+      {
+        query: {
+          profile_username: input.profileUsername,
+          request_id: input.requestId,
+          job_id: input.jobId,
+          platform: input.platform,
+          limit: input.limit ?? 50,
+        },
+      },
+    )
+    const list = Array.isArray(res?.history) ? res.history : []
+    return list.map((raw) => normalizeHistoryEntry(raw))
+  }
+
+  // -------------------------------------------------------------------------
+  // Comentarios / respuestas
+  // -------------------------------------------------------------------------
+
+  /**
+   * GET /api/uploadposts/comments — verificado en vivo hoy (2026-09-16):
+   * `limit` solo acepta 10/20/50/100 según la doc de historial, pero acá NO
+   * se le fuerza un default porque la doc de comments no documenta el mismo
+   * límite duro; se manda tal cual lo pida el caller. Para X (Twitter) una
+   * página puede venir vacía con `has_next: true` — normalizeCommentsPage
+   * lo devuelve tal cual, no es un error.
+   */
+  async listComments(input: {
+    username: string
+    platform: Platform
+    postId?: string
+    postUrl?: string
+    limit?: number
+    after?: string
+    commentId?: string
+  }): Promise<SocialCommentsPage> {
+    const res = await this.request<Record<string, unknown>>(
+      '/api/uploadposts/comments',
+      {
+        query: {
+          platform: input.platform,
+          user: input.username,
+          post_id: input.postId,
+          post_url: input.postUrl,
+          limit: input.limit,
+          after: input.after,
+          comment_id: input.commentId,
+        },
+      },
+    )
+    return normalizeCommentsPage(input.platform, res)
+  }
+
+  /**
+   * POST /api/uploadposts/comments/create — crea un comentario público o
+   * responde a uno existente (pasando `commentId`). La respuesta estándar
+   * trae `id`; TikTok devuelve en cambio
+   * `{ success, platform:'tiktok', result:{ comment_id } }` (confirmado en
+   * la doc https://docs.upload-post.com/api/comments.md) — se leen ambas
+   * formas.
+   */
+  async createComment(input: {
+    username: string
+    platform: Platform
+    message: string
+    commentId?: string
+    postId?: string
+    postUrl?: string
+  }): Promise<CreateCommentResult> {
+    const res = await this.request<{
+      success?: boolean
+      id?: string
+      result?: { comment_id?: string }
+    }>('/api/uploadposts/comments/create', {
+      method: 'POST',
+      body: {
+        platform: input.platform,
+        user: input.username,
+        message: input.message,
+        comment_id: input.commentId,
+        post_id: input.postId,
+        post_url: input.postUrl,
+      },
+    })
+    const id = res?.id ?? res?.result?.comment_id ?? ''
+    return { id: String(id) }
+  }
+
+  /**
+   * POST /api/uploadposts/comments/reply — DM privado de Instagram en
+   * respuesta a un comentario público (distinto de createComment: ese deja
+   * un comentario público, este manda un mensaje directo). Doc:
+   * https://docs.upload-post.com/api/instagram-comments.md
+   */
+  async sendInstagramPrivateReply(input: {
+    username: string
+    commentId: string
+    message: string
+    buttons?: InstagramDmButton[]
+  }): Promise<PrivateReplyResult> {
+    const body: Record<string, unknown> = {
+      platform: 'instagram',
+      user: input.username,
+      comment_id: input.commentId,
+      message: input.message,
+    }
+    if (input.buttons?.length) {
+      body.buttons = input.buttons.map((b) => ({ title: b.title, url: b.url }))
+    }
+    const res = await this.request<{
+      success?: boolean
+      recipient_id?: string
+      message_id?: string
+    }>('/api/uploadposts/comments/reply', { method: 'POST', body })
+    return {
+      messageId: String(res?.message_id ?? ''),
+      recipientId: res?.recipient_id ? String(res.recipient_id) : null,
+    }
   }
 
   // -------------------------------------------------------------------------

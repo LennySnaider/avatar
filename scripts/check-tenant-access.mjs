@@ -98,7 +98,62 @@ const EXENTOS = [
     ['src/lib/agent/draftPipeline.ts', 'Genera borradores sin sesión; parte del chat ya cargado y arrastra su organization_id.'],
     ['src/lib/agent/autopilot.ts', 'Autopilot por cron; recorre chats resolviendo la org fila a fila.'],
     ['src/lib/agent/sendMessage.ts', 'Envío sin sesión desde el pipeline del agente; la org viene del chat.'],
+    [
+        'src/lib/agent/channelDelivery.ts',
+        'F4.2 Tarea 4 — lo llama el flush de autopilot desde el cron, sin sesión; el chat llega resuelto por organization_id desde sendAgentMessage.',
+    ],
     ['src/lib/agent/indexer.ts', 'Indexa conocimiento del avatar; recibe la organizationId ya resuelta por el llamador.'],
+    [
+        'src/lib/modules/entitlements.ts',
+        'Entitlement de módulos: sus variantes sin sesión (hasModuleForOrg/listInstalledSlugsForOrg) las llaman cron y webhooks con la org YA resuelta de la fila, que se pasa por parámetro y se filtra explícitamente.',
+    ],
+    [
+        'src/lib/modules/catalog.ts',
+        'module_catalog es un catálogo GLOBAL sin organization_id (precios y comisiones de la plataforma): no hay org por la que filtrar.',
+    ],
+    [
+        'src/lib/billing/moduleFees.ts',
+        'Cron de cuotas: barre TODAS las orgs a propósito y resuelve la org fila a fila (org_modules.organization_id), igual que el resto de crons.',
+    ],
+    [
+        'src/lib/telegram/settings.ts',
+        'loadTelegramSettings (variante sin sesión, para el webhook y los crones) filtra por avatar_id, que es UNIQUE en avatar_telegram_settings (migración de la Tarea 1) — no necesita organizationId de entrada para identificar la fila. La otra variante del fichero, con ctx, va por orgTable y no dispara este candado.',
+    ],
+    [
+        'src/lib/telegram/sales.ts',
+        'recordStarsSale corre disparado por el webhook de Telegram, sin sesión. La organizationId no se adivina: llega ya resuelta en el propio StarsSaleEvent (la fila que la transición atómica del webhook acaba de devolver tras el offered→purchased), y cada consulta la usa como filtro explícito.',
+    ],
+    [
+        'src/lib/telegram/paidMedia.ts',
+        'deliverPaidMedia (Task 5) es sin sesión a propósito — mismo perfil que sales.ts, no un service con ctx —: recibe el chat ya resuelto y acotado por su llamador (hoy sendPaidMediaFromInbox en AgentTelegramService.ts, que ya comprobó dueño de avatar y conversación). La organizationId nunca se adivina: sale de ese chat ya cargado, y las 7 llamadas de este fichero la usan como filtro (.eq) o como campo fijado (organization_id:) explícito.',
+    ],
+    [
+        'src/lib/telegram/freeMedia.ts',
+        'deliverFreeMedia (Task 3, fotos gratis) es sin sesión a propósito — mismo perfil que paidMedia.ts —: recibe el chat ya resuelto y acotado por su llamador (el autopilot o un envío manual desde el inbox). La organizationId nunca se adivina: sale de ese chat ya cargado, y las 5 llamadas del fichero (cargar el ítem, cachear el file_id, incrementar free_sends_count, insertar agent_messages, tocar agent_chats) la usan como filtro (.eq) o como campo fijado (organization_id:) explícito.',
+    ],
+    [
+        'src/lib/telegram/offerEngine.ts',
+        'F4.2 Tarea 4 — lo llama el webhook de Telegram sin sesión; todo cuelga de chat.organization_id. maybeAttachPaidMediaOffer parte del borrador que nuestro propio pipeline acaba de crear (esa fila es la que RESUELVE la org) y las siete consultas siguientes —chat, persona, enfriamiento, catálogo, ventas del fan, transcripción y la escritura de la oferta— la usan como filtro .eq explícito. Son OCHO .from() en total contando el propio borrador, que es la cifra que reporta este script.',
+    ],
+    [
+        'src/lib/telegram/bots.ts',
+        'telegramUnitActivity (Task 6, informe de unidades para la cuota prorrateada) corre sin sesión, disparada por el cron de module-fees — mismo perfil que moduleFees.ts. La organizationId llega por parámetro (la resuelve chargeModuleFees fila a fila desde org_modules) y la única consulta del fichero la filtra explícitamente con .eq(\'organization_id\', organizationId).',
+    ],
+    // Tarea 5 (comentarios-ia-social) — sondeo de comentarios, sin sesión
+    // (lo dispara el cron `social-comments-poll`), mismo perfil que el resto
+    // de `src/lib/agent/` de arriba.
+    [
+        'src/lib/social/comments/settings.ts',
+        'listPollableProfiles barre TODAS las orgs a propósito (status=active and ai_comment_replies_enabled=true), igual que agent-inbox-poll con avatar_personas — es la lista de perfiles con la que arranca el cron, no una consulta acotada a una org. toSocialCommentSettings es puro y no toca Supabase.',
+    ],
+    [
+        'src/lib/social/comments/targets.ts',
+        'syncPostTargets/listPollableTargets reciben el profileRow o el profileId ya resueltos por el llamador (el cron, vía listPollableProfiles) y cada consulta a social_posts/social_post_targets filtra por ese profileId o por profileRow.organization_id explícito.',
+    ],
+    [
+        'src/lib/social/comments/poll.ts',
+        'pollProfileComments recibe el profileRow ya resuelto; resolveAvatarTargetById entrega un ResolvedTarget con organizationId que ancla upsertChat/ingestMessage/touchFanMemory (de inboxSync.ts, ya exento arriba), y markTargetPolled filtra social_post_targets con .eq(\'organization_id\', ...) explícito.',
+    ],
 ]
 
 /**
@@ -131,6 +186,14 @@ const CON_ANCLA_DE_ORG = [
     [
         'src/services/ReconcileGenerationsService.ts',
         'Reconciliador de generaciones pendientes: inserta la fila recuperada con organization_id de ctx.',
+    ],
+    // Éste va aquí y no en EXENTOS aunque corra SIN sesión: sus tres accesos a
+    // social_comment_dms ya anclan la org en el propio statement, así que la
+    // comprobación estricta de esta lista no le cuesta nada y sí protege del
+    // `.from('social_comment_dms')` pelado que alguien añada mañana.
+    [
+        'src/lib/social/comments/privateReply.ts',
+        'DM privado de Instagram (Tarea 4, comentarios-ia-social): lo llama la entrega sin sesión (cron/webhook) con la fila del chat ya resuelta; el dedupe filtra con .eq(\'organization_id\', chat.organization_id) y los dos inserts escriben organization_id de esa misma fila.',
     ],
 ]
 

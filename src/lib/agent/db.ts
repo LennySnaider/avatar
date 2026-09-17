@@ -148,6 +148,11 @@ interface AgentChatsTable {
         last_message_at: string | null
         last_fan_message_at: string | null
         unread_count: number
+        /** F4.2 Tarea 4 — sólo lo usan chats `social:*`:
+         *  `{ socialPostTargetId, platformPostId, postUrl, caption }` (ver
+         *  `src/lib/social/comments/ids.ts`). Fanvue/Telegram nunca lo
+         *  escriben ni lo leen — siempre `null` para ellos. */
+        context: Json | null
         created_at: string
         updated_at: string
     }
@@ -213,9 +218,116 @@ interface AvatarFanMemoriesTable {
     Relationships: []
 }
 
+/**
+ * Vista mínima de `telegram_paid_media_items` (el tipo completo vive en
+ * `database.generated.ts`, usado por `orgTable`). Sólo las columnas que lee
+ * `draftPipeline.ts` para armar el catálogo del prompt de Telegram.
+ *
+ * ÚNICO consumidor, a propósito. Una versión anterior de este comentario
+ * anunciaba que el motor de oferta (Tarea 8) reutilizaría esta vista; no lo
+ * hace, y conviene saber por qué antes de volver a intentarlo: ese motor cruza
+ * el catálogo con `telegram_stars_sales`, que NO está declarada aquí, así que
+ * con `agentSupabase()` no compila (TS2769). Declararla habría significado
+ * duplicar una tabla que `database.generated.ts` ya tipa entera — justo lo que
+ * esta vista quiere evitar —, así que `offerEngine.ts` va por `orgSupabase()`,
+ * como el resto de `src/lib/telegram/`. Ampliar esta vista sólo tiene sentido
+ * para un consumidor que ya esté en `agentSupabase()`.
+ */
+interface TelegramPaidMediaItemsTable {
+    Row: {
+        id: string
+        organization_id: string
+        avatar_id: string
+        title: string
+        star_price: number
+        /** F4.2 fotos-gratis Tarea 4: un mismo catálogo lleva de pago y
+         *  teasers gratis; `draftPipeline` los separa en dos listas del
+         *  prompt. Ampliación mínima, el único consumidor de esta vista. */
+        is_free: boolean
+        enabled: boolean
+        sort_order: number
+    }
+    Insert: Partial<TelegramPaidMediaItemsTable['Row']> & {
+        organization_id: string
+        avatar_id: string
+        title: string
+        star_price: number
+    }
+    Update: Partial<TelegramPaidMediaItemsTable['Row']>
+    Relationships: []
+}
+
+/**
+ * Vista mínima de `social_profiles` (el tipo completo vive en
+ * `database.generated.ts`). Sólo las columnas que necesita el módulo agente
+ * para entregar una respuesta pública y el DM privado (Tarea 4): la cuenta de
+ * Upload-Post del avatar y los ajustes `ai_comment_*` de la red del post.
+ *
+ * F4.2 Tarea 5 (comentarios-ia-social) — se sumó `connected_platforms`: el
+ * sondeo (`src/lib/social/comments/settings.ts`) lo necesita para saber qué
+ * cuenta es "propia" (comentarios del propio avatar/creador que no hay que
+ * contestar).
+ */
+interface SocialProfilesTable {
+    Row: {
+        id: string
+        organization_id: string
+        avatar_id: string | null
+        status: string
+        api_key: string | null
+        upload_post_username: string
+        connected_platforms: Json
+        ai_comment_replies_enabled: boolean
+        ai_comment_default_chat_mode: string
+        ai_comment_dm_enabled: boolean
+        ai_comment_dm_text: string | null
+        ai_comment_dm_buttons: Json
+    }
+    Insert: Partial<SocialProfilesTable['Row']> & {
+        organization_id: string
+        upload_post_username: string
+    }
+    Update: Partial<SocialProfilesTable['Row']>
+    Relationships: []
+}
+
+/**
+ * Vista mínima de `social_comment_dms` (el tipo completo vive en
+ * `database.generated.ts`). Un DM por (avatar, post, comentarista) —
+ * `comment_id` es UNIQUE en la BD como cinturón adicional.
+ */
+interface SocialCommentDmsTable {
+    Row: {
+        id: string
+        organization_id: string
+        avatar_id: string
+        platform: string
+        platform_post_id: string
+        comment_id: string
+        commenter_id: string | null
+        status: string
+        error: string | null
+        sent_at: string | null
+        created_at: string
+    }
+    Insert: Partial<SocialCommentDmsTable['Row']> & {
+        organization_id: string
+        avatar_id: string
+        platform: string
+        platform_post_id: string
+        comment_id: string
+        status: string
+    }
+    Update: Partial<SocialCommentDmsTable['Row']>
+    Relationships: []
+}
+
 export type AgentChatRow = AgentChatsTable['Row']
 export type AgentMessageRow = AgentMessagesTable['Row']
 export type AvatarFanMemoryRow = AvatarFanMemoriesTable['Row']
+export type TelegramPaidMediaItemRow = TelegramPaidMediaItemsTable['Row']
+export type SocialProfileRow = SocialProfilesTable['Row']
+export type SocialCommentDmRow = SocialCommentDmsTable['Row']
 
 export type AgentDatabase = BaseDatabase & {
     public: BaseDatabase['public'] & {
@@ -228,6 +340,9 @@ export type AgentDatabase = BaseDatabase & {
             agent_chats: AgentChatsTable
             agent_messages: AgentMessagesTable
             avatar_fan_memories: AvatarFanMemoriesTable
+            telegram_paid_media_items: TelegramPaidMediaItemsTable
+            social_profiles: SocialProfilesTable
+            social_comment_dms: SocialCommentDmsTable
         }
         Functions: {
             match_avatar_knowledge: {

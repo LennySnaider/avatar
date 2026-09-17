@@ -138,7 +138,7 @@ const getAvatars = async (_queryParams: {
                 ...avatar,
                 avatar_references: references,
                 thumbnailUrl,
-            } as AvatarWithReferences
+            }
         })
     )
 

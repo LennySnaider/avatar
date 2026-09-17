@@ -64,10 +64,23 @@ export interface UpsertPersonaInput {
     nsfwLevel: NsfwLevel
 }
 
-const fail = (e: unknown): { success: false; error: string } => ({
-    success: false,
-    error: e instanceof Error ? e.message : String(e),
-})
+/**
+ * Traduce una excepción al contrato `AgentResult` **y la deja escrita en el
+ * log del servidor**.
+ *
+ * El log no es adorno. Sin él, un fallo de esta capa sólo existe como un
+ * string dentro de una tarjeta de la UI — así fue invisible durante toda una
+ * sesión de depuración el caso gemelo de Telegram (ver
+ * AgentTelegramService.ts, commit d429fc1). El prefijo `[agent]` sigue la
+ * convención de `src/lib/billing/moduleCharges.ts`.
+ */
+const fail = (where: string, e: unknown): { success: false; error: string } => {
+    console.error(`[agent] ${where}:`, e)
+    return {
+        success: false,
+        error: e instanceof Error ? e.message : String(e),
+    }
+}
 
 function toKnowledgeDTO(row: AvatarKnowledgeRow): KnowledgeItemDTO {
     return {
@@ -125,7 +138,7 @@ export async function getAvatarPersona(avatarId: string): Promise<AgentResult<Pe
         if (error) throw new Error(error.message)
         return { success: true, data: data ? toPersonaDTO(data) : null }
     } catch (e) {
-        return fail(e)
+        return fail('getAvatarPersona', e)
     }
 }
 
@@ -169,7 +182,7 @@ export async function upsertAvatarPersona(input: UpsertPersonaInput): Promise<Ag
         if (error) throw new Error(error.message)
         return { success: true, data: toPersonaDTO(data) }
     } catch (e) {
-        return fail(e)
+        return fail('upsertAvatarPersona', e)
     }
 }
 
@@ -273,7 +286,7 @@ export async function generatePersonaFromAvatar(avatarId: string): Promise<Agent
             nsfwLevel: base?.nsfwLevel ?? 'suggestive',
         })
     } catch (e) {
-        return fail(e)
+        return fail('generatePersonaFromAvatar', e)
     }
 }
 
@@ -298,7 +311,7 @@ export async function testPersonaProvider(avatarId: string): Promise<AgentResult
         })
         return { success: true, data: { reply: text.trim(), latencyMs: Date.now() - started } }
     } catch (e) {
-        return fail(e)
+        return fail('testPersonaProvider', e)
     }
 }
 
@@ -319,7 +332,7 @@ export async function listKnowledge(avatarId: string): Promise<AgentResult<Knowl
         await attachKnowledgeThumbnails(ctx, items)
         return { success: true, data: items }
     } catch (e) {
-        return fail(e)
+        return fail('listKnowledge', e)
     }
 }
 
@@ -405,7 +418,7 @@ export async function addKnowledge(input: {
         if (error) throw new Error(error.message)
         return { success: true, data: toKnowledgeDTO(data as AvatarKnowledgeRow) }
     } catch (e) {
-        return fail(e)
+        return fail('addKnowledge', e)
     }
 }
 
@@ -418,7 +431,7 @@ export async function deleteKnowledge(knowledgeId: string): Promise<AgentResult<
         if (error) throw new Error(error.message)
         return { success: true, data: { id: knowledgeId } }
     } catch (e) {
-        return fail(e)
+        return fail('deleteKnowledge', e)
     }
 }
 
@@ -429,7 +442,7 @@ export async function searchKnowledge(avatarId: string, query: string): Promise<
         const chunks = await retrieveKnowledge(avatarId, query, { matchCount: 8, minSimilarity: 0.15 })
         return { success: true, data: chunks }
     } catch (e) {
-        return fail(e)
+        return fail('searchKnowledge', e)
     }
 }
 
@@ -561,6 +574,6 @@ export async function reindexAvatarContent(avatarId: string): Promise<AgentResul
 
         return { success: true, data: { indexed: fresh.length, skipped } }
     } catch (e) {
-        return fail(e)
+        return fail('reindexAvatarContent', e)
     }
 }

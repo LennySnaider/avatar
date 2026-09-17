@@ -11,6 +11,18 @@
         {
             "path": "/api/cron/billing-holds-sweep",
             "schedule": "17 * * * *"
+        },
+        {
+            "path": "/api/cron/module-fees",
+            "schedule": "23 3 * * *"
+        },
+        {
+            "path": "/api/cron/agent-autopilot-flush",
+            "schedule": "* * * * *"
+        },
+        {
+            "path": "/api/cron/social-comments-poll",
+            "schedule": "*/15 * * * *"
         }
     ]
 }

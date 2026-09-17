@@ -14,7 +14,7 @@
  */
 import { FanvueClient } from '@/lib/fanvue/FanvueClient'
 import { getValidAccessToken } from '@/lib/fanvue/tokenStore'
-import { agentSupabase, type AgentChatRow, type AgentMsgDirection } from './db'
+import { agentSupabase, type AgentChatMode, type AgentChatRow, type AgentMsgDirection } from './db'
 import type { FanvueMessage } from '@/lib/fanvue/types'
 
 /** Resolve the avatar (+ its owner user + fanvue mode) for a connection's creator recipient. */
@@ -104,6 +104,41 @@ export async function resolveTargetAvatar(
     }
 }
 
+/**
+ * Resolve an avatar directly by id — no external recipient to map from.
+ *
+ * F4.2 Tarea 4 (telegram-comision-cobrable) — el webhook de Telegram YA
+ * conoce el avatar por la URL (`/api/webhooks/telegram/[avatarId]`), a
+ * diferencia de Fanvue, donde `resolveTargetAvatar` tiene que ADIVINAR el
+ * avatar a partir del `recipientUuid` que trae el payload. Devuelve el mismo
+ * `ResolvedTarget` que usan `upsertChat`/`ingestMessage`/`touchFanMemory` —
+ * `creatorUuid` va siempre `null` (es un concepto de Fanvue, no aplica aquí).
+ */
+export async function resolveAvatarTargetById(avatarId: string): Promise<ResolvedTarget | null> {
+    const supabase = agentSupabase()
+    const { data: avatar } = await supabase
+        .from('avatars')
+        .select('id, user_id, organization_id')
+        .eq('id', avatarId)
+        .maybeSingle()
+    if (!avatar?.user_id) return null
+
+    const { data: persona } = await supabase
+        .from('avatar_personas')
+        .select('enabled')
+        .eq('organization_id', avatar.organization_id)
+        .eq('avatar_id', avatarId)
+        .maybeSingle()
+
+    return {
+        avatarId: avatar.id,
+        organizationId: avatar.organization_id,
+        userId: avatar.user_id,
+        creatorUuid: null,
+        personaEnabled: Boolean(persona?.enabled),
+    }
+}
+
 /** Upsert a chat row for (avatar, fan). Returns the chat id. */
 export async function upsertChat(input: {
     target: ResolvedTarget
@@ -116,14 +151,31 @@ export async function upsertChat(input: {
     /** Counterpart is a creator/bot (spam) — start such chats OFF so the agent
      * never auto-drafts to them. */
     isCreator?: boolean
+    /** F4.2 Tarea 4 — default `'fanvue'` a propósito: NINGÚN llamador actual
+     *  lo pasa, así que su comportamiento no cambia. El webhook de Telegram sí
+     *  lo pasa (`'telegram'`) para que la fila caiga en la fila correcta de la
+     *  unicidad `(avatar_id, platform, external_chat_id)`. */
+    platform?: string
+    /** Modo con que nace un chat NUEVO. Sólo se aplica al crear: un modo ya
+     *  elegido por el usuario nunca se pisa (ver más abajo). Default 'draft'
+     *  = comportamiento histórico de Fanvue, que no pasa este campo. */
+    defaultMode?: AgentChatMode
+    /** F4.2 Tarea 4 (comentarios-ia-social) — `{ socialPostTargetId,
+     *  platformPostId, postUrl, caption }` de un chat `social:*`. `undefined`
+     *  = "no lo toques" (Fanvue/Telegram no lo pasan, así que su
+     *  comportamiento no cambia); se guarda al CREAR y, al actualizar, se
+     *  refresca SÓLO si viene explícito — un `caption` puede cambiar tras
+     *  publicar y el llamador de Tarea 5 lo repasa en cada poll. */
+    context?: Record<string, unknown> | null
 }): Promise<AgentChatRow> {
+    const platform = input.platform ?? 'fanvue'
     const supabase = agentSupabase()
     const { data: existing } = await supabase
         .from('agent_chats')
         .select('*')
         .eq('organization_id', input.target.organizationId)
         .eq('avatar_id', input.target.avatarId)
-        .eq('platform', 'fanvue')
+        .eq('platform', platform)
         .eq('external_chat_id', input.fanUuid)
         .maybeSingle()
 
@@ -136,13 +188,27 @@ export async function upsertChat(input: {
         if (input.lastFanMessageAt) patch.last_fan_message_at = input.lastFanMessageAt
         // Keep the creator flag fresh, but NEVER override a mode the user set.
         if (input.isCreator !== undefined) patch.is_creator = input.isCreator
-        const { data } = await supabase
+        if (input.context !== undefined) patch.context = input.context
+        const { data, error } = await supabase
             .from('agent_chats')
             .update(patch)
             .eq('organization_id', input.target.organizationId)
             .eq('id', existing.id)
             .select('*')
             .single()
+        // Este update dejó de ser cosmético: además de los datos del fan
+        // refresca `context` (caption/postUrl del post comentado), que es lo
+        // que el prompt de comentarios públicos usa para saber de qué se está
+        // hablando. Si falla y se devuelve `existing` en silencio, el borrador
+        // se genera con el contexto viejo y nadie se entera.
+        if (error) {
+            console.error(
+                '[agent] no se pudo actualizar el chat existente',
+                { chatId: existing.id, organizationId: input.target.organizationId },
+                error,
+            )
+            throw new Error(`Supabase: ${error.message}`)
+        }
         return (data ?? existing) as AgentChatRow
     }
 
@@ -151,16 +217,17 @@ export async function upsertChat(input: {
         .insert({
             organization_id: input.target.organizationId,
             avatar_id: input.target.avatarId,
-            platform: 'fanvue',
+            platform,
             external_chat_id: input.fanUuid,
             fan_display_name: input.fanDisplayName ?? null,
             fan_handle: input.fanHandle ?? null,
             fan_avatar_url: input.fanAvatarUrl ?? null,
             is_creator: input.isCreator ?? false,
             // Creator/bot spam starts OFF; real fans start in draft mode.
-            mode: input.isCreator ? 'off' : 'draft',
+            mode: input.isCreator ? 'off' : (input.defaultMode ?? 'draft'),
             last_message_at: input.lastMessageAt ?? null,
             last_fan_message_at: input.lastFanMessageAt ?? null,
+            context: (input.context ?? null) as never,
         })
         .select('*')
         .single()
@@ -207,8 +274,17 @@ export async function ingestMessage(input: {
     return { inserted: true }
 }
 
-/** Update the fan's memory row's last-seen (cheap heartbeat; facts filled by the LLM pass). */
-export async function touchFanMemory(target: ResolvedTarget, fanUuid: string, displayName?: string | null) {
+/**
+ * Update the fan's memory row's last-seen (cheap heartbeat; facts filled by
+ * the LLM pass). `platform` default `'fanvue'` — F4.2 Tarea 4, mismo motivo
+ * que en `upsertChat`: ningún llamador actual lo pasa, así que no cambia.
+ */
+export async function touchFanMemory(
+    target: ResolvedTarget,
+    fanUuid: string,
+    displayName?: string | null,
+    platform: string = 'fanvue',
+) {
     const supabase = agentSupabase()
     await supabase
         .from('avatar_fan_memories')
@@ -216,7 +292,7 @@ export async function touchFanMemory(target: ResolvedTarget, fanUuid: string, di
             {
                 organization_id: target.organizationId,
                 avatar_id: target.avatarId,
-                platform: 'fanvue',
+                platform,
                 external_fan_id: fanUuid,
                 display_name: displayName ?? null,
                 last_seen_at: new Date().toISOString(),

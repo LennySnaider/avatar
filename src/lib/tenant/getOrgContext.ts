@@ -56,9 +56,25 @@ export async function tryGetOrgContext(): Promise<OrgContext | null> {
     try {
         const session = await auth()
         const userId = session?.user?.id
+        // Sin sesión es NORMAL: el layout raíz también pinta el login y las
+        // páginas públicas. No se loguea para no ahogar la señal.
         if (!userId) return null
-        return await getOrgContextForUser(userId)
-    } catch {
+
+        const ctx = await getOrgContextForUser(userId)
+        if (!ctx) {
+            // Sesión válida SIN membresía sí es una anomalía. El usuario ve la
+            // aplicación pero se queda sin organización, y todo lo que cuelga
+            // de ella se degrada en silencio a "no tienes nada": el menú, por
+            // ejemplo, esconde los módulos instalados como si no existieran.
+            // Sin esta línea eso era indiagnosticable desde fuera.
+            console.error('[tenant] sesión sin membresía de organización', { userId })
+        }
+        return ctx
+    } catch (e) {
+        // El `catch` mudo original convertía cualquier fallo real de base de
+        // datos en "este usuario no tiene organización", que es una conclusión
+        // distinta y mucho más destructiva que la causa.
+        console.error('[tenant] tryGetOrgContext:', e)
         return null
     }
 }

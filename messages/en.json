@@ -35,7 +35,9 @@
             "fanvue": "Fanvue",
             "fanvueAccounts": "Fanvue Account",
             "fanvueComposer": "Fanvue Composer",
-            "fanvuePosts": "Fanvue Posts"
+            "fanvuePosts": "Fanvue Posts",
+            "telegram": "Telegram",
+            "telegramDesc": "Connect a bot and sell paid content with Stars"
         },
         "dashboard": {
             "dashboard": "Dashboard",

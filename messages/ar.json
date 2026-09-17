@@ -35,7 +35,9 @@
             "fanvue": "Fanvue",
             "fanvueAccounts": "حساب Fanvue",
             "fanvueComposer": "النشر على Fanvue",
-            "fanvuePosts": "منشورات Fanvue"
+            "fanvuePosts": "منشورات Fanvue",
+            "telegram": "Telegram",
+            "telegramDesc": "اربط بوتًا وبع محتوى مدفوعًا عبر Stars"
         },
         "dashboard": {
             "dashboard": "لوحة القيادة",

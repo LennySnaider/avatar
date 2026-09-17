@@ -207,6 +207,13 @@ const conceptsRoute: Routes = {
             pageContainerType: 'contained',
         },
     },
+    '/concepts/account/modules': {
+        key: 'concepts.account.modules',
+        authority: [ADMIN, USER],
+        meta: {
+            pageContainerType: 'contained',
+        },
+    },
     '/concepts/account/roles-permissions': {
         key: 'concepts.account.rolesPermissions',
         authority: [ADMIN, USER],
@@ -330,6 +337,25 @@ const conceptsRoute: Routes = {
             pageBackgroundType: 'plain',
             footer: false,
         },
+    },
+    '/concepts/avatar-forge/telegram': {
+        key: 'concepts.avatarForge.telegram',
+        authority: [ADMIN, USER],
+        meta: {
+            pageContainerType: 'contained',
+            pageBackgroundType: 'plain',
+            footer: false,
+        },
+    },
+    '/concepts/avatar-forge/telegram/[slug]': {
+        key: 'concepts.avatarForge.telegramEdit',
+        authority: [ADMIN, USER],
+        meta: {
+            pageContainerType: 'contained',
+            pageBackgroundType: 'plain',
+            footer: false,
+        },
+        dynamicRoute: true,
     },
 }
 

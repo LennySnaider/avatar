@@ -29,7 +29,12 @@ import {
 } from '@/lib/agent/inboxSync'
 import { sendAgentMessage } from '@/lib/agent/sendMessage'
 import type { AutopilotConfig } from '@/lib/agent/autopilot'
+import { findFreeMediaOffer, findPaidMediaOffer } from '@/lib/telegram/offerGate'
+import { fanMemoryPlatform } from '@/lib/agent/fanMemoryPlatform'
+import { resolveDeliveryChannel } from '@/lib/agent/channelRouting'
 import { updateFanMemoryFromChat } from '@/lib/agent/draftPipeline'
+import { toChatListItem, type ChatListItem } from '@/lib/agent/chatListItem'
+import { commenterIdFromChat } from '@/lib/social/comments/ids'
 import { retrieveKnowledge } from '@/lib/agent/retrieval'
 import { AGENT_UTILITY_MODEL } from '@/lib/agent/models'
 import {
@@ -47,21 +52,10 @@ export interface InboxResult<T> {
     error?: string
 }
 
-export interface AgentChatListItem {
-    id: string
-    avatarId: string
-    avatarName: string | null
-    fanDisplayName: string | null
-    fanHandle: string | null
-    fanAvatarUrl: string | null
-    mode: AgentChatMode
-    isCreator: boolean
-    needsAttention: boolean
-    attentionReason: string | null
-    lastMessageAt: string | null
-    lastMessagePreview: string | null
-    hasDraft: boolean
-}
+// Alias, no redefinición: `toChatListItem` (src/lib/agent/chatListItem.ts) es
+// el único sitio que arma este DTO a partir de una fila de `agent_chats`, así
+// `listAgentChats` y `getAgentChatThread` no pueden desincronizarse entre sí.
+export type AgentChatListItem = ChatListItem
 
 export interface AgentMessageDTO {
     id: string
@@ -73,14 +67,30 @@ export interface AgentMessageDTO {
     errorMessage: string | null
     createdAt: string
     sentAt: string | null
+    /** Oferta de contenido de pago adjunta (Telegram, offerEngine). Null si no hay. */
+    paidOffer: { itemId: string; stars: number; caption: string } | null
+    /**
+     * Teaser GRATIS adjunto (Telegram, offerEngine). Null si no hay.
+     *
+     * Viaja aparte de `paidOffer` porque no es lo mismo y el creador tiene que
+     * poder distinguirlo: sin este campo el teaser era INVISIBLE en el Inbox —
+     * se adjuntaba al borrador y salía al aprobarlo sin que nadie lo hubiera
+     * visto ni pudiera quitarlo, y un teaser se gasta UNA VEZ por fan.
+     */
+    freeOffer: { itemId: string; caption: string } | null
 }
 
-const fail = (e: unknown): { success: false; error: string } => ({
-    success: false,
-    error: e instanceof Error ? e.message : String(e),
-})
+const fail = (where: string, e: unknown): { success: false; error: string } => {
+    console.error(`[inbox] ${where}:`, e)
+    return {
+        success: false,
+        error: e instanceof Error ? e.message : String(e),
+    }
+}
 
 function toMessageDTO(row: AgentMessageRow): AgentMessageDTO {
+    const offer = findPaidMediaOffer(row.media)
+    const freeOffer = findFreeMediaOffer(row.media)
     return {
         id: row.id,
         direction: row.direction,
@@ -92,6 +102,12 @@ function toMessageDTO(row: AgentMessageRow): AgentMessageDTO {
         errorMessage: row.error_message,
         createdAt: row.created_at,
         sentAt: row.sent_at,
+        paidOffer: offer
+            ? { itemId: offer.itemId, stars: offer.stars, caption: offer.caption }
+            : null,
+        freeOffer: freeOffer
+            ? { itemId: freeOffer.itemId, caption: freeOffer.caption }
+            : null,
     }
 }
 
@@ -146,7 +162,7 @@ export async function getAgentMetrics(): Promise<InboxResult<AgentMetrics>> {
             },
         }
     } catch (e) {
-        return fail(e)
+        return fail('getAgentMetrics', e)
     }
 }
 
@@ -197,27 +213,18 @@ export async function listAgentChats(filter?: {
                 previewByChat.set(m.chat_id, m.text)
         }
 
-        const items: AgentChatListItem[] = rows.map((c) => ({
-            id: c.id,
-            avatarId: c.avatar_id,
-            avatarName: nameById.get(c.avatar_id) ?? null,
-            fanDisplayName: c.fan_display_name,
-            fanHandle: c.fan_handle,
-            fanAvatarUrl: c.fan_avatar_url,
-            mode: c.mode,
-            isCreator: c.is_creator,
-            needsAttention: c.needs_attention,
-            attentionReason: c.attention_reason,
-            lastMessageAt: c.last_message_at,
-            lastMessagePreview: previewByChat.get(c.id) ?? null,
-            hasDraft: draftChatIds.has(c.id),
-        }))
+        const items: AgentChatListItem[] = rows.map((c) =>
+            toChatListItem(c, nameById.get(c.avatar_id) ?? null, {
+                lastMessagePreview: previewByChat.get(c.id) ?? null,
+                hasDraft: draftChatIds.has(c.id),
+            }),
+        )
         const filtered = filter?.hasDraft
             ? items.filter((i) => i.hasDraft)
             : items
         return { success: true, data: filtered }
     } catch (e) {
-        return fail(e)
+        return fail('listAgentChats', e)
     }
 }
 
@@ -255,11 +262,22 @@ export async function getAgentChatThread(
                     .not('status', 'eq', 'discarded')
                     .order('created_at', { ascending: true })
                     .limit(200),
+                // `platform` DERIVADA del chat, no fija a 'fanvue': el
+                // webhook de Telegram guarda su memoria bajo 'telegram'
+                // (`touchFanMemory`), así que con la clave cableada el inbox
+                // no enseñaba NADA de lo que el agente recuerda de un fan de
+                // Telegram — la misma derivación que ya usa `draftPipeline`
+                // para construir el prompt. Y `external_fan_id` va por
+                // `commenterIdFromChat`, no por el `external_chat_id` crudo:
+                // en un chat de comentarios ese id trae `<postId>:<commenterId>`
+                // pegados, así que comparar contra el string entero nunca
+                // habría encontrado la memoria (identidad para Fanvue/Telegram,
+                // que no codifican nada).
                 orgTable(ctx, 'avatar_fan_memories')
                     .select('summary, facts')
                     .eq('avatar_id', chat.avatar_id)
-                    .eq('platform', 'fanvue')
-                    .eq('external_fan_id', chat.external_chat_id)
+                    .eq('platform', fanMemoryPlatform(chat.platform))
+                    .eq('external_fan_id', commenterIdFromChat(chat.external_chat_id))
                     .maybeSingle(),
             ])
 
@@ -267,21 +285,10 @@ export async function getAgentChatThread(
         return {
             success: true,
             data: {
-                chat: {
-                    id: chat.id,
-                    avatarId: chat.avatar_id,
-                    avatarName: avatar?.name ?? null,
-                    fanDisplayName: chat.fan_display_name,
-                    fanHandle: chat.fan_handle,
-                    fanAvatarUrl: chat.fan_avatar_url,
-                    mode: chat.mode,
-                    isCreator: chat.is_creator,
-                    needsAttention: chat.needs_attention,
-                    attentionReason: chat.attention_reason,
-                    lastMessageAt: chat.last_message_at,
+                chat: toChatListItem(chat, avatar?.name ?? null, {
                     lastMessagePreview: null,
                     hasDraft: messages.some((m) => m.status === 'draft'),
-                },
+                }),
                 messages,
                 fanMemory: memory
                     ? {
@@ -293,7 +300,7 @@ export async function getAgentChatThread(
             },
         }
     } catch (e) {
-        return fail(e)
+        return fail('getAgentChatThread', e)
     }
 }
 
@@ -312,7 +319,7 @@ export async function setChatMode(
         const updated = data as { id: string; mode: AgentChatMode }
         return { success: true, data: { id: updated.id, mode: updated.mode } }
     } catch (e) {
-        return fail(e)
+        return fail('setChatMode', e)
     }
 }
 
@@ -338,7 +345,7 @@ export async function regenerateDraft(
             .single()
         return { success: true, data: toMessageDTO(row as AgentMessageRow) }
     } catch (e) {
-        return fail(e)
+        return fail('regenerateDraft', e)
     }
 }
 
@@ -357,7 +364,47 @@ export async function discardDraft(
         if (error) throw new Error(error.message)
         return { success: true, data: { id: messageId } }
     } catch (e) {
-        return fail(e)
+        return fail('discardDraft', e)
+    }
+}
+
+/**
+ * Quita la oferta adjunta a un borrador sin tocar el texto. Sólo borradores.
+ *
+ * Quita LOS DOS tipos de oferta, de pago y teaser gratis. `offerEngine`
+ * adjunta como mucho una por borrador, así que en la práctica sólo hay una que
+ * quitar; filtrar sólo `paid_media_offer` —como hacía antes— dejaba el teaser
+ * gratis pegado al borrador sin ninguna forma de sacarlo desde el Inbox, y un
+ * teaser se gasta UNA VEZ por fan.
+ */
+export async function removeDraftOffer(messageId: string): Promise<InboxResult<AgentMessageDTO>> {
+    try {
+        const ctx = await getOrgContext()
+        // El `error` se mira: un parpadeo de la base deja `msg` en null igual
+        // que un id inexistente, y reportar "Message not found" por un fallo
+        // transitorio manda al creador a buscar un mensaje que sí está.
+        const { data: msg, error: readError } = await orgTable(ctx, 'agent_messages')
+            .select('*')
+            .eq('id', messageId)
+            .maybeSingle()
+        if (readError) throw new Error(readError.message)
+        if (!msg) return { success: false, error: 'Message not found' }
+        if (msg.status !== 'draft') return { success: false, error: 'Only drafts can be edited' }
+        const REMOVABLE_OFFER_TYPES = ['paid_media_offer', 'free_media_offer']
+        const media = Array.isArray(msg.media)
+            ? msg.media.filter(
+                  (m: { type?: string }) => !REMOVABLE_OFFER_TYPES.includes(m?.type ?? ''),
+              )
+            : []
+        const { data: updated, error } = await orgTable(ctx, 'agent_messages')
+            .update({ media: media as never, updated_at: new Date().toISOString() })
+            .eq('id', messageId)
+            .select('*')
+            .single()
+        if (error) throw new Error(error.message)
+        return { success: true, data: toMessageDTO(updated as AgentMessageRow) }
+    } catch (e) {
+        return fail('removeDraftOffer', e)
     }
 }
 
@@ -414,7 +461,7 @@ export async function approveAndSend(
             .single()
         return { success: true, data: toMessageDTO(updated as AgentMessageRow) }
     } catch (e) {
-        return fail(e)
+        return fail('approveAndSend', e)
     }
 }
 
@@ -433,7 +480,7 @@ export async function getAutopilotConfig(
                 {}) as AutopilotConfig,
         }
     } catch (e) {
-        return fail(e)
+        return fail('getAutopilotConfig', e)
     }
 }
 
@@ -452,7 +499,7 @@ export async function setAutopilotConfig(
         if (error) throw new Error(error.message)
         return { success: true, data: config }
     } catch (e) {
-        return fail(e)
+        return fail('setAutopilotConfig', e)
     }
 }
 
@@ -480,7 +527,7 @@ export async function setAvatarFanvueCreator(
         if (error) throw new Error(error.message)
         return { success: true, data: { avatarId, creatorUuid } }
     } catch (e) {
-        return fail(e)
+        return fail('setAvatarFanvueCreator', e)
     }
 }
 
@@ -518,6 +565,18 @@ export async function approveAndSendVoiceNote(
             .single()
         if (!chatRow) return { success: false, error: 'Chat not found' }
         const chat = chatRow as AgentChatRow
+        // Sólo-Fanvue: la entrega es un audio subido a Fanvue, que en un chat
+        // de Telegram o de comentarios sociales no existe. El corte va ANTES
+        // de sintetizar: sin él, el texto se mandaba a MiniMax y se pagaba el
+        // TTS para después fallar al entregar. Se quemaba saldo real por un
+        // botón que no podía funcionar. F4.2 Tarea 4 — el guard era
+        // `=== 'telegram'`: un chat `social:*` no es 'telegram' y colaba de
+        // largo hasta `makeFanvueClient` más abajo (sin dueño ni conexión
+        // Fanvue reales, así que fallaba, pero tarde y con un TTS ya pagado).
+        // `!== 'fanvue'` es la forma correcta de decir "sólo Fanvue".
+        if (resolveDeliveryChannel(chat.platform) !== 'fanvue') {
+            return { success: false, error: 'Esta acción es sólo para Fanvue.' }
+        }
 
         const { data: avatarRow } = await orgTable(ctx, 'avatars')
             .select('user_id, fanvue_creator_uuid, default_voice_id')
@@ -632,7 +691,7 @@ export async function approveAndSendVoiceNote(
             return { success: false, error: `Voice note failed: ${message}` }
         }
     } catch (e) {
-        return fail(e)
+        return fail('approveAndSendVoiceNote', e)
     }
 }
 
@@ -663,6 +722,17 @@ export async function suggestPpvOffer(
             .maybeSingle()
         if (!chatRow) return { success: false, error: 'Chat not found' }
         const chat = chatRow as AgentChatRow
+        // Sólo-Fanvue: el PPV es el mecanismo de pago de Fanvue (precio en
+        // centavos sobre media subida allí); en Telegram se cobra con Stars y
+        // en un chat de comentarios sociales no hay PPV. El corte va ANTES de
+        // la búsqueda en el índice y de la llamada al modelo, que se gastaban
+        // en preparar una oferta que este chat nunca habría podido enviar.
+        // F4.2 Tarea 4 — `!== 'fanvue'` (no sólo `=== 'telegram'`) para que
+        // `social:*` también quede fuera: ver el mismo fix en
+        // `approveAndSendVoiceNote`.
+        if (resolveDeliveryChannel(chat.platform) !== 'fanvue') {
+            return { success: false, error: 'Esta acción es sólo para Fanvue.' }
+        }
 
         const { data: lastFan } = await orgTable(ctx, 'agent_messages')
             .select('text')
@@ -770,7 +840,7 @@ export async function suggestPpvOffer(
             },
         }
     } catch (e) {
-        return fail(e)
+        return fail('suggestPpvOffer', e)
     }
 }
 
@@ -790,6 +860,14 @@ export async function sendPpvOffer(input: {
             .maybeSingle()
         if (!chatRow) return { success: false, error: 'Chat not found' }
         const chat = chatRow as AgentChatRow
+        // Sólo-Fanvue: esto sube media a Fanvue y le pone precio en centavos.
+        // En un chat de Telegram o de comentarios sociales no hay dónde
+        // entregarlo —el pago va por Stars, o no existe— así que se corta
+        // antes de subir nada. F4.2 Tarea 4 — `!== 'fanvue'`, mismo fix que
+        // en `approveAndSendVoiceNote` / `suggestPpvOffer`.
+        if (resolveDeliveryChannel(chat.platform) !== 'fanvue') {
+            return { success: false, error: 'Esta acción es sólo para Fanvue.' }
+        }
         if (input.priceCents < 300)
             return { success: false, error: 'Price must be at least 300 cents' }
 
@@ -848,7 +926,7 @@ export async function sendPpvOffer(input: {
             .eq('id', chat.id)
         return { success: true, data: { sent: true } }
     } catch (e) {
-        return fail(e)
+        return fail('sendPpvOffer', e)
     }
 }
 
@@ -973,6 +1051,6 @@ export async function syncFanvueInbox(
         }
         return { success: true, data: { chats: chatCount, messages: msgCount } }
     } catch (e) {
-        return fail(e)
+        return fail('syncFanvueInbox', e)
     }
 }

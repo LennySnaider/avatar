@@ -156,6 +156,81 @@ function extractJobId(payload: UploadPostWebhookPayload): string | null {
     return null
 }
 
+/**
+ * F4.2 Tarea 5 (comentarios-ia-social) — best-effort: si el payload de
+ * `publish_success` trae la plataforma y el id/url real del post, adelanta
+ * el target en `social_post_targets` sin esperar al próximo barrido del cron
+ * `social-comments-poll` (que igual lo sincronizaría desde el history de
+ * Upload-Post). Se mira en top-level (`platform`) y bajo `data`
+ * (`data.platform`, `data.result.post_id|url`, `data.post_id|url`) — la
+ * forma real de un `publish_success` con estos campos no está confirmada en
+ * este repo (el resto del handler ya lo advierte para `job_id`), así que se
+ * cubren las variantes documentadas sin asumir cuál llega en la práctica.
+ */
+function extractPlatform(payload: UploadPostWebhookPayload): string | null {
+    const candidates: unknown[] = [payload.platform, payload.data?.platform]
+    for (const candidate of candidates) {
+        if (typeof candidate === 'string' && candidate.length > 0) return candidate
+    }
+    return null
+}
+
+function extractPlatformPostId(payload: UploadPostWebhookPayload): string | null {
+    const result = (payload.data?.result ?? {}) as Record<string, unknown>
+    const candidates: unknown[] = [result.post_id, payload.data?.post_id]
+    for (const candidate of candidates) {
+        if (typeof candidate === 'string' && candidate.length > 0) return candidate
+    }
+    return null
+}
+
+function extractPostUrl(payload: UploadPostWebhookPayload): string | null {
+    const result = (payload.data?.result ?? {}) as Record<string, unknown>
+    const candidates: unknown[] = [result.url, payload.data?.url]
+    for (const candidate of candidates) {
+        if (typeof candidate === 'string' && candidate.length > 0) return candidate
+    }
+    return null
+}
+
+/**
+ * Upsert best-effort de `social_post_targets` para el post que este webhook
+ * acaba de marcar `published`. Nunca lanza — cualquier fallo (falta de
+ * plataforma/id en el payload, error de Supabase) se loguea y se ignora: el
+ * cron `social-comments-poll` sincroniza lo mismo desde el history como red
+ * de respaldo, así que esto sólo adelanta el dato, nunca es la única fuente.
+ */
+async function upsertTargetFromWebhook(
+    supabase: ReturnType<typeof createServerSupabaseClient>,
+    postRow: { id: string; organization_id: string; published_at: string | null } | null | undefined,
+    payload: UploadPostWebhookPayload,
+): Promise<void> {
+    if (!postRow) return
+    const platform = extractPlatform(payload)
+    const platformPostId = extractPlatformPostId(payload)
+    if (!platform || !platformPostId) return
+    const postUrl = extractPostUrl(payload)
+
+    const { error } = await supabase.from('social_post_targets').upsert(
+        {
+            organization_id: postRow.organization_id,
+            social_post_id: postRow.id,
+            platform,
+            platform_post_id: platformPostId,
+            post_url: postUrl,
+            published_at: postRow.published_at,
+        },
+        { onConflict: 'social_post_id,platform' },
+    )
+    if (error) {
+        console.warn(
+            '[upload-post webhook] no se pudo adelantar social_post_targets (el cron de comentarios lo sincroniza igual)',
+            { socialPostId: postRow.id, platform },
+            error.message,
+        )
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Handler
 // ---------------------------------------------------------------------------
@@ -221,7 +296,16 @@ export async function POST(req: NextRequest) {
                 const requestId = payload.request_id ?? payload.requestId
                 if (requestId) {
                     const jobId = extractJobId(payload)
-                    await supabase
+                    // `upload_post_request_id` NO es único (columna + índice
+                    // simples, migración `20260707_social_media.sql`): puede
+                    // haber más de una fila de `social_posts` con el mismo
+                    // request_id. `.select()` SIN `.single()/.maybeSingle()`
+                    // — con cualquiera de esos dos, más de una fila hace que
+                    // PostgREST devuelva 406 y haga ROLLBACK del UPDATE
+                    // entero (era una única sentencia UPDATE...RETURNING),
+                    // así que el post JAMÁS quedaba `published`. El error SÍ
+                    // se comprueba ahora (antes se descartaba en silencio).
+                    const { data: updatedPosts, error: updateError } = await supabase
                         .from('social_posts')
                         .update({
                             status: 'published',
@@ -232,6 +316,24 @@ export async function POST(req: NextRequest) {
                             ...(jobId ? { upload_post_job_id: jobId } : {}),
                         })
                         .eq('upload_post_request_id', requestId)
+                        .select('id, organization_id, published_at')
+                    if (updateError) {
+                        console.error('[upload-post webhook] publish_success update failed', { requestId }, updateError.message)
+                    }
+
+                    // Best-effort, en su propio try/catch: nunca debe tumbar
+                    // el resto del webhook (ya 200 siempre, pero tampoco
+                    // queremos perder el log de arriba si esto explota). Se
+                    // repite por cada fila que haya compartido este
+                    // request_id — inofensivo: cada upsert es idempotente,
+                    // keyed por (social_post_id, platform).
+                    try {
+                        for (const postRow of updatedPosts ?? []) {
+                            await upsertTargetFromWebhook(supabase, postRow, payload)
+                        }
+                    } catch (e) {
+                        console.warn('[upload-post webhook] upsertTargetFromWebhook falló inesperadamente', e)
+                    }
                 } else {
                     console.log('[upload-post webhook] publish_success without request_id', payload)
                 }

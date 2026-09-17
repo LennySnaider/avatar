@@ -48,8 +48,12 @@ const AvatarCard = ({ avatar }: AvatarCardProps) => {
     const router = useRouter()
     const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false)
     const [isDeleting, setIsDeleting] = useState(false)
-    const [thumbnailUrl, setThumbnailUrl] = useState<string | null>(null)
-    const [isLoadingThumbnail, setIsLoadingThumbnail] = useState(true)
+    const [thumbnailUrl, setThumbnailUrl] = useState<string | null>(
+        avatar.thumbnailUrl ?? null,
+    )
+    const [isLoadingThumbnail, setIsLoadingThumbnail] = useState(
+        !avatar.thumbnailUrl,
+    )
 
     // Edit drawer state
     const [editDrawerOpen, setEditDrawerOpen] = useState(false)
@@ -102,6 +106,15 @@ const AvatarCard = ({ avatar }: AvatarCardProps) => {
     // Load thumbnail on mount
     useEffect(() => {
         const loadThumbnail = async () => {
+            // El servidor ya resolvió la URL: no hay nada que fabricar. La
+            // cascada de abajo (server action por candidato + descarga
+            // completa + base64 + canvas) sólo existe como respaldo para las
+            // filas que el servidor no supo resolver.
+            if (avatar.thumbnailUrl) {
+                setIsLoadingThumbnail(false)
+                return
+            }
+
             if (previewCandidates.length === 0) {
                 setIsLoadingThumbnail(false)
                 return
@@ -536,6 +549,8 @@ const AvatarCard = ({ avatar }: AvatarCardProps) => {
                         <img
                             src={thumbnailUrl}
                             alt={avatar.name}
+                            loading="lazy"
+                            decoding="async"
                             className="w-full h-full object-cover"
                         />
                     ) : (
