@@ -111,29 +111,36 @@ export async function generateDraftReply(chatId: string): Promise<DraftResult | 
         .eq('external_fan_id', commenterIdFromChat(chat.external_chat_id))
         .maybeSingle()
 
-    // Catálogo de contenido de pago, SÓLO para Telegram: el prompt le dice a
-    // la persona que tiene contenido exclusivo y qué es, para que provoque
-    // interés sin inventar precios. Fanvue y los comentarios sociales no
-    // cambian (su venta, si la hay, va por otro camino). Filtrado por
-    // organización de la fila ya resuelta.
+    // Catálogo de Telegram, SÓLO para ese canal: el prompt le dice a la
+    // persona qué contenido tiene —exclusivo de pago y teasers gratis— para
+    // que provoque interés sin inventar títulos ni precios. Fanvue y los
+    // comentarios sociales no cambian (su venta, si la hay, va por otro
+    // camino). Filtrado por organización de la fila ya resuelta.
+    //
+    // UNA sola consulta para las dos listas: `is_free` las separa aquí. Dos
+    // consultas con el mismo filtro serían dos viajes para el mismo dato.
     let paidCatalog: { title: string; stars: number }[] | undefined
+    let freeCatalog: { title: string }[] | undefined
     if (promptChannel === 'telegram') {
         const { data: items, error: itemsError } = await supabase
             .from('telegram_paid_media_items')
-            .select('title, star_price')
+            .select('title, star_price, is_free')
             .eq('organization_id', chat.organization_id)
             .eq('avatar_id', chat.avatar_id)
             .eq('enabled', true)
             .order('sort_order', { ascending: true })
-            .limit(20)
+            .limit(40)
         // Un fallo aquí NO corta el borrador —se responde igual, sólo que sin
         // mencionar el contenido exclusivo—, pero tiene que dejar rastro: sin
         // esto, "el agente dejó de vender" es indistinguible de "el agente
         // decidió no vender", y nadie sabría dónde mirar.
         if (itemsError) {
-            console.error('[agent] catálogo de pago no disponible para el prompt', { chatId }, itemsError)
+            console.error('[agent] catálogo de Telegram no disponible para el prompt', { chatId }, itemsError)
         }
-        paidCatalog = (items ?? []).map((i) => ({ title: i.title, stars: i.star_price }))
+        paidCatalog = (items ?? [])
+            .filter((i) => !i.is_free)
+            .map((i) => ({ title: i.title, stars: i.star_price }))
+        freeCatalog = (items ?? []).filter((i) => i.is_free).map((i) => ({ title: i.title }))
     }
 
     // Contexto del post bajo el que se comenta — sólo para `social_comment`.
@@ -161,6 +168,7 @@ export async function generateDraftReply(chatId: string): Promise<DraftResult | 
             : null,
         channel: promptChannel,
         paidCatalog,
+        freeCatalog,
         postContext,
     })
 

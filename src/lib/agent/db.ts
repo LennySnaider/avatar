@@ -240,6 +240,10 @@ interface TelegramPaidMediaItemsTable {
         avatar_id: string
         title: string
         star_price: number
+        /** F4.2 fotos-gratis Tarea 4: un mismo catálogo lleva de pago y
+         *  teasers gratis; `draftPipeline` los separa en dos listas del
+         *  prompt. Ampliación mínima, el único consumidor de esta vista. */
+        is_free: boolean
         enabled: boolean
         sort_order: number
     }

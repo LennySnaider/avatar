@@ -74,3 +74,59 @@ test('social_comment: incluye el resumen de memoria del fan, igual que fanvue/te
     })
     assert.match(prompt, /le encanta hablar de fitness/)
 })
+
+// La prohibición de prometer media (vista en vivo 17-sep: la persona escribió
+// "déjame buscar una que te guste" sin poder mandar nada — quien adjunta es el
+// sistema, no ella).
+const NO_PROMISE = /Never promise to send a photo/
+
+test('telegram: siempre trae la prohibición de prometer media, aunque no haya catálogos', () => {
+    const prompt = buildSystemPrompt({ persona, avatarName: 'Mia', channel: 'telegram' })
+    assert.match(prompt, NO_PROMISE)
+})
+
+test('telegram: la prohibición sigue ahí con ambos catálogos', () => {
+    const prompt = buildSystemPrompt({
+        persona,
+        avatarName: 'Mia',
+        channel: 'telegram',
+        paidCatalog,
+        freeCatalog: [{ title: 'Selfie mañanera' }],
+    })
+    assert.match(prompt, NO_PROMISE)
+})
+
+test('telegram: la sección FREE TEASERS aparece con freeCatalog y lista los títulos', () => {
+    const prompt = buildSystemPrompt({
+        persona,
+        avatarName: 'Mia',
+        channel: 'telegram',
+        freeCatalog: [{ title: 'Selfie mañanera' }, { title: 'Gym mirror' }],
+    })
+    assert.match(prompt, /YOUR FREE TEASERS/)
+    assert.match(prompt, /Selfie mañanera/)
+    assert.match(prompt, /Gym mirror/)
+})
+
+test('telegram: sin freeCatalog (o vacío) NO hay sección FREE TEASERS', () => {
+    assert.doesNotMatch(
+        buildSystemPrompt({ persona, avatarName: 'Mia', channel: 'telegram' }),
+        /FREE TEASERS/,
+    )
+    assert.doesNotMatch(
+        buildSystemPrompt({ persona, avatarName: 'Mia', channel: 'telegram', freeCatalog: [] }),
+        /FREE TEASERS/,
+    )
+})
+
+test('social_comment: ni prohibición de prometer media ni FREE TEASERS, aunque se pase freeCatalog', () => {
+    const prompt = buildSystemPrompt({
+        persona,
+        avatarName: 'Mia',
+        channel: 'social_comment',
+        postContext: { platform: 'instagram', caption: null },
+        freeCatalog: [{ title: 'Selfie mañanera' }],
+    })
+    assert.doesNotMatch(prompt, NO_PROMISE)
+    assert.doesNotMatch(prompt, /FREE TEASERS/)
+})
