@@ -64,10 +64,27 @@ const ThreadPane = ({ thread, onChanged }: ThreadPaneProps) => {
     const conversation = messages.filter((m) => m.status !== 'draft')
 
     // Acciones que sólo hablan Fanvue (nota de voz por TTS, PPV con precio en
-    // centavos). En un chat de Telegram no pueden funcionar, así que tampoco
-    // se enseñan: el servicio las rechaza igualmente, pero un botón que
-    // siempre falla es una promesa falsa.
-    const isTelegram = chat.platform.startsWith('telegram')
+    // centavos). En un chat de Telegram o de comentarios sociales no pueden
+    // funcionar, así que tampoco se enseñan: el servicio las rechaza
+    // igualmente, pero un botón que siempre falla es una promesa falsa.
+    // Task 7 — antes esto miraba sólo `chat.platform.startsWith('telegram')`
+    // (y se llamaba `isTelegram`), así que un chat `social:*` (que tampoco es
+    // Fanvue) se colaba de largo y mostraba Voice note / Suggest PPV igual
+    // que un chat de Fanvue real, ambos condenados a fallar del lado del
+    // servicio (mismo corte que ya usa `AgentInboxService` en
+    // `approveAndSendVoiceNote`/`suggestPpvOffer`). El nombre nuevo dice lo
+    // que la condición hace hoy: ocultar lo que sólo existe en Fanvue.
+    const hideFanvueOnlyTools = chat.channel !== 'fanvue'
+
+    // Comentario en un post social: cabecera con la red, el caption y el
+    // enlace al post original. Sólo los chats `social:*` traen `context`.
+    const captionPreview =
+        chat.context?.caption && chat.context.caption.length > 120
+            ? `${chat.context.caption.slice(0, 120)}…`
+            : (chat.context?.caption ?? null)
+    const socialLabel = chat.socialPlatform
+        ? `${chat.socialPlatform.charAt(0).toUpperCase()}${chat.socialPlatform.slice(1)}`
+        : 'social'
 
     const [draftText, setDraftText] = useState(draft?.text ?? '')
     const [busy, setBusy] = useState<'send' | 'voice' | 'regen' | 'discard' | 'removeOffer' | null>(null)
@@ -281,6 +298,30 @@ const ThreadPane = ({ thread, onChanged }: ThreadPaneProps) => {
                 </Segment>
             </div>
 
+            {chat.context && (
+                <div className="p-2 bg-violet-50 dark:bg-violet-900/20 border-b border-violet-200 dark:border-violet-800 flex items-center justify-between gap-2">
+                    <p
+                        className="text-xs text-violet-700 dark:text-violet-200 truncate"
+                        title={chat.context.caption ?? undefined}
+                    >
+                        Comment on your {socialLabel} post
+                        {captionPreview ? `: “${captionPreview}”` : ''}
+                    </p>
+                    {chat.context.postUrl && (
+                        <a
+                            href={chat.context.postUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="shrink-0"
+                        >
+                            <Button size="xs" variant="plain">
+                                Open post
+                            </Button>
+                        </a>
+                    )}
+                </div>
+            )}
+
             {chat.needsAttention && (
                 <div className="p-2 bg-red-50 dark:bg-red-900/30 border-b border-red-200 dark:border-red-700">
                     <p className="text-xs text-red-600 dark:text-red-400">
@@ -335,7 +376,7 @@ const ThreadPane = ({ thread, onChanged }: ThreadPaneProps) => {
             </div>
 
             {/* PPV offer suggestion */}
-            {ppv && !isTelegram && (
+            {ppv && !hideFanvueOnlyTools && (
                 <div className="p-3 border-t border-primary/30 bg-primary/5">
                     <div className="flex items-start gap-3">
                         <div className="w-16 h-16 rounded-lg overflow-hidden bg-gray-200 dark:bg-gray-700 shrink-0 relative">
@@ -416,7 +457,7 @@ const ThreadPane = ({ thread, onChanged }: ThreadPaneProps) => {
                             >
                                 Approve &amp; Send
                             </Button>
-                            {hasVoice && !isTelegram && (
+                            {hasVoice && !hideFanvueOnlyTools && (
                                 <Button
                                     size="sm"
                                     loading={busy === 'voice'}
@@ -444,7 +485,7 @@ const ThreadPane = ({ thread, onChanged }: ThreadPaneProps) => {
                             >
                                 Discard
                             </Button>
-                            {!isTelegram && (
+                            {!hideFanvueOnlyTools && (
                                 <Button
                                     variant="plain"
                                     size="sm"

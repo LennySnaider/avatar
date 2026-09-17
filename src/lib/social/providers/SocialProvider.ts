@@ -11,14 +11,32 @@
 import type {
   AnalyticsSnapshot,
   ConnectedAccount,
+  CreateCommentResult,
+  InstagramDmButton,
   Platform,
   PlatformTarget,
+  PrivateReplyResult,
   QueueSettings,
+  SocialCommentsPage,
+  UploadPostHistoryEntry,
 } from '@/@types/social'
 
 // ---------------------------------------------------------------------------
 // Shared value types
 // ---------------------------------------------------------------------------
+
+/**
+ * Último snapshot de rate-limit visto en cualquier respuesta del proveedor
+ * (headers `x-ratelimit-*`). F4.2 Tarea 5 (comentarios-ia-social): vivía sólo
+ * en `UploadPostProvider.ts` (única implementación); se sube a la interfaz
+ * porque el sondeo de comentarios (`src/lib/social/comments/poll.ts`) lo
+ * necesita a través del tipo `SocialProvider`, no de la clase concreta.
+ */
+export interface RateLimitInfo {
+  limit: number | null
+  remaining: number | null
+  reset: number | null
+}
 
 export interface ProfileDetails {
   username: string
@@ -163,6 +181,45 @@ export interface SocialProvider {
   // --- Status + history ---
   getRequestStatus(requestId: string): Promise<RequestStatus>
   getHistory(username: string, limit?: number): Promise<HistoryEntry[]>
+  // listHistory usa `profile_username` (getHistory de arriba manda `username`,
+  // que la doc real no reconoce — ver comentario en UploadPostProvider).
+  listHistory(input: {
+    profileUsername: string
+    requestId?: string
+    jobId?: string
+    platform?: string
+    limit?: 10 | 20 | 50 | 100
+  }): Promise<UploadPostHistoryEntry[]>
+
+  /** Snapshot de rate-limit de la última respuesta HTTP, o null si aún no
+   *  se hizo ninguna. El sondeo de comentarios lo consulta antes de cada
+   *  página para frenar cuando `remaining < 5` (ver `pollRules.rateLimitLow`). */
+  getLastRateLimit(): RateLimitInfo | null
+
+  // --- Comentarios / respuestas ---
+  listComments(input: {
+    username: string
+    platform: Platform
+    postId?: string
+    postUrl?: string
+    limit?: number
+    after?: string
+    commentId?: string
+  }): Promise<SocialCommentsPage>
+  createComment(input: {
+    username: string
+    platform: Platform
+    message: string
+    commentId?: string
+    postId?: string
+    postUrl?: string
+  }): Promise<CreateCommentResult>
+  sendInstagramPrivateReply(input: {
+    username: string
+    commentId: string
+    message: string
+    buttons?: InstagramDmButton[]
+  }): Promise<PrivateReplyResult>
 
   // --- Scheduling ---
   listScheduled(username: string): Promise<ScheduledPost[]>

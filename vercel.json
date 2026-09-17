@@ -19,6 +19,10 @@
         {
             "path": "/api/cron/agent-autopilot-flush",
             "schedule": "* * * * *"
+        },
+        {
+            "path": "/api/cron/social-comments-poll",
+            "schedule": "*/15 * * * *"
         }
     ]
 }

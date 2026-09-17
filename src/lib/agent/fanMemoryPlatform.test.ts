@@ -17,3 +17,11 @@ test('telegram_business comparte memoria con telegram: es la misma persona habla
 test('lo desconocido cae en fanvue, como siempre', () => {
     assert.equal(fanMemoryPlatform(''), 'fanvue')
 })
+
+test('social:x guarda memoria bajo la red pelada (x), no bajo social:x', () => {
+    assert.equal(fanMemoryPlatform('social:x'), 'x')
+})
+
+test('social:instagram guarda memoria bajo instagram', () => {
+    assert.equal(fanMemoryPlatform('social:instagram'), 'instagram')
+})

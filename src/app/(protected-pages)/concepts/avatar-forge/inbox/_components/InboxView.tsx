@@ -28,6 +28,33 @@ const MODE_STYLES: Record<string, string> = {
     auto: 'bg-emerald-100 text-emerald-600 dark:bg-emerald-500/20 dark:text-emerald-100 border-0',
 }
 
+/**
+ * Etiqueta + estilo del canal de cada chat. Antes sólo Telegram tenía tag
+ * (Fanvue era el fallback mudo); con comentarios sociales ya son tres
+ * familias de canal y un fan de Fanvue mirando la lista no tenía forma de
+ * distinguir un chat privado de un comentario público sin abrir el hilo.
+ */
+function channelTag(c: AgentChatListItem): { label: string; className: string } {
+    if (c.channel === 'telegram') {
+        return {
+            label: 'Telegram',
+            className: 'bg-sky-100 text-sky-600 dark:bg-sky-500/20 dark:text-sky-100 border-0',
+        }
+    }
+    if (c.channel === 'social_comment') {
+        const red = c.socialPlatform ?? 'social'
+        const label = `${red.charAt(0).toUpperCase()}${red.slice(1)} comment`
+        return {
+            label,
+            className: 'bg-violet-100 text-violet-600 dark:bg-violet-500/20 dark:text-violet-100 border-0',
+        }
+    }
+    return {
+        label: 'Fanvue',
+        className: 'bg-pink-100 text-pink-600 dark:bg-pink-500/20 dark:text-pink-100 border-0',
+    }
+}
+
 const InboxView = ({ initialChats, loadError }: InboxViewProps) => {
     const [chats, setChats] = useState<AgentChatListItem[]>(initialChats)
     const [error, setError] = useState<string | null>(loadError)
@@ -151,11 +178,9 @@ const InboxView = ({ initialChats, loadError }: InboxViewProps) => {
                                             {c.fanDisplayName ?? c.fanHandle ?? 'Fan'}
                                         </span>
                                         <div className="flex items-center gap-1 shrink-0">
-                                            {c.platform.startsWith('telegram') && (
-                                                <Tag className="bg-sky-100 text-sky-600 dark:bg-sky-500/20 dark:text-sky-100 border-0 text-[10px]">
-                                                    Telegram
-                                                </Tag>
-                                            )}
+                                            <Tag className={`${channelTag(c).className} text-[10px]`}>
+                                                {channelTag(c).label}
+                                            </Tag>
                                             {c.needsAttention && (
                                                 <span title={c.attentionReason ?? 'Needs your attention'}>
                                                     <Tag className="bg-red-100 text-red-600 dark:bg-red-500/20 dark:text-red-100 border-0 text-[10px]">

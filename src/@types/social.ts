@@ -159,6 +159,62 @@ export interface SocialEventLog {
   createdAt: string
 }
 
+// ---------------------------------------------------------------------------
+// Comentarios / respuestas / historial (Task 2 — comentarios-ia-social)
+// ---------------------------------------------------------------------------
+
+/** Comentario normalizado, sin importar la forma cruda que devuelva cada red. */
+export interface SocialComment {
+  id: string
+  text: string
+  timestamp: string | null
+  authorId: string | null
+  authorUsername: string | null
+}
+
+/** Página de comentarios normalizada (viene de GET /api/uploadposts/comments). */
+export interface SocialCommentsPage {
+  comments: SocialComment[]
+  nextCursor: string | null
+  hasNext: boolean
+  source: string | null
+}
+
+/**
+ * Entrada de historial normalizada (GET /api/uploadposts/history). Solo el
+ * subconjunto de campos que este módulo necesita — la respuesta cruda trae
+ * más (media_type, failure_stage, post_title, request_total_platforms) que
+ * no se usan todavía.
+ */
+export interface UploadPostHistoryEntry {
+  platform: string
+  success: boolean
+  errorCode: string | null
+  platformPostId: string | null
+  postUrl: string | null
+  postCaption: string | null
+  requestId: string | null
+  jobId: string | null
+  uploadTimestamp: string | null
+}
+
+/** Resultado de POST /api/uploadposts/comments/create (forma estándar; TikTok normaliza result.comment_id → id). */
+export interface CreateCommentResult {
+  id: string
+}
+
+/** Resultado de POST /api/uploadposts/comments/reply (DM privado de Instagram). */
+export interface PrivateReplyResult {
+  messageId: string
+  recipientId: string | null
+}
+
+/** Botón de acción para un DM privado de Instagram (máx. 3, title ≤20 chars). */
+export interface InstagramDmButton {
+  title: string
+  url: string
+}
+
 export interface UploadPostWebhookEvent {
   event:
     | 'post.published'

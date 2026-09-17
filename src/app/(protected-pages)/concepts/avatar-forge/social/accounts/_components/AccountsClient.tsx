@@ -6,6 +6,8 @@ import Card from '@/components/ui/Card'
 import Button from '@/components/ui/Button'
 import Tag from '@/components/ui/Tag'
 import Input from '@/components/ui/Input'
+import Select from '@/components/ui/Select'
+import Switcher from '@/components/ui/Switcher'
 import Notification from '@/components/ui/Notification'
 import toast from '@/components/ui/toast'
 import ConfirmDialog from '@/components/shared/ConfirmDialog'
@@ -14,8 +16,10 @@ import {
     disconnectUploadPostAccount,
     registerUploadPostWebhook,
     syncConnectedAccounts,
+    updateSocialCommentSettings,
     type AvatarSocialAccountRow,
     type SocialProfileSummary,
+    type SocialCommentSettingsPatch,
 } from '@/services/SocialService'
 
 interface AccountsClientProps {
@@ -64,6 +68,33 @@ function statusTag(profile: SocialProfileSummary | null) {
 
 const ACCOUNTS_PATH = '/concepts/avatar-forge/social/accounts'
 
+const CHAT_MODE_OPTIONS: { value: 'draft' | 'auto'; label: string }[] = [
+    { value: 'draft', label: 'Draft (review in Inbox)' },
+    { value: 'auto', label: 'Auto (autopilot rules apply)' },
+]
+
+const MAX_DM_BUTTONS = 3
+
+interface DmDraftButton {
+    /** Key estable para la fila — `existing-N` al hidratar desde el perfil
+     *  (índice, nunca cambia mientras no se edite la lista) o un uuid al
+     *  agregar un botón nuevo. Nunca se manda al servidor (sólo title/url). */
+    id: string
+    title: string
+    url: string
+}
+
+interface DmDraft {
+    text: string
+    buttons: DmDraftButton[]
+}
+
+/** id → nunca undefined ni bajo SSR: `crypto.randomUUID` existe en todos los
+ *  navegadores que corren esta pantalla (cliente, `'use client'`). */
+function newDmButtonId(): string {
+    return crypto.randomUUID()
+}
+
 /**
  * Per-avatar Upload-Post accounts: every avatar row manages its OWN
  * Upload-Post account (own API key, own linked socials). The key is pasted
@@ -78,6 +109,17 @@ const AccountsClient = ({ initialAccounts, loadError }: AccountsClientProps) => 
     const [editingKey, setEditingKey] = useState<Record<string, boolean>>({})
     const [busyAvatar, setBusyAvatar] = useState<string | null>(null)
     const [confirmDisconnect, setConfirmDisconnect] = useState<AvatarSocialAccountRow | null>(null)
+    // Campos de "IA en comentarios" guardándose ahora mismo — mismo patrón
+    // que `savingAi` en TelegramConnectionPanel, pero con clave
+    // `${avatarId}:${field}` (no sólo `avatarId`): esta pantalla lista
+    // varios avatares Y, dentro de cada uno, el switch de respuestas y el
+    // Select de modo pueden guardarse casi a la vez — con una sola clave por
+    // avatar el segundo guardado pisaba el spinner del primero.
+    const [savingFields, setSavingFields] = useState<Record<string, boolean>>({})
+    const [savingDm, setSavingDm] = useState<string | null>(null)
+    // Borrador local del texto/botones del DM — sólo se guarda al pulsar
+    // "Save DM". Antes de que el usuario toque algo, se lee del perfil.
+    const [dmDrafts, setDmDrafts] = useState<Record<string, DmDraft>>({})
     const router = useRouter()
     const searchParams = useSearchParams()
     const handledConnectParams = useRef(false)
@@ -188,6 +230,136 @@ const AccountsClient = ({ initialAccounts, loadError }: AccountsClientProps) => 
             )
         } finally {
             setBusyAvatar(null)
+        }
+    }
+
+    const getDmDraft = (account: AvatarSocialAccountRow): DmDraft =>
+        dmDrafts[account.avatarId] ?? {
+            text: account.profile?.aiCommentDmText ?? '',
+            buttons: (account.profile?.aiCommentDmButtons ?? []).map((button, index) => ({
+                id: `existing-${index}`,
+                ...button,
+            })),
+        }
+
+    const setDmDraft = (avatarId: string, draft: DmDraft) => {
+        setDmDrafts((prev) => ({ ...prev, [avatarId]: draft }))
+    }
+
+    /** Borra el borrador local: la próxima lectura (`getDmDraft`) vuelve a
+     *  caer en el perfil ya actualizado — así un "Save DM" exitoso refleja
+     *  la normalización del servidor (trim, `''`→`null`) en vez de dejar
+     *  pegado lo que el usuario tenía tipeado. */
+    const clearDmDraft = (avatarId: string) => {
+        setDmDrafts((prev) => {
+            if (!(avatarId in prev)) return prev
+            const next = { ...prev }
+            delete next[avatarId]
+            return next
+        })
+    }
+
+    const savingFieldKey = (avatarId: string, field: string) => `${avatarId}:${field}`
+    const isFieldSaving = (avatarId: string, field: string) =>
+        savingFields[savingFieldKey(avatarId, field)] === true
+
+    /** Guarda un único campo (Switcher/Select) de "IA en comentarios" — se
+     *  envía al instante, como los interruptores de Telegram. */
+    const saveCommentSetting = async (
+        account: AvatarSocialAccountRow,
+        field: string,
+        patch: SocialCommentSettingsPatch,
+    ) => {
+        const key = savingFieldKey(account.avatarId, field)
+        setSavingFields((prev) => ({ ...prev, [key]: true }))
+        try {
+            const result = await updateSocialCommentSettings(account.avatarId, patch)
+            if (result.success && result.data) {
+                applyProfile(account.avatarId, result.data)
+                toast.push(<Notification type="success" title="Settings saved" />)
+            } else {
+                toast.push(
+                    <Notification type="danger" title="Could not save AI comment settings">
+                        {result.error ?? 'Unknown error'}
+                    </Notification>,
+                )
+            }
+        } finally {
+            setSavingFields((prev) => ({ ...prev, [key]: false }))
+        }
+    }
+
+    /** El Switcher del DM nunca manda `aiCommentDmEnabled:true` sin texto
+     *  guardado — el servidor lo rechazaría igual, pero avisar aquí evita el
+     *  viaje redondo y dice exactamente qué falta. */
+    const handleToggleDm = (account: AvatarSocialAccountRow, checked: boolean) => {
+        const savedText = account.profile?.aiCommentDmText ?? ''
+        if (checked && savedText.trim() === '') {
+            toast.push(<Notification type="warning" title="Write and save the DM text first" />)
+            return
+        }
+        saveCommentSetting(account, 'aiCommentDmEnabled', { aiCommentDmEnabled: checked })
+    }
+
+    const handleDmTextChange = (account: AvatarSocialAccountRow, text: string) => {
+        setDmDraft(account.avatarId, { ...getDmDraft(account), text })
+    }
+
+    const handleDmButtonChange = (
+        account: AvatarSocialAccountRow,
+        index: number,
+        field: 'title' | 'url',
+        value: string,
+    ) => {
+        const draft = getDmDraft(account)
+        const buttons = draft.buttons.map((button, i) =>
+            i === index ? { ...button, [field]: value } : button,
+        )
+        setDmDraft(account.avatarId, { ...draft, buttons })
+    }
+
+    const handleAddDmButton = (account: AvatarSocialAccountRow) => {
+        const draft = getDmDraft(account)
+        if (draft.buttons.length >= MAX_DM_BUTTONS) return
+        setDmDraft(account.avatarId, {
+            ...draft,
+            buttons: [...draft.buttons, { id: newDmButtonId(), title: '', url: '' }],
+        })
+    }
+
+    const handleRemoveDmButton = (account: AvatarSocialAccountRow, index: number) => {
+        const draft = getDmDraft(account)
+        setDmDraft(account.avatarId, {
+            ...draft,
+            buttons: draft.buttons.filter((_, i) => i !== index),
+        })
+    }
+
+    const handleSaveDm = async (account: AvatarSocialAccountRow) => {
+        const draft = getDmDraft(account)
+        setSavingDm(account.avatarId)
+        try {
+            const result = await updateSocialCommentSettings(account.avatarId, {
+                aiCommentDmText: draft.text,
+                aiCommentDmButtons: draft.buttons.map(({ title, url }) => ({ title, url })),
+            })
+            if (result.success && result.data) {
+                applyProfile(account.avatarId, result.data)
+                // El borrador se borra: la próxima lectura cae en el perfil
+                // recién guardado (texto recortado, `''`→`null`, botones tal
+                // como los normalizó el servidor) en vez de seguir mostrando
+                // lo que el usuario tenía tipeado antes del trim.
+                clearDmDraft(account.avatarId)
+                toast.push(<Notification type="success" title="DM settings saved" />)
+            } else {
+                toast.push(
+                    <Notification type="danger" title="Could not save DM settings">
+                        {result.error ?? 'Unknown error'}
+                    </Notification>,
+                )
+            }
+        } finally {
+            setSavingDm(null)
         }
     }
 
@@ -390,6 +562,215 @@ const AccountsClient = ({ initialAccounts, loadError }: AccountsClientProps) => 
                                     >
                                         Disconnect
                                     </Button>
+                                </div>
+
+                                <div className="mt-4 pt-4 border-t border-gray-200 dark:border-gray-600">
+                                    <p className="text-sm font-semibold mb-1">AI comment replies</p>
+                                    <p className="text-xs text-gray-500 mb-4">
+                                        Lets the agent reply to public comments on this avatar&apos;s
+                                        posts.
+                                    </p>
+
+                                    <div className="flex items-center justify-between gap-3 mb-4">
+                                        <div>
+                                            <label
+                                                htmlFor={`replies-${account.avatarId}`}
+                                                className="text-sm cursor-pointer"
+                                            >
+                                                Reply to comments with AI
+                                            </label>
+                                            <p className="text-xs text-gray-400">
+                                                Turns on comment polling and replies for this
+                                                avatar&apos;s connected accounts.
+                                            </p>
+                                        </div>
+                                        <Switcher
+                                            id={`replies-${account.avatarId}`}
+                                            checked={profile?.aiCommentRepliesEnabled ?? false}
+                                            isLoading={isFieldSaving(
+                                                account.avatarId,
+                                                'aiCommentRepliesEnabled',
+                                            )}
+                                            onChange={(checked) =>
+                                                saveCommentSetting(
+                                                    account,
+                                                    'aiCommentRepliesEnabled',
+                                                    { aiCommentRepliesEnabled: checked },
+                                                )
+                                            }
+                                        />
+                                    </div>
+
+                                    <div className="mb-4">
+                                        <label
+                                            htmlFor={`chat-mode-${account.avatarId}`}
+                                            className="text-sm mb-1 block"
+                                        >
+                                            New comment threads start as
+                                        </label>
+                                        <p className="text-xs text-gray-400 mb-2">
+                                            Draft leaves the reply for you to approve in the Inbox.
+                                            Auto sends by itself once Autopilot rules allow it.
+                                            Existing threads keep their own mode.
+                                        </p>
+                                        <div className="w-full sm:w-72">
+                                            <Select
+                                                inputId={`chat-mode-${account.avatarId}`}
+                                                instanceId={`chat-mode-${account.avatarId}`}
+                                                isDisabled={
+                                                    !profile?.aiCommentRepliesEnabled ||
+                                                    isFieldSaving(
+                                                        account.avatarId,
+                                                        'aiCommentDefaultChatMode',
+                                                    )
+                                                }
+                                                isLoading={isFieldSaving(
+                                                    account.avatarId,
+                                                    'aiCommentDefaultChatMode',
+                                                )}
+                                                options={CHAT_MODE_OPTIONS}
+                                                value={CHAT_MODE_OPTIONS.find(
+                                                    (option) =>
+                                                        option.value ===
+                                                        (profile?.aiCommentDefaultChatMode ?? 'draft'),
+                                                )}
+                                                onChange={(option) =>
+                                                    option &&
+                                                    saveCommentSetting(
+                                                        account,
+                                                        'aiCommentDefaultChatMode',
+                                                        { aiCommentDefaultChatMode: option.value },
+                                                    )
+                                                }
+                                            />
+                                        </div>
+                                    </div>
+
+                                    <div className="flex items-center justify-between gap-3 mb-1">
+                                        <label
+                                            htmlFor={`dm-enabled-${account.avatarId}`}
+                                            className={`text-sm ${
+                                                profile?.aiCommentDmText?.trim()
+                                                    ? 'cursor-pointer'
+                                                    : 'cursor-not-allowed text-gray-400'
+                                            }`}
+                                            title={
+                                                profile?.aiCommentDmText?.trim()
+                                                    ? undefined
+                                                    : 'Write and save the DM text first'
+                                            }
+                                        >
+                                            Send an Instagram DM after replying
+                                        </label>
+                                        <Switcher
+                                            id={`dm-enabled-${account.avatarId}`}
+                                            checked={profile?.aiCommentDmEnabled ?? false}
+                                            disabled={
+                                                !profile?.aiCommentDmEnabled &&
+                                                !profile?.aiCommentDmText?.trim()
+                                            }
+                                            isLoading={isFieldSaving(
+                                                account.avatarId,
+                                                'aiCommentDmEnabled',
+                                            )}
+                                            onChange={(checked) => handleToggleDm(account, checked)}
+                                        />
+                                    </div>
+                                    <p className="text-xs text-gray-400 mb-3">
+                                        Instagram only. Meta allows one private reply per comment,
+                                        within 7 days.
+                                    </p>
+
+                                    {profile?.aiCommentRepliesEnabled &&
+                                        (() => {
+                                            const dmDraft = getDmDraft(account)
+                                            return (
+                                                <div className="flex flex-col gap-2">
+                                                    <Input
+                                                        textArea
+                                                        rows={2}
+                                                        placeholder="DM text sent privately after the public reply"
+                                                        value={dmDraft.text}
+                                                        onChange={(e) =>
+                                                            handleDmTextChange(account, e.target.value)
+                                                        }
+                                                    />
+                                                    {dmDraft.buttons.map((button, index) => (
+                                                        <div
+                                                            key={button.id}
+                                                            className="flex flex-wrap items-center gap-2"
+                                                        >
+                                                            <div className="w-full sm:w-40">
+                                                                <Input
+                                                                    size="sm"
+                                                                    maxLength={20}
+                                                                    placeholder="Button title"
+                                                                    value={button.title}
+                                                                    onChange={(e) =>
+                                                                        handleDmButtonChange(
+                                                                            account,
+                                                                            index,
+                                                                            'title',
+                                                                            e.target.value,
+                                                                        )
+                                                                    }
+                                                                />
+                                                            </div>
+                                                            <div className="w-full sm:w-64">
+                                                                <Input
+                                                                    size="sm"
+                                                                    placeholder="https://…"
+                                                                    value={button.url}
+                                                                    onChange={(e) =>
+                                                                        handleDmButtonChange(
+                                                                            account,
+                                                                            index,
+                                                                            'url',
+                                                                            e.target.value,
+                                                                        )
+                                                                    }
+                                                                />
+                                                            </div>
+                                                            <Button
+                                                                variant="plain"
+                                                                size="sm"
+                                                                customColorClass={() =>
+                                                                    'text-red-500 hover:text-red-600'
+                                                                }
+                                                                onClick={() =>
+                                                                    handleRemoveDmButton(account, index)
+                                                                }
+                                                            >
+                                                                Remove
+                                                            </Button>
+                                                        </div>
+                                                    ))}
+                                                    {dmDraft.buttons.length < MAX_DM_BUTTONS && (
+                                                        <div>
+                                                            <Button
+                                                                variant="plain"
+                                                                size="sm"
+                                                                onClick={() =>
+                                                                    handleAddDmButton(account)
+                                                                }
+                                                            >
+                                                                Add button
+                                                            </Button>
+                                                        </div>
+                                                    )}
+                                                    <div>
+                                                        <Button
+                                                            variant="solid"
+                                                            size="sm"
+                                                            loading={savingDm === account.avatarId}
+                                                            onClick={() => handleSaveDm(account)}
+                                                        >
+                                                            Save DM
+                                                        </Button>
+                                                    </div>
+                                                </div>
+                                            )
+                                        })()}
                                 </div>
                             </>
                         )}

@@ -33,6 +33,8 @@ import { findPaidMediaOffer } from '@/lib/telegram/offerGate'
 import { fanMemoryPlatform } from '@/lib/agent/fanMemoryPlatform'
 import { resolveDeliveryChannel } from '@/lib/agent/channelRouting'
 import { updateFanMemoryFromChat } from '@/lib/agent/draftPipeline'
+import { toChatListItem, type ChatListItem } from '@/lib/agent/chatListItem'
+import { commenterIdFromChat } from '@/lib/social/comments/ids'
 import { retrieveKnowledge } from '@/lib/agent/retrieval'
 import { AGENT_UTILITY_MODEL } from '@/lib/agent/models'
 import {
@@ -50,22 +52,10 @@ export interface InboxResult<T> {
     error?: string
 }
 
-export interface AgentChatListItem {
-    id: string
-    avatarId: string
-    avatarName: string | null
-    fanDisplayName: string | null
-    fanHandle: string | null
-    fanAvatarUrl: string | null
-    mode: AgentChatMode
-    isCreator: boolean
-    needsAttention: boolean
-    attentionReason: string | null
-    lastMessageAt: string | null
-    lastMessagePreview: string | null
-    hasDraft: boolean
-    platform: string
-}
+// Alias, no redefinición: `toChatListItem` (src/lib/agent/chatListItem.ts) es
+// el único sitio que arma este DTO a partir de una fila de `agent_chats`, así
+// `listAgentChats` y `getAgentChatThread` no pueden desincronizarse entre sí.
+export type AgentChatListItem = ChatListItem
 
 export interface AgentMessageDTO {
     id: string
@@ -210,22 +200,12 @@ export async function listAgentChats(filter?: {
                 previewByChat.set(m.chat_id, m.text)
         }
 
-        const items: AgentChatListItem[] = rows.map((c) => ({
-            id: c.id,
-            avatarId: c.avatar_id,
-            avatarName: nameById.get(c.avatar_id) ?? null,
-            fanDisplayName: c.fan_display_name,
-            fanHandle: c.fan_handle,
-            fanAvatarUrl: c.fan_avatar_url,
-            mode: c.mode,
-            isCreator: c.is_creator,
-            needsAttention: c.needs_attention,
-            attentionReason: c.attention_reason,
-            lastMessageAt: c.last_message_at,
-            lastMessagePreview: previewByChat.get(c.id) ?? null,
-            hasDraft: draftChatIds.has(c.id),
-            platform: c.platform,
-        }))
+        const items: AgentChatListItem[] = rows.map((c) =>
+            toChatListItem(c, nameById.get(c.avatar_id) ?? null, {
+                lastMessagePreview: previewByChat.get(c.id) ?? null,
+                hasDraft: draftChatIds.has(c.id),
+            }),
+        )
         const filtered = filter?.hasDraft
             ? items.filter((i) => i.hasDraft)
             : items
@@ -274,12 +254,17 @@ export async function getAgentChatThread(
                 // (`touchFanMemory`), así que con la clave cableada el inbox
                 // no enseñaba NADA de lo que el agente recuerda de un fan de
                 // Telegram — la misma derivación que ya usa `draftPipeline`
-                // para construir el prompt.
+                // para construir el prompt. Y `external_fan_id` va por
+                // `commenterIdFromChat`, no por el `external_chat_id` crudo:
+                // en un chat de comentarios ese id trae `<postId>:<commenterId>`
+                // pegados, así que comparar contra el string entero nunca
+                // habría encontrado la memoria (identidad para Fanvue/Telegram,
+                // que no codifican nada).
                 orgTable(ctx, 'avatar_fan_memories')
                     .select('summary, facts')
                     .eq('avatar_id', chat.avatar_id)
                     .eq('platform', fanMemoryPlatform(chat.platform))
-                    .eq('external_fan_id', chat.external_chat_id)
+                    .eq('external_fan_id', commenterIdFromChat(chat.external_chat_id))
                     .maybeSingle(),
             ])
 
@@ -287,22 +272,10 @@ export async function getAgentChatThread(
         return {
             success: true,
             data: {
-                chat: {
-                    id: chat.id,
-                    avatarId: chat.avatar_id,
-                    avatarName: avatar?.name ?? null,
-                    fanDisplayName: chat.fan_display_name,
-                    fanHandle: chat.fan_handle,
-                    fanAvatarUrl: chat.fan_avatar_url,
-                    mode: chat.mode,
-                    isCreator: chat.is_creator,
-                    needsAttention: chat.needs_attention,
-                    attentionReason: chat.attention_reason,
-                    lastMessageAt: chat.last_message_at,
+                chat: toChatListItem(chat, avatar?.name ?? null, {
                     lastMessagePreview: null,
                     hasDraft: messages.some((m) => m.status === 'draft'),
-                    platform: chat.platform,
-                },
+                }),
                 messages,
                 fanMemory: memory
                     ? {
@@ -567,10 +540,15 @@ export async function approveAndSendVoiceNote(
         if (!chatRow) return { success: false, error: 'Chat not found' }
         const chat = chatRow as AgentChatRow
         // Sólo-Fanvue: la entrega es un audio subido a Fanvue, que en un chat
-        // de Telegram no existe. El corte va ANTES de sintetizar: sin él, el
-        // texto se mandaba a MiniMax y se pagaba el TTS para después fallar al
-        // entregar. Se quemaba saldo real por un botón que no podía funcionar.
-        if (resolveDeliveryChannel(chat.platform) === 'telegram') {
+        // de Telegram o de comentarios sociales no existe. El corte va ANTES
+        // de sintetizar: sin él, el texto se mandaba a MiniMax y se pagaba el
+        // TTS para después fallar al entregar. Se quemaba saldo real por un
+        // botón que no podía funcionar. F4.2 Tarea 4 — el guard era
+        // `=== 'telegram'`: un chat `social:*` no es 'telegram' y colaba de
+        // largo hasta `makeFanvueClient` más abajo (sin dueño ni conexión
+        // Fanvue reales, así que fallaba, pero tarde y con un TTS ya pagado).
+        // `!== 'fanvue'` es la forma correcta de decir "sólo Fanvue".
+        if (resolveDeliveryChannel(chat.platform) !== 'fanvue') {
             return { success: false, error: 'Esta acción es sólo para Fanvue.' }
         }
 
@@ -720,10 +698,13 @@ export async function suggestPpvOffer(
         const chat = chatRow as AgentChatRow
         // Sólo-Fanvue: el PPV es el mecanismo de pago de Fanvue (precio en
         // centavos sobre media subida allí); en Telegram se cobra con Stars y
-        // por otro camino. El corte va ANTES de la búsqueda en el índice y de
-        // la llamada al modelo, que se gastaban en preparar una oferta que
-        // este chat nunca habría podido enviar.
-        if (resolveDeliveryChannel(chat.platform) === 'telegram') {
+        // en un chat de comentarios sociales no hay PPV. El corte va ANTES de
+        // la búsqueda en el índice y de la llamada al modelo, que se gastaban
+        // en preparar una oferta que este chat nunca habría podido enviar.
+        // F4.2 Tarea 4 — `!== 'fanvue'` (no sólo `=== 'telegram'`) para que
+        // `social:*` también quede fuera: ver el mismo fix en
+        // `approveAndSendVoiceNote`.
+        if (resolveDeliveryChannel(chat.platform) !== 'fanvue') {
             return { success: false, error: 'Esta acción es sólo para Fanvue.' }
         }
 
@@ -854,9 +835,11 @@ export async function sendPpvOffer(input: {
         if (!chatRow) return { success: false, error: 'Chat not found' }
         const chat = chatRow as AgentChatRow
         // Sólo-Fanvue: esto sube media a Fanvue y le pone precio en centavos.
-        // En un chat de Telegram no hay dónde entregarlo —el pago va por
-        // Stars— así que se corta antes de subir nada.
-        if (resolveDeliveryChannel(chat.platform) === 'telegram') {
+        // En un chat de Telegram o de comentarios sociales no hay dónde
+        // entregarlo —el pago va por Stars, o no existe— así que se corta
+        // antes de subir nada. F4.2 Tarea 4 — `!== 'fanvue'`, mismo fix que
+        // en `approveAndSendVoiceNote` / `suggestPpvOffer`.
+        if (resolveDeliveryChannel(chat.platform) !== 'fanvue') {
             return { success: false, error: 'Esta acción es sólo para Fanvue.' }
         }
         if (input.priceCents < 300)

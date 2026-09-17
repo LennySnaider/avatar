@@ -10,9 +10,11 @@ export interface BuildSystemPromptInput {
     avatarName: string
     ragChunks?: RetrievedChunk[]
     fanMemory?: { summary: string | null; facts: Record<string, string> } | null
-    channel: 'playground' | 'fanvue' | 'telegram'
+    channel: 'playground' | 'fanvue' | 'telegram' | 'social_comment'
     /** Contenido de pago disponible (sólo Telegram). Título y precio en Stars. */
     paidCatalog?: { title: string; stars: number }[]
+    /** Datos del post bajo el que se comenta (sólo `social_comment`). */
+    postContext?: { platform: string; caption: string | null; postUrl?: string | null }
 }
 
 const LENGTH_RULES: Record<string, string> = {
@@ -37,7 +39,7 @@ const OBJECTIVE_RULES: Record<string, string> = {
 }
 
 export function buildSystemPrompt(input: BuildSystemPromptInput): string {
-    const { persona, avatarName, ragChunks, fanMemory, channel, paidCatalog } = input
+    const { persona, avatarName, ragChunks, fanMemory, channel, paidCatalog, postContext } = input
 
     // Manual override wins wholesale — power users own the whole prompt, but
     // RAG/fan context still gets appended so retrieval keeps working.
@@ -83,7 +85,7 @@ export function buildSystemPrompt(input: BuildSystemPromptInput): string {
         sections.push(`## THINGS YOU KNOW (your own life and content — reference naturally, never dump)\n${facts}`)
     }
 
-    if ((channel === 'fanvue' || channel === 'telegram') && fanMemory) {
+    if ((channel === 'fanvue' || channel === 'telegram' || channel === 'social_comment') && fanMemory) {
         const factLines = Object.entries(fanMemory.facts ?? {})
             .map(([k, v]) => `- ${k}: ${v}`)
             .join('\n')
@@ -110,6 +112,22 @@ export function buildSystemPrompt(input: BuildSystemPromptInput): string {
                     'offer is attached by the system; you only build desire in words.',
             )
         }
+    }
+
+    if (channel === 'social_comment') {
+        const platformName = postContext?.platform ?? 'social media'
+        const captionBlock = postContext?.caption?.trim()
+            ? `\nThe post says: "${postContext.caption.trim()}"`
+            : ''
+        sections.push(
+            '## CHANNEL: PUBLIC COMMENT\n' +
+                `This is a PUBLIC reply under your own post on ${platformName}, visible to everyone who sees ` +
+                'the post — this is not a private chat. Reply in 1-2 short sentences. Never share private ' +
+                'information, prices or links here. Do not invite this person to DM you unless they ask how ' +
+                'to reach you. Talk about the post itself when it fits — it is what they are commenting on. ' +
+                'You have no access to private knowledge here; speak only from your public persona and the post itself.' +
+                captionBlock,
+        )
     }
 
     sections.push(

@@ -46,6 +46,13 @@ export const TENANT_TABLES = [
     'avatar_telegram_settings',
     'telegram_paid_media_items',
     'telegram_stars_sales',
+    // F4.2 Tarea 5 (comentarios-ia-social) — se sumó aquí: tiene
+    // organization_id NOT NULL (migración 20260916100000_social_comments_ia)
+    // y se le había quedado fuera de esta lista desde que se creó.
+    'social_post_targets',
+    // F4.2 Tarea 4 (comentarios-ia-social) — también tiene organization_id
+    // NOT NULL (misma migración 20260916100000_social_comments_ia).
+    'social_comment_dms',
 ] as const
 
 export type TenantTable = (typeof TENANT_TABLES)[number]

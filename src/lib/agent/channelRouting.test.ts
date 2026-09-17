@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { resolveDeliveryChannel } from './channelRouting.ts'
+import { promptChannelFor, resolveDeliveryChannel } from './channelRouting.ts'
 
 test('fanvue va por fanvue', () => {
     assert.equal(resolveDeliveryChannel('fanvue'), 'fanvue')
@@ -17,4 +17,18 @@ test('telegram_business también va por telegram (mismo Bot API; llegará en otr
 test('cualquier otra cosa, incluido vacío, cae en fanvue: es el comportamiento histórico', () => {
     assert.equal(resolveDeliveryChannel(''), 'fanvue')
     assert.equal(resolveDeliveryChannel('instagram'), 'fanvue')
+})
+
+test('social:<red> va por social_comment', () => {
+    assert.equal(resolveDeliveryChannel('social:instagram'), 'social_comment')
+    assert.equal(resolveDeliveryChannel('social:x'), 'social_comment')
+})
+
+test('promptChannelFor coincide con resolveDeliveryChannel para los tres canales', () => {
+    assert.equal(promptChannelFor('fanvue'), 'fanvue')
+    assert.equal(promptChannelFor('telegram'), 'telegram')
+    assert.equal(promptChannelFor('telegram_business'), 'telegram')
+    assert.equal(promptChannelFor('social:instagram'), 'social_comment')
+    assert.equal(promptChannelFor('social:x'), 'social_comment')
+    assert.equal(promptChannelFor(''), 'fanvue')
 })
