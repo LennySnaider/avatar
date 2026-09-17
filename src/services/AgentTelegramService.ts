@@ -6,7 +6,10 @@
  * `deletePaidMediaItem`) y su envío a una conversación
  * (`sendPaidMediaFromInbox`, que delega en `deliverPaidMedia` de
  * `@/lib/telegram/paidMedia` — ahí vive el orden obligatorio de la entrega y
- * el porqué).
+ * el porqué). La misma galería guarda los TEASERS GRATIS (`is_free`), que se
+ * envían por `sendFreeMediaFromInbox` → `deliverFreeMedia` de
+ * `@/lib/telegram/freeMedia`: un ítem no cambia de bando por el botón que se
+ * pulse, lo decide su fila.
  *
  * Todos los exports son async porque el fichero es `'use server'`: un export
  * síncrono aquí sólo revienta en el build, ni tsc ni eslint lo ven (verificar
@@ -110,6 +113,8 @@ import {
     type TelegramWebhookInfo,
 } from '@/lib/telegram/client'
 import { deliverPaidMedia } from '@/lib/telegram/paidMedia'
+import { deliverFreeMedia } from '@/lib/telegram/freeMedia'
+import { resolveItemPricing } from '@/lib/telegram/mediaPricing'
 
 export interface TelegramResult<T> {
     success: boolean
@@ -186,6 +191,11 @@ export interface PaidMediaItemView {
     title: string
     caption: string | null
     starPrice: number
+    /** `true` = teaser gratis (y entonces `starPrice` es SIEMPRE 0 — lo
+     *  garantiza el check de la tabla, no sólo esta capa). El envío de un
+     *  gratis va por `deliverFreeMedia`, que rechaza un ítem de pago aunque
+     *  el llamador se equivoque de id, y al revés. */
+    isFree: boolean
     mediaKind: 'photo' | 'video'
     enabled: boolean
     sortOrder: number
@@ -200,6 +210,10 @@ export interface PaidMediaItemView {
     offersCount: number
     salesCount: number
     starsTotal: number
+    /** Cuántas veces se entregó como teaser gratis. Es el contador que
+     *  `deliverFreeMedia` incrementa; el equivalente de `salesCount` para el
+     *  contenido que no se cobra. */
+    freeSendsCount: number
     createdAt: string
     updatedAt: string
 }
@@ -215,6 +229,7 @@ function toPaidMediaItem(
         title: row.title,
         caption: row.caption,
         starPrice: row.star_price,
+        isFree: row.is_free,
         mediaKind: row.media_kind as 'photo' | 'video',
         enabled: row.enabled,
         sortOrder: row.sort_order,
@@ -224,6 +239,7 @@ function toPaidMediaItem(
         offersCount: row.offers_count,
         salesCount: row.sales_count,
         starsTotal: row.stars_total,
+        freeSendsCount: row.free_sends_count,
         createdAt: row.created_at,
         updatedAt: row.updated_at,
     }
@@ -518,6 +534,17 @@ export async function listPaidMediaItems(avatarId: string): Promise<TelegramResu
  * sólo toca el precio y omite `enabled` reactivaría en silencio un ítem que
  * el usuario había deshabilitado a propósito.
  *
+ * `isFree` (Task 5 de "fotos gratis") es el ÚNICO campo que decide el precio:
+ * gratis ⇒ `star_price` se fuerza a 0 y se IGNORA lo que venga en
+ * `starPrice`; de pago ⇒ `starPrice` tiene que ser un entero 1..25000. No es
+ * una validación decorativa: reproduce exactamente el check de la tabla
+ * `(is_free and star_price = 0) or (not is_free and star_price between 1 and
+ * 25000)` (Task 1), así que dejarla pasar no guardaría un precio raro — haría
+ * estallar Postgres con un error ilegible delante del usuario. Al EDITAR se
+ * permite cambiar de gratis a pago y al revés (el contenido no cambia, sólo su
+ * modelo de negocio); pasar a pago sin un precio válido es el mismo error que
+ * al dar de alta.
+ *
  * `id` ausente ⇒ DAR DE ALTA desde una generación existente (`generationId`
  * obligatorio). CANDADO — Step 2 del brief: el tamaño del objeto se valida
  * AQUÍ, ANTES de guardar la fila, contra los mismos límites que
@@ -537,7 +564,11 @@ export interface UpsertPaidMediaItemInput {
     generationId?: string
     title: string
     caption?: string | null
+    /** Ignorado (y guardado como 0) cuando `isFree` es `true` — ver docblock. */
     starPrice: number
+    /** `true` = teaser gratis. Ausente = de pago, que es lo que había antes de
+     *  que existieran los gratis: ningún llamador viejo cambia de sentido. */
+    isFree?: boolean
     enabled: boolean
     sortOrder: number
 }
@@ -551,12 +582,14 @@ export async function upsertPaidMediaItem(
         if (!input.avatarId) return { success: false, error: 'Falta el avatar.' }
         const title = input.title?.trim()
         if (!title) return { success: false, error: 'Falta el título.' }
-        if (!Number.isInteger(input.starPrice) || input.starPrice < 1 || input.starPrice > 25_000) {
-            return {
-                success: false,
-                error: `El precio debe ser un entero entre 1 y 25000 Stars (recibido: ${input.starPrice}).`,
-            }
-        }
+
+        // Espejo del check de la tabla, en un fichero puro y probado
+        // (`mediaPricing.ts`) — ver su cabecera. El precio efectivo sale de
+        // aquí y NO se vuelve a leer `input.starPrice` más abajo: un gratis con
+        // precio pegado en el payload se guarda a 0 igualmente.
+        const pricing = resolveItemPricing(input)
+        if (!pricing.ok) return { success: false, error: pricing.error }
+        const { isFree, starPrice } = pricing
 
         await assertOwnedAvatar(ctx, input.avatarId)
 
@@ -565,7 +598,8 @@ export async function upsertPaidMediaItem(
                 .update({
                     title,
                     caption: input.caption ?? null,
-                    star_price: input.starPrice,
+                    star_price: starPrice,
+                    is_free: isFree,
                     enabled: input.enabled,
                     sort_order: input.sortOrder,
                     updated_at: new Date().toISOString(),
@@ -613,7 +647,8 @@ export async function upsertPaidMediaItem(
             media_kind: mediaKind,
             title,
             caption: input.caption ?? null,
-            star_price: input.starPrice,
+            star_price: starPrice,
+            is_free: isFree,
             enabled: input.enabled,
             sort_order: input.sortOrder,
         })
@@ -657,6 +692,58 @@ export async function deletePaidMediaItem(avatarId: string, itemId: string): Pro
     }
 }
 
+/** Conversación ya resuelta y verificada, en el shape que esperan
+ *  `deliverPaidMedia` y `deliverFreeMedia` (ambos declaran el mismo). */
+interface ResolvedTelegramChat {
+    id: string
+    organizationId: string
+    avatarId: string
+    externalChatId: string
+}
+
+/**
+ * Resuelve la conversación de un envío manual desde el inbox y la verifica
+ * ANTES de delegar en `deliverPaidMedia`/`deliverFreeMedia` (ninguno de los
+ * dos tiene sesión: confían en que su llamador ya hizo esto — mismo reparto
+ * de responsabilidades que `recordStarsSale` confiando en el `StarsSaleEvent`
+ * que arma el webhook). Dos cosas, no una:
+ *
+ *  - Pertenece a este avatar (y por tanto a esta organización, porque el
+ *    llamador ya pasó por `assertOwnedAvatar` y `orgTable` inyecta el filtro).
+ *  - Es efectivamente una conversación de TELEGRAM. `agent_chats` es una tabla
+ *    COMPARTIDA con Fanvue: mandar a un `external_chat_id` que en realidad es
+ *    un uuid de Fanvue sería un envío a un destinatario inexistente.
+ *
+ * Extraída de `sendPaidMediaFromInbox` cuando llegó `sendFreeMediaFromInbox`:
+ * las dos verificaciones son la misma frase en los dos caminos, y duplicarlas
+ * es exactamente cómo uno de los dos se queda sin el filtro de plataforma en
+ * una edición futura.
+ */
+async function resolveTelegramChatForSend(
+    ctx: OrgContext,
+    avatarId: string,
+    chatId: string,
+): Promise<{ chat: ResolvedTelegramChat } | { error: string }> {
+    const { data: chatRow, error: chatError } = await orgTable(ctx, 'agent_chats')
+        .select('*')
+        .eq('id', chatId)
+        .eq('avatar_id', avatarId)
+        .maybeSingle()
+    if (chatError) throw new Error(chatError.message)
+    if (!chatRow) return { error: 'Conversación no encontrada en este avatar.' }
+    if (chatRow.platform !== 'telegram') {
+        return { error: 'Esta conversación no es de Telegram.' }
+    }
+    return {
+        chat: {
+            id: chatRow.id,
+            organizationId: chatRow.organization_id,
+            avatarId: chatRow.avatar_id,
+            externalChatId: chatRow.external_chat_id,
+        },
+    }
+}
+
 export interface SendPaidMediaFromInboxInput {
     avatarId: string
     chatId: string
@@ -680,14 +767,8 @@ export interface SendPaidMediaFromInboxResult {
  * ahí `soldBy: 'manual'` para la comisión; no se pasa aquí — ver el
  * comentario junto a esa derivación en `paidMedia.ts`).
  *
- * Resuelve y verifica la conversación ANTES de delegar en `deliverPaidMedia`
- * (que no tiene sesión y confía en que su llamador ya hizo esto — mismo
- * reparto de responsabilidades que `recordStarsSale` confiando en el
- * `StarsSaleEvent` que arma el webhook): pertenece a este avatar (y por tanto
- * a esta organización, vía `assertOwnedAvatar`) y es efectivamente una
- * conversación de TELEGRAM — `agent_chats` es una tabla compartida con
- * Fanvue, y enviar Stars a un `external_chat_id` que en realidad es un uuid
- * de Fanvue sería un envío a un destinatario inexistente en Telegram.
+ * La conversación se resuelve y se verifica en `resolveTelegramChatForSend`
+ * — ver ahí el porqué de las dos comprobaciones.
  */
 export async function sendPaidMediaFromInbox(
     input: SendPaidMediaFromInboxInput,
@@ -701,24 +782,11 @@ export async function sendPaidMediaFromInbox(
 
         await assertOwnedAvatar(ctx, input.avatarId)
 
-        const { data: chatRow, error: chatError } = await orgTable(ctx, 'agent_chats')
-            .select('*')
-            .eq('id', input.chatId)
-            .eq('avatar_id', input.avatarId)
-            .maybeSingle()
-        if (chatError) throw new Error(chatError.message)
-        if (!chatRow) return { success: false, error: 'Conversación no encontrada en este avatar.' }
-        if (chatRow.platform !== 'telegram') {
-            return { success: false, error: 'Esta conversación no es de Telegram.' }
-        }
+        const resolved = await resolveTelegramChatForSend(ctx, input.avatarId, input.chatId)
+        if ('error' in resolved) return { success: false, error: resolved.error }
 
         const result = await deliverPaidMedia({
-            chat: {
-                id: chatRow.id,
-                organizationId: chatRow.organization_id,
-                avatarId: chatRow.avatar_id,
-                externalChatId: chatRow.external_chat_id,
-            },
+            chat: resolved.chat,
             itemId: input.itemId,
             stars: input.stars,
             caption: input.caption,
@@ -736,6 +804,67 @@ export async function sendPaidMediaFromInbox(
         }
     } catch (e) {
         return fail('sendPaidMediaFromInbox', e)
+    }
+}
+
+export interface SendFreeMediaFromInboxInput {
+    avatarId: string
+    chatId: string
+    itemId: string
+    /** Sobrescribe el caption de catálogo SÓLO para esta entrega. */
+    caption?: string
+}
+
+export interface SendFreeMediaFromInboxResult {
+    /** Id del `agent_messages` saliente que registra el teaser. */
+    messageId: string
+    telegramMessageId: number
+}
+
+/**
+ * Envía un TEASER GRATIS de la galería a una conversación de Telegram desde
+ * el inbox. Gemela de `sendPaidMediaFromInbox` — mismas puertas y en el mismo
+ * orden (módulo instalado → avatar propio → conversación de este avatar y de
+ * Telegram) — y delega en `deliverFreeMedia`, que además rechaza un ítem que
+ * NO sea `is_free` aunque desde aquí se le pase el id de uno de pago: los dos
+ * caminos son intercambiables en la pantalla, así que la última palabra sobre
+ * qué es gratis la tiene la fila, no el botón que se pulsó.
+ *
+ * No hay precio, ni venta, ni comisión: por eso el resultado no se parece al
+ * de pago (no hay `saleId` ni `stars` que devolver).
+ */
+export async function sendFreeMediaFromInbox(
+    input: SendFreeMediaFromInboxInput,
+): Promise<TelegramResult<SendFreeMediaFromInboxResult>> {
+    try {
+        const ctx = await getOrgContext()
+        await requireModule(ctx, 'telegram')
+        if (!input.avatarId) return { success: false, error: 'Falta el avatar.' }
+        if (!input.chatId) return { success: false, error: 'Falta la conversación.' }
+        if (!input.itemId) return { success: false, error: 'Falta el contenido a enviar.' }
+
+        await assertOwnedAvatar(ctx, input.avatarId)
+
+        const resolved = await resolveTelegramChatForSend(ctx, input.avatarId, input.chatId)
+        if ('error' in resolved) return { success: false, error: resolved.error }
+
+        const result = await deliverFreeMedia({
+            chat: resolved.chat,
+            itemId: input.itemId,
+            caption: input.caption,
+            source: 'inbox',
+            approvedBy: ctx.userId,
+        })
+
+        return {
+            success: true,
+            data: {
+                messageId: result.messageId,
+                telegramMessageId: result.telegramMessageId,
+            },
+        }
+    } catch (e) {
+        return fail('sendFreeMediaFromInbox', e)
     }
 }
 
