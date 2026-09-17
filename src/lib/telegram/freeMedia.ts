@@ -85,11 +85,13 @@ export interface DeliverFreeMediaResult {
      *  anticipada en la cabecera del fichero. */
     messageId: string
     telegramMessageId: number
-    /** `true` si se reutilizó `telegram_file_id` o si la subida fresca se
-     *  pudo cachear; `false` si se subieron bytes y cachearlos falló (el
-     *  próximo envío simplemente volverá a subir) — mismo criterio que
-     *  `fileIdCached` en `paidMedia.ts`. */
-    reusedFileId: boolean
+    /** ¿Queda un `telegram_file_id` válido para el próximo envío? `true` si se
+     *  reutilizó el cacheado o si la subida fresca se pudo cachear; `false`
+     *  sólo si se subieron bytes y cachearlos falló (el próximo envío volverá
+     *  a subir). Se llamaba `reusedFileId` y el nombre MENTÍA: también valía
+     *  `true` tras una subida nueva, donde no se reutilizó nada. Mismo nombre
+     *  y mismo criterio que `fileIdCached` en `paidMedia.ts`. */
+    fileIdCached: boolean
 }
 
 const ATTACH_NAME = 'file'
@@ -229,7 +231,7 @@ export async function deliverFreeMedia(
 
     // PASO 4 — a partir de aquí el contenido YA SE ENTREGÓ: ver CANDADO en la
     // cabecera, nada de lo siguiente puede lanzar.
-    let reusedFileId = canReuse
+    let fileIdCached = canReuse
     if (!canReuse) {
         const freshFileId = pickFileId(message)
         if (freshFileId) {
@@ -244,7 +246,7 @@ export async function deliverFreeMedia(
                     .eq('organization_id', chat.organizationId)
                     .eq('id', item.id)
                 if (error) throw new Error(error.message)
-                reusedFileId = true
+                fileIdCached = true
             } catch (e) {
                 console.error(
                     `[freeMedia] no se pudo cachear telegram_file_id del ítem ${item.id}:`,
@@ -314,6 +316,6 @@ export async function deliverFreeMedia(
     return {
         messageId,
         telegramMessageId: message.message_id,
-        reusedFileId,
+        fileIdCached,
     }
 }
