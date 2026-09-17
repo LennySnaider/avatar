@@ -286,8 +286,16 @@ export async function deliverFreeMedia(
     // `messageId` ya está fijado (ver cabecera) — lo que puede fallar aquí es
     // sólo la escritura, no el valor devuelto.
     const messageId = randomUUID()
-    try {
-        const { error } = await orgSupabase()
+    // ESTA FILA ES LA ÚNICA PRUEBA de que a este fan ya se le mandó este
+    // teaser (`filterFreeCandidates` la lee desde el historial del chat). Si
+    // se pierde, el motor volverá a elegir el mismo ítem y el fan lo recibirá
+    // dos veces — la única regla que "gratis" tiene. Por eso se REINTENTA una
+    // vez ante un parpadeo de la base, con el MISMO id: el reintento es
+    // idempotente por clave primaria (si la primera sí escribió y sólo se
+    // perdió la respuesta, el segundo insert choca y no duplica nada).
+    // El CANDADO sigue intacto: nada de esto lanza hacia fuera.
+    const insertOutgoingRow = () =>
+        orgSupabase()
             .from('agent_messages')
             .insert({
                 id: messageId,
@@ -307,6 +315,15 @@ export async function deliverFreeMedia(
                 // (el texto y su propia foto). Ver `maybeAutopilotSendScheduled`.
                 generated_by: { kind: 'media_delivery' },
             })
+    try {
+        let { error } = await insertOutgoingRow()
+        if (error) {
+            console.warn(
+                `[freeMedia] primer intento de registrar agent_messages ${messageId} fallido, reintentando:`,
+                error,
+            )
+            ;({ error } = await insertOutgoingRow())
+        }
         if (error) throw new Error(error.message)
 
         const { error: touchError } = await orgSupabase()

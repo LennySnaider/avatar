@@ -172,6 +172,24 @@ export function isOfferMedia(media: unknown): boolean {
 }
 
 /**
+ * Los estados de `agent_messages` que cuentan como "esto llegó al fan, o va a
+ * llegar" cuando el motor reconstruye el historial de salida de un chat.
+ *
+ * Vive aquí, exportada, y no como literal suelto dentro de la consulta de
+ * `offerEngine`, porque lo importante es lo que DEJA FUERA y eso hay que
+ * poder verlo y probarlo: un borrador `discarded` (el creador lo tiró) o
+ * `failed` (el envío reventó) nunca llegó al fan. Sin este filtro, el
+ * `free_media_offer` que ese borrador llevaba pegado quemaba el teaser PARA
+ * SIEMPRE —`collectFreeMediaItemIds` lo daba por enviado— y además enfriaba
+ * la siguiente oferta durante `offerCooldownHours`. Una oferta que no salió
+ * no gasta ni el teaser ni la ventana.
+ *
+ * `approved` sí cuenta: es un envío a punto de ocurrir, igual que un `draft`
+ * en cola (mismo criterio que la cabecera de `collectFreeMediaItemIds`).
+ */
+export const OFFER_HISTORY_STATUSES = ['draft', 'approved', 'sent'] as const
+
+/**
  * Lo que el modelo respondió, tal cual salió del `JSON.parse` — todo
  * `unknown` a propósito: es texto de un LLM, no un contrato.
  */

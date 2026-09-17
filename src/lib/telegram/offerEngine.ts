@@ -61,6 +61,7 @@ import {
     filterOfferCandidates,
     isOfferMedia,
     isOfferOnCooldown,
+    OFFER_HISTORY_STATUSES,
     resolveOfferAction,
     type FreeMediaOffer,
     type PaidMediaOffer,
@@ -161,12 +162,18 @@ export async function maybeAttachPaidMediaOffer(draftMessageId: string): Promise
         //   - enfriamiento: sólo los `COOLDOWN_LOOKBACK` más recientes;
         //   - teasers gratis ya vistos: los `FREE_HISTORY_LOOKBACK` enteros.
         // El borrador de ahora no cuenta: arriba ya se comprobó que va limpio.
+        //
+        // El filtro de estado (`OFFER_HISTORY_STATUSES`) es parte del cálculo,
+        // no un adorno: un borrador `discarded` o `failed` NUNCA llegó al fan,
+        // así que su oferta ni quema el teaser que llevaba pegado (sería para
+        // siempre: la regla es una vez por fan) ni enfría a la siguiente.
         const { data: recentOut, error: recentOutError } = await supabase
             .from('agent_messages')
             .select('media, created_at')
             .eq('organization_id', chat.organization_id)
             .eq('chat_id', chat.id)
             .eq('direction', 'out')
+            .in('status', [...OFFER_HISTORY_STATUSES])
             .order('created_at', { ascending: false })
             .limit(FREE_HISTORY_LOOKBACK)
         if (recentOutError) {

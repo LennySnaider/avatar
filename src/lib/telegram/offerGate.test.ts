@@ -10,6 +10,7 @@ import {
     isOfferOnCooldown,
     resolveOfferAction,
     collectFreeMediaItemIds,
+    OFFER_HISTORY_STATUSES,
 } from './offerGate.ts'
 
 const items = [
@@ -307,4 +308,40 @@ test('resolveOfferAction: un index que no es número no se coacciona a 0', () =>
 
 test('resolveOfferAction: un index en texto ("1") tampoco vale', () => {
     assert.equal(resolveOfferAction({ action: 'paid', index: '1' }, 0, 3), null)
+})
+
+test('OFFER_HISTORY_STATUSES deja fuera lo que nunca llegó al fan', () => {
+    // Regresión: el historial de salida del motor se leía SIN filtro de
+    // estado, así que un borrador `discarded` (el creador lo tiró) o `failed`
+    // (el envío reventó) quemaba su teaser gratis para siempre y enfriaba la
+    // siguiente oferta. Ni uno ni otro se entregaron nunca.
+    assert.ok(!OFFER_HISTORY_STATUSES.includes('discarded' as never))
+    assert.ok(!OFFER_HISTORY_STATUSES.includes('failed' as never))
+    assert.deepEqual([...OFFER_HISTORY_STATUSES], ['draft', 'approved', 'sent'])
+})
+
+test('un teaser que sólo viajó en un borrador descartado sigue siendo candidato', () => {
+    // La composición de las dos piezas puras: el historial ya filtrado por
+    // `OFFER_HISTORY_STATUSES` no trae el `media` del borrador descartado, así
+    // que `f1` no aparece como enviado y `filterFreeCandidates` lo conserva.
+    const historial = [
+        { status: 'discarded', media: [{ type: 'free_media_offer', itemId: 'f1' }] },
+        { status: 'sent', media: [{ type: 'free_media', itemId: 'f2' }] },
+    ]
+    const vistos = collectFreeMediaItemIds(
+        historial
+            .filter((m) => OFFER_HISTORY_STATUSES.includes(m.status as never))
+            .map((m) => m.media),
+    )
+    assert.deepEqual(vistos, ['f2'])
+    assert.deepEqual(
+        filterFreeCandidates(
+            [
+                { id: 'f1', title: 'F1' },
+                { id: 'f2', title: 'F2' },
+            ],
+            vistos,
+        ).map((i) => i.id),
+        ['f1'],
+    )
 })
