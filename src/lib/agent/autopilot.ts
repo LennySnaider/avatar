@@ -176,16 +176,38 @@ export async function maybeAutopilotSendScheduled(
     const now = new Date()
     if (!withinActiveHours(cfg, now)) return { outcome: 'skipped', sendAfter: null }
 
-    // Daily limit (messages actually sent today for this avatar).
+    // Daily limit (messages actually sent today by the whole ORGANIZATION —
+    // el conteo no filtra por avatar: la fila de `agent_messages` no lo lleva
+    // y hacerlo pediría un join con `agent_chats`. Deuda anotada).
     if (cfg.dailyMessageLimit && cfg.dailyMessageLimit > 0) {
         const dayStart = now.toISOString().slice(0, 10) + 'T00:00:00.000Z'
-        const { count } = await supabase
+        // Las filas de ENTREGA DE MEDIA no gastan cupo: un teaser gratis (o una
+        // media de pago) escribe su propia fila `sent`/`autopilot` además de la
+        // del texto que la acompañaba, y sin excluirlas un solo mensaje con
+        // foto consumía dos del límite diario. `freeMedia.ts`/`paidMedia.ts`
+        // las marcan con `generated_by.kind = 'media_delivery'`; los mensajes
+        // escritos por la IA llevan ahí `{provider, model}` (sin `kind`) y los
+        // antiguos llevan `null`, así que el filtro es "sin kind".
+        const { count, error: countError } = await supabase
             .from('agent_messages')
             .select('id', { count: 'exact', head: true })
             .eq('organization_id', chat.organization_id)
             .eq('status', 'sent')
             .eq('approved_by', 'autopilot')
+            .is('generated_by->>kind', null)
             .gte('sent_at', dayStart)
+        // Un error aquí deja `count` en undefined y el límite NO dispara: el
+        // comportamiento es el de siempre (permisivo), pero ya no es MUDO —
+        // sin este log, "el autopilot se pasó del límite diario" no tendría
+        // dónde mirarse. Es también el aviso de que el filtro de arriba dejó
+        // de ser válido.
+        if (countError) {
+            console.error(
+                '[agent] autopilot: no se pudo contar el límite diario (sigue sin bloquear)',
+                { chatId, organizationId: chat.organization_id },
+                countError,
+            )
+        }
         if ((count ?? 0) >= cfg.dailyMessageLimit) {
             return {
                 outcome: await escalate(

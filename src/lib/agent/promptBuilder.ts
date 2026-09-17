@@ -13,6 +13,9 @@ export interface BuildSystemPromptInput {
     channel: 'playground' | 'fanvue' | 'telegram' | 'social_comment'
     /** Contenido de pago disponible (sólo Telegram). Título y precio en Stars. */
     paidCatalog?: { title: string; stars: number }[]
+    /** Teasers GRATIS disponibles (sólo Telegram). Sin precio: no lo tienen.
+     *  Quien decide si se adjunta uno es el motor de oferta, no la persona. */
+    freeCatalog?: { title: string }[]
     /** Datos del post bajo el que se comenta (sólo `social_comment`). */
     postContext?: { platform: string; caption: string | null; postUrl?: string | null }
 }
@@ -39,7 +42,8 @@ const OBJECTIVE_RULES: Record<string, string> = {
 }
 
 export function buildSystemPrompt(input: BuildSystemPromptInput): string {
-    const { persona, avatarName, ragChunks, fanMemory, channel, paidCatalog, postContext } = input
+    const { persona, avatarName, ragChunks, fanMemory, channel, paidCatalog, freeCatalog, postContext } =
+        input
 
     // Manual override wins wholesale — power users own the whole prompt, but
     // RAG/fan context still gets appended so retrieval keeps working.
@@ -100,8 +104,21 @@ export function buildSystemPrompt(input: BuildSystemPromptInput): string {
                 'one to three sentences, like texting. If the last fan message is "/start", they just ' +
                 'opened the chat for the first time: greet them warmly, introduce yourself in one line ' +
                 'and ask their name or what brought them here. Never mention bots, commands or that ' +
-                'this is Telegram.',
+                'this is Telegram.\n' +
+                'Never promise to send a photo, video or "surprise" on your own. The system decides if ' +
+                'media is attached to this message; write so the text works with or without it. If the ' +
+                'fan asks for a photo and nothing is attached, deflect with charm without promising.',
         )
+        if (freeCatalog && freeCatalog.length > 0) {
+            const freeList = freeCatalog.map((i) => `- ${i.title}`).join('\n')
+            sections.push(
+                '## YOUR FREE TEASERS\n' +
+                    freeList +
+                    '\nYou can share these for free when the fan asks for a photo or shows curiosity. ' +
+                    'The SYSTEM attaches the photo — you never attach it and never say you are sending ' +
+                    'it. Never send the same one twice.',
+            )
+        }
         if (paidCatalog && paidCatalog.length > 0) {
             const list = paidCatalog.map((i) => `- ${i.title} (${i.stars} Stars)`).join('\n')
             sections.push(

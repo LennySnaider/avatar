@@ -12,8 +12,9 @@
  * ORDEN OBLIGATORIO (no negociable, ver brief Task 5):
  *
  *  1. Cargar el ítem y los ajustes del bot; validar que el ítem está
- *     habilitado y que el precio final (el override o el de catálogo) cae en
- *     1-25000 Stars.
+ *     habilitado, que NO es un teaser gratis (`is_free` — un gratis sólo sale
+ *     por `freeMedia.ts`, decida lo que decida el llamador) y que el precio
+ *     final (el override o el de catálogo) cae en 1-25000 Stars.
  *  2. INSERTAR LA VENTA EN 'offered' — con `payload` igual a su propio id —
  *     ANTES de tocar Telegram. El evento `purchased_paid_media` que Telegram
  *     manda al comprarse sólo trae quién compró y ese `payload`, nunca a qué
@@ -164,6 +165,10 @@ function extractFileId(message: TgMessage): string | null {
 interface PaidMediaItemForDelivery {
     id: string
     enabled: boolean
+    /** Espejo de `isFree` en `freeMedia.ts`: aquí sirve para RECHAZAR, no para
+     *  aceptar. Sin este campo, un `itemId` de teaser gratis con un `stars`
+     *  cualquiera se vendía Stars-locked — ver el PASO 1. */
+    isFree: boolean
     starPrice: number
     mediaKind: 'photo' | 'video'
     storagePath: string
@@ -182,7 +187,7 @@ async function loadItemForDelivery(
     const { data, error } = await orgSupabase()
         .from('telegram_paid_media_items')
         .select(
-            'id, enabled, star_price, media_kind, storage_path, storage_provider, caption, telegram_file_id, telegram_file_id_bot_id, offers_count',
+            'id, enabled, is_free, star_price, media_kind, storage_path, storage_provider, caption, telegram_file_id, telegram_file_id_bot_id, offers_count',
         )
         .eq('organization_id', organizationId)
         .eq('avatar_id', avatarId)
@@ -193,6 +198,7 @@ async function loadItemForDelivery(
     return {
         id: data.id,
         enabled: data.enabled,
+        isFree: data.is_free,
         starPrice: data.star_price,
         // El check constraint de la migración (Task 1) sólo permite estos dos.
         mediaKind: data.media_kind as 'photo' | 'video',
@@ -215,10 +221,19 @@ export async function deliverPaidMedia(input: DeliverPaidMediaInput): Promise<De
     // `inbox`/`broadcast` es venta manual (un humano la cerró o la disparó).
     const soldBy: 'ai' | 'manual' = source === 'agent' || source === 'script' ? 'ai' : 'manual'
 
-    // PASO 1 — cargar el ítem y los ajustes; validar habilitado y precio.
+    // PASO 1 — cargar el ítem y los ajustes; validar habilitado, NO gratis, y
+    // precio.
     const item = await loadItemForDelivery(chat.organizationId, chat.avatarId, itemId)
     if (!item) throw new Error('Contenido no encontrado en este avatar.')
     if (!item.enabled) throw new Error('Este contenido está deshabilitado y no se puede vender.')
+    // Simétrico del `if (!item.isFree)` de `deliverFreeMedia`, y por el mismo
+    // motivo: quién decide si algo es gratis es la FILA, no el camino por el
+    // que entró la petición. El diálogo del inbox ofrece los dos tipos en la
+    // misma pantalla, así que un id de teaser con un `stars` pegado llegaba
+    // aquí y lo vendía bajo candado de Stars — cobrando por lo que el creador
+    // marcó como gancho. Va ANTES del insert de la venta y, por tanto, antes
+    // de tocar Telegram: nada que deshacer.
+    if (item.isFree) throw new Error('El ítem es un teaser gratis; no se puede vender')
 
     const stars = input.stars ?? item.starPrice
     if (!Number.isInteger(stars) || stars < 1 || stars > 25_000) {
@@ -345,6 +360,11 @@ export async function deliverPaidMedia(input: DeliverPaidMediaInput): Promise<De
                 status: 'sent',
                 approved_by: approvedBy ?? null,
                 sent_at: new Date().toISOString(),
+                // MARCA DE ENTREGA DE MEDIA — misma razón que en
+                // `freeMedia.ts`: esta fila registra la media que acompañó a
+                // un mensaje, no un mensaje escrito, y el límite diario del
+                // autopilot no debe contarla. Nada más cambia aquí.
+                generated_by: { kind: 'media_delivery' },
             })
             .select('id')
             .single()

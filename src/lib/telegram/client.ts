@@ -155,6 +155,34 @@ export interface TgMessage {
      *  real de la API (`Message.paid_media`); `paidMedia.ts` lo lee para
      *  cachear el `file_id` sin necesitar un cast local. */
     paid_media?: TgPaidMediaInfo
+    /** Presente cuando este mensaje es la respuesta de `sendPhoto` (o de un
+     *  `sendMessage`/update con foto adjunta) — varios tamaños del mismo
+     *  `file_id` lógico, ASCENDENTE por resolución (el último es el más
+     *  grande). Campo real de la API (`Message.photo`). */
+    photo?: TgPhotoSize[]
+    /** Presente cuando este mensaje es la respuesta de `sendVideo`. Campo
+     *  real de la API (`Message.video`). */
+    video?: TgVideo
+}
+
+/**
+ * `file_id` reutilizable de un `TgMessage` de foto/vídeo sin cobro —
+ * equivalente de `extractFileId` (paidMedia.ts) pero leyendo `photo`/`video`
+ * directamente en vez de `paid_media` (que sólo trae `sendPaidMedia`).
+ * `freeMedia.ts` (Tarea 3) lo usa para cachear el `file_id` tras un envío en
+ * bytes frescos. Prioriza `photo` sobre `video` porque un `TgMessage` real
+ * sólo trae uno de los dos a la vez — el orden aquí es sólo defensivo.
+ */
+export function pickFileId(message: TgMessage): string | null {
+    if (message.photo && message.photo.length > 0) {
+        // Telegram manda varios tamaños del mismo file_id lógico; el último
+        // es el de mayor resolución (mismo criterio que `extractFileId`).
+        return message.photo[message.photo.length - 1].file_id
+    }
+    if (message.video) {
+        return message.video.file_id
+    }
+    return null
 }
 
 /** Update `purchased_paid_media`: alguien compró el contenido identificado
@@ -461,4 +489,85 @@ export async function sendPaidMedia(token: string, params: SendPaidMediaParams):
 
 export async function getMyStarBalance(token: string): Promise<TelegramStarAmount> {
     return callJson<TelegramStarAmount>(token, 'getMyStarBalance')
+}
+
+export interface SendMediaParams {
+    chat_id: number | string
+    /** `file_id` reutilizable o `attach://<nombre>` (multipart) — a
+     *  diferencia de `InputPaidMedia.media` esto NUNCA es una URL: el envío
+     *  gratis siempre sale de un `file_id` cacheado o de bytes propios. */
+    media: string
+    /** 0-1024 caracteres. */
+    caption?: string
+    protect_content?: boolean
+    /** Bytes para `media` cuando vale `attach://<nombre>` — ver
+     *  `MultipartFile` sobre el nombre de fichero. Si se omite, la llamada va
+     *  por JSON puro y `media` debe ser entonces un `file_id`. */
+    files?: Record<string, MultipartFile>
+}
+
+/**
+ * Límites documentados de `sendPhoto`/`sendVideo`
+ * (https://core.telegram.org/bots/api#sendphoto,
+ * https://core.telegram.org/bots/api#sendvideo) — comprobados ANTES de
+ * llamar a la red, mismo criterio que `validateSendPaidMedia`. La subida por
+ * multipart admite hasta 10 MB para fotos y 50 MB para el resto (vídeo
+ * incluido); esta función NO mide bytes (`MultipartFile` es un `Blob` cuyo
+ * tamaño real sólo lo conoce quien lo generó) — sólo valida forma: caption y
+ * la coherencia de `attach://`.
+ */
+export function validateSendMedia(params: SendMediaParams): void {
+    if (!params.media) {
+        throw new RangeError('media no puede estar vacío')
+    }
+    if (params.caption !== undefined && params.caption.length > 1024) {
+        throw new RangeError(`caption no puede superar 1024 caracteres (recibido: ${params.caption.length})`)
+    }
+    if (params.media.startsWith('attach://')) {
+        const name = params.media.slice('attach://'.length)
+        if (!params.files || !(name in params.files)) {
+            throw new RangeError(`media referencia attach://${name} pero no está en "files"`)
+        }
+    }
+}
+
+/** Campos comunes a `sendPhoto`/`sendVideo` una vez validados — evita
+ *  duplicar la rama multipart/JSON entre las dos funciones públicas. */
+function buildSendMediaFields(params: SendMediaParams): Record<string, string> {
+    const fields: Record<string, string> = { chat_id: String(params.chat_id) }
+    if (params.caption !== undefined) fields.caption = params.caption
+    if (params.protect_content !== undefined) fields.protect_content = String(params.protect_content)
+    return fields
+}
+
+export async function sendPhoto(token: string, params: SendMediaParams): Promise<TgMessage> {
+    validateSendMedia(params)
+
+    if (params.files && Object.keys(params.files).length > 0) {
+        const fields = { ...buildSendMediaFields(params), photo: params.media }
+        return callMultipart<TgMessage>(token, 'sendPhoto', fields, params.files)
+    }
+
+    return callJson<TgMessage>(token, 'sendPhoto', {
+        chat_id: params.chat_id,
+        photo: params.media,
+        caption: params.caption,
+        protect_content: params.protect_content,
+    })
+}
+
+export async function sendVideo(token: string, params: SendMediaParams): Promise<TgMessage> {
+    validateSendMedia(params)
+
+    if (params.files && Object.keys(params.files).length > 0) {
+        const fields = { ...buildSendMediaFields(params), video: params.media }
+        return callMultipart<TgMessage>(token, 'sendVideo', fields, params.files)
+    }
+
+    return callJson<TgMessage>(token, 'sendVideo', {
+        chat_id: params.chat_id,
+        video: params.media,
+        caption: params.caption,
+        protect_content: params.protect_content,
+    })
 }

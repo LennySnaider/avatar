@@ -37,9 +37,11 @@ const TelegramAvatarView = ({
 }: TelegramAvatarViewProps) => {
     const [activeTab, setActiveTab] = useState('connection')
     const [status, setStatus] = useState<TelegramBotStatus | null>(initialStatus)
-    // Compartido entre Gallery (lo administra) e Inbox (lo vende): un ítem
-    // creado en una pestaña tiene que poder enviarse desde la otra sin
-    // recargar la página — por eso vive aquí y no dentro de cada pestaña.
+    // Estado de la galería: lo administra la pestaña Gallery y la cabecera lo
+    // usa para el contador. La pestaña Conversations ya NO lo recibe — su
+    // diálogo de envío (`_shared/TelegramSendContentDialog`, el mismo del
+    // Inbox principal) se pide la galería al servidor cada vez que se abre, así
+    // que lo que se acabe de dar de alta aquí también sale allí.
     const [items, setItems] = useState<PaidMediaItemView[]>(initialItems)
     // Ventas del servidor + lo que esta sesión vaya OFRECIENDO desde Inbox
     // (TelegramInbox antepone la fila en cuanto sendPaidMediaFromInbox
@@ -77,7 +79,6 @@ const TelegramAvatarView = ({
                     <TelegramInbox
                         avatarId={avatarId}
                         chats={initialChats}
-                        items={items}
                         botConnected={!!status?.connected}
                         onSaleOffered={(sale) => setSales((prev) => [sale, ...prev])}
                     />

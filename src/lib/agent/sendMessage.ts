@@ -11,11 +11,13 @@
  * a partir de ahí por `organization_id` en vez de navegar por ids sueltos.
  */
 import { agentSupabase } from './db'
+import { shouldClearAttention } from './attentionClear'
 import { updateFanMemoryFromChat } from './draftPipeline'
 import { deliverAgentText } from './channelDelivery'
 import { resolveDeliveryChannel } from './channelRouting'
-import { findPaidMediaOffer } from '@/lib/telegram/offerGate'
+import { findFreeMediaOffer, findPaidMediaOffer } from '@/lib/telegram/offerGate'
 import { deliverPaidMedia } from '@/lib/telegram/paidMedia'
+import { deliverFreeMedia } from '@/lib/telegram/freeMedia'
 
 export interface SendAgentMessageResult {
     success: boolean
@@ -97,9 +99,52 @@ export async function sendAgentMessage(messageId: string): Promise<SendAgentMess
             .eq('organization_id', msg.organization_id)
             .eq('id', messageId)
             .eq('status', 'approved')
+        // Un envío del autopilot LIMPIA la bandera de atención — con una
+        // condición más, ver `shouldClearAttention` (attentionClear.ts), donde
+        // vive el porqué de las dos mitades de la decisión.
+        //
+        // La mitad nueva: entre que el autopilot escribe el borrador y el
+        // `send_after` lo deja salir pueden pasar minutos, y en ese hueco el
+        // fan puede haber escrito OTRA cosa que escale el chat (un pago, una
+        // queja, un tema sensible). Bajar aquí la bandera borraría una
+        // escalada levantada por un mensaje que este envío ni siquiera
+        // contesta. Por eso se pregunta primero si hay algo entrante más nuevo
+        // que `msg`; si lo hay, la bandera se queda.
+        let newerInboundExists = false
+        if (msg.approved_by === 'autopilot') {
+            const { data: newerInbound, error: newerInboundError } = await supabase
+                .from('agent_messages')
+                .select('id')
+                .eq('organization_id', msg.organization_id)
+                .eq('chat_id', msg.chat_id)
+                .eq('direction', 'in')
+                .gt('created_at', msg.created_at)
+                .limit(1)
+            if (newerInboundError) {
+                // Fallar CERRADO: si no se pudo comprobar, no se baja. Dejar
+                // la bandera de más cuesta una mirada humana; quitarla de
+                // menos entierra una escalada real.
+                console.error(
+                    '[agent] no se pudo comprobar si hay entrantes más nuevos; la bandera de atención se queda',
+                    { messageId, chatId: msg.chat_id },
+                    newerInboundError,
+                )
+                newerInboundExists = true
+            } else {
+                newerInboundExists = (newerInbound?.length ?? 0) > 0
+            }
+        }
+        const clearAttention = shouldClearAttention({
+            approvedBy: msg.approved_by,
+            newerInboundExists,
+        })
         await supabase
             .from('agent_chats')
-            .update({ last_message_at: new Date().toISOString(), updated_at: new Date().toISOString() })
+            .update({
+                last_message_at: new Date().toISOString(),
+                updated_at: new Date().toISOString(),
+                ...(clearAttention ? { needs_attention: false, attention_reason: null } : {}),
+            })
             .eq('organization_id', chat.organization_id)
             .eq('id', chat.id)
         // Oferta adjunta (offerEngine, Telegram): se entrega DESPUÉS del texto
@@ -120,8 +165,46 @@ export async function sendAgentMessage(messageId: string): Promise<SendAgentMess
         // el viejo. Cuando los dos no coinciden se deja rastro: el borrador
         // enseñó una cifra y Telegram cobró otra, y eso el creador tiene que
         // poder verlo.
+        //
+        // GRATIS Y DE PAGO SON EXCLUYENTES por construcción: `offerEngine`
+        // adjunta como mucho una oferta por borrador. Si aun así llegaran las
+        // dos, se entrega SÓLO la gratis y se avisa — regalar de más es un
+        // error recuperable; cobrar de más, no.
+        const isTelegram = resolveDeliveryChannel(chat.platform) === 'telegram'
+        const freeOffer = findFreeMediaOffer(msg.media)
         const offer = findPaidMediaOffer(msg.media)
-        if (offer && resolveDeliveryChannel(chat.platform) === 'telegram') {
+        if (freeOffer && offer) {
+            console.warn('[agent] el borrador llevaba oferta gratis Y de pago; sólo se entrega la gratis', {
+                messageId,
+                freeItemId: freeOffer.itemId,
+                paidItemId: offer.itemId,
+            })
+        }
+        // Teaser gratis (fotos-gratis Tarea 4): sin cobro, sin venta. Mismo
+        // criterio de error que la rama de pago — el texto ya salió y el
+        // mensaje ya es `sent`, así que un fallo aquí se loguea y no marca
+        // `failed`: el fan sí recibió la respuesta.
+        if (freeOffer && isTelegram) {
+            try {
+                await deliverFreeMedia({
+                    chat: {
+                        id: chat.id,
+                        organizationId: chat.organization_id,
+                        avatarId: chat.avatar_id,
+                        externalChatId: chat.external_chat_id,
+                    },
+                    itemId: freeOffer.itemId,
+                    caption: freeOffer.caption || undefined,
+                    source: 'agent',
+                    // Misma atribución que la rama de pago: si el borrador lo
+                    // aprobó una persona, el teaser es suyo, no del autopilot.
+                    approvedBy: msg.approved_by,
+                })
+            } catch (e) {
+                console.error('[agent] teaser gratis no entregado', { messageId, itemId: freeOffer.itemId }, e)
+            }
+        }
+        if (offer && !freeOffer && isTelegram) {
             try {
                 const delivered = await deliverPaidMedia({
                     chat: {

@@ -29,7 +29,7 @@ import {
 } from '@/lib/agent/inboxSync'
 import { sendAgentMessage } from '@/lib/agent/sendMessage'
 import type { AutopilotConfig } from '@/lib/agent/autopilot'
-import { findPaidMediaOffer } from '@/lib/telegram/offerGate'
+import { findFreeMediaOffer, findPaidMediaOffer } from '@/lib/telegram/offerGate'
 import { fanMemoryPlatform } from '@/lib/agent/fanMemoryPlatform'
 import { resolveDeliveryChannel } from '@/lib/agent/channelRouting'
 import { updateFanMemoryFromChat } from '@/lib/agent/draftPipeline'
@@ -69,6 +69,15 @@ export interface AgentMessageDTO {
     sentAt: string | null
     /** Oferta de contenido de pago adjunta (Telegram, offerEngine). Null si no hay. */
     paidOffer: { itemId: string; stars: number; caption: string } | null
+    /**
+     * Teaser GRATIS adjunto (Telegram, offerEngine). Null si no hay.
+     *
+     * Viaja aparte de `paidOffer` porque no es lo mismo y el creador tiene que
+     * poder distinguirlo: sin este campo el teaser era INVISIBLE en el Inbox —
+     * se adjuntaba al borrador y salía al aprobarlo sin que nadie lo hubiera
+     * visto ni pudiera quitarlo, y un teaser se gasta UNA VEZ por fan.
+     */
+    freeOffer: { itemId: string; caption: string } | null
 }
 
 const fail = (where: string, e: unknown): { success: false; error: string } => {
@@ -81,6 +90,7 @@ const fail = (where: string, e: unknown): { success: false; error: string } => {
 
 function toMessageDTO(row: AgentMessageRow): AgentMessageDTO {
     const offer = findPaidMediaOffer(row.media)
+    const freeOffer = findFreeMediaOffer(row.media)
     return {
         id: row.id,
         direction: row.direction,
@@ -94,6 +104,9 @@ function toMessageDTO(row: AgentMessageRow): AgentMessageDTO {
         sentAt: row.sent_at,
         paidOffer: offer
             ? { itemId: offer.itemId, stars: offer.stars, caption: offer.caption }
+            : null,
+        freeOffer: freeOffer
+            ? { itemId: freeOffer.itemId, caption: freeOffer.caption }
             : null,
     }
 }
@@ -355,7 +368,15 @@ export async function discardDraft(
     }
 }
 
-/** Quita la oferta adjunta a un borrador sin tocar el texto. Sólo borradores. */
+/**
+ * Quita la oferta adjunta a un borrador sin tocar el texto. Sólo borradores.
+ *
+ * Quita LOS DOS tipos de oferta, de pago y teaser gratis. `offerEngine`
+ * adjunta como mucho una por borrador, así que en la práctica sólo hay una que
+ * quitar; filtrar sólo `paid_media_offer` —como hacía antes— dejaba el teaser
+ * gratis pegado al borrador sin ninguna forma de sacarlo desde el Inbox, y un
+ * teaser se gasta UNA VEZ por fan.
+ */
 export async function removeDraftOffer(messageId: string): Promise<InboxResult<AgentMessageDTO>> {
     try {
         const ctx = await getOrgContext()
@@ -369,7 +390,12 @@ export async function removeDraftOffer(messageId: string): Promise<InboxResult<A
         if (readError) throw new Error(readError.message)
         if (!msg) return { success: false, error: 'Message not found' }
         if (msg.status !== 'draft') return { success: false, error: 'Only drafts can be edited' }
-        const media = Array.isArray(msg.media) ? msg.media.filter((m: { type?: string }) => m?.type !== 'paid_media_offer') : []
+        const REMOVABLE_OFFER_TYPES = ['paid_media_offer', 'free_media_offer']
+        const media = Array.isArray(msg.media)
+            ? msg.media.filter(
+                  (m: { type?: string }) => !REMOVABLE_OFFER_TYPES.includes(m?.type ?? ''),
+              )
+            : []
         const { data: updated, error } = await orgTable(ctx, 'agent_messages')
             .update({ media: media as never, updated_at: new Date().toISOString() })
             .eq('id', messageId)

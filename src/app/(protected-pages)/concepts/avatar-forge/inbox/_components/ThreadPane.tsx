@@ -20,6 +20,7 @@ import {
     type AgentMessageDTO,
     type PpvSuggestion,
 } from '@/services/AgentInboxService'
+import TelegramSendContentDialog from '../../_shared/TelegramSendContentDialog'
 
 type ThreadData = NonNullable<Awaited<ReturnType<typeof getAgentChatThread>>['data']>
 
@@ -37,6 +38,29 @@ interface ThreadPaneProps {
  * nunca), y en el compositor sólo se pinta el borrador (siempre cierta). Quien
  * decide ahora es quien llama: si pasa `onRemove`, hay botón.
  */
+const OfferTagShell = ({
+    label,
+    tone,
+    removeLabel,
+    className,
+    onRemove,
+}: {
+    label: string
+    tone: string
+    removeLabel: string
+    className?: string
+    onRemove?: () => void
+}) => (
+    <div className={`flex items-center gap-2 text-xs ${className ?? ''}`}>
+        <Tag className={`${tone} border-0`}>{label}</Tag>
+        {onRemove && (
+            <Button size="xs" variant="plain" onClick={onRemove}>
+                {removeLabel}
+            </Button>
+        )}
+    </div>
+)
+
 const OfferTag = ({
     offer,
     className,
@@ -46,16 +70,38 @@ const OfferTag = ({
     className?: string
     onRemove?: () => void
 }) => (
-    <div className={`flex items-center gap-2 text-xs ${className ?? ''}`}>
-        <Tag className="bg-amber-100 text-amber-700 dark:bg-amber-500/20 dark:text-amber-100 border-0">
-            ⭐ Paid offer · {offer.stars} Stars
-        </Tag>
-        {onRemove && (
-            <Button size="xs" variant="plain" onClick={onRemove}>
-                Remove offer
-            </Button>
-        )}
-    </div>
+    <OfferTagShell
+        label={`⭐ Paid offer · ${offer.stars} Stars`}
+        tone="bg-amber-100 text-amber-700 dark:bg-amber-500/20 dark:text-amber-100"
+        removeLabel="Remove offer"
+        className={className}
+        onRemove={onRemove}
+    />
+)
+
+/**
+ * Lo mismo para el teaser GRATIS que `offerEngine` puede adjuntar a un
+ * borrador. Existe porque sin él ese teaser era INVISIBLE: se pegaba al
+ * borrador y salía al aprobarlo sin que el creador lo hubiera visto ni
+ * pudiera quitarlo — y un teaser se gasta UNA VEZ por fan, así que aprobar a
+ * ciegas quema contenido para siempre. Verde y no ámbar a propósito: aquí no
+ * se cobra nada, y confundirlo con la oferta de pago es justo lo que hay que
+ * evitar.
+ */
+const FreeOfferTag = ({
+    className,
+    onRemove,
+}: {
+    className?: string
+    onRemove?: () => void
+}) => (
+    <OfferTagShell
+        label="🎁 Free teaser"
+        tone="bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-100"
+        removeLabel="Remove teaser"
+        className={className}
+        onRemove={onRemove}
+    />
 )
 
 const ThreadPane = ({ thread, onChanged }: ThreadPaneProps) => {
@@ -75,6 +121,15 @@ const ThreadPane = ({ thread, onChanged }: ThreadPaneProps) => {
     // `approveAndSendVoiceNote`/`suggestPpvOffer`). El nombre nuevo dice lo
     // que la condición hace hoy: ocultar lo que sólo existe en Fanvue.
     const hideFanvueOnlyTools = chat.channel !== 'fanvue'
+
+    // Lo simétrico para Telegram: mandar una foto de la galería (teaser gratis
+    // o contenido de pago con Stars) sólo existe en ese canal. Vive AQUÍ, en el
+    // hilo, y no sólo en el panel de Telegram, porque es donde se está leyendo
+    // al fan cuando se decide mandarle algo (feedback del usuario 17-sep: "el
+    // Inbox manda"). El diálogo es el mismo componente compartido que usa la
+    // pestaña Conversations de ese panel.
+    const isTelegramChat = chat.channel === 'telegram'
+    const [sendContentOpen, setSendContentOpen] = useState(false)
 
     // Comentario en un post social: cabecera con la red, el caption y el
     // enlace al post original. Sólo los chats `social:*` traen `context`.
@@ -371,6 +426,7 @@ const ThreadPane = ({ thread, onChanged }: ThreadPaneProps) => {
                             )}
                         </div>
                         {m.paidOffer && <OfferTag offer={m.paidOffer} className="mt-1" />}
+                        {m.freeOffer && <FreeOfferTag className="mt-1" />}
                     </div>
                 ))}
             </div>
@@ -424,6 +480,22 @@ const ThreadPane = ({ thread, onChanged }: ThreadPaneProps) => {
 
             {/* Draft composer */}
             <div className="p-3 border-t border-gray-100 dark:border-gray-700">
+                {/* Acciones del canal Telegram — FUERA del bloque del borrador
+                    a propósito: mandar una foto no depende de que el agente
+                    tenga una respuesta escrita (y con `auto` puede no haberla
+                    nunca). */}
+                {isTelegramChat && (
+                    <div className="flex items-center justify-end mb-2">
+                        <Button
+                            size="sm"
+                            variant="plain"
+                            onClick={() => setSendContentOpen(true)}
+                            title="Send a free teaser or Stars-locked content from this avatar's Telegram gallery"
+                        >
+                            📷 Send content
+                        </Button>
+                    </div>
+                )}
                 {draft ? (
                     <>
                         <div className="flex items-center justify-between mb-1">
@@ -437,6 +509,12 @@ const ThreadPane = ({ thread, onChanged }: ThreadPaneProps) => {
                         {draft.paidOffer && (
                             <OfferTag
                                 offer={draft.paidOffer}
+                                className="mb-2"
+                                onRemove={() => handleRemoveOffer(draft.id)}
+                            />
+                        )}
+                        {draft.freeOffer && (
+                            <FreeOfferTag
                                 className="mb-2"
                                 onRemove={() => handleRemoveOffer(draft.id)}
                             />
@@ -516,6 +594,20 @@ const ThreadPane = ({ thread, onChanged }: ThreadPaneProps) => {
                     </div>
                 )}
             </div>
+
+            {isTelegramChat && sendContentOpen && (
+                <TelegramSendContentDialog
+                    isOpen
+                    avatarId={chat.avatarId}
+                    chatId={chat.id}
+                    fanLabel={chat.fanDisplayName ?? chat.fanHandle}
+                    onClose={() => setSendContentOpen(false)}
+                    // Mismo refresco que cualquier otra acción que escribe en
+                    // el hilo (`approveAndSend`, PPV): el envío deja un
+                    // `agent_messages` saliente que el padre tiene que releer.
+                    onSent={() => onChanged()}
+                />
+            )}
         </div>
     )
 }
