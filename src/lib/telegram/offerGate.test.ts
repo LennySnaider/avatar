@@ -8,6 +8,8 @@ import {
     hasPaidMediaOffer,
     isOfferMedia,
     isOfferOnCooldown,
+    resolveOfferAction,
+    collectFreeMediaItemIds,
 } from './offerGate.ts'
 
 const items = [
@@ -210,4 +212,85 @@ test('isOfferMedia es false para media sin ninguna oferta', () => {
     assert.equal(isOfferMedia(null), false)
     assert.equal(isOfferMedia('garbage'), false)
     assert.equal(isOfferMedia([]), false)
+})
+
+test('resolveOfferAction: action none no elige nada', () => {
+    assert.equal(resolveOfferAction({ action: 'none', index: 0 }, 2, 2), null)
+})
+
+test('resolveOfferAction: free válido devuelve kind free', () => {
+    assert.deepEqual(resolveOfferAction({ action: 'free', index: 1 }, 2, 3), {
+        kind: 'free',
+        index: 1,
+    })
+})
+
+test('resolveOfferAction: paid válido devuelve kind paid', () => {
+    assert.deepEqual(resolveOfferAction({ action: 'paid', index: 0 }, 0, 3), {
+        kind: 'paid',
+        index: 0,
+    })
+})
+
+test('resolveOfferAction: free con lista gratis vacía no es elegible', () => {
+    assert.equal(resolveOfferAction({ action: 'free', index: 0 }, 0, 3), null)
+})
+
+test('resolveOfferAction: paid con lista de pago vacía no es elegible', () => {
+    assert.equal(resolveOfferAction({ action: 'paid', index: 0 }, 2, 0), null)
+})
+
+test('resolveOfferAction: índice fuera de rango (alto, negativo) no vale', () => {
+    assert.equal(resolveOfferAction({ action: 'free', index: 2 }, 2, 0), null)
+    assert.equal(resolveOfferAction({ action: 'free', index: -1 }, 2, 0), null)
+})
+
+test('resolveOfferAction: índice no entero no vale', () => {
+    assert.equal(resolveOfferAction({ action: 'paid', index: 1.5 }, 0, 3), null)
+    assert.equal(resolveOfferAction({ action: 'paid', index: NaN }, 0, 3), null)
+    assert.equal(
+        resolveOfferAction({ action: 'paid', index: undefined }, 0, 3),
+        null,
+    )
+})
+
+test('resolveOfferAction: un action desconocido se trata como none', () => {
+    assert.equal(resolveOfferAction({ action: 'PAID', index: 0 }, 2, 2), null)
+    assert.equal(resolveOfferAction({ action: undefined, index: 0 }, 2, 2), null)
+    assert.equal(resolveOfferAction({}, 2, 2), null)
+})
+
+test('resolveOfferAction: el índice cuenta contra SU lista, no contra la otra', () => {
+    // 1 gratis y 5 de pago: el índice 3 es válido de pago e inválido gratis.
+    assert.equal(resolveOfferAction({ action: 'free', index: 3 }, 1, 5), null)
+    assert.deepEqual(resolveOfferAction({ action: 'paid', index: 3 }, 1, 5), {
+        kind: 'paid',
+        index: 3,
+    })
+})
+
+test('collectFreeMediaItemIds recoge enviados y ofrecidos, sin repetir', () => {
+    assert.deepEqual(
+        collectFreeMediaItemIds([
+            [{ type: 'free_media', itemId: 'f1' }],
+            [{ type: 'image' }, { type: 'free_media_offer', itemId: 'f2' }],
+            [{ type: 'free_media', itemId: 'f1' }],
+            [{ type: 'paid_media', itemId: 'p1' }],
+            [{ type: 'paid_media_offer', itemId: 'p2' }],
+        ]),
+        ['f1', 'f2'],
+    )
+})
+
+test('collectFreeMediaItemIds aguanta media basura', () => {
+    assert.deepEqual(
+        collectFreeMediaItemIds([
+            null,
+            'garbage',
+            [],
+            [{ type: 'free_media' }],
+            [{ type: 'free_media', itemId: 42 }],
+        ]),
+        [],
+    )
 })

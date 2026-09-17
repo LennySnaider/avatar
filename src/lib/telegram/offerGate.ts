@@ -170,3 +170,61 @@ export function isOfferMedia(media: unknown): boolean {
             OFFER_MEDIA_TYPES.has((m as { type?: string }).type ?? ''),
     )
 }
+
+/**
+ * Lo que el modelo respondió, tal cual salió del `JSON.parse` — todo
+ * `unknown` a propósito: es texto de un LLM, no un contrato.
+ */
+export interface ParsedOfferDecision {
+    action?: unknown
+    index?: unknown
+}
+
+/**
+ * Valida la decisión del modelo contra las DOS listas que se le enseñaron.
+ *
+ * Existe porque el modelo puede decir `free` cuando la lista gratis está
+ * vacía (le enseñamos sólo la de pago y aun así se inventa la otra), o dar un
+ * índice de la lista equivocada. Cualquiera de esas dos cosas, sin esta
+ * comprobación, elegiría un ítem que no es el que el modelo creía estar
+ * eligiendo: se mandaría gratis algo de pago, o al revés. Ante la duda: null
+ * (no se ofrece nada). Quien loguea el aviso es `offerEngine`, que sabe qué
+ * `draftMessageId` estaba juzgando; esta función es pura y muda.
+ */
+export function resolveOfferAction(
+    parsed: ParsedOfferDecision,
+    freeCount: number,
+    paidCount: number,
+): { kind: 'free' | 'paid'; index: number } | null {
+    const action = parsed.action
+    if (action !== 'free' && action !== 'paid') return null
+    const total = action === 'free' ? freeCount : paidCount
+    if (total <= 0) return null
+    const index = Number(parsed.index)
+    if (!Number.isInteger(index) || index < 0 || index >= total) return null
+    return { kind: action, index }
+}
+
+/**
+ * Los ids de ítem gratis que ya viajaron a un chat, leídos de los `media` de
+ * sus mensajes de salida. Cuenta tanto `free_media` (entregado) como
+ * `free_media_offer` (prometido en un borrador que quizá aún no salió): si un
+ * borrador pendiente ya lleva el teaser f1, el motor no debe elegir f1 otra
+ * vez para el siguiente borrador — la regla es UNA VEZ por fan
+ * (global-constraints.md), y un borrador en cola es un envío casi hecho.
+ *
+ * Sin dedupe explícito: el `Set` conserva el orden de primera aparición.
+ */
+export function collectFreeMediaItemIds(mediaList: unknown[]): string[] {
+    const ids = new Set<string>()
+    for (const media of mediaList) {
+        if (!Array.isArray(media)) continue
+        for (const m of media) {
+            if (!m || typeof m !== 'object') continue
+            const entry = m as { type?: string; itemId?: unknown }
+            if (entry.type !== 'free_media' && entry.type !== 'free_media_offer') continue
+            if (typeof entry.itemId === 'string' && entry.itemId) ids.add(entry.itemId)
+        }
+    }
+    return [...ids]
+}
