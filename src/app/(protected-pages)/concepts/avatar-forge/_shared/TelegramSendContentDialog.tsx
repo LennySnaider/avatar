@@ -250,6 +250,16 @@ const TelegramSendContentDialog = ({
                     </Notification>,
                 )
             }
+        } catch (e) {
+            // Un fallo de transporte (server action caída, red, error de
+            // serialización) no llega como `{success:false}`: LANZA. Sin este
+            // catch se quedaba en la consola y el `finally` reactivaba el botón
+            // como si no hubiera pasado nada — el usuario no sabía si salió.
+            toast.push(
+                <Notification type="danger" title="Could not send content">
+                    {e instanceof Error ? e.message : String(e)}
+                </Notification>,
+            )
         } finally {
             setIsSending(false)
         }

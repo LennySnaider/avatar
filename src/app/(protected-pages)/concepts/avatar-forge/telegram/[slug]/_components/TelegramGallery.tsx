@@ -555,7 +555,15 @@ const TelegramGallery = ({ avatarId, items, onItemsChange, generations }: Telegr
                         <Button variant="plain" onClick={() => setEditTarget(null)} disabled={isEditSaving}>
                             Cancel
                         </Button>
-                        <Button variant="solid" loading={isEditSaving} onClick={handleEditSave}>
+                        <Button
+                            variant="solid"
+                            loading={isEditSaving}
+                            disabled={
+                                !editTitle.trim() ||
+                                (!editIsFree && parseStarPrice(editStarPrice) === null)
+                            }
+                            onClick={handleEditSave}
+                        >
                             Save
                         </Button>
                     </div>
