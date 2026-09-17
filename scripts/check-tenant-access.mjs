@@ -128,6 +128,10 @@ const EXENTOS = [
         'deliverPaidMedia (Task 5) es sin sesión a propósito — mismo perfil que sales.ts, no un service con ctx —: recibe el chat ya resuelto y acotado por su llamador (hoy sendPaidMediaFromInbox en AgentTelegramService.ts, que ya comprobó dueño de avatar y conversación). La organizationId nunca se adivina: sale de ese chat ya cargado, y las 7 llamadas de este fichero la usan como filtro (.eq) o como campo fijado (organization_id:) explícito.',
     ],
     [
+        'src/lib/telegram/freeMedia.ts',
+        'deliverFreeMedia (Task 3, fotos gratis) es sin sesión a propósito — mismo perfil que paidMedia.ts —: recibe el chat ya resuelto y acotado por su llamador (el autopilot o un envío manual desde el inbox). La organizationId nunca se adivina: sale de ese chat ya cargado, y las 5 llamadas del fichero (cargar el ítem, cachear el file_id, incrementar free_sends_count, insertar agent_messages, tocar agent_chats) la usan como filtro (.eq) o como campo fijado (organization_id:) explícito.',
+    ],
+    [
         'src/lib/telegram/offerEngine.ts',
         'F4.2 Tarea 4 — lo llama el webhook de Telegram sin sesión; todo cuelga de chat.organization_id. maybeAttachPaidMediaOffer parte del borrador que nuestro propio pipeline acaba de crear (esa fila es la que RESUELVE la org) y las siete consultas siguientes —chat, persona, enfriamiento, catálogo, ventas del fan, transcripción y la escritura de la oferta— la usan como filtro .eq explícito. Son OCHO .from() en total contando el propio borrador, que es la cifra que reporta este script.',
     ],

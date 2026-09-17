@@ -222,6 +222,12 @@ const eslintConfig = [
       // filtro o como campo fijado. Ver check-tenant-access.mjs (misma
       // exención, motivo completo allí).
       "src/lib/telegram/paidMedia.ts",
+      // Task 3 (fotos gratis) — deliverFreeMedia, mismo perfil que
+      // paidMedia.ts: sin sesión, recibe el chat ya resuelto y acotado por su
+      // llamador, y las 5 llamadas del fichero usan esa organizationId como
+      // filtro (.eq) o como campo fijado (organization_id:) explícito. Ver
+      // check-tenant-access.mjs (misma exención, motivo completo allí).
+      "src/lib/telegram/freeMedia.ts",
       // Task 6 — telegramUnitActivity, mismo perfil que moduleFees.ts: sin
       // sesión (lo dispara el cron de cuotas), la organizationId llega por
       // parámetro y la única consulta del fichero la filtra con
