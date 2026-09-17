@@ -1,22 +1,35 @@
 /**
- * Motor de oferta (spec A4): decide si un borrador recién generado debe
- * llevar adjunto contenido de pago, y cuál. NO envía nada: sólo escribe la
- * oferta en `agent_messages.media`. Quien envía es `sendAgentMessage`, que
- * tras entregar el texto entrega la media pagada con `source: 'agent'` —
- * la única forma de producir una venta `sold_by = ai` (20%).
+ * Motor de oferta (spec A4 + fotos-gratis Tarea 4): decide si un borrador
+ * recién generado debe llevar adjunto contenido — un teaser GRATIS o
+ * contenido DE PAGO — y cuál. NO envía nada: sólo escribe la oferta en
+ * `agent_messages.media`. Quien envía es `sendAgentMessage`, que tras entregar
+ * el texto entrega el adjunto: `deliverFreeMedia` (sin cobro) o
+ * `deliverPaidMedia` con `source: 'agent'` — la única forma de producir una
+ * venta `sold_by = ai` (20%).
+ *
+ * El nombre exportado sigue siendo `maybeAttachPaidMediaOffer` para no tocar a
+ * sus llamadores (webhook + inbox), pero desde la Tarea 4 decide entre TRES
+ * salidas: nada, gratis o de pago. Un borrador lleva como mucho UNA.
  *
  * Gates, en orden y todos fallando cerrado:
- *   1. el chat es de Telegram y `ai_offers_enabled` está encendido;
- *   2. hay catálogo habilitado, filtrado por `maxOfferStars` y sin lo que
- *      este fan ya compró. Ese tope tiene TRES lecturas, no dos: ausente =
- *      sin tope, `0` = no ofrecer nada, `> 0` = tope inclusivo (ver
- *      `filterOfferCandidates`);
- *   3. no estamos en enfriamiento. `offerCooldownHours` ausente = 6 h; un `0`
- *      explícito es SIN enfriamiento, y por eso se resuelve con `??` y no con
- *      `||`, que trataría ese cero como "no puesto";
- *   4. el modelo dice que sí, con un índice válido.
+ *   1. el borrador no lleva ya una oferta de ningún tipo (`isOfferMedia`), el
+ *      chat es de Telegram y `ai_offers_enabled` está encendido;
+ *   2. queda algo que ofrecer: catálogo de pago habilitado, filtrado por
+ *      `maxOfferStars` y sin lo que este fan ya compró (ese tope tiene TRES
+ *      lecturas, no dos: ausente = sin tope, `0` = no ofrecer nada, `> 0` =
+ *      tope inclusivo, ver `filterOfferCandidates`), y/o catálogo gratis sin
+ *      lo que a este fan ya se le mandó u ofreció (UNA VEZ por fan);
+ *   3. no estamos en enfriamiento. La ventana es COMÚN a gratis y de pago
+ *      (global-constraints.md): cualquier oferta reciente, de cualquier tipo,
+ *      enfría a las dos. `offerCooldownHours` ausente = 6 h; un `0` explícito
+ *      es SIN enfriamiento, y por eso se resuelve con `??` y no con `||`, que
+ *      trataría ese cero como "no puesto";
+ *   4. el modelo dice cuál de las dos listas y qué índice, y `resolveOfferAction`
+ *      lo valida contra las listas REALES (ver esa función: un `free` con la
+ *      lista gratis vacía mandaría de balde algo de pago).
  * Si cualquier cosa falla (JSON roto, índice fuera de rango, error de red)
- * no se ofrece y se loguea: una oferta mal puesta es dinero mal cobrado.
+ * no se ofrece y se loguea: una oferta mal puesta es dinero mal cobrado, y un
+ * teaser mal puesto es contenido de pago regalado.
  * Esta función NUNCA lanza — el webhook la llama dentro de un `after()` cuya
  * caída se llevaría por delante el autopilot que viene detrás.
  *
@@ -42,12 +55,32 @@ import { toPersonaDTO } from '@/lib/agent/personaMapper'
 import { parseAutopilot } from '@/lib/agent/autopilot'
 import type { AvatarPersonaRow } from '@/lib/agent/db'
 import { loadTelegramSettings } from '@/lib/telegram/settings'
-import { filterOfferCandidates, findPaidMediaOffer, isOfferOnCooldown, type PaidMediaOffer } from './offerGate'
+import {
+    collectFreeMediaItemIds,
+    filterFreeCandidates,
+    filterOfferCandidates,
+    isOfferMedia,
+    isOfferOnCooldown,
+    resolveOfferAction,
+    type FreeMediaOffer,
+    type PaidMediaOffer,
+} from './offerGate'
 
 const DEFAULT_COOLDOWN_HOURS = 6
 
 /** Cuántos mensajes de salida se miran hacia atrás buscando la última oferta. */
 const COOLDOWN_LOOKBACK = 20
+
+/**
+ * Cuántos mensajes de salida se leen para reconstruir qué teasers gratis ya
+ * viajaron a este chat. Mucho más hondo que el enfriamiento y a propósito: un
+ * teaser se manda UNA VEZ POR FAN para siempre, así que la ventana tiene que
+ * cubrir la conversación entera, no las últimas horas. 200 cubre de sobra un
+ * chat normal; si un chat fuera más largo que eso, lo peor que pasa es que un
+ * teaser muy antiguo pudiera repetirse — preferible a leer el historial
+ * completo en cada borrador.
+ */
+const FREE_HISTORY_LOOKBACK = 200
 
 /** Tope de la Bot API para el caption de una media. */
 const CAPTION_MAX = 1024
@@ -77,7 +110,9 @@ export async function maybeAttachPaidMediaOffer(draftMessageId: string): Promise
             console.error('[telegram offer] no se pudo leer el borrador', { draftMessageId }, draftError)
             return 'skipped'
         }
-        if (!draft || findPaidMediaOffer(draft.media)) return 'skipped'
+        // `isOfferMedia` y no `findPaidMediaOffer`: un borrador que ya lleva un
+        // teaser gratis tampoco admite una segunda oferta encima.
+        if (!draft || isOfferMedia(draft.media)) return 'skipped'
 
         const { data: chat, error: chatError } = await supabase
             .from('agent_chats')
@@ -120,9 +155,12 @@ export async function maybeAttachPaidMediaOffer(draftMessageId: string): Promise
         const persona = toPersonaDTO(personaRow as AvatarPersonaRow)
         const cfg = parseAutopilot(personaRow as AvatarPersonaRow)
 
-        // Gate 3: enfriamiento. Última oferta a ESTE chat. Se mira sólo hacia
-        // atrás en los mensajes de salida; el borrador de ahora no cuenta
-        // porque arriba ya se comprobó que no lleva oferta.
+        // Historial de salida de ESTE chat, leído UNA VEZ y usado para dos
+        // cosas distintas (dos consultas al mismo filtro serían dos viajes
+        // para el mismo dato):
+        //   - enfriamiento: sólo los `COOLDOWN_LOOKBACK` más recientes;
+        //   - teasers gratis ya vistos: los `FREE_HISTORY_LOOKBACK` enteros.
+        // El borrador de ahora no cuenta: arriba ya se comprobó que va limpio.
         const { data: recentOut, error: recentOutError } = await supabase
             .from('agent_messages')
             .select('media, created_at')
@@ -130,25 +168,30 @@ export async function maybeAttachPaidMediaOffer(draftMessageId: string): Promise
             .eq('chat_id', chat.id)
             .eq('direction', 'out')
             .order('created_at', { ascending: false })
-            .limit(COOLDOWN_LOOKBACK)
+            .limit(FREE_HISTORY_LOOKBACK)
         if (recentOutError) {
             console.error(
-                '[telegram offer] no se pudo leer el historial de salida para el enfriamiento',
+                '[telegram offer] no se pudo leer el historial de salida del chat',
                 { draftMessageId, chatId: chat.id },
                 recentOutError,
             )
             return 'skipped'
         }
-        const lastOffer = (recentOut ?? []).find((m) => findPaidMediaOffer(m.media))
+        const outHistory = recentOut ?? []
+
+        // Gate 3: enfriamiento COMÚN. Cualquier oferta reciente —gratis o de
+        // pago, prometida o entregada— enfría a las dos listas.
+        const lastOffer = outHistory.slice(0, COOLDOWN_LOOKBACK).find((m) => isOfferMedia(m.media))
         const cooldownHours = cfg.offerCooldownHours ?? DEFAULT_COOLDOWN_HOURS
         if (isOfferOnCooldown(lastOffer?.created_at ?? null, Date.now(), cooldownHours)) {
             return 'skipped'
         }
 
-        // Gate 2: catálogo habilitado menos lo que este fan ya compró.
+        // Gate 2: catálogo habilitado, de pago y gratis en una sola lectura
+        // (`is_free` los separa aquí abajo).
         const { data: items, error: itemsError } = await supabase
             .from('telegram_paid_media_items')
-            .select('id, title, star_price')
+            .select('id, title, star_price, is_free, enabled')
             .eq('organization_id', chat.organization_id)
             .eq('avatar_id', chat.avatar_id)
             .eq('enabled', true)
@@ -156,7 +199,7 @@ export async function maybeAttachPaidMediaOffer(draftMessageId: string): Promise
             .limit(50)
         if (itemsError) {
             console.error(
-                '[telegram offer] no se pudo leer el catálogo de contenido de pago',
+                '[telegram offer] no se pudo leer el catálogo de Telegram',
                 { draftMessageId, chatId: chat.id },
                 itemsError,
             )
@@ -179,14 +222,22 @@ export async function maybeAttachPaidMediaOffer(draftMessageId: string): Promise
             )
             return 'skipped'
         }
-        const candidates = filterOfferCandidates(
-            (items ?? []).map((i) => ({ id: i.id, title: i.title, stars: i.star_price })),
+
+        const catalog = items ?? []
+        const paidCandidates = filterOfferCandidates(
+            catalog.filter((i) => !i.is_free).map((i) => ({ id: i.id, title: i.title, stars: i.star_price })),
             {
                 maxOfferStars: cfg.maxOfferStars,
                 purchasedItemIds: (bought ?? []).map((b) => b.item_id).filter((x): x is string => Boolean(x)),
             },
         )
-        if (candidates.length === 0) return 'skipped'
+        // Gratis: el catálogo gratis menos lo que este fan ya recibió o tiene
+        // prometido en un borrador (ver `collectFreeMediaItemIds`).
+        const freeCandidates = filterFreeCandidates(
+            catalog.filter((i) => i.is_free).map((i) => ({ id: i.id, title: i.title })),
+            collectFreeMediaItemIds(outHistory.map((m) => m.media)),
+        )
+        if (paidCandidates.length === 0 && freeCandidates.length === 0) return 'skipped'
 
         // Gate 4: el modelo juzga el momento. El historial se acota a lo que
         // de verdad ocurrió (`received`/`sent`, igual que `draftPipeline`), de
@@ -213,9 +264,17 @@ export async function maybeAttachPaidMediaOffer(draftMessageId: string): Promise
             .reverse()
             .map((m) => `${m.direction === 'in' ? 'FAN' : 'ME'}: ${m.text}`)
             .join('\n')
-        const catalog = candidates.map((c, i) => `${i}. ${c.title} — ${c.stars} Stars`).join('\n')
+        // Las dos listas se numeran POR SEPARADO desde 0: el índice sólo
+        // significa algo junto a su `action`, y `resolveOfferAction` lo valida
+        // contra la lista que toca.
+        const freeList = freeCandidates.length
+            ? freeCandidates.map((c, i) => `${i}. ${c.title}`).join('\n')
+            : '(empty — "free" is NOT allowed)'
+        const paidList = paidCandidates.length
+            ? paidCandidates.map((c, i) => `${i}. ${c.title} — ${c.stars} Stars`).join('\n')
+            : '(empty — "paid" is NOT allowed)'
 
-        const prompt = `You decide whether NOW is a good moment to offer paid content in a private Telegram chat between a creator and a fan.
+        const prompt = `You decide whether NOW is a good moment to attach media to a reply in a private Telegram chat between a creator and a fan, and which kind.
 
 CONVERSATION (oldest first):
 ${transcript}
@@ -223,12 +282,21 @@ ${transcript}
 MY DRAFT REPLY (about to be sent):
 ${draft.text ?? ''}
 
-CATALOG (index. title — price):
-${catalog}
+FREE TEASERS (index. title) — sent for free, one per fan, never repeated:
+${freeList}
 
-Rules: offer only if the fan shows interest, warmth or asks for more; never on a first hello, a complaint or a sensitive topic. Pick the ONE item that best fits the conversation. The caption is one short teasing sentence in the fan's language, no price (the price is shown by Telegram).
+PAID CONTENT (index. title — price) — the fan pays with Telegram Stars:
+${paidList}
 
-Answer with JSON only: {"shouldOffer": boolean, "index": number, "caption": string}`
+Rules:
+- "free": the fan asks for a photo/pic/selfie, or shows curiosity or warmth. Never on a bare "/start", a complaint or a sensitive topic. A free teaser is a hook to warm the chat up.
+- "paid": only with clear intent to see more or to get something exclusive. Never on a first hello, a complaint or a sensitive topic.
+- "none": anything else. When in doubt, "none".
+- Never pick from a list marked empty.
+- Pick the ONE item that best fits the conversation, by its index WITHIN its own list.
+- The caption is one short teasing sentence in the fan's language, no price (Telegram shows the price).
+
+Answer with JSON only: {"action": "none" | "free" | "paid", "index": number, "caption": string}`
 
         const { text } = await generateText({
             model: getChatModel({
@@ -240,24 +308,42 @@ Answer with JSON only: {"shouldOffer": boolean, "index": number, "caption": stri
             temperature: 0.2,
         })
         const parsed = JSON.parse(stripFence(text)) as {
-            shouldOffer?: boolean
-            index?: number
-            caption?: string
+            action?: unknown
+            index?: unknown
+            caption?: unknown
         }
-        if (!parsed.shouldOffer) return 'skipped'
-        const idx = Number(parsed.index)
-        if (!Number.isInteger(idx) || idx < 0 || idx >= candidates.length) {
-            console.error('[telegram offer] índice fuera de rango', { idx, candidatos: candidates.length })
+        const decision = resolveOfferAction(parsed, freeCandidates.length, paidCandidates.length)
+        if (!decision) {
+            // Un `none` es la respuesta normal y no merece ruido; lo que sí lo
+            // merece es que el modelo eligiera algo y la validación lo tirara:
+            // ahí hubo un ítem que estuvo a punto de salir por la lista
+            // equivocada (gratis lo de pago, o al revés).
+            if (parsed.action === 'free' || parsed.action === 'paid') {
+                console.warn('[telegram offer] decisión del modelo descartada por la validación', {
+                    draftMessageId,
+                    chatId: chat.id,
+                    action: parsed.action,
+                    index: parsed.index,
+                    gratis: freeCandidates.length,
+                    pago: paidCandidates.length,
+                })
+            }
             return 'skipped'
         }
-        const pick = candidates[idx]
-
-        const offer: PaidMediaOffer = {
-            type: 'paid_media_offer',
-            itemId: pick.id,
-            stars: pick.stars,
-            caption: (parsed.caption ?? '').trim().slice(0, CAPTION_MAX),
-        }
+        const caption = (typeof parsed.caption === 'string' ? parsed.caption : '').trim().slice(0, CAPTION_MAX)
+        const offer: PaidMediaOffer | FreeMediaOffer =
+            decision.kind === 'free'
+                ? {
+                      type: 'free_media_offer',
+                      itemId: freeCandidates[decision.index].id,
+                      caption,
+                  }
+                : {
+                      type: 'paid_media_offer',
+                      itemId: paidCandidates[decision.index].id,
+                      stars: paidCandidates[decision.index].stars,
+                      caption,
+                  }
         const existing = Array.isArray(draft.media) ? draft.media : []
         // `.eq('status', 'draft')` es la guarda de carrera: si el humano
         // aprobó o envió el borrador mientras el modelo pensaba, la oferta NO
@@ -278,7 +364,7 @@ Answer with JSON only: {"shouldOffer": boolean, "index": number, "caption": stri
         if (updateError) {
             console.error(
                 '[telegram offer] no se pudo adjuntar la oferta',
-                { draftMessageId, chatId: chat.id, itemId: pick.id },
+                { draftMessageId, chatId: chat.id, kind: decision.kind, itemId: offer.itemId },
                 updateError,
             )
             return 'skipped'
@@ -286,7 +372,7 @@ Answer with JSON only: {"shouldOffer": boolean, "index": number, "caption": stri
         if (!updated || updated.length === 0) {
             console.error(
                 '[telegram offer] la guarda status=draft disparó: el borrador ya no era borrador',
-                { draftMessageId, chatId: chat.id, itemId: pick.id },
+                { draftMessageId, chatId: chat.id, kind: decision.kind, itemId: offer.itemId },
             )
             return 'skipped'
         }
