@@ -8,6 +8,7 @@ import Input from '@/components/ui/Input'
 import Tag from '@/components/ui/Tag'
 import Dialog from '@/components/ui/Dialog'
 import Switcher from '@/components/ui/Switcher'
+import Segment from '@/components/ui/Segment'
 import Notification from '@/components/ui/Notification'
 import Alert from '@/components/ui/Alert'
 import toast from '@/components/ui/toast'
@@ -15,6 +16,7 @@ import ConfirmDialog from '@/components/shared/ConfirmDialog'
 import { upsertPaidMediaItem, deletePaidMediaItem } from '@/services/AgentTelegramService'
 import type { PaidMediaItemView } from '@/services/AgentTelegramService'
 import { generateSocialCaption } from '@/services/GeminiService'
+import { isValidStarPrice } from '@/lib/telegram/mediaPricing'
 import type { GenerationPickerItem } from './types'
 
 interface TelegramGalleryProps {
@@ -24,10 +26,11 @@ interface TelegramGalleryProps {
     generations: GenerationPickerItem[]
 }
 
+/** El rango lo decide `mediaPricing.ts` (el mismo fichero puro que valida el
+ *  servicio), aquí sólo se traduce el texto del input a número. */
 function parseStarPrice(raw: string): number | null {
     const n = Number(raw)
-    if (!Number.isInteger(n) || n < 1 || n > 25_000) return null
-    return n
+    return isValidStarPrice(n) ? n : null
 }
 
 const TelegramGallery = ({ avatarId, items, onItemsChange, generations }: TelegramGalleryProps) => {
@@ -37,6 +40,10 @@ const TelegramGallery = ({ avatarId, items, onItemsChange, generations }: Telegr
     const [title, setTitle] = useState('')
     const [caption, setCaption] = useState('')
     const [starPrice, setStarPrice] = useState('50')
+    // Gratis o de pago. Arranca en "de pago" porque es lo que este panel hacía
+    // antes de que existieran los teasers: dar de alta algo gratis tiene que
+    // ser una decisión explícita, no el camino por defecto.
+    const [isFree, setIsFree] = useState(false)
     const [isSaving, setIsSaving] = useState(false)
     const [isGeneratingAi, setIsGeneratingAi] = useState(false)
     const [aiError, setAiError] = useState<string | null>(null)
@@ -46,6 +53,7 @@ const TelegramGallery = ({ avatarId, items, onItemsChange, generations }: Telegr
     const [editTitle, setEditTitle] = useState('')
     const [editCaption, setEditCaption] = useState('')
     const [editStarPrice, setEditStarPrice] = useState('')
+    const [editIsFree, setEditIsFree] = useState(false)
     const [editEnabled, setEditEnabled] = useState(true)
     const [isEditSaving, setIsEditSaving] = useState(false)
 
@@ -61,6 +69,7 @@ const TelegramGallery = ({ avatarId, items, onItemsChange, generations }: Telegr
         setTitle('')
         setCaption('')
         setStarPrice('50')
+        setIsFree(false)
         setAiError(null)
     }
 
@@ -106,7 +115,9 @@ const TelegramGallery = ({ avatarId, items, onItemsChange, generations }: Telegr
         if (!selectedGenerationId) return
         const trimmedTitle = title.trim()
         if (!trimmedTitle) return
-        const price = parseStarPrice(starPrice)
+        // En un gratis el precio ni se pide ni se manda: el servicio lo fuerza
+        // a 0 y el check de la tabla lo exige.
+        const price = isFree ? 0 : parseStarPrice(starPrice)
         if (price === null) return
 
         // Siguiente hueco libre, no `items.length`: si algo se borró en medio,
@@ -121,6 +132,7 @@ const TelegramGallery = ({ avatarId, items, onItemsChange, generations }: Telegr
                 title: trimmedTitle,
                 caption: caption.trim() || null,
                 starPrice: price,
+                isFree,
                 enabled: true,
                 sortOrder: nextSortOrder,
             })
@@ -152,7 +164,11 @@ const TelegramGallery = ({ avatarId, items, onItemsChange, generations }: Telegr
         setEditTarget(item)
         setEditTitle(item.title)
         setEditCaption(item.caption ?? '')
-        setEditStarPrice(String(item.starPrice))
+        // Un gratis guarda 0; enseñar "0" en el campo de precio sería una
+        // trampa si el usuario lo pasa a de pago, así que se ofrece el mismo
+        // valor de partida que el alta.
+        setEditStarPrice(item.isFree ? '50' : String(item.starPrice))
+        setEditIsFree(item.isFree)
         setEditEnabled(item.enabled)
     }
 
@@ -160,7 +176,7 @@ const TelegramGallery = ({ avatarId, items, onItemsChange, generations }: Telegr
         if (!editTarget) return
         const trimmedTitle = editTitle.trim()
         if (!trimmedTitle) return
-        const price = parseStarPrice(editStarPrice)
+        const price = editIsFree ? 0 : parseStarPrice(editStarPrice)
         if (price === null) return
 
         setIsEditSaving(true)
@@ -171,6 +187,7 @@ const TelegramGallery = ({ avatarId, items, onItemsChange, generations }: Telegr
                 title: trimmedTitle,
                 caption: editCaption.trim() || null,
                 starPrice: price,
+                isFree: editIsFree,
                 enabled: editEnabled,
                 sortOrder: editTarget.sortOrder,
             })
@@ -200,6 +217,11 @@ const TelegramGallery = ({ avatarId, items, onItemsChange, generations }: Telegr
                 title: item.title,
                 caption: item.caption,
                 starPrice: item.starPrice,
+                // OBLIGATORIO arrastrarlo: sin `isFree` el servicio trataría
+                // este ítem como de pago y su `starPrice` de 0 (el de un
+                // gratis) no pasaría la validación 1..25000 — habilitar o
+                // deshabilitar un teaser fallaría siempre.
+                isFree: item.isFree,
                 enabled: !item.enabled,
                 sortOrder: item.sortOrder,
             })
@@ -242,7 +264,7 @@ const TelegramGallery = ({ avatarId, items, onItemsChange, generations }: Telegr
     return (
         <div className="flex flex-col gap-4">
             <div className="flex items-center justify-between">
-                <p className="text-sm font-semibold">Paid content ({items.length})</p>
+                <p className="text-sm font-semibold">Content ({items.length})</p>
                 <Button
                     size="sm"
                     variant="solid"
@@ -256,7 +278,8 @@ const TelegramGallery = ({ avatarId, items, onItemsChange, generations }: Telegr
             {items.length === 0 ? (
                 <Card>
                     <p className="text-sm text-gray-500">
-                        No paid content yet — add a generation to sell it as Stars-locked content.
+                        Nothing here yet — add a generation to send it as a free teaser or to
+                        sell it as Stars-locked content.
                     </p>
                 </Card>
             ) : (
@@ -280,6 +303,11 @@ const TelegramGallery = ({ avatarId, items, onItemsChange, generations }: Telegr
                                         className="w-full h-full object-cover"
                                     />
                                 )}
+                                {item.isFree && (
+                                    <Tag className="absolute top-2 left-2 bg-emerald-500 text-white border-0">
+                                        Free
+                                    </Tag>
+                                )}
                                 {!item.enabled && (
                                     <div className="absolute inset-0 bg-black/60 flex items-center justify-center">
                                         <Tag className="bg-gray-700 text-white border-0">Disabled</Tag>
@@ -291,7 +319,9 @@ const TelegramGallery = ({ avatarId, items, onItemsChange, generations }: Telegr
                                     {item.title}
                                 </p>
                                 <p className="text-xs text-gray-400 mb-2">
-                                    ⭐ {item.starPrice} · {item.salesCount} sold
+                                    {item.isFree
+                                        ? `Free · ${item.freeSendsCount} sent`
+                                        : `⭐ ${item.starPrice} · ${item.salesCount} sold`}
                                 </p>
                                 <div className="flex items-center gap-1 flex-wrap">
                                     <Button size="xs" onClick={() => openEdit(item)}>
@@ -330,7 +360,7 @@ const TelegramGallery = ({ avatarId, items, onItemsChange, generations }: Telegr
                     scroll que los alcance. Cabecera y pie fijos; solo el
                     cuerpo scrollea. */}
                 <div className="flex flex-col max-h-[82vh]">
-                    <h5 className="mb-4 shrink-0">Add paid content</h5>
+                    <h5 className="mb-4 shrink-0">Add content</h5>
                     <div className="flex-1 min-h-0 overflow-y-auto thin-scrollbar">
                         {generations.length === 0 ? (
                             <p className="text-sm text-gray-500">
@@ -395,15 +425,34 @@ const TelegramGallery = ({ avatarId, items, onItemsChange, generations }: Telegr
                                     </Alert>
                                 )}
                                 <div>
-                                    <p className="text-xs text-gray-500 mb-1">Price (Stars, 1-25000)</p>
-                                    <Input
-                                        type="number"
-                                        min={1}
-                                        max={25000}
-                                        value={starPrice}
-                                        onChange={(e) => setStarPrice(e.target.value)}
-                                    />
+                                    <p className="text-xs text-gray-500 mb-1">How it&apos;s sent</p>
+                                    <Segment
+                                        value={isFree ? 'free' : 'paid'}
+                                        onChange={(val) => setIsFree(val === 'free')}
+                                    >
+                                        <Segment.Item value="free">Free teaser</Segment.Item>
+                                        <Segment.Item value="paid">Paid</Segment.Item>
+                                    </Segment>
                                 </div>
+                                {isFree ? (
+                                    <p className="text-xs text-gray-400">
+                                        Free teasers go out unlocked, once per fan — the agent uses
+                                        them as a hook, never as the product.
+                                    </p>
+                                ) : (
+                                    <div>
+                                        <p className="text-xs text-gray-500 mb-1">
+                                            Price (Stars, 1-25000)
+                                        </p>
+                                        <Input
+                                            type="number"
+                                            min={1}
+                                            max={25000}
+                                            value={starPrice}
+                                            onChange={(e) => setStarPrice(e.target.value)}
+                                        />
+                                    </div>
+                                )}
                                 <div>
                                     <p className="text-xs text-gray-500 mb-1">Caption (optional)</p>
                                     <Input
@@ -415,9 +464,9 @@ const TelegramGallery = ({ avatarId, items, onItemsChange, generations }: Telegr
                                     />
                                 </div>
                                 <p className="text-xs text-gray-400">
-                                    Photos up to 10 MB, videos up to 50 MB — Telegram&apos;s own limit for
-                                    paid media. Larger files are rejected when you hit Add, with the exact
-                                    size shown.
+                                    Photos up to 10 MB, videos up to 50 MB — Telegram&apos;s own limit.
+                                    Larger files are rejected when you hit Add, with the exact size
+                                    shown.
                                 </p>
                             </div>
                         )}
@@ -429,7 +478,11 @@ const TelegramGallery = ({ avatarId, items, onItemsChange, generations }: Telegr
                         <Button
                             variant="solid"
                             loading={isSaving}
-                            disabled={!selectedGenerationId || !title.trim()}
+                            disabled={
+                                !selectedGenerationId ||
+                                !title.trim() ||
+                                (!isFree && parseStarPrice(starPrice) === null)
+                            }
                             onClick={handleAdd}
                         >
                             Add
@@ -456,15 +509,29 @@ const TelegramGallery = ({ avatarId, items, onItemsChange, generations }: Telegr
                                 <Input value={editTitle} onChange={(e) => setEditTitle(e.target.value)} />
                             </div>
                             <div>
-                                <p className="text-xs text-gray-500 mb-1">Price (Stars, 1-25000)</p>
-                                <Input
-                                    type="number"
-                                    min={1}
-                                    max={25000}
-                                    value={editStarPrice}
-                                    onChange={(e) => setEditStarPrice(e.target.value)}
-                                />
+                                <p className="text-xs text-gray-500 mb-1">How it&apos;s sent</p>
+                                <Segment
+                                    value={editIsFree ? 'free' : 'paid'}
+                                    onChange={(val) => setEditIsFree(val === 'free')}
+                                >
+                                    <Segment.Item value="free">Free teaser</Segment.Item>
+                                    <Segment.Item value="paid">Paid</Segment.Item>
+                                </Segment>
                             </div>
+                            {!editIsFree && (
+                                <div>
+                                    <p className="text-xs text-gray-500 mb-1">
+                                        Price (Stars, 1-25000)
+                                    </p>
+                                    <Input
+                                        type="number"
+                                        min={1}
+                                        max={25000}
+                                        value={editStarPrice}
+                                        onChange={(e) => setEditStarPrice(e.target.value)}
+                                    />
+                                </div>
+                            )}
                             <div>
                                 <p className="text-xs text-gray-500 mb-1">Caption (optional)</p>
                                 <Input
@@ -477,7 +544,9 @@ const TelegramGallery = ({ avatarId, items, onItemsChange, generations }: Telegr
                             <div className="flex items-center gap-2">
                                 <Switcher checked={editEnabled} onChange={(c) => setEditEnabled(c)} />
                                 <span className="text-sm">
-                                    {editEnabled ? 'Enabled — visible for sale' : 'Disabled — hidden from sale'}
+                                    {editEnabled
+                                        ? 'Enabled — available to send'
+                                        : 'Disabled — hidden from the agent and the inbox'}
                                 </span>
                             </div>
                         </div>
