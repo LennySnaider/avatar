@@ -20,6 +20,7 @@ import {
     type AgentMessageDTO,
     type PpvSuggestion,
 } from '@/services/AgentInboxService'
+import TelegramSendContentDialog from '../../_shared/TelegramSendContentDialog'
 
 type ThreadData = NonNullable<Awaited<ReturnType<typeof getAgentChatThread>>['data']>
 
@@ -75,6 +76,15 @@ const ThreadPane = ({ thread, onChanged }: ThreadPaneProps) => {
     // `approveAndSendVoiceNote`/`suggestPpvOffer`). El nombre nuevo dice lo
     // que la condición hace hoy: ocultar lo que sólo existe en Fanvue.
     const hideFanvueOnlyTools = chat.channel !== 'fanvue'
+
+    // Lo simétrico para Telegram: mandar una foto de la galería (teaser gratis
+    // o contenido de pago con Stars) sólo existe en ese canal. Vive AQUÍ, en el
+    // hilo, y no sólo en el panel de Telegram, porque es donde se está leyendo
+    // al fan cuando se decide mandarle algo (feedback del usuario 17-sep: "el
+    // Inbox manda"). El diálogo es el mismo componente compartido que usa la
+    // pestaña Conversations de ese panel.
+    const isTelegramChat = chat.channel === 'telegram'
+    const [sendContentOpen, setSendContentOpen] = useState(false)
 
     // Comentario en un post social: cabecera con la red, el caption y el
     // enlace al post original. Sólo los chats `social:*` traen `context`.
@@ -424,6 +434,22 @@ const ThreadPane = ({ thread, onChanged }: ThreadPaneProps) => {
 
             {/* Draft composer */}
             <div className="p-3 border-t border-gray-100 dark:border-gray-700">
+                {/* Acciones del canal Telegram — FUERA del bloque del borrador
+                    a propósito: mandar una foto no depende de que el agente
+                    tenga una respuesta escrita (y con `auto` puede no haberla
+                    nunca). */}
+                {isTelegramChat && (
+                    <div className="flex items-center justify-end mb-2">
+                        <Button
+                            size="sm"
+                            variant="plain"
+                            onClick={() => setSendContentOpen(true)}
+                            title="Send a free teaser or Stars-locked content from this avatar's Telegram gallery"
+                        >
+                            📷 Send content
+                        </Button>
+                    </div>
+                )}
                 {draft ? (
                     <>
                         <div className="flex items-center justify-between mb-1">
@@ -516,6 +542,20 @@ const ThreadPane = ({ thread, onChanged }: ThreadPaneProps) => {
                     </div>
                 )}
             </div>
+
+            {isTelegramChat && sendContentOpen && (
+                <TelegramSendContentDialog
+                    isOpen
+                    avatarId={chat.avatarId}
+                    chatId={chat.id}
+                    fanLabel={chat.fanDisplayName ?? chat.fanHandle}
+                    onClose={() => setSendContentOpen(false)}
+                    // Mismo refresco que cualquier otra acción que escribe en
+                    // el hilo (`approveAndSend`, PPV): el envío deja un
+                    // `agent_messages` saliente que el padre tiene que releer.
+                    onSent={() => onChanged()}
+                />
+            )}
         </div>
     )
 }
