@@ -345,6 +345,11 @@ export async function deliverPaidMedia(input: DeliverPaidMediaInput): Promise<De
                 status: 'sent',
                 approved_by: approvedBy ?? null,
                 sent_at: new Date().toISOString(),
+                // MARCA DE ENTREGA DE MEDIA — misma razón que en
+                // `freeMedia.ts`: esta fila registra la media que acompañó a
+                // un mensaje, no un mensaje escrito, y el límite diario del
+                // autopilot no debe contarla. Nada más cambia aquí.
+                generated_by: { kind: 'media_delivery' },
             })
             .select('id')
             .single()

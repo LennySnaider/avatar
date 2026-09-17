@@ -195,6 +195,10 @@ export async function maybeAttachPaidMediaOffer(draftMessageId: string): Promise
             .eq('organization_id', chat.organization_id)
             .eq('avatar_id', chat.avatar_id)
             .eq('enabled', true)
+            // Los gratis PRIMERO, por el mismo motivo que en `draftPipeline`:
+            // el `limit` es común a las dos listas y un catálogo de pago largo
+            // dejaría al motor sin ningún candidato gratis que ofrecer.
+            .order('is_free', { ascending: false })
             .order('sort_order', { ascending: true })
             .limit(50)
         if (itemsError) {

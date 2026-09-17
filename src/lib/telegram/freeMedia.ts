@@ -76,8 +76,16 @@ export interface DeliverFreeMediaInput {
     caption?: string
     /** `'agent'` = lo disparó el autopilot (motor de oferta / borrador
      *  auto-enviado); `'inbox'` = un humano lo mandó a mano desde el panel.
-     *  De aquí sale `agent_messages.approved_by` — ver PASO 4 más abajo. */
+     *  De aquí sale `agent_messages.approved_by` cuando `approvedBy` no
+     *  viene — ver PASO 4 más abajo. */
     source: 'agent' | 'inbox'
+    /** Quién aprobó el mensaje que arrastra este teaser: `'autopilot'` o el id
+     *  del humano que le dio a enviar. Mismo campo y mismo significado que en
+     *  `deliverPaidMedia`. Sin él, un borrador con teaser que aprueba UNA
+     *  PERSONA quedaba registrado como `'autopilot'` sólo porque el envío lo
+     *  ejecutó `sendAgentMessage`: la atribución mentía. Ausente = se decide
+     *  por `source`, como antes. */
+    approvedBy?: string | null
 }
 
 export interface DeliverFreeMediaResult {
@@ -163,7 +171,7 @@ async function loadFreeItemForDelivery(
 export async function deliverFreeMedia(
     input: DeliverFreeMediaInput,
 ): Promise<DeliverFreeMediaResult> {
-    const { chat, itemId, caption, source } = input
+    const { chat, itemId, caption, source, approvedBy } = input
 
     // PASO 1 — cargar el ítem y los ajustes; validar habilitado y gratis.
     const item = await loadFreeItemForDelivery(
@@ -291,7 +299,13 @@ export async function deliverFreeMedia(
                 media: [{ type: 'free_media', itemId: item.id }],
                 external_message_id: String(message.message_id),
                 sent_at: new Date().toISOString(),
-                approved_by: source === 'inbox' ? null : 'autopilot',
+                approved_by: approvedBy !== undefined ? approvedBy : source === 'inbox' ? null : 'autopilot',
+                // MARCA DE ENTREGA DE MEDIA. Esta fila no es un mensaje que la
+                // IA haya escrito: es el registro de la foto que acompañó a
+                // otro mensaje. El límite diario del autopilot cuenta mensajes
+                // enviados, y sin esta marca un teaser gastaba cupo dos veces
+                // (el texto y su propia foto). Ver `maybeAutopilotSendScheduled`.
+                generated_by: { kind: 'media_delivery' },
             })
         if (error) throw new Error(error.message)
 

@@ -128,6 +128,11 @@ export async function generateDraftReply(chatId: string): Promise<DraftResult | 
             .eq('organization_id', chat.organization_id)
             .eq('avatar_id', chat.avatar_id)
             .eq('enabled', true)
+            // Los gratis PRIMERO: el `limit` es un tope común a las dos listas
+            // y el catálogo gratis suele ser mucho más corto. Con el orden
+            // sólo por `sort_order`, un catálogo de pago largo podía comerse
+            // el tope entero y dejar al prompt sin teasers que enseñar.
+            .order('is_free', { ascending: false })
             .order('sort_order', { ascending: true })
             .limit(40)
         // Un fallo aquí NO corta el borrador —se responde igual, sólo que sin

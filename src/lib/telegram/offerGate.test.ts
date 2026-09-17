@@ -294,3 +294,17 @@ test('collectFreeMediaItemIds aguanta media basura', () => {
         [],
     )
 })
+
+test('resolveOfferAction: un index que no es número no se coacciona a 0', () => {
+    // `Number(null)` y `Number('')` valen 0, que es un índice VÁLIDO: sin la
+    // comprobación de tipo, un modelo que respondiera `"index": null` acabaría
+    // ofreciendo el primer ítem de la lista sin haberlo elegido.
+    assert.equal(resolveOfferAction({ action: 'free', index: null }, 2, 2), null)
+    assert.equal(resolveOfferAction({ action: 'free', index: '' }, 2, 2), null)
+    assert.equal(resolveOfferAction({ action: 'paid', index: false }, 2, 2), null)
+    assert.equal(resolveOfferAction({ action: 'paid', index: [] }, 2, 2), null)
+})
+
+test('resolveOfferAction: un index en texto ("1") tampoco vale', () => {
+    assert.equal(resolveOfferAction({ action: 'paid', index: '1' }, 0, 3), null)
+})

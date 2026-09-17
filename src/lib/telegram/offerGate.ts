@@ -200,7 +200,13 @@ export function resolveOfferAction(
     if (action !== 'free' && action !== 'paid') return null
     const total = action === 'free' ? freeCount : paidCount
     if (total <= 0) return null
-    const index = Number(parsed.index)
+    // El tipo se comprueba ANTES de coaccionar: `Number(null)`, `Number('')`,
+    // `Number(false)` y `Number([])` valen todos 0, que es un índice válido —
+    // un modelo que respondiera `"index": null` acabaría ofreciendo el primer
+    // ítem de la lista sin haberlo elegido. Un `"1"` en texto tampoco pasa:
+    // si el modelo no respetó el tipo, no se le adivina la intención.
+    if (typeof parsed.index !== 'number') return null
+    const index = parsed.index
     if (!Number.isInteger(index) || index < 0 || index >= total) return null
     return { kind: action, index }
 }

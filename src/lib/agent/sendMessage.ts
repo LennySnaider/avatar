@@ -165,6 +165,9 @@ export async function sendAgentMessage(messageId: string): Promise<SendAgentMess
                     itemId: freeOffer.itemId,
                     caption: freeOffer.caption || undefined,
                     source: 'agent',
+                    // Misma atribución que la rama de pago: si el borrador lo
+                    // aprobó una persona, el teaser es suyo, no del autopilot.
+                    approvedBy: msg.approved_by,
                 })
             } catch (e) {
                 console.error('[agent] teaser gratis no entregado', { messageId, itemId: freeOffer.itemId }, e)
