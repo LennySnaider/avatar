@@ -86,7 +86,8 @@ import type { PaidMediaPurchased, TelegramUpdate, TgMessage } from '@/lib/telegr
 import { ingestMessage, resolveAvatarTargetById, touchFanMemory, upsertChat } from '@/lib/agent/inboxSync'
 import { recordStarsSale, type StarsSaleEvent } from '@/lib/telegram/sales'
 import { generateDraftReply } from '@/lib/agent/draftPipeline'
-import { maybeAutopilotSend } from '@/lib/agent/autopilot'
+import { flushOneApprovedMessage, maybeAutopilotSendScheduled } from '@/lib/agent/autopilot'
+import { immediateSendWaitMs } from '@/lib/agent/immediateSend'
 import { shouldDraftTelegramReply } from '@/lib/telegram/aiGate'
 import { maybeAttachPaidMediaOffer } from '@/lib/telegram/offerEngine'
 
@@ -197,6 +198,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ ava
 
 /** Sólo chats privados, y nunca si el emisor es un bot (evita eco/spam). */
 async function handleMessage(settings: TelegramSettings, message: TgMessage): Promise<void> {
+    // Referencia para el presupuesto del envío inmediato (ver `after()` abajo):
+    // `maxDuration` cuenta desde que arrancó la función, y esto es lo más
+    // cerca de ese arranque que tenemos a mano sin enhebrar el `POST`.
+    const startedAtMs = Date.now()
     if (message.chat.type !== 'private') return
     if (message.from?.is_bot) return
 
@@ -257,8 +262,27 @@ async function handleMessage(settings: TelegramSettings, message: TgMessage): Pr
             if (settings.aiOffersEnabled) {
                 await maybeAttachPaidMediaOffer(draft.messageId)
             }
-            if (chat.mode === 'auto') {
-                await maybeAutopilotSend(chat.id, draft.messageId)
+            if (chat.mode !== 'auto') return
+            const { outcome, sendAfter } = await maybeAutopilotSendScheduled(chat.id, draft.messageId)
+            if (outcome !== 'scheduled') return
+
+            // ENVÍO INMEDIATO (17-sep-2026): medido, el cron por minuto añadía
+            // 20-27 s de espera a cada respuesta. Si el `send_after` cabe en lo
+            // que le queda a esta función (maxDuration − margen), esperamos y
+            // enviamos aquí; el reclamo atómico de `flushOneApprovedMessage`
+            // hace que el cron, si llega a la vez, vea 0 filas y siga. Si no
+            // cabe, la cola del cron lo recoge como siempre.
+            const waitMs = immediateSendWaitMs({
+                sendAfter,
+                nowMs: Date.now(),
+                startedAtMs,
+                maxDurationMs: maxDuration * 1000,
+            })
+            if (waitMs === null) return
+            if (waitMs > 0) await new Promise((r) => setTimeout(r, waitMs))
+            const sent = await flushOneApprovedMessage(draft.messageId)
+            if (sent === 'failed') {
+                console.error('[telegram webhook] envío inmediato fallido', { chatId: chat.id, messageId: draft.messageId })
             }
         } catch (e) {
             console.error('[telegram webhook] borrador/autopilot', e)

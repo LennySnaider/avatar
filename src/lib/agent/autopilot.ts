@@ -88,13 +88,27 @@ async function escalate(organizationId: string, chatId: string, reason: string):
  * send_after; the flush cron does the actual send.
  */
 export async function maybeAutopilotSend(chatId: string, draftMessageId: string): Promise<AutopilotOutcome> {
+    const { outcome } = await maybeAutopilotSendScheduled(chatId, draftMessageId)
+    return outcome
+}
+
+/**
+ * Igual que `maybeAutopilotSend`, pero devuelve también el `send_after` que
+ * dejó escrito cuando el resultado es `scheduled`. Lo usa el webhook de
+ * Telegram para decidir si puede enviar él mismo sin esperar al cron
+ * (`immediateSend.ts`). Los demás llamadores siguen con la firma corta.
+ */
+export async function maybeAutopilotSendScheduled(
+    chatId: string,
+    draftMessageId: string,
+): Promise<{ outcome: AutopilotOutcome; sendAfter: string | null }> {
     const supabase = agentSupabase()
     // El chat se busca por id sin filtro de org porque ESTE id lo acaba de
     // producir nuestro propio pipeline (draft recién creado); es la fila que
     // RESUELVE la org, no una que haya que autorizar. De aquí en adelante todo
     // cuelga de `chat.organization_id`.
     const { data: chat } = await supabase.from('agent_chats').select('*').eq('id', chatId).maybeSingle()
-    if (!chat || chat.mode !== 'auto' || chat.is_creator) return 'skipped'
+    if (!chat || chat.mode !== 'auto' || chat.is_creator) return { outcome: 'skipped', sendAfter: null }
 
     const { data: persona } = await supabase
         .from('avatar_personas')
@@ -102,9 +116,9 @@ export async function maybeAutopilotSend(chatId: string, draftMessageId: string)
         .eq('organization_id', chat.organization_id)
         .eq('avatar_id', chat.avatar_id)
         .maybeSingle()
-    if (!persona) return 'skipped'
+    if (!persona) return { outcome: 'skipped', sendAfter: null }
     const cfg = parseAutopilot(persona as AvatarPersonaRow)
-    if (!cfg.enabled) return 'skipped'
+    if (!cfg.enabled) return { outcome: 'skipped', sendAfter: null }
 
     // Spec A4: un borrador con oferta de contenido de pago sólo sale solo si
     // el creador lo permitió expresamente. Ofrecer es vender.
@@ -136,10 +150,10 @@ export async function maybeAutopilotSend(chatId: string, draftMessageId: string)
                 { chatId, draftMessageId },
                 draftError,
             )
-            return escalate(chat.organization_id, chatId, 'Could not verify paid offer — needs review')
+            return { outcome: await escalate(chat.organization_id, chatId, 'Could not verify paid offer — needs review'), sendAfter: null }
         }
         if (hasPaidMediaOffer(draftRow?.media) && !cfg.allowPaidMediaOffers) {
-            return escalate(chat.organization_id, chatId, 'Paid media offer needs approval')
+            return { outcome: await escalate(chat.organization_id, chatId, 'Paid media offer needs approval'), sendAfter: null }
         }
     }
 
@@ -155,12 +169,12 @@ export async function maybeAutopilotSend(chatId: string, draftMessageId: string)
         .maybeSingle()
     const risk = await classifyInboundMessage(lastFan?.text ?? '')
     if (!risk.autopilotSafe) {
-        return escalate(chat.organization_id, chatId, `${risk.category}: ${risk.reason}`)
+        return { outcome: await escalate(chat.organization_id, chatId, `${risk.category}: ${risk.reason}`), sendAfter: null }
     }
 
     // Active hours.
     const now = new Date()
-    if (!withinActiveHours(cfg, now)) return 'skipped'
+    if (!withinActiveHours(cfg, now)) return { outcome: 'skipped', sendAfter: null }
 
     // Daily limit (messages actually sent today for this avatar).
     if (cfg.dailyMessageLimit && cfg.dailyMessageLimit > 0) {
@@ -173,11 +187,14 @@ export async function maybeAutopilotSend(chatId: string, draftMessageId: string)
             .eq('approved_by', 'autopilot')
             .gte('sent_at', dayStart)
         if ((count ?? 0) >= cfg.dailyMessageLimit) {
-            return escalate(
-                chat.organization_id,
-                chatId,
-                'Daily autopilot limit reached — sending paused',
-            )
+            return {
+                outcome: await escalate(
+                    chat.organization_id,
+                    chatId,
+                    'Daily autopilot limit reached — sending paused',
+                ),
+                sendAfter: null,
+            }
         }
     }
 
@@ -195,7 +212,7 @@ export async function maybeAutopilotSend(chatId: string, draftMessageId: string)
         .eq('organization_id', chat.organization_id)
         .eq('id', draftMessageId)
         .eq('status', 'draft')
-    return 'scheduled'
+    return { outcome: 'scheduled', sendAfter }
 }
 
 /**
@@ -224,29 +241,45 @@ export async function flushDueAutopilotMessages(): Promise<{ sent: number; faile
     let sent = 0
     let failed = 0
     for (const row of due ?? []) {
-        // RECLAMO ATÓMICO. Sin esto, dos barridos concurrentes (o uno que
-        // muere entre el envío y el update a `sent`) envían el mismo mensaje
-        // dos veces — y en Telegram, la misma media de pago dos veces.
-        // Postgres serializa el UPDATE ... WHERE por fila: sólo un barrido
-        // consigue la fila; el otro ve 0 filas y sigue. `send_after` a null
-        // es el reclamo (el select de arriba exige que no sea null) y
-        // `sendAgentMessage` no lo mira, así que no cambia nada más.
-        const { data: claimed, error: claimError } = await supabase
-            .from('agent_messages')
-            .update({ send_after: null, updated_at: nowIso })
-            .eq('id', row.id)
-            .eq('status', 'approved')
-            .not('send_after', 'is', null)
-            .select('id')
-        if (claimError) {
-            console.error('[agent] autopilot flush: no se pudo reclamar el mensaje', { messageId: row.id }, claimError)
-            failed++
-            continue
-        }
-        if (!claimed || claimed.length === 0) continue // otro barrido ya lo tomó
-        const res = await sendAgentMessage(row.id)
-        if (res.success) sent++
-        else failed++
+        const res = await flushOneApprovedMessage(row.id)
+        if (res === 'sent') sent++
+        else if (res === 'failed') failed++
     }
     return { sent, failed }
+}
+
+/**
+ * Reclama y envía UN mensaje aprobado por el autopilot. Lo usan el cron (en
+ * bucle) y el webhook de Telegram (envío inmediato cuando el `send_after`
+ * cabe en el presupuesto de la función, ver `immediateSend.ts`).
+ *
+ * RECLAMO ATÓMICO. Sin esto, dos barridos concurrentes (o uno que muere
+ * entre el envío y el update a `sent`) envían el mismo mensaje dos veces — y
+ * en Telegram, la misma media de pago dos veces. Postgres serializa el
+ * UPDATE ... WHERE por fila: sólo un llamador consigue la fila; el otro ve 0
+ * filas y sigue. `send_after` a null es el reclamo (el select del cron exige
+ * que no sea null) y `sendAgentMessage` no lo mira, así que no cambia nada
+ * más. Es exactamente lo que hace que webhook y cron puedan convivir sobre
+ * la misma fila sin coordinarse.
+ *
+ * `taken` = otro llamador ya lo reclamó (o el mensaje ya no está en
+ * `approved`): no es un error.
+ */
+export async function flushOneApprovedMessage(messageId: string): Promise<'sent' | 'failed' | 'taken'> {
+    const supabase = agentSupabase()
+    const nowIso = new Date().toISOString()
+    const { data: claimed, error: claimError } = await supabase
+        .from('agent_messages')
+        .update({ send_after: null, updated_at: nowIso })
+        .eq('id', messageId)
+        .eq('status', 'approved')
+        .not('send_after', 'is', null)
+        .select('id')
+    if (claimError) {
+        console.error('[agent] autopilot flush: no se pudo reclamar el mensaje', { messageId }, claimError)
+        return 'failed'
+    }
+    if (!claimed || claimed.length === 0) return 'taken'
+    const res = await sendAgentMessage(messageId)
+    return res.success ? 'sent' : 'failed'
 }
