@@ -551,6 +551,20 @@ const AvatarCard = ({ avatar }: AvatarCardProps) => {
                             alt={avatar.name}
                             loading="lazy"
                             decoding="async"
+                            // MISMO MODO CORS que el resto de la app. Desde que
+                            // el servidor resuelve la miniatura (14-sep), esta
+                            // etiqueta es la PRIMERA que pide la cara a R2 — y
+                            // sin `crossOrigin` dejaba en la caché una entrada
+                            // sin `Access-Control-Allow-Origin`, sellada
+                            // `immutable` un año porque R2 no manda `Vary:
+                            // Origin`. El `fetch()` de loadReferences() sobre la
+                            // MISMA url reutilizaba esa entrada y el navegador
+                            // la rechazaba: el drawer de edición se abría sin
+                            // cara. Es la trampa que ya documentaron el
+                            // filmstrip del editor, GalleryPanel y el precargado
+                            // de AvatarSelector. Un modo para todos = una sola
+                            // entrada.
+                            crossOrigin="anonymous"
                             className="w-full h-full object-cover"
                         />
                     ) : (

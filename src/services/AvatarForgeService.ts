@@ -14,11 +14,14 @@ import {
     deleteMediaObject,
     r2Enabled,
     createPresignedPutUrl,
-    getR2PublicUrl,
     r2ObjectExists,
 } from '@/lib/mediaStore'
 import type { GenerationUploadTicket } from '@/lib/storageUpload'
-import { orgStoragePath, orgOwnsStoragePath } from '@/lib/storagePaths'
+import {
+    orgStoragePath,
+    orgOwnsStoragePath,
+    getReferenceMediaUrl,
+} from '@/lib/storagePaths'
 import { orgTable, orgSupabase } from '@/lib/org/orgTable'
 import type {
     Avatar,
@@ -615,13 +618,18 @@ export async function getSignedUrl(
     await assertPathInOrg(ctx, path)
 
     if (provider === 'r2') {
-        try {
-            return getR2PublicUrl(path)
-        } catch (e) {
-            // Fila marcada r2 sin base configurada: se sigue por Supabase, que
-            // quizá aún tenga el objeto, en vez de reventar el render.
-            console.warn('[storage] fila r2 sin base pública:', e)
+        if (process.env.NEXT_PUBLIC_R2_PUBLIC_BASE_URL) {
+            // Con el `?v=` de getReferenceMediaUrl, no la URL pelada: es la
+            // misma que pintan la tarjeta y el selector, y es OTRA clave de
+            // caché que las entradas sin CORS que quedaron envenenadas —
+            // selladas `immutable` un año, ni un reload las tira. Sin esto, el
+            // `fetch()` de este mismo objeto seguía rebotando por CORS y el
+            // drawer de edición se abría sin cara.
+            return getReferenceMediaUrl(path, 'r2')
         }
+        // Fila marcada r2 sin base configurada: se sigue por Supabase, que
+        // quizá aún tenga el objeto, en vez de reventar el render.
+        console.warn('[storage] fila r2 sin base pública:', path)
     }
 
     const supabase = orgSupabase()
@@ -636,7 +644,8 @@ export async function getSignedUrl(
         // esa ventana, no una excepción: null → la UI muestra su fallback.
         // Cualquier otro error sigue lanzando.
         if (/not.?found/i.test(error.message)) {
-            if (await r2ObjectExists(path)) return getR2PublicUrl(path)
+            if (await r2ObjectExists(path))
+                return getReferenceMediaUrl(path, 'r2')
             return null
         }
         throw error

@@ -1,4 +1,4 @@
-import { getR2PublicUrl } from '@/lib/mediaStore'
+import { getReferenceMediaUrl } from '@/lib/storagePaths'
 import { getOrgContext } from '@/lib/tenant/getOrgContext'
 import { orgTable, orgSupabase } from '@/lib/org/orgTable'
 import type { AvatarWithReferences } from '@/app/(protected-pages)/concepts/avatar-forge/avatar-list/types'
@@ -117,13 +117,19 @@ const getAvatars = async (_queryParams: {
                 // Supabase) y su URL trae caché inmutable de un año — que es
                 // justo el egress que la migración venía a ahorrar. Ver
                 // getSignedUrl en AvatarForgeService.
-                if (cand.storage_provider === 'r2') {
-                    try {
-                        thumbnailUrl = getR2PublicUrl(cand.storage_path)
-                        break
-                    } catch {
-                        // sin base pública configurada → se intenta Supabase
-                    }
+                //
+                // La URL sale de getReferenceMediaUrl y NO de getR2PublicUrl:
+                // es la que lleva el `?v=` que escapa de las entradas de caché
+                // envenenadas sin CORS. Así la tarjeta pide EXACTAMENTE la
+                // misma url que el selector y que el `fetch()` del drawer de
+                // edición — una sola entrada de caché, un solo modo.
+                if (
+                    cand.storage_provider === 'r2' &&
+                    process.env.NEXT_PUBLIC_R2_PUBLIC_BASE_URL
+                ) {
+                    // sin base pública configurada → se intenta Supabase
+                    thumbnailUrl = getReferenceMediaUrl(cand.storage_path, 'r2')
+                    break
                 }
                 const { data: signedUrl } = await supabase.storage
                     .from('avatars')
