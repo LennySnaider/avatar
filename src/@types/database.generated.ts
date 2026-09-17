@@ -1677,8 +1677,10 @@ export type Database = {
           caption: string | null
           created_at: string
           enabled: boolean
+          free_sends_count: number
           generation_id: string | null
           id: string
+          is_free: boolean
           media_kind: string
           offers_count: number
           organization_id: string
@@ -1698,8 +1700,10 @@ export type Database = {
           caption?: string | null
           created_at?: string
           enabled?: boolean
+          free_sends_count?: number
           generation_id?: string | null
           id?: string
+          is_free?: boolean
           media_kind: string
           offers_count?: number
           organization_id: string
@@ -1719,8 +1723,10 @@ export type Database = {
           caption?: string | null
           created_at?: string
           enabled?: boolean
+          free_sends_count?: number
           generation_id?: string | null
           id?: string
+          is_free?: boolean
           media_kind?: string
           offers_count?: number
           organization_id?: string
