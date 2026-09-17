@@ -38,6 +38,29 @@ interface ThreadPaneProps {
  * nunca), y en el compositor sólo se pinta el borrador (siempre cierta). Quien
  * decide ahora es quien llama: si pasa `onRemove`, hay botón.
  */
+const OfferTagShell = ({
+    label,
+    tone,
+    removeLabel,
+    className,
+    onRemove,
+}: {
+    label: string
+    tone: string
+    removeLabel: string
+    className?: string
+    onRemove?: () => void
+}) => (
+    <div className={`flex items-center gap-2 text-xs ${className ?? ''}`}>
+        <Tag className={`${tone} border-0`}>{label}</Tag>
+        {onRemove && (
+            <Button size="xs" variant="plain" onClick={onRemove}>
+                {removeLabel}
+            </Button>
+        )}
+    </div>
+)
+
 const OfferTag = ({
     offer,
     className,
@@ -47,16 +70,38 @@ const OfferTag = ({
     className?: string
     onRemove?: () => void
 }) => (
-    <div className={`flex items-center gap-2 text-xs ${className ?? ''}`}>
-        <Tag className="bg-amber-100 text-amber-700 dark:bg-amber-500/20 dark:text-amber-100 border-0">
-            ⭐ Paid offer · {offer.stars} Stars
-        </Tag>
-        {onRemove && (
-            <Button size="xs" variant="plain" onClick={onRemove}>
-                Remove offer
-            </Button>
-        )}
-    </div>
+    <OfferTagShell
+        label={`⭐ Paid offer · ${offer.stars} Stars`}
+        tone="bg-amber-100 text-amber-700 dark:bg-amber-500/20 dark:text-amber-100"
+        removeLabel="Remove offer"
+        className={className}
+        onRemove={onRemove}
+    />
+)
+
+/**
+ * Lo mismo para el teaser GRATIS que `offerEngine` puede adjuntar a un
+ * borrador. Existe porque sin él ese teaser era INVISIBLE: se pegaba al
+ * borrador y salía al aprobarlo sin que el creador lo hubiera visto ni
+ * pudiera quitarlo — y un teaser se gasta UNA VEZ por fan, así que aprobar a
+ * ciegas quema contenido para siempre. Verde y no ámbar a propósito: aquí no
+ * se cobra nada, y confundirlo con la oferta de pago es justo lo que hay que
+ * evitar.
+ */
+const FreeOfferTag = ({
+    className,
+    onRemove,
+}: {
+    className?: string
+    onRemove?: () => void
+}) => (
+    <OfferTagShell
+        label="🎁 Free teaser"
+        tone="bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-100"
+        removeLabel="Remove teaser"
+        className={className}
+        onRemove={onRemove}
+    />
 )
 
 const ThreadPane = ({ thread, onChanged }: ThreadPaneProps) => {
@@ -381,6 +426,7 @@ const ThreadPane = ({ thread, onChanged }: ThreadPaneProps) => {
                             )}
                         </div>
                         {m.paidOffer && <OfferTag offer={m.paidOffer} className="mt-1" />}
+                        {m.freeOffer && <FreeOfferTag className="mt-1" />}
                     </div>
                 ))}
             </div>
@@ -463,6 +509,12 @@ const ThreadPane = ({ thread, onChanged }: ThreadPaneProps) => {
                         {draft.paidOffer && (
                             <OfferTag
                                 offer={draft.paidOffer}
+                                className="mb-2"
+                                onRemove={() => handleRemoveOffer(draft.id)}
+                            />
+                        )}
+                        {draft.freeOffer && (
+                            <FreeOfferTag
                                 className="mb-2"
                                 onRemove={() => handleRemoveOffer(draft.id)}
                             />
