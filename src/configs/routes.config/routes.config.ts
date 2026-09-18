@@ -15,6 +15,19 @@ export const protectedRoutes: Routes = {
     ...guideRoute,
 }
 
-export const publicRoutes: Routes = {}
+export const publicRoutes: Routes = {
+    /**
+     * Aceptar una invitación a una organización (F4.3). Va en publicRoutes y
+     * NO en authRoute a propósito: el middleware REBOTA al dashboard a quien
+     * entra en una authRoute con sesión abierta (middleware.ts), y aquí el que
+     * llega con sesión ajena necesita leer "cierra sesión para aceptar con
+     * otra cuenta", no aparecer en el dashboard sin saber qué pasó con el
+     * enlace que le mandaron. Una ruta pública pasa con y sin sesión.
+     */
+    '/accept-invite': {
+        key: 'acceptInvite',
+        authority: [],
+    },
+}
 
 export const authRoutes = authRoute

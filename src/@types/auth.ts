@@ -35,6 +35,26 @@ export type ResetPassword = {
     token: string
 }
 
+/** GET /auth/accept-invite?token= — lo que la página necesita para decir a quién invita. */
+export type InvitationPreview = {
+    email: string
+    role: string
+    organizationName: string
+    expiresAt: string
+}
+
+export type AcceptInvitation = {
+    token: string
+    name?: string
+    password: string
+    confirmPassword: string
+}
+
+export type AcceptInvitationResponse = {
+    email: string
+    message: string
+}
+
 export type AuthRequestStatus = 'success' | 'failed' | ''
 
 export type AuthResult = Promise<{
