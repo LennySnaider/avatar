@@ -27,6 +27,7 @@
  * guardando como autoría.
  */
 import { getOrgContext } from '@/lib/tenant/getOrgContext'
+import { requirePermission } from '@/lib/org/guards'
 import { orgTable, orgInsert } from '@/lib/org/orgTable'
 import type { OrgContext } from '@/lib/tenant/getOrgContext'
 import type { Json } from '@/@types/database.generated'
@@ -58,6 +59,7 @@ export async function apiSaveVideoFlow(
     edges: unknown[],
 ): Promise<{ id: string }> {
     const ctx = await getOrgContext()
+    requirePermission(ctx, 'content:write')
     const payload = {
         name,
         nodes: nodes as Json,
@@ -88,6 +90,7 @@ export async function apiSaveVideoFlow(
 /** The org's most recent flows (for the Load menu). */
 export async function apiListVideoFlows(): Promise<{ id: string; name: string }[]> {
     const ctx = await getOrgContext()
+    requirePermission(ctx, 'content:read')
     const { data, error } = await orgTable(ctx, 'video_flows')
         .select('id, name')
         .order('updated_at', { ascending: false })
@@ -98,6 +101,7 @@ export async function apiListVideoFlows(): Promise<{ id: string; name: string }[
 
 export async function apiGetVideoFlow(flowId: string): Promise<VideoFlowRow> {
     const ctx = await getOrgContext()
+    requirePermission(ctx, 'content:read')
     const { data, error } = await orgTable(ctx, 'video_flows')
         .select('*')
         .eq('id', flowId)

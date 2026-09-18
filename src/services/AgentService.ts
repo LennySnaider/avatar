@@ -18,6 +18,7 @@ import { GoogleGenAI, Type } from '@google/genai'
 import { getRowMediaUrl, type GenerationMediaRow } from '@/lib/storagePaths'
 import { generateText } from 'ai'
 import { getOrgContext, type OrgContext } from '@/lib/tenant/getOrgContext'
+import { requirePermission, isExpectedDenial } from '@/lib/org/guards'
 import { orgTable, orgInsert, orgUpsert } from '@/lib/org/orgTable'
 import type { AvatarKnowledgeRow } from '@/lib/agent/db'
 import { toPersonaDTO } from '@/lib/agent/personaMapper'
@@ -75,7 +76,9 @@ export interface UpsertPersonaInput {
  * convención de `src/lib/billing/moduleCharges.ts`.
  */
 const fail = (where: string, e: unknown): { success: false; error: string } => {
-    console.error(`[agent] ${where}:`, e)
+    // Un rechazo por permisos (o por modulo no instalado) es una respuesta
+    // NORMAL, no una averia: si todo se registra como error, nada destaca.
+    if (!isExpectedDenial(e)) console.error(`[agent] ${where}:`, e)
     return {
         success: false,
         error: e instanceof Error ? e.message : String(e),
@@ -131,6 +134,7 @@ interface OwnedAvatar {
 export async function getAvatarPersona(avatarId: string): Promise<AgentResult<PersonaDTO | null>> {
     try {
         const ctx = await getOrgContext()
+        requirePermission(ctx, 'content:read')
         const { data, error } = await orgTable(ctx, 'avatar_personas')
             .select('*')
             .eq('avatar_id', avatarId)
@@ -145,6 +149,7 @@ export async function getAvatarPersona(avatarId: string): Promise<AgentResult<Pe
 export async function upsertAvatarPersona(input: UpsertPersonaInput): Promise<AgentResult<PersonaDTO>> {
     try {
         const ctx = await getOrgContext()
+        requirePermission(ctx, 'persona:write')
         await getOwnedAvatar(ctx, input.avatarId)
 
         // Sin `organization_id`: lo inyecta `orgUpsert` desde el ctx, nunca
@@ -194,6 +199,7 @@ export async function upsertAvatarPersona(input: UpsertPersonaInput): Promise<Ag
 export async function generatePersonaFromAvatar(avatarId: string): Promise<AgentResult<PersonaDTO>> {
     try {
         const ctx = await getOrgContext()
+        requirePermission(ctx, 'persona:write')
         const avatar = await getOwnedAvatar(ctx, avatarId)
 
         const apiKey = process.env.GEMINI_API_KEY
@@ -294,6 +300,7 @@ export async function generatePersonaFromAvatar(avatarId: string): Promise<Agent
 export async function testPersonaProvider(avatarId: string): Promise<AgentResult<{ reply: string; latencyMs: number }>> {
     try {
         const ctx = await getOrgContext()
+        requirePermission(ctx, 'persona:write')
         const { data: persona } = await orgTable(ctx, 'avatar_personas')
             .select('*')
             .eq('avatar_id', avatarId)
@@ -322,6 +329,7 @@ export async function testPersonaProvider(avatarId: string): Promise<AgentResult
 export async function listKnowledge(avatarId: string): Promise<AgentResult<KnowledgeItemDTO[]>> {
     try {
         const ctx = await getOrgContext()
+        requirePermission(ctx, 'content:read')
         const { data, error } = await orgTable(ctx, 'avatar_knowledge')
             .select('*')
             .eq('avatar_id', avatarId)
@@ -401,6 +409,7 @@ export async function addKnowledge(input: {
 }): Promise<AgentResult<KnowledgeItemDTO>> {
     try {
         const ctx = await getOrgContext()
+        requirePermission(ctx, 'persona:write')
         await getOwnedAvatar(ctx, input.avatarId)
         const content = input.content.trim()
         if (!content) return { success: false, error: 'Content is required' }
@@ -425,6 +434,7 @@ export async function addKnowledge(input: {
 export async function deleteKnowledge(knowledgeId: string): Promise<AgentResult<{ id: string }>> {
     try {
         const ctx = await getOrgContext()
+        requirePermission(ctx, 'persona:write')
         const { error } = await orgTable(ctx, 'avatar_knowledge')
             .delete()
             .eq('id', knowledgeId)
@@ -438,6 +448,7 @@ export async function deleteKnowledge(knowledgeId: string): Promise<AgentResult<
 export async function searchKnowledge(avatarId: string, query: string): Promise<AgentResult<RetrievedChunk[]>> {
     try {
         const ctx = await getOrgContext()
+        requirePermission(ctx, 'content:read')
         await getOwnedAvatar(ctx, avatarId)
         const chunks = await retrieveKnowledge(avatarId, query, { matchCount: 8, minSimilarity: 0.15 })
         return { success: true, data: chunks }
@@ -455,6 +466,7 @@ export async function searchKnowledge(avatarId: string, query: string): Promise<
 export async function reindexAvatarContent(avatarId: string): Promise<AgentResult<{ indexed: number; skipped: number }>> {
     try {
         const ctx = await getOrgContext()
+        requirePermission(ctx, 'persona:write')
         await getOwnedAvatar(ctx, avatarId)
 
         type Candidate = {

@@ -9,6 +9,7 @@
  * los inserts como "creado por" (auditoría), NO como frontera de tenant.
  */
 import { getOrgContext, type OrgContext } from '@/lib/tenant/getOrgContext'
+import { requirePermission } from '@/lib/org/guards'
 import {
     putMediaObject,
     deleteMediaObject,
@@ -87,6 +88,7 @@ export async function apiSetGenerationAvatar(
     avatarId: string | null,
 ) {
     const ctx = await getOrgContext()
+    requirePermission(ctx, 'content:write')
     await assertGenerationInOrg(ctx, generationId)
     if (avatarId) {
         await assertAvatarInOrg(ctx, avatarId)
@@ -99,6 +101,7 @@ export async function apiSetGenerationAvatar(
 
 export async function apiGetAvatars() {
     const ctx = await getOrgContext()
+    requirePermission(ctx, 'content:read')
     const { data, error } = await orgTable(ctx, 'avatars')
         .select('*, avatar_references(*)')
         .order('created_at', { ascending: false })
@@ -111,6 +114,7 @@ export async function apiGetAvatars() {
 
 export async function apiGetAvatarById(avatarId: string) {
     const ctx = await getOrgContext()
+    requirePermission(ctx, 'content:read')
     const { data, error } = await orgTable(ctx, 'avatars')
         .select('*, avatar_references(*)')
         .eq('id', avatarId)
@@ -123,6 +127,7 @@ export async function apiGetAvatarById(avatarId: string) {
 
 export async function apiCreateAvatar(avatar: AvatarInsert) {
     const ctx = await getOrgContext()
+    requirePermission(ctx, 'content:write')
     // org de la sesión + user_id como "creado por" — valores del cliente se
     // sobreescriben SIEMPRE.
     const { data, error } = await orgSupabase()
@@ -141,6 +146,7 @@ export async function apiCreateAvatar(avatar: AvatarInsert) {
 
 export async function apiUpdateAvatar(avatarId: string, updates: AvatarUpdate) {
     const ctx = await getOrgContext()
+    requirePermission(ctx, 'content:write')
     await assertAvatarInOrg(ctx, avatarId)
     // Never allow re-assigning ownership/tenant through an update payload.
     const {
@@ -162,6 +168,7 @@ export async function apiUpdateAvatar(avatarId: string, updates: AvatarUpdate) {
 
 export async function apiDeleteAvatar(avatarId: string) {
     const ctx = await getOrgContext()
+    requirePermission(ctx, 'avatar:delete')
     await assertAvatarInOrg(ctx, avatarId)
     const { error } = await orgTable(ctx, 'avatars').delete().eq('id', avatarId)
     if (error) throw error
@@ -174,6 +181,7 @@ export async function apiDeleteAvatar(avatarId: string) {
 
 export async function apiAddAvatarReference(reference: AvatarReferenceInsert) {
     const ctx = await getOrgContext()
+    requirePermission(ctx, 'content:write')
     if (!reference.avatar_id) throw new Error('avatar_id is required')
     await assertAvatarInOrg(ctx, reference.avatar_id)
     const { data, error } = await orgSupabase()
@@ -188,6 +196,7 @@ export async function apiAddAvatarReference(reference: AvatarReferenceInsert) {
 
 export async function apiDeleteAvatarReference(referenceId: string) {
     const ctx = await getOrgContext()
+    requirePermission(ctx, 'content:delete')
     const { data: ref, error: refErr } = await orgTable(
         ctx,
         'avatar_references',
@@ -211,6 +220,7 @@ export async function apiGetAvatarReferences(
     type?: ReferenceType,
 ) {
     const ctx = await getOrgContext()
+    requirePermission(ctx, 'content:read')
     await assertAvatarInOrg(ctx, avatarId)
     let query = orgTable(ctx, 'avatar_references')
         .select('*')
@@ -237,6 +247,7 @@ export async function apiGetGenerations(options?: {
     offset?: number
 }) {
     const ctx = await getOrgContext()
+    requirePermission(ctx, 'content:read')
     let query = orgTable(ctx, 'generations').select('*')
 
     if (options?.mediaType) {
@@ -268,6 +279,7 @@ export async function apiGetGenerations(options?: {
 
 export async function apiSaveGeneration(generation: GenerationInsert) {
     const ctx = await getOrgContext()
+    requirePermission(ctx, 'content:write')
     if (generation.avatar_id) {
         await assertAvatarInOrg(ctx, generation.avatar_id)
     }
@@ -296,6 +308,7 @@ export async function apiUpdateGenerationMetadata(
     metadata: Record<string, unknown>,
 ) {
     const ctx = await getOrgContext()
+    requirePermission(ctx, 'content:write')
     await assertGenerationInOrg(ctx, generationId)
     const { error } = await orgTable(ctx, 'generations')
         .update({ metadata } as never)
@@ -319,6 +332,7 @@ export async function apiUpdateGenerationMetadata(
  */
 export async function apiDeleteGeneration(generationId: string) {
     const ctx = await getOrgContext()
+    requirePermission(ctx, 'content:delete')
     await assertGenerationInOrg(ctx, generationId)
 
     // Los paths hay que leerlos ANTES: después del delete la fila ya no dice
@@ -361,6 +375,7 @@ export async function apiDeleteGeneration(generationId: string) {
 
 export async function apiGetPrompts(mediaType?: MediaType) {
     const ctx = await getOrgContext()
+    requirePermission(ctx, 'content:read')
     let query = orgTable(ctx, 'prompts').select('*')
 
     if (mediaType) {
@@ -377,6 +392,7 @@ export async function apiGetPrompts(mediaType?: MediaType) {
 
 export async function apiCreatePrompt(prompt: PromptInsert) {
     const ctx = await getOrgContext()
+    requirePermission(ctx, 'content:write')
     const { data, error } = await orgSupabase()
         .from('prompts')
         .insert({
@@ -393,6 +409,7 @@ export async function apiCreatePrompt(prompt: PromptInsert) {
 
 export async function apiUpdatePrompt(promptId: string, updates: PromptUpdate) {
     const ctx = await getOrgContext()
+    requirePermission(ctx, 'content:write')
     await assertPromptInOrg(ctx, promptId)
     const {
         user_id: _u,
@@ -413,6 +430,7 @@ export async function apiUpdatePrompt(promptId: string, updates: PromptUpdate) {
 
 export async function apiDeletePrompt(promptId: string) {
     const ctx = await getOrgContext()
+    requirePermission(ctx, 'content:delete')
     await assertPromptInOrg(ctx, promptId)
     const { error } = await orgTable(ctx, 'prompts').delete().eq('id', promptId)
     if (error) throw error
@@ -432,6 +450,7 @@ export async function apiGetProviders(options?: {
     // Catálogo: filas globales (organization_id NULL = plantilla con key por
     // env) + filas BYOK de la propia org.
     const ctx = await getOrgContext()
+    requirePermission(ctx, 'content:read')
     let query = orgSupabase()
         .from('ai_providers')
         .select('*')
@@ -461,6 +480,7 @@ export async function apiGetProviders(options?: {
 
 export async function apiGetProviderById(providerId: string) {
     const ctx = await getOrgContext()
+    requirePermission(ctx, 'content:read')
     const { data, error } = await orgSupabase()
         .from('ai_providers')
         .select('*')
@@ -537,7 +557,7 @@ export async function getStorageUrl(
     bucket: string,
     path: string,
 ): Promise<string> {
-    await getOrgContext()
+    requirePermission(await getOrgContext(), 'content:read')
     const supabase = orgSupabase()
     const { data } = supabase.storage.from(bucket).getPublicUrl(path)
     return data.publicUrl
@@ -578,7 +598,8 @@ async function assertPathInOrg(ctx: OrgContext, path: string) {
 export async function apiFetchUrlAsDataUrl(
     url: string,
 ): Promise<{ base64: string; mimeType: string }> {
-    await getOrgContext() // autenticado: no es un proxy abierto
+    // autenticado y con permiso de lectura: no es un proxy abierto
+    requirePermission(await getOrgContext(), 'content:read')
     if (!/^https:\/\//.test(url)) throw new Error('Solo https')
     const res = await fetch(url, { signal: AbortSignal.timeout(60_000) })
     if (!res.ok) throw new Error(`fetch ${res.status}`)
@@ -615,6 +636,7 @@ export async function getSignedUrl(
     provider?: string | null,
 ): Promise<string | null> {
     const ctx = await getOrgContext()
+    requirePermission(ctx, 'content:read')
     await assertPathInOrg(ctx, path)
 
     if (provider === 'r2') {
@@ -653,15 +675,6 @@ export async function getSignedUrl(
     return data.signedUrl
 }
 
-export async function deleteStorageFile(bucket: string, path: string) {
-    const ctx = await getOrgContext()
-    await assertPathInOrg(ctx, path)
-    const supabase = orgSupabase()
-    const { error } = await supabase.storage.from(bucket).remove([path])
-    if (error) throw error
-    return true
-}
-
 // =============================================
 // COMBINED HELPERS (Upload + Create Record)
 // =============================================
@@ -675,6 +688,7 @@ export async function apiUploadReference(
     type: ReferenceType,
 ): Promise<AvatarReference> {
     const ctx = await getOrgContext()
+    requirePermission(ctx, 'content:write')
     await assertAvatarInOrg(ctx, avatarId)
 
     // Upload file to storage
@@ -729,6 +743,7 @@ export async function apiCreateGenerationUploadUrl(
     purpose: 'gallery' | 'edit-ref' = 'gallery',
 ): Promise<GenerationUploadTicket> {
     const ctx = await getOrgContext()
+    requirePermission(ctx, 'content:write')
     const folder =
         purpose === 'edit-ref'
             ? 'edit-refs'
@@ -781,6 +796,7 @@ export async function apiCreateThumbnailUploadTicket(
     originalPath: string,
 ): Promise<GenerationUploadTicket> {
     const ctx = await getOrgContext()
+    requirePermission(ctx, 'content:write')
     // Dual-read: acepta el path nuevo (`org/{orgId}/…`) y el legacy
     // (`{userId}/…`) mientras convivan. Un path de carpeta genérica no
     // pertenece a nadie y queda rechazado.
@@ -815,6 +831,7 @@ export async function apiSaveGenerationWithFile(
     },
 ): Promise<Generation> {
     const ctx = await getOrgContext()
+    requirePermission(ctx, 'content:write')
 
     // Determine extension
     const ext = data.media_type === 'VIDEO' ? 'mp4' : 'jpg'
