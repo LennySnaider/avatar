@@ -30,7 +30,9 @@ import { ROLE_LABEL } from '@/lib/org/guards'
 import { ORG_ROLES, type OrgRole } from '@/lib/org/permissions'
 import { INVITABLE_ROLES, ROLE_DESCRIPTION } from '@/lib/org/memberRules'
 import { canInviteMore, formatSeatUsage } from '@/lib/org/seats'
-import { buildInviteUrl } from '@/lib/org/invitations'
+// De invitationRules y NO de invitations: este componente es cliente y
+// invitations.ts arrastra node:crypto al bundle (tumbo el primer deploy).
+import { buildInviteUrl } from '@/lib/org/invitationRules'
 
 /**
  * La pantalla de miembros.
