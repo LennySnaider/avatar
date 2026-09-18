@@ -17,6 +17,7 @@
  * criterio que AvatarForgeService.
  */
 import { getOrgContext } from '@/lib/tenant/getOrgContext'
+import { requirePermission } from '@/lib/org/guards'
 import { orgSupabase } from '@/lib/org/orgTable'
 import {
     holdRefTypeFor,
@@ -53,6 +54,7 @@ export async function apiTrackPendingGeneration(params: {
 }): Promise<void> {
     try {
         const ctx = await getOrgContext()
+        requirePermission(ctx, 'generation:create')
         await orgSupabase()
             .from('pending_generations')
             .upsert(
@@ -95,6 +97,7 @@ export async function apiClearPendingGeneration(
 ): Promise<void> {
     try {
         const ctx = await getOrgContext()
+        requirePermission(ctx, 'generation:create')
 
         // El provider sale de la propia fila; sin ella no se sabe bajo qué
         // refType quedó anotado el hold, así que se prueban los dos (barato:
@@ -148,6 +151,7 @@ export async function apiListPendingGenerations(): Promise<
     PendingGenerationRow[]
 > {
     const ctx = await getOrgContext()
+    requirePermission(ctx, 'content:read')
     const cutoff = new Date(Date.now() - MAX_AGE_MS).toISOString()
     const { data, error } = await orgSupabase()
         .from('pending_generations')
@@ -164,6 +168,7 @@ export async function apiListPendingGenerations(): Promise<
 export async function apiPurgeExpiredPendingGenerations(): Promise<void> {
     try {
         const ctx = await getOrgContext()
+        requirePermission(ctx, 'generation:create')
         const cutoff = new Date(Date.now() - MAX_AGE_MS).toISOString()
 
         // F5.4 — antes de borrar el rastro, DEVOLVER los tokens. Una caducada

@@ -206,6 +206,12 @@ export async function settleHold(
     opts?: { ctx?: OrgContext; tokensFinal?: number; costUsdFinal?: number },
 ): Promise<void> {
     if (!hold.holdId) return
+    // Sin guard de rol A PROPOSITO: esto CIERRA un hold que ya existe, y la
+    // autorizacion ocurrio al abrirlo (holdForOperation exige
+    // generation:create). Bloquear aqui por un cambio de rol a mitad de
+    // operacion dejaria tokens reservados para siempre, y ademas lo llaman los
+    // rescates y la reconciliacion.
+    // eslint-disable-next-line local/no-unguarded-org-action
     const ctx = opts?.ctx ?? (await getOrgContext())
     const { error } = await billingDb().rpc('wallet_settle', {
         p_org: ctx.organizationId,
@@ -228,6 +234,12 @@ export async function refundHold(
     opts?: { ctx?: OrgContext },
 ): Promise<void> {
     if (!hold.holdId) return
+    // Sin guard de rol A PROPOSITO: esto CIERRA un hold que ya existe, y la
+    // autorizacion ocurrio al abrirlo (holdForOperation exige
+    // generation:create). Bloquear aqui por un cambio de rol a mitad de
+    // operacion dejaria tokens reservados para siempre, y ademas lo llaman los
+    // rescates y la reconciliacion.
+    // eslint-disable-next-line local/no-unguarded-org-action
     const ctx = opts?.ctx ?? (await getOrgContext())
     const { error } = await billingDb().rpc('wallet_refund', {
         p_org: ctx.organizationId,
@@ -258,6 +270,12 @@ export async function linkHoldToRef(
     ctx?: OrgContext,
 ): Promise<void> {
     if (!holdId) return
+    // Sin guard de rol A PROPOSITO: esto CIERRA un hold que ya existe, y la
+    // autorizacion ocurrio al abrirlo (holdForOperation exige
+    // generation:create). Bloquear aqui por un cambio de rol a mitad de
+    // operacion dejaria tokens reservados para siempre, y ademas lo llaman los
+    // rescates y la reconciliacion.
+    // eslint-disable-next-line local/no-unguarded-org-action
     const resolved = ctx ?? (await getOrgContext())
     const { error } = await billingDb()
         .from('token_ledger')
@@ -305,6 +323,12 @@ export async function findHoldByRef(
     refId: string,
     ctx?: OrgContext,
 ): Promise<{ holdId: string; tokens: number } | null> {
+    // Sin guard de rol A PROPOSITO: esto CIERRA un hold que ya existe, y la
+    // autorizacion ocurrio al abrirlo (holdForOperation exige
+    // generation:create). Bloquear aqui por un cambio de rol a mitad de
+    // operacion dejaria tokens reservados para siempre, y ademas lo llaman los
+    // rescates y la reconciliacion.
+    // eslint-disable-next-line local/no-unguarded-org-action
     const resolved = ctx ?? (await getOrgContext())
     const { data, error } = await billingDb()
         .from('token_ledger')
@@ -489,6 +513,7 @@ export type WalletBalance = {
 /** Saldo de la org del contexto — para `/settings/billing` y los avisos de la UI. */
 export async function getWalletBalance(ctx?: OrgContext): Promise<WalletBalance> {
     const resolved = ctx ?? (await getOrgContext())
+    requirePermission(resolved, 'billing:manage')
     const { data, error } = await billingDb()
         .from('org_wallets')
         .select('included_balance, purchased_balance, held_balance, period_start')

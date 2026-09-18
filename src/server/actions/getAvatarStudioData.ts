@@ -1,4 +1,5 @@
 import { getOrgContext, type OrgContext } from '@/lib/tenant/getOrgContext'
+import { requirePermission } from '@/lib/org/guards'
 import { orgTable, orgSupabase } from '@/lib/org/orgTable'
 import type { AIProvider, Prompt, Avatar, AvatarReference } from '@/@types/supabase'
 import type { ClonedVoice } from '@/@types/voice'
@@ -35,6 +36,7 @@ const getAvatarStudioData = async (
     let ctx: OrgContext | null = null
     try {
         ctx = await getOrgContext()
+        requirePermission(ctx, 'content:read')
     } catch {
         ctx = null
     }

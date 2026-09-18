@@ -1,6 +1,7 @@
 import { dirname } from "path";
 import { fileURLToPath } from "url";
 import { FlatCompat } from "@eslint/eslintrc";
+import { PERMISSION_EXEMPTIONS } from "./scripts/permission-exemptions.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -43,6 +44,121 @@ const localRules = {
                             message:
                                 'getStoragePublicUrl() no sabe de storage_provider — SIEMPRE arma la URL de Supabase, y la media migrada a R2 ya no tiene copia ahi (400). Usa getRowMediaUrl(row) / getRowThumbnailUrl(row) para filas de generations (o getGenerationMediaUrl(path, provider) si no tienes la fila completa), y getReferenceMediaUrl(path, provider) para el bucket avatars.',
                         })
+                    },
+                }
+            },
+        },
+        // F4.3 — QUINTO candado: una acción que resuelve el contexto de
+        // organización y no comprueba el rol.
+        //
+        // El agujero que cierra: durante meses el rol existió en la base y en
+        // `ctx.role`, y UN solo sitio en todo `src/` lo miraba. O sea que cada
+        // servicio nuevo nacía sin permisos y nadie se enteraba — no hay
+        // síntoma: la acción funciona, sólo funciona para quien no debería.
+        //
+        // Va en ESTE objeto `localRules` y no en uno nuevo: dos bloques que
+        // declaran `plugins: { local: … }` con objetos DISTINTOS hacen que
+        // ESLint aborte con "Cannot redefine plugin". Y con un id propio no
+        // pisa a ninguno de los cuatro candados de arriba (ver la nota del
+        // cuarto sobre los ids que no se fusionan).
+        //
+        // LÍMITE, y hay que saberlo: comprueba que HAY un guard, no que sea el
+        // correcto. Un `requirePermission(ctx, 'content:read')` dentro de
+        // `apiDeleteAvatar` pasa el candado. Eso lo cazan los tests de la
+        // matriz y la revisión, no el linter.
+        'no-unguarded-org-action': {
+            meta: {
+                type: 'problem',
+                docs: {
+                    description:
+                        'Una función que resuelve OrgContext decide en nombre de una organización: tiene que comprobar el rol con requirePermission/ctxCan, o declararse exenta con su motivo.',
+                },
+                schema: [
+                    {
+                        type: 'object',
+                        properties: { exempt: { type: 'array' } },
+                        additionalProperties: false,
+                    },
+                ],
+            },
+            create(context) {
+                const opciones = context.options[0] ?? {}
+                const exentos = opciones.exempt ?? []
+                const rel = context.filename
+                    .split(/[\\/]/)
+                    .join('/')
+                    .replace(/^.*?(?=src\/)/, '')
+                // Exención por RUTA, explícita y con motivo escrito al lado
+                // (misma forma que las listas de check-tenant-access.mjs).
+                if (
+                    exentos.some(([prefijo]) =>
+                        prefijo.endsWith('/')
+                            ? rel.startsWith(prefijo)
+                            : rel === prefijo,
+                    )
+                ) {
+                    return {}
+                }
+
+                const sourceCode = context.sourceCode ?? context.getSourceCode()
+                // `tryGetOrgContext` NO dispara: su propio docblock prohíbe
+                // autorizar con él (decide el prefijo de Storage y el menú), y
+                // exigirle guard sólo generaría exenciones.
+                const DISPARADORES = new Set([
+                    'getOrgContext',
+                    'getOrgContextForUser',
+                ])
+                const GUARDS = new Set(['requirePermission', 'ctxCan', 'can'])
+                const ES_FUNCION = new Set([
+                    'FunctionDeclaration',
+                    'FunctionExpression',
+                    'ArrowFunctionExpression',
+                ])
+
+                const funcionesQueEnvuelven = (node) =>
+                    sourceCode
+                        .getAncestors(node)
+                        .filter((a) => ES_FUNCION.has(a.type))
+
+                const sitios = []
+                const conGuard = new Set()
+
+                return {
+                    CallExpression(node) {
+                        if (node.callee.type !== 'Identifier') return
+                        const nombre = node.callee.name
+                        if (DISPARADORES.has(nombre)) {
+                            sitios.push({
+                                node,
+                                funciones: funcionesQueEnvuelven(node),
+                            })
+                        } else if (GUARDS.has(nombre)) {
+                            // Basta que el guard esté en CUALQUIERA de las
+                            // funciones que envuelven al sitio: el guard se
+                            // escribe arriba y la escritura ocurre 40 líneas
+                            // más abajo, a veces dentro de un `Promise.all(async
+                            // () => …)`. Exigir "la misma función" daría falsos
+                            // positivos; así el error posible es el seguro
+                            // (guard en una lambda anidada y ctx fuera → sigue
+                            // fallando).
+                            for (const fn of funcionesQueEnvuelven(node)) {
+                                conGuard.add(fn)
+                            }
+                        }
+                    },
+                    'Program:exit'() {
+                        for (const sitio of sitios) {
+                            if (
+                                sitio.funciones.some((fn) => conGuard.has(fn))
+                            ) {
+                                continue
+                            }
+                            context.report({
+                                node: sitio.node,
+                                message:
+                                    'Esta función resuelve el contexto de organización pero no comprueba el rol: hoy la puede ejecutar un operator. Añade requirePermission(ctx, "<permiso>") justo después (o ctxCan si la ruta responde 403), con un permiso de @/lib/org/permissions. Si de verdad no hay rol que comprobar (corre sin sesión: webhook, cron), decláralo en scripts/permission-exemptions.mjs con el motivo al lado.',
+                            })
+                        }
                     },
                 }
             },
@@ -301,6 +417,28 @@ const eslintConfig = [
     plugins: { local: localRules },
     rules: {
       "local/no-raw-storage-public-url": "error",
+    },
+  },
+  // F4.3 — QUINTO candado: comprobar el rol donde se resuelve la organización.
+  //
+  // `files` acota a donde se DECIDE en nombre de la org: servicios, server
+  // actions y rutas de API, más el chokepoint del gasto. Las páginas y los
+  // layouts quedan fuera del `files` —no en la lista de exenciones— porque una
+  // página pinta: quien autoriza es el layout de la rama y la action que se
+  // llame desde ella. Así la lista de exenciones se queda en las de verdad.
+  //
+  // Es un gate real: `next.config.mjs` no pone `eslint.ignoreDuringBuilds`, así
+  // que `next build` lintea y un olvido rompe el despliegue, no la revisión.
+  {
+    files: [
+      "src/services/**/*.ts",
+      "src/server/actions/**/*.ts",
+      "src/app/api/**/*.{ts,js}",
+      "src/lib/billing/wallet.ts",
+    ],
+    plugins: { local: localRules },
+    rules: {
+      "local/no-unguarded-org-action": ["error", { exempt: PERMISSION_EXEMPTIONS }],
     },
   },
 ];

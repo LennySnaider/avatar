@@ -12,6 +12,7 @@
  * depende de que la pestaña siga abierta (el mismo fallo que lo causó).
  */
 import { getOrgContext } from '@/lib/tenant/getOrgContext'
+import { requirePermission } from '@/lib/org/guards'
 import { orgSupabase } from '@/lib/org/orgTable'
 import { orgStoragePath } from '@/lib/storagePaths'
 import { putMediaObject, r2Enabled } from '@/lib/mediaStore'
@@ -118,6 +119,7 @@ export async function apiReconcilePendingGenerations(options?: {
     minAgeMs?: number
 }): Promise<ReconcileResult> {
     const ctx = await getOrgContext()
+    requirePermission(ctx, 'generation:create')
     const out: ReconcileResult = {
         recovered: 0,
         running: 0,

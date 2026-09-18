@@ -11,7 +11,7 @@
  * síncrono aquí sólo revienta en el build, ni tsc ni eslint lo ven.
  */
 import { revalidatePath } from 'next/cache'
-import { getOrgContext, type OrgContext } from '@/lib/tenant/getOrgContext'
+import { getOrgContext } from '@/lib/tenant/getOrgContext'
 import { orgTable, orgUpsert } from '@/lib/org/orgTable'
 import { ctxCan } from '@/lib/org/guards'
 import { getModuleCatalog, getModuleDefinition, type ModuleCatalogRow } from '@/lib/modules/catalog'
@@ -22,18 +22,6 @@ export interface ModulesResult<T> {
     success: boolean
     data?: T
     error?: string
-}
-
-/**
- * Sólo quien manda en la org toca la facturación.
- *
- * El reparto ya no se decide aquí: vive en la matriz de
- * `@/lib/org/permissions`, el único sitio donde está escrito qué puede cada
- * rol. Se conserva el NOMBRE `canManage` porque viaja en el DTO de
- * `listModules` hasta `ModulesClient`, que apaga sus botones con él.
- */
-function canManage(ctx: OrgContext): boolean {
-    return ctxCan(ctx, 'module:manage')
 }
 
 function fail(message: string): ModulesResult<never> {
@@ -60,7 +48,7 @@ export async function listModules(): Promise<
     try {
         const ctx = await getOrgContext()
         const [catalog, installed] = await Promise.all([getModuleCatalog(), listOrgModules(ctx)])
-        return { success: true, data: { catalog, installed, canManage: canManage(ctx) } }
+        return { success: true, data: { catalog, installed, canManage: ctxCan(ctx, 'module:manage') } }
     } catch (e) {
         return failFromError('listModules', e)
     }
@@ -72,7 +60,7 @@ async function setModuleStatus(
 ): Promise<ModulesResult<OrgModuleRow>> {
     try {
         const ctx = await getOrgContext()
-        if (!canManage(ctx)) {
+        if (!ctxCan(ctx, 'module:manage')) {
             return fail('Sólo el propietario o un administrador pueden gestionar los módulos.')
         }
 

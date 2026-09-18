@@ -1,4 +1,5 @@
 import { getOrgContext } from '@/lib/tenant/getOrgContext'
+import { requirePermission } from '@/lib/org/guards'
 import { orgTable } from '@/lib/org/orgTable'
 import { toPersonaDTO } from '@/lib/agent/personaMapper'
 import type { PersonaDTO } from '@/lib/agent/types'
@@ -29,6 +30,7 @@ const getAvatarAgentData = async (avatarId: string): Promise<AvatarAgentData> =>
     let ctx
     try {
         ctx = await getOrgContext()
+        requirePermission(ctx, 'content:read')
     } catch {
         return { avatar: null, persona: null, knowledgeCount: 0 }
     }

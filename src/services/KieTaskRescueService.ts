@@ -21,6 +21,7 @@
  * metadata para que la próxima búsqueda por id sí tenga respuesta.
  */
 import { getOrgContext } from '@/lib/tenant/getOrgContext'
+import { requirePermission } from '@/lib/org/guards'
 import { orgSupabase } from '@/lib/org/orgTable'
 import { orgStoragePath } from '@/lib/storagePaths'
 import { putMediaObject, r2Enabled } from '@/lib/mediaStore'
@@ -76,6 +77,7 @@ export async function apiInspectKieTask(
     taskId: string,
 ): Promise<KieTaskDiagnosis> {
     const ctx = await getOrgContext()
+    requirePermission(ctx, 'content:read')
     const clean = taskId.trim()
 
     const probe = await probeKieTask(clean)
@@ -235,6 +237,7 @@ export async function apiRescueKieTask(params: {
     mediaType?: 'IMAGE' | 'VIDEO'
 }): Promise<RescueResult> {
     const ctx = await getOrgContext()
+    requirePermission(ctx, 'generation:create')
     const taskId = params.taskId.trim()
     if (!taskId) return { success: false, message: 'Falta el taskId.' }
 

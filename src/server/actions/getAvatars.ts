@@ -1,5 +1,6 @@
 import { getReferenceMediaUrl } from '@/lib/storagePaths'
 import { getOrgContext } from '@/lib/tenant/getOrgContext'
+import { requirePermission } from '@/lib/org/guards'
 import { orgTable, orgSupabase } from '@/lib/org/orgTable'
 import type { AvatarWithReferences } from '@/app/(protected-pages)/concepts/avatar-forge/avatar-list/types'
 import type { Avatar, AvatarReference } from '@/@types/supabase'
@@ -39,6 +40,7 @@ const getAvatars = async (_queryParams: {
     let ctx
     try {
         ctx = await getOrgContext()
+        requirePermission(ctx, 'content:read')
     } catch {
         return {
             list: [] as AvatarWithReferences[],
