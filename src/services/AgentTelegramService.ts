@@ -96,6 +96,7 @@ import { randomBytes } from 'node:crypto'
 import { getOrgContext, type OrgContext } from '@/lib/tenant/getOrgContext'
 import { orgInsert, orgTable, orgUpsert } from '@/lib/org/orgTable'
 import { requireModule } from '@/lib/modules/entitlements'
+import { requirePermission, isExpectedDenial } from '@/lib/org/guards'
 import { getMediaObject } from '@/lib/mediaStore'
 import { getGenerationMediaUrl } from '@/lib/storagePaths'
 import type { Database } from '@/@types/database.generated'
@@ -171,7 +172,10 @@ export type TelegramWebhookCheck =
  * convención de `src/lib/billing/moduleCharges.ts`.
  */
 const fail = (where: string, e: unknown): { success: false; error: string } => {
-    console.error(`[telegram] ${where}:`, e)
+    // Un rechazo por permisos o por modulo no instalado es una respuesta
+    // NORMAL, no una averia: si todo se registra como error, nada destaca.
+    // Misma doctrina que separa `fail` de `failFromError` en ModulesService.
+    if (!isExpectedDenial(e)) console.error(`[telegram] ${where}:`, e)
     return {
         success: false,
         error: e instanceof Error ? e.message : String(e),
@@ -308,6 +312,7 @@ export async function connectTelegramBot(
 ): Promise<TelegramResult<TelegramBotStatus>> {
     try {
         const ctx = await getOrgContext()
+        requirePermission(ctx, 'connection:manage')
         await requireModule(ctx, 'telegram')
 
         if (!avatarId) return { success: false, error: 'Falta el avatar.' }
@@ -418,6 +423,7 @@ export async function connectTelegramBot(
 export async function disconnectTelegramBot(avatarId: string): Promise<TelegramResult<TelegramBotStatus>> {
     try {
         const ctx = await getOrgContext()
+        requirePermission(ctx, 'connection:manage')
         await requireModule(ctx, 'telegram')
         if (!avatarId) return { success: false, error: 'Falta el avatar.' }
 
@@ -469,6 +475,7 @@ export async function disconnectTelegramBot(avatarId: string): Promise<TelegramR
 export async function getTelegramStatus(avatarId: string): Promise<TelegramResult<TelegramBotStatus>> {
     try {
         const ctx = await getOrgContext()
+        requirePermission(ctx, 'content:read')
         await requireModule(ctx, 'telegram')
         const settings = await loadTelegramSettingsForOrg(ctx, avatarId)
         return { success: true, data: toStatus(settings) }
@@ -488,6 +495,7 @@ export async function getTelegramWebhookInfo(
 ): Promise<TelegramResult<TelegramWebhookCheck>> {
     try {
         const ctx = await getOrgContext()
+        requirePermission(ctx, 'content:read')
         await requireModule(ctx, 'telegram')
 
         const settings = await loadTelegramSettingsForOrg(ctx, avatarId)
@@ -508,6 +516,7 @@ export async function getTelegramWebhookInfo(
 export async function listPaidMediaItems(avatarId: string): Promise<TelegramResult<PaidMediaItemView[]>> {
     try {
         const ctx = await getOrgContext()
+        requirePermission(ctx, 'content:read')
         await requireModule(ctx, 'telegram')
         if (!avatarId) return { success: false, error: 'Falta el avatar.' }
         await assertOwnedAvatar(ctx, avatarId)
@@ -578,6 +587,7 @@ export async function upsertPaidMediaItem(
 ): Promise<TelegramResult<PaidMediaItemView>> {
     try {
         const ctx = await getOrgContext()
+        requirePermission(ctx, 'pricing:manage')
         await requireModule(ctx, 'telegram')
         if (!input.avatarId) return { success: false, error: 'Falta el avatar.' }
         const title = input.title?.trim()
@@ -676,6 +686,7 @@ export async function upsertPaidMediaItem(
 export async function deletePaidMediaItem(avatarId: string, itemId: string): Promise<TelegramResult<void>> {
     try {
         const ctx = await getOrgContext()
+        requirePermission(ctx, 'content:delete')
         await requireModule(ctx, 'telegram')
         if (!avatarId) return { success: false, error: 'Falta el avatar.' }
         if (!itemId) return { success: false, error: 'Falta el contenido a borrar.' }
@@ -775,6 +786,7 @@ export async function sendPaidMediaFromInbox(
 ): Promise<TelegramResult<SendPaidMediaFromInboxResult>> {
     try {
         const ctx = await getOrgContext()
+        requirePermission(ctx, 'sale:send')
         await requireModule(ctx, 'telegram')
         if (!input.avatarId) return { success: false, error: 'Falta el avatar.' }
         if (!input.chatId) return { success: false, error: 'Falta la conversación.' }
@@ -838,6 +850,7 @@ export async function sendFreeMediaFromInbox(
 ): Promise<TelegramResult<SendFreeMediaFromInboxResult>> {
     try {
         const ctx = await getOrgContext()
+        requirePermission(ctx, 'sale:send')
         await requireModule(ctx, 'telegram')
         if (!input.avatarId) return { success: false, error: 'Falta el avatar.' }
         if (!input.chatId) return { success: false, error: 'Falta la conversación.' }
@@ -885,6 +898,7 @@ export async function updateTelegramAiSettings(
 ): Promise<TelegramResult<TelegramBotStatus>> {
     try {
         const ctx = await getOrgContext()
+        requirePermission(ctx, 'ai:autonomy')
         await requireModule(ctx, 'telegram')
         if (!avatarId) return { success: false, error: 'Falta el avatar.' }
         await assertOwnedAvatar(ctx, avatarId)
