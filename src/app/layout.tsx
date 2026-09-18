@@ -33,7 +33,7 @@ export default async function RootLayout({
     // su cuenta (antes eran dos resoluciones de sesión + membresía en serie
     // para lo mismo).
     const { role, installedModules } = await getOrgUiContext()
-    const navigationTree = await getNavigation(installedModules)
+    const navigationTree = await getNavigation(installedModules, role)
 
     const theme = await getTheme()
 

@@ -11,7 +11,7 @@
  * de `requireModule` en las server actions.
  */
 import navigationConfig from '@/configs/navigation.config'
-import { filterNavigationByModules } from '@/lib/modules/navigation'
+import { filterNavigation } from '@/lib/modules/navigation'
 import { listInstalledSlugsForOrg } from '@/lib/modules/entitlements'
 import { tryGetOrgContext } from '@/lib/tenant/getOrgContext'
 import type { NavigationTree } from '@/@types/navigation'
@@ -61,7 +61,10 @@ export async function getInstalledModules(): Promise<string[]> {
  * argumento se comporta exactamente igual que antes, para cualquier otro
  * llamador.
  */
-export async function getNavigation(installed?: string[]): Promise<NavigationTree[]> {
+export async function getNavigation(
+    installed?: string[],
+    role: OrgRole | null = null,
+): Promise<NavigationTree[]> {
     const installedSlugs = installed ?? (await getInstalledModules())
-    return filterNavigationByModules(navigationConfig, installedSlugs)
+    return filterNavigation(navigationConfig, { installedModules: installedSlugs, role })
 }

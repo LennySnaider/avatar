@@ -32,10 +32,16 @@ export interface NavigationTree {
         /**
          * Slug de `module_catalog` que la organización debe tener instalado
          * para ver este ítem. El filtro se aplica en servidor
-         * (`filterNavigationByModules`); el gate real de acceso vive en el
+         * (`filterNavigation`); el gate real de acceso vive en el
          * layout de la ruta y en cada server action.
          */
         requiredModule?: string
+        /**
+         * Permiso de `@/lib/org/permissions` que el rol del usuario debe tener
+         * para ver este ítem. Mismo alcance que requiredModule: sólo OCULTA;
+         * el gate real vive en el layout de la ruta y en cada server action.
+         */
+        requiredPermission?: import('@/lib/org/permissions').Permission
     }
 }
 

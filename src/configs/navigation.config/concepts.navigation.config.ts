@@ -178,7 +178,7 @@ const conceptsNavigationConfig: NavigationTree[] = [
                         label: 'Connect a bot and sell paid content with Stars',
                     },
                     // Oculto si la organización no tiene el módulo instalado
-                    // (filterNavigationByModules, src/lib/modules/navigation.ts).
+                    // (filterNavigation, src/lib/modules/navigation.ts).
                     // El gate real de acceso vive en el layout de la ruta y en
                     // cada server action de AgentTelegramService.ts.
                     requiredModule: 'telegram',
