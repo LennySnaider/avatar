@@ -13,6 +13,8 @@ import {
 } from '@/lib/social/provider'
 import { assertActiveProfile } from '@/lib/social/profileGuard'
 import { planProfileSync } from '@/lib/social/profileSync'
+import { prepareInstagramPhotoUrl } from '@/lib/social/instagramFit'
+import { DEFAULT_INSTAGRAM_FIT, isInstagramFit, type InstagramFit } from '@/lib/social/instagramFitRules'
 import { indexKnowledgeSource } from '@/lib/agent/indexer'
 import { UploadPostProviderError } from '@/lib/social/providers/UploadPostProvider'
 import { validatePostForPlatforms } from '@/lib/social/platformValidators'
@@ -101,6 +103,15 @@ export interface CreateSocialPostInput {
     hashtags: string[]
     platforms: string[]
     scheduledAt?: string | null
+    /**
+     * Cómo adaptar las FOTOS al feed de Instagram cuando su proporción queda
+     * fuera de 4:5–1.91:1 (p.ej. las 9:16 del Studio, que Upload-Post rellena
+     * con blanco): 'pad' = foto entera sobre fondo desenfocado (defecto),
+     * 'crop' = recorte centrado. Solo actúa si 'instagram' va entre las
+     * plataformas; Upload-Post recibe UNA lista de fotos, así que la variante
+     * llega a todas las redes del post.
+     */
+    instagramFit?: InstagramFit
 }
 
 const fail = (e: unknown): { success: false; error: string } => ({
@@ -901,6 +912,32 @@ export async function createSocialPost(input: CreateSocialPostInput): Promise<So
             mediaUrls = ordered.map((g) => getRowMediaUrl(g))
             contentType = ordered[0].media_type === 'VIDEO' ? 'video' : 'photo'
             generationId = ordered[0].id
+
+            // Feed de Instagram: 4:5–1.91:1 o Upload-Post rellena con franjas
+            // blancas (visto el 2026-09-18). Se manda una variante preparada;
+            // si no se puede preparar, el post falla en vez de salir feo.
+            if (contentType === 'photo' && platforms.includes('instagram')) {
+                const fit = isInstagramFit(input.instagramFit) ? input.instagramFit : DEFAULT_INSTAGRAM_FIT
+                try {
+                    mediaUrls = await Promise.all(
+                        ordered.map(async (gen, i) => {
+                            const prepared = await prepareInstagramPhotoUrl({
+                                organizationId: ctx.organizationId,
+                                generationId: gen.id,
+                                sourceUrl: mediaUrls[i],
+                                fit,
+                            })
+                            return prepared.url
+                        }),
+                    )
+                } catch (e) {
+                    console.error('[SocialService] Instagram fit failed', { avatarId: input.avatarId, fit }, e)
+                    return {
+                        success: false,
+                        error: `Could not prepare the photo for Instagram: ${e instanceof Error ? e.message : String(e)}`,
+                    }
+                }
+            }
         }
 
         const caption = appendHashtagsToCaption(input.caption, input.hashtags)

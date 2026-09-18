@@ -8,6 +8,7 @@ import Button from '@/components/ui/Button'
 import Input from '@/components/ui/Input'
 import Checkbox from '@/components/ui/Checkbox'
 import Radio from '@/components/ui/Radio'
+import Segment from '@/components/ui/Segment'
 import DatePicker from '@/components/ui/DatePicker'
 import Notification from '@/components/ui/Notification'
 import Spinner from '@/components/ui/Spinner'
@@ -24,6 +25,11 @@ import { createFanvuePost, getFanvueConnection } from '@/services/FanvueService'
 import { apiGetAvatarById } from '@/services/AvatarForgeService'
 import { generateSocialCaption, translateSocialCaption } from '@/services/GeminiService'
 import { normalizeHashtag } from '@/lib/social/hashtagHelpers'
+import {
+    DEFAULT_INSTAGRAM_FIT,
+    INSTAGRAM_FIT_OPTIONS,
+    type InstagramFit,
+} from '@/lib/social/instagramFitRules'
 import { useAvatarStudioStore } from '../_store/avatarStudioStore'
 import type { FanvuePostAudience } from '@/lib/fanvue/types'
 import type { GeneratedMedia } from '../types'
@@ -98,6 +104,8 @@ const PostModal = ({
     // Destinations
     const [platforms, setPlatforms] = useState<string[]>([])
     const [selectedPlatforms, setSelectedPlatforms] = useState<string[]>([])
+    // Fotos verticales en el feed de Instagram: ver instagramFitRules.
+    const [instagramFit, setInstagramFit] = useState<InstagramFit>(DEFAULT_INSTAGRAM_FIT)
     const [hasSocialAccount, setHasSocialAccount] = useState(false)
     const [fanvueConnected, setFanvueConnected] = useState(false)
     // The Fanvue creator THIS avatar maps to (agency mode). Null when the avatar
@@ -490,6 +498,7 @@ const PostModal = ({
                         hashtags: activeHashtags,
                         platforms: selectedPlatforms,
                         scheduledAt,
+                        instagramFit,
                     }).then((r) => ({
                         label: selectedPlatforms
                             .map((p) => p[0].toUpperCase() + p.slice(1))
@@ -885,19 +894,41 @@ const PostModal = ({
                                     .
                                 </p>
                             ) : platforms.length > 0 ? (
-                                <div className="flex flex-wrap gap-4">
-                                    {platforms.map((platform) => (
-                                        <Checkbox
-                                            key={platform}
-                                            checked={selectedPlatforms.includes(platform)}
-                                            onChange={(checked) =>
-                                                togglePlatform(platform, checked)
-                                            }
-                                        >
-                                            <span className="capitalize">{platform}</span>
-                                        </Checkbox>
-                                    ))}
-                                </div>
+                                <>
+                                    <div className="flex flex-wrap gap-4">
+                                        {platforms.map((platform) => (
+                                            <Checkbox
+                                                key={platform}
+                                                checked={selectedPlatforms.includes(platform)}
+                                                onChange={(checked) =>
+                                                    togglePlatform(platform, checked)
+                                                }
+                                            >
+                                                <span className="capitalize">{platform}</span>
+                                            </Checkbox>
+                                        ))}
+                                    </div>
+                                    {selectedPlatforms.includes('instagram') && (
+                                        <div>
+                                            <p className="text-xs text-gray-400 mb-1">
+                                                Instagram fit for vertical photos (feed only
+                                                accepts 4:5 to 1.91:1; the same file goes to
+                                                every network in this post)
+                                            </p>
+                                            <Segment
+                                                size="sm"
+                                                value={instagramFit}
+                                                onChange={(val) => setInstagramFit(val as InstagramFit)}
+                                            >
+                                                {INSTAGRAM_FIT_OPTIONS.map((opt) => (
+                                                    <Segment.Item key={opt.value} value={opt.value}>
+                                                        {opt.label}
+                                                    </Segment.Item>
+                                                ))}
+                                            </Segment>
+                                        </div>
+                                    )}
+                                </>
                             ) : (
                                 <p className="text-sm text-amber-600 dark:text-amber-400">
                                     No socials linked to this avatar&apos;s account yet —{' '}

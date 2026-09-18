@@ -7,6 +7,7 @@ import Button from '@/components/ui/Button'
 import Input from '@/components/ui/Input'
 import Checkbox from '@/components/ui/Checkbox'
 import Radio from '@/components/ui/Radio'
+import Segment from '@/components/ui/Segment'
 import Select from '@/components/ui/Select'
 import DatePicker from '@/components/ui/DatePicker'
 import Notification from '@/components/ui/Notification'
@@ -15,6 +16,11 @@ import { HiOutlineX, HiOutlineSparkles } from 'react-icons/hi'
 import { createSocialPost } from '@/services/SocialService'
 import { generateSocialCaption, translateSocialCaption } from '@/services/GeminiService'
 import { normalizeHashtag } from '@/lib/social/hashtagHelpers'
+import {
+    DEFAULT_INSTAGRAM_FIT,
+    INSTAGRAM_FIT_OPTIONS,
+    type InstagramFit,
+} from '@/lib/social/instagramFitRules'
 import type { MediaType } from '@/@types/supabase'
 
 const { DateTimepicker } = DatePicker
@@ -83,6 +89,8 @@ const SocialComposer = ({ media, generationId, accounts, libraryImages = [] }: S
     const [captionLang, setCaptionLang] = useState<'en' | 'es'>('en')
     const [isTranslating, setIsTranslating] = useState(false)
     const [selectedPlatforms, setSelectedPlatforms] = useState<string[]>(platforms)
+    // Fotos verticales/panorámicas en el feed de Instagram: ver instagramFitRules.
+    const [instagramFit, setInstagramFit] = useState<InstagramFit>(DEFAULT_INSTAGRAM_FIT)
     const [scheduleMode, setScheduleMode] = useState<ScheduleMode>('now')
     const [scheduleDate, setScheduleDate] = useState<Date | null>(null)
     const [error, setError] = useState<string | null>(null)
@@ -244,6 +252,7 @@ const SocialComposer = ({ media, generationId, accounts, libraryImages = [] }: S
                 hashtags: hashtags.filter((h) => h.active).map((h) => h.tag),
                 platforms: selectedPlatforms,
                 scheduledAt,
+                instagramFit,
             })
             if (result.success) {
                 toast.push(
@@ -458,6 +467,29 @@ const SocialComposer = ({ media, generationId, accounts, libraryImages = [] }: S
                         No platforms connected for this avatar yet — link its socials on
                         the accounts page first.
                     </p>
+                )}
+                {selectedPlatforms.includes('instagram') && media?.mediaType === 'IMAGE' && (
+                    <div className="mt-4">
+                        <p className="text-sm font-semibold mb-1">Instagram fit</p>
+                        <p className="text-xs text-gray-400 mb-2">
+                            Instagram feed photos must be between 4:5 and 1.91:1; a 9:16 image
+                            would otherwise get white bars. Only vertical or very wide photos are
+                            adjusted, and the adjusted file goes to every network in this post.
+                        </p>
+                        <Segment
+                            value={instagramFit}
+                            onChange={(val) => setInstagramFit(val as InstagramFit)}
+                        >
+                            {INSTAGRAM_FIT_OPTIONS.map((opt) => (
+                                <Segment.Item key={opt.value} value={opt.value}>
+                                    {opt.label}
+                                </Segment.Item>
+                            ))}
+                        </Segment>
+                        <p className="text-xs text-gray-400 mt-1">
+                            {INSTAGRAM_FIT_OPTIONS.find((opt) => opt.value === instagramFit)?.description}
+                        </p>
+                    </div>
                 )}
             </Card>
 
