@@ -25,11 +25,14 @@ Spec: `docs/superpowers/specs/2026-09-17-earnings-dashboards-design.md`.
       `earnings_functions_search_path`). Verificado: 2 funciones, tabla con RLS, índice, grants
       sólo a service_role, `search_path` fijo; advisors sin avisos nuevos salvo "índice sin uso"
       (recién creado).
-- [ ] Deploy y **spike del endpoint**:
-      `curl -H "Authorization: Bearer $CRON_SECRET" "https://<app>/api/cron/earnings-sync?dryRun=1&days=3"`
-      → esperar 200 con `results[].sample`. Si 404, probar
-      `&path=/agencies/earnings` y corregir `AGENCY_EARNINGS_PATH` en `FanvueClient.ts`.
-- [ ] **Backfill** por org en rebanadas de ≤ 90 días:
+- [x] **Deploy + spike** (2026-09-18, commit 4d0d2b0, dpl_7TH34CzcLyy6h8uCmpUxze6nN3kU): el cron
+      horario corre sin fallos (`1 orgs sincronizadas · 12 filas`) → `/v1/agencies/earnings` responde;
+      no hizo falta el `?path=`. Importes a cero para 16-18 sep.
+- [ ] **Backfill** por org en rebanadas de ≤ 90 días. BLOQUEO: todas las URLs del proyecto son
+      `*.vercel.app` con Deployment Protection (SSO), así que el cron no se puede llamar a mano con
+      `curl` desde fuera; sólo lo invoca Vercel. Opciones: (a) "Protection Bypass for Automation" en
+      Vercel y mandar `x-vercel-protection-bypass`; (b) exponer el backfill desde la UI ampliando
+      `refreshEarnings(days)` (admin, ≤ 365 días) — propuesto, no hecho.
       `?org=<uuid>&from=2026-06-19&to=2026-09-17` (y anteriores). Verificar con
       `select creator_uuid, count(*), min(day), max(day), sum(gross_cents) from fanvue_daily_earnings where organization_id='…' group by 1;`
 - [ ] Revisar ambos dashboards en el deploy: claro/oscuro, móvil 375px, cambio de
