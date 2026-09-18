@@ -4,6 +4,7 @@ import { orgTable } from '@/lib/org/orgTable'
 import type { VoiceTtsSettings } from '@/@types/voice'
 import type { Json } from '@/@types/supabase'
 import { getOrgContextForUser } from '@/lib/tenant/getOrgContext'
+import { ctxCan } from '@/lib/org/guards'
 
 const EMOTIONS = ['happy', 'sad', 'angry', 'fearful', 'disgusted', 'surprised', 'calm', 'neutral'] as const
 
@@ -17,6 +18,9 @@ export async function POST(req: NextRequest) {
     const ctx = await getOrgContextForUser(session.user.id)
     if (!ctx) {
         return NextResponse.json({ error: 'No organization membership' }, { status: 403 })
+    }
+    if (!ctxCan(ctx, 'content:write')) {
+        return NextResponse.json({ error: 'Tu rol no puede editar este contenido.' }, { status: 403 })
     }
 
     const { voiceId, settings } = await req.json()

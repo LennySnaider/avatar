@@ -19,6 +19,7 @@ import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
 import { convertToModelMessages, streamText, type UIMessage } from 'ai'
 import { getOrgContext, type OrgContext } from '@/lib/tenant/getOrgContext'
+import { ctxCan } from '@/lib/org/guards'
 import { orgTable } from '@/lib/org/orgTable'
 import { getChatModel } from '@/lib/agent/chatProvider'
 import { buildSystemPrompt } from '@/lib/agent/promptBuilder'
@@ -59,6 +60,14 @@ export async function POST(req: NextRequest) {
         return NextResponse.json(
             { error: e instanceof Error ? e.message : 'Not authenticated' },
             { status: 401 },
+        )
+    }
+
+    // El playground gasta LLM en cada mensaje.
+    if (!ctxCan(ctx, 'generation:create')) {
+        return NextResponse.json(
+            { error: 'Tu rol no puede lanzar generaciones.' },
+            { status: 403 },
         )
     }
 

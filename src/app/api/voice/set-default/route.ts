@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/auth'
 import { orgTable } from '@/lib/org/orgTable'
 import { getOrgContextForUser } from '@/lib/tenant/getOrgContext'
+import { ctxCan } from '@/lib/org/guards'
 
 /** Marca una voz clonada como voz principal de su avatar vinculado. */
 export async function POST(req: NextRequest) {
@@ -13,6 +14,9 @@ export async function POST(req: NextRequest) {
     const ctx = await getOrgContextForUser(session.user.id)
     if (!ctx) {
         return NextResponse.json({ error: 'No organization membership' }, { status: 403 })
+    }
+    if (!ctxCan(ctx, 'content:write')) {
+        return NextResponse.json({ error: 'Tu rol no puede editar este contenido.' }, { status: 403 })
     }
 
     const { voiceId } = await req.json()

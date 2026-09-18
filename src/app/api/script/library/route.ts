@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/auth'
 import { orgTable, orgInsert } from '@/lib/org/orgTable'
 import { getOrgContextForUser } from '@/lib/tenant/getOrgContext'
+import { ctxCan } from '@/lib/org/guards'
 
 /** Librería de guiones del usuario (tabla audio_scripts). */
 
@@ -14,6 +15,9 @@ export async function GET() {
     const ctx = await getOrgContextForUser(session.user.id)
     if (!ctx) {
         return NextResponse.json({ error: 'No organization membership' }, { status: 403 })
+    }
+    if (!ctxCan(ctx, 'content:read')) {
+        return NextResponse.json({ error: 'Tu rol no puede ver este contenido.' }, { status: 403 })
     }
 
     const { data: scripts, error } = await orgTable(ctx, 'audio_scripts')
@@ -36,6 +40,9 @@ export async function POST(req: NextRequest) {
     const ctx = await getOrgContextForUser(session.user.id)
     if (!ctx) {
         return NextResponse.json({ error: 'No organization membership' }, { status: 403 })
+    }
+    if (!ctxCan(ctx, 'content:write')) {
+        return NextResponse.json({ error: 'Tu rol no puede editar este contenido.' }, { status: 403 })
     }
 
     const { title, script_text, language, tone, template_type, duration_target_seconds } = await req.json()
@@ -71,6 +78,9 @@ export async function DELETE(req: NextRequest) {
     const ctx = await getOrgContextForUser(session.user.id)
     if (!ctx) {
         return NextResponse.json({ error: 'No organization membership' }, { status: 403 })
+    }
+    if (!ctxCan(ctx, 'content:delete')) {
+        return NextResponse.json({ error: 'Tu rol no puede borrar este contenido.' }, { status: 403 })
     }
 
     const { id } = await req.json()

@@ -22,6 +22,7 @@
  */
 import { orgSupabase } from '@/lib/org/orgTable'
 import { getOrgContext, type OrgContext } from '@/lib/tenant/getOrgContext'
+import { requirePermission } from '@/lib/org/guards'
 import { quote, type PaidOperation, type Quote } from './catalog'
 
 /**
@@ -113,6 +114,18 @@ export async function holdForOperation(
     },
 ): Promise<HoldResult> {
     const ctx = opts?.ctx ?? (await getOrgContext())
+    // EL punto que cubre todo el gasto de generacion: KieService (4 sitios) y
+    // MuleRouterService (2) no llaman a getOrgContext() en su propio fichero,
+    // asi que un guard puesto "en cada servicio que resuelve contexto" los
+    // dejaba fuera ENTEROS. Hoy no cambia nada —el operator SI debe poder
+    // generar— pero el dia que entre un rol que no deba gastar, ya esta
+    // cerrado. Lanzar aqui es seguro: esta misma linea ya lanza para un usuario
+    // sin membresia, asi que los 6 call sites ya toleran la excepcion.
+    //
+    // Solo el HOLD lleva guard. settleHold y refundHold cierran un hold que ya
+    // existe: bloquearlos por un cambio de rol a mitad de operacion dejaria
+    // tokens reservados para siempre, y ademas los llaman los rescates.
+    requirePermission(ctx, 'generation:create')
     const q = quote(op)
 
     const { data, error } = await billingDb().rpc('wallet_hold', {

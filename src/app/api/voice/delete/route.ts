@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/auth'
 import { orgTable } from '@/lib/org/orgTable'
 import { getOrgContextForUser } from '@/lib/tenant/getOrgContext'
+import { ctxCan } from '@/lib/org/guards'
 
 export async function DELETE(req: NextRequest) {
     const session = await auth()
@@ -12,6 +13,9 @@ export async function DELETE(req: NextRequest) {
     const ctx = await getOrgContextForUser(session.user.id)
     if (!ctx) {
         return NextResponse.json({ error: 'No organization membership' }, { status: 403 })
+    }
+    if (!ctxCan(ctx, 'voice:delete')) {
+        return NextResponse.json({ error: 'Sólo un administrador puede borrar una voz clonada.' }, { status: 403 })
     }
 
     const { id } = await req.json()

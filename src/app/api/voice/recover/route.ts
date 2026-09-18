@@ -3,6 +3,7 @@ import { auth } from '@/auth'
 import { orgTable, orgInsert } from '@/lib/org/orgTable'
 import { listProviderClonedVoices } from '@/services/MiniMaxService'
 import { getOrgContextForUser } from '@/lib/tenant/getOrgContext'
+import { ctxCan } from '@/lib/org/guards'
 
 /**
  * Rescata los clones HUÉRFANOS: voces que existen (y están pagadas) en
@@ -45,6 +46,9 @@ export async function POST() {
     const ctx = await getOrgContextForUser(session.user.id)
     if (!ctx) {
         return NextResponse.json({ error: 'No organization membership' }, { status: 403 })
+    }
+    if (!ctxCan(ctx, 'content:write')) {
+        return NextResponse.json({ error: 'Tu rol no puede editar este contenido.' }, { status: 403 })
     }
 
     const userId = session.user.id

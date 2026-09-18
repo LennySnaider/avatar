@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/auth'
 import { orgTable } from '@/lib/org/orgTable'
 import { getOrgContextForUser } from '@/lib/tenant/getOrgContext'
+import { ctxCan } from '@/lib/org/guards'
 
 /** Tope generoso: el nombre solo etiqueta la voz en la UI, pero sin límite una
  * pegada de texto rompería el layout de la lista. */
@@ -26,6 +27,9 @@ export async function POST(req: NextRequest) {
     const ctx = await getOrgContextForUser(session.user.id)
     if (!ctx) {
         return NextResponse.json({ error: 'No organization membership' }, { status: 403 })
+    }
+    if (!ctxCan(ctx, 'content:write')) {
+        return NextResponse.json({ error: 'Tu rol no puede editar este contenido.' }, { status: 403 })
     }
 
     const { voiceId, name } = (await req.json()) as { voiceId?: string; name?: string }

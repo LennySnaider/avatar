@@ -6,6 +6,7 @@ import { uploadBufferToGenerations } from '@/lib/mediaPersist'
 import { orgStoragePath } from '@/lib/storagePaths'
 import type { VoiceTtsSettings } from '@/@types/voice'
 import { getOrgContextForUser } from '@/lib/tenant/getOrgContext'
+import { ctxCan } from '@/lib/org/guards'
 
 const PREVIEW_PHRASES: Record<string, { text: string; language: string }> = {
     es: { text: 'Hola, así suena mi voz clonada. ¿Qué te parece?', language: 'Spanish' },
@@ -29,6 +30,9 @@ export async function POST(req: NextRequest) {
     const ctx = await getOrgContextForUser(session.user.id)
     if (!ctx) {
         return NextResponse.json({ error: 'No organization membership' }, { status: 403 })
+    }
+    if (!ctxCan(ctx, 'generation:create')) {
+        return NextResponse.json({ error: 'Tu rol no puede lanzar generaciones.' }, { status: 403 })
     }
 
     const { voiceId, force } = await req.json()

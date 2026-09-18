@@ -4,6 +4,7 @@ import { orgInsert } from '@/lib/org/orgTable'
 import { generateScript } from '@/services/ScriptService'
 import type { ScriptGenerateParams } from '@/@types/voice'
 import { getOrgContextForUser } from '@/lib/tenant/getOrgContext'
+import { ctxCan } from '@/lib/org/guards'
 
 export async function POST(req: NextRequest) {
     const session = await auth()
@@ -14,6 +15,9 @@ export async function POST(req: NextRequest) {
     const ctx = await getOrgContextForUser(session.user.id)
     if (!ctx) {
         return NextResponse.json({ error: 'No organization membership' }, { status: 403 })
+    }
+    if (!ctxCan(ctx, 'generation:create')) {
+        return NextResponse.json({ error: 'Tu rol no puede lanzar generaciones.' }, { status: 403 })
     }
 
     const body: ScriptGenerateParams & { title?: string; save?: boolean } = await req.json()

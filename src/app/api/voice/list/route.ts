@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { auth } from '@/auth'
 import { orgTable } from '@/lib/org/orgTable'
 import { getOrgContextForUser } from '@/lib/tenant/getOrgContext'
+import { ctxCan } from '@/lib/org/guards'
 
 export async function GET() {
     const session = await auth()
@@ -12,6 +13,9 @@ export async function GET() {
     const ctx = await getOrgContextForUser(session.user.id)
     if (!ctx) {
         return NextResponse.json({ error: 'No organization membership' }, { status: 403 })
+    }
+    if (!ctxCan(ctx, 'content:read')) {
+        return NextResponse.json({ error: 'Tu rol no puede ver este contenido.' }, { status: 403 })
     }
 
     const { data: voices, error } = await orgTable(ctx, 'cloned_voices')

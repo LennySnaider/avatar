@@ -3,7 +3,9 @@ import { auth } from '@/auth'
 import { textToSpeech } from '@/services/MiniMaxService'
 import { uploadBufferToGenerations } from '@/lib/mediaPersist'
 import { orgStoragePath } from '@/lib/storagePaths'
+import { orgTable } from '@/lib/org/orgTable'
 import { getOrgContextForUser } from '@/lib/tenant/getOrgContext'
+import { ctxCan } from '@/lib/org/guards'
 
 /**
  * TTS que PERSISTE el mp3 en el bucket `generations` y devuelve una URL
@@ -21,6 +23,9 @@ export async function POST(req: NextRequest) {
     if (!ctx) {
         return NextResponse.json({ error: 'No organization membership' }, { status: 403 })
     }
+    if (!ctxCan(ctx, 'generation:create')) {
+        return NextResponse.json({ error: 'Tu rol no puede lanzar generaciones.' }, { status: 403 })
+    }
 
     const body = await req.json()
     const { text, voiceId, speed, pitch, emotion, language } = body
@@ -30,6 +35,23 @@ export async function POST(req: NextRequest) {
     }
     if (text.length > 10000) {
         return NextResponse.json({ error: 'Text exceeds 10,000 character limit' }, { status: 400 })
+    }
+
+    // La voz tiene que ser de ESTA organizacion. Sin esta comprobacion, el
+    // `voiceId` llega del cliente y va directo a MiniMax: bastaba adivinar (o
+    // ver una vez) el provider_voice_id de otro tenant para hablar con su voz
+    // clonada, y encima gastando nuestro proveedor. Es el mismo candado
+    // anti-IDOR que ya hacen preview, assign y rename sobre `cloned_voices`.
+    const { data: voice, error: voiceError } = await orgTable(ctx, 'cloned_voices')
+        .select('id')
+        .eq('provider_voice_id', voiceId)
+        .maybeSingle()
+    if (voiceError) {
+        console.error('[voice/tts-file] fallo al comprobar la voz', voiceError)
+        return NextResponse.json({ error: voiceError.message }, { status: 500 })
+    }
+    if (!voice) {
+        return NextResponse.json({ error: 'Not your voice' }, { status: 404 })
     }
 
     try {
