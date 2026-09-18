@@ -368,6 +368,28 @@ function explainKieFailure(raw: string): string {
     if (/face|no face detected/i.test(raw) && /detect/i.test(raw)) {
         return `El modelo no detectó una cara utilizable en la imagen de referencia. Usa una foto donde la cara se vea de frente, nítida y sin tapar. (${raw})`
     }
+    // Filtro de contenido de ByteDance (Seedance 2.0/2.5), RÍO ARRIBA de KIE:
+    // códigos `InputImageSensitiveContentDetected`,
+    // `InputTextSensitiveContentDetected`, `OutputVideoSensitiveContentDetected`.
+    // Caso real (2026-09-18): first frame de avatar rechazado con
+    // nsfw_checker=true. Apagar el filtro de KIE (🌶️) NO lo evita — es el del
+    // proveedor del modelo, no el del agregador. El cobro se devuelve (fallo
+    // terminal → apiClearPendingGeneration 'failed').
+    if (/SensitiveContentDetected/i.test(raw)) {
+        // Sub-código `.PrivacyInformation` = "the input image may contain a
+        // real person": un clasificador de CARAS que salta con rostros
+        // fotorrealistas aunque sean generados. Es el caso típico de un
+        // avatar, y no tiene que ver con desnudez.
+        if (/InputImage/i.test(raw) && /PrivacyInformation/i.test(raw)) {
+            return `ByteDance (fabricante de Seedance, por encima de KIE) rechazó la imagen de entrada porque cree que muestra a una PERSONA REAL: su clasificador de caras salta con rostros fotorrealistas, aunque sean generados. El toggle 🌶️ no lo evita (sólo apaga el filtro de KIE). Prueba un frame con la cara más pequeña o menos frontal, un look menos fotográfico, o genera ese clip con Wan 2.2 (sin filtro). No se cobraron créditos. (${raw})`
+        }
+        const what = /InputImage/i.test(raw)
+            ? 'la IMAGEN de entrada (first frame o referencia)'
+            : /InputText/i.test(raw)
+              ? 'el TEXTO del prompt'
+              : 'el VÍDEO generado'
+        return `El filtro de contenido de ByteDance (el fabricante de Seedance, por encima de KIE) rechazó ${what}: lo considera sensible (desnudez, ropa muy escasa, pose sugerente o menores). El toggle 🌶️ no lo evita porque sólo apaga el filtro de KIE. Prueba con una imagen más cubierta o neutra, o genera ese clip con Wan 2.2 (sin filtro). No se cobraron créditos. (${raw})`
+    }
     return raw
 }
 

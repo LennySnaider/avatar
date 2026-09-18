@@ -2195,6 +2195,13 @@ const BottomControlBar = ({
                             nsfwMode ? batchProviderIdsNsfw : batchProviderIds
                         ).length
                         const isImage = generationMode === 'IMAGE'
+                        // 🌶️ en VÍDEO: sólo Seedance 2.5 lo consume
+                        // (nsfw_checker = !nsfwMode). Escondido tras
+                        // `isImage`, el filtro de KIE viajaba SIEMPRE
+                        // encendido en vídeo aunque el catálogo lo
+                        // marque permisivo (verificado en logs 2026-09-18:
+                        // nsfwChecker=true con el toggle inalcanzable).
+                        const showSpicy = isImage || isSeedance25
                         // El BOTÓN es uno solo; los switches deciden QUÉ hace.
                         // Antes eran 3 controles con estados distintos (botón +
                         // dos toggles con borde punteado) y no se entendía la
@@ -2206,7 +2213,7 @@ const BottomControlBar = ({
                         // cambiar de modo.
                         const label = isGenerating
                             ? 'Generating...'
-                            : `Generate${isImage && batchMode ? ` · Batch${n ? ` ${n}` : ''}` : ''}${isImage && nsfwMode ? ' 🌶️' : ''}`
+                            : `Generate${isImage && batchMode ? ` · Batch${n ? ` ${n}` : ''}` : ''}${showSpicy && nsfwMode ? ' 🌶️' : ''}`
                         return (
                             <>
                                 <Button
@@ -2227,7 +2234,7 @@ const BottomControlBar = ({
                                 >
                                     {label}
                                 </Button>
-                                {isImage && (
+                                {showSpicy && (
                                     // Cajas punteadas con el MISMO lenguaje que
                                     // los dropzones de referencia de al lado
                                     // (borde discontinuo + esquinas redondas):
@@ -2242,9 +2249,11 @@ const BottomControlBar = ({
                                                     : 'border-gray-300 dark:border-gray-600 hover:border-red-300'
                                             }`}
                                             title={
-                                                nsfwMode
-                                                    ? 'Spicy ON: genera la versión explícita (misma escena, sin ropa). Solo Seedream/Wan/Qwen la rinden.'
-                                                    : 'Genera la versión NSFW explícita de la escena. Solo Seedream/Wan/Qwen la rinden.'
+                                                !isImage
+                                                    ? 'Spicy en vídeo: manda nsfw_checker=false a Seedance 2.5 (apaga el filtro de KIE). El filtro de ByteDance sobre la imagen de entrada sigue activo.'
+                                                    : nsfwMode
+                                                      ? 'Spicy ON: genera la versión explícita (misma escena, sin ropa). Solo Seedream/Wan/Qwen la rinden.'
+                                                      : 'Genera la versión NSFW explícita de la escena. Solo Seedream/Wan/Qwen la rinden.'
                                             }
                                         >
                                             <span
@@ -2259,31 +2268,36 @@ const BottomControlBar = ({
                                                 }
                                             />
                                         </label>
-                                        <label
-                                            className={`flex flex-1 cursor-pointer select-none items-center justify-between gap-1.5 rounded-lg border-2 border-dashed px-2 py-2 transition-colors ${
-                                                batchMode
-                                                    ? 'border-blue-400 bg-blue-50 dark:bg-blue-500/10'
-                                                    : 'border-gray-300 dark:border-gray-600 hover:border-blue-300'
-                                            }`}
-                                            title={
-                                                n > 0
-                                                    ? `Batch ON: Generate manda el mismo prompt a los ${n} modelo${n === 1 ? '' : 's'} marcados (☑ en el selector).`
-                                                    : 'Batch ON: al generar podrás elegir a qué modelos mandar el mismo prompt (o márcalos con ☑ en el selector).'
-                                            }
-                                        >
-                                            <span
-                                                className={`flex items-center gap-1 text-xs font-medium ${batchMode ? 'text-blue-500' : 'text-gray-500 dark:text-gray-400'}`}
-                                            >
-                                                <TbStack2 className="text-sm" />
-                                                Batch{n > 0 ? ` · ${n}` : ''}
-                                            </span>
-                                            <Switcher
-                                                checked={batchMode}
-                                                onChange={(checked) =>
-                                                    setBatchMode(checked)
+                                        {/* Batch sólo en IMAGEN: en vídeo el
+                                            botón manda un único modelo y el
+                                            contenedor se abre por el 🌶️. */}
+                                        {isImage && (
+                                            <label
+                                                className={`flex flex-1 cursor-pointer select-none items-center justify-between gap-1.5 rounded-lg border-2 border-dashed px-2 py-2 transition-colors ${
+                                                    batchMode
+                                                        ? 'border-blue-400 bg-blue-50 dark:bg-blue-500/10'
+                                                        : 'border-gray-300 dark:border-gray-600 hover:border-blue-300'
+                                                }`}
+                                                title={
+                                                    n > 0
+                                                        ? `Batch ON: Generate manda el mismo prompt a los ${n} modelo${n === 1 ? '' : 's'} marcados (☑ en el selector).`
+                                                        : 'Batch ON: al generar podrás elegir a qué modelos mandar el mismo prompt (o márcalos con ☑ en el selector).'
                                                 }
-                                            />
-                                        </label>
+                                            >
+                                                <span
+                                                    className={`flex items-center gap-1 text-xs font-medium ${batchMode ? 'text-blue-500' : 'text-gray-500 dark:text-gray-400'}`}
+                                                >
+                                                    <TbStack2 className="text-sm" />
+                                                    Batch{n > 0 ? ` · ${n}` : ''}
+                                                </span>
+                                                <Switcher
+                                                    checked={batchMode}
+                                                    onChange={(checked) =>
+                                                        setBatchMode(checked)
+                                                    }
+                                                />
+                                            </label>
+                                        )}
                                     </div>
                                 )}
                                 {/* INTENSIDAD 🌶️ — solo con Spicy encendido: un
