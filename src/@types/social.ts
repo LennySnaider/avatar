@@ -63,6 +63,9 @@ export interface ConnectedAccount {
   connectedAt: string
   avatarUrl?: string
   followersCount?: number
+  /** Upload-Post marca `reauth_required` cuando el token de esa red caducó:
+   *  hay que volver a pasar por "Connect socials" antes de publicar. */
+  reauthRequired?: boolean
 }
 
 export interface SocialProfileRow {

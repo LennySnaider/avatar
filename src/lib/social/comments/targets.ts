@@ -14,7 +14,7 @@
  */
 import { agentSupabase, type SocialProfileRow } from '@/lib/agent/db'
 import { getSocialProvider } from '@/lib/social/provider'
-import { resolveProfileKey } from '@/lib/social/profileKey'
+import { assertActiveProfile } from '@/lib/social/profileGuard'
 import { UploadPostProviderError } from '@/lib/social/providers/UploadPostProvider'
 import { chunk, postNeedsSync, rateLimitLow } from './pollRules'
 
@@ -140,7 +140,8 @@ export async function syncPostTargets(profileRow: SocialProfileRow, sinceDays = 
 
     let provider
     try {
-        provider = getSocialProvider(resolveProfileKey(profileRow))
+        assertActiveProfile(profileRow)
+        provider = getSocialProvider()
     } catch (e) {
         console.warn('[social-comments] no hay provider utilizable para sincronizar targets', { profileId: profileRow.id }, e)
         return result

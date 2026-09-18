@@ -2,18 +2,25 @@
 
 import { getOrgContext, type OrgContext } from '@/lib/tenant/getOrgContext'
 import { requirePermission } from '@/lib/org/guards'
-import { orgTable, orgSupabase } from '@/lib/org/orgTable'
+import { orgTable, orgSupabase, orgUpsert } from '@/lib/org/orgTable'
 import { getRowMediaUrl } from '@/lib/storagePaths'
-import { getSocialProvider, deriveUploadPostUsername } from '@/lib/social/provider'
-import { resolveProfileKey } from '@/lib/social/profileKey'
+import {
+    deriveUploadPostUsername,
+    getSocialProvider,
+    hasUploadPostKey,
+    isAppManagedUsername,
+    uploadPostKeyLast4,
+} from '@/lib/social/provider'
+import { assertActiveProfile } from '@/lib/social/profileGuard'
+import { planProfileSync } from '@/lib/social/profileSync'
 import { indexKnowledgeSource } from '@/lib/agent/indexer'
-import { UploadPostProvider } from '@/lib/social/providers/UploadPostProvider'
+import { UploadPostProviderError } from '@/lib/social/providers/UploadPostProvider'
 import { validatePostForPlatforms } from '@/lib/social/platformValidators'
 import { appendHashtagsToCaption } from '@/lib/social/hashtagHelpers'
 import { validateSocialCommentSettingsPatch } from '@/lib/social/comments/settingsValidation'
 import { ALL_PLATFORMS } from '@/@types/social'
 import type { Platform, PlatformTarget } from '@/@types/social'
-import type { PublishResponse, ScheduledPost } from '@/lib/social/providers/SocialProvider'
+import type { ProfileDetails, PublishResponse, ScheduledPost } from '@/lib/social/providers/SocialProvider'
 import type { Database, Json } from '@/@types/supabase'
 import type { SocialCommentSettingsPatch } from '@/lib/social/comments/settingsValidation'
 
@@ -25,8 +32,11 @@ type SocialProfileDbRow = Database['public']['Tables']['social_profiles']['Row']
 type SocialPostDbRow = Database['public']['Tables']['social_posts']['Row']
 
 /**
- * Client-safe view of an avatar's Upload-Post account. The raw `api_key`
- * column NEVER leaves the server — only presence flags and the last 4 chars.
+ * Client-safe view of ONE profile (sub-user) on the Upload-Post agency
+ * account. `avatarId` null = unassigned (free to assign); `isExternal` = the
+ * username does not follow this app's `slug-<8hex>` pattern, i.e. another
+ * project created it on the shared account. No credential ever lives here:
+ * the single agency key stays in env, server-side.
  */
 export interface SocialProfileSummary {
     id: string
@@ -35,10 +45,7 @@ export interface SocialProfileSummary {
     status: string
     connectedPlatforms: unknown[]
     lastSyncedAt: string | null
-    hasApiKey: boolean
-    /** api_key NULL + status 'active' → legacy row running on env UPLOAD_POST_API_KEY. */
-    usesEnvKey: boolean
-    apiKeyLast4: string | null
+    isExternal: boolean
     /** "IA en comentarios" (Task 6) — ver `updateSocialCommentSettings` más abajo. */
     aiCommentRepliesEnabled: boolean
     aiCommentDefaultChatMode: 'auto' | 'draft'
@@ -51,6 +58,20 @@ export interface AvatarSocialAccountRow {
     avatarId: string
     avatarName: string
     profile: SocialProfileSummary | null
+}
+
+/** Estado de la cuenta agencia de Upload-Post (card superior de Social Accounts). */
+export interface UploadPostAgencySummary {
+    /** Hay `UPLOAD_POST_API_KEY` en el entorno del servidor. */
+    configured: boolean
+    keyLast4: string | null
+    plan: string | null
+    limit: number | null
+    profilesUsed: number | null
+    /** La consulta a Upload-Post falló (key inválida, red…); la parte de BD sigue valiendo. */
+    remoteError: string | null
+    /** Perfiles de esta org sin avatar asignado y activos en la cuenta. */
+    unassigned: SocialProfileSummary[]
 }
 
 export interface SocialPostRow {
@@ -126,7 +147,6 @@ function toDmButtons(raw: unknown): { title: string; url: string }[] {
 }
 
 function toSummary(row: SocialProfileDbRow): SocialProfileSummary {
-    const usesEnvKey = !row.api_key && row.status === 'active'
     return {
         id: row.id,
         avatarId: row.avatar_id,
@@ -136,9 +156,7 @@ function toSummary(row: SocialProfileDbRow): SocialProfileSummary {
             ? (row.connected_platforms as unknown[])
             : [],
         lastSyncedAt: row.last_synced_at,
-        hasApiKey: Boolean(row.api_key) || usesEnvKey,
-        usesEnvKey,
-        apiKeyLast4: row.api_key ? row.api_key.slice(-4) : null,
+        isExternal: !isAppManagedUsername(row.upload_post_username),
         aiCommentRepliesEnabled: row.ai_comment_replies_enabled,
         aiCommentDefaultChatMode: row.ai_comment_default_chat_mode === 'auto' ? 'auto' : 'draft',
         aiCommentDmEnabled: row.ai_comment_dm_enabled,
@@ -147,19 +165,52 @@ function toSummary(row: SocialProfileDbRow): SocialProfileSummary {
     }
 }
 
+/** Columnas de snapshot que se refrescan desde `getProfile` / `listProfiles`. */
+function snapshotFromDetails(details: ProfileDetails) {
+    return {
+        connected_platforms: toJson(details.connectedAccounts ?? []),
+        upload_post_metadata: details.metadata ? toJson(details.metadata) : null,
+        last_synced_at: new Date().toISOString(),
+    }
+}
+
+async function loadProfileByAvatar(ctx: OrgContext, avatarId: string): Promise<SocialProfileDbRow | null> {
+    const { data, error } = await orgTable(ctx, 'social_profiles')
+        .select('*')
+        .eq('avatar_id', avatarId)
+        .maybeSingle()
+    if (error) throw new Error(error.message)
+    return (data as SocialProfileDbRow | null) ?? null
+}
+
+/** Best-effort: trae el snapshot de redes del perfil; si falla, devuelve la fila tal cual. */
+async function refreshSnapshot(ctx: OrgContext, row: SocialProfileDbRow): Promise<SocialProfileDbRow> {
+    try {
+        const details = await getSocialProvider().getProfile(row.upload_post_username)
+        const { data } = await orgTable(ctx, 'social_profiles')
+            .update(snapshotFromDetails(details))
+            .eq('id', row.id)
+            .select('*')
+            .single()
+        return data ? (data as SocialProfileDbRow) : row
+    } catch (e) {
+        console.warn('[SocialService] profile snapshot refresh failed (non-fatal)', e)
+        return row
+    }
+}
+
 function webhookCallbackUrl(): string {
     return `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3030'}/api/webhooks/upload-post`
 }
 
-// Canonical Upload-Post event names — must match what `normalizeEventName()`
-// in `src/app/api/webhooks/upload-post/route.ts` documents as the provider's
-// real event names.
+// Event names as the Upload-Post Webhooks doc lists them (2026-09-17);
+// `normalizeEventName()` in `src/app/api/webhooks/upload-post/route.ts`
+// accepts these and the older dotted spellings.
 const WEBHOOK_EVENTS = [
     'upload_completed',
-    'social_account.connected',
-    'social_account.disconnected',
-    'social_account.reauth_required',
-    'ffmpeg.completed',
+    'social_account_connected',
+    'social_account_disconnected',
+    'social_account_reauth_required',
 ]
 
 const SCHEDULE_MATCH_WINDOW_MS = 60 * 1000
@@ -280,10 +331,10 @@ async function attachAvatarInfo(
 }
 
 // ---------------------------------------------------------------------------
-// Accounts (per-avatar Upload-Post account management)
+// Avatars ↔ profiles of the agency account
 // ---------------------------------------------------------------------------
 
-/** All of the user's avatars, each with its Upload-Post account state (or null). */
+/** All of the org's avatars, each with its assigned Upload-Post profile (or null). */
 export async function listAvatarSocialAccounts(): Promise<SocialResult<AvatarSocialAccountRow[]>> {
     try {
         const ctx = await getOrgContext()
@@ -324,54 +375,186 @@ export async function listAvatarSocialAccounts(): Promise<SocialResult<AvatarSoc
     }
 }
 
+
+// ---------------------------------------------------------------------------
+// Agency account + profile catalogue (SUPER-PLAN §4.0b, 2026-09-17)
+// ---------------------------------------------------------------------------
+
 /**
- * Connect (or re-key) an avatar's independent Upload-Post account: validate
- * the pasted API key against the Upload-Post API, ensure the sub-user profile
- * exists on that account, persist the key, and best-effort register the
- * webhook + pull the initial connected-accounts snapshot.
+ * Estado de la cuenta agencia para la card superior: BD (perfiles libres de
+ * esta org) + Upload-Post (plan, tope, perfiles usados). La parte remota es
+ * best-effort: si la key es inválida o la API no responde, la página sigue
+ * cargando y el motivo va en `remoteError`.
  */
-export async function connectUploadPostAccount(input: {
-    avatarId: string
-    apiKey: string
-}): Promise<SocialResult<SocialProfileSummary>> {
+export async function getUploadPostAgency(): Promise<SocialResult<UploadPostAgencySummary>> {
+    try {
+        const ctx = await getOrgContext()
+        requirePermission(ctx, 'content:read')
+        return { success: true, data: await buildAgencySummary(ctx) }
+    } catch (e) {
+        return fail(e)
+    }
+}
+
+async function buildAgencySummary(ctx: OrgContext): Promise<UploadPostAgencySummary> {
+    const unassigned = (await listUnassignedRows(ctx)).map(toSummary)
+    const summary: UploadPostAgencySummary = {
+        configured: hasUploadPostKey(),
+        keyLast4: uploadPostKeyLast4(),
+        plan: null,
+        limit: null,
+        profilesUsed: null,
+        remoteError: null,
+        unassigned,
+    }
+    if (!summary.configured) return summary
+    try {
+        const account = await getSocialProvider().listProfiles()
+        summary.plan = account.plan
+        summary.limit = account.limit
+        summary.profilesUsed = account.profiles.length
+    } catch (e) {
+        summary.remoteError = e instanceof Error ? e.message : String(e)
+    }
+    return summary
+}
+
+async function listUnassignedRows(ctx: OrgContext): Promise<SocialProfileDbRow[]> {
+    const { data, error } = await orgTable(ctx, 'social_profiles')
+        .select('*')
+        .is('avatar_id', null)
+        .eq('status', 'active')
+        .order('upload_post_username', { ascending: true })
+    if (error) throw new Error(error.message)
+    return (data ?? []) as SocialProfileDbRow[]
+}
+
+/**
+ * "Refresh profiles": trae los perfiles de la cuenta agencia y los cruza con
+ * las filas de esta org (`planProfileSync`, puro y testeado). Filas que
+ * coinciden → snapshot fresco y `active`; perfiles nuevos → filas LIBRES
+ * (avatar_id null) — un username que ya reclamó otra org se salta gracias a
+ * `ignoreDuplicates` (índice único global); filas `active` que ya no están
+ * en la cuenta → `disconnected` (conservan avatar_id y ajustes de IA). Nunca
+ * borra nada en Upload-Post: la cuenta la comparten otros proyectos.
+ */
+export async function syncUploadPostProfiles(): Promise<
+    SocialResult<{ agency: UploadPostAgencySummary; accounts: AvatarSocialAccountRow[] }>
+> {
     try {
         const ctx = await getOrgContext()
         requirePermission(ctx, 'connection:manage')
-        const apiKey = input.apiKey.trim()
-        if (!input.avatarId) return { success: false, error: 'Avatar is required' }
-        if (!apiKey) return { success: false, error: 'API key is required' }
+        const account = await getSocialProvider().listProfiles()
 
-        const avatar = await getOwnedAvatar(ctx, input.avatarId)
+        const { data: rows, error: rowsErr } = await orgTable(ctx, 'social_profiles')
+            .select('id, upload_post_username, status')
+        if (rowsErr) throw new Error(rowsErr.message)
+        const plan = planProfileSync(
+            (rows ?? []) as { id: string; upload_post_username: string; status: string }[],
+            account.profiles,
+        )
 
-        // Probe the key with a cheap authenticated GET before persisting
-        // anything. Throws a mapped "Invalid Upload-Post API key" on 401.
-        // Deliberately NOT getSocialProvider(): unvalidated keys must not
-        // pollute the provider cache.
-        const provider = new UploadPostProvider(apiKey, process.env.UPLOAD_POST_BASE_URL)
-        await provider.listProfiles()
+        for (const { id, details } of plan.activate) {
+            const { error } = await orgTable(ctx, 'social_profiles')
+                .update({ status: 'active', ...snapshotFromDetails(details) })
+                .eq('id', id)
+            if (error) throw new Error(error.message)
+        }
+        if (plan.insert.length > 0) {
+            const { error } = await orgUpsert(
+                ctx,
+                'social_profiles',
+                plan.insert.map((details) => ({
+                    upload_post_username: details.username,
+                    avatar_id: null,
+                    status: 'active',
+                    ...snapshotFromDetails(details),
+                })),
+                { onConflict: 'upload_post_username', ignoreDuplicates: true },
+            )
+            if (error) throw new Error(error.message)
+        }
+        if (plan.disconnect.length > 0) {
+            const { error } = await orgTable(ctx, 'social_profiles')
+                .update({ status: 'disconnected', connected_platforms: toJson([]) })
+                .in('id', plan.disconnect)
+            if (error) throw new Error(error.message)
+        }
 
-        // Reuse the existing row's username (UNIQUE in our DB, and the
-        // profile already exists on Upload-Post's side); derive one for new rows.
-        const { data: existing } = await orgTable(ctx, 'social_profiles')
+        const [agency, accounts] = await Promise.all([buildAgencySummary(ctx), listAvatarSocialAccounts()])
+        if (!accounts.success) throw new Error(accounts.error ?? 'Could not list avatars')
+        return { success: true, data: { agency, accounts: accounts.data ?? [] } }
+    } catch (e) {
+        return fail(e)
+    }
+}
+
+/**
+ * Crea el perfil del avatar en la cuenta agencia (o reutiliza uno que ya
+ * exista con ese nombre) y lo deja asignado. Idempotente: el nombre es
+ * determinista (`deriveUploadPostUsername`), Upload-Post tolera "ya existe",
+ * y la fila previa del avatar (las legacy de las cuentas viejas) se REUTILIZA
+ * — mismo id, así que el historial de posts y los ajustes `ai_comment_*`
+ * sobreviven; sólo cambian username y estado.
+ */
+export async function createSocialProfileForAvatar(avatarId: string): Promise<SocialResult<SocialProfileSummary>> {
+    try {
+        const ctx = await getOrgContext()
+        requirePermission(ctx, 'connection:manage')
+        if (!avatarId) return { success: false, error: 'Avatar is required' }
+        const avatar = await getOwnedAvatar(ctx, avatarId)
+
+        const existing = await loadProfileByAvatar(ctx, avatarId)
+        if (existing?.status === 'active') {
+            return { success: false, error: 'This avatar already has a profile — unassign it first' }
+        }
+        const username = deriveUploadPostUsername(avatar)
+        const provider = getSocialProvider()
+
+        // Fila con ese mismo nombre (p.ej. un intento anterior que se quedó a
+        // medias, o la propia fila legacy del avatar): se reutiliza.
+        const { data: sameName, error: sameErr } = await orgTable(ctx, 'social_profiles')
             .select('*')
-            .eq('avatar_id', input.avatarId)
+            .eq('upload_post_username', username)
             .maybeSingle()
-        const username = existing?.upload_post_username ?? deriveUploadPostUsername(avatar)
+        if (sameErr) throw new Error(sameErr.message)
+        const free = sameName as SocialProfileDbRow | null
+        if (free?.avatar_id && free.avatar_id !== avatarId) {
+            return { success: false, error: `Profile ${username} is already assigned to another avatar` }
+        }
 
-        // Idempotent-ish: Upload-Post "exists" errors are tolerated; a 403
-        // (profile limit on that account's plan) surfaces with a clear message.
         try {
             await provider.createProfile(username)
         } catch (e) {
+            if (e instanceof UploadPostProviderError && e.isProfileLimitReached) {
+                return { success: false, error: e.message }
+            }
             const msg = e instanceof Error ? e.message : String(e)
             if (!/exist/i.test(msg)) throw e
         }
 
         let row: SocialProfileDbRow
-        if (existing) {
+        const target = free ?? existing
+        if (target) {
+            // El avatar arrastra OTRA fila (legacy con otro nombre) y además
+            // hay una con el nombre nuevo: la legacy se queda sin avatar para
+            // no chocar con el índice único de avatar_id.
+            if (existing && free && existing.id !== free.id) {
+                const { error } = await orgTable(ctx, 'social_profiles')
+                    .update({ avatar_id: null })
+                    .eq('id', existing.id)
+                if (error) throw new Error(error.message)
+            }
             const { data, error } = await orgTable(ctx, 'social_profiles')
-                .update({ api_key: apiKey, status: 'active' })
-                .eq('id', existing.id)
+                .update({
+                    upload_post_username: username,
+                    avatar_id: avatarId,
+                    status: 'active',
+                    connected_platforms: toJson([]),
+                    upload_post_metadata: null,
+                    last_synced_at: null,
+                })
+                .eq('id', target.id)
                 .select('*')
                 .single()
             if (error) throw new Error(error.message)
@@ -382,9 +565,8 @@ export async function connectUploadPostAccount(input: {
             const { data, error } = await orgSupabase()
                 .from('social_profiles')
                 .insert({
-                    avatar_id: input.avatarId,
+                    avatar_id: avatarId,
                     upload_post_username: username,
-                    api_key: apiKey,
                     status: 'active',
                     organization_id: ctx.organizationId,
                 } as never)
@@ -394,28 +576,7 @@ export async function connectUploadPostAccount(input: {
             row = data as SocialProfileDbRow
         }
 
-        // Best-effort extras — never fail the connect over them.
-        try {
-            await provider.configureWebhook(username, webhookCallbackUrl(), WEBHOOK_EVENTS)
-        } catch (e) {
-            console.warn('[SocialService] webhook registration failed (non-fatal)', e)
-        }
-        try {
-            const details = await provider.getProfile(username)
-            const { data } = await orgTable(ctx, 'social_profiles')
-                .update({
-                    connected_platforms: toJson(details.connectedAccounts ?? []),
-                    upload_post_metadata: details.metadata ? toJson(details.metadata) : null,
-                    last_synced_at: new Date().toISOString(),
-                })
-                .eq('id', row.id)
-                .select('*')
-                .single()
-            if (data) row = data as SocialProfileDbRow
-        } catch (e) {
-            console.warn('[SocialService] initial account sync failed (non-fatal)', e)
-        }
-
+        row = await refreshSnapshot(ctx, row)
         return { success: true, data: toSummary(row) }
     } catch (e) {
         return fail(e)
@@ -423,18 +584,72 @@ export async function connectUploadPostAccount(input: {
 }
 
 /**
- * Soft-disconnect an avatar's account: forget the key locally and mark the
- * row disconnected. The row is kept (post history references it) and the
- * Upload-Post profile is NOT deleted (its connected socials survive a
- * reconnect). Posts already scheduled on Upload-Post will still publish.
+ * Asigna un perfil LIBRE de la cuenta agencia a un avatar (calcado de
+ * `setAvatarFanvueCreator`). Si el avatar arrastra una fila `disconnected`
+ * (legacy), se le quita el avatar a esa fila primero: el índice único de
+ * avatar_id no admite dos; su historial se queda en ella.
  */
-export async function disconnectUploadPostAccount(avatarId: string): Promise<SocialResult<SocialProfileSummary>> {
+export async function assignSocialProfileToAvatar(
+    avatarId: string,
+    profileId: string,
+): Promise<SocialResult<SocialProfileSummary>> {
+    try {
+        const ctx = await getOrgContext()
+        requirePermission(ctx, 'connection:manage')
+        if (!avatarId || !profileId) return { success: false, error: 'Avatar and profile are required' }
+        await getOwnedAvatar(ctx, avatarId)
+
+        const { data: found, error: findErr } = await orgTable(ctx, 'social_profiles')
+            .select('*')
+            .eq('id', profileId)
+            .maybeSingle()
+        if (findErr) throw new Error(findErr.message)
+        const profile = found as SocialProfileDbRow | null
+        if (!profile) return { success: false, error: 'Profile not found' }
+        if (profile.status !== 'active') {
+            return { success: false, error: 'That profile is not on the agency account any more' }
+        }
+        if (profile.avatar_id && profile.avatar_id !== avatarId) {
+            return { success: false, error: 'That profile is already assigned to another avatar' }
+        }
+
+        const current = await loadProfileByAvatar(ctx, avatarId)
+        if (current && current.id !== profile.id) {
+            if (current.status === 'active') {
+                return { success: false, error: 'Unassign the current profile first' }
+            }
+            const { error } = await orgTable(ctx, 'social_profiles')
+                .update({ avatar_id: null })
+                .eq('id', current.id)
+            if (error) throw new Error(error.message)
+        }
+
+        const { data, error } = await orgTable(ctx, 'social_profiles')
+            .update({ avatar_id: avatarId })
+            .eq('id', profile.id)
+            .select('*')
+            .single()
+        if (error) throw new Error(error.message)
+        const row = await refreshSnapshot(ctx, data as SocialProfileDbRow)
+        return { success: true, data: toSummary(row) }
+    } catch (e) {
+        return fail(e)
+    }
+}
+
+/**
+ * Quita el avatar del perfil: el perfil sigue en la cuenta agencia (con sus
+ * redes) y vuelve a la lista de libres. Apaga la IA de comentarios de la
+ * fila: sin avatar no hay a quién responder, y `listPollableProfiles`
+ * avisaría cada 15 min de una fila con IA encendida y sin avatar.
+ */
+export async function unassignSocialProfile(avatarId: string): Promise<SocialResult<SocialProfileSummary>> {
     try {
         const ctx = await getOrgContext()
         requirePermission(ctx, 'connection:manage')
         await getOwnedAvatar(ctx, avatarId)
         const { data, error } = await orgTable(ctx, 'social_profiles')
-            .update({ status: 'disconnected', api_key: null, connected_platforms: toJson([]) })
+            .update({ avatar_id: null, ai_comment_replies_enabled: false, ai_comment_dm_enabled: false })
             .eq('avatar_id', avatarId)
             .select('*')
             .single()
@@ -473,7 +688,7 @@ export async function updateSocialCommentSettings(
         if (profErr) throw new Error(profErr.message)
         const row = profile as SocialProfileDbRow | null
         if (!row || row.status !== 'active') {
-            return { success: false, error: 'This avatar has no active Upload-Post account' }
+            return { success: false, error: 'This avatar has no active Upload-Post profile' }
         }
 
         const validated = validateSocialCommentSettingsPatch(patch, {
@@ -540,10 +755,10 @@ export async function generateSocialConnectUrl(avatarId: string): Promise<Social
         if (!profile || profile.status !== 'active') {
             return {
                 success: false,
-                error: 'This avatar has no active Upload-Post account — connect one with its API key first',
+                error: 'This avatar has no Upload-Post profile — create or assign one first',
             }
         }
-        const provider = getSocialProvider(resolveProfileKey(profile as SocialProfileDbRow))
+        const provider = getSocialProvider()
         const redirectUrl = `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3030'}/api/social/callback?avatarId=${encodeURIComponent(avatarId)}`
         const res = await provider.generateConnectUrl({
             username: profile.upload_post_username,
@@ -565,15 +780,27 @@ export async function syncConnectedAccounts(avatarId: string): Promise<SocialRes
             .eq('avatar_id', avatarId)
             .maybeSingle()
         if (profErr) throw new Error(profErr.message)
-        if (!profile) return { success: false, error: 'No Upload-Post account for this avatar' }
-        const provider = getSocialProvider(resolveProfileKey(profile as SocialProfileDbRow))
-        const details = await provider.getProfile(profile.upload_post_username)
+        if (!profile) return { success: false, error: 'No Upload-Post profile for this avatar' }
+        assertActiveProfile(profile)
+        let details: ProfileDetails
+        try {
+            details = await getSocialProvider().getProfile(profile.upload_post_username)
+        } catch (e) {
+            // 404 = alguien borró el perfil en el panel de Upload-Post: la fila
+            // pasa a disconnected en vez de seguir fingiendo que publica.
+            if (e instanceof UploadPostProviderError && e.statusCode === 404) {
+                const { data: gone, error: goneErr } = await orgTable(ctx, 'social_profiles')
+                    .update({ status: 'disconnected', connected_platforms: toJson([]) })
+                    .eq('id', profile.id)
+                    .select('*')
+                    .single()
+                if (goneErr) throw new Error(goneErr.message)
+                return { success: true, data: toSummary(gone as SocialProfileDbRow) }
+            }
+            throw e
+        }
         const { data, error } = await orgTable(ctx, 'social_profiles')
-            .update({
-                connected_platforms: toJson(details.connectedAccounts ?? []),
-                upload_post_metadata: details.metadata ? toJson(details.metadata) : null,
-                last_synced_at: new Date().toISOString(),
-            })
+            .update(snapshotFromDetails(details))
             .eq('id', profile.id)
             .select('*')
             .single()
@@ -584,21 +811,12 @@ export async function syncConnectedAccounts(avatarId: string): Promise<SocialRes
     }
 }
 
-export async function registerUploadPostWebhook(avatarId: string): Promise<SocialResult<{ configured: boolean }>> {
+/** Registra el webhook de la CUENTA agencia: una sola vez, vale para todos los perfiles. */
+export async function registerUploadPostWebhook(): Promise<SocialResult<{ configured: boolean }>> {
     try {
         const ctx = await getOrgContext()
         requirePermission(ctx, 'connection:manage')
-        const { data: profile } = await orgTable(ctx, 'social_profiles')
-            .select('*')
-            .eq('avatar_id', avatarId)
-            .maybeSingle()
-        if (!profile) return { success: false, error: 'No Upload-Post account for this avatar' }
-        const provider = getSocialProvider(resolveProfileKey(profile as SocialProfileDbRow))
-        const result = await provider.configureWebhook(
-            profile.upload_post_username,
-            webhookCallbackUrl(),
-            WEBHOOK_EVENTS,
-        )
+        const result = await getSocialProvider().configureWebhook(webhookCallbackUrl(), WEBHOOK_EVENTS)
         return { success: true, data: { configured: result.configured } }
     } catch (e) {
         return fail(e)
@@ -627,7 +845,7 @@ export async function createSocialPost(input: CreateSocialPostInput): Promise<So
         if (!profile) {
             return {
                 success: false,
-                error: 'This avatar has no Upload-Post account — connect one in Social Accounts',
+                error: 'This avatar has no Upload-Post profile — create or assign one in Social Accounts',
             }
         }
         const username = profile.upload_post_username
@@ -695,7 +913,7 @@ export async function createSocialPost(input: CreateSocialPostInput): Promise<So
             return { success: false, error: message }
         }
 
-        const provider = getSocialProvider(resolveProfileKey(profile as SocialProfileDbRow))
+        const provider = getSocialProvider()
         const platformTargets: PlatformTarget[] = platforms.map((platform) => ({ platform }))
         const scheduledAt = input.scheduledAt ? new Date(input.scheduledAt) : undefined
         const publishBase = {
@@ -874,8 +1092,8 @@ export async function cancelScheduledPost(postId: string): Promise<SocialResult<
             error: 'Could not cancel on Upload-Post — the post may still publish. Try again or remove the connected account.',
         }
 
-        // Resolve the account this post went out through — its API key and
-        // sub-user name live on the post's social profile.
+        // Resolve the profile this post went out through — the sub-user name
+        // lives on the post's social profile; the key is the agency one.
         const { data: profile } = post.social_profile_id
             ? await orgTable(ctx, 'social_profiles')
                   .select('*')
@@ -885,9 +1103,10 @@ export async function cancelScheduledPost(postId: string): Promise<SocialResult<
         if (!profile) return cannotCancel
         let provider
         try {
-            provider = getSocialProvider(resolveProfileKey(profile as SocialProfileDbRow))
+            assertActiveProfile(profile)
+            provider = getSocialProvider()
         } catch (e) {
-            console.warn('[SocialService] no usable key to cancel with', e)
+            console.warn('[SocialService] no usable profile to cancel with', e)
             return cannotCancel
         }
         const username = profile.upload_post_username

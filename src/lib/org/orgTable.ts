@@ -113,14 +113,19 @@ export function orgInsert<T extends TenantTable>(
     return supabase.from(table).insert(rows as any)
 }
 
-/** UPSERT con organization_id inyectado. */
+/**
+ * UPSERT con organization_id inyectado. `ignoreDuplicates` pasa directo a
+ * supabase-js (`ON CONFLICT DO NOTHING`): lo usa el sync de perfiles de
+ * Upload-Post para no pisar un username que ya reclamó OTRA org (índice
+ * único global sobre `social_profiles.upload_post_username`).
+ */
 export function orgUpsert<T extends TenantTable>(
     ctx: OrgContext,
     table: T,
     values:
         | Omit<Database['public']['Tables'][T]['Insert'], 'organization_id'>
         | Array<Omit<Database['public']['Tables'][T]['Insert'], 'organization_id'>>,
-    options?: { onConflict?: string },
+    options?: { onConflict?: string; ignoreDuplicates?: boolean },
 ) {
     const supabase = orgSupabase()
     const rows = (Array.isArray(values) ? values : [values]).map((v) => ({

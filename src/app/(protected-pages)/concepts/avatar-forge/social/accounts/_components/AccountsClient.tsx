@@ -12,17 +12,21 @@ import Notification from '@/components/ui/Notification'
 import toast from '@/components/ui/toast'
 import ConfirmDialog from '@/components/shared/ConfirmDialog'
 import {
-    connectUploadPostAccount,
-    disconnectUploadPostAccount,
+    assignSocialProfileToAvatar,
+    createSocialProfileForAvatar,
     registerUploadPostWebhook,
     syncConnectedAccounts,
+    syncUploadPostProfiles,
+    unassignSocialProfile,
     updateSocialCommentSettings,
     type AvatarSocialAccountRow,
     type SocialProfileSummary,
     type SocialCommentSettingsPatch,
+    type UploadPostAgencySummary,
 } from '@/services/SocialService'
 
 interface AccountsClientProps {
+    initialAgency: UploadPostAgencySummary | null
     initialAccounts: AvatarSocialAccountRow[]
     loadError: string | null
 }
@@ -31,6 +35,12 @@ interface ConnectedAccountChip {
     platform?: string
     accountName?: string
     avatarUrl?: string
+    reauthRequired?: boolean
+}
+
+interface ProfileOption {
+    value: string
+    label: string
 }
 
 /** Connected platforms come back either as bare strings or account objects. */
@@ -41,29 +51,35 @@ function toChip(p: unknown): ConnectedAccountChip {
         platform: typeof obj.platform === 'string' ? obj.platform : undefined,
         accountName: typeof obj.accountName === 'string' ? obj.accountName : undefined,
         avatarUrl: typeof obj.avatarUrl === 'string' ? obj.avatarUrl : undefined,
+        reauthRequired: obj.reauthRequired === true,
     }
 }
 
-function statusTag(profile: SocialProfileSummary | null) {
-    if (!profile || (!profile.hasApiKey && profile.status !== 'active')) {
-        return (
-            <Tag className="bg-amber-100 text-amber-600 dark:bg-amber-500/20 dark:text-amber-100 border-0">
-                No account
-            </Tag>
-        )
+/** `username · instagram, x (external)` — lo que ve quien elige un perfil libre. */
+function profileOptionLabel(profile: SocialProfileSummary): string {
+    const platforms = profile.connectedPlatforms
+        .map(toChip)
+        .map((chip) => chip.platform)
+        .filter((p): p is string => Boolean(p))
+    const base =
+        platforms.length > 0
+            ? `${profile.uploadPostUsername} · ${platforms.join(', ')}`
+            : profile.uploadPostUsername
+    return profile.isExternal ? `${base} (external)` : base
+}
+
+const AMBER_TAG = 'bg-amber-100 text-amber-600 dark:bg-amber-500/20 dark:text-amber-100 border-0'
+const GREEN_TAG = 'bg-emerald-100 text-emerald-600 dark:bg-emerald-500/20 dark:text-emerald-100 border-0'
+const GRAY_TAG = 'bg-gray-100 text-gray-600 dark:bg-gray-500/20 dark:text-gray-100 border-0'
+
+function statusTag(profile: SocialProfileSummary | null, needsReauth: boolean) {
+    if (!profile || profile.status !== 'active') {
+        return <Tag className={AMBER_TAG}>No profile</Tag>
     }
-    if (profile.status === 'active') {
-        return (
-            <Tag className="bg-emerald-100 text-emerald-600 dark:bg-emerald-500/20 dark:text-emerald-100 border-0">
-                Connected
-            </Tag>
-        )
+    if (needsReauth) {
+        return <Tag className={AMBER_TAG}>Needs re-auth</Tag>
     }
-    return (
-        <Tag className="bg-gray-100 text-gray-600 dark:bg-gray-500/20 dark:text-gray-100 border-0">
-            Disconnected
-        </Tag>
-    )
+    return <Tag className={GREEN_TAG}>Connected</Tag>
 }
 
 const ACCOUNTS_PATH = '/concepts/avatar-forge/social/accounts'
@@ -96,19 +112,23 @@ function newDmButtonId(): string {
 }
 
 /**
- * Per-avatar Upload-Post accounts: every avatar row manages its OWN
- * Upload-Post account (own API key, own linked socials). The key is pasted
- * here, validated server-side, and never comes back to the client (only
- * `apiKeyLast4`/`usesEnvKey` flags do).
+ * Cuenta AGENCIA de Upload-Post (2026-09-17): una sola key de la plataforma
+ * (env, nunca llega aquí) y un catálogo de perfiles (sub-users) que se
+ * asignan a los avatares — calcado de la pantalla de Fanvue (agencia +
+ * creators). Arriba, la card de la agencia (plan, N / límite, Refresh
+ * profiles, webhook, perfiles libres); abajo, una card por avatar: sin perfil
+ * → asignar uno libre o crear el suyo; con perfil → conectar redes, refrescar,
+ * desasignar, y los ajustes de IA en comentarios.
  */
-const AccountsClient = ({ initialAccounts, loadError }: AccountsClientProps) => {
+const AccountsClient = ({ initialAgency, initialAccounts, loadError }: AccountsClientProps) => {
+    const [agency, setAgency] = useState<UploadPostAgencySummary | null>(initialAgency)
+    const [agencyBusy, setAgencyBusy] = useState(false)
     const [accounts, setAccounts] = useState<AvatarSocialAccountRow[]>(initialAccounts)
     const [error, setError] = useState<string | null>(loadError)
     const [cardErrors, setCardErrors] = useState<Record<string, string>>({})
-    const [keyInputs, setKeyInputs] = useState<Record<string, string>>({})
-    const [editingKey, setEditingKey] = useState<Record<string, boolean>>({})
+    const [assignSelection, setAssignSelection] = useState<Record<string, string>>({})
     const [busyAvatar, setBusyAvatar] = useState<string | null>(null)
-    const [confirmDisconnect, setConfirmDisconnect] = useState<AvatarSocialAccountRow | null>(null)
+    const [confirmUnassign, setConfirmUnassign] = useState<AvatarSocialAccountRow | null>(null)
     // Campos de "IA en comentarios" guardándose ahora mismo — mismo patrón
     // que `savingAi` en TelegramConnectionPanel, pero con clave
     // `${avatarId}:${field}` (no sólo `avatarId`): esta pantalla lista
@@ -139,27 +159,70 @@ const AccountsClient = ({ initialAccounts, loadError }: AccountsClientProps) => 
         })
     }
 
-    const handleConnectAccount = async (avatarId: string) => {
-        const apiKey = (keyInputs[avatarId] ?? '').trim()
-        if (!apiKey) {
-            setCardError(avatarId, 'Paste the Upload-Post API key for this avatar first')
+    const removeUnassigned = (profileId: string) => {
+        setAgency((prev) =>
+            prev ? { ...prev, unassigned: prev.unassigned.filter((p) => p.id !== profileId) } : prev,
+        )
+    }
+
+    const addUnassigned = (profile: SocialProfileSummary) => {
+        setAgency((prev) => {
+            if (!prev) return prev
+            const rest = prev.unassigned.filter((p) => p.id !== profile.id)
+            const unassigned = [...rest, profile].sort((a, b) =>
+                a.uploadPostUsername.localeCompare(b.uploadPostUsername),
+            )
+            return { ...prev, unassigned }
+        })
+    }
+
+    const handleCreateProfile = async (avatarId: string) => {
+        setBusyAvatar(avatarId)
+        setCardError(avatarId, null)
+        try {
+            const result = await createSocialProfileForAvatar(avatarId)
+            if (result.success && result.data) {
+                applyProfile(avatarId, result.data)
+                removeUnassigned(result.data.id)
+                toast.push(
+                    <Notification type="success" title="Profile created">
+                        {result.data.uploadPostUsername} is on the agency account — now connect its
+                        social networks
+                    </Notification>,
+                )
+            } else {
+                setCardError(avatarId, result.error ?? 'Failed to create profile')
+            }
+        } finally {
+            setBusyAvatar(null)
+        }
+    }
+
+    const handleAssign = async (avatarId: string) => {
+        const profileId = assignSelection[avatarId]
+        if (!profileId) {
+            setCardError(avatarId, 'Pick a free profile first')
             return
         }
         setBusyAvatar(avatarId)
         setCardError(avatarId, null)
         try {
-            const result = await connectUploadPostAccount({ avatarId, apiKey })
+            const result = await assignSocialProfileToAvatar(avatarId, profileId)
             if (result.success && result.data) {
                 applyProfile(avatarId, result.data)
-                setKeyInputs((prev) => ({ ...prev, [avatarId]: '' }))
-                setEditingKey((prev) => ({ ...prev, [avatarId]: false }))
+                removeUnassigned(profileId)
+                setAssignSelection((prev) => {
+                    const next = { ...prev }
+                    delete next[avatarId]
+                    return next
+                })
                 toast.push(
-                    <Notification type="success" title="Account connected">
-                        Upload-Post account linked — now connect its social networks
+                    <Notification type="success" title="Profile assigned">
+                        This avatar now posts through {result.data.uploadPostUsername}
                     </Notification>,
                 )
             } else {
-                setCardError(avatarId, result.error ?? 'Failed to connect account')
+                setCardError(avatarId, result.error ?? 'Failed to assign profile')
             }
         } finally {
             setBusyAvatar(null)
@@ -189,38 +252,61 @@ const AccountsClient = ({ initialAccounts, loadError }: AccountsClientProps) => 
         }
     }
 
-    const handleDisconnect = async () => {
-        const target = confirmDisconnect
-        setConfirmDisconnect(null)
+    const handleUnassign = async () => {
+        const target = confirmUnassign
+        setConfirmUnassign(null)
         if (!target) return
         setBusyAvatar(target.avatarId)
         setCardError(target.avatarId, null)
         try {
-            const result = await disconnectUploadPostAccount(target.avatarId)
+            const result = await unassignSocialProfile(target.avatarId)
             if (result.success && result.data) {
-                applyProfile(target.avatarId, result.data)
+                applyProfile(target.avatarId, null)
+                addUnassigned(result.data)
                 toast.push(
-                    <Notification type="info" title="Account disconnected">
-                        The API key was forgotten. Posts already scheduled on Upload-Post
-                        will still publish.
+                    <Notification type="info" title="Profile unassigned">
+                        The profile stays on the agency account and can be assigned to another
+                        avatar. Posts already scheduled on Upload-Post will still publish.
                     </Notification>,
                 )
             } else {
-                setCardError(target.avatarId, result.error ?? 'Failed to disconnect')
+                setCardError(target.avatarId, result.error ?? 'Failed to unassign')
             }
         } finally {
             setBusyAvatar(null)
         }
     }
 
-    const handleRegisterWebhook = async (avatarId: string) => {
-        setBusyAvatar(avatarId)
+    const handleRefreshProfiles = async () => {
+        setAgencyBusy(true)
+        setError(null)
         try {
-            const result = await registerUploadPostWebhook(avatarId)
+            const result = await syncUploadPostProfiles()
+            if (result.success && result.data) {
+                setAgency(result.data.agency)
+                setAccounts(result.data.accounts)
+                toast.push(
+                    <Notification type="success" title="Profiles refreshed">
+                        {result.data.agency.unassigned.length} free profile(s) on the agency account
+                    </Notification>,
+                )
+            } else {
+                setError(result.error ?? 'Failed to refresh profiles')
+            }
+        } finally {
+            setAgencyBusy(false)
+        }
+    }
+
+    const handleRegisterWebhook = async () => {
+        setAgencyBusy(true)
+        try {
+            const result = await registerUploadPostWebhook()
             toast.push(
                 result.success ? (
                     <Notification type="success" title="Webhook registered">
-                        Upload-Post will notify this app of publish events for this account
+                        Upload-Post will notify this app of publish and account events for the
+                        agency account
                     </Notification>
                 ) : (
                     <Notification type="danger" title="Webhook registration failed">
@@ -229,7 +315,7 @@ const AccountsClient = ({ initialAccounts, loadError }: AccountsClientProps) => 
                 ),
             )
         } finally {
-            setBusyAvatar(null)
+            setAgencyBusy(false)
         }
     }
 
@@ -390,6 +476,18 @@ const AccountsClient = ({ initialAccounts, loadError }: AccountsClientProps) => 
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [searchParams])
 
+    const unassigned = agency?.unassigned ?? []
+    const profileOptions: ProfileOption[] = unassigned.map((p) => ({
+        value: p.id,
+        label: profileOptionLabel(p),
+    }))
+    const agencyFull =
+        !!agency &&
+        agency.limit !== null &&
+        agency.profilesUsed !== null &&
+        agency.profilesUsed >= agency.limit
+    const canCreate = !!agency?.configured && !agencyFull
+
     return (
         <div className="flex flex-col gap-4">
             {error && (
@@ -397,6 +495,82 @@ const AccountsClient = ({ initialAccounts, loadError }: AccountsClientProps) => 
                     <p className="text-xs text-red-600 dark:text-red-400">{error}</p>
                 </div>
             )}
+
+            <Card>
+                <div className="flex flex-wrap items-center gap-2 mb-3">
+                    <h6 className="font-bold">Upload-Post agency account</h6>
+                    {agency?.configured ? (
+                        <Tag className={GREEN_TAG}>Connected</Tag>
+                    ) : (
+                        <Tag className={AMBER_TAG}>Not configured</Tag>
+                    )}
+                    {agency?.plan && <Tag className={GRAY_TAG}>Plan {agency.plan}</Tag>}
+                    {agency && agency.profilesUsed !== null && (
+                        <Tag className={agencyFull ? AMBER_TAG : GRAY_TAG}>
+                            {agency.profilesUsed} / {agency.limit ?? '?'} profiles
+                        </Tag>
+                    )}
+                    {agency?.keyLast4 && (
+                        <span className="text-xs text-gray-400 font-mono">Key ····{agency.keyLast4}</span>
+                    )}
+                </div>
+
+                {agency && !agency.configured && (
+                    <p className="text-sm text-amber-600 dark:text-amber-400 mb-3">
+                        UPLOAD_POST_API_KEY is not set on the server — profiles cannot be created or
+                        synced until it is.
+                    </p>
+                )}
+                {agency?.remoteError && (
+                    <div className="p-2 mb-3 bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-700 rounded-lg">
+                        <p className="text-xs text-red-600 dark:text-red-400">Upload-Post: {agency.remoteError}</p>
+                    </div>
+                )}
+
+                <div className="flex flex-wrap items-center gap-2 mb-4">
+                    <Button
+                        variant="solid"
+                        size="sm"
+                        loading={agencyBusy}
+                        disabled={!agency?.configured}
+                        onClick={handleRefreshProfiles}
+                    >
+                        Refresh profiles
+                    </Button>
+                    <Button
+                        variant="plain"
+                        size="sm"
+                        disabled={agencyBusy || !agency?.configured}
+                        onClick={handleRegisterWebhook}
+                    >
+                        Register webhook
+                    </Button>
+                </div>
+
+                <p className="text-sm font-semibold mb-2">Free profiles</p>
+                {unassigned.length > 0 ? (
+                    <div className="flex flex-col gap-1">
+                        {unassigned.map((profile) => (
+                            <div key={profile.id} className="flex flex-wrap items-center gap-2 text-sm">
+                                <span className="font-mono">{profile.uploadPostUsername}</span>
+                                {profile.isExternal && <Tag className={GRAY_TAG}>external</Tag>}
+                                {profile.connectedPlatforms.map(toChip).map((chip, idx) => (
+                                    <span key={idx} className="text-xs text-gray-400">
+                                        <span className="capitalize">{chip.platform}</span>
+                                        {chip.accountName ? ` ${chip.accountName}` : ''}
+                                    </span>
+                                ))}
+                            </div>
+                        ))}
+                    </div>
+                ) : (
+                    <p className="text-sm text-gray-500">
+                        {agency?.configured
+                            ? 'No free profiles — click "Refresh profiles" to sync the agency account, or create one from an avatar card.'
+                            : 'Configure the agency key to load its profiles.'}
+                    </p>
+                )}
+            </Card>
 
             {accounts.length === 0 && !error && (
                 <Card>
@@ -411,22 +585,22 @@ const AccountsClient = ({ initialAccounts, loadError }: AccountsClientProps) => 
                 const isActive = profile?.status === 'active'
                 const isBusy = busyAvatar === account.avatarId
                 const cardError = cardErrors[account.avatarId]
-                const showKeyForm = !isActive || editingKey[account.avatarId]
                 const chips = (profile?.connectedPlatforms ?? []).map(toChip)
+                const needsReauth = chips.some((chip) => chip.reauthRequired)
+                // Fila legacy (cuenta vieja) o perfil borrado en Upload-Post:
+                // se dice cual era para que el aviso tenga sentido.
+                const previousUsername = profile && !isActive ? profile.uploadPostUsername : null
+                const selectedOption =
+                    profileOptions.find((o) => o.value === assignSelection[account.avatarId]) ?? null
 
                 return (
                     <Card key={account.avatarId}>
                         <div className="flex flex-wrap items-center gap-2 mb-3">
                             <h6 className="font-bold">{account.avatarName}</h6>
-                            {statusTag(profile)}
-                            {isActive && profile?.usesEnvKey && (
-                                <Tag className="bg-blue-100 text-blue-600 dark:bg-blue-500/20 dark:text-blue-100 border-0">
-                                    Default key (env)
-                                </Tag>
-                            )}
-                            {isActive && !profile?.usesEnvKey && profile?.apiKeyLast4 && (
+                            {statusTag(profile, needsReauth)}
+                            {isActive && profile && (
                                 <span className="text-xs text-gray-400 font-mono">
-                                    Key ····{profile.apiKeyLast4}
+                                    Profile {profile.uploadPostUsername}
                                 </span>
                             )}
                         </div>
@@ -437,44 +611,59 @@ const AccountsClient = ({ initialAccounts, loadError }: AccountsClientProps) => 
                             </div>
                         )}
 
-                        {showKeyForm && (
-                            <div className="flex flex-wrap items-center gap-2 mb-3">
-                                <div className="w-full sm:w-80">
-                                    <Input
-                                        type="password"
-                                        size="sm"
-                                        value={keyInputs[account.avatarId] ?? ''}
-                                        placeholder="Upload-Post API key for this avatar's account"
-                                        onChange={(e) =>
-                                            setKeyInputs((prev) => ({
-                                                ...prev,
-                                                [account.avatarId]: e.target.value,
-                                            }))
-                                        }
-                                    />
-                                </div>
-                                <Button
-                                    variant="solid"
-                                    size="sm"
-                                    loading={isBusy}
-                                    onClick={() => handleConnectAccount(account.avatarId)}
-                                >
-                                    {isActive ? 'Save key' : 'Connect account'}
-                                </Button>
-                                {isActive && (
+                        {!isActive && (
+                            <div className="mb-3">
+                                {previousUsername && (
+                                    <p className="text-xs text-amber-600 dark:text-amber-400 mb-2">
+                                        Previous profile{' '}
+                                        <span className="font-mono">{previousUsername}</span> is not on
+                                        the agency account: create a new one or assign a free profile.
+                                    </p>
+                                )}
+                                <div className="flex flex-wrap items-center gap-2">
+                                    <div className="w-full sm:w-80">
+                                        <Select<ProfileOption>
+                                            instanceId={`assign-${account.avatarId}`}
+                                            placeholder={
+                                                profileOptions.length > 0
+                                                    ? 'Pick a free profile'
+                                                    : 'No free profiles'
+                                            }
+                                            isDisabled={isBusy || profileOptions.length === 0}
+                                            isClearable
+                                            options={profileOptions}
+                                            value={selectedOption}
+                                            onChange={(opt) =>
+                                                setAssignSelection((prev) => ({
+                                                    ...prev,
+                                                    [account.avatarId]: opt?.value ?? '',
+                                                }))
+                                            }
+                                        />
+                                    </div>
                                     <Button
-                                        variant="plain"
                                         size="sm"
-                                        disabled={isBusy}
-                                        onClick={() =>
-                                            setEditingKey((prev) => ({
-                                                ...prev,
-                                                [account.avatarId]: false,
-                                            }))
-                                        }
+                                        loading={isBusy}
+                                        disabled={!selectedOption}
+                                        onClick={() => handleAssign(account.avatarId)}
                                     >
-                                        Cancel
+                                        Assign
                                     </Button>
+                                    <Button
+                                        variant="solid"
+                                        size="sm"
+                                        loading={isBusy}
+                                        disabled={!canCreate}
+                                        onClick={() => handleCreateProfile(account.avatarId)}
+                                    >
+                                        Create profile
+                                    </Button>
+                                </div>
+                                {agencyFull && (
+                                    <p className="text-xs text-gray-400 mt-2">
+                                        The agency account is full ({agency?.profilesUsed} /{' '}
+                                        {agency?.limit}): free a profile or upgrade the plan.
+                                    </p>
                                 )}
                             </div>
                         )}
@@ -488,7 +677,9 @@ const AccountsClient = ({ initialAccounts, loadError }: AccountsClientProps) => 
                                             {chips.map((chip, idx) => (
                                                 <Tag
                                                     key={idx}
-                                                    className="inline-flex items-center gap-1.5"
+                                                    className={`inline-flex items-center gap-1.5 ${
+                                                        chip.reauthRequired ? AMBER_TAG : ''
+                                                    }`}
                                                 >
                                                     {chip.avatarUrl && (
                                                         <img
@@ -502,6 +693,9 @@ const AccountsClient = ({ initialAccounts, loadError }: AccountsClientProps) => 
                                                         <span className="text-gray-400">
                                                             {chip.accountName}
                                                         </span>
+                                                    )}
+                                                    {chip.reauthRequired && (
+                                                        <span className="font-semibold">re-auth</span>
                                                     )}
                                                 </Tag>
                                             ))}
@@ -530,37 +724,14 @@ const AccountsClient = ({ initialAccounts, loadError }: AccountsClientProps) => 
                                     >
                                         Refresh
                                     </Button>
-                                    {!editingKey[account.avatarId] && (
-                                        <Button
-                                            variant="plain"
-                                            size="sm"
-                                            disabled={isBusy}
-                                            onClick={() =>
-                                                setEditingKey((prev) => ({
-                                                    ...prev,
-                                                    [account.avatarId]: true,
-                                                }))
-                                            }
-                                        >
-                                            Change key
-                                        </Button>
-                                    )}
-                                    <Button
-                                        variant="plain"
-                                        size="sm"
-                                        disabled={isBusy}
-                                        onClick={() => handleRegisterWebhook(account.avatarId)}
-                                    >
-                                        Register webhook
-                                    </Button>
                                     <Button
                                         variant="plain"
                                         size="sm"
                                         disabled={isBusy}
                                         customColorClass={() => 'text-red-500 hover:text-red-600'}
-                                        onClick={() => setConfirmDisconnect(account)}
+                                        onClick={() => setConfirmUnassign(account)}
                                     >
-                                        Disconnect
+                                        Unassign
                                     </Button>
                                 </div>
 
@@ -779,21 +950,21 @@ const AccountsClient = ({ initialAccounts, loadError }: AccountsClientProps) => 
             })}
 
             <ConfirmDialog
-                isOpen={!!confirmDisconnect}
+                isOpen={!!confirmUnassign}
                 type="danger"
-                title={`Disconnect ${confirmDisconnect?.avatarName ?? ''}?`}
-                confirmText="Disconnect"
+                title={`Unassign ${confirmUnassign?.avatarName ?? ''}?`}
+                confirmText="Unassign"
                 confirmButtonProps={{ color: 'red' }}
-                onClose={() => setConfirmDisconnect(null)}
-                onRequestClose={() => setConfirmDisconnect(null)}
-                onCancel={() => setConfirmDisconnect(null)}
-                onConfirm={handleDisconnect}
+                onClose={() => setConfirmUnassign(null)}
+                onRequestClose={() => setConfirmUnassign(null)}
+                onCancel={() => setConfirmUnassign(null)}
+                onConfirm={handleUnassign}
             >
                 <p>
-                    This forgets the stored API key locally. The Upload-Post account and
-                    its linked socials stay intact on Upload-Post&apos;s side, and posts
-                    already scheduled there will still publish. Reconnecting requires
-                    pasting the key again.
+                    The profile stays on the agency account with its linked socials and goes
+                    back to the free list, so it can be assigned to another avatar. Posts
+                    already scheduled on Upload-Post will still publish; the post history
+                    stays with the profile. AI comment replies are switched off.
                 </p>
             </ConfirmDialog>
         </div>

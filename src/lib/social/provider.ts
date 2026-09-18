@@ -1,17 +1,29 @@
 import { UploadPostProvider } from '@/lib/social/providers/UploadPostProvider'
 import type { SocialProvider } from '@/lib/social/providers/SocialProvider'
 
-const cache = new Map<string, SocialProvider>()
+export { deriveUploadPostUsername, isAppManagedUsername } from '@/lib/social/profileNaming'
 
 /**
- * Provider factory, one Upload-Post account per avatar: each avatar's
- * `social_profiles` row stores its own API key. Passing no key (or null)
- * falls back to env `UPLOAD_POST_API_KEY` — that path is reserved for the
- * legacy migrated row (api_key NULL + status 'active').
+ * Cuenta AGENCIA de Upload-Post (SUPER-PLAN §4.0b, 2026-09-17): UNA sola API
+ * key de la plataforma en env `UPLOAD_POST_API_KEY`; todos los perfiles
+ * (sub-users) de todos los avatares cuelgan de ella y los tenants nunca la
+ * ven. Antes cada avatar traía su propia key en `social_profiles.api_key`
+ * (plan FREE por avatar) — esa columna ya no existe.
+ *
+ * Se memoiza por VALOR de la key y no como singleton a secas: si la key rota
+ * en un redeploy, el proceso nuevo construye el cliente con la nueva sin
+ * arrastrar el viejo.
  */
-export function getSocialProvider(apiKey?: string | null): SocialProvider {
-    const key = apiKey?.trim() || process.env.UPLOAD_POST_API_KEY
-    if (!key) throw new Error('No Upload-Post API key available')
+const cache = new Map<string, SocialProvider>()
+
+function readAgencyKey(): string | null {
+    const key = process.env.UPLOAD_POST_API_KEY?.trim()
+    return key ? key : null
+}
+
+export function getSocialProvider(): SocialProvider {
+    const key = readAgencyKey()
+    if (!key) throw new Error('UPLOAD_POST_API_KEY is not configured')
     let provider = cache.get(key)
     if (!provider) {
         provider = new UploadPostProvider(key, process.env.UPLOAD_POST_BASE_URL)
@@ -20,20 +32,16 @@ export function getSocialProvider(apiKey?: string | null): SocialProvider {
     return provider
 }
 
+/** ¿Hay key de agencia en el entorno? Server-only; alimenta la card de estado. */
+export function hasUploadPostKey(): boolean {
+    return readAgencyKey() !== null
+}
+
 /**
- * Deterministic Upload-Post sub-user name for a NEW avatar profile, e.g.
- * MiaUltra → `miaultra-3d2bfe4e`. Reconnects must reuse the existing row's
- * `upload_post_username` instead (it is UNIQUE in our DB, and the profile
- * already exists on the Upload-Post side).
+ * Últimos 4 caracteres de la key de agencia: la UI dice QUÉ key corre (p.ej.
+ * para notar que Vercel sigue con la vieja) sin exponerla nunca entera.
  */
-export function deriveUploadPostUsername(avatar: { id: string; name: string }): string {
-    const slug =
-        avatar.name
-            .toLowerCase()
-            .normalize('NFKD')
-            .replace(/[\u0300-\u036f]/g, '')
-            .replace(/[^a-z0-9]+/g, '-')
-            .replace(/^-+|-+$/g, '')
-            .slice(0, 24) || 'avatar'
-    return `${slug}-${avatar.id.slice(0, 8)}`
+export function uploadPostKeyLast4(): string | null {
+    const key = readAgencyKey()
+    return key ? key.slice(-4) : null
 }

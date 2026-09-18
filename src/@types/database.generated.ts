@@ -1689,7 +1689,6 @@ export type Database = {
           ai_comment_dm_enabled: boolean
           ai_comment_dm_text: string | null
           ai_comment_replies_enabled: boolean
-          api_key: string | null
           avatar_id: string | null
           connected_platforms: Json
           created_at: string
@@ -1706,7 +1705,6 @@ export type Database = {
           ai_comment_dm_enabled?: boolean
           ai_comment_dm_text?: string | null
           ai_comment_replies_enabled?: boolean
-          api_key?: string | null
           avatar_id?: string | null
           connected_platforms?: Json
           created_at?: string
@@ -1723,7 +1721,6 @@ export type Database = {
           ai_comment_dm_enabled?: boolean
           ai_comment_dm_text?: string | null
           ai_comment_replies_enabled?: boolean
-          api_key?: string | null
           avatar_id?: string | null
           connected_platforms?: Json
           created_at?: string

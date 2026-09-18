@@ -9,7 +9,6 @@ function baseRow(overrides: Partial<SocialProfileRow> = {}): SocialProfileRow {
         organization_id: 'org-1',
         avatar_id: 'avatar-1',
         status: 'active',
-        api_key: 'secret-key',
         upload_post_username: 'mia-abc123',
         connected_platforms: [],
         ai_comment_replies_enabled: true,
@@ -21,7 +20,7 @@ function baseRow(overrides: Partial<SocialProfileRow> = {}): SocialProfileRow {
     }
 }
 
-test('toSocialCommentSettings: mapea los campos básicos y nunca expone api_key', () => {
+test('toSocialCommentSettings: mapea los campos básicos y no expone nada que huela a credencial', () => {
     const dto = toSocialCommentSettings(baseRow())
     assert.equal(dto.profileId, 'profile-1')
     assert.equal(dto.avatarId, 'avatar-1')

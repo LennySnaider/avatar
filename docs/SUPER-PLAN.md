@@ -179,6 +179,14 @@ plan del tenant. Tabla **`upload_post_pools`** (api_key server-only, plan, capac
 profiles_used) + asignación automática de perfil-en-pool al habilitar social;
 `social_profiles.pool_id` FK opcional (BYOK sigue como opción avanzada). Webhook: una
 registración por pool. Los tenants NUNCA ven las keys del pool.
+> ✅ **Implementado 2026-09-17 en forma mínima** (migración `20260917140000_social_profiles_agency`):
+> la key del pool es `UPLOAD_POST_API_KEY` en env (plan Professional, 25 perfiles);
+> `social_profiles.api_key` eliminada; `social_profiles` = catálogo de perfiles de la agencia
+> con asignación por avatar desde Social Accounts (crear / asignar / desasignar + "Refresh
+> profiles"); webhook registrado una vez por cuenta. Los 6 perfiles anteriores vivían en
+> cuentas viejas → quedaron `disconnected` y cada avatar recrea el suyo y reautoriza sus redes.
+> **Pendiente:** tabla `upload_post_pools` (varios pools / BYOK por org) — hoy todas las orgs
+> comparten el pool y la propiedad de un perfil es "primer sync gana".
 
 ### 4.1 Migraciones org_id — ✅ APLICADA EN PROD (2026-07-18, vía MCP `apply_migration`; sin archivos locales en `supabase/migrations/`)
 > **Estado real (verificado 2026-07-22):** `org_id` en TODAS las tablas tenant; **PUENTE ACTIVO** = `DEFAULT '…0001'` en las 12 tablas legacy (avatars, avatar_references, generations, prompts, cloned_voices, audio_scripts, video_flows, social_profiles, social_posts, fanvue_connections, fanvue_creators, fanvue_posts) → **se quita en 4.2.g**. RLS ON en todas; 6 legacy conservan políticas viejas `auth.uid()` (avatars/prompts/avatar_references/generations/video_flows/ai_providers → reemplazar en 4.2.g), resto RLS-on-0-políticas (backstop anti-anon). ⚠️ `orgStoragePath()` **aún NO existe** — es entregable de **4.2.c**, no de 4.1.

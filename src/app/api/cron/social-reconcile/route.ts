@@ -26,11 +26,11 @@
  *     `findScheduledMatch` below for the exact correlation rule and its
  *     limits).
  *
- * Multi-account: each avatar has its own Upload-Post account, so every post
- * is reconciled with the provider of ITS `social_profiles` row (api_key
- * NULL + status 'active' = legacy row on env UPLOAD_POST_API_KEY). Posts
- * whose profile has no usable key (e.g. disconnected) are skipped with a
- * warning until the account is reconnected.
+ * Agency account (2026-09-17): ONE platform Upload-Post key (env
+ * `UPLOAD_POST_API_KEY`) serves every profile, so the provider is shared;
+ * each post still resolves ITS `social_profiles` row for the sub-user name.
+ * Posts whose profile is not `active` (legacy rows from the old per-avatar
+ * accounts, or profiles deleted upstream) are skipped with a warning.
  *
  * Gated by `CRON_SECRET` (Bearer token) when that env var is set.
  * Uses the service-role Supabase client (bypasses RLS).
@@ -171,24 +171,27 @@ interface ProfileEntry {
 }
 
 /**
- * Load every social profile and pre-resolve its provider. A profile with no
- * usable key (disconnected and keyless) gets `provider: null` — its posts
- * are skipped this sweep.
+ * Load every social profile and pair it with the (shared, agency) provider.
+ * A profile that is not `active` gets `provider: null` — its posts are
+ * skipped this sweep. The provider is resolved ONCE: without the env key
+ * there is a single warning and every entry is null, not one warning per row.
  */
 async function loadProfileEntries(supabase: ServerSupabase): Promise<Map<string, ProfileEntry>> {
     const { data: profiles } = await supabase
         .from('social_profiles')
-        .select('id, upload_post_username, api_key, status')
+        .select('id, upload_post_username, status')
+    let shared: SocialProvider | null = null
+    try {
+        shared = getSocialProvider()
+    } catch (e) {
+        console.warn('[social-reconcile] no Upload-Post provider available', e)
+    }
     const map = new Map<string, ProfileEntry>()
     for (const profile of profiles ?? []) {
-        let provider: SocialProvider | null = null
-        try {
-            if (profile.api_key) provider = getSocialProvider(profile.api_key)
-            else if (profile.status === 'active') provider = getSocialProvider(null) // legacy env-key row
-        } catch (e) {
-            console.warn('[social-reconcile] no provider for profile', profile.id, e)
-        }
-        map.set(profile.id, { username: profile.upload_post_username, provider })
+        map.set(profile.id, {
+            username: profile.upload_post_username,
+            provider: profile.status === 'active' ? shared : null,
+        })
     }
     return map
 }

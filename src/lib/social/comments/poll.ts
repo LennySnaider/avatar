@@ -24,7 +24,7 @@
  */
 import { agentSupabase, type SocialProfileRow } from '@/lib/agent/db'
 import { getSocialProvider } from '@/lib/social/provider'
-import { resolveProfileKey } from '@/lib/social/profileKey'
+import { assertActiveProfile } from '@/lib/social/profileGuard'
 import { UploadPostProviderError } from '@/lib/social/providers/UploadPostProvider'
 import { ingestMessage, resolveAvatarTargetById, touchFanMemory, upsertChat } from '@/lib/agent/inboxSync'
 import { generateDraftReply } from '@/lib/agent/draftPipeline'
@@ -346,7 +346,8 @@ export async function pollProfileComments(
 
     let provider
     try {
-        provider = getSocialProvider(resolveProfileKey(profileRow))
+        assertActiveProfile(profileRow)
+        provider = getSocialProvider()
     } catch (e) {
         console.warn('[social-comments] no hay provider utilizable, se omite el sondeo', { profileId: profileRow.id }, e)
         return result

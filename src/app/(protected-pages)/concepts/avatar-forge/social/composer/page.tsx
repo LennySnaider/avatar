@@ -110,8 +110,8 @@ export default async function Page({ searchParams }: PageProps) {
             {accounts.length === 0 ? (
                 <Card>
                     <p className="mb-4 text-sm text-gray-500">
-                        No avatar has an Upload-Post account yet. Connect one on the
-                        accounts page before publishing.
+                        No avatar has a profile on the Upload-Post agency account yet.
+                        Create or assign one on the accounts page before publishing.
                     </p>
                     <Link
                         href="/concepts/avatar-forge/social/accounts"

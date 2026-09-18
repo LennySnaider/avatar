@@ -302,8 +302,6 @@ export type Database = {
                     status: string
                     connected_platforms: Json
                     upload_post_metadata: Json | null
-                    /** Per-avatar Upload-Post API key. NULL + status 'active' = legacy row using env UPLOAD_POST_API_KEY. Server-only. */
-                    api_key: string | null
                     last_synced_at: string | null
                     created_at: string
                     /** "IA en comentarios" (Task 6, migración 20260916100000_social_comments_ia). */
@@ -320,7 +318,6 @@ export type Database = {
                     status?: string
                     connected_platforms?: Json
                     upload_post_metadata?: Json | null
-                    api_key?: string | null
                     last_synced_at?: string | null
                     created_at?: string
                     ai_comment_replies_enabled?: boolean
@@ -336,7 +333,6 @@ export type Database = {
                     status?: string
                     connected_platforms?: Json
                     upload_post_metadata?: Json | null
-                    api_key?: string | null
                     last_synced_at?: string | null
                     created_at?: string
                     ai_comment_replies_enabled?: boolean

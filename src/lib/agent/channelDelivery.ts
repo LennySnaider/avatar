@@ -29,7 +29,6 @@ import { loadConnection } from '@/lib/fanvue/tokenStore'
 import { loadTelegramBotToken, loadTelegramSettings } from '@/lib/telegram/settings'
 import { sendMessage as telegramSendMessage } from '@/lib/telegram/client'
 import { platformFromChat, postIdFromChat } from '@/lib/social/comments/ids'
-import { resolveProfileKey } from '@/lib/social/profileKey'
 import { getSocialProvider } from '@/lib/social/provider'
 import { maybeSendCommentDm } from '@/lib/social/comments/privateReply'
 import { ALL_PLATFORMS, type Platform } from '@/@types/social'
@@ -118,10 +117,10 @@ async function deliverViaSocialComment(chat: DeliverableChat, text: string): Pro
         throw new Error(`Supabase: ${profileError.message}`)
     }
     if (!profile || profile.status !== 'active') {
-        throw new Error('Upload-Post account not connected')
+        throw new Error('Upload-Post profile not connected')
     }
-    const key = resolveProfileKey(profile)
-    const provider = getSocialProvider(key)
+    // Cuenta agencia: una sola key (env), el perfil sólo aporta el username.
+    const provider = getSocialProvider()
 
     const platform = platformFromChat(chat.platform)
     if (!platform) throw new Error(`Chat platform is not a social comment channel: ${chat.platform}`)

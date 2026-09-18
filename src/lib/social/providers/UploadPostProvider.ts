@@ -29,6 +29,7 @@ import {
   isReauthRequiredBody,
 } from '@/lib/social/comments/normalize'
 import type {
+  AccountProfiles,
   DocumentPostParams,
   FFmpegConsumption,
   FFmpegJobParams,
@@ -84,6 +85,20 @@ export class UploadPostProviderError extends Error {
   get isReauthRequired(): boolean {
     return isReauthRequiredBody(this.statusCode, this.body)
   }
+
+  /**
+   * true cuando la cuenta agencia está llena: `POST /api/uploadposts/users`
+   * responde 403 con `error_code: "PROFILE_LIMIT_REACHED"` (doc de User
+   * Profiles). Un 403 por otro motivo NO es esto.
+   */
+  get isProfileLimitReached(): boolean {
+    return this.statusCode === 403 && isProfileLimitBody(this.body)
+  }
+}
+
+function isProfileLimitBody(body: unknown): boolean {
+  if (!body || typeof body !== 'object') return false
+  return (body as Record<string, unknown>).error_code === 'PROFILE_LIMIT_REACHED'
 }
 
 // ---------------------------------------------------------------------------
@@ -275,7 +290,14 @@ export class UploadPostProvider implements SocialProvider {
       case 401:
         return 'Invalid Upload-Post API key — check the key for this account.'
       case 403:
-        return 'Profile limit reached — upgrade your Upload-Post plan to add more profiles.'
+        // Sólo es "cuenta llena" cuando Upload-Post lo dice con su código;
+        // cualquier otro 403 se relata tal cual para no mandar a nadie a
+        // subir de plan por un permiso denegado.
+        return isProfileLimitBody(body)
+          ? 'Upload-Post profile limit reached — the agency account is full; free a profile or upgrade the plan.'
+          : apiError
+            ? `Upload-Post refused the request (403): ${apiError}`
+            : 'Upload-Post refused the request (403).'
       case 404:
         return 'Resource not found'
       case 429:
@@ -304,10 +326,17 @@ export class UploadPostProvider implements SocialProvider {
     return { username: res.username ?? username }
   }
 
-  async listProfiles(): Promise<ProfileDetails[]> {
-    const res = await this.request<{ profiles?: unknown[]; users?: unknown[] }>(
-      '/api/uploadposts/users',
-    )
+  /**
+   * Todos los perfiles de la cuenta (agencia) más `plan`/`limit` — antes se
+   * descartaban y la UI no podía decir "N / 25 perfiles".
+   */
+  async listProfiles(): Promise<AccountProfiles> {
+    const res = await this.request<{
+      profiles?: unknown[]
+      users?: unknown[]
+      plan?: unknown
+      limit?: unknown
+    }>('/api/uploadposts/users')
     // The real endpoint returns `profiles`. Older docs/mocks returned `users`
     // — accept both for forward-compat.
     const list = Array.isArray(res?.profiles)
@@ -315,7 +344,11 @@ export class UploadPostProvider implements SocialProvider {
       : Array.isArray(res?.users)
         ? res.users
         : []
-    return list.map((raw) => this.toProfileDetails(raw))
+    return {
+      plan: typeof res?.plan === 'string' ? res.plan : null,
+      limit: typeof res?.limit === 'number' ? res.limit : null,
+      profiles: list.map((raw) => this.toProfileDetails(raw)),
+    }
   }
 
   async getProfile(username: string): Promise<ProfileDetails> {
@@ -378,6 +411,9 @@ export class UploadPostProvider implements SocialProvider {
               : typeof a.followersCount === 'number'
                 ? a.followersCount
                 : undefined,
+          // Sólo cuando es true: así el snapshot jsonb no crece con un
+          // `false` por cuenta y la UI pinta el aviso de "re-auth".
+          reauthRequired: a.reauth_required === true ? true : undefined,
         })
       }
     } else if (Array.isArray(socialRaw)) {
@@ -932,17 +968,21 @@ export class UploadPostProvider implements SocialProvider {
   // Webhooks
   // -------------------------------------------------------------------------
 
+  /**
+   * Registra el webhook de la CUENTA (una sola vez para toda la agencia; los
+   * eventos traen `profile_username` para saber de qué perfil hablan). Body
+   * según la doc de Webhooks: `channels` + `webhook_url` + `webhook_events`.
+   */
   async configureWebhook(
-    username: string,
     webhookUrl: string,
     events: string[],
   ): Promise<WebhookConfigResult> {
     await this.request<void>('/api/uploadposts/users/notifications', {
       method: 'POST',
       body: {
-        username,
+        channels: { webhook: true, telegram: false },
         webhook_url: webhookUrl,
-        events,
+        webhook_events: events,
       },
     })
     return { configured: true, webhookUrl, events }

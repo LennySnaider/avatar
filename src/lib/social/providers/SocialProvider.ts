@@ -153,6 +153,17 @@ export interface WebhookConfigResult {
   events: string[]
 }
 
+/**
+ * Respuesta de `GET /api/uploadposts/users` en la cuenta agencia: además de
+ * los perfiles trae el plan y el tope de perfiles (verificado en vivo el
+ * 2026-09-17: `{ plan: "professional", limit: 25, profiles: [...] }`).
+ */
+export interface AccountProfiles {
+  plan: string | null
+  limit: number | null
+  profiles: ProfileDetails[]
+}
+
 // ---------------------------------------------------------------------------
 // Interface
 // ---------------------------------------------------------------------------
@@ -162,7 +173,7 @@ export interface SocialProvider {
   createProfile(username: string): Promise<{ username: string }>
   getProfile(username: string): Promise<ProfileDetails>
   deleteProfile(username: string): Promise<void>
-  listProfiles(): Promise<ProfileDetails[]>
+  listProfiles(): Promise<AccountProfiles>
 
   // --- Connect flow ---
   generateConnectUrl(
@@ -257,8 +268,8 @@ export interface SocialProvider {
   getFFmpegConsumption(): Promise<FFmpegConsumption>
 
   // --- Webhooks ---
+  // Por CUENTA (una registración para toda la agencia), no por perfil.
   configureWebhook(
-    username: string,
     webhookUrl: string,
     events: string[],
   ): Promise<WebhookConfigResult>

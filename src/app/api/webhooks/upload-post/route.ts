@@ -5,10 +5,12 @@
  *
  * Ported from agentsoft's `src/app/api/webhooks/upload-post/route.ts`
  * (multi-tenant version), simplified for prime-avatar:
- *   - No organization resolution. Each avatar has its own Upload-Post
- *     account (see `social_profiles.avatar_id`/`api_key`), and every one of
- *     those accounts registers THIS same endpoint — correlation is purely by
- *     `upload_post_request_id`, so the handler needs no per-account state.
+ *   - No organization resolution. Since 2026-09-17 there is ONE Upload-Post
+ *     agency account (platform key in env) whose account-level webhook is
+ *     registered once, pointing at THIS endpoint. Publish events correlate
+ *     purely by `upload_post_request_id`; account events (connected /
+ *     disconnected / reauth_required) carry `profile_username`, which is
+ *     globally unique in `social_profiles`, so no per-org state is needed.
  *   - No `social_events_log` table exists in this project's schema (it was
  *     never part of Task 2's migration), so unknown/informational events
  *     (account connected/disconnected, reauth-required, ffmpeg completed)
@@ -50,6 +52,7 @@ import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
 import { createServerSupabaseClient } from '@/lib/supabase'
 import { UploadPostProvider } from '@/lib/social/providers/UploadPostProvider'
+import { getSocialProvider } from '@/lib/social/provider'
 import type { Json } from '@/@types/supabase'
 
 export const dynamic = 'force-dynamic'
@@ -70,6 +73,8 @@ export const dynamic = 'force-dynamic'
 interface UploadPostWebhookPayload {
     event: string
     username?: string
+    /** Sub-user the event is about (account-level webhook, per the Webhooks doc). */
+    profile_username?: string
     request_id?: string
     requestId?: string
     job_id?: string
@@ -115,13 +120,15 @@ function normalizeEventName(
         return 'publish_success'
     }
 
-    if (name === 'social_account.connected' || name === 'account.connected') {
+    // Underscore names are what the current Webhooks doc lists; the dotted
+    // ones are the legacy spelling this handler was written against.
+    if (name === 'social_account_connected' || name === 'social_account.connected' || name === 'account.connected') {
         return 'account_connected'
     }
-    if (name === 'social_account.disconnected' || name === 'account.disconnected') {
+    if (name === 'social_account_disconnected' || name === 'social_account.disconnected' || name === 'account.disconnected') {
         return 'account_disconnected'
     }
-    if (name === 'social_account.reauth_required') {
+    if (name === 'social_account_reauth_required' || name === 'social_account.reauth_required') {
         return 'account_reauth_required'
     }
 
@@ -364,8 +371,41 @@ export async function POST(req: NextRequest) {
                 break
             }
 
-            // No `social_events_log` table exists in this single-user schema —
-            // these are informational-only events, logged for operator visibility.
+            // Account events: refresh the connected-socials snapshot of that
+            // profile so connect / re-auth show up without anyone clicking
+            // "Refresh". Best-effort — the accounts page and the connect
+            // callback sync the same thing, so a miss here only delays the badge.
+            case 'account_connected':
+            case 'account_disconnected':
+            case 'account_reauth_required': {
+                const username = payload.profile_username ?? payload.username
+                if (!username) {
+                    console.log('[upload-post webhook]', canonical, 'without profile_username', payload)
+                    break
+                }
+                try {
+                    const details = await getSocialProvider().getProfile(username)
+                    const { error } = await supabase
+                        .from('social_profiles')
+                        .update({
+                            connected_platforms: (details.connectedAccounts ?? []) as unknown as Json,
+                            upload_post_metadata: (details.metadata ?? null) as Json | null,
+                            last_synced_at: new Date().toISOString(),
+                        })
+                        .eq('upload_post_username', username)
+                    if (error) {
+                        console.warn('[upload-post webhook] profile snapshot update failed', { username, canonical }, error.message)
+                    } else {
+                        console.log('[upload-post webhook]', canonical, username, 'snapshot refreshed')
+                    }
+                } catch (e) {
+                    console.warn('[upload-post webhook] could not refresh profile snapshot', { username, canonical }, e)
+                }
+                break
+            }
+
+            // No `social_events_log` table exists in this schema — remaining
+            // events are informational-only, logged for operator visibility.
             default:
                 console.log('[upload-post webhook]', canonical, payload.event)
                 break

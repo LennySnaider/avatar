@@ -260,8 +260,10 @@ interface TelegramPaidMediaItemsTable {
 /**
  * Vista mínima de `social_profiles` (el tipo completo vive en
  * `database.generated.ts`). Sólo las columnas que necesita el módulo agente
- * para entregar una respuesta pública y el DM privado (Tarea 4): la cuenta de
- * Upload-Post del avatar y los ajustes `ai_comment_*` de la red del post.
+ * para entregar una respuesta pública y el DM privado (Tarea 4): el perfil de
+ * Upload-Post del avatar y los ajustes `ai_comment_*` de la red del post. La
+ * API key ya no va por fila: es una sola, de la plataforma, en env
+ * (`getSocialProvider()` en `@/lib/social/provider`).
  *
  * F4.2 Tarea 5 (comentarios-ia-social) — se sumó `connected_platforms`: el
  * sondeo (`src/lib/social/comments/settings.ts`) lo necesita para saber qué
@@ -274,7 +276,6 @@ interface SocialProfilesTable {
         organization_id: string
         avatar_id: string | null
         status: string
-        api_key: string | null
         upload_post_username: string
         connected_platforms: Json
         ai_comment_replies_enabled: boolean

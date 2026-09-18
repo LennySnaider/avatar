@@ -1,7 +1,8 @@
 /**
  * Ajustes de "IA en comentarios" de un `social_profiles`, listos para el
- * sondeo y la entrega — sin `api_key` (esa sigue viviendo sólo en la fila
- * cruda, resuelta por `resolveProfileKey`; este DTO nunca la expone).
+ * sondeo y la entrega. Desde el paso a cuenta agencia (2026-09-17) la fila ya
+ * no lleva ninguna credencial: la única key vive en env y la resuelve
+ * `getSocialProvider()`; este DTO sigue sin exponer nada parecido.
  *
  * `toSocialCommentSettings` es una función PURA (row → DTO): sólo importa un
  * TIPO de `@/lib/agent/db` (`import type`, se borra en compilación — no deja
@@ -94,8 +95,8 @@ export function toSocialCommentSettings(row: SocialProfileRow): SocialCommentSet
 }
 
 export interface PollableProfile {
-    /** Fila cruda — la necesita `resolveProfileKey` (api_key/status) y todo
-     *  lo que hoy sólo sabe leer `SocialProfileRow` (p.ej. `syncPostTargets`,
+    /** Fila cruda — la necesitan `assertActiveProfile` (status) y todo lo que
+     *  hoy sólo sabe leer `SocialProfileRow` (p.ej. `syncPostTargets`,
      *  `pollProfileComments`). */
     row: SocialProfileRow
     settings: SocialCommentSettings
