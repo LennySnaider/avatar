@@ -26,6 +26,7 @@ import {
     HiOutlineRefresh,
     HiOutlineZoomIn,
     HiOutlineZoomOut,
+    HiOutlineArrowsExpand,
     HiOutlineClipboardCopy,
     HiOutlineUser,
     HiOutlineCode,
@@ -1230,6 +1231,41 @@ const ImagePreviewModal = ({
         setIsPlaying(!isPlaying)
     }
 
+    // Pantalla completa del MEDIO, no del modal: el navegador lo centra con
+    // object-fit: contain y anula el transform del zoom, así que se ve entero
+    // sin arrastrar toolbar ni panel. Hay zoom, pero faltaba esto.
+    const handleFullscreen = () => {
+        const el: HTMLElement | null =
+            previewMedia?.mediaType === 'VIDEO'
+                ? videoRef.current
+                : imageRef.current
+        if (!el) return
+        const target = el as HTMLElement & {
+            webkitRequestFullscreen?: () => void
+            webkitEnterFullscreen?: () => void
+        }
+        if (typeof target.requestFullscreen === 'function') {
+            target.requestFullscreen().catch(() => {})
+        } else if (target.webkitRequestFullscreen) {
+            target.webkitRequestFullscreen()
+        } else if (target.webkitEnterFullscreen) {
+            // iOS Safari: sólo el <video> tiene pantalla completa (nativa).
+            target.webkitEnterFullscreen()
+        }
+    }
+
+    // Controles nativos del vídeo SÓLO en pantalla completa: fuera de ella
+    // los lleva la barra del modal (controls={false}). Sin esto el vídeo a
+    // pantalla completa no tendría ni pausa ni barra de tiempo.
+    useEffect(() => {
+        const onChange = () => {
+            const v = videoRef.current
+            if (v) v.controls = document.fullscreenElement === v
+        }
+        document.addEventListener('fullscreenchange', onChange)
+        return () => document.removeEventListener('fullscreenchange', onChange)
+    }, [])
+
     // Video transport: scrub, step (1/30s ≈ one frame at 30fps), jump.
     const VIDEO_FRAME_STEP = 1 / 30
     const formatVideoTime = (seconds: number) => {
@@ -1349,7 +1385,9 @@ const ImagePreviewModal = ({
             if (!previewMedia) return
             if (e.key === 'ArrowLeft') handlePrev()
             if (e.key === 'ArrowRight') handleNext()
-            if (e.key === 'Escape') handleClose()
+            // En pantalla completa Esc la cierra (lo hace el navegador);
+            // no debe cerrar ADEMÁS el modal.
+            if (e.key === 'Escape' && !document.fullscreenElement) handleClose()
         }
         window.addEventListener('keydown', handleKeyDown)
         return () => window.removeEventListener('keydown', handleKeyDown)
@@ -1392,35 +1430,45 @@ const ImagePreviewModal = ({
                     {/* Zoom Controls — sin el % (solo aparece al hacer zoom, como
                         botón de reset); a 100% no ocupa nada. Disponible también
                         en modo EDIT (se bloquea solo con máscara/crop activos). */}
-                    {previewMedia.mediaType === 'IMAGE' && (
-                        <div className="flex items-center gap-1 sm:gap-2 ml-auto shrink-0">
-                            <button
-                                onClick={handleZoomOut}
-                                disabled={zoomLevel <= 1 || isCropping}
-                                className="p-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                                title="Zoom Out"
-                            >
-                                <HiOutlineZoomOut className="w-4 h-4" />
-                            </button>
-                            {zoomLevel !== 1 && (
+                    <div className="flex items-center gap-1 sm:gap-2 ml-auto shrink-0">
+                        {previewMedia.mediaType === 'IMAGE' && (
+                            <>
                                 <button
-                                    onClick={handleResetZoom}
-                                    className="px-2 py-1 text-xs text-gray-600 hover:text-gray-900 dark:text-gray-300 dark:hover:text-white text-center whitespace-nowrap"
-                                    title="Reset Zoom"
+                                    onClick={handleZoomOut}
+                                    disabled={zoomLevel <= 1 || isCropping}
+                                    className="p-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                                    title="Zoom Out"
                                 >
-                                    {Math.round(zoomLevel * 100)}%
+                                    <HiOutlineZoomOut className="w-4 h-4" />
                                 </button>
-                            )}
-                            <button
-                                onClick={handleZoomIn}
-                                disabled={zoomLevel >= MAX_ZOOM || isCropping}
-                                className="p-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                                title="Zoom In"
-                            >
-                                <HiOutlineZoomIn className="w-4 h-4" />
-                            </button>
-                        </div>
-                    )}
+                                {zoomLevel !== 1 && (
+                                    <button
+                                        onClick={handleResetZoom}
+                                        className="px-2 py-1 text-xs text-gray-600 hover:text-gray-900 dark:text-gray-300 dark:hover:text-white text-center whitespace-nowrap"
+                                        title="Reset Zoom"
+                                    >
+                                        {Math.round(zoomLevel * 100)}%
+                                    </button>
+                                )}
+                                <button
+                                    onClick={handleZoomIn}
+                                    disabled={zoomLevel >= MAX_ZOOM || isCropping}
+                                    className="p-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                                    title="Zoom In"
+                                >
+                                    <HiOutlineZoomIn className="w-4 h-4" />
+                                </button>
+                            </>
+                        )}
+                        {/* Pantalla completa — imagen Y vídeo. */}
+                        <button
+                            onClick={handleFullscreen}
+                            className="p-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700 transition-colors"
+                            title="Pantalla completa"
+                        >
+                            <HiOutlineArrowsExpand className="w-4 h-4" />
+                        </button>
+                    </div>
                 </div>
 
                 {/* Media Content */}
