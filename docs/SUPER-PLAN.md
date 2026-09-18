@@ -223,6 +223,35 @@ actions + email (Resend) + página pública `/invite/[token]` + sign-up con invi
 **`avatar_assignments`** + `getAccessibleAvatarIds(ctx)` (operator/viewer=asignados) aplicado
 en avatares, studio, inbox, composers, galería. Pantalla `/settings/team`.
 
+**Estado 2026-09-17 — HECHO (17 commits, base aplicada):**
+- Matriz de 17 permisos con nombre en `src/lib/org/permissions.ts` (conjuntos por spread: la
+  herencia vive en un sitio; `can()` falla cerrado ante un rol desconocido) + `guards.ts`
+  (`requirePermission` lanza `PermissionDeniedError`, `ctxCan` para rutas y DTOs,
+  `isExpectedDenial` para no ensuciar el log). ~110 chokepoints guardados; el gasto de KIE/Mule
+  cerrado en `holdForOperation`; `chargeTokens` sin guard a propósito (sin sesión).
+- Quinto candado ESLint `local/no-unguarded-org-action` (AST, gate en `next build`); exenciones
+  en `scripts/permission-exemptions.mjs`.
+- `organization_invitations` + RPC `accept_organization_invitation` (transacción, `for update`
+  sobre la org = tope de asientos REAL, también para OAuth) + índice "un usuario, una
+  organización" + plan `demo` (5 asientos) en la org por defecto. Asientos = miembros +
+  invitaciones vivas; sin plan → sin límite con aviso.
+- Invitación por **enlace copiable** (no hay email), ruta ESTÁTICA `/accept-invite?token=` en
+  `publicRoutes` (no `/invite/[token]`: el middleware casa por igualdad exacta). Solo se guarda
+  el hash: el enlace se muestra una vez y "reenviar" rota el token.
+- Pantalla real en `concepts/account/roles-permissions` (sustituye a la maqueta). Expulsar =
+  DELETE + `password_changed_at` (cierra la sesión) + guarda en `(protected-pages)/layout.tsx` →
+  `/no-organization`.
+- Rol como hint de UI por `NavigationContext` (`usePermission`, `RoleCheck`, `NoAccess`,
+  `pageCan`), gate por rama en las tres rutas de conexiones, `meta.requiredPermission` en la poda.
+- Cerrado de paso: `/api/voice/tts-file` no validaba que la voz fuera de tu org; `/api/voice/tts`
+  y `deleteStorageFile` eran endpoints vivos sin llamadores.
+
+**Pendiente (decidido fuera de alcance):** `viewer` (una línea en la matriz); `avatar_assignments`
++ `getAccessibleAvatarIds` (hoy todos los miembros comparten los avatares de la org); email real
+(el punto de entrada está marcado en `inviteMember`); cobro por asiento extra (se eligió tope duro);
+superadmin/switcher (4.4). Deudas anotadas: `opaqueToken.ts` si aparece un tercer token, renombrar
+`password_changed_at` → `sessions_valid_from`, barrido de invitaciones caducadas, `settingsStore` ↔ URL.
+
 ### 4.4 Superadmin + switcher + /platform
 Portar adaptado a NextAuth: org_override cookie → org efectiva + `isImpersonating`;
 `SuperadminSwitchers` + `ViewingAsBanner`. Área `(platform)/platform` (orgs, uso, "ver como",
