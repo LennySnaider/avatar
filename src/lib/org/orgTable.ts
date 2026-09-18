@@ -53,6 +53,11 @@ export const TENANT_TABLES = [
     // F4.2 Tarea 4 (comentarios-ia-social) — también tiene organization_id
     // NOT NULL (misma migración 20260916100000_social_comments_ia).
     'social_comment_dms',
+    // F4.3 (miembros) — organization_id NOT NULL (migración
+    // 20260917120000_organization_invitations). `organization_members` NO
+    // entra aunque tenga organization_id: es quien DEFINE la pertenencia, y
+    // getOrgContext la lee para poder construir el ctx que este builder exige.
+    'organization_invitations',
 ] as const
 
 export type TenantTable = (typeof TENANT_TABLES)[number]

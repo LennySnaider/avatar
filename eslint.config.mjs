@@ -312,6 +312,14 @@ const eslintConfig = [
       // por parámetro. Sin sesión: lo llaman el cron de cuotas y la comisión
       // de venta, igual que moduleFees.ts.
       "src/lib/billing/exemption.ts",
+      // F4.3 — Acceso a datos de la membresía. Lee y escribe
+      // `organization_members` (quien DEFINE la pertenencia: no puede pasar
+      // por orgTable, que exige el ctx que esa tabla produce), `organizations`
+      // (la identidad del tenant), `plan_configurations` (catálogo global) y
+      // `users` (la persona, anterior a cualquier organización). Ninguna es
+      // tabla tenant; todas se filtran a mano por el organizationId del ctx.
+      // La única tenant que toca, `organization_invitations`, va por orgTable.
+      "src/lib/org/membersDb.ts",
       // Resumen de cobro por módulo (cuota + comisión del mes en curso): misma
       // tabla no tenant que wallet.ts (`token_ledger`), filtrada a mano por
       // organization_id — que aquí llega ya resuelto por parámetro, no por ctx.

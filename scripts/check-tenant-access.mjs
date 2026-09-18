@@ -46,10 +46,14 @@
  * algún día se engancha a un gate automático, la conversación sobre la válvula
  * hay que volver a tenerla — no darla por hecha.
  */
+import { fileURLToPath } from 'node:url'
 import { readdirSync, readFileSync, statSync } from 'node:fs'
 import { join, relative, sep } from 'node:path'
 
-const RAIZ_REPO = new URL('..', import.meta.url).pathname
+// fileURLToPath y no `.pathname`: en Windows `.pathname` da `/C:/Users/...`
+// y readFileSync monta una ruta doble (unidad repetida), con lo que el
+// script no arrancaba en esta plataforma.
+const RAIZ_REPO = fileURLToPath(new URL('..', import.meta.url))
 const RAIZ_SRC = join(RAIZ_REPO, 'src')
 const FUENTE_TABLAS = join(RAIZ_SRC, 'lib', 'org', 'orgTable.ts')
 
@@ -73,8 +77,8 @@ const FUENTE_TABLAS = join(RAIZ_SRC, 'lib', 'org', 'orgTable.ts')
  */
 const EXENTOS = [
     [
-        'src/lib/org/',
-        'La implementación del propio candado: orgTable/orgInsert/orgUpsert son quienes ponen el filtro y la inyección de organization_id.',
+        'src/lib/org/orgTable.ts',
+        'La implementación del propio candado: orgTable/orgInsert/orgUpsert son quienes ponen el filtro y la inyección de organization_id. Antes era la carpeta entera, y un fichero nuevo ahí heredaba el pase sin pedirlo (el mismo defecto que ya se corrigió en src/lib/agent/): membersDb.ts va por orgTable para la única tabla tenant que toca.',
     ],
     [
         'src/lib/tenant/getOrgContext.ts',
