@@ -2,6 +2,15 @@ import { ADMIN, USER } from '@/constants/roles.constant'
 import type { Routes } from '@/@types/routes'
 
 const dashboardsRoute: Routes = {
+    '/dashboards/home': {
+        key: 'dashboard.home',
+        authority: [ADMIN, USER],
+        meta: {
+            pageContainerType: 'contained',
+            pageBackgroundType: 'plain',
+            footer: false,
+        },
+    },
     '/dashboards/ecommerce': {
         key: 'dashboard.ecommerce',
         authority: [ADMIN, USER],

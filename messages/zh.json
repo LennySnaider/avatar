@@ -41,6 +41,7 @@
         },
         "dashboard": {
             "dashboard": "仪表板",
+            "home": "首页",
             "ecommerce": "电子商务",
             "analytic": "分析",
             "project": "项目",

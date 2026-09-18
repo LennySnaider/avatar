@@ -367,6 +367,20 @@ const eslintConfig = [
       // TS2769). Ver check-tenant-access.mjs (misma exención, motivo completo
       // allí) y la cabecera del propio fichero.
       "src/lib/telegram/offerEngine.ts",
+      // Dashboards de ingresos — dos ficheros, dos motivos:
+      //  - queries.ts: SÓLO los RPCs earnings_series / earnings_by_avatar,
+      //    que orgTable no sabe pre-scopear (mismo caso que
+      //    lib/agent/retrieval.ts). La org llega por parámetro (p_org) y cada
+      //    función la filtra en SQL; no tiene ni un .from().
+      //  - fanvueSync.ts: núcleo del cron earnings-sync, sin sesión (mismo
+      //    perfil que billing/moduleFees.ts): barre fanvue_connections de
+      //    TODAS las orgs a propósito y cada consulta posterior filtra por la
+      //    organization_id de ESA fila. Va por orgSupabase y no por
+      //    agentSupabase porque @/@types/supabase no declara
+      //    fanvue_connections ni fanvue_daily_earnings (TS2769, mismo caso
+      //    que telegram/offerEngine.ts). Ver check-tenant-access.mjs.
+      "src/lib/earnings/queries.ts",
+      "src/lib/earnings/fanvueSync.ts",
       // Sin sesión: resuelven la org por la fila que ya cargaron.
       "src/app/api/webhooks/**",
       "src/app/api/cron/**",

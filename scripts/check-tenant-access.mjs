@@ -159,6 +159,10 @@ const EXENTOS = [
         'syncPostTargets/listPollableTargets reciben el profileRow o el profileId ya resueltos por el llamador (el cron, vía listPollableProfiles) y cada consulta a social_posts/social_post_targets filtra por ese profileId o por profileRow.organization_id explícito.',
     ],
     [
+        'src/lib/earnings/fanvueSync.ts',
+        'Núcleo del cron earnings-sync (dashboards de ingresos), sin sesión — mismo perfil que billing/moduleFees.ts: listFanvueConnectionsForSync barre fanvue_connections de TODAS las orgs a propósito (es la lista con la que arranca el cron), y syncOrgFanvueEarnings recibe la organizationId de ESA fila por parámetro y la usa en sus dos accesos restantes: avatars (.eq organization_id) y el upsert a fanvue_daily_earnings (organization_id: fijado por fila).',
+    ],
+    [
         'src/lib/social/comments/poll.ts',
         'pollProfileComments recibe el profileRow ya resuelto; resolveAvatarTargetById entrega un ResolvedTarget con organizationId que ancla upsertChat/ingestMessage/touchFanMemory (de inboxSync.ts, ya exento arriba), y markTargetPolled filtra social_post_targets con .eq(\'organization_id\', ...) explícito.',
     ],

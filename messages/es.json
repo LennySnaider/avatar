@@ -41,6 +41,7 @@
         },
         "dashboard": {
             "dashboard": "Tablero",
+            "home": "Inicio",
             "ecommerce": "Comercio electrónico",
             "analytic": "Analítica",
             "project": "Proyecto",

@@ -3,6 +3,7 @@
 import RoleCheck from '@/components/shared/RoleCheck'
 import { useState, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
+import Link from 'next/link'
 import Card from '@/components/ui/Card'
 import Avatar from '@/components/ui/Avatar'
 import Button from '@/components/ui/Button'
@@ -39,6 +40,7 @@ import {
     HiOutlineChatAlt2,
     HiOutlineUser,
     HiOutlineMicrophone,
+    HiOutlineChartBar,
 } from 'react-icons/hi'
 
 interface AvatarCardProps {
@@ -500,6 +502,20 @@ const AvatarCard = ({ avatar }: AvatarCardProps) => {
                             />
                         }
                     >
+                        {/* Dashboard de ingresos del avatar (Fanvue + Telegram Stars). */}
+                        <Dropdown.Item
+                            eventKey="dashboard"
+                            onClick={() =>
+                                router.push(
+                                    `/concepts/avatar-forge/avatar-list/${avatar.id}`,
+                                )
+                            }
+                        >
+                            <span className="flex items-center gap-2">
+                                <HiOutlineChartBar />
+                                Dashboard
+                            </span>
+                        </Dropdown.Item>
                         <Dropdown.Item eventKey="edit" onClick={handleEdit}>
                             <span className="flex items-center gap-2">
                                 <HiOutlinePencil />
@@ -584,7 +600,14 @@ const AvatarCard = ({ avatar }: AvatarCardProps) => {
 
                 <div className="p-4">
                     <h5 className="font-semibold mb-2 truncate">
-                        {avatar.name}
+                        {/* El nombre abre el dashboard del avatar; la imagen
+                            sigue yendo a Generate (comportamiento previo). */}
+                        <Link
+                            href={`/concepts/avatar-forge/avatar-list/${avatar.id}`}
+                            className="hover:text-primary"
+                        >
+                            {avatar.name}
+                        </Link>
                     </h5>
 
                     <div className="flex flex-wrap gap-1 mb-3">

@@ -295,6 +295,18 @@ const conceptsRoute: Routes = {
             pageBackgroundType: 'plain',
         },
     },
+    // Dashboard de ingresos del avatar (hub del avatar): se llega desde la
+    // tarjeta de "My Avatars" y desde el ranking de Inicio; sin ítem de menú.
+    '/concepts/avatar-forge/avatar-list/[slug]': {
+        key: 'concepts.avatarForge.avatarDashboard',
+        authority: [ADMIN, USER],
+        meta: {
+            pageContainerType: 'contained',
+            pageBackgroundType: 'plain',
+            footer: false,
+        },
+        dynamicRoute: true,
+    },
     '/concepts/avatar-forge/avatar-studio': {
         key: 'concepts.avatarForge.avatarStudio',
         authority: [ADMIN, USER],

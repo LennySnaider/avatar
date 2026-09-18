@@ -41,6 +41,7 @@
         },
         "dashboard": {
             "dashboard": "لوحة القيادة",
+            "home": "الرئيسية",
             "ecommerce": "التجارة الإلكترونية",
             "analytic": "التحليلات",
             "project": "المشاريع",

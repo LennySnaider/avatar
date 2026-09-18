@@ -208,3 +208,41 @@ export interface SendChatMessageInput {
 export interface SendChatMessageResponse {
     messageUuid: string
 }
+
+// ---------------------------------------------------------------------------
+// Insights de agencia (dashboards de ingresos). Verificado contra
+// https://api.fanvue.com/docs/v1/api-reference/list-per-creator-per-day-earnings-across-all-agency-creators-cursor-paginated.md
+// el 2026-09-17: `GET /v1/agencies/earnings`, scopes read:agency +
+// read:creator, importes en CENTAVOS de USD, un registro por creator y día
+// (UTC), sólo facturas pagadas (sin desglose por tipo ni reversos).
+// ---------------------------------------------------------------------------
+
+export interface FanvueAgencyEarningsRow {
+    creatorUuid: string
+    /** 'YYYY-MM-DD' (día UTC). */
+    date: string
+    /** Lo que pagó el fan, en centavos de USD. */
+    gross: number
+    /** Lo que se lleva el creator tras la comisión de Fanvue, en centavos. */
+    net: number
+    currency: string
+}
+
+export interface FanvueAgencyEarningsResponse {
+    data: FanvueAgencyEarningsRow[]
+    nextCursor: string | null
+    /** Siempre null en este endpoint (conjunto no acotado). */
+    total: number | null
+}
+
+export interface ListAgencyEarningsParams {
+    /** ISO 8601 con zona, inclusive (p.ej. '2026-09-01T00:00:00.000Z'). */
+    startDate: string
+    /** ISO 8601 con zona, EXCLUSIVO. */
+    endDate: string
+    /** Máximo 50 por llamada (lo impone Fanvue). */
+    creatorUuids?: string[]
+    cursor?: string
+    /** 1..50, por defecto 15 en Fanvue. */
+    size?: number
+}

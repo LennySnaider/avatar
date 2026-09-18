@@ -885,6 +885,50 @@ export type Database = {
           },
         ]
       }
+      fanvue_daily_earnings: {
+        Row: {
+          created_at: string
+          creator_uuid: string
+          currency: string
+          day: string
+          gross_cents: number
+          id: string
+          net_cents: number
+          organization_id: string
+          synced_at: string
+        }
+        Insert: {
+          created_at?: string
+          creator_uuid: string
+          currency?: string
+          day: string
+          gross_cents?: number
+          id?: string
+          net_cents?: number
+          organization_id: string
+          synced_at?: string
+        }
+        Update: {
+          created_at?: string
+          creator_uuid?: string
+          currency?: string
+          day?: string
+          gross_cents?: number
+          id?: string
+          net_cents?: number
+          organization_id?: string
+          synced_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "fanvue_daily_earnings_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       fanvue_posts: {
         Row: {
           audience: string | null
@@ -2253,6 +2297,33 @@ export type Database = {
       consume_auth_rate_limit: {
         Args: { p_bucket: string; p_limit: number; p_window_seconds: number }
         Returns: Json
+      }
+      earnings_by_avatar: {
+        Args: { p_from: string; p_org: string; p_to: string }
+        Returns: {
+          avatar_id: string
+          sales_count: number
+          source: string
+          stars: number
+          usd_gross_cents: number
+          usd_net_cents: number
+        }[]
+      }
+      earnings_series: {
+        Args: {
+          p_avatar?: string
+          p_from: string
+          p_org: string
+          p_to: string
+        }
+        Returns: {
+          day: string
+          sales_count: number
+          source: string
+          stars: number
+          usd_gross_cents: number
+          usd_net_cents: number
+        }[]
       }
       increment_agent_counter: {
         Args: {

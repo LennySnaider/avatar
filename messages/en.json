@@ -41,6 +41,7 @@
         },
         "dashboard": {
             "dashboard": "Dashboard",
+            "home": "Home",
             "ecommerce": "Ecommerce",
             "analytic": "Analytic",
             "project": "Project",

@@ -21,7 +21,7 @@
 | 4 | Multitenant core | 🔄 EN CURSO — 4.0/4.1 ✅ en prod; 4.2 (a/b/d ✅, c 🟡, e/f/g 🔴) |
 | 5 | Tokens + suscripción | 🔄 ARRANCANDO (5.0-5.5 diseñadas 2026-07-29) |
 | 5.5 | Meta Direct Publishing | ⬜ |
-| 6 | Agencia (dashboard earnings, white-label, plantillas) | ⬜ |
+| 6 | Agencia (dashboard earnings, white-label, plantillas) | 🔄 EN CURSO — dashboard earnings en código (2026-09-17, ver abajo); white-label y plantillas ⬜ |
 
 > **Revisión 2026-07-29 contra el repo:** los ~25 commits desde el 22-jul son TODOS
 > producto/infra (Body Lab, trasplante a Supabase nuevo, migración a R2, thumbnails,
@@ -360,8 +360,15 @@ contenedores REELS + poll + publish, transcoding H.264/AAC (el mux ya lo produce
 
 ## FASE 6 — Agencia + escala
 
-- **Dashboard**: `avatar_daily_stats` (rollup por cron) con earnings Fanvue por avatar (vía
-  `avatars.fanvue_creator_uuid`) + KPIs del agente. El dashboard lee rollups.
+- **Dashboard** (2026-09-17, en código — spec `docs/superpowers/specs/2026-09-17-earnings-dashboards-design.md`):
+  `/dashboards/home` (Inicio, nuevo landing) y `/concepts/avatar-forge/avatar-list/[slug]`.
+  Fanvue: rollup `fanvue_daily_earnings` POR CREATOR y día UTC (cron `earnings-sync` horario
+  desde `GET /v1/agencies/earnings`, sin scopes nuevos), cruzado con
+  `avatars.fanvue_creator_uuid` al leer. Telegram: agregado EN VIVO desde `telegram_stars_sales`.
+  RPCs `earnings_series` / `earnings_by_avatar` (techo de 1000 filas de PostgREST). Dos
+  unidades, nunca sumadas (USD vs Stars). KPIs del agente desde `agent_usage_counters` +
+  `sold_by`. Pendiente: aplicar migración `20260917150000`, spike `?dryRun=1`, backfill;
+  fase C (desglose por tipo) exige `read:insights` → reconectar Fanvue.
 - **Auditoría inbox**: `approval_events` (message, actor, action, edited_diff) + export CSV.
 - **White-label** escalonado: branding jsonb → subdominio `{slug}.` → dominio custom.
   Riesgo: cookies NextAuth cross-domain.

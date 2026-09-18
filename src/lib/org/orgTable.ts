@@ -58,6 +58,9 @@ export const TENANT_TABLES = [
     // entra aunque tenga organization_id: es quien DEFINE la pertenencia, y
     // getOrgContext la lee para poder construir el ctx que este builder exige.
     'organization_invitations',
+    // Dashboards de ingresos — rollup diario de Fanvue por creator, con
+    // organization_id NOT NULL (migración 20260917150000_earnings_dashboards).
+    'fanvue_daily_earnings',
 ] as const
 
 export type TenantTable = (typeof TENANT_TABLES)[number]

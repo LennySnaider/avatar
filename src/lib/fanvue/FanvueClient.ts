@@ -18,6 +18,9 @@ import { FANVUE_API_BASE, FANVUE_API_VERSION } from './oauth'
 import type {
     CreatePostInput,
     CreateUploadSessionInput,
+    FanvueAgencyEarningsResponse,
+    FanvueAgencyEarningsRow,
+    ListAgencyEarningsParams,
     FanvueCompleteUploadResponse,
     FanvueCreator,
     FanvueListChatsResponse,
@@ -43,6 +46,14 @@ export class FanvueApiError extends Error {
         this.body = body
     }
 }
+
+/**
+ * Ruta v1 (con prefijo) del endpoint de earnings de agencia — ver el bloque
+ * "Insights de agencia" al final de la clase. Constante exportada para que el
+ * cron la pueda registrar en sus logs y para que el spike de verificación
+ * (`?dryRun=1&path=...`) tenga un valor por defecto que comparar.
+ */
+export const AGENCY_EARNINGS_PATH = '/v1/agencies/earnings'
 
 export type FanvueAccessTokenProvider = (opts?: {
     force?: boolean
@@ -406,4 +417,72 @@ export class FanvueClient {
             input,
         )
     }
+
+    // -----------------------------------------------------------------------
+    // Insights de agencia (dashboards de ingresos). Fanvue tiene DOS ejes de
+    // versión: el header `X-Fanvue-API-Version` (2025-06-26, se mantiene) y
+    // un prefijo de ruta `/v1` ("las rutas sin prefijo son v0, la versión
+    // anterior de URL; /v1 es la actual" — docs/api-reference/overview). El
+    // endpoint de earnings de agencia sólo existe en v1, por eso estas rutas
+    // llevan el prefijo y las de arriba no. Scopes: read:agency + read:creator
+    // (ya concedidos por la conexión de agencia). Doc verificada 2026-09-17:
+    // docs/v1/api-reference/list-per-creator-per-day-earnings-across-all-agency-creators-cursor-paginated.md
+    // -----------------------------------------------------------------------
+
+    /**
+     * `GET /v1/agencies/earnings` — una página de ingresos POR CREATOR Y POR
+     * DÍA (UTC), en centavos de USD, ordenada del día más reciente al más
+     * antiguo. `opts.path` sólo existe para el `dryRun` del cron (probar una
+     * ruta alternativa sin redeploy si Fanvue la mueve).
+     */
+    async listAgencyEarnings(
+        params: ListAgencyEarningsParams,
+        opts?: { path?: string },
+    ): Promise<FanvueAgencyEarningsResponse> {
+        if (params.creatorUuids && params.creatorUuids.length > 50) {
+            throw new Error('Fanvue admite como mucho 50 creatorUuids por llamada')
+        }
+        if (params.size !== undefined && (params.size < 1 || params.size > 50)) {
+            throw new Error('Fanvue admite size entre 1 y 50')
+        }
+        const qs = new URLSearchParams()
+        qs.set('startDate', params.startDate)
+        qs.set('endDate', params.endDate)
+        if (params.creatorUuids?.length) qs.set('creatorUuids', params.creatorUuids.join(','))
+        if (params.cursor) qs.set('cursor', params.cursor)
+        if (params.size) qs.set('size', String(params.size))
+        return this.requestJson<FanvueAgencyEarningsResponse>(
+            'GET',
+            `${opts?.path ?? AGENCY_EARNINGS_PATH}?${qs.toString()}`,
+        )
+    }
+
+    /**
+     * Recorre la paginación por cursor de `listAgencyEarnings` (acotada). Un
+     * cursor repetido corta el bucle: mejor quedarse corto que dar vueltas
+     * para siempre contra la API. `truncated` = se agotó `maxPages` antes de
+     * llegar a `nextCursor: null` — el llamador lo registra como hace
+     * `moduleSummary.truncated`.
+     */
+    async listAllAgencyEarnings(
+        params: Omit<ListAgencyEarningsParams, 'cursor'>,
+        opts?: { maxPages?: number; path?: string },
+    ): Promise<{ rows: FanvueAgencyEarningsRow[]; pages: number; truncated: boolean }> {
+        const maxPages = opts?.maxPages ?? 60
+        const rows: FanvueAgencyEarningsRow[] = []
+        const seen = new Set<string>()
+        let cursor: string | undefined
+        let pages = 0
+        while (pages < maxPages) {
+            const page = await this.listAgencyEarnings({ ...params, cursor }, { path: opts?.path })
+            pages += 1
+            rows.push(...page.data)
+            if (!page.nextCursor) return { rows, pages, truncated: false }
+            if (seen.has(page.nextCursor)) return { rows, pages, truncated: true }
+            seen.add(page.nextCursor)
+            cursor = page.nextCursor
+        }
+        return { rows, pages, truncated: true }
+    }
+
 }
