@@ -278,8 +278,9 @@ const AcceptInviteClient = () => {
                 </Button>
             </Form>
             <p className="mt-4 text-xs text-gray-500">
-                Acepta la invitación con contraseña: entrar con Google desde
-                este enlace todavía no está soportado.
+                También puedes entrar con Google usando este mismo email: la
+                invitación se aplica sola y entras directamente en la
+                organización.
             </p>
             <div className="mt-4 text-center">
                 <span>¿Ya tienes cuenta? </span>
