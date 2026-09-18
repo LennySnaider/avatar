@@ -13,6 +13,7 @@
 import { revalidatePath } from 'next/cache'
 import { getOrgContext, type OrgContext } from '@/lib/tenant/getOrgContext'
 import { orgTable, orgUpsert } from '@/lib/org/orgTable'
+import { ctxCan } from '@/lib/org/guards'
 import { getModuleCatalog, getModuleDefinition, type ModuleCatalogRow } from '@/lib/modules/catalog'
 import { listOrgModules, type OrgModuleRow } from '@/lib/modules/entitlements'
 import { getWalletBalance } from '@/lib/billing/wallet'
@@ -23,9 +24,16 @@ export interface ModulesResult<T> {
     error?: string
 }
 
-/** Sólo quien manda en la org toca la facturación. */
+/**
+ * Sólo quien manda en la org toca la facturación.
+ *
+ * El reparto ya no se decide aquí: vive en la matriz de
+ * `@/lib/org/permissions`, el único sitio donde está escrito qué puede cada
+ * rol. Se conserva el NOMBRE `canManage` porque viaja en el DTO de
+ * `listModules` hasta `ModulesClient`, que apaga sus botones con él.
+ */
 function canManage(ctx: OrgContext): boolean {
-    return ctx.role === 'owner' || ctx.role === 'admin'
+    return ctxCan(ctx, 'module:manage')
 }
 
 function fail(message: string): ModulesResult<never> {
@@ -157,6 +165,11 @@ export async function getBillingOverview(): Promise<
 > {
     try {
         const ctx = await getOrgContext()
+        // El saldo es informacion de negocio: un operador gasta tokens, pero no
+        // tiene por que ver cuanto queda ni que se ha cobrado este mes.
+        if (!ctxCan(ctx, 'billing:manage')) {
+            return fail('Sólo el propietario o un administrador pueden ver la facturación.')
+        }
         const [balance, installed] = await Promise.all([getWalletBalance(ctx), listOrgModules(ctx)])
         return { success: true, data: { balance, installed } }
     } catch (e) {
