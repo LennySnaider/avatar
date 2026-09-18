@@ -19,6 +19,7 @@ import { FanvueClient } from '@/lib/fanvue/FanvueClient'
 import { uploadGenerationMedia } from '@/lib/fanvue/mediaUpload'
 import { indexKnowledgeSource } from '@/lib/agent/indexer'
 import { getOrgContext, type OrgContext } from '@/lib/tenant/getOrgContext'
+import { requirePermission } from '@/lib/org/guards'
 import { orgTable, orgInsert, orgUpsert } from '@/lib/org/orgTable'
 import {
     buildAuthorizeUrl,
@@ -145,6 +146,7 @@ export async function getFanvueConnection(): Promise<
 > {
     try {
         const ctx = await getOrgContext()
+        requirePermission(ctx, 'content:read')
         // La conexion es de la ORG (unique(organization_id) desde la
         // migracion 4.1, ver tokenStore.ts) — orgTable ya acota por ahi, sin
         // filtro adicional por user_id.
@@ -175,6 +177,7 @@ export async function listFanvueCreators(): Promise<
 > {
     try {
         const ctx = await getOrgContext()
+        requirePermission(ctx, 'content:read')
         const connection = await loadConnection(ctx.userId)
         if (!connection) return { success: true, data: [] }
         const { data, error } = await orgTable(ctx, 'fanvue_creators')
@@ -199,7 +202,7 @@ export async function generateFanvueConnectUrl(): Promise<
     FanvueResult<FanvueConnectInit>
 > {
     try {
-        await getOrgContext()
+        requirePermission(await getOrgContext(), 'connection:manage')
         if (!process.env.FANVUE_CLIENT_ID) {
             return {
                 success: false,
@@ -238,6 +241,7 @@ export async function syncCreators(): Promise<
 > {
     try {
         const ctx = await getOrgContext()
+        requirePermission(ctx, 'connection:manage')
         const connection = await loadConnection(ctx.userId)
         if (!connection)
             return { success: false, error: 'Connect your Fanvue agency first' }
@@ -286,6 +290,7 @@ export async function createFanvuePost(
     let ctx: OrgContext
     try {
         ctx = await getOrgContext()
+        requirePermission(ctx, 'publish:social')
     } catch (e) {
         return fail(e)
     }
@@ -477,6 +482,7 @@ export async function listFanvuePosts(): Promise<
 > {
     try {
         const ctx = await getOrgContext()
+        requirePermission(ctx, 'content:read')
         // fanvue_posts es org-wide (user_id es "quien lo creo", no frontera de
         // tenant — mismo criterio que SocialService.listSocialPosts): cualquier
         // miembro de la org ve el historial completo, no solo lo suyo.
@@ -551,6 +557,7 @@ export async function updateFanvuePost(
 ): Promise<FanvueResult<FanvuePostRow>> {
     try {
         const ctx = await getOrgContext()
+        requirePermission(ctx, 'publish:social')
         const userId = ctx.userId
 
         // Org-wide, no user_id: cualquier miembro de la org puede editar el
@@ -645,6 +652,7 @@ export async function deleteFanvuePost(
 ): Promise<FanvueResult<{ id: string }>> {
     try {
         const ctx = await getOrgContext()
+        requirePermission(ctx, 'publish:social')
         // Org-wide, no user_id — mismo criterio que updateFanvuePost.
         const { data: existing, error: exErr } = await orgTable(
             ctx,
@@ -696,6 +704,7 @@ export async function sendGenerationsToFanvueVault(input: {
     let ctx: OrgContext
     try {
         ctx = await getOrgContext()
+        requirePermission(ctx, 'publish:social')
     } catch (e) {
         return fail(e)
     }
@@ -835,7 +844,9 @@ export async function listFanvueVaultFolders(
 ): Promise<FanvueResult<{ name: string; mediaCount: number }[]>> {
     let userId: string
     try {
-        userId = (await getOrgContext()).userId
+        const ctx = await getOrgContext()
+        requirePermission(ctx, 'content:read')
+        userId = ctx.userId
     } catch (e) {
         return fail(e)
     }

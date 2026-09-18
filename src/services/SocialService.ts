@@ -1,6 +1,7 @@
 'use server'
 
 import { getOrgContext, type OrgContext } from '@/lib/tenant/getOrgContext'
+import { requirePermission } from '@/lib/org/guards'
 import { orgTable, orgSupabase } from '@/lib/org/orgTable'
 import { getRowMediaUrl } from '@/lib/storagePaths'
 import { getSocialProvider, deriveUploadPostUsername } from '@/lib/social/provider'
@@ -286,6 +287,7 @@ async function attachAvatarInfo(
 export async function listAvatarSocialAccounts(): Promise<SocialResult<AvatarSocialAccountRow[]>> {
     try {
         const ctx = await getOrgContext()
+        requirePermission(ctx, 'content:read')
         // orgTable ya acota por organization_id: dentro de una org todos los
         // miembros ven todos sus avatares (mismo criterio que apiGetAvatars
         // en AvatarForgeService), así que el filtro previo por user_id/null
@@ -334,6 +336,7 @@ export async function connectUploadPostAccount(input: {
 }): Promise<SocialResult<SocialProfileSummary>> {
     try {
         const ctx = await getOrgContext()
+        requirePermission(ctx, 'connection:manage')
         const apiKey = input.apiKey.trim()
         if (!input.avatarId) return { success: false, error: 'Avatar is required' }
         if (!apiKey) return { success: false, error: 'API key is required' }
@@ -428,6 +431,7 @@ export async function connectUploadPostAccount(input: {
 export async function disconnectUploadPostAccount(avatarId: string): Promise<SocialResult<SocialProfileSummary>> {
     try {
         const ctx = await getOrgContext()
+        requirePermission(ctx, 'connection:manage')
         await getOwnedAvatar(ctx, avatarId)
         const { data, error } = await orgTable(ctx, 'social_profiles')
             .update({ status: 'disconnected', api_key: null, connected_platforms: toJson([]) })
@@ -458,6 +462,7 @@ export async function updateSocialCommentSettings(
 ): Promise<SocialResult<SocialProfileSummary>> {
     try {
         const ctx = await getOrgContext()
+        requirePermission(ctx, 'ai:autonomy')
         if (!avatarId) return { success: false, error: 'Avatar is required' }
         await getOwnedAvatar(ctx, avatarId)
 
@@ -510,6 +515,7 @@ export async function updateSocialCommentSettings(
 export async function getSocialProfileAction(avatarId: string): Promise<SocialResult<SocialProfileSummary | null>> {
     try {
         const ctx = await getOrgContext()
+        requirePermission(ctx, 'content:read')
         if (!avatarId) return { success: true, data: null }
         const { data, error } = await orgTable(ctx, 'social_profiles')
             .select('*')
@@ -525,6 +531,7 @@ export async function getSocialProfileAction(avatarId: string): Promise<SocialRe
 export async function generateSocialConnectUrl(avatarId: string): Promise<SocialResult<{ accessUrl: string; expiresAt: string | null }>> {
     try {
         const ctx = await getOrgContext()
+        requirePermission(ctx, 'connection:manage')
         const avatar = await getOwnedAvatar(ctx, avatarId)
         const { data: profile } = await orgTable(ctx, 'social_profiles')
             .select('*')
@@ -552,6 +559,7 @@ export async function generateSocialConnectUrl(avatarId: string): Promise<Social
 export async function syncConnectedAccounts(avatarId: string): Promise<SocialResult<SocialProfileSummary>> {
     try {
         const ctx = await getOrgContext()
+        requirePermission(ctx, 'content:read')
         const { data: profile, error: profErr } = await orgTable(ctx, 'social_profiles')
             .select('*')
             .eq('avatar_id', avatarId)
@@ -579,6 +587,7 @@ export async function syncConnectedAccounts(avatarId: string): Promise<SocialRes
 export async function registerUploadPostWebhook(avatarId: string): Promise<SocialResult<{ configured: boolean }>> {
     try {
         const ctx = await getOrgContext()
+        requirePermission(ctx, 'connection:manage')
         const { data: profile } = await orgTable(ctx, 'social_profiles')
             .select('*')
             .eq('avatar_id', avatarId)
@@ -603,6 +612,7 @@ export async function registerUploadPostWebhook(avatarId: string): Promise<Socia
 export async function createSocialPost(input: CreateSocialPostInput): Promise<SocialResult<SocialPostRow>> {
     try {
         const ctx = await getOrgContext()
+        requirePermission(ctx, 'publish:social')
 
         if (!input.avatarId) {
             return { success: false, error: 'Select an avatar to post as' }
@@ -782,6 +792,7 @@ export async function createSocialPost(input: CreateSocialPostInput): Promise<So
 export async function getPostedGenerationMap(): Promise<SocialResult<Record<string, string[]>>> {
     try {
         const ctx = await getOrgContext()
+        requirePermission(ctx, 'content:read')
         const map = new Map<string, Set<string>>()
         const add = (genId: string | null, labels: string[]) => {
             if (!genId || labels.length === 0) return
@@ -836,6 +847,7 @@ export async function getPostedGenerationMap(): Promise<SocialResult<Record<stri
 export async function listSocialPosts(): Promise<SocialResult<SocialPostRow[]>> {
     try {
         const ctx = await getOrgContext()
+        requirePermission(ctx, 'content:read')
         const { data, error } = await orgTable(ctx, 'social_posts')
             .select('*')
             .order('created_at', { ascending: false })
@@ -851,6 +863,7 @@ export async function listSocialPosts(): Promise<SocialResult<SocialPostRow[]>> 
 export async function cancelScheduledPost(postId: string): Promise<SocialResult<SocialPostRow>> {
     try {
         const ctx = await getOrgContext()
+        requirePermission(ctx, 'publish:social')
         const { data: post } = await orgTable(ctx, 'social_posts')
             .select('*').eq('id', postId).single()
         if (!post) return { success: false, error: 'Post not found' }
