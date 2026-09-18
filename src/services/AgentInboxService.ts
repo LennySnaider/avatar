@@ -13,6 +13,7 @@
  * sin volver a comprobar el tenant.
  */
 import { getOrgContext } from '@/lib/tenant/getOrgContext'
+import { requirePermission, isExpectedDenial } from '@/lib/org/guards'
 import { orgTable, orgInsert } from '@/lib/org/orgTable'
 import {
     type AgentChatMode,
@@ -81,7 +82,9 @@ export interface AgentMessageDTO {
 }
 
 const fail = (where: string, e: unknown): { success: false; error: string } => {
-    console.error(`[inbox] ${where}:`, e)
+    // Un rechazo por permisos (o por modulo no instalado) es una respuesta
+    // NORMAL, no una averia: si todo se registra como error, nada destaca.
+    if (!isExpectedDenial(e)) console.error(`[inbox] ${where}:`, e)
     return {
         success: false,
         error: e instanceof Error ? e.message : String(e),
@@ -124,6 +127,7 @@ export interface AgentMetrics {
 export async function getAgentMetrics(): Promise<InboxResult<AgentMetrics>> {
     try {
         const ctx = await getOrgContext()
+        requirePermission(ctx, 'content:read')
 
         // `orgTable(...).select(cols, { count, head })` pasa las opciones tal
         // cual a PostgREST — por eso los conteos no necesitan esquivar la
@@ -174,6 +178,7 @@ export async function listAgentChats(filter?: {
 }): Promise<InboxResult<AgentChatListItem[]>> {
     try {
         const ctx = await getOrgContext()
+        requirePermission(ctx, 'content:read')
         let query = orgTable(ctx, 'agent_chats')
             .select('*')
             .order('last_message_at', { ascending: false, nullsFirst: false })
@@ -243,6 +248,7 @@ export async function getAgentChatThread(
 > {
     try {
         const ctx = await getOrgContext()
+        requirePermission(ctx, 'content:read')
         const { data: chatRow } = await orgTable(ctx, 'agent_chats')
             .select('*')
             .eq('id', chatId)
@@ -310,6 +316,7 @@ export async function setChatMode(
 ): Promise<InboxResult<{ id: string; mode: AgentChatMode }>> {
     try {
         const ctx = await getOrgContext()
+        requirePermission(ctx, 'inbox:reply')
         const { data, error } = await orgTable(ctx, 'agent_chats')
             .update({ mode, updated_at: new Date().toISOString() })
             .eq('id', chatId)
@@ -328,6 +335,7 @@ export async function regenerateDraft(
 ): Promise<InboxResult<AgentMessageDTO>> {
     try {
         const ctx = await getOrgContext()
+        requirePermission(ctx, 'inbox:reply')
         const { data: chat } = await orgTable(ctx, 'agent_chats')
             .select('id')
             .eq('id', chatId)
@@ -354,6 +362,7 @@ export async function discardDraft(
 ): Promise<InboxResult<{ id: string }>> {
     try {
         const ctx = await getOrgContext()
+        requirePermission(ctx, 'inbox:reply')
         const { error } = await orgTable(ctx, 'agent_messages')
             .update({
                 status: 'discarded',
@@ -380,6 +389,7 @@ export async function discardDraft(
 export async function removeDraftOffer(messageId: string): Promise<InboxResult<AgentMessageDTO>> {
     try {
         const ctx = await getOrgContext()
+        requirePermission(ctx, 'inbox:reply')
         // El `error` se mira: un parpadeo de la base deja `msg` en null igual
         // que un id inexistente, y reportar "Message not found" por un fallo
         // transitorio manda al creador a buscar un mensaje que sí está.
@@ -418,6 +428,7 @@ export async function approveAndSend(
 ): Promise<InboxResult<AgentMessageDTO>> {
     try {
         const ctx = await getOrgContext()
+        requirePermission(ctx, 'inbox:reply')
         const { data: msgRow } = await orgTable(ctx, 'agent_messages')
             .select('*')
             .eq('id', messageId)
@@ -470,6 +481,7 @@ export async function getAutopilotConfig(
 ): Promise<InboxResult<AutopilotConfig>> {
     try {
         const ctx = await getOrgContext()
+        requirePermission(ctx, 'content:read')
         const { data } = await orgTable(ctx, 'avatar_personas')
             .select('autopilot')
             .eq('avatar_id', avatarId)
@@ -490,6 +502,7 @@ export async function setAutopilotConfig(
 ): Promise<InboxResult<AutopilotConfig>> {
     try {
         const ctx = await getOrgContext()
+        requirePermission(ctx, 'ai:autonomy')
         const { error } = await orgTable(ctx, 'avatar_personas')
             .update({
                 autopilot: config as never,
@@ -510,6 +523,7 @@ export async function setAvatarFanvueCreator(
 ): Promise<InboxResult<{ avatarId: string; creatorUuid: string | null }>> {
     try {
         const ctx = await getOrgContext()
+        requirePermission(ctx, 'connection:manage')
         // Mismo agujero que en AgentService.getOwnedAvatar: la comprobación
         // `avatar.user_id !== ctx.userId` se saltaba entera con `user_id` null,
         // así que mapear el avatar de otra org a un creator de Fanvue era
@@ -542,6 +556,7 @@ export async function approveAndSendVoiceNote(
 ): Promise<InboxResult<AgentMessageDTO>> {
     try {
         const ctx = await getOrgContext()
+        requirePermission(ctx, 'inbox:reply')
         const { data: msgRow } = await orgTable(ctx, 'agent_messages')
             .select('*')
             .eq('id', messageId)
@@ -716,6 +731,7 @@ export async function suggestPpvOffer(
 ): Promise<InboxResult<PpvSuggestion>> {
     try {
         const ctx = await getOrgContext()
+        requirePermission(ctx, 'inbox:reply')
         const { data: chatRow } = await orgTable(ctx, 'agent_chats')
             .select('*')
             .eq('id', chatId)
@@ -854,6 +870,7 @@ export async function sendPpvOffer(input: {
 }): Promise<InboxResult<{ sent: true }>> {
     try {
         const ctx = await getOrgContext()
+        requirePermission(ctx, 'sale:send')
         const { data: chatRow } = await orgTable(ctx, 'agent_chats')
             .select('*')
             .eq('id', input.chatId)
@@ -936,6 +953,7 @@ export async function syncFanvueInbox(
 ): Promise<InboxResult<{ chats: number; messages: number }>> {
     try {
         const ctx = await getOrgContext()
+        requirePermission(ctx, 'content:read')
         // El avatar ya llega acotado por org (orgTable), que es la frontera
         // real: el `ownerUserId !== ctx.userId` anterior dejaba fuera a los
         // compañeros de org — dentro de una org `user_id` es sólo "creado por".
