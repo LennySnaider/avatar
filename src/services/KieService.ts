@@ -32,6 +32,7 @@ import {
 } from '@/utils/promptSanitizer'
 import { buildImageRequest } from './kie/dispatch'
 import { probeKieTask } from './kie/taskProbe'
+import { seedance25AspectRatio } from './kie/seedance25Aspect'
 import { isProviderOutage } from '@/utils/geminiError'
 import type { KieRefWithRole } from './kie/shared'
 import {
@@ -2623,7 +2624,6 @@ async function submitVideoSeedance25(
     const safeDuration = Math.min(30, Math.max(4, Math.round(duration)))
 
     const input: Record<string, unknown> = {
-        aspect_ratio: aspectRatio,
         duration: safeDuration,
         resolution: safeResolution,
         // persistToSupabase guarda como .mp4 — pedir 'mov' produciría un
@@ -2688,6 +2688,15 @@ async function submitVideoSeedance25(
         }
     }
 
+    // aspect_ratio SE DECIDE DESPUÉS del modo de imagen: KIE devuelve 422
+    // ("first-frame and first-last-frame tasks only support adaptive aspect
+    // ratio") si viaja 9:16/16:9 junto a first_frame_url. En ese modo el clip
+    // hereda la proporción de la imagen; el selector sólo manda en t2v y refs.
+    input.aspect_ratio = seedance25AspectRatio({
+        requested: aspectRatio,
+        hasFirstFrame: !!input.first_frame_url,
+    })
+
     // Refs de video y audio — canales independientes del modo de imagen.
     // El tope de 3 es del modelo; el de 30s SUMADOS lo valida quien sube el
     // archivo (aquí ya no hay duración que medir sin descargar los bytes).
@@ -2720,7 +2729,7 @@ async function submitVideoSeedance25(
 
     console.log(
         `[KIE/Seedance2.5] Submitting: duration=${safeDuration}s, resolution=${safeResolution}, ` +
-            `aspect=${aspectRatio}, imageRefs=${imageRefCount}${frameIsRef ? ' (incl. frame)' : ''}, ` +
+            `aspect=${input.aspect_ratio} (pedido ${aspectRatio}), imageRefs=${imageRefCount}${frameIsRef ? ' (incl. frame)' : ''}, ` +
             `firstFrame=${!!input.first_frame_url}, lastFrame=${!!input.last_frame_url}, ` +
             `videoRefs=${(input.reference_video_urls as string[])?.length ?? 0}, ` +
             `audioRefs=${(input.reference_audio_urls as string[])?.length ?? 0}, ` +
