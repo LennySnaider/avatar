@@ -93,6 +93,10 @@ const EXENTOS = [
         'Igual que los webhooks: sin sesión, barren TODAS las orgs a propósito y resuelven la org fila a fila.',
     ],
     [
+        'src/lib/auth/provisionOAuthUser.ts',
+        'Callback de OAuth, SIN sesión ni ctx: busca una invitación viva por el email que trae el proveedor para aceptarla por la RPC en vez de crear una organización propia (el agujero de F4.3). La organización sale del token de la invitación, no de un contexto.',
+    ],
+    [
         'src/app/api/auth/',
         'Infra de autenticación: toca la tabla `users`, que no es tenant. Exenta también en ESLint; aquí no dispara hoy, pero se deja para que las dos listas cuenten la misma historia.',
     ],

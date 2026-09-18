@@ -2243,8 +2243,11 @@ export type Database = {
     Functions: {
       accept_organization_invitation: {
         Args: {
+          p_image?: string
           p_name: string
           p_password_hash: string
+          p_provider?: string
+          p_provider_account_id?: string
           p_token_hash: string
           p_user_id: string
         }

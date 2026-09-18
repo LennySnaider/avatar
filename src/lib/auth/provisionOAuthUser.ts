@@ -59,10 +59,72 @@ export async function provisionOAuthUser(
         return null
     }
 
-    // 3. First sign-in → create user + own org + owner membership so
-    //    getOrgContext() resolves immediately.
     const userId = randomUUID()
     const displayName = p.name?.trim() || email.split('@')[0]
+
+    // 3. ¿Hay una invitación VIVA para este email? Entonces esta persona no
+    //    es un usuario nuevo con organización propia: es un invitado que, en
+    //    vez de abrir el enlace, entró con Google. Antes de esta rama se le
+    //    creaba usuario + organización PROPIA + rol owner: acababa en una
+    //    organización vacía convencido de estar en la que le invitaron, la
+    //    invitación seguía ocupando asiento, y al día siguiente el enlace le
+    //    decía "ese email ya tiene cuenta".
+    //
+    //    Se acepta por la MISMA RPC que el camino con contraseña: misma
+    //    transacción, mismo `for update` sobre la organización, mismo tope de
+    //    asientos. Sin contraseña (password_hash NULL, como todo alta por
+    //    OAuth) y con el id de la cuenta del proveedor, que es lo que el paso
+    //    1 usa para reconocerla en el siguiente login.
+    const { data: invitation, error: invError } = await supabase
+        .from('organization_invitations')
+        .select('token_hash')
+        .eq('email', email)
+        .is('accepted_at', null)
+        .is('revoked_at', null)
+        .gt('expires_at', new Date().toISOString())
+        .maybeSingle()
+    if (invError) {
+        // Sin saber si hay invitación no se puede elegir camino: crear una
+        // organización propia "por si acaso" es exactamente el agujero.
+        console.error(
+            'OAuth: no se pudo consultar invitaciones:',
+            invError.message,
+        )
+        return null
+    }
+    if (invitation) {
+        const { data, error } = await supabase.rpc(
+            'accept_organization_invitation',
+            {
+                p_token_hash: (invitation as { token_hash: string }).token_hash,
+                p_user_id: userId,
+                p_name: displayName,
+                p_password_hash: null,
+                p_provider: p.provider,
+                p_provider_account_id: p.providerAccountId,
+                p_image: p.image ?? null,
+            },
+        )
+        if (error) {
+            console.error('OAuth: aceptar la invitación falló:', error.message)
+            return null
+        }
+        const result = data as { ok: boolean; reason?: string }
+        if (result.ok) return { id: userId, authority: ['user'] }
+        // `no_seats`: no se le crea una organización propia (sería el agujero
+        // otra vez); se bloquea el login y la invitación sigue viva para
+        // cuando amplíen el plan. `invalid`/`email_taken` aquí sólo pueden
+        // ser una carrera (la revocaron o se registró entre medias): también
+        // se bloquea, y el siguiente intento ya no encontrará invitación viva
+        // y seguirá el alta normal.
+        console.warn(
+            `OAuth sign-in blocked: invitation for ${email} not accepted (${result.reason})`,
+        )
+        return null
+    }
+
+    // 4. First sign-in without invitation → create user + own org + owner
+    //    membership so getOrgContext() resolves immediately.
     const { error: userErr } = await supabase.from('users').insert({
         id: userId,
         email,
