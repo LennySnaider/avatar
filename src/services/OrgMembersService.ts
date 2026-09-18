@@ -42,6 +42,7 @@ import {
     type InvitationStatus,
 } from '@/lib/org/invitations'
 import {
+    bumpSessionInvalidation,
     deleteMember,
     findUserByEmail,
     insertInvitation,
@@ -404,6 +405,12 @@ export async function removeMember(
         // (falsificaría la auditoría y el ledger) y su cuenta en `users`
         // sobrevive.
         await deleteMember(ctx, userId)
+        // Y se le cierra la sesión: sin esto seguiría navegando por la app
+        // hasta que su JWT caducara solo (el middleware no consulta la base).
+        // Va DESPUÉS del borrado: si fallara la marca, el acceso a los datos ya
+        // está cortado (todo pasa por getOrgContext) y sólo quedaría la
+        // navegación por cascarones, que la guarda del layout también corta.
+        await bumpSessionInvalidation(userId)
         revalidatePath(PAGE)
         return { success: true, data: null }
     } catch (e) {

@@ -2,6 +2,7 @@ import React from 'react'
 import { redirect } from 'next/navigation'
 import PostLoginLayout from '@/components/layouts/PostLoginLayout'
 import { auth } from '@/auth'
+import { tryGetOrgContext } from '@/lib/tenant/getOrgContext'
 import appConfig from '@/configs/app.config'
 import { ReactNode } from 'react'
 
@@ -44,6 +45,20 @@ const Layout = async ({ children }: { children: ReactNode }) => {
     // una página en blanco.
     if (!session?.user?.id) {
         redirect(appConfig.unAuthenticatedEntryPath)
+    }
+
+    // F4.3 — Sesión válida pero SIN organización: es el expulsado que vuelve a
+    // entrar con su contraseña (o una cuenta huérfana). Antes, la primera
+    // página que llamara a getOrgContext() LANZABA y la persona veía una
+    // pantalla de error en vez de un mensaje. Va a una página PÚBLICA a
+    // propósito: mandarla a /sign-in con sesión abierta haría bucle con el
+    // middleware (que rebota al dashboard a quien entra en una authRoute con
+    // sesión), y una página protegida pasaría por esta misma guarda.
+    //
+    // Coste: una lectura indexada de organization_members por navegación,
+    // la misma que getNavigation ya hace en el layout raíz.
+    if (!(await tryGetOrgContext())) {
+        redirect('/no-organization')
     }
 
     return <PostLoginLayout>{children}</PostLoginLayout>

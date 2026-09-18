@@ -25,6 +25,7 @@
  */
 import { orgInsert, orgSupabase, orgTable } from '@/lib/org/orgTable'
 import type { OrgContext } from '@/lib/tenant/getOrgContext'
+import { rememberPasswordChangedAt } from '@/lib/auth/passwordChangedAt'
 import { computeSeatUsage, type SeatUsage } from './seats'
 import type { OrgRole } from './permissions'
 
@@ -239,4 +240,32 @@ export async function deleteMember(
     if (!data || data.length === 0) {
         throw new Error('Ese miembro no existe en esta organización.')
     }
+}
+
+/**
+ * Cierra las sesiones abiertas de un usuario expulsado.
+ *
+ * PRÉSTAMO SEMÁNTICO, y hay que saberlo: escribe `users.password_changed_at`
+ * SIN cambiar la contraseña. Esa columna es, literalmente, "la marca de
+ * invalidación de sesiones" del repo (ver reset-password/route.ts): el
+ * callback `jwt` de src/auth.ts compara la marca con `sessionStartedAt` y
+ * destruye la sesión y su cookie en ≤30 s (REVOCATION_CACHE_TTL_MS). Sin esto,
+ * un expulsado seguiría paseando por la app hasta que su JWT caducara solo —
+ * el middleware corre en edge y no puede mirar la base.
+ *
+ * DEUDA ANOTADA: si un tercer sitio necesita esto, la columna y el claim
+ * deberían pasar a llamarse `sessions_valid_from`, porque ya no hablan sólo
+ * de contraseñas.
+ *
+ * Sembrar la caché con `rememberPasswordChangedAt` hace la expulsión
+ * inmediata en esta instancia; en las demás tarda la ventana de 30 s.
+ */
+export async function bumpSessionInvalidation(userId: string): Promise<void> {
+    const now = new Date().toISOString()
+    const { error } = await orgSupabase()
+        .from('users')
+        .update({ password_changed_at: now, updated_at: now })
+        .eq('id', userId)
+    if (error) throw new Error(error.message)
+    rememberPasswordChangedAt(userId, now)
 }

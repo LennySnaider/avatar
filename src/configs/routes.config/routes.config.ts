@@ -28,6 +28,16 @@ export const publicRoutes: Routes = {
         key: 'acceptInvite',
         authority: [],
     },
+    /**
+     * Cuenta con sesión pero sin organización (miembro expulsado que vuelve a
+     * entrar). La guarda de (protected-pages)/layout.tsx redirige aquí; pública
+     * por el mismo motivo que accept-invite: ni bucle con el middleware ni
+     * con la propia guarda.
+     */
+    '/no-organization': {
+        key: 'noOrganization',
+        authority: [],
+    },
 }
 
 export const authRoutes = authRoute
