@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import RoleCheck from '@/components/shared/RoleCheck'
 import { HiOutlineSparkles } from 'react-icons/hi'
 import Card from '@/components/ui/Card'
 import Button from '@/components/ui/Button'
@@ -265,14 +266,18 @@ const TelegramGallery = ({ avatarId, items, onItemsChange, generations }: Telegr
         <div className="flex flex-col gap-4">
             <div className="flex items-center justify-between">
                 <p className="text-sm font-semibold">Content ({items.length})</p>
-                <Button
-                    size="sm"
-                    variant="solid"
-                    onClick={openAdd}
-                    disabled={generations.length === 0}
-                >
-                    Add from generations
-                </Button>
+                {/* Añadir contenido al catálogo fija su precio: pricing:manage (admin+).
+                    Cosmético; upsertPaidMediaItem vuelve a comprobarlo. */}
+                <RoleCheck permission="pricing:manage">
+                    <Button
+                        size="sm"
+                        variant="solid"
+                        onClick={openAdd}
+                        disabled={generations.length === 0}
+                    >
+                        Add from generations
+                    </Button>
+                </RoleCheck>
             </div>
 
             {items.length === 0 ? (
@@ -324,16 +329,18 @@ const TelegramGallery = ({ avatarId, items, onItemsChange, generations }: Telegr
                                         : `⭐ ${item.starPrice} · ${item.salesCount} sold`}
                                 </p>
                                 <div className="flex items-center gap-1 flex-wrap">
-                                    <Button size="xs" onClick={() => openEdit(item)}>
-                                        Edit
-                                    </Button>
-                                    <Button
-                                        size="xs"
-                                        loading={togglingId === item.id}
-                                        onClick={() => handleQuickToggle(item)}
-                                    >
-                                        {item.enabled ? 'Disable' : 'Enable'}
-                                    </Button>
+                                    <RoleCheck permission="pricing:manage">
+                                        <Button size="xs" onClick={() => openEdit(item)}>
+                                            Edit
+                                        </Button>
+                                        <Button
+                                            size="xs"
+                                            loading={togglingId === item.id}
+                                            onClick={() => handleQuickToggle(item)}
+                                        >
+                                            {item.enabled ? 'Disable' : 'Enable'}
+                                        </Button>
+                                    </RoleCheck>
                                     <Button
                                         size="xs"
                                         variant="plain"

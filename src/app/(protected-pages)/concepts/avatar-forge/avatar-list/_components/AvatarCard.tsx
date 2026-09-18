@@ -1,5 +1,6 @@
 'use client'
 
+import RoleCheck from '@/components/shared/RoleCheck'
 import { useState, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import Card from '@/components/ui/Card'
@@ -527,15 +528,19 @@ const AvatarCard = ({ avatar }: AvatarCardProps) => {
                                 AI Agent
                             </span>
                         </Dropdown.Item>
-                        <Dropdown.Item
-                            eventKey="delete"
-                            onClick={() => setDeleteConfirmOpen(true)}
-                        >
-                            <span className="flex items-center gap-2 text-red-500">
-                                <HiOutlineTrash />
-                                Delete
-                            </span>
-                        </Dropdown.Item>
+                        {/* Borrar el avatar entero es avatar:delete (admin+): a un operator no se le
+                            enseña un item que va a fallar. Cosmético; la server action vuelve a comprobarlo. */}
+                        <RoleCheck permission="avatar:delete">
+                            <Dropdown.Item
+                                eventKey="delete"
+                                onClick={() => setDeleteConfirmOpen(true)}
+                            >
+                                <span className="flex items-center gap-2 text-red-500">
+                                    <HiOutlineTrash />
+                                    Delete
+                                </span>
+                            </Dropdown.Item>
+                        </RoleCheck>
                     </Dropdown>
                 </div>
 

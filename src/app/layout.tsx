@@ -6,7 +6,7 @@ import LocaleProvider from '@/components/template/LocaleProvider'
 import NavigationProvider from '@/components/template/Navigation/NavigationProvider'
 import {
     getNavigation,
-    getInstalledModules,
+    getOrgUiContext,
 } from '@/server/actions/navigation/getNavigation'
 import { getTheme } from '@/server/actions/theme'
 import { getLocale, getMessages } from 'next-intl/server'
@@ -32,7 +32,7 @@ export default async function RootLayout({
     // getNavigation para podar el árbol en vez de dejar que la recalcule por
     // su cuenta (antes eran dos resoluciones de sesión + membresía en serie
     // para lo mismo).
-    const installedModules = await getInstalledModules()
+    const { role, installedModules } = await getOrgUiContext()
     const navigationTree = await getNavigation(installedModules)
 
     const theme = await getTheme()
@@ -51,6 +51,7 @@ export default async function RootLayout({
                             <NavigationProvider
                                 navigationTree={navigationTree}
                                 installedModules={installedModules}
+                                role={role}
                             >
                                 {children}
                             </NavigationProvider>

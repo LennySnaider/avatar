@@ -9,6 +9,7 @@ import Switcher from '@/components/ui/Switcher'
 import Notification from '@/components/ui/Notification'
 import toast from '@/components/ui/toast'
 import { getAutopilotConfig, setAutopilotConfig } from '@/services/AgentInboxService'
+import { usePermission } from '@/components/template/Navigation/NavigationContext'
 import type { AutopilotConfig } from '@/lib/agent/autopilot'
 
 interface AutopilotCardProps {
@@ -18,6 +19,9 @@ interface AutopilotCardProps {
 const AutopilotCard = ({ avatarId }: AutopilotCardProps) => {
     const [loaded, setLoaded] = useState(false)
     const [loadError, setLoadError] = useState<string | null>(null)
+    // Encender el autopilot es ai:autonomy (admin+): gasto y envío sin nadie
+    // delante. Cosmético: setAutopilotConfig vuelve a comprobarlo.
+    const canAutonomy = usePermission('ai:autonomy')
     const [enabled, setEnabled] = useState(false)
     const [start, setStart] = useState('09:00')
     const [end, setEnd] = useState('23:00')
@@ -128,7 +132,7 @@ const AutopilotCard = ({ avatarId }: AutopilotCardProps) => {
                 </Alert>
             )}
             <div className="flex items-center gap-3 mb-2">
-                <Switcher checked={enabled} onChange={(c) => setEnabled(c)} />
+                <Switcher checked={enabled} disabled={!canAutonomy} onChange={(c) => setEnabled(c)} />
                 <div>
                     <p className="text-sm font-semibold">Autopilot</p>
                     <p className="text-xs text-gray-400">
@@ -175,6 +179,7 @@ const AutopilotCard = ({ avatarId }: AutopilotCardProps) => {
                     <p className="text-sm">Allow paid offers on autopilot</p>
                     <Switcher
                         checked={allowPaidMediaOffers}
+                        disabled={!canAutonomy}
                         onChange={(c) => setAllowPaidMediaOffers(c)}
                     />
                 </div>
@@ -216,12 +221,17 @@ const AutopilotCard = ({ avatarId }: AutopilotCardProps) => {
                     variant="solid"
                     size="sm"
                     loading={isSaving}
-                    disabled={loadError !== null}
+                    disabled={loadError !== null || !canAutonomy}
                     onClick={handleSave}
                 >
                     Save autopilot
                 </Button>
             </div>
+            {!canAutonomy && (
+                <p className="text-xs text-gray-500 mt-2">
+                    Sólo un administrador o el propietario pueden encender o ajustar el autopilot.
+                </p>
+            )}
         </Card>
     )
 }

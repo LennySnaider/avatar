@@ -1,5 +1,6 @@
 'use client'
 
+import RoleCheck from '@/components/shared/RoleCheck'
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Button from '@/components/ui/Button'
@@ -60,15 +61,17 @@ const AvatarListActionTools = () => {
                     />
 
                     {selectedAvatars.length > 0 && (
-                        <Button
-                            size="sm"
-                            variant="plain"
-                            color="red"
-                            icon={<HiOutlineTrash />}
-                            onClick={() => setDeleteConfirmOpen(true)}
-                        >
-                            Delete ({selectedAvatars.length})
-                        </Button>
+                        <RoleCheck permission="avatar:delete">
+                            <Button
+                                size="sm"
+                                variant="plain"
+                                color="red"
+                                icon={<HiOutlineTrash />}
+                                onClick={() => setDeleteConfirmOpen(true)}
+                            >
+                                Delete ({selectedAvatars.length})
+                            </Button>
+                        </RoleCheck>
                     )}
 
                     <Button

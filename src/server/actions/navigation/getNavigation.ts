@@ -15,19 +15,40 @@ import { filterNavigationByModules } from '@/lib/modules/navigation'
 import { listInstalledSlugsForOrg } from '@/lib/modules/entitlements'
 import { tryGetOrgContext } from '@/lib/tenant/getOrgContext'
 import type { NavigationTree } from '@/@types/navigation'
+import type { OrgRole } from '@/lib/org/permissions'
 
-export async function getInstalledModules(): Promise<string[]> {
+/**
+ * Lo que la UI cliente necesita saber de la organización para PINTAR: los
+ * módulos instalados y el rol del que mira.
+ *
+ * El rol viaja como HINT de pintado, nada más: quien autoriza vuelve a leer
+ * `organization_members` en cada server action (`getOrgContext`), así que un
+ * rol degradado a mitad de sesión no se puede explotar aunque este contexto
+ * esté rancio. Y cuesta cero consultas extra: `tryGetOrgContext()` ya se
+ * ejecutaba aquí y su `role` se descartaba.
+ */
+export interface OrgUiContext {
+    role: OrgRole | null
+    installedModules: string[]
+}
+
+export async function getOrgUiContext(): Promise<OrgUiContext> {
     const ctx = await tryGetOrgContext()
-    if (!ctx) return []
+    if (!ctx) return { role: null, installedModules: [] }
+    const role = ctx.role as OrgRole
     try {
-        return await listInstalledSlugsForOrg(ctx.organizationId)
+        return { role, installedModules: await listInstalledSlugsForOrg(ctx.organizationId) }
     } catch (e) {
         // Un fallo leyendo módulos no puede dejar al usuario sin menú, pero sí
         // tiene que dejar rastro: sin loguear, un module_catalog roto se
         // degrada a "sin módulos instalados" sin una sola línea en los logs.
-        console.error('[navigation] getInstalledModules:', e)
-        return []
+        console.error('[navigation] getOrgUiContext:', e)
+        return { role, installedModules: [] }
     }
+}
+
+export async function getInstalledModules(): Promise<string[]> {
+    return (await getOrgUiContext()).installedModules
 }
 
 /**

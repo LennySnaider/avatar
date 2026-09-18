@@ -1,5 +1,6 @@
 'use client'
 
+import RoleCheck from '@/components/shared/RoleCheck'
 import { useState } from 'react'
 import Card from '@/components/ui/Card'
 import Button from '@/components/ui/Button'
@@ -215,42 +216,56 @@ const TelegramConnectionPanel = ({
                     </p>
                 )}
 
-                <p className="text-xs text-gray-500 mb-1">
-                    {status?.connected ? 'Reconnect with a new token' : 'Bot token'}
-                </p>
-                <div className="flex items-center gap-2 mb-1">
-                    <div className="w-full sm:w-96">
-                        <Input
-                            type="password"
-                            autoComplete="off"
-                            size="sm"
-                            value={token}
-                            placeholder="123456:AAExampleTokenFromBotFather"
-                            onChange={(e) => setToken(e.target.value)}
-                        />
-                    </div>
-                    <Button size="sm" variant="solid" loading={isConnecting} onClick={handleConnect}>
-                        {status?.connected ? 'Reconnect' : 'Connect'}
-                    </Button>
-                </div>
-                <p className="text-xs text-gray-400 mb-4">
-                    Paste the token BotFather gave you when you created the bot. It is stored once
-                    and never shown again — not even masked. If you lose it, generate a new one in
-                    BotFather and paste it here to reconnect.
-                </p>
-
-                {status?.connected && (
-                    <div className="flex justify-end">
-                        <Button
-                            size="sm"
-                            variant="plain"
-                            customColorClass={() => 'text-red-500 hover:text-red-600'}
-                            onClick={() => setConfirmDisconnect(true)}
-                        >
-                            Disconnect
+                {/* Conectar o cambiar el bot es connection:manage (admin+). Cosmético:
+                    connectTelegramBot vuelve a comprobarlo. */}
+                <RoleCheck
+                    permission="connection:manage"
+                    fallback={
+                        <p className="text-xs text-gray-500 mb-4">
+                            Conectar o cambiar el bot es cosa de un administrador o del
+                            propietario de la organización.
+                        </p>
+                    }
+                >
+                    <p className="text-xs text-gray-500 mb-1">
+                        {status?.connected ? 'Reconnect with a new token' : 'Bot token'}
+                    </p>
+                    <div className="flex items-center gap-2 mb-1">
+                        <div className="w-full sm:w-96">
+                            <Input
+                                type="password"
+                                autoComplete="off"
+                                size="sm"
+                                value={token}
+                                placeholder="123456:AAExampleTokenFromBotFather"
+                                onChange={(e) => setToken(e.target.value)}
+                            />
+                        </div>
+                        <Button size="sm" variant="solid" loading={isConnecting} onClick={handleConnect}>
+                            {status?.connected ? 'Reconnect' : 'Connect'}
                         </Button>
                     </div>
-                )}
+                    <p className="text-xs text-gray-400 mb-4">
+                        Paste the token BotFather gave you when you created the bot. It is stored once
+                        and never shown again — not even masked. If you lose it, generate a new one in
+                        BotFather and paste it here to reconnect.
+                    </p>
+                </RoleCheck>
+
+                <RoleCheck permission="connection:manage">
+                    {status?.connected && (
+                        <div className="flex justify-end">
+                            <Button
+                                size="sm"
+                                variant="plain"
+                                customColorClass={() => 'text-red-500 hover:text-red-600'}
+                                onClick={() => setConfirmDisconnect(true)}
+                            >
+                                Disconnect
+                            </Button>
+                        </div>
+                    )}
+                </RoleCheck>
             </Card>
 
             {status?.connected && (
