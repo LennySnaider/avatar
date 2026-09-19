@@ -46,7 +46,7 @@
  * la UI es un fallo que nadie diagnostica.
  */
 import { getOrgContext, type OrgContext } from '@/lib/tenant/getOrgContext'
-import { isExpectedDenial, requirePermission } from '@/lib/org/guards'
+import { ctxCan, isExpectedDenial, requirePermission } from '@/lib/org/guards'
 import type { Permission } from '@/lib/org/permissions'
 import { orgInsert, orgTable } from '@/lib/org/orgTable'
 import { hasModule, requireModule } from '@/lib/modules/entitlements'
@@ -111,6 +111,15 @@ export interface StrategistStatus {
     /** Ya normalizados: nunca faltan campos (ver `budget.ts`). */
     settings: StrategistSettings
     meta: { connected: boolean; consentUrl?: string }
+    /**
+     * ¿Puede ESTE usuario conectar la cuenta de Meta de la organización?
+     *
+     * Es `connection:manage`, el mismo permiso que exige `startMetaConsent`.
+     * Va en el estado porque la UI tiene que decidir entre pintar el botón
+     * "Conectar Meta" o pedir un administrador: sin esto, un operator veía un
+     * botón que siempre terminaba en un toast de rechazo.
+     */
+    canConnectMeta: boolean
     /** Consumo del día natural UTC en curso. */
     usageToday: { tokens: number; costUsd: number }
 }
@@ -360,6 +369,7 @@ export async function getStrategistStatus(): Promise<
                     installed: false,
                     settings: { ...DEFAULT_STRATEGIST_SETTINGS },
                     meta: { connected: false },
+                    canConnectMeta: ctxCan(ctx, 'connection:manage'),
                     usageToday: { tokens: 0, costUsd: 0 },
                 },
             }
@@ -382,6 +392,7 @@ export async function getStrategistStatus(): Promise<
                               ? { consentUrl: meta.consentUrl }
                               : {}),
                       },
+                canConnectMeta: ctxCan(ctx, 'connection:manage'),
                 usageToday,
             },
         }

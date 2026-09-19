@@ -499,6 +499,13 @@ const StrategistPanel = () => {
 
     const usado = status?.usageToday.tokens ?? 0
     const tope = status?.settings.dailyTokenCap ?? 0
+    /**
+     * Sin estado leído todavía se asume que NO: la tarjeta de Meta ya está
+     * tras `!cargandoEstado`, así que esto sólo decide qué pintar cuando el
+     * estado llegó — y ante la duda, mejor pedir un administrador que ofrecer
+     * un botón que va a rechazarse.
+     */
+    const puedeConectarMeta = status?.canConnectMeta ?? false
 
     return (
         <>
@@ -593,15 +600,25 @@ const StrategistPanel = () => {
                             Meta Ads is not connected, so ad numbers are out of
                             reach for now.
                         </p>
-                        <Button
-                            size="xs"
-                            variant="solid"
-                            loading={conectando}
-                            icon={<HiOutlineExternalLink />}
-                            onClick={() => void handleConnectMeta()}
-                        >
-                            Connect Meta
-                        </Button>
+                        {/* El botón sólo para quien puede completar el grant:
+                            `startMetaConsent` exige `connection:manage`, así
+                            que a un operator este botón le devolvía siempre un
+                            toast de rechazo (y en español). */}
+                        {puedeConectarMeta ? (
+                            <Button
+                                size="xs"
+                                variant="solid"
+                                loading={conectando}
+                                icon={<HiOutlineExternalLink />}
+                                onClick={() => void handleConnectMeta()}
+                            >
+                                Connect Meta
+                            </Button>
+                        ) : (
+                            <p className="text-xs text-amber-700 dark:text-amber-300">
+                                Ask an admin to connect Meta Ads.
+                            </p>
+                        )}
                     </div>
                 )}
 

@@ -220,6 +220,8 @@ export default function StrategistSettingsDrawer({
 
     const usado = status?.usageToday.tokens ?? 0
     const costo = status?.usageToday.costUsd ?? 0
+    /** Ante la duda (estado aún sin leer), no se ofrece el botón. */
+    const puedeConectarMeta = status?.canConnectMeta ?? false
 
     return (
         <Drawer
@@ -303,18 +305,30 @@ export default function StrategistSettingsDrawer({
                             </Tag>
                         )}
                     </div>
-                    {!metaConnected && (
-                        <Button
-                            size="sm"
-                            variant="solid"
-                            icon={<HiOutlineExternalLink />}
-                            loading={conectando}
-                            disabled={cargando}
-                            onClick={() => void handleConectarMeta()}
-                        >
-                            Conectar Meta
-                        </Button>
-                    )}
+                    {/* El botón pide `connection:manage`, igual que
+                        `startMetaConsent`. Este cajón ya está tras
+                        `module:manage` (y hoy quien tiene uno tiene el otro),
+                        pero se comprueba el permiso REAL de la acción para
+                        que el día que los roles cambien no aparezca aquí un
+                        botón que sólo sabe rechazar. */}
+                    {!metaConnected &&
+                        (puedeConectarMeta ? (
+                            <Button
+                                size="sm"
+                                variant="solid"
+                                icon={<HiOutlineExternalLink />}
+                                loading={conectando}
+                                disabled={cargando}
+                                onClick={() => void handleConectarMeta()}
+                            >
+                                Conectar Meta
+                            </Button>
+                        ) : (
+                            <span className="text-sm text-gray-500">
+                                Pídele a un administrador de tu organización
+                                que conecte Meta Ads.
+                            </span>
+                        ))}
                 </div>
 
                 <div className="flex flex-col gap-1">

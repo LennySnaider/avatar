@@ -23,10 +23,13 @@
  *    hilo en vez de abrir otro. Llega en `start` justo por eso: si viajara
  *    sólo en `finish`, un usuario que escribe dos veces seguidas antes de que
  *    termine el primer turno abriría dos hilos.
- *  - `consentUrl`: sólo cuando Meta NO está conectado Y Connect llegó a
- *    acuñar el reto. Es lo que pinta la tarjeta "Conectar Meta". Su AUSENCIA
- *    no significa "conectado" — eso lo dice que no venga el campo junto con
- *    un `getStrategistStatus()` que diga `meta.connected`.
+ *  - `consentUrl`: sólo cuando el turno PUEDE usar Meta (tiene herramientas
+ *    de Meta en su catálogo), Meta NO está conectado, Connect llegó a acuñar
+ *    el reto Y quien pregunta tiene `connection:manage` — es quien podría
+ *    completar el grant (`startMetaConsent` exige ese permiso). Es lo que
+ *    pinta la tarjeta "Conectar Meta". Su AUSENCIA no significa "conectado":
+ *    eso lo dice `getStrategistStatus()`, que además responde `canConnectMeta`
+ *    para que la UI sepa si pintar el botón o pedir un administrador.
  *  - `model`: el modelo que se usó; `null` en las dos respuestas que NO pasan
  *    por el modelo (tope diario y sin tokens).
  *
@@ -54,7 +57,9 @@
  *  4. Presupuesto diario. Si no queda, se contesta sin herramientas y SIN
  *     HOLD: cobrar por decir "no te queda presupuesto" sería sangrante.
  *  5. Hold (techo de `perTurnTokenCap`).
- *  6. Herramientas: registro propio + (si procede) la lista blanca del MCP.
+ *  6. Herramientas: registro propio y, SÓLO si el turno tiene alguna
+ *     herramienta de Meta que llamar, la conexión con Meta (que acuña reto,
+ *     así que no se pregunta por gusto) + la lista blanca del MCP.
  *  7. Contexto del prompt y `streamText`.
  * Todo lo que va DESPUÉS del hold está envuelto para reembolsar si algo
  * revienta: un hold sin turno deja tokens reservados que sólo el barrido de
@@ -86,7 +91,7 @@ import {
     type UIMessage,
 } from 'ai'
 import { getOrgContext, type OrgContext } from '@/lib/tenant/getOrgContext'
-import { isExpectedDenial, requirePermission } from '@/lib/org/guards'
+import { ctxCan, isExpectedDenial, requirePermission } from '@/lib/org/guards'
 import {
     ModuleNotInstalledError,
     requireModule,
@@ -467,9 +472,6 @@ export async function POST(req: NextRequest) {
             usedToday,
             dailyCap: settings.dailyTokenCap,
         })
-        const meta = await resolverMeta(ctx)
-        const consentUrl =
-            !meta.connected && meta.consentUrl ? meta.consentUrl : undefined
 
         if (!presupuesto.allowed) {
             const texto =
@@ -487,11 +489,11 @@ export async function POST(req: NextRequest) {
                 content: partesDeRespuesta(texto, []),
             })
             await tocarHilo(ctx, threadId)
-            return respuestaDeTexto(texto, {
-                threadId,
-                model: null,
-                consentUrl,
-            })
+            // Sin `consentUrl`: este turno se corta ANTES de preguntarle a
+            // Connect por el grant de Meta (ver la sección 6), y acuñar un
+            // reto para un turno que ni siquiera va a llamar al modelo sería
+            // una llamada de red con efecto a cambio de nada.
+            return respuestaDeTexto(texto, { threadId, model: null })
         }
 
         // ── 5. Hold ──────────────────────────────────────────────────────
@@ -524,11 +526,8 @@ export async function POST(req: NextRequest) {
                 content: partesDeRespuesta(texto, []),
             })
             await tocarHilo(ctx, threadId)
-            return respuestaDeTexto(texto, {
-                threadId,
-                model: null,
-                consentUrl,
-            })
+            // Sin `consentUrl`, por lo mismo que la parada de presupuesto.
+            return respuestaDeTexto(texto, { threadId, model: null })
         }
         hold = holdResult.hold
 
@@ -540,6 +539,36 @@ export async function POST(req: NextRequest) {
             },
         )
         let tools: ToolSet = propias
+
+        // ¿PUEDE este turno llamar a Meta? Por Graph (una herramienta propia
+        // ya seleccionada para esta pantalla) o por el MCP (que sólo se abre
+        // en `MCP_SCREENS`). Si no, no se le pregunta a Connect por el grant:
+        // `getMetaConnection` en modo `eager` ACUÑA un reto de consentimiento
+        // —es una llamada de red con efecto, no un `select`— y hacerlo en
+        // cada turno del estudio o del inbox es pagar por un dato que este
+        // turno no va a usar. Por eso vive aquí y no antes del corte por tope
+        // diario: un turno que no llega al modelo tampoco necesita saberlo.
+        const turnoPuedeUsarMeta =
+            Object.keys(propias).some((n) => NOMBRES_META.has(n)) ||
+            MCP_SCREENS.includes(screen)
+        const meta: MetaConnection = turnoPuedeUsarMeta
+            ? await resolverMeta(ctx)
+            : { connected: false, consentUrl: null }
+
+        // La URL de consentimiento SÓLO viaja a quien puede completar el
+        // grant: `startMetaConsent` exige `connection:manage`, así que
+        // dársela a un operator sería mandarlo a una pantalla de Meta cuya
+        // vuelta termina en un rechazo (y, si la abriera igualmente, un rol
+        // que no puede conectar cuentas acabaría conectando la de la
+        // organización). Que Meta esté o no conectado se sigue diciendo por
+        // el prompt y por `getStrategistStatus`; lo que se calla es el botón.
+        const consentUrl =
+            !meta.connected &&
+            meta.consentUrl &&
+            ctxCan(ctx, 'connection:manage')
+                ? meta.consentUrl
+                : undefined
+
         if (meta.connected && MCP_SCREENS.includes(screen)) {
             // `openMetaMcpTools` RELANZA todo lo que no sea falta de
             // consentimiento (un 5xx de mcp.facebook.com, un fallo de
