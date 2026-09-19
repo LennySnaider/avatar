@@ -1444,11 +1444,14 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
     const createCarouselVariant = useCallback(
         async (source: GeneratedMedia): Promise<GeneratedMedia | null> => {
             // Fuente → base64 (media.url puede ser data:/blob:/https).
-            const res = await fetch(source.url)
-            if (!res.ok) {
-                throw new Error(`Failed to fetch source image (${res.status})`)
-            }
-            const blob = await res.blob()
+            // fetchMediaBlobWithFallback y NO fetch() a secas (2026-09-19,
+            // "Variant no hace nada"): la portada ya vive en R2 y el bucket
+            // público NO emite Access-Control-Allow-Origin (curl con Origin de
+            // prod, sin cabecera para ningún origen) — el fetch directo moría
+            // por CORS en milisegundos, el spinner ni llegaba a verse y la
+            // variante nunca llegaba a KIE. Mismo camino que el Variant del
+            // Studio: directo → proxy autenticado.
+            const blob = await fetchMediaBlobWithFallback(source.url)
             const base64 = await new Promise<string>((resolve, reject) => {
                 const reader = new FileReader()
                 reader.onloadend = () =>

@@ -1,5 +1,10 @@
 @layer components {
   .toast {
-    @apply fixed z-40;
+    /* z-50, por ENCIMA de .dialog-overlay y .drawer-overlay (z-40): el wrapper
+       de toasts se crea una sola vez por sesión y se reutiliza (toast.tsx,
+       mapa `wrappers`), así que un modal abierto después queda tras él en el
+       DOM y, a igual z, lo tapaba — los errores lanzados desde dentro de un
+       Dialog (p. ej. "Variant" del PostModal, 2026-09-19) no se veían nunca. */
+    @apply fixed z-50;
   }
 }
