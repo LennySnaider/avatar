@@ -196,6 +196,74 @@ export const VOICE_CLONE_COST_USD: CostEntry = { usd: 0.3, estimated: true }
 export const AGENT_MESSAGE_COST_USD: CostEntry = { usd: 0.004, estimated: true }
 
 /**
+ * Precio POR MILLÓN de tokens de los modelos que usa el Estratega (agente de
+ * la organización, F5.2/Fase 1). A diferencia de `AGENT_MESSAGE_COST_USD`
+ * (una estimación FIJA usada como hold previo al turno), esto factura el
+ * USO REAL que devuelve el SDK (`usage.inputTokens`/`outputTokens`) en el
+ * settle — de ahí que necesite precio de entrada Y de salida por separado.
+ *
+ * `gemini-flash-latest` / `gemini-2.5-flash`: precio público de Gemini 2.5
+ * Flash (https://ai.google.dev/pricing, leído 2026-09-18) — $0.30/M entrada,
+ * $2.50/M salida. Coincide con lo medido en Fase 0: un turno de lectura
+ * (~2.6-2.8k tokens) costó ~$0.003-0.004, uno con MCP (~14k tokens) ~$0.007.
+ *
+ * `gemini-2.5-pro`: mismo doc, tabla "≤200k contexto" — $1.25/M entrada,
+ * $10/M salida. Marcado `estimated: true` porque Fase 0 NO corrió el modelo
+ * Pro en vivo (solo Flash); es precio de lista, no medido.
+ *
+ * `'gemini-2.5-flash'` es alias del mismo precio: `ASSISTANT_TOOL_MODEL`
+ * (`src/lib/assistant/models.ts`) usa `gemini-flash-latest`, pero el SDK
+ * puede resolverlo a `gemini-2.5-flash` en logs/usage — mismo costo, dos
+ * strings.
+ */
+export const MODEL_USD_PER_M: Record<
+    string,
+    { input: number; output: number; estimated?: boolean }
+> = {
+    'gemini-flash-latest': { input: 0.3, output: 2.5 },
+    'gemini-2.5-flash': { input: 0.3, output: 2.5 },
+    'gemini-2.5-pro': { input: 1.25, output: 10, estimated: true },
+}
+
+/** Modelo al que cae `tokensForUsage` cuando no reconoce el que le pasan. */
+const FALLBACK_ASSISTANT_MODEL = 'gemini-flash-latest'
+
+/** Modelos del Estratega ya avisados por `tokensForUsage` (avisar una vez). */
+const warnedUnknownAssistantModels = new Set<string>()
+
+/**
+ * Uso real de un turno del Estratega (lo que devuelve el AI SDK) → tokens a
+ * cobrar. Es el PRIMO de `quote()` para el asistente: `quote({kind:
+ * 'assistant_turn'})` da la estimación PRE-hold (fija), esto da el cobro
+ * REAL post-turno con el que se liquida (`settleHold`). Un modelo no listado
+ * en `MODEL_USD_PER_M` cae a la tarifa de Flash — igual que el fallback de
+ * `IMAGE_COST_USD`/`VIDEO_COST_USD_PER_SECOND`: cobrar de más por un modelo
+ * nuevo sin precio es preferible a cobrar cero.
+ */
+export function tokensForUsage(
+    usage: { inputTokens?: number | null; outputTokens?: number | null },
+    model: string,
+): { tokens: number; costUsd: number; estimated: boolean } {
+    let entry = MODEL_USD_PER_M[model]
+    let estimated = entry?.estimated ?? false
+    if (!entry) {
+        if (!warnedUnknownAssistantModels.has(model)) {
+            warnedUnknownAssistantModels.add(model)
+            console.warn(
+                `[billing] modelo del asistente sin precio: ${model} → fallback tarifa Flash`,
+            )
+        }
+        entry = MODEL_USD_PER_M[FALLBACK_ASSISTANT_MODEL]
+        estimated = true
+    }
+    const inputTokens = usage.inputTokens ?? 0
+    const outputTokens = usage.outputTokens ?? 0
+    const costUsd =
+        (entry.input / 1e6) * inputTokens + (entry.output / 1e6) * outputTokens
+    return { tokens: tokensForCostUsd(costUsd), costUsd, estimated }
+}
+
+/**
  * Fallback para un provider que no esté en las tablas. Deliberadamente NO es 0:
  * un SKU desconocido con costo cero sería una puerta gratis a la generación más
  * cara de la app en cuanto alguien añada un provider y olvide su precio. Se
@@ -319,6 +387,15 @@ export type PaidOperation =
     | { kind: 'tts'; characters: number }
     | { kind: 'voice_clone' }
     | { kind: 'agent_message' }
+    /**
+     * Turno del Estratega (agente de la organización, no del avatar). Esta
+     * cotización es la ESTIMACIÓN previa al hold (antes de tener uso real) —
+     * usa el mismo importe fijo que `agent_message` porque Fase 0 midió
+     * turnos de rango similar (~$0.003-0.007). El cobro DEFINITIVO del turno
+     * sale de `tokensForUsage(usage, model)` con el uso real del SDK, en el
+     * settle (ver `src/lib/assistant/billing.ts`).
+     */
+    | { kind: 'assistant_turn' }
 
 export type Quote = {
     /** Identificador estable del SKU para el ledger ('image:kie-seedream-5-lite'). */
@@ -411,6 +488,13 @@ export function quote(op: PaidOperation): Quote {
         case 'agent_message':
             return {
                 sku: 'agent_message',
+                tokens: tokensForCostUsd(AGENT_MESSAGE_COST_USD.usd),
+                costUsd: AGENT_MESSAGE_COST_USD.usd,
+                estimated: true,
+            }
+        case 'assistant_turn':
+            return {
+                sku: 'assistant_turn',
                 tokens: tokensForCostUsd(AGENT_MESSAGE_COST_USD.usd),
                 costUsd: AGENT_MESSAGE_COST_USD.usd,
                 estimated: true,
