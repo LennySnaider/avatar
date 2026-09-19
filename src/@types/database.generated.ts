@@ -1096,6 +1096,174 @@ export type Database = {
         }
         Relationships: []
       }
+      org_assistant_actions: {
+        Row: {
+          approved_by: string | null
+          args: Json | null
+          created_at: string
+          error: string | null
+          executed_at: string | null
+          id: string
+          message_id: string
+          organization_id: string
+          result: Json | null
+          status: string
+          thread_id: string
+          tool_name: string
+          updated_at: string
+        }
+        Insert: {
+          approved_by?: string | null
+          args?: Json | null
+          created_at?: string
+          error?: string | null
+          executed_at?: string | null
+          id?: string
+          message_id: string
+          organization_id: string
+          result?: Json | null
+          status?: string
+          thread_id: string
+          tool_name: string
+          updated_at?: string
+        }
+        Update: {
+          approved_by?: string | null
+          args?: Json | null
+          created_at?: string
+          error?: string | null
+          executed_at?: string | null
+          id?: string
+          message_id?: string
+          organization_id?: string
+          result?: Json | null
+          status?: string
+          thread_id?: string
+          tool_name?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "org_assistant_actions_message_id_fkey"
+            columns: ["message_id"]
+            isOneToOne: false
+            referencedRelation: "org_assistant_messages"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "org_assistant_actions_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "org_assistant_actions_thread_id_fkey"
+            columns: ["thread_id"]
+            isOneToOne: false
+            referencedRelation: "org_assistant_threads"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      org_assistant_messages: {
+        Row: {
+          content: Json
+          cost_usd: number | null
+          created_at: string
+          hold_id: string | null
+          id: string
+          input_tokens: number | null
+          model: string | null
+          organization_id: string
+          output_tokens: number | null
+          role: string
+          thread_id: string
+          tokens_charged: number
+        }
+        Insert: {
+          content: Json
+          cost_usd?: number | null
+          created_at?: string
+          hold_id?: string | null
+          id?: string
+          input_tokens?: number | null
+          model?: string | null
+          organization_id: string
+          output_tokens?: number | null
+          role: string
+          thread_id: string
+          tokens_charged?: number
+        }
+        Update: {
+          content?: Json
+          cost_usd?: number | null
+          created_at?: string
+          hold_id?: string | null
+          id?: string
+          input_tokens?: number | null
+          model?: string | null
+          organization_id?: string
+          output_tokens?: number | null
+          role?: string
+          thread_id?: string
+          tokens_charged?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "org_assistant_messages_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "org_assistant_messages_thread_id_fkey"
+            columns: ["thread_id"]
+            isOneToOne: false
+            referencedRelation: "org_assistant_threads"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      org_assistant_threads: {
+        Row: {
+          created_at: string
+          created_by: string
+          id: string
+          organization_id: string
+          screen: string | null
+          title: string | null
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          created_by: string
+          id?: string
+          organization_id: string
+          screen?: string | null
+          title?: string | null
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string
+          id?: string
+          organization_id?: string
+          screen?: string | null
+          title?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "org_assistant_threads_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       org_modules: {
         Row: {
           created_at: string
@@ -2310,12 +2478,7 @@ export type Database = {
         }[]
       }
       earnings_series: {
-        Args: {
-          p_avatar?: string
-          p_from: string
-          p_org: string
-          p_to: string
-        }
+        Args: { p_avatar?: string; p_from: string; p_org: string; p_to: string }
         Returns: {
           day: string
           sales_count: number
