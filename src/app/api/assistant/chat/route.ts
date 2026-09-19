@@ -60,9 +60,18 @@
  * revienta: un hold sin turno deja tokens reservados que sólo el barrido de
  * holds rancios devolvería, horas después.
  *
- * EL MCP SE CIERRA SIEMPRE, por los tres caminos (`onFinish`, `onError` y el
- * `catch` de la ruta) y con un pestillo para que cerrarlo dos veces no sea un
- * error. Dejarlo abierto filtra una conexión HTTP por turno.
+ * EL MCP SE CIERRA SIEMPRE, por los cuatro caminos (`onFinish`, `onError`,
+ * `onAbort` y el `catch` de la ruta) y con un pestillo para que cerrarlo dos
+ * veces no sea un error. Dejarlo abierto filtra una conexión HTTP por turno.
+ *
+ * EL TURNO TERMINA AUNQUE EL CLIENTE SE VAYA. Si el navegador se desengancha
+ * a mitad de la respuesta, el SDK ejecuta `cancel()` y NO dispara `onFinish`
+ * ni `onError`: el hold se quedaría abierto, el mensaje sin guardar y el MCP
+ * sin cerrar. Dos piezas lo cubren: `consumeStream()` drena el flujo desde el
+ * servidor (el turno llega a su final pase lo que pase al otro lado), y
+ * `abortSignal: req.signal` + `onAbort` cierran el turno devolviendo el hold
+ * cuando quien aborta es la petición entera (cierre de pestaña, timeout de la
+ * plataforma).
  */
 import { randomUUID } from 'node:crypto'
 import { NextResponse } from 'next/server'
@@ -95,14 +104,18 @@ import {
 } from '@/lib/assistant/billing'
 import { budgetAllows, readStrategistSettings } from '@/lib/assistant/budget'
 import { selectTools, toAiTools } from '@/lib/assistant/registry'
-import { READ_TOOLS } from '@/lib/assistant/tools'
+import {
+    READ_TOOLS,
+    getMetaAdAccountInsights,
+    listMetaAdAccounts,
+} from '@/lib/assistant/tools'
 import { fetchAvatarsOverview } from '@/lib/assistant/tools/read/avatars'
 import { buildStrategistSystemPrompt } from '@/lib/assistant/systemPrompt'
 import {
     getMetaConnection,
     type MetaConnection,
 } from '@/lib/assistant/meta/connect'
-import { openMetaMcpTools } from '@/lib/assistant/meta/mcp'
+import { META_MCP_READ_TOOLS, openMetaMcpTools } from '@/lib/assistant/meta/mcp'
 import { parseChatBody } from '@/lib/assistant/route/validate'
 import { deriveThreadTitle } from '@/lib/assistant/route/threadTitle'
 import {
@@ -128,6 +141,19 @@ const MCP_SCREENS: readonly AssistantScreen[] = [
     'social-posts',
     'other',
 ]
+
+/**
+ * Los nombres de TODAS las herramientas que leen de Meta, por las dos vías
+ * (Graph API directa y lista blanca del MCP). Se usa para decidir el
+ * `hasMeta` del prompt: es lo que hay en el catálogo del turno, no lo que hay
+ * en la cuenta del usuario. Los nombres se toman de sus definiciones para que
+ * renombrar una herramienta no deje esta lista mintiendo en silencio.
+ */
+const NOMBRES_META = new Set<string>([
+    listMetaAdAccounts.name,
+    getMetaAdAccountInsights.name,
+    ...META_MCP_READ_TOOLS,
+])
 
 /** Metadatos que viajan al cliente en el chunk `start`. Ver el contrato arriba. */
 interface AssistantMetadata {
@@ -509,23 +535,39 @@ export async function POST(req: NextRequest) {
         )
         let tools: ToolSet = propias
         if (meta.connected && MCP_SCREENS.includes(screen)) {
-            const mcp = await openMetaMcpTools(ctx)
-            if (mcp.ok) {
-                cerrarMcp = mcp.close
-                // Una sola línea por turno con lo que cuesta el catálogo: es
-                // el dato que permite decidir si la lista blanca se queda
-                // como está o hay que recortarla más.
-                console.log('[estratega] mcp', {
-                    organizationId: ctx.organizationId,
-                    screen,
-                    toolCount: mcp.toolCount,
-                    exposedCount: mcp.exposedCount,
-                    schemaChars: mcp.schemaChars,
-                })
-                // Las propias van DESPUÉS: si el MCP sirviera un nombre que
-                // choca con uno nuestro, gana el nuestro (el que sabemos qué
-                // hace y a qué organización lee).
-                tools = { ...mcp.tools, ...propias }
+            // `openMetaMcpTools` RELANZA todo lo que no sea falta de
+            // consentimiento (un 5xx de mcp.facebook.com, un fallo de
+            // transporte, el servidor de Meta caído). Sin este try eso mataría
+            // el turno ENTERO con un 500 — también las preguntas que no
+            // necesitaban Meta para nada, que son la mayoría. El MCP es un
+            // extra del turno, no su condición: misma degradación que
+            // `resolverMeta` aplica a la comprobación de conexión, y con el
+            // mismo precio, un `console.error` que deje la causa por escrito.
+            try {
+                const mcp = await openMetaMcpTools(ctx)
+                if (mcp.ok) {
+                    cerrarMcp = mcp.close
+                    // Una sola línea por turno con lo que cuesta el catálogo:
+                    // es el dato que permite decidir si la lista blanca se
+                    // queda como está o hay que recortarla más.
+                    console.log('[estratega] mcp', {
+                        organizationId: ctx.organizationId,
+                        screen,
+                        toolCount: mcp.toolCount,
+                        exposedCount: mcp.exposedCount,
+                        schemaChars: mcp.schemaChars,
+                    })
+                    // Las propias van DESPUÉS: si el MCP sirviera un nombre
+                    // que choca con uno nuestro, gana el nuestro (el que
+                    // sabemos qué hace y a qué organización lee).
+                    tools = { ...mcp.tools, ...propias }
+                }
+            } catch (e) {
+                console.error(
+                    '[estratega] mcp no disponible',
+                    { organizationId: ctx.organizationId, screen },
+                    e instanceof Error ? e.message : String(e),
+                )
             }
         }
 
@@ -542,7 +584,22 @@ export async function POST(req: NextRequest) {
                 aiOn: a.aiPersonaEnabled,
             })),
             screen,
-            hasMeta: meta.connected,
+            // `hasMeta` no es "¿hay grant?", es "¿tiene ESTE turno alguna
+            // herramienta de Meta que llamar?". La diferencia importa en los
+            // dos sentidos:
+            //  - Si el MCP se cayó pero las herramientas de Graph siguen en el
+            //    catálogo (viven en otro host y en las MISMAS pantallas), el
+            //    turno sigue pudiendo leer anuncios: decir "Meta no está
+            //    conectado" mandaría al usuario a conectar algo que ya tiene
+            //    conectado, que es justo el fallo que el prompt evita
+            //    escribiendo una sola de las dos frases.
+            //  - En una pantalla sin herramientas de Meta (inbox, estudio,
+            //    módulos) el grant existe pero no hay nada que llamar, y
+            //    prometerlo haría que el modelo ofreciera datos que no puede
+            //    traer.
+            hasMeta:
+                meta.connected &&
+                Object.keys(tools).some((n) => NOMBRES_META.has(n)),
             today: utcDayStart(ahora).slice(0, 10),
         })
 
@@ -557,6 +614,36 @@ export async function POST(req: NextRequest) {
             messages: await convertToModelMessages(messages),
             tools,
             stopWhen: stepCountIs(6),
+            // La petición abortada (el navegador se va, el usuario cierra el
+            // cajón, Vercel corta a los 60 s) tiene que llegar hasta aquí para
+            // que `onAbort` pueda cerrar el turno; sin señal, el SDK seguiría
+            // pidiéndole tokens a Gemini para una respuesta que ya no lee
+            // nadie.
+            abortSignal: req.signal,
+            onAbort: async () => {
+                if (turnoCerrado) return
+                turnoCerrado = true
+                console.warn('[estratega] turno abortado por el cliente', {
+                    organizationId: ctx.organizationId,
+                    threadId,
+                    messageId: assistantMessageId,
+                    holdId: holdDelTurno.holdId,
+                })
+                try {
+                    // Se DEVUELVE el hold entero aunque el proveedor ya haya
+                    // facturado los pasos hechos: el usuario no se quedó con
+                    // ninguna respuesta, y cobrarle un turno que canceló es
+                    // peor que asumir el coste parcial. En measure-only esto
+                    // hoy no mueve saldo real.
+                    await refundAssistantTurn(
+                        holdDelTurno,
+                        'assistant_turn_aborted',
+                        { ctx },
+                    )
+                } finally {
+                    await cerrarMcpUnaVez()
+                }
+            },
             onFinish: async ({ totalUsage, text, steps }) => {
                 if (turnoCerrado) return
                 turnoCerrado = true
@@ -579,11 +666,25 @@ export async function POST(req: NextRequest) {
                             input: c.input,
                         })),
                     )
+                    // `text` del evento es el del ÚLTIMO paso (`OnFinishEvent`
+                    // extiende el `StepResult` final): un turno que escribe
+                    // algo, llama a una herramienta y sigue escribiendo se
+                    // guardaría A MEDIAS, y el hilo recargado no coincidiría
+                    // con lo que el usuario acaba de leer en pantalla. Se
+                    // concatena lo de TODOS los pasos, que es justo lo que el
+                    // stream le fue entregando.
+                    const textoCompleto = steps
+                        .map((s) => s.text)
+                        .filter((t) => t.length > 0)
+                        .join('\n\n')
                     await guardarMensaje(ctx, {
                         id: assistantMessageId,
                         threadId,
                         role: 'assistant',
-                        content: partesDeRespuesta(text, herramientas),
+                        content: partesDeRespuesta(
+                            textoCompleto.length > 0 ? textoCompleto : text,
+                            herramientas,
+                        ),
                         model: ASSISTANT_TOOL_MODEL,
                         inputTokens: totalUsage.inputTokens ?? null,
                         outputTokens: totalUsage.outputTokens ?? null,
@@ -593,6 +694,14 @@ export async function POST(req: NextRequest) {
                     })
                     await tocarHilo(ctx, threadId)
                 } catch (e) {
+                    // NO se reembolsa aquí, y es deliberado: este catch cubre
+                    // dos cosas muy distintas —el settle falló, o falló el
+                    // guardado DESPUÉS de un settle correcto— y desde aquí no
+                    // se distinguen. Un refund a ciegas sobre un hold ya
+                    // liquidado regalaría el turno que el usuario sí recibió.
+                    // Un hold que se quedara abierto no se pierde: lo devuelve
+                    // el barrido de holds rancios (`sweepStaleHolds`), que es
+                    // exactamente para lo que existe.
                     console.error(
                         '[estratega] fallo liquidando/persistiendo el turno',
                         {
@@ -640,6 +749,30 @@ export async function POST(req: NextRequest) {
         // A partir de aquí el hold lo cierran `onFinish`/`onError`: el catch
         // de abajo ya no debe reembolsarlo.
         hold = null
+
+        // EL DRENADO DEL SERVIDOR. Si el cliente se desengancha a mitad de la
+        // respuesta (cierra el cajón, cambia de página, se le va la red), el
+        // SDK ejecuta `cancel()` en vez de `flush()` y NO dispara ni
+        // `onFinish` ni `onError`: el hold se quedaría sin liquidar ni
+        // devolver, el mensaje del asistente sin guardar y el cliente MCP
+        // abierto. `consumeStream()` vacía el flujo desde el servidor, así que
+        // el turno llega a su final y sus callbacks corren pase lo que pase al
+        // otro lado del cable. Sin `await` a propósito: el turno tiene que
+        // seguir vivo DESPUÉS de que esta función devuelva la respuesta.
+        void result.consumeStream({
+            // El drenado no puede quedar como una promesa rechazada sin dueño:
+            // el error real ya lo trataron `onError`/`onAbort`, esto sólo deja
+            // constancia de que fue el drenado el que se rompió.
+            onError: (error) => {
+                console.error('[estratega] fallo drenando el flujo del turno', {
+                    organizationId: ctx.organizationId,
+                    threadId,
+                    messageId: assistantMessageId,
+                    error:
+                        error instanceof Error ? error.message : String(error),
+                })
+            },
+        })
 
         const metadata: AssistantMetadata = {
             threadId,

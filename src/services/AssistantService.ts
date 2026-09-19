@@ -14,19 +14,20 @@
  * con `grep -n "^export" src/services/AssistantService.ts`).
  *
  * ─────────────────────────────────────────────────────────────────────────
- * LA CADENA DE ACCESO, Y LAS DOS EXCEPCIONES DELIBERADAS
+ * LA CADENA DE ACCESO, Y LA EXCEPCIÓN DELIBERADA
  * ─────────────────────────────────────────────────────────────────────────
- * El camino normal es `getOrgContext` → `requirePermission` → `requireModule`,
+ * El camino normal es `getOrgContext` → `requireModule` → `requirePermission`,
  * y lo encapsula `ctxEstratega(permiso)` para que ninguna función se lo salte
- * por descuido. Dos exports NO usan ese helper, y conviene saber por qué:
+ * por descuido. Un export NO usa ese helper, y conviene saber por qué:
  *  - `getStrategistStatus` comprueba el permiso pero NO exige el módulo: su
  *    trabajo es precisamente CONTESTAR si está instalado (`installed: false`).
  *    Lanzar ahí obligaría a la pantalla a leer un error para pintar un estado
  *    normal.
- *  - `updateStrategistSettings` y `startMetaConsent` piden ADEMÁS su propio
- *    permiso (`module:manage` y `connection:manage`): leer el asistente lo
- *    puede hacer un operator, cambiarle el presupuesto o conectar la cuenta
- *    de Meta de la organización, no.
+ * Y dos exports pasan por la cadena pidiendo un permiso MÁS ALTO que
+ * `content:read`: `updateStrategistSettings` (`module:manage`) y
+ * `startMetaConsent` (`connection:manage`). Leer el asistente lo puede hacer
+ * un operator; cambiarle el presupuesto o conectar la cuenta de Meta de la
+ * organización, no.
  *
  * ─────────────────────────────────────────────────────────────────────────
  * `getMetaConnection` ACUÑA UN RETO: LLÁMALO UNA VEZ POR APERTURA
@@ -133,10 +134,19 @@ async function ctxConPermiso(permiso: Permission): Promise<OrgContext> {
     return ctx
 }
 
-/** La cadena entera. Todo lo que toca hilos pasa por aquí. */
+/**
+ * La cadena entera, en el orden canónico del plan: `getOrgContext` →
+ * `requireModule` → `requirePermission`. Todo lo que toca hilos pasa por aquí.
+ *
+ * El módulo va ANTES que el permiso a propósito: "esta organización no ha
+ * comprado el Estratega" es una frase sobre la organización, y decirle a un
+ * operator "tu rol no puede" cuando el módulo ni siquiera está instalado le
+ * manda a pedirle permisos a un administrador que tampoco lo tendría.
+ */
 async function ctxEstratega(permiso: Permission): Promise<OrgContext> {
-    const ctx = await ctxConPermiso(permiso)
+    const ctx = await getOrgContext()
     await requireModule(ctx, MODULE_SLUG)
+    requirePermission(ctx, permiso)
     return ctx
 }
 
