@@ -419,7 +419,9 @@ export async function POST(req: NextRequest) {
             error: e instanceof Error ? e.message : String(e),
         })
         return json(
-            { error: 'No se pudo comprobar el acceso al Estratega.' },
+            {
+                error: 'No se pudo comprobar el acceso al Social Media Manager.',
+            },
             500,
         )
     }
@@ -487,9 +489,9 @@ export async function POST(req: NextRequest) {
 
         if (!presupuesto.allowed) {
             const texto =
-                `Hoy ya se ha consumido el presupuesto de tokens del Estratega en esta organización ` +
+                `Hoy ya se ha consumido el presupuesto de tokens del Social Media Manager en esta organización ` +
                 `(${usedToday.toLocaleString('es-ES')} de ${settings.dailyTokenCap.toLocaleString('es-ES')} tokens de saldo). ` +
-                `Se renueva a las 00:00 UTC. Si necesitas más, un administrador puede subir el tope diario en Módulos → Estratega.`
+                `Se renueva a las 00:00 UTC. Si necesitas más, un administrador puede subir el tope diario en Módulos → Social Media Manager.`
             console.warn('[estratega] tope diario agotado', {
                 organizationId: ctx.organizationId,
                 usedToday,
@@ -840,7 +842,8 @@ export async function POST(req: NextRequest) {
                 part.type === 'start' ? metadata : undefined,
             // Genérico A PROPÓSITO: los errores de Connect/Meta pueden traer
             // URLs con credenciales dentro. El detalle va al log.
-            onError: () => 'El Estratega no pudo terminar la respuesta.',
+            onError: () =>
+                'El Social Media Manager no pudo terminar la respuesta.',
         })
     } catch (e) {
         console.error('[estratega] fallo preparando el turno', {
@@ -856,7 +859,9 @@ export async function POST(req: NextRequest) {
         }
         await cerrarMcpUnaVez()
         return json(
-            { error: 'El Estratega no pudo responder. Inténtalo de nuevo.' },
+            {
+                error: 'El Social Media Manager no pudo responder. Inténtalo de nuevo.',
+            },
             500,
         )
     }

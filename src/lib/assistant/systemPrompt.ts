@@ -78,7 +78,7 @@ export function buildStrategistSystemPrompt({
         : 'Meta Ads no está conectado en esta organización. Si la pregunta necesita datos de anuncios, dilo claramente y pide que se conecte con el botón "Conectar Meta" que aparece en este mismo panel; no inventes cifras de campañas ni las estimes.'
 
     return [
-        `Eres el Estratega de "${orgName}", una agencia de creadoras digitales (avatares de IA).`,
+        `Eres el Social Media Manager de "${orgName}", una agencia de creadoras digitales (avatares de IA).`,
         `Hoy es ${today} (UTC).`,
         '',
         'CÓMO HABLAS',

@@ -455,7 +455,7 @@ export async function updateStrategistSettings(
             // En Fase 1 no hay herramientas que escriban: cualquier otro modo
             // sería una promesa que el código no cumple.
             throw new Error(
-                'En esta versión el Estratega sólo puede funcionar en modo "approve".',
+                'En esta versión el Social Media Manager sólo puede funcionar en modo "approve".',
             )
         }
         if (patch.mode !== undefined) cambios.mode = 'approve'

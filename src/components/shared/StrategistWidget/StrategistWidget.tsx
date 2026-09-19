@@ -110,7 +110,7 @@ function threadLabel(thread: AssistantThreadSummary): string {
  */
 function mensajeDeError(e: Error): string {
     const crudo = (e.message ?? '').trim()
-    if (crudo.length === 0) return 'The Strategist could not answer.'
+    if (crudo.length === 0) return 'The Social Media Manager could not answer.'
     if (crudo.startsWith('{')) {
         try {
             const cuerpo = JSON.parse(crudo) as {
@@ -291,7 +291,7 @@ const StrategistPanel = () => {
                     toast.push(
                         <Notification
                             type="danger"
-                            title="Strategist unavailable"
+                            title="Social Media Manager unavailable"
                         >
                             {estado.error ??
                                 'Could not read the module status.'}
@@ -308,7 +308,7 @@ const StrategistPanel = () => {
                 console.error('[estratega] getStrategistStatus:', e)
                 if (!vivoRef.current) return
                 toast.push(
-                    <Notification type="danger" title="Strategist unavailable">
+                    <Notification type="danger" title="Social Media Manager unavailable">
                         Could not read the module status.
                     </Notification>,
                 )
@@ -347,7 +347,7 @@ const StrategistPanel = () => {
     useEffect(() => {
         if (!error) return
         toast.push(
-            <Notification type="danger" title="The Strategist failed">
+            <Notification type="danger" title="The Social Media Manager failed">
                 {mensajeDeError(error)}
             </Notification>,
         )
@@ -517,7 +517,7 @@ const StrategistPanel = () => {
                 // Etiqueta fija: mientras el cajón está abierto, el velo del
                 // Drawer (z-40) tapa este botón, así que "cerrar" nunca es lo
                 // que una persona lee aquí. Se cierra con la X o con el velo.
-                aria-label="Ask the Strategist"
+                aria-label="Ask the Social Media Manager"
                 onClick={() => (isOpen ? close() : open())}
             />
 
@@ -525,7 +525,7 @@ const StrategistPanel = () => {
                 isOpen={isOpen}
                 placement="right"
                 width={420}
-                title="Strategist"
+                title="Social Media Manager"
                 bodyClass="p-0! flex-1 min-h-0 flex flex-col overflow-hidden"
                 onClose={close}
                 onRequestClose={close}
@@ -627,7 +627,7 @@ const StrategistPanel = () => {
                     <Input
                         textArea
                         rows={3}
-                        aria-label="Message the Strategist"
+                        aria-label="Message the Social Media Manager"
                         value={input}
                         placeholder="Ask the Strategist…"
                         disabled={ocupado}

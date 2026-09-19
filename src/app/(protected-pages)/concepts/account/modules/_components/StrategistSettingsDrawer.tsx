@@ -104,7 +104,7 @@ export default function StrategistSettingsDrawer({
                 if (!res.success || !res.data) {
                     notify(
                         'danger',
-                        'No se pudo leer el estado del Estratega',
+                        'No se pudo leer el estado del Social Media Manager',
                         res.error,
                     )
                     return
@@ -119,7 +119,7 @@ export default function StrategistSettingsDrawer({
                 if (!vivoRef.current) return
                 notify(
                     'danger',
-                    'No se pudo leer el estado del Estratega',
+                    'No se pudo leer el estado del Social Media Manager',
                     'Inténtalo de nuevo en unos segundos.',
                 )
             } finally {
@@ -235,7 +235,7 @@ export default function StrategistSettingsDrawer({
             isOpen={isOpen}
             placement="right"
             width={400}
-            title="Ajustes del Estratega"
+            title="Ajustes del Social Media Manager"
             onClose={onClose}
             onRequestClose={onClose}
         >

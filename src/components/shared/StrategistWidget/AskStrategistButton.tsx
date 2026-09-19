@@ -22,7 +22,7 @@ import type { AssistantScreen } from '@/lib/assistant/types'
 const AskStrategistButton = ({
     prompt,
     screen,
-    label = 'Ask the Strategist',
+    label = 'Ask the Social Media Manager',
     className,
 }: {
     prompt: string
