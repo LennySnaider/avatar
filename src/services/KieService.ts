@@ -33,6 +33,7 @@ import {
 import { buildImageRequest } from './kie/dispatch'
 import { probeKieTask } from './kie/taskProbe'
 import { seedance25AspectRatio } from './kie/seedance25Aspect'
+import { seedance25Scene } from './kie/seedance25Scene'
 import { isProviderOutage } from '@/utils/geminiError'
 import type { KieRefWithRole } from './kie/shared'
 import {
@@ -2599,8 +2600,19 @@ async function submitVideoSeedance(
     return taskId
 }
 
-/** Máx de refs por canal en Seedance 2.5 (doc: "the total length … 30 seconds"). */
-const SEEDANCE_25_MAX_AV_REFS = 3
+/**
+ * Máx de refs por canal en Seedance 2.5, SEGÚN LA DOC (2026-09-19).
+ *
+ * Estaba en 3 y en 9 "heredado de 2.0": números inventados, que es justo lo
+ * que no se puede hacer con los límites de una API. La doc de KIE
+ * (docs.kie.ai/market/bytedance/seedance-2-5) dice `maxItems` 10 para vídeo y
+ * audio y 30 para imágenes. Lo que SÍ manda en vídeo/audio es la duración
+ * ("Single video duration: [2, 30] seconds; Total duration of reference
+ * videos must not exceed 30 seconds"), y eso lo valida quien sube el archivo,
+ * no un recorte a ciegas del array aquí.
+ */
+const SEEDANCE_25_MAX_AV_REFS = 10
+const SEEDANCE_25_MAX_IMAGE_REFS = 30
 
 /**
  * ByteDance Seedance 2.5 — modelo DISTINTO al 2.0, no una revisión del mismo
@@ -2667,9 +2679,23 @@ async function submitVideoSeedance25(
     // La doc de 2.5 ya no repite esa cláusula de exclusividad, pero eso NO es
     // evidencia de que la levantaron: hasta medirlo con un run controlado se
     // mantiene el camino que sabemos que preserva la cara.
+    //
+    // ESCENAS EXCLUYENTES (2026-09-19, createTask 422: "The reference video
+    // and the first and last frames are mutually exclusive, and only one
+    // scene can be selected"): los canales `reference_*` NO eran, como decía
+    // el comentario de más abajo, independientes del modo de imagen. Un vídeo
+    // o un audio de referencia obligan a la escena multimodal, y ahí el
+    // fotograma viaja como `reference_image_urls[0]` — nunca como
+    // `first_frame_url`. La regla, con su cita, vive en ./kie/seedance25Scene.
+    const scene = seedance25Scene({
+        hasFirstFrame: !!firstFrameImage,
+        imageRefCount: referenceImages?.length ?? 0,
+        videoRefCount: referenceVideos?.length ?? 0,
+        audioRefCount: referenceAudios?.length ?? 0,
+    })
     let imageRefCount = 0
     let frameIsRef = false
-    if (referenceImages && referenceImages.length > 0) {
+    if (scene === 'references' && (firstFrameImage || referenceImages?.length)) {
         const allRefs: Array<{ base64: string; mimeType: string }> = []
         // El frame se antepone SOLO si no es ya una de las refs. En modo avatar
         // el "first frame" que arma el caller ES la cara del avatar, y meterla
@@ -2677,18 +2703,23 @@ async function submitVideoSeedance25(
         // de identidad (el fallo clásico de este pipeline) en vez de reforzarlo.
         const alreadyRef =
             !!firstFrameImage &&
-            referenceImages.some((r) => r.base64 === firstFrameImage.base64)
+            !!referenceImages?.some((r) => r.base64 === firstFrameImage.base64)
         if (firstFrameImage && !alreadyRef) {
             allRefs.push(firstFrameImage)
             frameIsRef = true
         }
-        allRefs.push(...referenceImages)
+        allRefs.push(...(referenceImages ?? []))
+        // El ÚLTIMO fotograma no tiene canal propio en esta escena (es un
+        // concepto del modo first-last). Se manda como una ref más en vez de
+        // tirarlo en silencio: pierde su papel de "extremo", pero la imagen que
+        // el usuario eligió sigue informando el clip. Hoy ningún caller de KIE
+        // lo rellena — es defensa, no camino caliente.
+        if (lastFrameImage) allRefs.push(lastFrameImage)
 
         const refUrls = await Promise.all(
-            // El tope de 9 se hereda de 2.0 — 2.5 dice "Multiple Files: Yes"
-            // sin dar número.
+            // Tope de la DOC (30), no el 9 heredado de 2.0 a ojo.
             allRefs
-                .slice(0, 9)
+                .slice(0, SEEDANCE_25_MAX_IMAGE_REFS)
                 .map((ref) =>
                     uploadReferenceToSupabase(ref.base64, ref.mimeType),
                 ),
@@ -2719,9 +2750,12 @@ async function submitVideoSeedance25(
         hasFirstFrame: !!input.first_frame_url,
     })
 
-    // Refs de video y audio — canales independientes del modo de imagen.
-    // El tope de 3 es del modelo; el de 30s SUMADOS lo valida quien sube el
-    // archivo (aquí ya no hay duración que medir sin descargar los bytes).
+    // Refs de video y audio. NO son "canales independientes del modo de imagen"
+    // como decía este comentario hasta el 2026-09-19: son parte de la MISMA
+    // escena multimodal que las refs de imagen, y por eso `seedance25Scene`
+    // (arriba) ya ha descartado `first_frame_url` si alguno de estos viene.
+    // El tope por canal sale de la doc; el de 30s SUMADOS lo valida quien sube
+    // el archivo (aquí ya no hay duración que medir sin descargar los bytes).
     if (referenceVideos?.length) {
         input.reference_video_urls = await Promise.all(
             referenceVideos
@@ -2750,7 +2784,7 @@ async function submitVideoSeedance25(
         : prompt
 
     console.log(
-        `[KIE/Seedance2.5] Submitting: duration=${safeDuration}s, resolution=${safeResolution}, ` +
+        `[KIE/Seedance2.5] Submitting: escena=${scene}, duration=${safeDuration}s, resolution=${safeResolution}, ` +
             `aspect=${input.aspect_ratio} (pedido ${aspectRatio}), imageRefs=${imageRefCount}${frameIsRef ? ' (incl. frame)' : ''}, ` +
             `firstFrame=${!!input.first_frame_url}, lastFrame=${!!input.last_frame_url}, ` +
             `videoRefs=${(input.reference_video_urls as string[])?.length ?? 0}, ` +
