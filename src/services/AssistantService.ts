@@ -374,11 +374,17 @@ export async function getStrategistStatus(): Promise<
                 },
             }
         }
+        const canConnectMeta = ctxCan(ctx, 'connection:manage')
         const [fila, usageToday, meta] = await Promise.all([
             leerFilaModulo(ctx),
             leerConsumoDeHoy(ctx),
             getMetaConnection(ctx),
         ])
+        // La URL de consentimiento sólo viaja a quien PUEDE completar el
+        // grant (`connection:manage`), igual que en el metadata de la ruta:
+        // un operator con la URL en el alambre podría conectar Meta aunque
+        // la UI le esconda el botón. Ocultar el botón no basta; hay que no
+        // darle la llave.
         return {
             success: true,
             data: {
@@ -388,11 +394,11 @@ export async function getStrategistStatus(): Promise<
                     ? { connected: true }
                     : {
                           connected: false,
-                          ...(meta.consentUrl
+                          ...(meta.consentUrl && canConnectMeta
                               ? { consentUrl: meta.consentUrl }
                               : {}),
                       },
-                canConnectMeta: ctxCan(ctx, 'connection:manage'),
+                canConnectMeta,
                 usageToday,
             },
         }

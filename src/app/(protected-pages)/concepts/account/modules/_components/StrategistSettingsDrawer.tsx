@@ -162,7 +162,11 @@ export default function StrategistSettingsDrawer({
             })
             if (!vivoRef.current) return
             if (!res.success || !res.data) {
-                notify('danger', 'No se pudieron guardar los ajustes', res.error)
+                notify(
+                    'danger',
+                    'No se pudieron guardar los ajustes',
+                    res.error,
+                )
                 return
             }
             setStatus((prev) =>
@@ -206,7 +210,10 @@ export default function StrategistSettingsDrawer({
             setConsentUrl(res.data.url)
             window.open(res.data.url, '_blank', 'noopener,noreferrer')
         } catch (e) {
-            console.error('[modules] StrategistSettingsDrawer conectar meta:', e)
+            console.error(
+                '[modules] StrategistSettingsDrawer conectar meta:',
+                e,
+            )
             if (!vivoRef.current) return
             notify(
                 'danger',
@@ -237,8 +244,8 @@ export default function StrategistSettingsDrawer({
                     <h6>Topes de tokens de saldo</h6>
                     <p className="text-xs text-gray-500">
                         Son tokens del saldo de la organización (lo que cada
-                        turno aparta y cobra), no tokens del modelo. Un turno
-                        de lectura gasta ~12 y uno que consulta Meta Ads ~129.
+                        turno aparta y cobra), no tokens del modelo. Un turno de
+                        lectura gasta ~12 y uno que consulta Meta Ads ~129.
                     </p>
                     <div>
                         <label
@@ -325,8 +332,8 @@ export default function StrategistSettingsDrawer({
                             </Button>
                         ) : (
                             <span className="text-sm text-gray-500">
-                                Pídele a un administrador de tu organización
-                                que conecte Meta Ads.
+                                Pídele a un administrador de tu organización que
+                                conecte Meta Ads.
                             </span>
                         ))}
                 </div>
@@ -341,7 +348,8 @@ export default function StrategistSettingsDrawer({
                                 normal está en céntimos de céntimo, y
                                 `toFixed(2)` pintaba "$0.00" siempre. */}
                             {usado.toLocaleString()} tokens de saldo · $
-                            {costo.toFixed(4)} de coste
+                            {costo.toFixed(4)} de coste de proveedor (los topes
+                            de arriba están a precio de cliente, ×3)
                         </span>
                     )}
                 </div>
