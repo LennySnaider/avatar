@@ -11,6 +11,11 @@ import ContinueVideoDialog from './ContinueVideoDialog'
 import ExtractFrameDialog from './ExtractFrameDialog'
 import { readHiddenIds, sortByUserOrder } from '../../_shared/providerPrefs'
 import {
+    pointerDistance,
+    pointerMidpoint,
+    resolveSwipe,
+} from '../_utils/touchGestures'
+import {
     HiOutlineDownload,
     HiOutlineChevronLeft,
     HiOutlineChevronRight,
@@ -190,6 +195,15 @@ const ImagePreviewModal = ({
     const [isPanning, setIsPanning] = useState(false)
     // Colapsar el panel inferior (prompt + acciones) para ver la media completa.
     const [panelCollapsed, setPanelCollapsed] = useState(false)
+    /**
+     * ¿Está el STAGE (no la imagen) en pantalla completa? (2026-09-19)
+     *
+     * Hace falta como estado de React, no solo como consulta al DOM, porque de
+     * él dependen el fondo (en pantalla completa tiene que ser oscuro, no el
+     * gris del modal), el botón de salir —dentro del stage, que es lo único
+     * que se ve en el top layer— y la RE-MEDIDA del área útil.
+     */
+    const [isStageFullscreen, setIsStageFullscreen] = useState(false)
     // Drag-to-pan scrolls the overflow-auto media container; we stash the
     // pointer + scroll origin here on mousedown.
     const dragScrollRef = useRef<{
@@ -197,6 +211,35 @@ const ImagePreviewModal = ({
         startY: number
         scrollLeft: number
         scrollTop: number
+    } | null>(null)
+    /**
+     * GESTOS TÁCTILES (2026-09-19) — reporte: "ni en desktop ni en móvil se
+     * puede hacer zoom ni swipe".
+     *
+     * El visor solo tenía rueda (desktop) y botones: en un teléfono no había
+     * NINGUNA forma de ampliar ni de pasar de imagen. Estos tres refs son el
+     * mínimo para reconstruir un gesto multi-puntero:
+     *  - `gesturePointersRef`: los dedos vivos sobre la media. Es lo único que
+     *    permite distinguir un pellizco (2) de un arrastre (1).
+     *  - `pinchRef`: separación y zoom de PARTIDA. El factor se calcula contra
+     *    el inicio del gesto, no contra el frame anterior, para que el error
+     *    no se acumule y el zoom vuelva exactamente a su sitio si abres y
+     *    cierras los dedos.
+     *  - `swipeRef`: origen del arrastre candidato a navegación.
+     * Van en refs y no en estado: cambian en cada `pointermove` y un re-render
+     * por frame convertiría el gesto en un pase de diapositivas.
+     */
+    const gesturePointersRef = useRef<Map<number, { x: number; y: number }>>(
+        new Map(),
+    )
+    const pinchRef = useRef<{
+        startDistance: number
+        startZoom: number
+    } | null>(null)
+    const swipeRef = useRef<{
+        pointerId: number
+        startX: number
+        startY: number
     } | null>(null)
     const [isPromptExpanded, setIsPromptExpanded] = useState(false)
     const [showApiPrompt, setShowApiPrompt] = useState(false)
@@ -237,6 +280,14 @@ const ImagePreviewModal = ({
     // El area cambia al colapsar el panel, al entrar en edicion o al
     // redimensionar la ventana; un ResizeObserver lo cubre todo sin tener que
     // acordarse de cada caso.
+    //
+    // `isStageFullscreen` esta en las dependencias (2026-09-19) porque entrar
+    // y salir de pantalla completa es EL cambio de area mas grande que hay: el
+    // ResizeObserver deberia verlo, pero la transicion del top layer y el
+    // reparto del flex no ocurren en el mismo frame, y una medida vieja deja
+    // la imagen encajonada en el tamaño del modal con media pantalla negra
+    // alrededor. Re-ejecutar el efecto vuelve a medir ahora y en el siguiente
+    // frame.
     useEffect(() => {
         const el = mediaContainerRef.current
         if (!el) return
@@ -254,7 +305,13 @@ const ImagePreviewModal = ({
             cancelAnimationFrame(raf)
             ro.disconnect()
         }
-    }, [scrollElVersion, previewMedia, isEditing, panelCollapsed])
+    }, [
+        scrollElVersion,
+        previewMedia,
+        isEditing,
+        panelCollapsed,
+        isStageFullscreen,
+    ])
     const viewportRef = useRef<HTMLDivElement>(null)
     const isDrawingRef = useRef(false)
     const lastPosRef = useRef({ x: 0, y: 0 })
@@ -491,6 +548,21 @@ const ImagePreviewModal = ({
     }, [zoomLevel])
 
     /**
+     * Si cambia el area, el desplazamiento de antes puede haber quedado FUERA
+     * de los limites (2026-09-19).
+     *
+     * `clampPan` solo se llamaba al hacer zoom o al arrastrar, asi que entrar
+     * en pantalla completa con la imagen ampliada la dejaba desplazada contra
+     * un marco que ya no existe, y no se recolocaba hasta que tocabas algo.
+     * A zoom 1 no hay nada que recolocar: la imagen cabe entera y el pan es 0.
+     */
+    useEffect(() => {
+        if (zoomLevelRef.current <= 1) return
+        panRef.current = clampPan(panRef.current, zoomLevelRef.current)
+        setPan(panRef.current)
+    }, [viewport.w, viewport.h, clampPan])
+
+    /**
      * Vista NUEVA = cámara a cero (zoom 1, sin desplazamiento).
      *
      * El modal no se desmonta al cerrar —devuelve null pero conserva su
@@ -663,6 +735,174 @@ const ImagePreviewModal = ({
             }
         }
     }, [isPanning, handlePanMove, handlePanEnd])
+
+    /**
+     * PUERTA DE ENTRADA de todos los gestos sobre la media (2026-09-19).
+     *
+     * Sustituye a `handlePanStart` como `onPointerDown` del contenedor: antes
+     * de decidir si hay paneo hay que contar los dedos, porque el mismo evento
+     * inicia tres cosas distintas segun cuantos haya y de que tipo sean.
+     * Sigue siendo PointerEvent por lo que ya explica `handlePanStart`: es lo
+     * unico que llega igual desde raton, dedo y lapiz.
+     */
+    const handleGesturePointerDown = useCallback(
+        (e: React.PointerEvent) => {
+            const pointers = gesturePointersRef.current
+            pointers.set(e.pointerId, { x: e.clientX, y: e.clientY })
+
+            if (pointers.size >= 2) {
+                // Dos dedos = PELLIZCO. Lo primero es desarmar los gestos de
+                // un dedo: si el primero ya habia empezado a panear, seguir
+                // moviendo la imagen mientras se amplia da un tiron; y el
+                // arrastre deja de ser candidato a navegacion (nadie pasa de
+                // foto con dos dedos).
+                swipeRef.current = null
+                dragScrollRef.current = null
+                setIsPanning(false)
+                setAnimateZoom(false)
+                // El video no vive dentro del contenedor transformado: ahi no
+                // hay nada que ampliar. Y con recorte o pincel el pellizco
+                // pelearia con un gesto que ya tiene dueño.
+                const zoomable =
+                    previewMedia?.mediaType !== 'VIDEO' &&
+                    !isCropping &&
+                    !isDrawingMask
+                if (!zoomable) {
+                    pinchRef.current = null
+                    return
+                }
+                const [a, b] = Array.from(pointers.values())
+                const startDistance = pointerDistance(a, b)
+                // Distancia 0 = division por cero en el factor de escala.
+                pinchRef.current =
+                    startDistance > 0
+                        ? {
+                              startDistance,
+                              startZoom: zoomLevelRef.current,
+                          }
+                        : null
+                return
+            }
+
+            // Un solo dedo. Es candidato a SWIPE solo si es tactil (con raton
+            // el arrastre significa otras cosas y hay flechas a la vista) y
+            // solo a zoom 1: ampliado, arrastrar es panear, que ya existe y
+            // tiene prioridad.
+            swipeRef.current =
+                e.pointerType === 'touch' &&
+                !isCropping &&
+                !isDrawingMask &&
+                zoomLevelRef.current <= 1
+                    ? {
+                          pointerId: e.pointerId,
+                          startX: e.clientX,
+                          startY: e.clientY,
+                      }
+                    : null
+            handlePanStart(e)
+        },
+        [handlePanStart, isCropping, isDrawingMask, previewMedia],
+    )
+
+    /**
+     * El movimiento y el final del gesto van en WINDOW, no en el contenedor.
+     *
+     * A zoom 1 el paneo ni siquiera arranca, asi que no podiamos colgarnos de
+     * sus listeners: el pellizco y el swipe necesitan escuchar siempre que
+     * haya un dedo registrado. En window ademas el gesto sobrevive a que el
+     * dedo se salga de la imagen, que en un movil pasa constantemente.
+     */
+    useEffect(() => {
+        if (!previewMedia) return
+        // Copia local del Map (su identidad no cambia nunca) para que la
+        // limpieza no lea `ref.current` cuando el efecto ya se desmonto.
+        const pointers = gesturePointersRef.current
+
+        const forget = (pointerId: number) => {
+            pointers.delete(pointerId)
+            // Con menos de dos dedos ya no hay pellizco que continuar; si el
+            // que queda vuelve a separarse, empieza uno nuevo desde cero.
+            if (pointers.size < 2) pinchRef.current = null
+        }
+
+        const onMove = (e: PointerEvent) => {
+            if (!pointers.has(e.pointerId)) return
+            pointers.set(e.pointerId, { x: e.clientX, y: e.clientY })
+            const pinch = pinchRef.current
+            if (!pinch || pointers.size < 2) return
+            const [a, b] = Array.from(pointers.values())
+            const distance = pointerDistance(a, b)
+            if (distance <= 0) return
+            const mid = pointerMidpoint(a, b)
+            setAnimateZoom(false)
+            // Se reutiliza `applyZoom` a proposito: es quien ancla el zoom a
+            // un punto de pantalla y quien pasa por `clampPan`. Anclar al
+            // punto medio de los dedos es lo que hace que el pellizco amplie
+            // por donde miras, igual que la rueda lo hace por el cursor.
+            applyZoom(
+                (pinch.startZoom * distance) / pinch.startDistance,
+                mid.x,
+                mid.y,
+            )
+        }
+
+        const onUp = (e: PointerEvent) => {
+            const swipe = swipeRef.current
+            forget(e.pointerId)
+            if (!swipe || swipe.pointerId !== e.pointerId) return
+            swipeRef.current = null
+            // Se vuelve a comprobar al SOLTAR: entre el inicio y el final el
+            // usuario ha podido ampliar (pellizco) o abrir el pincel, y
+            // entonces el arrastre ya no era navegacion.
+            if (
+                zoomLevelRef.current > 1 ||
+                isCropping ||
+                isDrawingMask ||
+                pointers.size > 0
+            ) {
+                return
+            }
+            const direction = resolveSwipe(
+                e.clientX - swipe.startX,
+                e.clientY - swipe.startY,
+            )
+            // `handleNext`/`handlePrev` ya respetan `hasNext`/`hasPrev`: en el
+            // primero y el ultimo el gesto simplemente no hace nada.
+            if (direction === 'next') handleNext()
+            else if (direction === 'prev') handlePrev()
+        }
+
+        const onCancel = (e: PointerEvent) => {
+            // `pointercancel` es la norma en tactil, no la excepcion: en
+            // cuanto el navegador decide que el gesto es un scroll vertical
+            // (se lo dejamos con `touch-action: pan-y`) se queda el puntero y
+            // `pointerup` NO llega. Sin esto el dedo quedaria registrado para
+            // siempre y el siguiente toque creeria que hay dos.
+            forget(e.pointerId)
+            if (swipeRef.current?.pointerId === e.pointerId) {
+                swipeRef.current = null
+            }
+        }
+
+        window.addEventListener('pointermove', onMove)
+        window.addEventListener('pointerup', onUp)
+        window.addEventListener('pointercancel', onCancel)
+        return () => {
+            window.removeEventListener('pointermove', onMove)
+            window.removeEventListener('pointerup', onUp)
+            window.removeEventListener('pointercancel', onCancel)
+            pointers.clear()
+            pinchRef.current = null
+            swipeRef.current = null
+        }
+    }, [
+        previewMedia,
+        applyZoom,
+        handleNext,
+        handlePrev,
+        isCropping,
+        isDrawingMask,
+    ])
 
     const handleDownload = async () => {
         if (!previewMedia) return
@@ -1234,18 +1474,70 @@ const ImagePreviewModal = ({
     // Pantalla completa del MEDIO, no del modal: el navegador lo centra con
     // object-fit: contain y anula el transform del zoom, así que se ve entero
     // sin arrastrar toolbar ni panel. Hay zoom, pero faltaba esto.
+    //
+    // 2026-09-19: eso era exactamente el bug. Poner en pantalla completa el
+    // <img> PELADO lo saca al TOP LAYER, fuera del contexto visual de sus
+    // ancestros: el `transform: translate3d(...) scale(...)` del zoom vive en
+    // el contenedor PADRE y deja de aplicarle. Encima el UA stylesheet de
+    // `:fullscreen` le fuerza width/height 100% y object-fit: contain. Por eso
+    // "se ve perfecto" pero el zoom y el paneo quedaban inertes, y las flechas
+    // de navegación —hermanas del <img>, fuera del top layer— desaparecían.
+    //
+    // La IMAGEN pasa a poner en pantalla completa el STAGE (`viewportRef`), que
+    // contiene flechas, contenedor transformado y listeners de gestos: dentro
+    // del top layer va todo junto y sigue funcionando.
+    //
+    // El VÍDEO no se toca: iOS Safari solo tiene pantalla completa nativa en
+    // el <video> (`webkitEnterFullscreen`) y los controles nativos dependen de
+    // que el elemento a pantalla completa sea él (ver el efecto de
+    // `fullscreenchange` de aquí abajo).
     const handleFullscreen = () => {
+        // El botón de la toolbar no se ve con el stage a pantalla completa
+        // (la toolbar está fuera del stage), pero el de SALIR que se pinta
+        // dentro del stage llama aquí: este es el camino de vuelta, y en un
+        // móvil no hay tecla ESC que lo sustituya.
+        // Se miran las DOS vías: si el navegador entró por la de prefijo
+        // (Safari antiguo), `document.fullscreenElement` es null y este botón
+        // habría vuelto a PEDIR pantalla completa en vez de salir — el botón de
+        // salir se pinta desde `isStageFullscreen`, que sí lee ambas.
+        const doc = document as Document & {
+            webkitFullscreenElement?: Element | null
+            webkitExitFullscreen?: () => void
+        }
+        const activeEl =
+            document.fullscreenElement ?? doc.webkitFullscreenElement ?? null
+        if (activeEl && activeEl === viewportRef.current) {
+            if (typeof document.exitFullscreen === 'function') {
+                document.exitFullscreen().catch((err) => {
+                    console.error(
+                        '[ImagePreviewModal] no se pudo salir de pantalla completa',
+                        err,
+                    )
+                })
+            } else {
+                doc.webkitExitFullscreen?.()
+            }
+            return
+        }
         const el: HTMLElement | null =
             previewMedia?.mediaType === 'VIDEO'
                 ? videoRef.current
-                : imageRef.current
+                : viewportRef.current
         if (!el) return
         const target = el as HTMLElement & {
             webkitRequestFullscreen?: () => void
             webkitEnterFullscreen?: () => void
         }
         if (typeof target.requestFullscreen === 'function') {
-            target.requestFullscreen().catch(() => {})
+            // Nada de `catch {}` mudo: si el navegador la deniega (gesto no
+            // considerado de confianza, permisos, iframe sin allow) el botón
+            // parecería roto sin dejar el menor rastro de por qué.
+            target.requestFullscreen().catch((err) => {
+                console.error(
+                    '[ImagePreviewModal] requestFullscreen denegado',
+                    err,
+                )
+            })
         } else if (target.webkitRequestFullscreen) {
             target.webkitRequestFullscreen()
         } else if (target.webkitEnterFullscreen) {
@@ -1264,6 +1556,37 @@ const ImagePreviewModal = ({
         }
         document.addEventListener('fullscreenchange', onChange)
         return () => document.removeEventListener('fullscreenchange', onChange)
+    }, [])
+
+    /**
+     * Sigue si el STAGE está en pantalla completa (2026-09-19).
+     *
+     * Efecto aparte del de arriba a propósito: aquel es del <video> y sus
+     * controles nativos, y mezclar los dos haría que tocar uno rompiese el
+     * otro. Se escucha también el evento con prefijo porque Safari de
+     * escritorio sigue emitiendo `webkitfullscreenchange`; sin él el fondo y
+     * el botón de salir se quedarían en el estado anterior.
+     */
+    useEffect(() => {
+        const onChange = () => {
+            const active =
+                document.fullscreenElement ??
+                (
+                    document as Document & {
+                        webkitFullscreenElement?: Element | null
+                    }
+                ).webkitFullscreenElement ??
+                null
+            setIsStageFullscreen(
+                active !== null && active === viewportRef.current,
+            )
+        }
+        document.addEventListener('fullscreenchange', onChange)
+        document.addEventListener('webkitfullscreenchange', onChange)
+        return () => {
+            document.removeEventListener('fullscreenchange', onChange)
+            document.removeEventListener('webkitfullscreenchange', onChange)
+        }
     }, [])
 
     // Video transport: scrub, step (1/30s ≈ one frame at 30fps), jump.
@@ -1474,8 +1797,30 @@ const ImagePreviewModal = ({
                 {/* Media Content */}
                 <div
                     ref={viewportRef}
-                    className="flex-1 min-h-0 relative flex items-center justify-center p-2 bg-gray-100 dark:bg-gray-800 overflow-hidden"
+                    // El fondo del modal es gris claro, pero en pantalla
+                    // completa este div ES la pantalla: un gris claro a página
+                    // entera deslumbra y falsea los colores de la imagen.
+                    // Negro solo mientras dura el fullscreen (2026-09-19).
+                    className={`flex-1 min-h-0 relative flex items-center justify-center p-2 overflow-hidden ${
+                        isStageFullscreen
+                            ? 'bg-black'
+                            : 'bg-gray-100 dark:bg-gray-800'
+                    }`}
                 >
+                    {/* Salir de pantalla completa. Vive DENTRO del stage a
+                        propósito: en el top layer solo se ve el stage y su
+                        contenido, así que un botón en la toolbar sería
+                        inalcanzable — y en móvil no hay tecla ESC. */}
+                    {isStageFullscreen && (
+                        <button
+                            onClick={handleFullscreen}
+                            title="Salir de pantalla completa"
+                            className="absolute top-3 right-3 z-30 p-2 bg-white/90 text-gray-700 rounded-full hover:bg-white dark:bg-gray-800/90 dark:text-gray-200 dark:hover:bg-gray-800 shadow-lg transition-colors"
+                        >
+                            <HiOutlineX className="w-5 h-5" />
+                        </button>
+                    )}
+
                     {/* Toggle: colapsar/expandir el panel inferior para ver la
                         media completa sin obstrucción. Flota abajo-centro de la
                         media y permanece visible en ambos estados. */}
@@ -1517,7 +1862,7 @@ const ImagePreviewModal = ({
                     <div
                         ref={attachMediaContainer}
                         className="relative w-full h-full min-h-0 flex items-center justify-center overflow-hidden"
-                        onPointerDown={handlePanStart}
+                        onPointerDown={handleGesturePointerDown}
                         style={{
                             // Sin esto el táctil NO funciona aunque los
                             // handlers sean correctos: el navegador reclama el
@@ -1526,10 +1871,22 @@ const ImagePreviewModal = ({
                             // quita el gesto cuando de verdad hay algo que
                             // arrastrar — a zoom 1 la imagen cabe entera y el
                             // scroll de la página debe seguir siendo suyo.
+                            //
+                            // 2026-09-19: a zoom 1 ya no puede ser 'auto'.
+                            // 'auto' le regala al navegador TODO —el barrido
+                            // horizontal y el pellizco— y por eso el swipe y
+                            // el zoom con dos dedos no llegaban nunca. 'pan-y'
+                            // es el reparto exacto que queremos: el navegador
+                            // se queda el scroll VERTICAL (sigue siendo suyo,
+                            // como decía el comentario de arriba) y nosotros
+                            // nos quedamos el horizontal y el multi-táctil,
+                            // porque 'pan-y' excluye el pinch-zoom nativo.
+                            // Dibujando o recortando sigue siendo 'none': esos
+                            // gestos no admiten que el navegador se lleve nada.
                             touchAction:
                                 isDrawingMask || isCropping || zoomLevel > 1
                                     ? 'none'
-                                    : 'auto',
+                                    : 'pan-y',
                             cursor:
                                 spaceHeld
                                     ? isPanning
