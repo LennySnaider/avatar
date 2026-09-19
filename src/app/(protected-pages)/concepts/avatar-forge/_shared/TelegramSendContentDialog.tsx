@@ -23,9 +23,16 @@
  * recargar la página. Sólo se ofrece lo `enabled`: mismo criterio que
  * `deliverPaidMedia`/`deliverFreeMedia`, que rechazan un ítem deshabilitado
  * en el servidor — filtrarlo aquí ahorra el viaje de un envío condenado.
+ *
+ * Desde el 19-sep también se puede DAR DE ALTA aquí, con el "+" del final de
+ * la rejilla (`TelegramAddContentDialog`): el usuario pidió no tener que
+ * salirse al panel de Telegram para añadir una foto y volver. Lo recién dado
+ * de alta queda ya seleccionado, listo para Send.
  */
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { HiOutlinePlus } from 'react-icons/hi'
+import RoleCheck from '@/components/shared/RoleCheck'
 import Button from '@/components/ui/Button'
 import Input from '@/components/ui/Input'
 import Dialog from '@/components/ui/Dialog'
@@ -40,6 +47,7 @@ import {
 } from '@/services/AgentTelegramService'
 import type { PaidMediaItemView } from '@/services/AgentTelegramService'
 import { isValidStarPrice } from '@/lib/telegram/mediaPricing'
+import TelegramAddContentDialog from './TelegramAddContentDialog'
 
 /** Lo que el llamador necesita saber de un envío que YA salió. Unión
  *  discriminada y no un objeto con campos opcionales: un teaser gratis no
@@ -124,6 +132,12 @@ const TelegramSendContentDialog = ({
     const [starsOverride, setStarsOverride] = useState('')
     const [captionOverride, setCaptionOverride] = useState('')
     const [isSending, setIsSending] = useState(false)
+    const [addOpen, setAddOpen] = useState(false)
+    // Testigo de carga. La galería ya no se pide sólo al abrir (también se
+    // recarga tras dar de alta), así que el `cancelled` de un efecto no basta:
+    // una respuesta lenta podía pisar a una más nueva y devolver la lista de
+    // antes del alta. Gana siempre la última petición lanzada.
+    const loadTokenRef = useRef(0)
 
     const freeItems = items.filter((i) => i.isFree)
     const paidItems = items.filter((i) => !i.isFree)
@@ -137,40 +151,70 @@ const TelegramSendContentDialog = ({
         setCaptionOverride(item.caption ?? '')
     }, [])
 
-    useEffect(() => {
-        if (!isOpen || !avatarId) return
-        let cancelled = false
-        setIsLoading(true)
-        setLoadError(null)
+    const clearSelection = useCallback(() => {
         setSelectedItemId(null)
         setStarsOverride('')
         setCaptionOverride('')
-        listPaidMediaItems(avatarId)
-            .then((result) => {
-                if (cancelled) return
+    }, [])
+
+    /** Pide la galería y deja seleccionado `selectId` si sigue estando (es lo
+     *  que se acaba de dar de alta); si no, el primero que haya. */
+    const loadItems = useCallback(
+        async (selectId?: string) => {
+            const token = ++loadTokenRef.current
+            setIsLoading(true)
+            setLoadError(null)
+            try {
+                const result = await listPaidMediaItems(avatarId)
+                if (loadTokenRef.current !== token) return
                 if (result.success && result.data) {
                     const enabled = result.data.filter((i) => i.enabled)
                     setItems(enabled)
-                    // Preselección: el primero que haya, sin preferir gratis
-                    // ni pago — quien envía elige, la pantalla no empuja.
-                    if (enabled[0]) pickItem(enabled[0])
+                    // Preselección: lo recién añadido si lo hay; si no, el
+                    // primero, sin preferir gratis ni pago — quien envía
+                    // elige, la pantalla no empuja.
+                    const target =
+                        (selectId
+                            ? enabled.find((i) => i.id === selectId)
+                            : undefined) ?? enabled[0]
+                    if (target) pickItem(target)
+                    else clearSelection()
                 } else {
                     setItems([])
                     setLoadError(result.error ?? 'Could not load the gallery.')
                 }
-            })
-            .catch((e: unknown) => {
-                if (cancelled) return
+            } catch (e) {
+                if (loadTokenRef.current !== token) return
                 setItems([])
                 setLoadError(e instanceof Error ? e.message : String(e))
-            })
-            .finally(() => {
-                if (!cancelled) setIsLoading(false)
-            })
+            } finally {
+                if (loadTokenRef.current === token) setIsLoading(false)
+            }
+        },
+        [avatarId, pickItem, clearSelection],
+    )
+
+    useEffect(() => {
+        if (!isOpen || !avatarId) return
+        clearSelection()
+        void loadItems()
         return () => {
-            cancelled = true
+            // Invalida la petición en vuelo al cerrar o al cambiar de avatar:
+            // el mismo papel que hacía el `cancelled` de antes.
+            loadTokenRef.current += 1
         }
-    }, [isOpen, avatarId, pickItem])
+    }, [isOpen, avatarId, loadItems, clearSelection])
+
+    /** El alta ya devolvió el ítem guardado, pero se recarga la galería en vez
+     *  de empujarlo a mano: así la lista sale del servidor (única fuente) y de
+     *  paso recoge lo que se haya dado de alta en otra pestaña. */
+    const handleAdded = useCallback(
+        (item: PaidMediaItemView) => {
+            setAddOpen(false)
+            void loadItems(item.id)
+        },
+        [loadItems],
+    )
 
     const handleSend = async () => {
         const item = selectedItem
@@ -267,6 +311,39 @@ const TelegramSendContentDialog = ({
 
     const priceInvalid = !!selectedItem && !selectedItem.isFree && parseStars(starsOverride) === null
 
+    // Siguiente hueco libre, no `items.length`: si algo se borró en medio,
+    // reusar una longitud como índice repetiría un sort_order ya usado (mismo
+    // criterio que la galería). Aquí sólo se ven los `enabled`, así que puede
+    // empatar con uno deshabilitado — la columna no es única y eso sólo empata
+    // el orden, no falla.
+    const nextSortOrder =
+        items.reduce((max, i) => Math.max(max, i.sortOrder), -1) + 1
+
+    /* El "+" es UNA BALDOSA MÁS, al final y del mismo tamaño que las
+       miniaturas: se lee como "añade uno más" y no como una acción suelta del
+       diálogo. Va fuera de los dos grupos a propósito — meterlo dentro de
+       "Free teasers" o de "Paid" prometería de qué tipo va a ser lo que se dé
+       de alta, y eso se decide dentro del formulario.
+       Con `pricing:manage` porque dar de alta fija un precio; es cosmético,
+       `upsertPaidMediaItem` lo vuelve a comprobar. */
+    const addTile = (
+        <RoleCheck permission="pricing:manage">
+            <div>
+                <p className="text-xs text-gray-500 mb-1">Add something new</p>
+                <div className="flex flex-wrap gap-2 p-1">
+                    <button
+                        type="button"
+                        title="Add content to the gallery"
+                        className="w-16 h-16 shrink-0 rounded-lg border-2 border-dashed border-gray-300 dark:border-gray-600 text-gray-400 hover:border-primary hover:text-primary transition-colors flex items-center justify-center"
+                        onClick={() => setAddOpen(true)}
+                    >
+                        <HiOutlinePlus className="text-2xl" />
+                    </button>
+                </div>
+            </div>
+        </RoleCheck>
+    )
+
     return (
         <Dialog isOpen={isOpen} width={640} onClose={onClose} onRequestClose={onClose}>
             {/* Cabecera y pie fijos, cuerpo scrolleable: mismo problema (y
@@ -286,10 +363,14 @@ const TelegramSendContentDialog = ({
                     ) : loadError ? (
                         <p className="text-sm text-red-500">{loadError}</p>
                     ) : items.length === 0 ? (
-                        <p className="text-sm text-gray-500">
-                            No enabled content yet — add some in this avatar&apos;s Telegram
-                            Gallery tab.
-                        </p>
+                        <div className="flex flex-col gap-3">
+                            <p className="text-sm text-gray-500">
+                                No enabled content yet — add one with the +
+                                below, or from this avatar&apos;s Telegram
+                                Gallery tab.
+                            </p>
+                            {addTile}
+                        </div>
                     ) : (
                         <div className="flex flex-col gap-3">
                             {freeItems.length > 0 && (
@@ -326,6 +407,7 @@ const TelegramSendContentDialog = ({
                                     </div>
                                 </div>
                             )}
+                            {addTile}
                             {selectedItem && (
                                 <>
                                     <div className="flex items-center gap-2">
@@ -392,6 +474,16 @@ const TelegramSendContentDialog = ({
                     </Button>
                 </div>
             </div>
+            {/* Anidado sobre este diálogo a propósito: al cerrarlo el estado
+                de aquí (ítem elegido, precio, caption) sigue intacto, y el
+                recién dado de alta queda seleccionado para pulsar Send. */}
+            <TelegramAddContentDialog
+                isOpen={addOpen}
+                avatarId={avatarId}
+                nextSortOrder={nextSortOrder}
+                onClose={() => setAddOpen(false)}
+                onAdded={handleAdded}
+            />
         </Dialog>
     )
 }

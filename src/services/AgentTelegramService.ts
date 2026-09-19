@@ -533,6 +533,81 @@ export async function listPaidMediaItems(avatarId: string): Promise<TelegramResu
 }
 
 /**
+ * Generación del avatar ya resuelta a URL pública, para el selector de "dar de
+ * alta contenido". Misma forma que `GenerationPickerItem` de
+ * `telegram/[slug]/_components/types.ts` — se repite aquí, y no se importa,
+ * porque aquel es un tipo de la página y este servicio no puede depender de
+ * una carpeta de componentes.
+ */
+export interface TelegramGenerationPickerItem {
+    id: string
+    mediaType: 'IMAGE' | 'VIDEO'
+    mediaUrl: string
+    prompt: string
+}
+
+/** Las cinco columnas que pide el selector. Hay que declararlas y castear el
+ *  resultado porque el cliente tipado no infiere una `select()` con lista de
+ *  columnas sobre `generations` y devuelve `any` — sin esto, el `.map` de
+ *  abajo es un parámetro implícitamente `any`. Mismo apaño (y mismo motivo)
+ *  que `GenerationRow` en `telegram/[slug]/page.tsx`. */
+interface GenerationPickerRow {
+    id: string
+    storage_path: string
+    storage_provider: string | null
+    media_type: string
+    prompt: string
+}
+
+/**
+ * Las últimas generaciones del avatar, para dar de alta contenido SIN salir
+ * de donde estés.
+ *
+ * Es la gemela bajo demanda de la consulta que `telegram/[slug]/page.tsx` ya
+ * hace en servidor para su propio picker (mismos criterios: el avatar,
+ * `created_at` desc, 60). Existe porque el diálogo de envío vive en `_shared`
+ * y ninguno de sus DOS llamadores tiene esa lista: el Inbox no puede cargarla
+ * para todos los hilos por si acaso, así que se pide al pulsar el "+".
+ *
+ * NO filtra por tipo de media a propósito: `upsertPaidMediaItem` da de alta
+ * foto Y vídeo (`media_kind`), así que esconder aquí los vídeos ofrecería
+ * menos de lo que el catálogo admite.
+ *
+ * `content:read` y no `pricing:manage`: esto sólo ENSEÑA generaciones que el
+ * usuario ya ve en su galería. Quien fija el precio es el alta, y ese permiso
+ * lo exige `upsertPaidMediaItem`.
+ */
+export async function listAvatarGenerationsForGallery(
+    avatarId: string,
+): Promise<TelegramResult<TelegramGenerationPickerItem[]>> {
+    try {
+        const ctx = await getOrgContext()
+        requirePermission(ctx, 'content:read')
+        await requireModule(ctx, 'telegram')
+        if (!avatarId) return { success: false, error: 'Falta el avatar.' }
+        await assertOwnedAvatar(ctx, avatarId)
+
+        const { data, error } = await orgTable(ctx, 'generations')
+            .select('id, storage_path, storage_provider, media_type, prompt')
+            .eq('avatar_id', avatarId)
+            .order('created_at', { ascending: false })
+            .limit(60)
+        if (error) throw new Error(error.message)
+
+        const rows = (data ?? []) as GenerationPickerRow[]
+        const items: TelegramGenerationPickerItem[] = rows.map((g) => ({
+            id: g.id,
+            mediaType: g.media_type === 'VIDEO' ? 'VIDEO' : 'IMAGE',
+            mediaUrl: getGenerationMediaUrl(g.storage_path, g.storage_provider),
+            prompt: g.prompt,
+        }))
+        return { success: true, data: items }
+    } catch (e) {
+        return fail('listAvatarGenerationsForGallery', e)
+    }
+}
+
+/**
  * Da de alta o edita un ítem de la galería.
  *
  * `id` presente ⇒ EDITAR: sólo metadatos (`title`/`caption`/`starPrice`/
