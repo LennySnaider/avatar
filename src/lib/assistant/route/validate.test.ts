@@ -1,7 +1,11 @@
 // src/lib/assistant/route/validate.test.ts
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { ASSISTANT_SCREENS, parseAssistantScreen, parseChatBody } from './validate.ts'
+import {
+    ASSISTANT_SCREENS,
+    parseAssistantScreen,
+    parseChatBody,
+} from './validate.ts'
 
 const mensajeUsuario = {
     id: 'm1',
@@ -10,14 +14,17 @@ const mensajeUsuario = {
 }
 
 test('ASSISTANT_SCREENS cubre exactamente la unión AssistantScreen', () => {
-    assert.deepEqual([...ASSISTANT_SCREENS], [
-        'inbox',
-        'social-accounts',
-        'social-posts',
-        'studio',
-        'modules',
-        'other',
-    ])
+    assert.deepEqual(
+        [...ASSISTANT_SCREENS],
+        [
+            'inbox',
+            'social-accounts',
+            'social-posts',
+            'studio',
+            'modules',
+            'other',
+        ],
+    )
 })
 
 test('parseAssistantScreen: acepta las pantallas conocidas tal cual', () => {
@@ -27,8 +34,21 @@ test('parseAssistantScreen: acepta las pantallas conocidas tal cual', () => {
 })
 
 test('parseAssistantScreen: lo desconocido cae a "other", nunca lanza', () => {
-    for (const basura of [undefined, null, '', 'INBOX', 'dashboard', 42, {}, []]) {
-        assert.equal(parseAssistantScreen(basura), 'other', `falla con ${String(basura)}`)
+    for (const basura of [
+        undefined,
+        null,
+        '',
+        'INBOX',
+        'dashboard',
+        42,
+        {},
+        [],
+    ]) {
+        assert.equal(
+            parseAssistantScreen(basura),
+            'other',
+            `falla con ${String(basura)}`,
+        )
     }
 })
 
@@ -56,7 +76,10 @@ test('parseChatBody: threadId y screen viajan ya normalizados', () => {
 test('parseChatBody: una screen que no conocemos NO es un error, es "other"', () => {
     // Que el widget invente una pantalla nueva no puede tumbar el turno: el
     // peor caso es un recorte de herramientas conservador.
-    const r = parseChatBody({ messages: [mensajeUsuario], screen: 'pantalla-nueva' })
+    const r = parseChatBody({
+        messages: [mensajeUsuario],
+        screen: 'pantalla-nueva',
+    })
     assert.equal(r.ok, true)
     if (!r.ok) return
     assert.equal(r.screen, 'other')
@@ -95,7 +118,10 @@ test('parseChatBody: el ÚLTIMO mensaje tiene que ser del usuario', () => {
 
 test('parseChatBody: threadId presente pero no string se rechaza', () => {
     for (const basura of [1, {}, [], '']) {
-        const r = parseChatBody({ messages: [mensajeUsuario], threadId: basura })
+        const r = parseChatBody({
+            messages: [mensajeUsuario],
+            threadId: basura,
+        })
         assert.equal(r.ok, false, `debería rechazar threadId=${String(basura)}`)
     }
 })

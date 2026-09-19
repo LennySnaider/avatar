@@ -90,7 +90,10 @@ function pareceUIMessage(value: unknown): value is UIMessage {
  */
 export function parseChatBody(json: unknown): ParsedChatBody {
     if (typeof json !== 'object' || json === null || Array.isArray(json)) {
-        return { ok: false, error: 'El cuerpo de la petición debe ser un objeto JSON.' }
+        return {
+            ok: false,
+            error: 'El cuerpo de la petición debe ser un objeto JSON.',
+        }
     }
     const body = json as {
         messages?: unknown
@@ -120,7 +123,10 @@ export function parseChatBody(json: unknown): ParsedChatBody {
     let threadId: string | undefined
     if (body.threadId !== undefined && body.threadId !== null) {
         if (typeof body.threadId !== 'string' || body.threadId.length === 0) {
-            return { ok: false, error: '`threadId` debe ser el id de un hilo existente.' }
+            return {
+                ok: false,
+                error: '`threadId` debe ser el id de un hilo existente.',
+            }
         }
         threadId = body.threadId
     }

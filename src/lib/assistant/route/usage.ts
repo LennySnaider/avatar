@@ -58,6 +58,24 @@ export function sumTokensCharged(
     return total
 }
 
+/**
+ * Suma `cost_usd` de las mismas filas. Va aparte de `sumTokensCharged` porque
+ * es un `numeric` de Postgres: supabase-js lo entrega como número, pero una
+ * columna nula (un turno que nunca llegó a liquidarse) es lo normal aquí, no
+ * una anomalía. Se redondea a 6 decimales, la precisión de la columna: sin
+ * eso, sumar céntimos en coma flotante saca colas de `0.0000000000001` que
+ * acaban pintadas en la pantalla de estado.
+ */
+export function sumCostUsd(rows: readonly { cost_usd?: unknown }[]): number {
+    let total = 0
+    for (const row of rows) {
+        const v = row?.cost_usd
+        if (typeof v !== 'number' || !Number.isFinite(v) || v <= 0) continue
+        total += v
+    }
+    return Math.round(total * 1e6) / 1e6
+}
+
 /** Medianoche UTC del día del instante dado, en ISO (lo que come `.gte()`). */
 export function utcDayStart(now: Date): string {
     return new Date(

@@ -108,7 +108,9 @@ export async function countOrgMembers(organizationId: string): Promise<number> {
  * loguea): un nombre es contexto, no una frontera, y quien lo pide debe tener
  * un texto de reserva.
  */
-export async function readOrgName(organizationId: string): Promise<string | null> {
+export async function readOrgName(
+    organizationId: string,
+): Promise<string | null> {
     const { data, error } = await orgSupabase()
         .from('organizations')
         .select('name')

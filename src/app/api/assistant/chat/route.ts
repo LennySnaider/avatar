@@ -78,7 +78,10 @@ import {
 } from 'ai'
 import { getOrgContext, type OrgContext } from '@/lib/tenant/getOrgContext'
 import { isExpectedDenial, requirePermission } from '@/lib/org/guards'
-import { ModuleNotInstalledError, requireModule } from '@/lib/modules/entitlements'
+import {
+    ModuleNotInstalledError,
+    requireModule,
+} from '@/lib/modules/entitlements'
 import { orgInsert, orgTable } from '@/lib/org/orgTable'
 import { readOrgName } from '@/lib/org/membersDb'
 import { getChatModel } from '@/lib/agent/chatProvider'
@@ -95,7 +98,10 @@ import { selectTools, toAiTools } from '@/lib/assistant/registry'
 import { READ_TOOLS } from '@/lib/assistant/tools'
 import { fetchAvatarsOverview } from '@/lib/assistant/tools/read/avatars'
 import { buildStrategistSystemPrompt } from '@/lib/assistant/systemPrompt'
-import { getMetaConnection, type MetaConnection } from '@/lib/assistant/meta/connect'
+import {
+    getMetaConnection,
+    type MetaConnection,
+} from '@/lib/assistant/meta/connect'
 import { openMetaMcpTools } from '@/lib/assistant/meta/mcp'
 import { parseChatBody } from '@/lib/assistant/route/validate'
 import { deriveThreadTitle } from '@/lib/assistant/route/threadTitle'
@@ -200,13 +206,18 @@ async function leerAjustes(ctx: OrgContext) {
     if (error) {
         // No se tumba el turno: sin ajustes legibles se usan los defaults,
         // que son MÁS restrictivos que cualquier tope que una org se suba.
-        console.error('[estratega] no se pudieron leer los ajustes del módulo', {
-            organizationId: ctx.organizationId,
-            error: error.message,
-        })
+        console.error(
+            '[estratega] no se pudieron leer los ajustes del módulo',
+            {
+                organizationId: ctx.organizationId,
+                error: error.message,
+            },
+        )
         return readStrategistSettings(null)
     }
-    return readStrategistSettings((data as { settings?: unknown } | null)?.settings)
+    return readStrategistSettings(
+        (data as { settings?: unknown } | null)?.settings,
+    )
 }
 
 /**
@@ -322,7 +333,10 @@ export async function POST(req: NextRequest) {
     try {
         crudo = await req.json()
     } catch {
-        return json({ error: 'El cuerpo de la petición no es JSON válido.' }, 400)
+        return json(
+            { error: 'El cuerpo de la petición no es JSON válido.' },
+            400,
+        )
     }
     const parsed = parseChatBody(crudo)
     if (!parsed.ok) return json({ error: parsed.error }, 400)
@@ -335,24 +349,36 @@ export async function POST(req: NextRequest) {
     } catch (e) {
         // `getOrgContext` lanza por dos motivos (sin sesión / sin membresía);
         // los dos son "no puedes pasar" en una ruta de API.
-        return json({ error: e instanceof Error ? e.message : 'Not authenticated' }, 401)
+        return json(
+            { error: e instanceof Error ? e.message : 'Not authenticated' },
+            401,
+        )
     }
     try {
         await requireModule(ctx, 'strategist')
         requirePermission(ctx, 'content:read')
     } catch (e) {
         if (e instanceof ModuleNotInstalledError) {
-            return json({ error: 'module_not_installed', message: e.message }, 403)
+            return json(
+                { error: 'module_not_installed', message: e.message },
+                403,
+            )
         }
         if (isExpectedDenial(e)) {
-            return json({ error: e instanceof Error ? e.message : 'Forbidden' }, 403)
+            return json(
+                { error: e instanceof Error ? e.message : 'Forbidden' },
+                403,
+            )
         }
         console.error('[estratega] fallo comprobando módulo/permiso', {
             organizationId: ctx.organizationId,
             userId: ctx.userId,
             error: e instanceof Error ? e.message : String(e),
         })
-        return json({ error: 'No se pudo comprobar el acceso al Estratega.' }, 500)
+        return json(
+            { error: 'No se pudo comprobar el acceso al Estratega.' },
+            500,
+        )
     }
 
     /** Pestillo: el cliente MCP se cierra una vez, la llamen los que la llamen. */
@@ -387,11 +413,15 @@ export async function POST(req: NextRequest) {
             if (!data) return json({ error: 'Ese hilo no existe.' }, 404)
             threadId = parsed.threadId
         } else {
-            const { data, error } = await orgInsert(ctx, 'org_assistant_threads', {
-                title: deriveThreadTitle(ultimo.parts),
-                created_by: ctx.userId,
-                screen,
-            })
+            const { data, error } = await orgInsert(
+                ctx,
+                'org_assistant_threads',
+                {
+                    title: deriveThreadTitle(ultimo.parts),
+                    created_by: ctx.userId,
+                    screen,
+                },
+            )
                 .select('id')
                 .single()
             if (error) throw new Error(`creación del hilo: ${error.message}`)
@@ -431,7 +461,11 @@ export async function POST(req: NextRequest) {
                 content: partesDeRespuesta(texto, []),
             })
             await tocarHilo(ctx, threadId)
-            return respuestaDeTexto(texto, { threadId, model: null, consentUrl })
+            return respuestaDeTexto(texto, {
+                threadId,
+                model: null,
+                consentUrl,
+            })
         }
 
         // ── 5. Hold ──────────────────────────────────────────────────────
@@ -458,14 +492,21 @@ export async function POST(req: NextRequest) {
                 content: partesDeRespuesta(texto, []),
             })
             await tocarHilo(ctx, threadId)
-            return respuestaDeTexto(texto, { threadId, model: null, consentUrl })
+            return respuestaDeTexto(texto, {
+                threadId,
+                model: null,
+                consentUrl,
+            })
         }
         hold = holdResult.hold
 
         // ── 6. Herramientas ──────────────────────────────────────────────
-        const propias = toAiTools(selectTools(READ_TOOLS, { role: ctx.role, screen }), {
-            ctx,
-        })
+        const propias = toAiTools(
+            selectTools(READ_TOOLS, { role: ctx.role, screen }),
+            {
+                ctx,
+            },
+        )
         let tools: ToolSet = propias
         if (meta.connected && MCP_SCREENS.includes(screen)) {
             const mcp = await openMetaMcpTools(ctx)
@@ -508,7 +549,10 @@ export async function POST(req: NextRequest) {
         const holdDelTurno = hold
         let turnoCerrado = false
         const result = streamText({
-            model: getChatModel({ provider: 'gemini', model: ASSISTANT_TOOL_MODEL }),
+            model: getChatModel({
+                provider: 'gemini',
+                model: ASSISTANT_TOOL_MODEL,
+            }),
             system,
             messages: await convertToModelMessages(messages),
             tools,
@@ -549,13 +593,16 @@ export async function POST(req: NextRequest) {
                     })
                     await tocarHilo(ctx, threadId)
                 } catch (e) {
-                    console.error('[estratega] fallo liquidando/persistiendo el turno', {
-                        organizationId: ctx.organizationId,
-                        threadId,
-                        messageId: assistantMessageId,
-                        holdId: holdDelTurno.holdId,
-                        error: e instanceof Error ? e.message : String(e),
-                    })
+                    console.error(
+                        '[estratega] fallo liquidando/persistiendo el turno',
+                        {
+                            organizationId: ctx.organizationId,
+                            threadId,
+                            messageId: assistantMessageId,
+                            holdId: holdDelTurno.holdId,
+                            error: e instanceof Error ? e.message : String(e),
+                        },
+                    )
                 } finally {
                     await cerrarMcpUnaVez()
                 }
@@ -563,17 +610,27 @@ export async function POST(req: NextRequest) {
             onError: async ({ error }) => {
                 if (turnoCerrado) return
                 turnoCerrado = true
-                console.error('[estratega] el turno falló durante el streaming', {
-                    organizationId: ctx.organizationId,
-                    threadId,
-                    messageId: assistantMessageId,
-                    holdId: holdDelTurno.holdId,
-                    error: error instanceof Error ? error.message : String(error),
-                })
+                console.error(
+                    '[estratega] el turno falló durante el streaming',
+                    {
+                        organizationId: ctx.organizationId,
+                        threadId,
+                        messageId: assistantMessageId,
+                        holdId: holdDelTurno.holdId,
+                        error:
+                            error instanceof Error
+                                ? error.message
+                                : String(error),
+                    },
+                )
                 try {
-                    await refundAssistantTurn(holdDelTurno, 'assistant_turn_failed', {
-                        ctx,
-                    })
+                    await refundAssistantTurn(
+                        holdDelTurno,
+                        'assistant_turn_failed',
+                        {
+                            ctx,
+                        },
+                    )
                 } finally {
                     await cerrarMcpUnaVez()
                 }
@@ -606,9 +663,14 @@ export async function POST(req: NextRequest) {
             error: e instanceof Error ? e.message : String(e),
         })
         if (hold) {
-            await refundAssistantTurn(hold, 'assistant_turn_setup_failed', { ctx })
+            await refundAssistantTurn(hold, 'assistant_turn_setup_failed', {
+                ctx,
+            })
         }
         await cerrarMcpUnaVez()
-        return json({ error: 'El Estratega no pudo responder. Inténtalo de nuevo.' }, 500)
+        return json(
+            { error: 'El Estratega no pudo responder. Inténtalo de nuevo.' },
+            500,
+        )
     }
 }

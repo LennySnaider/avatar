@@ -3,6 +3,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import {
     USAGE_ROWS_LIMIT,
+    sumCostUsd,
     sumTokensCharged,
     usageMaybeTruncated,
     utcDayStart,
@@ -38,6 +39,24 @@ test('sumTokensCharged: una fila con basura vale 0 y NO contamina la suma', () =
             {},
         ] as { tokens_charged?: unknown }[]),
         100,
+    )
+})
+
+test('sumCostUsd: suma y redondea a los 6 decimales de la columna', () => {
+    assert.equal(sumCostUsd([{ cost_usd: 0.1 }, { cost_usd: 0.2 }]), 0.3)
+    assert.equal(sumCostUsd([]), 0)
+})
+
+test('sumCostUsd: nulos y basura valen 0 (un turno sin liquidar es normal)', () => {
+    assert.equal(
+        sumCostUsd([
+            { cost_usd: 0.004 },
+            { cost_usd: null },
+            { cost_usd: '0.5' },
+            { cost_usd: Number.NaN },
+            {},
+        ] as { cost_usd?: unknown }[]),
+        0.004,
     )
 })
 

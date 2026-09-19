@@ -1,7 +1,11 @@
 // src/lib/assistant/route/threadTitle.test.ts
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { NEW_THREAD_TITLE, THREAD_TITLE_MAX, deriveThreadTitle } from './threadTitle.ts'
+import {
+    NEW_THREAD_TITLE,
+    THREAD_TITLE_MAX,
+    deriveThreadTitle,
+} from './threadTitle.ts'
 
 test('deriveThreadTitle: el título es el texto del usuario', () => {
     assert.equal(
@@ -45,7 +49,15 @@ test('deriveThreadTitle: las partes que no son texto se ignoran', () => {
 })
 
 test('deriveThreadTitle: sin texto utilizable cae a un título por defecto', () => {
-    for (const basura of [undefined, null, [], 'texto', 42, [{ type: 'text' }], [{ type: 'text', text: '   ' }]]) {
+    for (const basura of [
+        undefined,
+        null,
+        [],
+        'texto',
+        42,
+        [{ type: 'text' }],
+        [{ type: 'text', text: '   ' }],
+    ]) {
         assert.equal(
             deriveThreadTitle(basura),
             NEW_THREAD_TITLE,
