@@ -147,6 +147,10 @@ const EXENTOS = [
         'src/lib/telegram/bots.ts',
         'telegramUnitActivity (Task 6, informe de unidades para la cuota prorrateada) corre sin sesión, disparada por el cron de module-fees — mismo perfil que moduleFees.ts. La organizationId llega por parámetro (la resuelve chargeModuleFees fila a fila desde org_modules) y la única consulta del fichero la filtra explícitamente con .eq(\'organization_id\', organizationId).',
     ],
+    [
+        'src/lib/assistant/unitActivity.ts',
+        'strategistUnitActivity (Estratega Fase 1, informe de unidades para la cuota prorrateada del módulo) corre sin sesión, disparada por el cron de module-fees — mismo perfil que bots.ts y moduleFees.ts. La organizationId llega por parámetro (la resuelve chargeModuleFees fila a fila desde org_modules) y la única consulta del fichero la filtra explícitamente con .eq(\'organization_id\', organizationId) además de .eq(\'module_slug\', \'strategist\').',
+    ],
     // Tarea 5 (comentarios-ia-social) — sondeo de comentarios, sin sesión
     // (lo dispara el cron `social-comments-poll`), mismo perfil que el resto
     // de `src/lib/agent/` de arriba.

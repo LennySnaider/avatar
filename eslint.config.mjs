@@ -358,6 +358,12 @@ const eslintConfig = [
       // .eq('organization_id', ...). Ver check-tenant-access.mjs (misma
       // exención, motivo completo allí).
       "src/lib/telegram/bots.ts",
+      // Estratega Fase 1 — strategistUnitActivity, mismo perfil que bots.ts:
+      // sin sesión (lo dispara el cron de cuotas), la organizationId llega
+      // por parámetro y la única consulta del fichero la filtra con
+      // .eq('organization_id', ...). Ver check-tenant-access.mjs (misma
+      // exención, motivo completo allí).
+      "src/lib/assistant/unitActivity.ts",
       // Task 8 — motor de oferta, mismo perfil que paidMedia.ts: sin sesión
       // (lo dispara el webhook dentro de su `after()`), parte del borrador que
       // nuestro propio pipeline acaba de crear —esa fila RESUELVE la org— y
