@@ -10,6 +10,7 @@ import ScrollBar from '@/components/ui/ScrollBar'
 import { HiOutlineUser, HiOutlinePlus } from 'react-icons/hi'
 import { apiGetAvatars, apiGetAvatarReferences, getSignedUrl } from '@/services/AvatarForgeService'
 import { getReferenceMediaUrl } from '@/lib/storagePaths'
+import { buildThumbnailCandidates } from '@/lib/avatarThumbnailCandidates'
 import { createThumbnail } from '@/utils/imageOptimization'
 import type { Avatar, AvatarReference } from '@/@types/supabase'
 import type { ClonedVoice } from '@/@types/voice'
@@ -114,23 +115,24 @@ const AvatarSelector = ({ userId, isOpen, onClose }: AvatarSelectorProps) => {
             const data = await apiGetAvatars()
             const avatarsWithThumbnails = data.map((avatar) => {
                 const refs = avatar.avatar_references ?? []
-                // Candidatos: nuevas primero (created_at desc) dentro de cada
-                // tipo — durante la ventana del trasplante la re-subida es la
-                // que tiene bytes y la fila vieja 404ea. El grid avanza solo.
-                const byNewest = (a: { created_at?: string | null }, b: { created_at?: string | null }) =>
-                    (b.created_at ?? '').localeCompare(a.created_at ?? '')
-                const ordered = [
-                    ...refs.filter((r) => r.type === 'face').sort(byNewest),
-                    ...refs.filter((r) => r.type === 'angle').sort(byNewest),
-                    ...refs.filter((r) => r.type === 'general').sort(byNewest),
-                ]
+                // Candidatos: SÓLO el primer tipo que tenga filas, nuevas
+                // primero (ver `@/lib/avatarThumbnailCandidates`). Antes esto
+                // concatenaba cara + ángulo + general en una lista plana y,
+                // como el <img> avanza al siguiente en `onError`, cualquier
+                // fallo de la cara degradaba EN SILENCIO a la hoja de ángulos
+                // — el reporte del 19-sep ("debe verse la cara frontal, no los
+                // ángulos"). Dentro de un tipo el avance se conserva, que es
+                // para lo que nació: la re-subida tiene bytes y la fila vieja
+                // del trasplante 404ea.
+                //
                 // El provider VIAJA con el path, nunca suelto: las refs
                 // migraron a R2 y sus copias de Supabase ya se drenaron, así
                 // que construir la URL de Supabase a ciegas apaga TODAS las
                 // miniaturas a la vez (pasó el 20-ago). Dos funciones más
                 // abajo el camino lento ya lo hacía bien.
-                const candidates = ordered.map((r) =>
-                    getReferenceMediaUrl(r.storage_path, r.storage_provider),
+                const candidates = buildThumbnailCandidates(
+                    refs,
+                    getReferenceMediaUrl,
                 )
                 return {
                     ...avatar,

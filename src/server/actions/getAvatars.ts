@@ -1,4 +1,8 @@
 import { getReferenceMediaUrl } from '@/lib/storagePaths'
+import {
+    pickThumbnailRefs,
+    type ThumbnailRef,
+} from '@/lib/avatarThumbnailCandidates'
 import { getOrgContext } from '@/lib/tenant/getOrgContext'
 import { requirePermission } from '@/lib/org/guards'
 import { orgTable, orgSupabase } from '@/lib/org/orgTable'
@@ -99,19 +103,23 @@ const getAvatars = async (_queryParams: {
         (avatars || []).map(async (avatar) => {
             const references = avatar.avatar_references || []
 
-            // Candidatos EN ORDEN (cara → angle → general): durante la
-            // ventana del trasplante conviven filas viejas sin bytes y
-            // re-subidas nuevas del mismo tipo — hay que probar hasta que
-            // una firme, no rendirse con la primera.
-            const candidates: Array<{
+            // Candidatos: el primer tipo con filas (cara, si la hay), nuevas
+            // primero — durante la ventana del trasplante conviven filas
+            // viejas sin bytes y re-subidas nuevas del MISMO tipo, y hay que
+            // probar hasta que una firme, no rendirse con la primera.
+            // MISMA regla que el selector (`@/lib/avatarThumbnailCandidates`):
+            // sólo el primer tipo con filas, nunca una mezcla. Concatenar los
+            // tres tipos hacía que, si la cara fallaba, se sirviera la hoja de
+            // ÁNGULOS como miniatura del avatar sin que nada lo dijera
+            // (reporte 19-sep). Y dentro del tipo, las nuevas primero — que es
+            // lo que resuelve la ventana del trasplante.
+            const candidates = pickThumbnailRefs(
+                references as ThumbnailRef[],
+            ) as Array<{
                 type: string
                 storage_path: string
                 storage_provider?: string | null
-            }> = [
-                ...references.filter((r: { type: string }) => r.type === 'face'),
-                ...references.filter((r: { type: string }) => r.type === 'angle'),
-                ...references.filter((r: { type: string }) => r.type === 'general'),
-            ]
+            }>
 
             let thumbnailUrl: string | undefined
             for (const cand of candidates) {

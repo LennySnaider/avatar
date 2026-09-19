@@ -14,6 +14,7 @@
  * Puro: sin imports de base de datos, testeable con `tsx --test`.
  */
 import { getReferenceMediaUrl } from '@/lib/storagePaths'
+import { pickThumbnailRefs } from '@/lib/avatarThumbnailCandidates'
 
 export interface ThumbnailCandidate {
     type: string
@@ -22,26 +23,20 @@ export interface ThumbnailCandidate {
     created_at?: string | null
 }
 
-const PRIORITY = ['face', 'angle', 'general']
-
 export function pickAvatarThumbnailUrl(
     refs: ThumbnailCandidate[] | null | undefined,
 ): string | null {
     if (!refs || refs.length === 0) return null
     if (!process.env.NEXT_PUBLIC_R2_PUBLIC_BASE_URL) return null
-    const byNewest = (a: ThumbnailCandidate, b: ThumbnailCandidate) =>
-        (b.created_at ?? '').localeCompare(a.created_at ?? '')
-    for (const type of PRIORITY) {
-        const candidate = refs
-            .filter(
-                (r) =>
-                    r.type === type &&
-                    r.storage_provider === 'r2' &&
-                    r.storage_path,
-            )
-            .sort(byNewest)[0]
-        if (candidate?.storage_path)
-            return getReferenceMediaUrl(candidate.storage_path, 'r2')
-    }
-    return null
+    // Una sola regla de prioridad para toda la app
+    // (`@/lib/avatarThumbnailCandidates`): el primer tipo con filas, nuevas
+    // primero. Aquí además sólo cuentan las que viven en R2, por lo que
+    // explica la cabecera — el filtro va ANTES para que un avatar con la cara
+    // en Supabase no se quede sin miniatura pudiendo ofrecer otra cosa.
+    const candidate = pickThumbnailRefs(
+        refs.filter((r) => r.storage_provider === 'r2'),
+    )[0]
+    return candidate?.storage_path
+        ? getReferenceMediaUrl(candidate.storage_path, 'r2')
+        : null
 }
