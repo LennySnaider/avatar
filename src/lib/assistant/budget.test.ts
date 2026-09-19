@@ -7,12 +7,26 @@ import {
     readStrategistSettings,
 } from './budget.ts'
 
-test('los valores por defecto son los acordados en el plan', () => {
+// Los defaults están en TOKENS DE MONEDERO (lo que el hold aparta del saldo),
+// no en tokens del LLM: 200 por turno queda por encima del techo de 150
+// (`tokensForCostUsd(ASSISTANT_TURN_CEILING_USD)`) y 2 500 al día son ~2,50
+// USD a precio de cliente. Ver la cabecera de `budget.ts`.
+test('los valores por defecto están en tokens de monedero y son los acordados', () => {
     assert.deepEqual(DEFAULT_STRATEGIST_SETTINGS, {
-        dailyTokenCap: 200_000,
-        perTurnTokenCap: 20_000,
+        dailyTokenCap: 2_500,
+        perTurnTokenCap: 200,
         mode: 'approve',
     })
+})
+
+test('el tope por turno por defecto deja pasar el turno MCP medido (129) y el techo por defecto (150)', () => {
+    assert.ok(DEFAULT_STRATEGIST_SETTINGS.perTurnTokenCap > 150)
+    // Y el diario tiene que dar para más de un turno del tope: un tope diario
+    // por debajo del de turno haría imposible gastar lo que se promete.
+    assert.ok(
+        DEFAULT_STRATEGIST_SETTINGS.dailyTokenCap >
+            DEFAULT_STRATEGIST_SETTINGS.perTurnTokenCap,
+    )
 })
 
 test('readStrategistSettings: sin settings (null/undefined) devuelve los defaults', () => {

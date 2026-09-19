@@ -8,6 +8,7 @@ import Input from '@/components/ui/Input'
 import Notification from '@/components/ui/Notification'
 import Tag from '@/components/ui/Tag'
 import toast from '@/components/ui/toast'
+import { TOKEN_USD } from '@/lib/billing/catalog'
 import {
     getStrategistStatus,
     startMetaConsent,
@@ -38,6 +39,28 @@ function parseTope(valor: string): number | null {
     const n = Number(valor)
     if (!Number.isFinite(n) || !Number.isInteger(n) || n <= 0) return null
     return n
+}
+
+/**
+ * Los topes se guardan en TOKENS DE SALDO (los del monedero de la
+ * organización, que es lo que el turno aparta y cobra — ver la cabecera de
+ * `@/lib/assistant/budget`). Aquí se traduce a USD a precio de cliente
+ * (`tokens × TOKEN_USD`) porque "200 tokens" no le dice a nadie cuánto
+ * dinero está autorizando y "0,20 $" sí.
+ *
+ * Dos decimales cuando el importe es visible en céntimos y cuatro cuando no:
+ * con topes pequeños, `toFixed(2)` pintaría "$0.00" y parecería gratis.
+ */
+function equivalenteUsd(tokens: number): string {
+    const usd = tokens * TOKEN_USD
+    return usd >= 0.01 ? usd.toFixed(2) : usd.toFixed(4)
+}
+
+/** Texto de ayuda bajo un campo de tope. `null` si lo escrito no es un tope. */
+function ayudaTope(valor: string, sufijo: string): string | null {
+    const n = parseTope(valor)
+    if (n === null) return null
+    return `≈ $${equivalenteUsd(n)} ${sufijo}`
 }
 
 export default function StrategistSettingsDrawer({
@@ -209,13 +232,18 @@ export default function StrategistSettingsDrawer({
         >
             <div className="flex flex-col gap-6">
                 <div className="flex flex-col gap-3">
-                    <h6>Topes de tokens</h6>
+                    <h6>Topes de tokens de saldo</h6>
+                    <p className="text-xs text-gray-500">
+                        Son tokens del saldo de la organización (lo que cada
+                        turno aparta y cobra), no tokens del modelo. Un turno
+                        de lectura gasta ~12 y uno que consulta Meta Ads ~129.
+                    </p>
                     <div>
                         <label
                             htmlFor="strategist-daily-token-cap"
                             className="text-sm mb-1 block"
                         >
-                            Tope diario de tokens
+                            Tope diario (tokens de saldo)
                         </label>
                         <Input
                             id="strategist-daily-token-cap"
@@ -226,13 +254,17 @@ export default function StrategistSettingsDrawer({
                             disabled={cargando || guardando}
                             onChange={(e) => setDailyTokenCap(e.target.value)}
                         />
+                        <span className="text-xs text-gray-500 mt-1 block">
+                            {ayudaTope(dailyTokenCap, 'al día') ??
+                                'Escribe un número entero mayor que cero.'}
+                        </span>
                     </div>
                     <div>
                         <label
                             htmlFor="strategist-per-turn-token-cap"
                             className="text-sm mb-1 block"
                         >
-                            Tope por turno
+                            Tope por turno (tokens de saldo)
                         </label>
                         <Input
                             id="strategist-per-turn-token-cap"
@@ -243,6 +275,10 @@ export default function StrategistSettingsDrawer({
                             disabled={cargando || guardando}
                             onChange={(e) => setPerTurnTokenCap(e.target.value)}
                         />
+                        <span className="text-xs text-gray-500 mt-1 block">
+                            {ayudaTope(perTurnTokenCap, 'por turno') ??
+                                'Escribe un número entero mayor que cero.'}
+                        </span>
                     </div>
                     <Button
                         variant="solid"
@@ -287,7 +323,11 @@ export default function StrategistSettingsDrawer({
                         <span className="text-sm text-gray-400">Cargando…</span>
                     ) : (
                         <span className="text-sm">
-                            {usado.toLocaleString()} tokens · ${costo.toFixed(2)}
+                            {/* Cuatro decimales: el coste de un día de uso
+                                normal está en céntimos de céntimo, y
+                                `toFixed(2)` pintaba "$0.00" siempre. */}
+                            {usado.toLocaleString()} tokens de saldo · $
+                            {costo.toFixed(4)} de coste
                         </span>
                     )}
                 </div>

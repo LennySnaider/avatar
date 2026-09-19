@@ -13,20 +13,53 @@
  * conserva lo aprovechable, que es justo lo que se quiere de unos ajustes que
  * pueden quedarse a medio migrar.
  *
- * POR QUÉ 200k/día y 20k/turno: Fase 0 midió un turno de lectura simple en
- * ~2.6-2.8k tokens y uno con una llamada al MCP de Meta en ~14k. 20k por
- * turno deja sitio al turno más caro medido con margen; 200k al día son ~70
- * turnos de lectura o ~14 de los caros — suficiente para un día de trabajo y
- * lo bastante bajo para que un bucle accidental se note el mismo día.
+ * ─────────────────────────────────────────────────────────────────────────
+ * LA UNIDAD: TOKENS DE MONEDERO, NO TOKENS DEL LLM
+ * ─────────────────────────────────────────────────────────────────────────
+ * Los dos topes se miden en TOKENS DEL MONEDERO (`org_wallets`): la unidad
+ * que `wallet_hold` aparta del saldo de la organización y que `wallet_settle`
+ * cobra. NO son los tokens que factura Gemini. La conversión la hace
+ * `tokensForCostUsd(costUsd) = ceil(costUsd × COST_MARGIN / TOKEN_USD)` =
+ * `ceil(costUsd × 3 / 0.001)` (`@/lib/billing/catalog`), o sea: 1 token de
+ * monedero = 0,001 USD a precio de cliente, con el margen de 3× ya aplicado
+ * sobre el coste del proveedor.
+ *
+ * Con esa aritmética y lo MEDIDO en Fase 0:
+ *  - turno de lectura simple ≈ 0,004 USD de proveedor →  12 tokens de monedero
+ *  - turno con una llamada al MCP de Meta ≈ 0,043 USD  → 129 tokens
+ *  - techo por defecto de un turno (`ASSISTANT_TURN_CEILING_USD = 0.05`)
+ *                                                      → 150 tokens
+ *
+ * POR QUÉ 200/turno y 2 500/día:
+ *  - `perTurnTokenCap: 200` queda POR ENCIMA del techo de 150, así que el
+ *    turno más caro medido (129) cabe con margen y ningún turno legítimo
+ *    choca contra el tope. Es el número que la ruta pasa como `maxTokens`
+ *    del hold, así que es LO QUE SE APARTA DEL SALDO EN CADA TURNO.
+ *  - `dailyTokenCap: 2_500` ≈ 200 turnos de lectura o ≈19 de los caros, unos
+ *    2,50 USD/día a precio de cliente: un día entero de trabajo, y lo
+ *    bastante bajo para que un bucle accidental se note el mismo día.
+ *
+ * OJO SI VUELVES A TOCAR ESTOS NÚMEROS: los valores anteriores (20 000 por
+ * turno, 200 000 al día) estaban pensados en tokens del LLM, pero el hold los
+ * gastaba como tokens de MONEDERO — cada turno apartaba 20 000 tokens, o sea
+ * 6,67 USD de saldo (`20_000 × 0.001 / 3`), y el tope diario daba para ~16 000
+ * turnos en vez de los ~70 que prometía este docblock. Antes de cambiar un
+ * tope, mira `tokensForCostUsd` y traduce el USD que quieres gastar.
  *
  * PURO: sin imports. Testeable con `tsx --test`.
  */
 
 /** Ajustes del módulo `strategist` para una organización. */
 export interface StrategistSettings {
-    /** Techo de tokens del asistente por día natural (UTC) y organización. */
+    /**
+     * Techo de TOKENS DE MONEDERO que el asistente puede gastar por día
+     * natural (UTC) y organización. Ver la unidad en la cabecera.
+     */
     dailyTokenCap: number
-    /** Techo de lo que un solo turno puede RESERVAR (`maxTokens` del hold). */
+    /**
+     * Techo de TOKENS DE MONEDERO que un solo turno puede RESERVAR
+     * (`maxTokens` del hold). Ver la unidad en la cabecera.
+     */
     perTurnTokenCap: number
     /**
      * Qué hace el agente con una acción que escribe. En Fase 1 no hay
@@ -38,8 +71,8 @@ export interface StrategistSettings {
 }
 
 export const DEFAULT_STRATEGIST_SETTINGS: StrategistSettings = {
-    dailyTokenCap: 200_000,
-    perTurnTokenCap: 20_000,
+    dailyTokenCap: 2_500,
+    perTurnTokenCap: 200,
     mode: 'approve',
 }
 

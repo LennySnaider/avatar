@@ -6,8 +6,8 @@ import { settingsAfterInstall } from './defaultSettings.ts'
 test('fila sin ajustes (undefined) recibe los defaults de strategist', () => {
     const out = settingsAfterInstall('strategist', undefined)
     assert.deepEqual(out, {
-        dailyTokenCap: 200_000,
-        perTurnTokenCap: 20_000,
+        dailyTokenCap: 2_500,
+        perTurnTokenCap: 200,
         mode: 'approve',
     })
 })
@@ -15,8 +15,8 @@ test('fila sin ajustes (undefined) recibe los defaults de strategist', () => {
 test('fila con settings null recibe los defaults', () => {
     const out = settingsAfterInstall('strategist', null)
     assert.deepEqual(out, {
-        dailyTokenCap: 200_000,
-        perTurnTokenCap: 20_000,
+        dailyTokenCap: 2_500,
+        perTurnTokenCap: 200,
         mode: 'approve',
     })
 })
@@ -24,8 +24,8 @@ test('fila con settings null recibe los defaults', () => {
 test('fila con settings {} recibe los defaults', () => {
     const out = settingsAfterInstall('strategist', {})
     assert.deepEqual(out, {
-        dailyTokenCap: 200_000,
-        perTurnTokenCap: 20_000,
+        dailyTokenCap: 2_500,
+        perTurnTokenCap: 200,
         mode: 'approve',
     })
 })

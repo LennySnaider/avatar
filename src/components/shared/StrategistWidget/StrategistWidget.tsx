@@ -628,8 +628,12 @@ const StrategistPanel = () => {
                                 'Loading usage…'
                             ) : (
                                 <>
-                                    {usado.toLocaleString()} tokens today · cap{' '}
-                                    {tope.toLocaleString()}
+                                    {/* "wallet tokens": es el saldo de la
+                                        organización lo que se gasta, no los
+                                        tokens del modelo — ver la cabecera de
+                                        `@/lib/assistant/budget`. */}
+                                    {usado.toLocaleString()} wallet tokens today
+                                    · cap {tope.toLocaleString()}
                                 </>
                             )}
                         </span>

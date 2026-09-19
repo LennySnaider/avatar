@@ -474,7 +474,7 @@ export async function POST(req: NextRequest) {
         if (!presupuesto.allowed) {
             const texto =
                 `Hoy ya se ha consumido el presupuesto de tokens del Estratega en esta organización ` +
-                `(${usedToday.toLocaleString('es-ES')} de ${settings.dailyTokenCap.toLocaleString('es-ES')} tokens). ` +
+                `(${usedToday.toLocaleString('es-ES')} de ${settings.dailyTokenCap.toLocaleString('es-ES')} tokens de saldo). ` +
                 `Se renueva a las 00:00 UTC. Si necesitas más, un administrador puede subir el tope diario en Módulos → Estratega.`
             console.warn('[estratega] tope diario agotado', {
                 organizationId: ctx.organizationId,
@@ -499,6 +499,12 @@ export async function POST(req: NextRequest) {
         // idempotencia del hold (`assistant:${messageId}`): un reintento del
         // mismo turno tiene que reusar el hold, no abrir otro.
         const assistantMessageId = randomUUID()
+        // `maxTokens` va en TOKENS DE MONEDERO (`org_wallets`), que es la
+        // unidad que `wallet_hold` aparta del saldo — NO son los tokens que
+        // factura Gemini. 1 token de monedero = 0,001 USD a precio de cliente
+        // (`tokensForCostUsd` en `@/lib/billing/catalog`), y en measure-only
+        // el hold debita igual. Por eso los defaults de `budget.ts` están en
+        // esa unidad y son pequeños (200 por turno, 2 500 al día).
         const holdResult = await holdAssistantTurn(ctx, {
             threadId,
             messageId: assistantMessageId,
