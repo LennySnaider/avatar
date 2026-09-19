@@ -163,6 +163,14 @@ export async function openMetaMcpTools(
             })
         })
         if (isMetaConsentRequired(error)) {
+            // No es un error, pero sí el motivo de que el turno se quede sin
+            // herramientas de Meta: sin esta línea, "el agente no usó el MCP"
+            // no tiene explicación en los logs. Ni el token ni la URL de
+            // consentimiento se escriben aquí.
+            console.warn('[estratega meta] sin conexión Meta', {
+                organizationId: ctx.organizationId,
+                userId: ctx.userId,
+            })
             return { ok: false, consentUrl: metaConsentUrl(error) }
         }
         throw error

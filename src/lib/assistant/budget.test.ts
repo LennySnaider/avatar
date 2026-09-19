@@ -102,7 +102,7 @@ test('budgetAllows: pasarse no devuelve un restante negativo', () => {
     })
 })
 
-test('budgetAllows: entradas absurdas no abren la puerta', () => {
+test('budgetAllows: un contador roto NO bloquea, pero un tope roto SÍ', () => {
     assert.deepEqual(
         budgetAllows({ usedToday: Number.NaN, dailyCap: 200_000 }),
         {

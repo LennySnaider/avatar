@@ -68,9 +68,32 @@ export const getInboxSummary: AssistantToolDef<z.infer<typeof inboxInput>> = {
             .select('platform, avatar_id', { count: 'exact' })
             .eq('needs_attention', true)
             .limit(ROW_CAP)
-        let borradoresQuery = orgTable(ctx, 'agent_messages')
-            .select('id', { count: 'exact', head: true })
-            .eq('status', 'draft')
+        // Borradores pendientes. Cuando se filtra por avatar, el vínculo se
+        // resuelve con un embed `!inner` de PostgREST sobre la clave foránea
+        // `agent_messages_chat_id_fkey` (agent_messages.chat_id →
+        // agent_chats.id) en vez de leer antes los ids de los chats y meterlos
+        // en un `in(...)`. Esa lista podía llegar a 1000 uuids (~37 KB de URL,
+        // que el servidor corta con un 414) y, peor, quedarse corta EN
+        // SILENCIO por el tope de filas: el conteo saldría menor que el real y
+        // nadie lo notaría. Con el embed el número es exacto por construcción
+        // y no hay lista que truncar.
+        //
+        // VERIFICADO EN VIVO contra el PostgREST del proyecto (18-sep): el
+        // HEAD con `count=exact` sobre `select=id,agent_chats!inner(avatar_id)`
+        // + `agent_chats.avatar_id=eq.<id>` devuelve 200 y EL MISMO total que
+        // el control por `chat_id=in.(…)` (2 y 2 sobre datos reales). La
+        // relación es de muchos-a-uno, así que el join no duplica filas.
+        const borradoresQuery = avatarId
+            ? orgTable(ctx, 'agent_messages')
+                  .select('id, agent_chats!inner(avatar_id)', {
+                      count: 'exact',
+                      head: true,
+                  })
+                  .eq('status', 'draft')
+                  .eq('agent_chats.avatar_id', avatarId)
+            : orgTable(ctx, 'agent_messages')
+                  .select('id', { count: 'exact', head: true })
+                  .eq('status', 'draft')
         let ventasQuery = orgTable(ctx, 'telegram_stars_sales')
             .select('stars, sold_by', { count: 'exact' })
             .eq('status', 'purchased')
@@ -83,27 +106,6 @@ export const getInboxSummary: AssistantToolDef<z.infer<typeof inboxInput>> = {
             atencionQuery = atencionQuery.eq('avatar_id', avatarId)
             ventasQuery = ventasQuery.eq('avatar_id', avatarId)
             telegramQuery = telegramQuery.eq('avatar_id', avatarId)
-            // `agent_messages` no tiene `avatar_id` (cuelga del chat), así que
-            // el filtro por avatar se resuelve con los ids de sus chats.
-            const { data, error } = await orgTable(ctx, 'agent_chats')
-                .select('id')
-                .eq('avatar_id', avatarId)
-                .limit(ROW_CAP)
-            if (error) {
-                throw new Error(
-                    `getInboxSummary: fallo leyendo agent_chats del avatar ${avatarId}: ${error.message}`,
-                )
-            }
-            const chatIds = ((data ?? []) as { id: string }[]).map((c) => c.id)
-            borradoresQuery = chatIds.length
-                ? borradoresQuery.in('chat_id', chatIds)
-                : // Sin chats no hay borradores: se pregunta por un id
-                  // imposible en vez de saltarse la consulta, para que el
-                  // resultado siga teniendo la misma forma.
-                  borradoresQuery.eq(
-                      'chat_id',
-                      '00000000-0000-0000-0000-000000000000',
-                  )
         }
 
         const [atencionRes, borradoresRes, ventasRes, telegramRes, avatares] =

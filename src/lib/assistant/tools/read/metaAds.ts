@@ -18,6 +18,7 @@ import { z } from 'zod'
 import { graphGet } from '../../meta/graph'
 import { isMetaConsentRequired } from '../../meta/connect'
 import type { AssistantScreen, AssistantToolDef, ToolEnv } from '../../types'
+import type { OrgContext } from '@/lib/tenant/getOrgContext'
 
 /** Lo que se devuelve cuando el usuario no ha autorizado Meta todavía. */
 const NOT_CONNECTED = {
@@ -37,14 +38,29 @@ const META_SCREENS: AssistantScreen[] = [
     'other',
 ]
 
-/** Ejecuta la lectura y traduce SÓLO la falta de consentimiento. */
+/**
+ * Ejecuta la lectura y traduce SÓLO la falta de consentimiento.
+ *
+ * El camino "sin conectar" deja RASTRO en el log aunque no sea un error: es
+ * la explicación de por qué el agente contestó que no tiene datos de
+ * anuncios, y sin la línea sería indistinguible de "Meta no devolvió nada".
+ * Se loguean los ids de organización y usuario, nunca el token ni la URL de
+ * consentimiento.
+ */
 async function conMeta<T>(
+    ctx: OrgContext,
     fn: () => Promise<T>,
 ): Promise<T | typeof NOT_CONNECTED> {
     try {
         return await fn()
     } catch (error) {
-        if (isMetaConsentRequired(error)) return NOT_CONNECTED
+        if (isMetaConsentRequired(error)) {
+            console.warn('[estratega meta] sin conexión Meta', {
+                organizationId: ctx.organizationId,
+                userId: ctx.userId,
+            })
+            return NOT_CONNECTED
+        }
         throw error
     }
 }
@@ -61,7 +77,7 @@ export const listMetaAdAccounts: AssistantToolDef<z.infer<typeof sinEntrada>> =
         screens: META_SCREENS,
         mutating: false,
         async execute(_input, { ctx }: ToolEnv) {
-            return conMeta(() =>
+            return conMeta(ctx, () =>
                 graphGet(ctx, 'me/adaccounts', {
                     fields: 'name,account_id,currency,amount_spent,account_status',
                     limit: '25',
@@ -99,7 +115,7 @@ export const getMetaAdAccountInsights: AssistantToolDef<
     screens: META_SCREENS,
     mutating: false,
     async execute({ accountId, datePreset, level }, { ctx }: ToolEnv) {
-        return conMeta(() =>
+        return conMeta(ctx, () =>
             graphGet(ctx, `${accountId}/insights`, {
                 date_preset: datePreset,
                 level,
