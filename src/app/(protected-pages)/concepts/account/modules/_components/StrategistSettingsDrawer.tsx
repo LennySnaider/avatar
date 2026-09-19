@@ -124,6 +124,13 @@ export default function StrategistSettingsDrawer({
             )
             return
         }
+        if (perTurn > daily) {
+            notify(
+                'danger',
+                'El tope por turno no puede superar el tope diario.',
+            )
+            return
+        }
         setGuardando(true)
         try {
             const res = await updateStrategistSettings({
@@ -204,10 +211,14 @@ export default function StrategistSettingsDrawer({
                 <div className="flex flex-col gap-3">
                     <h6>Topes de tokens</h6>
                     <div>
-                        <label className="text-sm mb-1 block">
+                        <label
+                            htmlFor="strategist-daily-token-cap"
+                            className="text-sm mb-1 block"
+                        >
                             Tope diario de tokens
                         </label>
                         <Input
+                            id="strategist-daily-token-cap"
                             type="number"
                             min={1}
                             step={1}
@@ -217,10 +228,14 @@ export default function StrategistSettingsDrawer({
                         />
                     </div>
                     <div>
-                        <label className="text-sm mb-1 block">
+                        <label
+                            htmlFor="strategist-per-turn-token-cap"
+                            className="text-sm mb-1 block"
+                        >
                             Tope por turno
                         </label>
                         <Input
+                            id="strategist-per-turn-token-cap"
                             type="number"
                             min={1}
                             step={1}

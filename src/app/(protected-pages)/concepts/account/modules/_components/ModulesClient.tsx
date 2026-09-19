@@ -175,6 +175,12 @@ export default function ModulesClient({ catalog, installed, canManage }: Props) 
                     const slug = confirmSlug
                     setConfirmSlug(null)
                     if (slug) {
+                        // El Drawer de ajustes desmonta al desinstalar
+                        // (gate `statusOf('strategist') === 'installed'`
+                        // más abajo): si se queda `settingsOpen` en `true`,
+                        // una reinstalación posterior lo remontaría ya
+                        // abierto sin que nadie lo pidiera.
+                        if (slug === 'strategist') setSettingsOpen(false)
                         run(() => uninstallModule(slug), 'Módulo desinstalado.')
                     }
                 }}

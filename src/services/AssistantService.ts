@@ -460,6 +460,18 @@ export async function updateStrategistSettings(
                 : {}
         const settings = { ...previos, ...cambios }
 
+        // Ruling añadido en el fix-round 1 de Task 6: un tope por turno mayor
+        // que el diario es una promesa vacía (el turno más caro nunca podría
+        // gastarlo). Se compara sobre la versión NORMALIZADA (misma lectura
+        // que hace `readStrategistSettings` para servir el estado) para que
+        // basura previa en el JSON no cuele la comparación.
+        const normalizado = readStrategistSettings(settings)
+        if (normalizado.perTurnTokenCap > normalizado.dailyTokenCap) {
+            throw new Error(
+                'El tope por turno no puede superar al tope diario.',
+            )
+        }
+
         const { error } = await orgTable(ctx, 'org_modules')
             .update({ settings: settings as Json })
             .eq('module_slug', MODULE_SLUG)

@@ -139,13 +139,23 @@ async function setModuleStatus(
                     .update({ settings: semilla as Json })
                     .eq('module_slug', slug)
                 if (seedError) {
+                    // DEGRADAR, no fallar: el upsert de arriba YA instaló el
+                    // módulo (y `revalidatePath` ya corrió) — devolver `fail`
+                    // aquí dejaría la tarjeta en "Instalar" con un toast de
+                    // error mientras el módulo queda instalado en el
+                    // servidor, una mentira visible. `settings` se queda en
+                    // `{}` (el valor que ya trae `row` recién insertado) y
+                    // `readStrategistSettings({})` en `budget.ts` lo lee como
+                    // los mismos defaults igualmente: nada se pierde, sólo no
+                    // queda escrito en la fila hasta el próximo guardado o
+                    // reinstalación.
                     console.error(
                         '[modules] setModuleStatus: fallo al sembrar los ajustes por defecto',
-                        seedError,
+                        { slug, organizationId: ctx.organizationId, error: seedError },
                     )
-                    return fail(seedError.message)
+                } else {
+                    settings = semilla
                 }
-                settings = semilla
             }
         }
 
