@@ -74,10 +74,25 @@ const Layout = async ({ children }: { children: ReactNode }) => {
     // Con el módulo sin instalar el widget devuelve `null` — ni botón, ni
     // llamadas al servicio. La comprobación vive en el SERVIDOR a propósito:
     // el cliente no puede decidir si tiene derecho a un módulo.
-    const strategistInstalled = await hasModuleForOrg(
-        ctx.organizationId,
-        'strategist',
-    )
+    //
+    // Sin guardar: un hipo de `org_modules` (Supabase) tumbaba TODAS las
+    // rutas protegidas, porque este layout envuelve cada una de ellas. Mismo
+    // patrón que `getOrgUiContext` (`src/server/actions/navigation/getNavigation.ts`):
+    // catch + log y degradar a "módulo no instalado", nunca dejar caer la
+    // página entera por un fallo leyendo entitlements.
+    let strategistInstalled = false
+    try {
+        strategistInstalled = await hasModuleForOrg(
+            ctx.organizationId,
+            'strategist',
+        )
+    } catch (error) {
+        console.error('[layout] hasModuleForOrg strategist:', {
+            organizationId: ctx.organizationId,
+            error,
+        })
+        strategistInstalled = false
+    }
 
     return (
         <PostLoginLayout>

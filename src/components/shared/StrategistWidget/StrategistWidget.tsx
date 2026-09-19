@@ -225,12 +225,24 @@ const StrategistPanel = () => {
     )
 
     const recargarHilos = useCallback(async () => {
-        const res = await listAssistantThreads()
-        if (!vivoRef.current) return
-        if (res.success) setThreads(res.data ?? [])
-        // Un fallo aquí NO se convierte en toast: la lista de hilos es un
-        // adorno junto a la conversación en curso, y `listAssistantThreads`
-        // ya deja el motivo en el log del servidor.
+        try {
+            const res = await listAssistantThreads()
+            if (!vivoRef.current) return
+            if (res.success) setThreads(res.data ?? [])
+            // Un fallo DE DOMINIO (`res.success === false`) NO se convierte
+            // en toast: la lista de hilos es un adorno junto a la
+            // conversación en curso, y `listAssistantThreads` ya deja el
+            // motivo en el log del servidor. Lo que sí se avisa es un fallo
+            // de TRANSPORTE (offline, 500, deploy skew): ver el catch.
+        } catch (e) {
+            console.error('[estratega] recargarHilos:', e)
+            if (!vivoRef.current) return
+            toast.push(
+                <Notification type="danger" title="Could not load conversations">
+                    The list of conversations could not be refreshed.
+                </Notification>,
+            )
+        }
     }, [])
 
     const {
@@ -269,24 +281,39 @@ const StrategistPanel = () => {
         estadoPedidoRef.current = true
         setCargandoEstado(true)
         void (async () => {
-            const [estado] = await Promise.all([
-                getStrategistStatus(),
-                recargarHilos(),
-            ])
-            if (!vivoRef.current) return
-            setCargandoEstado(false)
-            if (!estado.success || !estado.data) {
+            try {
+                const [estado] = await Promise.all([
+                    getStrategistStatus(),
+                    recargarHilos(),
+                ])
+                if (!vivoRef.current) return
+                if (!estado.success || !estado.data) {
+                    toast.push(
+                        <Notification
+                            type="danger"
+                            title="Strategist unavailable"
+                        >
+                            {estado.error ??
+                                'Could not read the module status.'}
+                        </Notification>,
+                    )
+                    return
+                }
+                setStatus(estado.data)
+                setMetaConnected(estado.data.meta.connected)
+                if (estado.data.meta.consentUrl) {
+                    setConsentUrl(estado.data.meta.consentUrl)
+                }
+            } catch (e) {
+                console.error('[estratega] getStrategistStatus:', e)
+                if (!vivoRef.current) return
                 toast.push(
                     <Notification type="danger" title="Strategist unavailable">
-                        {estado.error ?? 'Could not read the module status.'}
+                        Could not read the module status.
                     </Notification>,
                 )
-                return
-            }
-            setStatus(estado.data)
-            setMetaConnected(estado.data.meta.connected)
-            if (estado.data.meta.consentUrl) {
-                setConsentUrl(estado.data.meta.consentUrl)
+            } finally {
+                if (vivoRef.current) setCargandoEstado(false)
             }
         })()
     }, [isOpen, recargarHilos])
@@ -349,49 +376,78 @@ const StrategistPanel = () => {
     const handleElegirHilo = async (id: string) => {
         if (id === threadId || cargandoHilo) return
         setCargandoHilo(true)
-        const res = await getAssistantThread(id)
-        if (!vivoRef.current) return
-        setCargandoHilo(false)
-        if (!res.success || !res.data) {
+        try {
+            const res = await getAssistantThread(id)
+            if (!vivoRef.current) return
+            if (!res.success || !res.data) {
+                toast.push(
+                    <Notification
+                        type="danger"
+                        title="Could not open the thread"
+                    >
+                        {res.error ?? 'Unknown error'}
+                    </Notification>,
+                )
+                return
+            }
+            setThread(id)
+            // NO se adopta `res.data.thread.screen`: la pantalla la manda el
+            // pathname actual (ver el efecto de arriba), no el hilo que se
+            // abre. Adoptarlo aquí dejaba las preguntas SIGUIENTES mandando
+            // la pantalla de un hilo viejo aunque la persona ya hubiera
+            // navegado a otra parte de la app.
+            setMessages(
+                res.data.messages
+                    .map(aUIMessage)
+                    .filter((m): m is StrategistUIMessage => m !== null),
+            )
+        } catch (e) {
+            console.error('[estratega] handleElegirHilo:', e)
+            if (!vivoRef.current) return
             toast.push(
                 <Notification type="danger" title="Could not open the thread">
-                    {res.error ?? 'Unknown error'}
+                    The conversation could not be loaded.
                 </Notification>,
             )
-            return
+        } finally {
+            if (vivoRef.current) setCargandoHilo(false)
         }
-        setThread(id)
-        setScreen(res.data.thread.screen)
-        setMessages(
-            res.data.messages
-                .map(aUIMessage)
-                .filter((m): m is StrategistUIMessage => m !== null),
-        )
     }
 
     const handleBorrar = async () => {
         if (!porBorrar) return
         setBorrando(true)
-        const res = await deleteAssistantThread(porBorrar.id)
-        if (!vivoRef.current) return
-        setBorrando(false)
-        if (!res.success) {
+        try {
+            const res = await deleteAssistantThread(porBorrar.id)
+            if (!vivoRef.current) return
+            if (!res.success) {
+                toast.push(
+                    <Notification type="danger" title="Could not delete">
+                        {res.error ?? 'Unknown error'}
+                    </Notification>,
+                )
+                return
+            }
+            const borrado = porBorrar.id
+            setPorBorrar(null)
+            setThreads((prev) => prev.filter((t) => t.id !== borrado))
+            if (borrado === threadId) handleNuevoHilo()
             toast.push(
-                <Notification type="danger" title="Could not delete">
-                    {res.error ?? 'Unknown error'}
+                <Notification type="success" title="Thread deleted">
+                    The conversation and its turns are gone.
                 </Notification>,
             )
-            return
+        } catch (e) {
+            console.error('[estratega] handleBorrar:', e)
+            if (!vivoRef.current) return
+            toast.push(
+                <Notification type="danger" title="Could not delete">
+                    The conversation could not be deleted.
+                </Notification>,
+            )
+        } finally {
+            if (vivoRef.current) setBorrando(false)
         }
-        const borrado = porBorrar.id
-        setPorBorrar(null)
-        setThreads((prev) => prev.filter((t) => t.id !== borrado))
-        if (borrado === threadId) handleNuevoHilo()
-        toast.push(
-            <Notification type="success" title="Thread deleted">
-                The conversation and its turns are gone.
-            </Notification>,
-        )
     }
 
     const handleConnectMeta = async () => {
@@ -400,24 +456,38 @@ const StrategistPanel = () => {
             return
         }
         setConectando(true)
-        const res = await startMetaConsent()
-        if (!vivoRef.current) return
-        setConectando(false)
-        if (!res.success || !res.data) {
+        try {
+            const res = await startMetaConsent()
+            if (!vivoRef.current) return
+            if (!res.success || !res.data) {
+                toast.push(
+                    <Notification
+                        type="danger"
+                        title="Meta connection failed"
+                    >
+                        {res.error ?? 'Unknown error'}
+                    </Notification>,
+                )
+                return
+            }
+            if (res.data.connected) {
+                setMetaConnected(true)
+                setConsentUrl(null)
+                return
+            }
+            setConsentUrl(res.data.url)
+            window.open(res.data.url, '_blank', 'noopener,noreferrer')
+        } catch (e) {
+            console.error('[estratega] handleConnectMeta:', e)
+            if (!vivoRef.current) return
             toast.push(
                 <Notification type="danger" title="Meta connection failed">
-                    {res.error ?? 'Unknown error'}
+                    Could not start the Meta connection.
                 </Notification>,
             )
-            return
+        } finally {
+            if (vivoRef.current) setConectando(false)
         }
-        if (res.data.connected) {
-            setMetaConnected(true)
-            setConsentUrl(null)
-            return
-        }
-        setConsentUrl(res.data.url)
-        window.open(res.data.url, '_blank', 'noopener,noreferrer')
     }
 
     const opcionesHilo: ThreadOption[] = threads.map((t) => ({
@@ -458,6 +528,7 @@ const StrategistPanel = () => {
                     <div className="flex-1 min-w-0">
                         <Select<ThreadOption>
                             instanceId="strategist-threads"
+                            aria-label="Conversation"
                             size="sm"
                             placeholder={
                                 opcionesHilo.length > 0
@@ -539,6 +610,7 @@ const StrategistPanel = () => {
                     <Input
                         textArea
                         rows={3}
+                        aria-label="Message the Strategist"
                         value={input}
                         placeholder="Ask the Strategist…"
                         disabled={ocupado}
