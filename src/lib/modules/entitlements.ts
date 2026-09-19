@@ -13,7 +13,7 @@ import { cache } from 'react'
 import { orgSupabase, orgTable } from '@/lib/org/orgTable'
 import type { OrgContext } from '@/lib/tenant/getOrgContext'
 
-export type ModuleSlug = 'telegram'
+export type ModuleSlug = 'telegram' | 'strategist'
 
 export type OrgModuleStatus = 'installed' | 'suspended' | 'uninstalled'
 

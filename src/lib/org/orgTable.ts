@@ -61,6 +61,13 @@ export const TENANT_TABLES = [
     // Dashboards de ingresos — rollup diario de Fanvue por creator, con
     // organization_id NOT NULL (migración 20260917150000_earnings_dashboards).
     'fanvue_daily_earnings',
+    // Estratega Fase 1 (Task 1) — hilos/turnos/acciones del agente de IA de
+    // la organización, con organization_id NOT NULL (migración
+    // 20260918200000_estratega_fase1). NO son agent_chats/agent_messages
+    // (eso es el agente por avatar / inbox de Fanvue).
+    'org_assistant_threads',
+    'org_assistant_messages',
+    'org_assistant_actions',
 ] as const
 
 export type TenantTable = (typeof TENANT_TABLES)[number]

@@ -19,6 +19,12 @@ import { chargeModuleFees } from '@/lib/billing/moduleFees'
 // está — bórralo sólo si de verdad quieres que telegram deje de cobrar su
 // cuota mensual en silencio. Ver `src/lib/telegram/bots.ts`.
 import '@/lib/telegram/bots'
+// Efecto lateral DELIBERADO, no un import muerto: lo mismo que la línea de
+// arriba, pero para `strategistUnitActivity` y el slug "strategist" (ver
+// `src/lib/assistant/unitActivity.ts`). Sin este import la cuota mensual del
+// Estratega NO se cobra y el cron no falla: se limita a saltarla (`skipped`)
+// con un `console.warn` mes tras mes.
+import '@/lib/assistant/unitActivity'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 60

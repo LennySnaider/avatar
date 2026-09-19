@@ -59,3 +59,35 @@ Hueco técnico verificado (18-sep): en `src/` no existe tool-calling (`tool()`, 
 - Tool-calling greenfield: la calidad de Gemini Flash con 30+ herramientas es la incógnita del spike; mitigación: exponer solo las herramientas relevantes por contexto (Social → analytics/schedule; Studio → prompts/generación; Ads → MCP).
 - Coste por turno: un turno con 3-5 llamadas puede pasar de 0.004 USD; medir en el spike y ajustar el SKU antes de vender.
 - Identidad en imágenes: hereda los límites de Clone Ref; LoRA por avatar ([[motor-imagen-propio-analisis]]) es el multiplicador natural.
+
+## Resultados de la Fase 0 (spike, 18-sep-2026, rama `spike/estratega-mcp`)
+
+**Tool-calling con Gemini Flash: funciona.** Ruta desechable `src/app/api/assistant/spike/route.ts` (`generateText` + `tool()` + `stopWhen(stepCountIs(8))`, `getChatModel({provider:'gemini'})`). Pregunta "¿qué avatares tengo y cómo va Emily?": 3 llamadas correctas (`listAvatars`, `getSocialAnalytics`×2), 4 pasos, 2,843 tokens, ≈0.003 USD, 8 s. El modelo no inventó cifras cuando Upload-Post devolvió error.
+
+**Pregunta real de insights de Meta: respondida con datos reales** por Graph API directo (`me/adaccounts`, `act_<id>/insights` con `date_preset=last_90d`, `level=campaign`) usando el token OAuth del usuario emitido por Vercel Connect: 3 cuentas publicitarias, campaña peor identificada con gasto/CTR/CPC y diagnóstico coherente. 2 llamadas, 3 pasos, 2,643 tokens, **≈0.0037 USD**, 8 s. → El SKU `agent_message` a 0.004 USD estimado queda validado para turnos de lectura con 2-3 herramientas; los turnos con más pasos o modelo Pro deben cobrarse por `usage` real.
+
+**Vault OAuth: Vercel Connect, con matices.**
+- Meta **no admite Dynamic Client Registration** (`Dynamic registration is not available for this client`): hizo falta crear una **app propia de Meta** (tipo Business, productos *Facebook Login for Business* + *Marketing API*, redirect `https://connect.vercel.com/callback`) y registrar el conector como OAuth **Custom** con App ID/Secret. Conector: `mcp.facebook.com/estratega` (`scl_qSjrMWiuxiIXgUEUUG9pg`), subject **User** únicamente (no hay grant de app): el consentimiento es por usuario → en producción, un owner por organización autoriza y el token se pide con `subject: { type: 'user', id: <userId> }`.
+- El baile OAuth del SDK MCP con el proveedor de Connect falla (`OAuth authorization server metadata must be saveable before starting authorization`); la salida es `connectAuthProvider(connector, params, { consent: 'eager' })`, que lanza `ConsentRequiredError` con la URL de consentimiento antes de tocar el servidor.
+- El diálogo de Facebook rechaza la petición si alguno de los `scopes` no está dado de alta en la app ("necesita al menos un supported permission"): los permisos deben añadirse en la app antes de pedirlos.
+- **El MCP oficial exige `ads_mcp_management`**: con `ads_read, ads_management, business_management` el Graph API responde 200 pero `mcp.facebook.com/ads` devuelve 401 "restricted to certain users". Según la doc "Get started", el permiso se obtiene añadiendo a la app el caso de uso **"Create & manage ads with ads MCP server"**; para gestionar cuentas de terceros hace falta Advanced Access (App Review + verificación de negocio). Pendiente de comprobar en cuanto el caso de uso esté añadido.
+
+**Hallazgo de paso (módulo Social, no del spike):** bajo la cuenta agencia de Upload-Post, `getAnalytics('emily-9121b8a5')` devuelve `400 Username not associated with any profile` y Emily aparece solo con Instagram (antes Instagram + X): la migración a agencia dejó perfiles a medio enlazar. Revisar aparte.
+
+**Decisiones que se derivan para la Fase 1:** (1) el token de Meta se obtiene por Vercel Connect con subject usuario (owner de la org) y `scopes` explícitos; (2) el agente tendrá **dos vías a Meta**: Graph API directo para lectura (ya probado, sin dependencia del MCP) y el MCP para el catálogo completo de herramientas cuando `ads_mcp_management` esté concedido; (3) coste por turno de lectura ≈0.003-0.004 USD con Flash.
+
+### MCP oficial de Meta, medido (18-sep, 21:10, tras conceder `ads_mcp_management` con Standard access)
+
+- **Autenticación OK** con el token de Vercel Connect y los 7 scopes; el servidor responde y las herramientas ejecutan (`ads_get_ad_accounts`, `ads_get_ad_entities`, `ads_get_field_context`, `ads_insights_*`).
+- **El catálogo real son 95 herramientas, no 29** (las 29 del marketing son "core"). Sus descripciones pesan **169,768 caracteres** (~40k tokens de contexto por turno).
+- **Catálogo completo expuesto a Gemini Flash: inutilizable.** Pregunta "lista mis cuentas y cuál gastó más en 30 días": 8 pasos, 16 llamadas, **140,236 tokens de entrada, 0.043 USD, 30 s, sin respuesta final** (se agotó el tope de pasos encadenando herramientas). El modelo se pierde con 95 tools.
+- **Lista blanca de 7 herramientas (`insights`)**: 4 pasos, 3 llamadas, 14,362 tokens, **0.0067 USD, 14 s**, respuesta coherente pero incompleta: sin `ads_get_ad_entities` no obtuvo métricas por campaña. La lista blanca correcta para "rendimiento por campaña" es `ads_get_ad_accounts` + `ads_get_ad_entities` + `ads_insights_performance_trend` + `ads_insights_advertiser_context` (≈ 6-10 tools).
+- **Comparativa por turno de lectura**: Graph API directo 2,643 tokens / 0.0037 USD / 8 s con respuesta completa; MCP con lista blanca ≈ 14k tokens / 0.007 USD / 14 s; MCP completo 140k tokens / 0.043 USD / 30 s sin respuesta.
+
+**Decisiones para la Fase 1 derivadas de la medición:**
+1. **Nunca exponer el catálogo completo del MCP**: registro de herramientas por contexto de pantalla con listas blancas de 6-10 tools; el `schemaChars` del MCP se mide y se registra por turno.
+2. **Lectura frecuente por Graph API directo** (barato y completo); el MCP se reserva para lo que Graph no cubre de forma sencilla (diagnóstico de subasta, anomalías, catálogos, creación de campañas en la Fase 4).
+3. **Cobro por `usage` real**, no por el SKU plano de 0.004 USD: un turno MCP puede costar 2-10× más. `tokensForUsage(usage, model)` en el catálogo es obligatorio en la Fase 1.
+4. `stopWhen(stepCountIs(6))` más un mensaje de sistema que exija responder en cuanto tenga los datos.
+
+**Gate 0: CUMPLIDO.** Vault = Vercel Connect (subject user, app Meta propia con `ads_mcp_management` en Standard access, `consent: 'eager'`). Coste por turno anotado.

@@ -3,6 +3,8 @@ import { redirect } from 'next/navigation'
 import PostLoginLayout from '@/components/layouts/PostLoginLayout'
 import { auth } from '@/auth'
 import { tryGetOrgContext } from '@/lib/tenant/getOrgContext'
+import { hasModuleForOrg } from '@/lib/modules/entitlements'
+import StrategistWidget from '@/components/shared/StrategistWidget/StrategistWidget'
 import appConfig from '@/configs/app.config'
 import { ReactNode } from 'react'
 
@@ -57,11 +59,47 @@ const Layout = async ({ children }: { children: ReactNode }) => {
     //
     // Coste: una lectura indexada de organization_members por navegación,
     // la misma que getNavigation ya hace en el layout raíz.
-    if (!(await tryGetOrgContext())) {
+    const ctx = await tryGetOrgContext()
+    if (!ctx) {
         redirect('/no-organization')
     }
 
-    return <PostLoginLayout>{children}</PostLoginLayout>
+    // F5.2 (Estratega) — El widget flotante se monta AQUÍ, una sola vez, para
+    // que la conversación sobreviva a la navegación (ver la cabecera de
+    // `StrategistWidget.tsx`). Se reusa el `ctx` de arriba en vez de volver a
+    // llamar a `tryGetOrgContext()`: es la misma lectura de
+    // `organization_members`, y hacerla dos veces por navegación no compra
+    // nada.
+    //
+    // Con el módulo sin instalar el widget devuelve `null` — ni botón, ni
+    // llamadas al servicio. La comprobación vive en el SERVIDOR a propósito:
+    // el cliente no puede decidir si tiene derecho a un módulo.
+    //
+    // Sin guardar: un hipo de `org_modules` (Supabase) tumbaba TODAS las
+    // rutas protegidas, porque este layout envuelve cada una de ellas. Mismo
+    // patrón que `getOrgUiContext` (`src/server/actions/navigation/getNavigation.ts`):
+    // catch + log y degradar a "módulo no instalado", nunca dejar caer la
+    // página entera por un fallo leyendo entitlements.
+    let strategistInstalled = false
+    try {
+        strategistInstalled = await hasModuleForOrg(
+            ctx.organizationId,
+            'strategist',
+        )
+    } catch (error) {
+        console.error('[layout] hasModuleForOrg strategist:', {
+            organizationId: ctx.organizationId,
+            error,
+        })
+        strategistInstalled = false
+    }
+
+    return (
+        <PostLoginLayout>
+            {children}
+            <StrategistWidget installed={strategistInstalled} />
+        </PostLoginLayout>
+    )
 }
 
 export default Layout

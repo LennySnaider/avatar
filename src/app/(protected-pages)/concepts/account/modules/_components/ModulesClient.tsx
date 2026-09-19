@@ -12,6 +12,7 @@ import ConfirmDialog from '@/components/shared/ConfirmDialog'
 import { installModule, uninstallModule } from '@/services/ModulesService'
 import type { ModuleCatalogRow } from '@/lib/modules/catalog'
 import type { OrgModuleRow } from '@/lib/modules/entitlements'
+import StrategistSettingsDrawer from './StrategistSettingsDrawer'
 
 const UNIT_LABEL: Record<string, string> = {
     bot: 'bot',
@@ -31,10 +32,17 @@ const UNIT_LABEL: Record<string, string> = {
  * mentira contraria. Un módulo nuevo que se siembre en el catálogo antes de
  * tener código se marca aquí "Próximamente" hasta que aterrice el suyo.
  *
+ * `strategist` entra aquí en F5.2 (Estratega) Fase 1: el widget flotante,
+ * las herramientas de sólo lectura y esta tarjeta ya funcionan end-to-end.
+ * Que `module_catalog.is_public` siga en `false` es aparte — un placeholder
+ * deliberado hasta fijar precio (ver Controller ruling #3 del plan) — así
+ * que hoy no aparece en el marketplace de nadie salvo que se instale a mano;
+ * cuando aparezca, ya no dirá "Próximamente".
+ *
  * Deliberadamente NO es una columna de `module_catalog`: es un hecho sobre el
  * REPOSITORIO (¿existe el código?), no sobre los datos.
  */
-const AVAILABLE_MODULES = new Set<string>(['telegram'])
+const AVAILABLE_MODULES = new Set<string>(['telegram', 'strategist'])
 
 interface Props {
     catalog: ModuleCatalogRow[]
@@ -46,6 +54,7 @@ export default function ModulesClient({ catalog, installed, canManage }: Props) 
     const router = useRouter()
     const [pending, startTransition] = useTransition()
     const [confirmSlug, setConfirmSlug] = useState<string | null>(null)
+    const [settingsOpen, setSettingsOpen] = useState(false)
 
     const statusOf = (slug: string) =>
         installed.find((m) => m.moduleSlug === slug)?.status ?? 'uninstalled'
@@ -111,25 +120,38 @@ export default function ModulesClient({ catalog, installed, canManage }: Props) 
                             </div>
 
                             <div className="mt-4">
-                                {isInstalled ? (
-                                    <Button
-                                        variant="plain"
-                                        disabled={!canManage || pending}
-                                        onClick={() => setConfirmSlug(mod.slug)}
-                                    >
-                                        Desinstalar
-                                    </Button>
-                                ) : (
-                                    <Button
-                                        variant="solid"
-                                        disabled={!canManage || pending}
-                                        onClick={() =>
-                                            run(() => installModule(mod.slug), `${mod.name} instalado.`)
-                                        }
-                                    >
-                                        Instalar
-                                    </Button>
-                                )}
+                                <div className="flex items-center gap-2">
+                                    {isInstalled ? (
+                                        <>
+                                            {mod.slug === 'strategist' && canManage && (
+                                                <Button
+                                                    variant="default"
+                                                    disabled={pending}
+                                                    onClick={() => setSettingsOpen(true)}
+                                                >
+                                                    Ajustes
+                                                </Button>
+                                            )}
+                                            <Button
+                                                variant="plain"
+                                                disabled={!canManage || pending}
+                                                onClick={() => setConfirmSlug(mod.slug)}
+                                            >
+                                                Desinstalar
+                                            </Button>
+                                        </>
+                                    ) : (
+                                        <Button
+                                            variant="solid"
+                                            disabled={!canManage || pending}
+                                            onClick={() =>
+                                                run(() => installModule(mod.slug), `${mod.name} instalado.`)
+                                            }
+                                        >
+                                            Instalar
+                                        </Button>
+                                    )}
+                                </div>
                                 {!canManage && (
                                     <p className="mt-2">
                                         Sólo el propietario o un administrador pueden gestionar módulos.
@@ -153,6 +175,12 @@ export default function ModulesClient({ catalog, installed, canManage }: Props) 
                     const slug = confirmSlug
                     setConfirmSlug(null)
                     if (slug) {
+                        // El Drawer de ajustes desmonta al desinstalar
+                        // (gate `statusOf('strategist') === 'installed'`
+                        // más abajo): si se queda `settingsOpen` en `true`,
+                        // una reinstalación posterior lo remontaría ya
+                        // abierto sin que nadie lo pidiera.
+                        if (slug === 'strategist') setSettingsOpen(false)
                         run(() => uninstallModule(slug), 'Módulo desinstalado.')
                     }
                 }}
@@ -162,6 +190,13 @@ export default function ModulesClient({ catalog, installed, canManage }: Props) 
                     detendrán. No se borra ningún dato: puedes volver a instalarlo cuando quieras.
                 </p>
             </ConfirmDialog>
+
+            {statusOf('strategist') === 'installed' && canManage && (
+                <StrategistSettingsDrawer
+                    isOpen={settingsOpen}
+                    onClose={() => setSettingsOpen(false)}
+                />
+            )}
         </div>
     )
 }

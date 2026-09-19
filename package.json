@@ -20,6 +20,7 @@
     },
     "dependencies": {
         "@ai-sdk/google": "^3.0.91",
+        "@ai-sdk/mcp": "^2.0.54",
         "@ai-sdk/openai-compatible": "^2.0.59",
         "@ai-sdk/react": "^3.0.226",
         "@ffmpeg/ffmpeg": "^0.12.15",
@@ -40,6 +41,7 @@
         "@tiptap/pm": "^2.10.4",
         "@tiptap/react": "^2.10.4",
         "@tiptap/starter-kit": "^2.10.4",
+        "@vercel/connect": "^2.3.0",
         "@visx/pattern": "^3.13.0-alpha.0",
         "@xyflow/react": "^12.10.2",
         "ai": "^6.0.193",

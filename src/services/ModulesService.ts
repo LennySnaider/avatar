@@ -16,7 +16,9 @@ import { orgTable, orgUpsert } from '@/lib/org/orgTable'
 import { ctxCan } from '@/lib/org/guards'
 import { getModuleCatalog, getModuleDefinition, type ModuleCatalogRow } from '@/lib/modules/catalog'
 import { listOrgModules, type OrgModuleRow } from '@/lib/modules/entitlements'
+import { settingsAfterInstall } from '@/lib/modules/defaultSettings'
 import { getWalletBalance } from '@/lib/billing/wallet'
+import type { Json } from '@/@types/database.generated'
 
 export interface ModulesResult<T> {
     success: boolean
@@ -124,6 +126,39 @@ async function setModuleStatus(
             return fail('El módulo se guardó pero no se pudo releer.')
         }
 
+        // Defaults en la instalación en frío (Controller ruling #1, Task 6):
+        // una escritura CONDICIONAL, aparte del upsert de arriba, para que
+        // reinstalar un módulo que un tenant ya había configurado jamás pise
+        // sus ajustes — `settingsAfterInstall` sólo devuelve algo cuando la
+        // fila estaba vacía (ver `defaultSettings.ts`).
+        let settings = row.settings ?? {}
+        if (status === 'installed') {
+            const semilla = settingsAfterInstall(slug, row.settings)
+            if (semilla) {
+                const { error: seedError } = await orgTable(ctx, 'org_modules')
+                    .update({ settings: semilla as Json })
+                    .eq('module_slug', slug)
+                if (seedError) {
+                    // DEGRADAR, no fallar: el upsert de arriba YA instaló el
+                    // módulo (y `revalidatePath` ya corrió) — devolver `fail`
+                    // aquí dejaría la tarjeta en "Instalar" con un toast de
+                    // error mientras el módulo queda instalado en el
+                    // servidor, una mentira visible. `settings` se queda en
+                    // `{}` (el valor que ya trae `row` recién insertado) y
+                    // `readStrategistSettings({})` en `budget.ts` lo lee como
+                    // los mismos defaults igualmente: nada se pierde, sólo no
+                    // queda escrito en la fila hasta el próximo guardado o
+                    // reinstalación.
+                    console.error(
+                        '[modules] setModuleStatus: fallo al sembrar los ajustes por defecto',
+                        { slug, organizationId: ctx.organizationId, error: seedError },
+                    )
+                } else {
+                    settings = semilla
+                }
+            }
+        }
+
         return {
             success: true,
             data: {
@@ -131,7 +166,7 @@ async function setModuleStatus(
                 status: row.status as OrgModuleRow['status'],
                 installedAt: row.installed_at,
                 uninstalledAt: row.uninstalled_at,
-                settings: row.settings ?? {},
+                settings,
             },
         }
     } catch (e) {

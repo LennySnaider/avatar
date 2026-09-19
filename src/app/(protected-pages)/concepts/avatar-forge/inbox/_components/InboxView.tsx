@@ -13,6 +13,7 @@ import {
     listAgentChats,
     type AgentChatListItem,
 } from '@/services/AgentInboxService'
+import AskStrategistButton from '@/components/shared/StrategistWidget/AskStrategistButton'
 import ThreadPane from './ThreadPane'
 
 interface InboxViewProps {
@@ -117,6 +118,15 @@ const InboxView = ({ initialChats, loadError }: InboxViewProps) => {
 
     return (
         <div className="flex flex-col gap-4">
+            {/* F5.2 — atajo al Estratega con la pregunta escrita, sin enviar. */}
+            <div className="flex justify-end">
+                <AskStrategistButton
+                    screen="inbox"
+                    label="Summarize what needs attention"
+                    prompt="Summarize what needs my attention in the inbox right now."
+                />
+            </div>
+
             {error && (
                 <div className="p-2 bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-700 rounded-lg">
                     <p className="text-xs text-red-600 dark:text-red-400">{error}</p>

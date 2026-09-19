@@ -95,6 +95,37 @@ export async function countOrgMembers(organizationId: string): Promise<number> {
     return count ?? 0
 }
 
+/**
+ * El NOMBRE de la organización, para enseñárselo a quien lo necesite.
+ *
+ * Vive aquí y no en quien lo pide (el prompt de sistema del Estratega es el
+ * primero) porque `organizations` no es tabla tenant y leerla exige el cliente
+ * crudo, que en el resto del repo está vetado por ESLint: este fichero ya es
+ * la excepción documentada para esa tabla, así que el acceso queda en UN sitio
+ * en vez de abrir una exención nueva por cada consumidor.
+ *
+ * Devuelve `null` si la organización no tiene nombre o no se pudo leer (sí se
+ * loguea): un nombre es contexto, no una frontera, y quien lo pide debe tener
+ * un texto de reserva.
+ */
+export async function readOrgName(
+    organizationId: string,
+): Promise<string | null> {
+    const { data, error } = await orgSupabase()
+        .from('organizations')
+        .select('name')
+        .eq('id', organizationId)
+        .maybeSingle()
+    if (error) {
+        console.error('[org] no se pudo leer el nombre de la organización', {
+            organizationId,
+            error: error.message,
+        })
+        return null
+    }
+    return data?.name ?? null
+}
+
 /** El plan de la organización y su tope de asientos, tal como están en la base. */
 export async function readOrgPlanSeats(organizationId: string): Promise<{
     planSlug: string | null

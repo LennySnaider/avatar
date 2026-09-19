@@ -11,6 +11,7 @@ import Switcher from '@/components/ui/Switcher'
 import Notification from '@/components/ui/Notification'
 import toast from '@/components/ui/toast'
 import ConfirmDialog from '@/components/shared/ConfirmDialog'
+import AskStrategistButton from '@/components/shared/StrategistWidget/AskStrategistButton'
 import {
     assignSocialProfileToAvatar,
     createSocialProfileForAvatar,
@@ -603,6 +604,14 @@ const AccountsClient = ({ initialAgency, initialAccounts, loadError }: AccountsC
                                     Profile {profile.uploadPostUsername}
                                 </span>
                             )}
+                            {/* F5.2 — abre el cajón del Estratega con la
+                                pregunta escrita, sin enviarla. */}
+                            <span className="ml-auto">
+                                <AskStrategistButton
+                                    screen="social-accounts"
+                                    prompt={`Analyze the social accounts of ${account.avatarName} and tell me what to improve this week.`}
+                                />
+                            </span>
                         </div>
 
                         {cardError && (
