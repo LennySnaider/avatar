@@ -42,6 +42,11 @@ export type ProfileStatus = 'active' | 'suspended' | 'deleted'
 
 export interface PlatformParams {
   captionOverride?: string
+  /** Se aplanan a `{platform}_title` / `{platform}_description` en el
+   *  provider (Upload-Post). TikTok FOTO los necesita separados: título ≤90 y
+   *  descripción ≤4000 unidades UTF-16 (ver lib/social/tiktokPhotoText). */
+  title?: string
+  description?: string
   privacy?: string
   allowComment?: boolean
   allowDuet?: boolean

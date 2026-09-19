@@ -19,6 +19,7 @@ import { indexKnowledgeSource } from '@/lib/agent/indexer'
 import { UploadPostProviderError } from '@/lib/social/providers/UploadPostProvider'
 import { validatePostForPlatforms } from '@/lib/social/platformValidators'
 import { appendHashtagsToCaption } from '@/lib/social/hashtagHelpers'
+import { buildTikTokPhotoText } from '@/lib/social/tiktokPhotoText'
 import { validateSocialCommentSettingsPatch } from '@/lib/social/comments/settingsValidation'
 import { ALL_PLATFORMS } from '@/@types/social'
 import type { Platform, PlatformTarget } from '@/@types/social'
@@ -951,7 +952,18 @@ export async function createSocialPost(input: CreateSocialPostInput): Promise<So
         }
 
         const provider = getSocialProvider()
-        const platformTargets: PlatformTarget[] = platforms.map((platform) => ({ platform }))
+        const platformTargets: PlatformTarget[] = platforms.map((platform) => {
+            // TikTok FOTO separa título (≤90) y descripción (≤4000), en unidades
+            // UTF-16 (doc oficial de photo post). El `title` genérico de arriba
+            // lleva caption + hashtags y TikTok lo rechazaba con 400 ("title is
+            // too long (178…) Maximum allowed is 90", 2026-09-19). Upload-Post
+            // acepta `tiktok_title` / `tiktok_description` como override.
+            if (platform === 'tiktok' && contentType === 'photo') {
+                const { title, description } = buildTikTokPhotoText(input.caption, input.hashtags)
+                return { platform, params: { ...(title ? { title } : {}), description } }
+            }
+            return { platform }
+        })
         const scheduledAt = input.scheduledAt ? new Date(input.scheduledAt) : undefined
         const publishBase = {
             username,
