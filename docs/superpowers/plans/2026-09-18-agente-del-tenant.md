@@ -2,13 +2,13 @@
 
 Spec: `docs/superpowers/specs/2026-09-18-agente-del-tenant-design.md`
 
-> **Última revisión: 2026-09-18.** Ninguna fase empezada. Cada fase se ejecuta como plan propio (superpowers: brainstorming corto si hace falta → plan → subagentes con revisión → merge → deploy), con su gate de verificación en vivo antes de abrir la siguiente.
+> **Última revisión: 2026-09-18 (noche).** Fase 0 ejecutada: tool-calling y pregunta real de insights OK por Graph API; vault = Vercel Connect (subject user, app Meta propia, `consent: 'eager'`). Cada fase se ejecuta como plan propio (superpowers: brainstorming corto si hace falta → plan → subagentes con revisión → merge → deploy), con su gate de verificación en vivo antes de abrir la siguiente.
 
 ## Estado
 
 | Fase | Entregable | Estado |
 |---|---|---|
-| 0 | Spike: tool-calling mínimo + MCP de Meta con la cuenta del usuario; decisión del vault OAuth | ⬜ |
+| 0 | Spike: tool-calling mínimo + MCP de Meta con la cuenta del usuario; decisión del vault OAuth | ✅ 18-sep: Gate 0 cumplido (Graph API y MCP oficial). 95 tools/170k chars → listas blancas obligatorias; cobro por usage real. Ver spec §Resultados de la Fase 0 |
 | 1 | Cimientos: módulo `strategist`, tablas, cobro por turno, motor de herramientas, ruta streaming, widget flotante, herramientas de LECTURA | ⬜ |
 | 2 | Proponer y generar: plan de contenido, prompts desde la librería del Studio, generación a la galería con tope de tokens y aprobación | ⬜ |
 | 3 | Programar: publicar/programar vía Upload-Post con aprobación, mejores horas | ⬜ |
@@ -24,7 +24,7 @@ Spec: `docs/superpowers/specs/2026-09-18-agente-del-tenant-design.md`
 - Módulos: `module_catalog(slug, unit in ('bot','avatar','org'), price_usd_month_per_unit, …)`, `org_modules(settings jsonb)`, `requireModule(ctx, slug)`, `ModuleSlug = 'telegram'` (ampliar la unión). Instalación desde `src/services/ModulesService.ts`.
 - Upload-Post: `getAnalytics(username, platforms)` (sin llamadores), `previewSlots`/`getNextSlot`, `createSocialPost(input)` (`src/services/SocialService.ts`), comentarios en `social_post_targets` + `agent_chats platform 'social:*'`. **Cuenta agencia desde el 18-sep** (`20260917140000_social_profiles_agency.sql`): una key de plataforma y perfiles asignables; `resolveProfileKey` sigue siendo el punto de resolución.
 - Librería de prompts del Studio en `src/app/(protected-pages)/concepts/avatar-forge/avatar-studio/_constants/` (`modelActionPresets.ts`, `nichePromptPresets.ts`, `nichePoses.ts`, `placePresets.ts`, `cinemaPresets.ts`); ensamblado final `buildAvatarPrompt` en `src/utils/avatarPromptBuilder.ts`; envío `submitKieImageTask` (`src/services/KieService.ts`, chokepoint de hold/settle).
-- Meta: MCP oficial `https://mcp.facebook.com/ads` (29 tools; OAuth de Meta Business; sin app de desarrollador). ai-sdk: `@ai-sdk/mcp` `createMCPClient({ transport: { type: 'http', url, authProvider } })`; Vercel Connect `connectAuthProvider` (`@vercel/connect/ai-sdk`) con `subject: { type: 'app' }` por tenant y conectores OAuth custom por URL.
+- Meta: MCP oficial `https://mcp.facebook.com/ads` (**95 tools medidas**, ~170k chars de descripciones; exige `ads_mcp_management`; Meta NO admite DCR → app propia + conector Custom en Vercel Connect, subject user). ai-sdk: `@ai-sdk/mcp` `createMCPClient({ transport: { type: 'http', url, authProvider } })`; Vercel Connect `connectAuthProvider` (`@vercel/connect/ai-sdk`) con `subject: { type: 'app' }` por tenant y conectores OAuth custom por URL.
 - Sin tabla de ajustes de organización; sin almacén OAuth por organización (`fanvue_connections` es por usuario).
 
 ## FASE 0 — Spike (una tarde; código desechable)
