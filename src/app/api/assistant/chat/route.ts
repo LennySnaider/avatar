@@ -133,7 +133,14 @@ import type { AssistantScreen } from '@/lib/assistant/types'
 import type { Json } from '@/@types/database.generated'
 
 export const dynamic = 'force-dynamic'
-export const maxDuration = 60
+/**
+ * 120 y no 60: Fase 0 midió un turno con MCP en ~30 s con 8 pasos, y este
+ * turno puede encadenar 6 pasos con MCP, Graph y Upload-Post por medio. A los
+ * 60 s la plataforma cortaba la petición a mitad de respuesta (el turno se
+ * cierra bien —`onAbort` devuelve el hold— pero el usuario se queda sin
+ * respuesta). El resto del repo ya usa 120.
+ */
+export const maxDuration = 120
 
 /**
  * Pantallas donde se abre el MCP de Meta. Fase 0: el catálogo entero son 95
@@ -309,7 +316,12 @@ async function guardarMensaje(
         output_tokens: fila.outputTokens ?? null,
         tokens_charged: fila.tokensCharged ?? 0,
         cost_usd: fila.costUsd ?? null,
-        hold_id: fila.holdId ?? null,
+        // `||` y no `??`: en measure-only, `wallet.ts` devuelve un hold con
+        // `holdId: ''` cuando la RPC falla y se deja pasar. Con `??` esa
+        // cadena vacía llegaría a la columna `uuid` y PostgREST tumbaría el
+        // insert entero ("invalid input syntax for type uuid"), perdiendo la
+        // fila del turno — y el error sólo quedaría en el log de más abajo.
+        hold_id: fila.holdId || null,
     })
     if (error) {
         // El turno YA se le está entregando al usuario: reventar aquí le
@@ -507,6 +519,13 @@ export async function POST(req: NextRequest) {
         // (`tokensForCostUsd` en `@/lib/billing/catalog`), y en measure-only
         // el hold debita igual. Por eso los defaults de `budget.ts` están en
         // esa unidad y son pequeños (200 por turno, 2 500 al día).
+        //
+        // OJO CON EL PERMISO: `holdForOperation` exige `generation:create`
+        // (ver `wallet.ts`), que NO es el `content:read` que guarda esta ruta.
+        // Hoy lo tienen los tres roles, así que nadie lo nota; el día que
+        // entre un rol de sólo lectura, el turno le fallará EXACTAMENTE aquí
+        // —con una excepción que cae en el catch de abajo y sale como un 500
+        // genérico—, no en el guard de arriba.
         const holdResult = await holdAssistantTurn(ctx, {
             threadId,
             messageId: assistantMessageId,
@@ -650,10 +669,10 @@ export async function POST(req: NextRequest) {
             tools,
             stopWhen: stepCountIs(6),
             // La petición abortada (el navegador se va, el usuario cierra el
-            // cajón, Vercel corta a los 60 s) tiene que llegar hasta aquí para
-            // que `onAbort` pueda cerrar el turno; sin señal, el SDK seguiría
-            // pidiéndole tokens a Gemini para una respuesta que ya no lee
-            // nadie.
+            // cajón, Vercel corta al llegar a `maxDuration`) tiene que llegar
+            // hasta aquí para que `onAbort` pueda cerrar el turno; sin señal,
+            // el SDK seguiría pidiéndole tokens a Gemini para una respuesta
+            // que ya no lee nadie.
             abortSignal: req.signal,
             onAbort: async () => {
                 if (turnoCerrado) return

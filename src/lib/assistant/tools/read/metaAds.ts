@@ -86,6 +86,18 @@ export const listMetaAdAccounts: AssistantToolDef<z.infer<typeof sinEntrada>> =
         },
     }
 
+/**
+ * Forma de un id de cuenta publicitaria: `act_` y dígitos, nada más.
+ *
+ * El id se INTERPOLA en el path de Graph (`${accountId}/insights`), y lo
+ * escribe el modelo, no una persona: un valor con `/`, `?` o `..` dentro
+ * cambiaría el endpoint al que se llama (leer otro nodo del grafo, colar
+ * parámetros de query). Validarlo aquí es lo que convierte "lo que el modelo
+ * alucinó" en un error de herramienta legible en vez de una llamada rara a
+ * Meta.
+ */
+const ID_CUENTA = /^act_\d+$/
+
 const insightsInput = z.object({
     accountId: z
         .string()
@@ -115,6 +127,16 @@ export const getMetaAdAccountInsights: AssistantToolDef<
     screens: META_SCREENS,
     mutating: false,
     async execute({ accountId, datePreset, level }, { ctx }: ToolEnv) {
+        if (!ID_CUENTA.test(accountId)) {
+            // Se devuelve como DATO, igual que `meta_not_connected`: el
+            // modelo puede leerlo, volver a `listMetaAdAccounts` y reintentar
+            // con un id bueno. Lanzar mataría el turno entero por una
+            // alucinación recuperable.
+            return {
+                error: 'invalid_account_id',
+                message: `"${accountId}" no es un id de cuenta publicitaria de Meta. Tiene que ser act_ seguido de dígitos, tal y como lo devuelve listMetaAdAccounts.`,
+            }
+        }
         return conMeta(ctx, () =>
             graphGet(ctx, `${accountId}/insights`, {
                 date_preset: datePreset,
