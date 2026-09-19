@@ -108,8 +108,16 @@ export function orgOwnsStoragePath(
  * de R2 empiece a pedirse en dos modos distintos hacen falta LAS DOS cosas —
  * unificar el modo Y cambiar la URL. Si el síntoma vuelve en otro sitio, mete
  * ese caso aquí y SUBE el número.
+ *
+ *  - 2026-09-19 → '3'. El envenenador fueron los dashboards de INGRESOS
+ *    (4d0d2b0, 17-sep): `TopAvatarsCard`, `AvatarRankingTable` y
+ *    `AvatarDashboardView` pintaban la cara con `<Avatar src>` de ECME, que
+ *    renderiza un `<img>` SIN crossOrigin sobre la MISMA url de la lista.
+ *    Entrar en Inicio dejaba la entrada sin CORS y "My Avatars" salía entera
+ *    en blanco. Medido otra vez contra el bucket: sin Origin sigue sin `Vary`.
+ *    Arreglo: `Avatar` acepta `crossOrigin` y los tres lo piden 'anonymous'.
  */
-const CORS_CACHE_ESCAPE = '2'
+const CORS_CACHE_ESCAPE = '3'
 const ES_VIDEO = /\.(mp4|webm|mov)$/i
 
 /**

@@ -68,6 +68,10 @@ const TopAvatarsCard = ({
                                 size={28}
                                 shape="circle"
                                 src={r.thumbnailUrl ?? undefined}
+                                // Mismo modo CORS que AvatarCard: esta URL es la
+                                // MISMA que pinta la lista con crossOrigin, y un
+                                // <img> sin modo envenenaba la caché (2026-09-19).
+                                crossOrigin="anonymous"
                             >
                                 {r.initials}
                             </Avatar>

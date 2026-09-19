@@ -13,6 +13,16 @@ export interface AvatarProps extends CommonProps {
     shape?: Exclude<TypeAttributes.Shape, 'none'> | 'square'
     src?: string
     srcSet?: string
+    /**
+     * Modo CORS del `<img>` interno. Pásalo como 'anonymous' cuando `src` sea
+     * una URL de nuestro R2 que TAMBIÉN se pide con `crossOrigin` en otro
+     * sitio (caras de avatar en `getReferenceMediaUrl`): R2 no manda `Vary:
+     * Origin` en la respuesta sin CORS y la cachea `immutable` un año, así que
+     * un `<img>` sin modo envenena la entrada y el `<img crossOrigin>` de la
+     * lista de avatares la rechaza (2026-09-19, caras en blanco tras entrar
+     * en los dashboards de ingresos). Ver CORS_CACHE_ESCAPE en storagePaths.
+     */
+    crossOrigin?: 'anonymous' | 'use-credentials'
 }
 
 const Avatar = (props: AvatarProps) => {
@@ -25,6 +35,7 @@ const Avatar = (props: AvatarProps) => {
         size = 'md',
         src,
         srcSet,
+        crossOrigin,
         ...rest
     } = props
 
@@ -82,6 +93,7 @@ const Avatar = (props: AvatarProps) => {
                 srcSet={srcSet}
                 alt={alt}
                 loading="lazy"
+                crossOrigin={crossOrigin}
             />
         )
     } else if (icon) {

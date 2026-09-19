@@ -72,6 +72,9 @@ const AvatarDashboardView = ({ data }: AvatarDashboardViewProps) => {
                         size={56}
                         shape="circle"
                         src={avatar.thumbnailUrl ?? undefined}
+                        // Mismo modo CORS que AvatarCard: misma URL que la
+                        // lista, y sin modo envenenaba la caché (2026-09-19).
+                        crossOrigin="anonymous"
                     >
                         {avatar.initials}
                     </Avatar>
