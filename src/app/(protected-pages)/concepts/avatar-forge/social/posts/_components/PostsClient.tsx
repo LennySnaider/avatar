@@ -7,6 +7,7 @@ import Button from '@/components/ui/Button'
 import Tag from '@/components/ui/Tag'
 import Notification from '@/components/ui/Notification'
 import toast from '@/components/ui/toast'
+import AskStrategistButton from '@/components/shared/StrategistWidget/AskStrategistButton'
 import { cancelScheduledPost, type SocialPostRow } from '@/services/SocialService'
 
 interface PostsClientProps {
@@ -69,18 +70,35 @@ const PostsClient = ({ initialPosts, loadError }: PostsClientProps) => {
         }
     }
 
+    // F5.2 — la cabecera va en los DOS caminos (con y sin posts): preguntarle
+    // al Estratega qué funcionó tiene sentido también cuando esta pantalla
+    // está vacía porque los posts aún no han aterrizado aquí.
+    const strategistHeader = (
+        <div className="flex justify-end">
+            <AskStrategistButton
+                screen="social-posts"
+                label="What worked this week?"
+                prompt="What performed best this week across my social posts, and why?"
+            />
+        </div>
+    )
+
     if (posts.length === 0 && !error) {
         return (
-            <Card>
-                <p className="text-sm text-gray-500">
-                    No posts yet — publish or schedule a generation from the composer to see it here.
-                </p>
-            </Card>
+            <div className="flex flex-col gap-3">
+                {strategistHeader}
+                <Card>
+                    <p className="text-sm text-gray-500">
+                        No posts yet — publish or schedule a generation from the composer to see it here.
+                    </p>
+                </Card>
+            </div>
         )
     }
 
     return (
         <div className="flex flex-col gap-4">
+            {strategistHeader}
             {error && (
                 <div className="p-2 bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-700 rounded-lg">
                     <p className="text-xs text-red-600 dark:text-red-400">{error}</p>
