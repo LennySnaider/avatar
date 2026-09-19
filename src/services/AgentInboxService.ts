@@ -233,6 +233,70 @@ export async function listAgentChats(filter?: {
     }
 }
 
+/** Un hilo escalado a humano, en la forma mínima que necesita el aviso global. */
+export interface AttentionChatItem {
+    id: string
+    avatarName: string | null
+    fanDisplayName: string | null
+    platform: string
+    attentionReason: string | null
+    updatedAt: string | null
+}
+
+/**
+ * Hilos con `needs_attention` (2026-09-19). Es la fuente del vigilante global
+ * (`AttentionWatcher`), que la sondea cada 20 s desde CUALQUIER página, así
+ * que tiene que ser barata: dos lecturas indexadas y sin la pasada por
+ * `agent_messages` que hace `listAgentChats` para los previews.
+ *
+ * Los chats de otros creadores/bots quedan fuera igual que en la lista del
+ * Inbox: un hilo escalado ahí no es un fan esperando.
+ */
+export async function listAttentionChats(): Promise<InboxResult<AttentionChatItem[]>> {
+    try {
+        const ctx = await getOrgContext()
+        requirePermission(ctx, 'content:read')
+        const { data, error } = await orgTable(ctx, 'agent_chats')
+            .select('id, avatar_id, platform, fan_display_name, attention_reason, updated_at')
+            .eq('needs_attention', true)
+            .eq('is_creator', false)
+            .order('updated_at', { ascending: false })
+            .limit(50)
+        if (error) throw new Error(error.message)
+        const rows = (data ?? []) as Array<{
+            id: string
+            avatar_id: string
+            platform: string
+            fan_display_name: string | null
+            attention_reason: string | null
+            updated_at: string | null
+        }>
+        if (rows.length === 0) return { success: true, data: [] }
+
+        const avatarIds = [...new Set(rows.map((r) => r.avatar_id))]
+        const { data: avatars, error: avatarsError } = await orgTable(ctx, 'avatars')
+            .select('id, name')
+            .in('id', avatarIds)
+        if (avatarsError) throw new Error(avatarsError.message)
+        const nameById = new Map(
+            ((avatars ?? []) as { id: string; name: string }[]).map((a) => [a.id, a.name]),
+        )
+        return {
+            success: true,
+            data: rows.map((r) => ({
+                id: r.id,
+                avatarName: nameById.get(r.avatar_id) ?? null,
+                fanDisplayName: r.fan_display_name,
+                platform: r.platform,
+                attentionReason: r.attention_reason,
+                updatedAt: r.updated_at,
+            })),
+        }
+    } catch (e) {
+        return fail('listAttentionChats', e)
+    }
+}
+
 export async function getAgentChatThread(
     chatId: string,
 ): Promise<

@@ -5,6 +5,7 @@ import { auth } from '@/auth'
 import { tryGetOrgContext } from '@/lib/tenant/getOrgContext'
 import { hasModuleForOrg } from '@/lib/modules/entitlements'
 import StrategistWidget from '@/components/shared/StrategistWidget/StrategistWidget'
+import AttentionWatcher from '@/components/shared/AttentionWatcher/AttentionWatcher'
 import appConfig from '@/configs/app.config'
 import { ReactNode } from 'react'
 
@@ -98,6 +99,11 @@ const Layout = async ({ children }: { children: ReactNode }) => {
         <PostLoginLayout>
             {children}
             <StrategistWidget installed={strategistInstalled} />
+            {/* Aviso global (toast + sonido) de hilos escalados a humano.
+                Mismo motivo para montarlo AQUÍ que el widget de arriba: una
+                sola instancia que sobrevive a la navegación. Ver la cabecera
+                de `AttentionWatcher.tsx`. */}
+            <AttentionWatcher />
         </PostLoginLayout>
     )
 }
