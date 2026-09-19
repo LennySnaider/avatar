@@ -196,11 +196,24 @@ export const VOICE_CLONE_COST_USD: CostEntry = { usd: 0.3, estimated: true }
 export const AGENT_MESSAGE_COST_USD: CostEntry = { usd: 0.004, estimated: true }
 
 /**
- * Precio POR MILLÓN de tokens de los modelos que usa el Estratega (agente de
- * la organización, F5.2/Fase 1). A diferencia de `AGENT_MESSAGE_COST_USD`
- * (una estimación FIJA usada como hold previo al turno), esto factura el
- * USO REAL que devuelve el SDK (`usage.inputTokens`/`outputTokens`) en el
- * settle — de ahí que necesite precio de entrada Y de salida por separado.
+ * TECHO por turno del Estratega (agente de la organización, F5.2/Fase 1):
+ * cuánto se RESERVA con `quote({kind:'assistant_turn'})`, antes de conocer
+ * el uso real. NO es el promedio esperado — `wallet_settle` solo puede bajar
+ * de lo reservado (`least(p_tokens_final, v_held)`, nunca al alza), así que
+ * reservar el promedio ($0.004 medido en Fase 0 para un turno de lectura)
+ * capa en silencio cualquier turno más caro. Fase 0 midió hasta $0.043 en el
+ * run de catálogo completo (140k tokens con MCP); $0.05 deja margen sobre
+ * eso. Measure-only hoy: subir el hold no bloquea a nadie, solo reserva más
+ * de la cuenta por turno hasta que el settle la baje al gasto real.
+ */
+export const ASSISTANT_TURN_CEILING_USD = 0.05
+
+/**
+ * Precio POR MILLÓN de tokens de los modelos que usa el Estratega. A
+ * diferencia de `ASSISTANT_TURN_CEILING_USD` (el techo que se RESERVA antes
+ * del turno), esto factura el USO REAL que devuelve el SDK
+ * (`usage.inputTokens`/`outputTokens`) en el settle — de ahí que necesite
+ * precio de entrada Y de salida por separado.
  *
  * `gemini-flash-latest` / `gemini-2.5-flash`: precio público de Gemini 2.5
  * Flash (https://ai.google.dev/pricing, leído 2026-09-18) — $0.30/M entrada,
@@ -389,13 +402,20 @@ export type PaidOperation =
     | { kind: 'agent_message' }
     /**
      * Turno del Estratega (agente de la organización, no del avatar). Esta
-     * cotización es la ESTIMACIÓN previa al hold (antes de tener uso real) —
-     * usa el mismo importe fijo que `agent_message` porque Fase 0 midió
-     * turnos de rango similar (~$0.003-0.007). El cobro DEFINITIVO del turno
-     * sale de `tokensForUsage(usage, model)` con el uso real del SDK, en el
-     * settle (ver `src/lib/assistant/billing.ts`).
+     * cotización es el TECHO que se reserva ANTES de streamear — no un
+     * promedio: `wallet_settle` (supabase/migrations/20260729120000_
+     * billing_tokens.sql) hace `least(p_tokens_final, v_held)`, así que un
+     * settle JAMÁS puede cobrar más de lo que este hold reservó, solo menos.
+     * Si se reservara el promedio medido en Fase 0 ($0.004,
+     * `AGENT_MESSAGE_COST_USD`), cualquier turno con herramientas MCP (Fase 0
+     * midió hasta $0.043 en el run de catálogo completo) se cobraría de MENOS
+     * sin que nada lo avisara — el `least` lo capa en silencio. Por eso el
+     * hold usa `ASSISTANT_TURN_CEILING_USD` (con `maxTokens` para que el
+     * caller lo sobrescriba con el tope de `org_modules.settings`, F1/Task 4).
+     * El cobro DEFINITIVO sale de `tokensForUsage(usage, model)` con el uso
+     * real del SDK, en el settle (ver `src/lib/assistant/billing.ts`).
      */
-    | { kind: 'assistant_turn' }
+    | { kind: 'assistant_turn'; maxTokens?: number }
 
 export type Quote = {
     /** Identificador estable del SKU para el ledger ('image:kie-seedream-5-lite'). */
@@ -492,12 +512,23 @@ export function quote(op: PaidOperation): Quote {
                 costUsd: AGENT_MESSAGE_COST_USD.usd,
                 estimated: true,
             }
-        case 'assistant_turn':
+        case 'assistant_turn': {
+            // `maxTokens` (el tope de `org_modules.settings`, ver Task 4) manda
+            // sobre el techo por defecto: si el caller ya sabe cuántos tokens
+            // quiere reservar como máximo, ese es el hold. `costUsd` se deriva
+            // del mismo número (inverso de `tokensForCostUsd`) para que quede
+            // consistente con `tokens` — no es un segundo precio independiente.
+            const tokens = op.maxTokens ?? tokensForCostUsd(ASSISTANT_TURN_CEILING_USD)
+            const costUsd =
+                op.maxTokens != null
+                    ? (tokens * TOKEN_USD) / COST_MARGIN
+                    : ASSISTANT_TURN_CEILING_USD
             return {
                 sku: 'assistant_turn',
-                tokens: tokensForCostUsd(AGENT_MESSAGE_COST_USD.usd),
-                costUsd: AGENT_MESSAGE_COST_USD.usd,
+                tokens,
+                costUsd,
                 estimated: true,
             }
+        }
     }
 }

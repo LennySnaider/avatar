@@ -7,10 +7,11 @@ import {
     usdToTokens,
     MODULE_SKU,
     TOKEN_USD,
+    COST_MARGIN,
     MODEL_USD_PER_M,
     tokensForUsage,
     quote,
-    AGENT_MESSAGE_COST_USD,
+    ASSISTANT_TURN_CEILING_USD,
     tokensForCostUsd,
 } from './catalog.ts'
 
@@ -122,12 +123,25 @@ test('MODEL_USD_PER_M trae los tres modelos del Estratega', () => {
     assert.equal(MODEL_USD_PER_M['gemini-2.5-pro'].estimated, true)
 })
 
-test('quote({kind:assistant_turn}) es la estimacion fija del SKU assistant_turn', () => {
+test('quote({kind:assistant_turn}) reserva el TECHO por turno, no el promedio', () => {
+    // wallet_settle solo puede bajar de lo reservado (least(...)) — el hold
+    // tiene que ser el techo medido (Fase 0: hasta $0.043 con MCP), no el
+    // promedio de $0.004 de un turno de lectura simple.
     const q = quote({ kind: 'assistant_turn' })
     assert.deepEqual(q, {
         sku: 'assistant_turn',
-        tokens: tokensForCostUsd(AGENT_MESSAGE_COST_USD.usd),
-        costUsd: AGENT_MESSAGE_COST_USD.usd,
+        tokens: tokensForCostUsd(ASSISTANT_TURN_CEILING_USD),
+        costUsd: ASSISTANT_TURN_CEILING_USD,
         estimated: true,
     })
+})
+
+test('quote({kind:assistant_turn, maxTokens}) respeta el override (tope de org_modules.settings)', () => {
+    const q = quote({ kind: 'assistant_turn', maxTokens: 500 })
+    assert.equal(q.sku, 'assistant_turn')
+    assert.equal(q.tokens, 500)
+    // costUsd es el inverso de tokensForCostUsd: consistente con `tokens`,
+    // no un segundo precio independiente.
+    assert.equal(q.costUsd, (500 * TOKEN_USD) / COST_MARGIN)
+    assert.equal(q.estimated, true)
 })
