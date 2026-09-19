@@ -21,6 +21,7 @@ import {
 } from 'react-icons/hi'
 import { generateAvatar, analyzeFaceFromImages } from '@/services/GeminiService'
 import { sameBodyShape } from '@/utils/bodySheetPrompt'
+import { newestReference } from '@/utils/avatarReferences'
 import { generateBodySheetPair } from '@/utils/bodySheetGenerate'
 import { urlToDataUrl } from '@/utils/imageStitch'
 import {
@@ -258,7 +259,7 @@ const AvatarEditDrawer = ({
             }
             try {
                 const rows = await apiGetAvatarReferences(avatarId, type)
-                const row = rows?.[0]
+                const row = newestReference(rows)
                 if (!row?.storage_path) return
                 rowExists = true
                 // No pisar: (a) una selección FRESCA sin guardar (sin

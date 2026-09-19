@@ -52,6 +52,7 @@ import {
     getSignedUrl,
 } from '@/services/AvatarForgeService'
 import { urlToDataUrl } from '@/utils/imageStitch'
+import { newestReference } from '@/utils/avatarReferences'
 import {
     fetchMediaBlobWithFallback,
     sniffMediaType,
@@ -560,7 +561,7 @@ async function hydrateSheetFromDb(
     current: ReferenceImage | null,
 ): Promise<ReferenceImage | null> {
     const rows = await apiGetAvatarReferences(avatarId, type)
-    const row = rows?.[0]
+    const row = newestReference(rows)
     if (!row?.storage_path || current?.storagePath === row.storage_path) {
         return null
     }
@@ -1709,8 +1710,9 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                 let generationMeta: GenerationMetadata | undefined
 
                 // Refrescar las hojas del Body Lab desde la BD → SIEMPRE se
-                // envía la última guardada, sin depender de abrir el drawer de
-                // edit. No pisa una selección FRESCA sin guardar (sin
+                // envía la MÁS NUEVA guardada (por fecha, no por posición: la
+                // consulta viene ascendente y `rows[0]` era la más vieja —
+                // reporte 2026-09-19), sin depender de abrir el drawer de edit. No pisa una selección FRESCA sin guardar (sin
                 // storagePath). Dos hojas: `body` (vestida) y `body_nsfw`.
                 let effectiveBodyRef = bodyRef
                 let effectiveBodyRefNsfw = bodyRefNsfw
