@@ -34,6 +34,7 @@ import { buildImageRequest } from './kie/dispatch'
 import { probeKieTask } from './kie/taskProbe'
 import { seedance25AspectRatio } from './kie/seedance25Aspect'
 import { seedance25Scene } from './kie/seedance25Scene'
+import { stripPromptHarness } from './kie/motionPrompt'
 import { isProviderOutage } from '@/utils/geminiError'
 import type { KieRefWithRole } from './kie/shared'
 import {
@@ -2191,11 +2192,7 @@ export async function generateMotionControlKie(
     // movimiento en el VIDEO conductor: el texto solo aporta estilo, así que
     // se stripean los bloques [LABEL ...] (con dos puntos O raya — el arnés
     // de cuerpo usa "[BODY — ...]") y el resto respeta el cap de la doc.
-    const motionPrompt = (prompt ?? '')
-        .replace(/\[[A-Z][A-Z_ ]*\s*[:—-][^\]]*\]/g, ' ')
-        .replace(/\s{2,}/g, ' ')
-        .trim()
-        .slice(0, 2400)
+    const motionPrompt = stripPromptHarness(prompt ?? '', 2400)
 
     const input: Record<string, unknown> = {
         input_urls: [imageUrl],
@@ -2889,18 +2886,19 @@ async function submitVideoWan22(
     )
     console.log(`[KIE/Wan2.2] Uploaded reference to: ${url}`)
 
-    // Wan 2.2 turbo 500s ("Internal Error, Please try again later") on the
-    // structured avatar harness — verified live 2026-07-17: same image, prompt
-    // WITH [BODY:]/[FACE:] blocks (925 chars) → fail 500 twice (task
-    // 80cea769…); short motion-only prompt → success. In i2v the identity
-    // rides on the IMAGE anyway, so strip the bracket blocks (motion text is
-    // what matters) and keep the rest well under the choke point. Wan 2.7
-    // tolerates the harness fine — this is 2.2-only.
-    const motionPrompt = prompt
-        .replace(/\[[A-Z][A-Z_ ]*:[^\]]*\]/g, ' ')
-        .replace(/\s{2,}/g, ' ')
-        .trim()
-        .slice(0, 800)
+    // Wan 2.2 turbo 500ea ("Internal Error", failCode 500, costTime 15ms — ni
+    // toca la GPU) con el arnés estructurado en el prompt. Verificado en vivo
+    // 2026-07-17 con [BODY:]/[FACE:] y REVERIFICADO 2026-09-19 con A/B/C/D
+    // sobre la misma imagen y el mismo payload: prompt con el arnés → fail;
+    // el MISMO prompt pasado por el guardia → success (MP4 real). En i2v la
+    // identidad viaja en la IMAGEN, así que solo importa el texto de
+    // MOVIMIENTO. Wan 2.7 tolera el arnés — esto es 2.2-only.
+    //
+    // El guardia vive en ./kie/motionPrompt COMPARTIDO con Kling 3.0
+    // motion-control a propósito: cuando cada ruta tenía su copia, el store
+    // pasó de "[BODY:" a "[BODY —" y solo se arregló Kling — la copia de aquí
+    // quedó ciega SIN avisar y tumbó el modelo entero del 18 al 19-sep.
+    const motionPrompt = stripPromptHarness(prompt, 800)
 
     const input: Record<string, unknown> = {
         prompt: motionPrompt || 'natural subtle motion, cinematic',
