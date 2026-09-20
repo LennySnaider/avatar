@@ -150,6 +150,11 @@ la imagen y de paso se lleva el C2PA, así que preguntarle al archivo intermedio
 contestaba "no había metadatos" justo en los que sí los traían. De ese informe
 depende si se cobra.
 
+**El valor está en los metadatos, no en los logos.** De 118 generaciones reales,
+91 traían una etiqueta invisible y sólo 5 traían un logo visible. El tamaño del
+archivo no crece salvo cuando hay que rellenar píxeles (mediana 0,99×), así que
+el efecto sobre el almacenamiento es despreciable.
+
 ## Cobro
 
 Módulo instalable, cuota mensual 0, cobro por uso. **Sólo se cobra cuando el
