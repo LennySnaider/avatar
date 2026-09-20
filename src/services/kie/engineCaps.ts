@@ -107,8 +107,8 @@ const QWEN3_PRO: EngineCaps = {
     deepfakeCapable: false,
     canEdit: true,
     twoPhase: false,
-    // OJO con el tramo por defecto: 2K son $0.1025 por imagen, el motor más
-    // caro del catálogo. 1K baja a $0.0745 y sigue siendo caro.
+    // 2K son $0.0625 por imagen; 1K, $0.0345 (casi la mitad, y lo mismo que
+    // cuesta Seedream 5 Pro).
     defaultResolution: '2K',
     resolutions: ['1K', '2K'],
     aspectRatios: QWEN3_RATIOS,

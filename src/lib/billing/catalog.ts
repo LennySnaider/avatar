@@ -145,8 +145,15 @@ export const IMAGE_COST_USD: Record<string, CostEntry> = {
     'kie-wan-image': { usd: 0.024 },
     'kie-wan-image-pro': { usd: 0.06 },
     // ── Altas del 19-sep-2026. MEDIDOS EN VIVO, tramo por tramo ──────────
-    // KIE no publica cifra por modelo, así que cada tramo sale de una
-    // generación real: saldo antes − saldo después, × $0.005 el crédito.
+    // KIE no publica cifra por modelo. Cada tramo sale del campo
+    // `creditsConsumed` que devuelve `jobs/recordInfo` PARA ESA TAREA, × $0.005.
+    //
+    // OJO con el método: la primera medición se hizo restando el saldo de
+    // `chat/credit` antes y después, y salió inflada (Qwen 3 a 2K: 20.5cr en vez
+    // de 12.5). El saldo es GLOBAL de la cuenta — si alguien más genera en esos
+    // segundos, su gasto se suma al tuyo y lo atribuyes al modelo que estabas
+    // midiendo. Se demostró con un control: 25 segundos sin lanzar nada y el
+    // saldo bajó 7.4 créditos solo. `creditsConsumed` es por tarea y no miente.
     // Flare t2i 1K = 6.0cr · 2K = 10.0cr · 4K = 16.0cr. Medido también su i2i
     // a 2K: 10.0cr, EXACTAMENTE lo mismo que el t2i — las referencias no se
     // facturan aparte en este motor, así que no lleva `usdPorReferenciaExtra`.
@@ -158,22 +165,21 @@ export const IMAGE_COST_USD: Record<string, CostEntry> = {
             '4K': { usd: 0.08 },
         },
     },
-    // Qwen 3 Pro 1K = 14.9cr · 2K = 20.5cr. OJO: a 2K son $0.1025, el motor de
-    // imagen MÁS CARO del catálogo — casi el triple que Seedream 5 Lite y el
-    // doble que Seedream 5 Pro a la misma resolución. La estimación previa
-    // (~$0.07) se quedaba corta en un 46%, que es justo lo que habríamos
-    // perdido en cada generación.
+    // Qwen 3 Pro 1K = 6.9cr · 2K = 12.5cr (tasks 2c6cd402 y 1fc21136). A 1K
+    // cuesta prácticamente lo mismo que Seedream 5 Pro ($0.035); a 2K, casi el
+    // doble. No es el motor más caro del catálogo: Nano Banana Pro ($0.09) y
+    // Gemini 3 Pro ($0.13) están por encima.
     'kie-qwen3-pro': {
-        usd: 0.1025,
-        porResolucion: { '1K': { usd: 0.0745 }, '2K': { usd: 0.1025 } },
+        usd: 0.0625,
+        porResolucion: { '1K': { usd: 0.0345 }, '2K': { usd: 0.0625 } },
     },
     // El hermano no-pro no está en el selector y NO se ha medido: se le deja el
     // precio del Pro para que, si algún día entra, no cobre de menos por un
     // olvido. Sigue `estimated` a propósito.
     'kie-qwen3': {
-        usd: 0.1025,
+        usd: 0.0625,
         estimated: true,
-        porResolucion: { '1K': { usd: 0.0745 }, '2K': { usd: 0.1025 } },
+        porResolucion: { '1K': { usd: 0.0345 }, '2K': { usd: 0.0625 } },
     },
 }
 
