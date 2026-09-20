@@ -105,3 +105,38 @@ test('los cuatro ejes convergen en el prompt de la hoja sin contradecirse', asyn
     assert.match(p, /hips 90cm/) // perímetro
     assert.doesNotMatch(p, /with wide hips/) // y ninguna forma lo contradice
 })
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Cintura (20-sep-2026). Para 90/60/90 (ratio 0,667) viajaban 7 pistas de
+// cintura y "cinched" tres veces desde tres sitios que no se conocen entre sí;
+// un motor literal pintaba corsé. La intensidad la pone el RATIO; la silueta y
+// el rango de cm no la repiten.
+// ─────────────────────────────────────────────────────────────────────────────
+
+test('90/60/90 es un reloj de arena NATURAL, no un corsé', async () => {
+    const { describeBody } = await import('./bodyDescriptors.ts')
+    const d = describeBody({ age: 24, height: 168, bodyType: 'average', bust: 89, waist: 60, hips: 90, shape: 'hourglass', glutesLevel: 5, glutesShape: 'heart' } as never)
+    assert.equal((d.match(/cinched/gi) ?? []).length, 0, d)
+    assert.match(d, /naturally defined waist/)
+})
+
+test('la intensidad de la cintura sigue al ratio, banda por banda', async () => {
+    const { describeShapeAndBuild } = await import('./bodyDescriptors.ts')
+    const con = (waist: number, hips: number) =>
+        describeShapeAndBuild({ age: 24, height: 168, bodyType: 'average', bust: 89, waist, hips, shape: 'hourglass' } as never)
+    assert.match(con(45, 85), /extremely small, dramatically cinched/) // 0.53
+    assert.match(con(55, 95), /sharply cinched/) // 0.58
+    assert.match(con(60, 90), /naturally defined waist/) // 0.667
+    assert.doesNotMatch(con(60, 90), /sharply|cinched/)
+    assert.match(con(70, 95), /clearly defined narrow waist/) // 0.74
+})
+
+test('el rango de cm no repite la intensidad que ya pone el ratio', async () => {
+    const { getBodyDescriptors } = await import('./bodyDescriptors.ts')
+    const d = getBodyDescriptors({ age: 24, height: 168, bodyType: 'average', bust: 89, waist: 60, hips: 90 } as never)
+    assert.doesNotMatch(d, /cinched/)
+    assert.match(d, /defined waistline/)
+    // La cintura EXTREMA por cm (≤50) sigue diciendo lo suyo: ese caso es a
+    // propósito exagerado.
+    assert.match(getBodyDescriptors({ age: 24, height: 168, bodyType: 'average', bust: 89, waist: 48, hips: 100 } as never), /wasp/)
+})
