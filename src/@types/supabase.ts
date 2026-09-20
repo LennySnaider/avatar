@@ -529,6 +529,16 @@ export type NippleAreola = 'small' | 'medium' | 'large' | 'puffy'
 // (redonda/atlética/cónica/lágrima-pera/tuberosa). undefined = Auto.
 // Mismo gating permisivo que los niveles.
 export type GlutesShape = 'square' | 'v-shape' | 'a-shape' | 'round' | 'heart'
+/**
+ * ANCHURA FRONTAL de la cadera — eje aparte de los cm a propósito. Los cm de
+ * cadera son un PERÍMETRO tomado por la parte más saliente de los glúteos, así
+ * que no fijan lo ancha que se ve de frente: hueso estrecho + glúteo muy
+ * proyectado y hueso ancho + glúteo plano pueden medir los mismos 90. Sin este
+ * eje, la anchura se derivaba de los cm y fallaba justo con glúteos altos (la
+ * proyección se come perímetro y de frente debería salir estrecha).
+ * `undefined` = Auto: se deriva de los cm como siempre.
+ */
+export type HipWidth = 'narrow' | 'normal' | 'wide'
 export type BustShape =
     | 'round'
     | 'athletic'
@@ -606,6 +616,7 @@ export interface PhysicalMeasurements {
     bust: number
     waist: number
     hips: number
+    hipWidth?: HipWidth // anchura FRONTAL; undefined = Auto (derivada de los cm)
     legType?: LegType // optional leg shape; unset = follows the body type
     // Sliders de curvas 1-5 (solo modelos permisivos; undefined = Auto)
     bustLevel?: CurveLevel

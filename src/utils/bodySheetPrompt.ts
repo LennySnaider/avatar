@@ -52,6 +52,7 @@ const ETIQUETA_ATRIBUTO: Record<string, string> = {
     bust: 'busto',
     waist: 'cintura',
     hips: 'cadera',
+    hipWidth: 'anchura de cadera',
     legType: 'piernas',
     bustLevel: 'volumen de busto',
     bustShape: 'forma de busto',
