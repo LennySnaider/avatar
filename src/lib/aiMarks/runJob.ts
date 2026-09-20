@@ -21,6 +21,15 @@ import type {
 export const MAX_INTENTOS = 3
 export const ESPERAS_MS = [60_000, 5 * 60_000, 30 * 60_000]
 
+/**
+ * Cuánto puede llevar tomada una fila antes de que otro trabajador la retome.
+ *
+ * Vive aquí y no en `sweep.ts` porque quien toma la fila es este módulo: el
+ * barrido sólo decide a cuáles llamar. Mismo valor que `MS_PARA_RETOMAR_TOMADA`
+ * del barrido, y si alguna vez se separan, manda éste.
+ */
+export const MS_PARA_RETOMAR_TOMADA_EN_RUNJOB = 15 * 60_000
+
 /** Cuánto se conserva el original antes de borrarlo. */
 export const MS_ANTES_DE_PURGAR_ORIGINAL = 60 * 60_000
 

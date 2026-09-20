@@ -23,6 +23,8 @@ import {
     orgOwnsStoragePath,
     getReferenceMediaUrl,
 } from '@/lib/storagePaths'
+import { estadoInicialParaOrg } from '@/lib/aiMarks/policy.server'
+import { lanzarLimpieza } from '@/lib/aiMarks/register'
 import { orgTable, orgSupabase } from '@/lib/org/orgTable'
 import type {
     Avatar,
@@ -283,6 +285,20 @@ export async function apiSaveGeneration(generation: GenerationInsert) {
     if (generation.avatar_id) {
         await assertAvatarInOrg(ctx, generation.avatar_id)
     }
+
+    // ── Limpieza de marcas de IA (módulo `ai-mark-cleaner`) ──────────────────
+    // Este insert es el ÚNICO punto por el que pasan el 100 % de las
+    // generaciones: en el camino principal los bytes se suben desde el
+    // navegador por ticket prefirmado y nunca cruzan el servidor, así que no
+    // hay un momento anterior donde engancharse.
+    const mediaType = generation.media_type === 'VIDEO' ? 'VIDEO' : 'IMAGE'
+    const decision = await estadoInicialParaOrg({
+        organizationId: ctx.organizationId,
+        mediaType,
+        storagePath: generation.storage_path,
+        storageProvider: generation.storage_provider ?? null,
+    })
+
     // org + "creado por" de la sesión — valores del cliente se sobreescriben.
     const { data, error } = await orgSupabase()
         .from('generations')
@@ -290,12 +306,39 @@ export async function apiSaveGeneration(generation: GenerationInsert) {
             ...generation,
             user_id: ctx.userId,
             organization_id: ctx.organizationId,
+            ai_marks_status: decision.estado,
+            ai_marks:
+                decision.estado === 'pending'
+                    ? {
+                          rutaOriginal: generation.storage_path,
+                          intentos: 0,
+                          registradaEn: new Date().toISOString(),
+                      }
+                    : { motivoSalto: decision.motivo },
         } as never)
         .select()
         .single()
 
     if (error) throw error
-    return data as unknown as Generation
+    const fila = data as unknown as Generation
+
+    // Una imagen cabe en el guardado (2-3 s medidos) y vuelve ya limpia; un
+    // vídeo se va a segundo plano. Nada de esto puede tumbar el guardado: si
+    // la limpieza falla, la fila sigue sirviendo el original.
+    const lanzamiento = await lanzarLimpieza({
+        generationId: fila.id,
+        mediaType,
+        estadoInicial: decision.estado,
+    })
+    if (lanzamiento.estado !== 'terminado') return fila
+
+    // Terminó a tiempo: se relee para devolver la ruta definitiva, porque de
+    // ella salen la URL pública y la miniatura que pinta la galería.
+    const { data: refrescada } = await orgTable(ctx, 'generations')
+        .select('*')
+        .eq('id', fila.id)
+        .maybeSingle()
+    return (refrescada as unknown as Generation) ?? fila
 }
 
 /**

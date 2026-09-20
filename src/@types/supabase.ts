@@ -93,38 +93,61 @@ export type Database = {
                 }
                 Relationships: []
             }
+            // OJO: este tipo se escribe a MANO y llevaba cinco columnas de
+            // retraso respecto a la tabla real (`organization_id`,
+            // `storage_provider`, `thumbnail_path` y las dos de limpieza de
+            // marcas). El retraso no da error al leer —sobran campos, no
+            // faltan— pero sí al escribir: un insert con una columna que este
+            // tipo no declara no compila, aunque la columna exista en Postgres.
+            // `src/@types/database.generated.ts` es la versión fiel; cuando se
+            // añada otra columna hay que tocar las dos.
             generations: {
                 Row: {
                     id: string
                     user_id: string | null
+                    organization_id: string
                     avatar_id: string | null
                     media_type: MediaType
                     storage_path: string
+                    storage_provider: string | null
+                    thumbnail_path: string | null
                     prompt: string
                     aspect_ratio: string | null
                     metadata: GenerationMetadata | null
+                    ai_marks_status: string
+                    ai_marks: Record<string, unknown> | null
                     created_at: string | null
                 }
                 Insert: {
                     id?: string
                     user_id?: string | null
+                    organization_id?: string
                     avatar_id?: string | null
                     media_type: MediaType
                     storage_path: string
+                    storage_provider?: string | null
+                    thumbnail_path?: string | null
                     prompt: string
                     aspect_ratio?: string | null
                     metadata?: GenerationMetadata | null
+                    ai_marks_status?: string
+                    ai_marks?: Record<string, unknown> | null
                     created_at?: string | null
                 }
                 Update: {
                     id?: string
                     user_id?: string | null
+                    organization_id?: string
                     avatar_id?: string | null
                     media_type?: MediaType
                     storage_path?: string
+                    storage_provider?: string | null
+                    thumbnail_path?: string | null
                     prompt?: string
                     aspect_ratio?: string | null
                     metadata?: GenerationMetadata | null
+                    ai_marks_status?: string
+                    ai_marks?: Record<string, unknown> | null
                     created_at?: string | null
                 }
                 Relationships: []

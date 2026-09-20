@@ -144,6 +144,10 @@ const EXENTOS = [
         'F4.2 Tarea 4 — lo llama el webhook de Telegram sin sesión; todo cuelga de chat.organization_id. maybeAttachPaidMediaOffer parte del borrador que nuestro propio pipeline acaba de crear (esa fila es la que RESUELVE la org) y las siete consultas siguientes —chat, persona, enfriamiento, catálogo, ventas del fan, transcripción y la escritura de la oferta— la usan como filtro .eq explícito. Son OCHO .from() en total contando el propio borrador, que es la cifra que reporta este script.',
     ],
     [
+        'src/lib/aiMarks/runJob.server.ts',
+        'Limpiador de marcas de IA (`ai-mark-cleaner`). Corre SIN sesion en tres caminos distintos: el `after()` de apiSaveGeneration, el cron de barrido y los rescates de tareas KIE. La fila se toma por su id con un UPDATE CONDICIONAL —no un SELECT seguido de UPDATE— porque dos barridos solapados limpiarian y cobrarian la misma generacion dos veces; ese UPDATE no puede pasar por orgTable, que exige el ctx que aqui no existe. La organizationId NUNCA se adivina: sale de la propia fila ya cargada y es lo unico que se le pasa al cobro. El servicio limpiador no recibe credenciales de R2, solo dos URLs prefirmadas de ESE objeto.',
+    ],
+    [
         'src/lib/telegram/bots.ts',
         'telegramUnitActivity (Task 6, informe de unidades para la cuota prorrateada) corre sin sesión, disparada por el cron de module-fees — mismo perfil que moduleFees.ts. La organizationId llega por parámetro (la resuelve chargeModuleFees fila a fila desde org_modules) y la única consulta del fichero la filtra explícitamente con .eq(\'organization_id\', organizationId).',
     ],
