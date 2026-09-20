@@ -21,6 +21,8 @@ import {
     type PpvSuggestion,
 } from '@/services/AgentInboxService'
 import TelegramSendContentDialog from '../../_shared/TelegramSendContentDialog'
+import DiscardReasonDialog from './DiscardReasonDialog'
+import type { DiscardReason } from '@/lib/agent/draftCorrection'
 
 type ThreadData = NonNullable<Awaited<ReturnType<typeof getAgentChatThread>>['data']>
 
@@ -144,6 +146,7 @@ const ThreadPane = ({ thread, onChanged }: ThreadPaneProps) => {
     const [draftText, setDraftText] = useState(draft?.text ?? '')
     const [busy, setBusy] = useState<'send' | 'voice' | 'regen' | 'discard' | 'removeOffer' | null>(null)
     const [showMemory, setShowMemory] = useState(false)
+    const [discardOpen, setDiscardOpen] = useState(false)
 
     // PPV offer state
     const [ppv, setPpv] = useState<PpvSuggestion | null>(null)
@@ -292,12 +295,24 @@ const ThreadPane = ({ thread, onChanged }: ThreadPaneProps) => {
         }
     }
 
-    const handleDiscard = async () => {
+    const handleDiscard = async (reason: DiscardReason, note?: string) => {
         if (!draft) return
         setBusy('discard')
         try {
-            await discardDraft(draft.id)
-            onChanged()
+            // El resultado se mira: antes se ignoraba, así que un descarte que
+            // fallaba en el servidor se veía igual que uno que funcionó y el
+            // borrador reaparecía al recargar sin explicación.
+            const result = await discardDraft(draft.id, reason, note)
+            if (result.success) {
+                setDiscardOpen(false)
+                onChanged()
+            } else {
+                toast.push(
+                    <Notification type="danger" title="Could not discard">
+                        {result.error}
+                    </Notification>,
+                )
+            }
         } finally {
             setBusy(null)
         }
@@ -559,7 +574,7 @@ const ThreadPane = ({ thread, onChanged }: ThreadPaneProps) => {
                                 size="sm"
                                 loading={busy === 'discard'}
                                 disabled={busy !== null}
-                                onClick={handleDiscard}
+                                onClick={() => setDiscardOpen(true)}
                             >
                                 Discard
                             </Button>
@@ -594,6 +609,13 @@ const ThreadPane = ({ thread, onChanged }: ThreadPaneProps) => {
                     </div>
                 )}
             </div>
+
+            <DiscardReasonDialog
+                isOpen={discardOpen}
+                busy={busy === 'discard'}
+                onClose={() => setDiscardOpen(false)}
+                onConfirm={handleDiscard}
+            />
 
             {isTelegramChat && sendContentOpen && (
                 <TelegramSendContentDialog
