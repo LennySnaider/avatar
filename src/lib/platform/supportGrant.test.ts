@@ -120,3 +120,30 @@ test('una concesión de OTRA organización no eleva aquí', () => {
     assert.equal(d.role, 'viewer')
     assert.equal(d.elevated, false)
 })
+
+test('nadie se suplanta a sí mismo', () => {
+    // Con una sola organización en el sistema, «Ver como» sobre la propia es
+    // el PRIMER clic que alguien da en el panel. Sin esta regla, un admin de
+    // plataforma se degradaba a `viewer` en su propia cuenta y se quedaba sin
+    // poder hacer nada hasta pulsar «Salir», sin entender por qué.
+    const d = resolveImpersonation({
+        isPlatformAdmin: true,
+        targetOrganizationId: ORG,
+        actorOwnOrganizationId: ORG,
+        grant: null,
+        now: AHORA,
+    })
+    assert.equal(d.allowed, false)
+})
+
+test('suplantar OTRA organización sigue funcionando igual', () => {
+    const d = resolveImpersonation({
+        isPlatformAdmin: true,
+        targetOrganizationId: 'org-b',
+        actorOwnOrganizationId: ORG,
+        grant: null,
+        now: AHORA,
+    })
+    assert.equal(d.allowed, true)
+    assert.equal(d.role, 'viewer')
+})

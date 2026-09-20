@@ -20,6 +20,7 @@ import { cookies } from 'next/headers'
 import { revalidatePath } from 'next/cache'
 import { ORG_OVERRIDE_COOKIE } from '@/lib/tenant/getOrgContext'
 import { requirePlatformAdmin, isPlatformDenial } from '@/lib/platform/guards'
+import { getOrgContextForUser } from '@/lib/tenant/getOrgContext'
 import {
     insertGrant,
     latestGrantFor,
@@ -109,6 +110,18 @@ export async function enterOrg(
 ): Promise<PlatformResult<{ elevated: boolean }>> {
     try {
         const { userId } = await requirePlatformAdmin()
+
+        // Entrar en la propia organización no es suplantar: se rechaza aquí
+        // para no escribir una cookie que el resolutor va a ignorar ni dejar
+        // un apunte de bitácora que no significa nada.
+        const own = await getOrgContextForUser(userId)
+        if (own?.organizationId === organizationId) {
+            return {
+                success: false,
+                error: 'Ésta es tu propia organización: ya estás dentro.',
+            }
+        }
+
         const grant = await latestGrantFor(organizationId)
         const elevated = isGrantLive(grant, new Date()) &&
             grant?.organizationId === organizationId
