@@ -52,12 +52,33 @@ export const writeProviderOrder = (ids: string[]) => writeIds(ORDER_KEY, ids)
 
 // Set de Batch (máx 3). El botón Batch genera directo en estos modelos.
 export const BATCH_MAX = 3
-export const readBatchIds = () => readIds(BATCH_KEY).slice(0, BATCH_MAX)
+
+/**
+ * Un provider OCULTO no participa en el batch.
+ *
+ * Sin esto, ocultar desde la página AI Providers un modelo que estaba marcado
+ * dejaba su id dentro del set: no se veía en ninguna parte, pero seguía
+ * ocupando una de las tres plazas, así que en el selector solo se podían marcar
+ * DOS de los tres (reportado el 20-sep-2026). El filtro va en la LECTURA y no
+ * en el botón de ocultar a propósito: se oculta desde dos sitios distintos, y
+ * así también se arregla solo el estado de quien ya lo tenía roto.
+ *
+ * El recorte a BATCH_MAX va DESPUÉS de filtrar: si no, un oculto en las
+ * primeras posiciones se comía la plaza de uno visible.
+ */
+const readVisibleBatch = (key: string) => {
+    const ocultos = readIds(HIDDEN_KEY)
+    return readIds(key)
+        .filter((id) => !ocultos.includes(id))
+        .slice(0, BATCH_MAX)
+}
+
+export const readBatchIds = () => readVisibleBatch(BATCH_KEY)
 export const writeBatchIds = (ids: string[]) =>
     writeIds(BATCH_KEY, ids.slice(0, BATCH_MAX))
 
 // Set 🌶️: los modelos a los que se abanica cuando Spicy está ON.
-export const readBatchNsfwIds = () => readIds(BATCH_NSFW_KEY).slice(0, BATCH_MAX)
+export const readBatchNsfwIds = () => readVisibleBatch(BATCH_NSFW_KEY)
 export const writeBatchNsfwIds = (ids: string[]) =>
     writeIds(BATCH_NSFW_KEY, ids.slice(0, BATCH_MAX))
 
