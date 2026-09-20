@@ -79,6 +79,8 @@ test('los seis niveles hablan de la vista FRONTAL y los estrechos mandan el volu
     // 1-3 conviven con un glúteo grande diciendo que el volumen va ATRÁS —
     // medido: es lo único que frena el relleno del frente con glúteo 5.
     for (const n of [1, 2, 3]) assert.match(HIP_WIDTH_PHRASE[n], /BACKWARD/)
+    // 1-2 fijan también la vista TRASERA: el glúteo va en profundidad, no a los lados.
+    for (const n of [1, 2]) assert.match(HIP_WIDTH_PHRASE[n], /from behind/)
     // 3 es "como los hombros", ni más ni menos.
     assert.match(HIP_WIDTH_PHRASE[3], /no wider than her shoulders/)
 })
@@ -139,4 +141,36 @@ test('el rango de cm no repite la intensidad que ya pone el ratio', async () => 
     // La cintura EXTREMA por cm (≤50) sigue diciendo lo suyo: ese caso es a
     // propósito exagerado.
     assert.match(getBodyDescriptors({ age: 24, height: 168, bodyType: 'average', bust: 89, waist: 48, hips: 100 } as never), /wasp/)
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Glúteo 6 + cadera estrecha (20-sep-2026). Principio del usuario: el glúteo
+// dice CUÁNTO; nunca hacia los lados. Con 6/6 la hoja entra en modo XXL y un
+// texto fijo ordenaba "MASSIVE glutes dominating the frame" por detrás, que le
+// ganaba al eje de anchura; y su vista frontal imponía "dramatically cinched"
+// aunque la cintura fuera normal.
+// ─────────────────────────────────────────────────────────────────────────────
+
+test('con glúteo 6 y cadera moderada, la vista trasera de la hoja mantiene la cadera estrecha', async () => {
+    const { buildTurnaroundRefinePrompt } = await import('./bodySheetPrompt.ts')
+    const p = buildTurnaroundRefinePrompt({ age: 24, height: 173, bodyType: 'average', bust: 89, waist: 60, hips: 90, shape: 'hourglass', glutesLevel: 6, glutesShape: 'round', hipWidth: 1 } as never, { nude: false })
+    assert.doesNotMatch(p, /dominating the frame/)
+    assert.match(p, /as narrow as in the front view/)
+    assert.match(p, /do not spread sideways/)
+    // Y el glúteo 6 ya no dicta la cintura: eso lo hace el ratio.
+    assert.doesNotMatch(p, /dramatically cinched waist/)
+})
+
+test('la frase del nivel 6 fija la cadera por delante Y por detrás', async () => {
+    const { glutesLevelPhrase } = await import('./bodyDescriptors.ts')
+    const f = glutesLevelPhrase({ age: 24, height: 173, bodyType: 'average', bust: 89, waist: 60, hips: 90, glutesLevel: 6 } as never)
+    assert.match(f, /MASSIVE/) // sigue siendo enorme
+    assert.match(f, /from the front AND from behind/)
+    assert.match(f, /not sideways spread/)
+})
+
+test('el XXL por CADERA real (>=130) no cambia: ahí la anchura sí viene de los cm', async () => {
+    const { buildTurnaroundRefinePrompt } = await import('./bodySheetPrompt.ts')
+    const p = buildTurnaroundRefinePrompt({ age: 24, height: 173, bodyType: 'average', bust: 100, waist: 70, hips: 135, shape: 'pear', glutesLevel: 6 } as never, { nude: false })
+    assert.match(p, /hips flare dramatically wider than her shoulders/)
 })

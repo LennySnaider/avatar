@@ -342,7 +342,7 @@ export function glutesLevelPhrase(m: PhysicalMeasurements): string {
     const lvl = m.glutesLevel
     if (!lvl || !GLUTES_LEVEL_PHRASE[lvl]) return ''
     if (lvl >= 6 && (m.hips ?? 0) < 130) {
-        return 'MASSIVE exaggerated BBL-style glutes, dramatically oversized beyond natural anatomy — ALL of the volume projects straight BACKWARD as an extreme shelf-like curve, most dramatic in the side and back views, while her frontal hip width stays true to her measured hips'
+        return 'MASSIVE exaggerated BBL-style glutes, dramatically oversized beyond natural anatomy — ALL of the volume projects straight BACKWARD as an extreme shelf-like curve, most dramatic in the side and back views, while her hip width stays true to her measured hips from the front AND from behind — the mass is depth, not sideways spread'
     }
     return GLUTES_LEVEL_PHRASE[lvl]
 }
@@ -642,8 +642,13 @@ export function vulvaClause(scenePrompt?: string): string {
  * compensar; con un nivel, se baja uno y ya.
  */
 export const HIP_WIDTH_PHRASE: Record<number, string> = {
-    1: 'very narrow hip width seen from the front, hips clearly narrower than her shoulders — whatever glute volume she has projects BACKWARD and adds no width at the front',
-    2: 'narrow hip width seen from the front, hips a little narrower than her shoulders — whatever glute volume she has projects BACKWARD, never sideways',
+    // Niveles 1-2 también fijan la vista TRASERA (2026-09-20, reporte con hoja:
+    // anchura 1 + glúteo 6 salía bien de frente y ancha por detrás). Un glúteo
+    // grande visto desde atrás ocupa anchura si el motor lo reparte hacia los
+    // lados; se le pide como PROFUNDIDAD. No liga ejes: la cantidad de glúteo
+    // la sigue diciendo su nivel; aquí solo se dice hacia dónde va.
+    1: 'very narrow hip width seen from the front, hips clearly narrower than her shoulders — and from behind her hip line stays just as narrow: whatever glute volume she has projects BACKWARD as depth, never spreading sideways past her hips',
+    2: 'narrow hip width seen from the front, hips a little narrower than her shoulders — and from behind her hip line stays narrow too: whatever glute volume she has projects BACKWARD as depth, never spreading sideways',
     3: 'hip width matching her shoulders seen from the front — no wider than her shoulders; whatever glute volume she has projects BACKWARD and adds no width at the front',
     4: 'slightly wide hip width seen from the front, hips a little wider than her shoulders',
     5: 'wide hip width seen from the front, hips clearly wider than her shoulders',
