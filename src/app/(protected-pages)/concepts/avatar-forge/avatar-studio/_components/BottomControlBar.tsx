@@ -19,7 +19,11 @@ import {
     ASSET_PROMPT_CATEGORY,
 } from '../_constants/assetLibrary'
 import { resizeBase64Image } from '@/utils/imageOptimization'
-import { cloneTier, cloneWeightFromRatio, CLONE_STOPS } from '@/utils/cloneTiers'
+import {
+    cloneTier,
+    cloneWeightFromRatio,
+    CLONE_STOPS,
+} from '@/utils/cloneTiers'
 import Button from '@/components/ui/Button'
 import Switcher from '@/components/ui/Switcher'
 import Slider from '@/components/ui/Slider'
@@ -63,6 +67,7 @@ import {
 } from '../_constants/modelActionPresets'
 import {
     ASPECT_RATIOS,
+    IMAGE_RESOLUTIONS,
     CAMERA_MOTIONS,
     CAMERA_SHOTS,
     SUBJECT_ACTIONS,
@@ -81,6 +86,8 @@ import {
     clampDurationForProvider,
     getResolutionOptionsForProvider,
     clampResolutionForProvider,
+    getImageResolutionOptionsForProvider,
+    clampImageResolutionForProvider,
 } from '../_utils/providerCapabilities'
 import PromptTextareaWithTags from './PromptTextareaWithTags'
 import KlingVoiceControls from './KlingVoiceControls'
@@ -279,9 +286,7 @@ const ImageDropzone = ({
             try {
                 const items = await navigator.clipboard.read()
                 for (const item of items) {
-                    const type = item.types.find((t) =>
-                        t.startsWith('image/'),
-                    )
+                    const type = item.types.find((t) => t.startsWith('image/'))
                     if (!type) continue
                     const blob = await item.getType(type)
                     onUpload(
@@ -396,7 +401,9 @@ const ImageDropzone = ({
     // una función que nadie descubre es una función que no existe.
     const hint = 'Arrastra, o ⌘V / clic derecho para pegar del portapapeles'
     return (
-        <Tooltip title={tooltip ? `${tooltip} — ${hint}` : hint}>{body}</Tooltip>
+        <Tooltip title={tooltip ? `${tooltip} — ${hint}` : hint}>
+            {body}
+        </Tooltip>
     )
 }
 
@@ -573,6 +580,8 @@ const BottomControlBar = ({
         setAspectRatio,
         videoResolution,
         setVideoResolution,
+        imageResolution,
+        setImageResolution,
         videoDuration,
         setVideoDuration,
         cameraMotion,
@@ -653,12 +662,15 @@ const BottomControlBar = ({
     // the dropdown entirely instead of showing values that get ignored.
     const durationOptions = getDurationOptionsForProvider(activeProvider)
     const resolutionOptions = getResolutionOptionsForProvider(activeProvider)
+    // `null` para todo motor que no declare tramos — y entonces el control ni
+    // se pinta ni se manda, así que su precio no se mueve.
+    const imageResolutionOptions =
+        getImageResolutionOptionsForProvider(activeProvider)
     // Solo Wan 2.6 expone el control de audio: los demas motores de video no
     // tienen `audio_url` ni generan pista propia, y ofrecerlo ahi seria vender
     // algo que no existe.
-    const isMuleRouterVideo = !!activeProvider?.model?.startsWith(
-        'mulerouter/wan2.6',
-    )
+    const isMuleRouterVideo =
+        !!activeProvider?.model?.startsWith('mulerouter/wan2.6')
     // Seedance 2.5 abre los MISMOS canales que Wan 2.6 (audio propio, vídeos y
     // audio de referencia), así que reusa estos controles en vez de duplicarlos
     // — el submit ya traduce cada uno a su parámetro.
@@ -749,6 +761,12 @@ const BottomControlBar = ({
         )
         if (clampedResolution !== videoResolution)
             setVideoResolution(clampedResolution)
+        const clampedImageRes = clampImageResolutionForProvider(
+            activeProvider,
+            imageResolution,
+        )
+        if (clampedImageRes !== imageResolution)
+            setImageResolution(clampedImageRes)
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [activeProvider?.id])
 
@@ -1685,7 +1703,11 @@ const BottomControlBar = ({
                                                             solo cambia el output al
                                                             CRUZAR umbral, no dentro. */}
                                                         <span className="mt-0.5 text-[6px] font-semibold uppercase tracking-wide text-purple-100">
-                                                            {cloneTier(cloneWeight).label}
+                                                            {
+                                                                cloneTier(
+                                                                    cloneWeight,
+                                                                ).label
+                                                            }
                                                         </span>
                                                     </div>
                                                 </div>
@@ -1953,7 +1975,9 @@ const BottomControlBar = ({
                                                         className="absolute -top-1 -left-1 p-0.5 bg-teal-500 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity disabled:opacity-50"
                                                     >
                                                         {isSavingAsset ? (
-                                                            <Spinner size={12} />
+                                                            <Spinner
+                                                                size={12}
+                                                            />
                                                         ) : (
                                                             <HiOutlineSave className="w-3 h-3" />
                                                         )}
@@ -2052,7 +2076,9 @@ const BottomControlBar = ({
                                                         className="absolute -top-1 -left-1 p-0.5 bg-teal-500 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity disabled:opacity-50"
                                                     >
                                                         {isSavingPlace ? (
-                                                            <Spinner size={12} />
+                                                            <Spinner
+                                                                size={12}
+                                                            />
                                                         ) : (
                                                             <HiOutlineSave className="w-3 h-3" />
                                                         )}
@@ -2288,7 +2314,8 @@ const BottomControlBar = ({
                                                     className={`flex items-center gap-1 text-xs font-medium ${batchMode ? 'text-blue-500' : 'text-gray-500 dark:text-gray-400'}`}
                                                 >
                                                     <TbStack2 className="text-sm" />
-                                                    Batch{n > 0 ? ` · ${n}` : ''}
+                                                    Batch
+                                                    {n > 0 ? ` · ${n}` : ''}
                                                 </span>
                                                 <Switcher
                                                     checked={batchMode}
@@ -2405,6 +2432,40 @@ const BottomControlBar = ({
                             </Dropdown.Item>
                         ))}
                     </Dropdown>
+
+                    {/* Resolución de IMAGEN — solo en los motores que cobran
+                        distinto por tramo y dejan elegirlo. El resto la fijan
+                        dentro de su ruta y aquí no aparece nada. */}
+                    {generationMode === 'IMAGE' && imageResolutionOptions && (
+                        <Dropdown
+                            placement="top-start"
+                            renderTitle={
+                                <button className="px-2 py-1 text-xs bg-gray-100 dark:bg-gray-700 rounded hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors flex items-center gap-1">
+                                    <span className="text-gray-500">
+                                        Calidad:
+                                    </span>
+                                    <span>{imageResolution}</span>
+                                </button>
+                            }
+                        >
+                            {IMAGE_RESOLUTIONS.filter((r) =>
+                                imageResolutionOptions.includes(r.value),
+                            ).map((r) => (
+                                <Dropdown.Item
+                                    key={r.value}
+                                    eventKey={r.value}
+                                    onClick={() => setImageResolution(r.value)}
+                                    className={
+                                        imageResolution === r.value
+                                            ? 'bg-primary/10 text-primary'
+                                            : ''
+                                    }
+                                >
+                                    {r.label}
+                                </Dropdown.Item>
+                            ))}
+                        </Dropdown>
+                    )}
 
                     {/* Framing (IMAGE mode only) */}
                     {generationMode === 'IMAGE' && (
@@ -2690,9 +2751,7 @@ const BottomControlBar = ({
                                             )}
                                     </span>
                                     <Switcher
-                                        checked={
-                                            videoAudio || !!videoVoiceUrl
-                                        }
+                                        checked={videoAudio || !!videoVoiceUrl}
                                         onChange={(checked) => {
                                             setVideoAudio(checked)
                                             // Apagar el audio suelta también la

@@ -20,7 +20,9 @@ import { nanoBanana2Route } from './routes/nanoBanana2'
 import { wanRoute } from './routes/wan'
 import { seedreamRoute } from './routes/seedream'
 import { qwenRoute } from './routes/qwen'
+import { qwen3Route } from './routes/qwen3'
 import { flux2Route } from './routes/flux2'
+import { gptImage25Route } from './routes/gptImage25'
 
 /**
  * Rutas migradas, en orden de match. Cada modelo migrado se agrega aquí y el
@@ -34,8 +36,10 @@ export const ROUTES: ImageRoute[] = [
     nanoBanana2Route,
     wanRoute,
     seedreamRoute,
+    qwen3Route,
     qwenRoute,
     flux2Route,
+    gptImage25Route,
 ]
 
 /** Construye el `{model, input, fullApiPrompt}` de KIE para el modelo del ctx. */

@@ -4,6 +4,7 @@
 // esto desde un módulo 'use client' en un server component convierte los
 // exports en referencias opacas del RSC ('DEFAULT_PROVIDERS is not iterable').
 import type { AIProvider, ProviderType } from '@/@types/supabase'
+import { engineCaps } from '@/services/kie/engineCaps'
 
 // Predefined providers - exported for use in initialization
 export const DEFAULT_PROVIDERS: AIProvider[] = [
@@ -99,11 +100,16 @@ export const DEFAULT_PROVIDERS: AIProvider[] = [
         api_key_env_var: 'KIE_API_KEY',
         created_at: null,
     },
+    // GPT Image 2 salió del selector el 19-sep-2026, relevado por GPT Image 2.5
+    // Flare (misma casa, i2i con el mismo contrato de `input_urls`). NO se
+    // borran su precio en IMAGE_COST_USD, su familia en IMAGE_MODEL_FAMILIES ni
+    // su adaptador en KieService: las generaciones ya cobradas tienen que seguir
+    // cuadrando y el rescate de tareas viejas sigue necesitándolo.
     {
-        id: 'kie-gpt-image-2',
-        name: 'GPT Image 2 · KIE',
+        id: 'kie-gpt-image-2-5-flare',
+        name: 'GPT Image 2.5 Flare · KIE',
         type: 'KIE' as ProviderType,
-        model: 'gpt-image-2-text-to-image',
+        model: 'gpt-image-2-5-flare-text-to-image',
         endpoint: 'https://api.kie.ai/api/v1',
         is_active: true,
         supports_image: true,
@@ -113,6 +119,22 @@ export const DEFAULT_PROVIDERS: AIProvider[] = [
         created_at: null,
     },
     // ─── Permissive image models (nsfw_checker off) — text→image ───────────
+    // Qwen 3 Pro es EDITOR (i2i puro: `image_urls` obligatorio). En el Studio
+    // corre con la cara del avatar, un Clone Ref o una imagen a editar; en
+    // generación desde cero se bloquea antes de cobrar.
+    {
+        id: 'kie-qwen3-pro',
+        name: 'Qwen 3 Pro · KIE',
+        type: 'KIE' as ProviderType,
+        model: 'qwen3/pro-image-to-image',
+        endpoint: 'https://api.kie.ai/api/v1',
+        is_active: true,
+        supports_image: true,
+        supports_video: false,
+        requires_api_key: true,
+        api_key_env_var: 'KIE_API_KEY',
+        created_at: null,
+    },
     {
         id: 'kie-seedream-4-5',
         name: 'Seedream 4.5 · KIE',
@@ -519,6 +541,9 @@ export const PROVIDER_COST: Record<string, string> = {
     'kie-flux-kontext-max': '~$0.08',
     'kie-gpt-4o-image': '~$0.03',
     'kie-gpt-image-2': '~$0.03',
+    // Medidos en vivo el 19-sep-2026 en el tramo 2K (el que manda la UI).
+    'kie-gpt-image-2-5-flare': '~$0.05',
+    'kie-qwen3-pro': '~$0.10',
     'kie-seedream-4-5': '~$0.033',
     'kie-flux-2-pro': '~$0.035',
     'kie-seedream-5-lite': '~$0.028',
@@ -553,6 +578,8 @@ export const PROVIDER_TRAITS: Record<
     'minimax-image-01': { face: true, permissive: true },
     'kie-gpt-4o-image': { face: true },
     'kie-gpt-image-2': { face: true },
+    'kie-gpt-image-2-5-flare': { face: true },
+    'kie-qwen3-pro': { face: true, permissive: true },
     'kie-flux-kontext': { face: true },
     'kie-flux-kontext-max': { face: true },
     'kie-seedream-4-5': { face: true, permissive: true },
@@ -619,6 +646,10 @@ export const getProviderDescription = (provider: AIProvider): string => {
             return 'OpenAI GPT 4o - photorealistic, mejor con texto en imagen'
         case 'kie-gpt-image-2':
             return 'OpenAI GPT Image 2 vía KIE - usa refs (image-to-image, hasta 16), 9:16 nativo, 2K'
+        case 'kie-gpt-image-2-5-flare':
+            return 'GPT Image 2.5 Flare (OpenAI) — releva a GPT Image 2: menos latencia y mejor fidelidad a la referencia. Genera desde texto y también edita con refs (hasta 16). Resolución elegible 1K/2K/4K. OJO: OpenAI modera río arriba, no sirve para picante'
+        case 'kie-qwen3-pro':
+            return 'Qwen 3 Pro (Alibaba) — EDITOR: necesita imagen de entrada (cara del avatar, Clone Ref o la foto a editar). Resolución elegible 1K/2K y NO rebota el NSFW (medido). OJO: es el motor más caro del catálogo — a 2K cuesta el doble que Seedream 5 Pro'
         case 'kie-seedream-4-5':
             return 'Seedream 4.5 (ByteDance) — PERMISIVO (filtro NSFW off) + usa la CARA del avatar (i2i 4.5-edit, verificado). Calidad 2K, ideal fashion/sensual'
         case 'kie-flux-2-pro':
@@ -691,7 +722,15 @@ export const BODY_SHEET_MODEL_ORDER = [
  */
 export function getBodyLabModels(providers: AIProvider[]): AIProvider[] {
     const usable = providers.filter(
-        (p) => p.type === 'KIE' && p.supports_image === true && !!p.model,
+        (p) =>
+            p.type === 'KIE' &&
+            p.supports_image === true &&
+            !!p.model &&
+            // El Body Lab genera la hoja DESDE TEXTO, así que un motor i2i puro
+            // (Qwen 3) fallaría aquí siempre. Este filtro es el que lo excluye:
+            // hasta ahora ningún editor entraba por suerte del orden de
+            // BODY_SHEET_MODEL_ORDER, no porque nadie lo hubiera excluido.
+            !engineCaps(p.model)?.requiresRefs,
     )
     const rank = (m: string) => {
         const i = BODY_SHEET_MODEL_ORDER.indexOf(m)
