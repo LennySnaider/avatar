@@ -32,8 +32,12 @@ export default async function RootLayout({
     // getNavigation para podar el árbol en vez de dejar que la recalcule por
     // su cuenta (antes eran dos resoluciones de sesión + membresía en serie
     // para lo mismo).
-    const { role, installedModules } = await getOrgUiContext()
-    const navigationTree = await getNavigation(installedModules, role)
+    const { role, installedModules, isPlatformAdmin } = await getOrgUiContext()
+    const navigationTree = await getNavigation(
+        installedModules,
+        role,
+        isPlatformAdmin,
+    )
 
     const theme = await getTheme()
 

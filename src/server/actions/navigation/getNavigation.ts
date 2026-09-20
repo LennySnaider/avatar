@@ -14,6 +14,7 @@ import navigationConfig from '@/configs/navigation.config'
 import { filterNavigation } from '@/lib/modules/navigation'
 import { listInstalledSlugsForOrg } from '@/lib/modules/entitlements'
 import { tryGetOrgContext } from '@/lib/tenant/getOrgContext'
+import { isPlatformAdmin } from '@/lib/platform/platformDb'
 import type { NavigationTree } from '@/@types/navigation'
 import type { OrgRole } from '@/lib/org/permissions'
 
@@ -30,20 +31,44 @@ import type { OrgRole } from '@/lib/org/permissions'
 export interface OrgUiContext {
     role: OrgRole | null
     installedModules: string[]
+    /**
+     * F4.4 — Hint de pintado para el acceso a `/platform`. Como el rol, sólo
+     * decide qué se ve: la página vuelve a comprobarlo con
+     * `tryPlatformContext()` y cada acción con `requirePlatformAdmin()`.
+     */
+    isPlatformAdmin: boolean
 }
 
 export async function getOrgUiContext(): Promise<OrgUiContext> {
     const ctx = await tryGetOrgContext()
-    if (!ctx) return { role: null, installedModules: [] }
+    if (!ctx) return { role: null, installedModules: [], isPlatformAdmin: false }
     const role = ctx.role as OrgRole
+
+    // Se pregunta por el usuario REAL de la sesión, que es `ctx.userId` incluso
+    // suplantando: el acceso al panel no se pierde por estar mirando un tenant,
+    // que es justo cuando hace falta para poder salir.
+    //
+    // Guardado aparte de los módulos: son dos fallos distintos y mezclarlos en
+    // un try haría que un module_catalog roto escondiera también el panel.
+    let platformAdmin = false
     try {
-        return { role, installedModules: await listInstalledSlugsForOrg(ctx.organizationId) }
+        platformAdmin = await isPlatformAdmin(ctx.userId)
+    } catch (e) {
+        console.error('[navigation] isPlatformAdmin:', e)
+    }
+
+    try {
+        return {
+            role,
+            installedModules: await listInstalledSlugsForOrg(ctx.organizationId),
+            isPlatformAdmin: platformAdmin,
+        }
     } catch (e) {
         // Un fallo leyendo módulos no puede dejar al usuario sin menú, pero sí
         // tiene que dejar rastro: sin loguear, un module_catalog roto se
         // degrada a "sin módulos instalados" sin una sola línea en los logs.
         console.error('[navigation] getOrgUiContext:', e)
-        return { role, installedModules: [] }
+        return { role, installedModules: [], isPlatformAdmin: platformAdmin }
     }
 }
 
@@ -64,7 +89,12 @@ export async function getInstalledModules(): Promise<string[]> {
 export async function getNavigation(
     installed?: string[],
     role: OrgRole | null = null,
+    isPlatformAdmin = false,
 ): Promise<NavigationTree[]> {
     const installedSlugs = installed ?? (await getInstalledModules())
-    return filterNavigation(navigationConfig, { installedModules: installedSlugs, role })
+    return filterNavigation(navigationConfig, {
+        installedModules: installedSlugs,
+        role,
+        isPlatformAdmin,
+    })
 }

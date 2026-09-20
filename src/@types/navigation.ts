@@ -42,6 +42,13 @@ export interface NavigationTree {
          * el gate real vive en el layout de la ruta y en cada server action.
          */
         requiredPermission?: import('@/lib/org/permissions').Permission
+        /**
+         * F4.4 — Sólo para el administrador de la PLATAFORMA. Es un eje
+         * distinto de `requiredPermission`: aquél pregunta qué puede hacer un
+         * miembro dentro de su organización, éste si la persona opera el
+         * sistema. Ser `owner` de la propia organización no lo concede.
+         */
+        requiresPlatformAdmin?: boolean
     }
 }
 

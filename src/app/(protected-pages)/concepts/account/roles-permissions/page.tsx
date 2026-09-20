@@ -1,5 +1,7 @@
 import { listTeam } from '@/services/OrgMembersService'
+import { getSupportAccess } from '@/services/SupportAccessService'
 import MembersClient from './_components/MembersClient'
+import SupportAccessCard from './_components/SupportAccessCard'
 
 /**
  * Miembros de la organización: quién está, con qué rol, las invitaciones
@@ -22,5 +24,18 @@ export default async function RolesPermissionsPage() {
             </div>
         )
     }
-    return <MembersClient initial={res.data} />
+    // F4.4 — El acceso de soporte vive junto a los miembros porque es la misma
+    // pregunta: quién puede entrar en esta organización. Se carga aparte y se
+    // degrada a nada si falla: un problema leyendo las concesiones no debe
+    // dejar al propietario sin poder administrar su equipo.
+    const soporte = await getSupportAccess()
+
+    return (
+        <>
+            <MembersClient initial={res.data} />
+            {soporte.success && soporte.data && (
+                <SupportAccessCard initial={soporte.data} />
+            )}
+        </>
+    )
 }

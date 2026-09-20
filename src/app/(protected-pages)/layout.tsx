@@ -6,6 +6,8 @@ import { tryGetOrgContext } from '@/lib/tenant/getOrgContext'
 import { hasModuleForOrg } from '@/lib/modules/entitlements'
 import StrategistWidget from '@/components/shared/StrategistWidget/StrategistWidget'
 import AttentionWatcher from '@/components/shared/AttentionWatcher/AttentionWatcher'
+import ViewingAsBanner from '@/components/shared/ViewingAsBanner/ViewingAsBanner'
+import { orgDisplayName } from '@/lib/platform/platformDb'
 import appConfig from '@/configs/app.config'
 import { ReactNode } from 'react'
 
@@ -81,6 +83,21 @@ const Layout = async ({ children }: { children: ReactNode }) => {
     // patrón que `getOrgUiContext` (`src/server/actions/navigation/getNavigation.ts`):
     // catch + log y degradar a "módulo no instalado", nunca dejar caer la
     // página entera por un fallo leyendo entitlements.
+    // F4.4 — Si hay «ver como» en curso, el nombre del tenant suplantado para
+    // el banner. Sólo se consulta cuando se está suplantando: en la navegación
+    // normal esto no cuesta nada. Se guarda igual que el resto de este layout
+    // —envuelve TODAS las rutas protegidas— porque quedarse sin banner es malo
+    // pero tumbar el producto entero por no poder leer un nombre es peor.
+    let impersonatedName: string | null = null
+    if (ctx.isImpersonating) {
+        try {
+            impersonatedName = await orgDisplayName(ctx.organizationId)
+        } catch (error) {
+            console.error('[layout] orgDisplayName:', error)
+            impersonatedName = 'otra organización'
+        }
+    }
+
     let strategistInstalled = false
     try {
         strategistInstalled = await hasModuleForOrg(
@@ -104,6 +121,17 @@ const Layout = async ({ children }: { children: ReactNode }) => {
                 sola instancia que sobrevive a la navegación. Ver la cabecera
                 de `AttentionWatcher.tsx`. */}
             <AttentionWatcher />
+            {/* F4.4 — Marca permanente de que esta NO es tu cuenta. Se pinta
+                desde el contexto ya resuelto: si la concesión vence mientras
+                la pestaña está abierta, la siguiente navegación lo degrada a
+                ámbar sola. */}
+            {ctx.isImpersonating && (
+                <ViewingAsBanner
+                    orgName={impersonatedName ?? 'otra organización'}
+                    elevated={ctx.role === 'owner'}
+                    kind={ctx.grantKind ?? null}
+                />
+            )}
         </PostLoginLayout>
     )
 }

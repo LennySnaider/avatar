@@ -45,6 +45,26 @@ export interface SupportGrant {
     revokedAt: string | null
 }
 
+/**
+ * Cuánto dura una concesión que enciende el tenant. Se ofrecen estas dos y no
+ * un campo libre: la pregunta «¿cuántas horas?» no tiene buena respuesta para
+ * quien sólo quiere que le ayuden, y un campo libre invita a poner un número
+ * grande «por si acaso», que es justo la puerta olvidada que esto evita.
+ */
+export const TENANT_GRANT_HOURS = [24, 72] as const
+
+/**
+ * El break-glass dura UNA hora. Corto a propósito: se fuerza para resolver algo
+ * concreto, no para trabajar dentro de la cuenta. Si hace falta más, el tenant
+ * ya podrá conceder (que era el problema que lo justificaba).
+ */
+export const BREAK_GLASS_HOURS = 1
+
+/** Cuándo caduca una concesión que empieza ahora. */
+export function grantExpiry(now: Date, hours: number): Date {
+    return new Date(now.getTime() + hours * 3600_000)
+}
+
 /** ¿Sigue en pie? Ni revocada ni vencida. */
 export function isGrantLive(
     grant: SupportGrant | null | undefined,

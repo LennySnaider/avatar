@@ -106,3 +106,146 @@ export async function writeAudit(entry: AuditEntry): Promise<void> {
         console.error('[platform] no se pudo escribir la bitácora:', error.message, entry)
     }
 }
+
+/** Una organización vista desde el panel de plataforma. */
+export interface OrgOverview {
+    id: string
+    name: string
+    slug: string | null
+    planSlug: string | null
+    subscriptionStatus: string | null
+    billingExempt: boolean
+    memberCount: number
+    createdAt: string
+}
+
+/**
+ * Todas las organizaciones, con cuántos miembros tiene cada una.
+ *
+ * SON DOS CONSULTAS por el mismo motivo que en `membersDb.listOrgMembers`:
+ * PostgREST sólo embebe donde hay FK y el conteo agregado por organización se
+ * resuelve más claro contando en memoria que peleando con la sintaxis de
+ * agregados. El volumen aquí es de decenas de organizaciones, no de miles.
+ */
+export async function listOrganizations(): Promise<OrgOverview[]> {
+    const db = orgSupabase()
+    const { data: orgs, error } = await db
+        .from('organizations')
+        .select('id, name, slug, plan_slug, subscription_status, billing_exempt, created_at')
+        .order('created_at', { ascending: true })
+    if (error) throw new Error(error.message)
+
+    const { data: members, error: mErr } = await db
+        .from('organization_members')
+        .select('organization_id')
+    if (mErr) throw new Error(mErr.message)
+
+    const conteo = new Map<string, number>()
+    for (const m of members ?? []) {
+        conteo.set(m.organization_id, (conteo.get(m.organization_id) ?? 0) + 1)
+    }
+
+    return (orgs ?? []).map((o) => ({
+        id: o.id,
+        name: o.name,
+        slug: o.slug,
+        planSlug: o.plan_slug,
+        subscriptionStatus: o.subscription_status,
+        billingExempt: o.billing_exempt === true,
+        memberCount: conteo.get(o.id) ?? 0,
+        createdAt: o.created_at,
+    }))
+}
+
+/** Crea una concesión. El CHECK de la base exige motivo si es break-glass. */
+export async function insertGrant(params: {
+    organizationId: string
+    kind: SupportGrantKind
+    grantedBy: string
+    reason: string | null
+    expiresAt: Date
+}): Promise<void> {
+    const { error } = await orgSupabase()
+        .from('support_grants')
+        .insert({
+            organization_id: params.organizationId,
+            kind: params.kind,
+            granted_by: params.grantedBy,
+            reason: params.reason,
+            expires_at: params.expiresAt.toISOString(),
+        })
+    if (error) throw new Error(error.message)
+}
+
+/**
+ * Corta todas las concesiones vivas de una organización.
+ *
+ * Se revocan TODAS y no sólo la última: si alguna vez llegan a convivir dos
+ * (una del tenant y un break-glass), «revocar» tiene que significar cerrar la
+ * puerta, no cerrar una de las dos y dejar la otra abierta sin que se note.
+ */
+export async function revokeLiveGrants(
+    organizationId: string,
+    revokedBy: string,
+): Promise<number> {
+    const ahora = new Date().toISOString()
+    const { data, error } = await orgSupabase()
+        .from('support_grants')
+        .update({ revoked_at: ahora, revoked_by: revokedBy })
+        .eq('organization_id', organizationId)
+        .is('revoked_at', null)
+        .gt('expires_at', ahora)
+        .select('id')
+    if (error) throw new Error(error.message)
+    return (data ?? []).length
+}
+
+export interface AuditRow {
+    id: string
+    actorUserId: string
+    organizationId: string | null
+    action: string
+    elevated: boolean
+    grantKind: SupportGrantKind | null
+    reason: string | null
+    createdAt: string
+}
+
+/**
+ * La bitácora. Con `organizationId` es la vista del TENANT («¿quién ha entrado
+ * en mi cuenta?»); sin él, la de plataforma.
+ */
+export async function listAudit(
+    organizationId: string | null,
+    limit = 100,
+): Promise<AuditRow[]> {
+    let q = orgSupabase()
+        .from('superadmin_audit_log')
+        .select('id, actor_user_id, organization_id, action, elevated, grant_kind, reason, created_at')
+        .order('created_at', { ascending: false })
+        .limit(limit)
+    if (organizationId) q = q.eq('organization_id', organizationId)
+    const { data, error } = await q
+    if (error) throw new Error(error.message)
+    return (data ?? []).map((r) => ({
+        id: r.id,
+        actorUserId: r.actor_user_id,
+        organizationId: r.organization_id,
+        action: r.action,
+        elevated: r.elevated,
+        grantKind: r.grant_kind as SupportGrantKind | null,
+        reason: r.reason,
+        createdAt: r.created_at,
+    }))
+}
+
+/** El nombre de una organización, para el banner del «ver como». */
+export async function orgDisplayName(organizationId: string): Promise<string | null> {
+    const { data, error } = await orgSupabase()
+        .from('organizations')
+        .select('name')
+        .eq('id', organizationId)
+        .maybeSingle()
+    if (error) throw new Error(error.message)
+    return data?.name ?? null
+}

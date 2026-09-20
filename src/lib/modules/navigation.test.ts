@@ -162,3 +162,44 @@ test('un grupo que se queda sin hijos por permiso tambien desaparece', () => {
         1,
     )
 })
+
+// ── F4.4: el acceso al panel de plataforma ───────────────────────────────
+test('el item de plataforma se esconde a quien no es admin de plataforma', () => {
+    const tree = [
+        { key: 'p', path: '/platform', title: 'Plataforma', translateKey: '', icon: '', type: 'item' as const, authority: [], subMenu: [], meta: { requiresPlatformAdmin: true } },
+        { key: 'n', path: '/normal', title: 'Normal', translateKey: '', icon: '', type: 'item' as const, authority: [], subMenu: [] },
+    ]
+    const sinPrivilegio = filterNavigation(tree, {
+        installedModules: [],
+        role: 'owner',
+        isPlatformAdmin: false,
+    })
+    assert.deepEqual(sinPrivilegio.map((n) => n.key), ['n'])
+})
+
+test('ser owner de tu organización NO te abre el panel de plataforma', () => {
+    // El eje es otro: `owner` es la cima DENTRO de una organización; el panel
+    // de plataforma está por encima de todas. Confundirlos daría el sistema
+    // entero a cualquiera que cree una cuenta.
+    const tree = [
+        { key: 'p', path: '/platform', title: 'Plataforma', translateKey: '', icon: '', type: 'item' as const, authority: [], subMenu: [], meta: { requiresPlatformAdmin: true } },
+    ]
+    assert.equal(
+        filterNavigation(tree, { installedModules: [], role: 'owner', isPlatformAdmin: false }).length,
+        0,
+    )
+    assert.equal(
+        filterNavigation(tree, { installedModules: [], role: 'owner', isPlatformAdmin: true }).length,
+        1,
+    )
+})
+
+test('sin saber si es admin de plataforma, se esconde (falla cerrado)', () => {
+    const tree = [
+        { key: 'p', path: '/platform', title: 'Plataforma', translateKey: '', icon: '', type: 'item' as const, authority: [], subMenu: [], meta: { requiresPlatformAdmin: true } },
+    ]
+    assert.equal(
+        filterNavigation(tree, { installedModules: [], role: null }).length,
+        0,
+    )
+})
