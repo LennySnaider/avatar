@@ -456,10 +456,30 @@ export const DEFAULT_PROVIDERS: AIProvider[] = [
         created_at: null,
     },
     {
+        // El `id` se queda como está PESE al nombre: es la clave del sku
+        // (`video:kie-wan-2-2-uncensored`) en token_ledger y cambiarlo partiría
+        // el histórico de cobros. Lo que cambia es la ETIQUETA: medido
+        // 2026-09-19, este modelo rechaza el NSFW con `failCode 400 "flagged as
+        // sensitive"` aunque le mandes nsfw_checker:false, así que anunciarlo
+        // como "Sin Censura" era una promesa falsa. El sin censura real es
+        // Wan 3.0 (abajo). Este sigue activo y sirve para movimiento SFW.
         id: 'kie-wan-2-2-uncensored',
-        name: 'Wan 2.2 Sin Censura · KIE',
+        name: 'Wan 2.2 Turbo · KIE',
         type: 'KIE' as ProviderType,
         model: 'wan/2-2-a14b-image-to-video-turbo',
+        endpoint: 'https://api.kie.ai/api/v1',
+        is_active: true,
+        supports_image: false,
+        supports_video: true,
+        requires_api_key: true,
+        api_key_env_var: 'KIE_API_KEY',
+        created_at: null,
+    },
+    {
+        id: 'kie-wan-3-0',
+        name: 'Wan 3.0 Sin Censura · KIE',
+        type: 'KIE' as ProviderType,
+        model: 'wan/3-0-video',
         endpoint: 'https://api.kie.ai/api/v1',
         is_active: true,
         supports_image: false,

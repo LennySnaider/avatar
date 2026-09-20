@@ -35,6 +35,7 @@ import { probeKieTask } from './kie/taskProbe'
 import { seedance25AspectRatio } from './kie/seedance25Aspect'
 import { seedance25Scene } from './kie/seedance25Scene'
 import { stripPromptHarness } from './kie/motionPrompt'
+import { buildWan30Input } from './kie/wan30'
 import { isProviderOutage } from '@/utils/geminiError'
 import type { KieRefWithRole } from './kie/shared'
 import {
@@ -2393,6 +2394,9 @@ async function submitVideoKieTaskId(
     if (params.model === 'wan/2-2-a14b-image-to-video-turbo') {
         return submitVideoWan22(params)
     }
+    if (params.model === 'wan/3-0-video') {
+        return submitVideoWan30(params)
+    }
     if (params.model === 'kling-3.0/video') {
         return submitVideoKling3(params)
     }
@@ -2858,6 +2862,76 @@ async function submitVideoWan27(
         'KIE Wan 2.7 submit',
     )
     console.log(`[KIE/Wan2.7] Task submitted: ${taskId}`)
+    return taskId
+}
+
+/**
+ * Wan 3.0 Video (KIE) — el motor SIN CENSURA del catálogo.
+ *
+ * Verificado en vivo 2026-09-19: primer fotograma VESTIDO + prompt explícito +
+ * `nsfw_checker:false` → genera el desnudo. Wan 2.2, el que hoy LLEVA el
+ * nombre "Sin Censura", rechazó el mismo prompt dos veces con `failCode 400
+ * "flagged as sensitive"` pese a su propio `nsfw_checker:false`.
+ *
+ * Frente a Wan 2.2 (clip mudo y fijo de 5s, 480/720p) aporta 2-30s, 1080P y
+ * hasta 10 imágenes de referencia. El audio nativo se manda APAGADO: es
+ * ambiente genérico sin lipsync y la voz del avatar va por Speak mode.
+ *
+ * NO se le quita el arnés `[BODY —]/[FACE:]` del prompt: eso solo hace falta
+ * en Wan 2.2 turbo y Kling motion-control, que lo rechazan con un 500. Wan 3.0
+ * documenta 20.000 chars y está pensado para prompts ricos (@Image1), igual
+ * que Wan 2.7, que también lo tolera.
+ *
+ * Las reglas del payload (mayúsculas de resolución, escena excluyente, topes)
+ * viven en ./kie/wan30 — puro y con tests, para poder cambiarlas sin gastar.
+ */
+async function submitVideoWan30(
+    params: GenerateVideoKieParams,
+): Promise<string> {
+    const { prompt, firstFrameImage, referenceImages, duration, resolution } =
+        params
+
+    const firstFrameUrl = firstFrameImage
+        ? await uploadReferenceToSupabase(
+              firstFrameImage.base64,
+              firstFrameImage.mimeType,
+          )
+        : null
+
+    const referenceImageUrls = referenceImages?.length
+        ? await Promise.all(
+              referenceImages.map((r) =>
+                  uploadReferenceToSupabase(r.base64, r.mimeType),
+              ),
+          )
+        : []
+
+    if (!firstFrameUrl && referenceImageUrls.length === 0 && !prompt?.trim()) {
+        throw new Error(
+            'Wan 3.0 necesita al menos un prompt o una imagen (la API responde 422 "prompt or media is required").',
+        )
+    }
+
+    const input = buildWan30Input({
+        prompt,
+        firstFrameUrl,
+        referenceImageUrls,
+        duration,
+        resolution,
+        aspectRatio: params.aspectRatio,
+    })
+
+    console.log(
+        `[KIE/Wan3.0] Submitting: resolution=${input.resolution}, duration=${input.duration}s, escena=${
+            input.reference_image_urls ? 'references' : 'first-frame'
+        }`,
+    )
+    const taskId = await withTimeout(
+        submitTask({ model: 'wan/3-0-video', input }),
+        30_000,
+        'KIE Wan 3.0 submit',
+    )
+    console.log(`[KIE/Wan3.0] Task submitted: ${taskId}`)
     return taskId
 }
 

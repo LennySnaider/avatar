@@ -36,6 +36,12 @@ export function getDurationOptionsForProvider(provider: AIProvider | null): numb
             if (provider.model?.startsWith('mulerouter/wan2.6')) return [5, 10, 15]
             // Wan 2.2 turbo no expone duración — clip fijo (~5s).
             if (provider.model === 'wan/2-2-a14b-image-to-video-turbo') return [5]
+            // Wan 3.0: entero 2-30s (el 31 vuelve con 422). El -1 de "que
+            // elija el modelo" NO se expone — con precio POR SEGUNDO, una
+            // duración decidida río arriba es un cobro que no se puede
+            // cotizar antes del hold (mismo criterio que Seedance 2.5).
+            if (provider.model === 'wan/3-0-video')
+                return [2, 5, 10, 15, 20, 25, 30]
             // Grok Imagine Video 1.5: entero 1-15s (default 8).
             if (provider.model === 'grok-imagine-video-1-5-preview')
                 return [4, 6, 8, 10, 12, 15]
@@ -99,6 +105,10 @@ export function getResolutionOptionsForProvider(
             // (i2v vía `resolution`, t2v/r2v vía `size`).
             if (provider.model?.startsWith('mulerouter/wan2.6')) return ['720p', '1080p']
             if (provider.model === 'wan/2-2-a14b-image-to-video-turbo') return ['480p', '720p']
+            // Minúsculas de cara a la UI (su convención); buildWan30Input las
+            // sube a '480P'/'720P'/'1080P', que es lo único que acepta la API.
+            if (provider.model === 'wan/3-0-video')
+                return ['480p', '720p', '1080p']
             if (provider.model === 'grok-imagine-video-1-5-preview') return ['480p', '720p']
             // Other KIE models (legacy Veo wiring, etc.) don't expose resolution.
             return null

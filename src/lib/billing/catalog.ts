@@ -188,6 +188,20 @@ export const VIDEO_COST_USD_PER_SECOND: Record<string, CostEntry> = {
     'minimax-hailuo-2-3-fast': { usd: 0.06, estimated: true },
     'kie-grok-imagine-video': { usd: 0.1, estimated: true },
     'kie-wan-2-2-uncensored': { usd: 0.08, estimated: true },
+    // MEDIDO en vivo 2026-09-19 (créditos antes/después × $0.005), no estimado:
+    // 480P/2s=16cr · 480P/5s=40cr · 720P/5s=80cr · 1080P/5s=160cr ·
+    // 1080P/15s=480cr. Sale exacto: 8/16/32 créditos por SEGUNDO, lineal en
+    // duración y el DOBLE por escalón de resolución. Sin `porResolucion` el
+    // catálogo mentiría por un factor 4 entre extremos — y un 1080P de 30s,
+    // que son $4.80, se cobraría como si fuese 480p.
+    'kie-wan-3-0': {
+        usd: 0.08, // tramo por defecto = 720p
+        porResolucion: {
+            '480p': { usd: 0.04 },
+            '720p': { usd: 0.08 },
+            '1080p': { usd: 0.16 },
+        },
+    },
 }
 
 /** TTS y clonado — sin medida en vivo todavía (los calibra el measure-only). */
@@ -337,6 +351,7 @@ const VIDEO_MODEL_FAMILIES: Array<[prefix: string, providerId: string]> = [
     ['bytedance/seedance', 'kie-seedance-2'],
     ['wan/2-7-image-to-video', 'kie-wan-2-7'],
     ['wan/2-2-a14b', 'kie-wan-2-2-uncensored'],
+    ['wan/3-0-video', 'kie-wan-3-0'],
     ['grok-imagine-video', 'kie-grok-imagine-video'],
     ['mulerouter/wan2.6-i2v', 'mulerouter-wan26-i2v'],
     ['mulerouter/wan2.6-t2v', 'mulerouter-wan26-t2v'],
