@@ -24,7 +24,7 @@ interface OrganizationsTable {
     Relationships: []
 }
 
-export type OrgMemberRole = 'owner' | 'admin' | 'operator'
+export type OrgMemberRole = 'owner' | 'admin' | 'operator' | 'viewer'
 
 interface OrganizationMembersTable {
     Row: {

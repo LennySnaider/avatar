@@ -49,8 +49,31 @@ test('el mensaje nombra el rol y la accion, y se puede enseñar tal cual', () =>
 })
 
 test('un rol desconocido tampoco pasa por el guard', () => {
+    // Antes el ejemplo era 'viewer', que desde la F4.4 es un rol REAL con
+    // content:read. Se cambia por uno que de verdad no existe: lo que este
+    // test protege es que el guard falle cerrado ante lo que no conoce, y
+    // usar un rol vivo lo habría convertido en un test que no prueba nada.
     assert.throws(
-        () => requirePermission(ctx('viewer'), 'content:read'),
+        () => requirePermission(ctx('finance'), 'content:read'),
+        PermissionDeniedError,
+    )
+    // Y el admin de plataforma tampoco entra por aquí: cuando suplanta lo hace
+    // con un rol real (viewer u owner), nunca con un rol inventado.
+    assert.throws(
+        () => requirePermission(ctx('superadmin'), 'content:read'),
+        PermissionDeniedError,
+    )
+})
+
+test('viewer pasa el guard de lectura y NO el de escritura', () => {
+    assert.doesNotThrow(() => requirePermission(ctx('viewer'), 'content:read'))
+    assert.throws(
+        () => requirePermission(ctx('viewer'), 'content:write'),
+        PermissionDeniedError,
+    )
+    // El que más importa: generar GASTA TOKENS del monedero de la organización.
+    assert.throws(
+        () => requirePermission(ctx('viewer'), 'generation:create'),
         PermissionDeniedError,
     )
 })

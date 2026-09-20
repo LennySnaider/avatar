@@ -110,14 +110,40 @@ test('todo rol declarado tiene su conjunto en la matriz', () => {
     }
 })
 
-// ── Falla cerrado: el contrato que hace segura la llegada de `viewer` ────
+// ── `viewer`: el rol que mira y no toca (F4.4) ───────────────────────────
+test('viewer solo puede LEER', () => {
+    assert.equal(can('viewer', 'content:read'), true)
+    for (const permiso of PERMISSIONS) {
+        if (permiso === 'content:read') continue
+        assert.equal(can('viewer', permiso), false, permiso)
+    }
+})
+
+test('operator hereda todo lo de viewer', () => {
+    // El spread ES la herencia: si alguien reescribe OPERATOR a mano y se deja
+    // un permiso de viewer fuera, degradar a un operador le daria MAS de lo que
+    // tiene un viewer en esa linea. Este test lo impide.
+    for (const permiso of PERMISSIONS) {
+        if (can('viewer', permiso)) {
+            assert.equal(can('operator', permiso), true, permiso)
+        }
+    }
+})
+
+// ── Falla cerrado ante lo que NO es un rol de organizacion ───────────────
 test('un rol desconocido no hereda NADA', () => {
     // Si una migracion amplia el enum y nadie toca la matriz, el rol nuevo se
     // queda sin permisos. La alternativa (heredar "por parecerse") seria una
     // subida de privilegios silenciosa.
+    //
+    // `superadmin` sigue aqui a proposito: el admin de plataforma NO entra por
+    // la matriz de la organizacion. Cuando suplanta a un tenant lo hace con un
+    // rol REAL (`viewer` sin concesion, `owner` con ella), nunca con un rol
+    // inventado que esta matriz tendria que reconocer.
     for (const permiso of PERMISSIONS) {
-        assert.equal(can('viewer', permiso), false, permiso)
         assert.equal(can('superadmin', permiso), false, permiso)
+        assert.equal(can('platform_admin', permiso), false, permiso)
+        assert.equal(can('god', permiso), false, permiso)
     }
 })
 
@@ -127,11 +153,11 @@ test('sin rol resuelto no se puede nada', () => {
     assert.equal(can('', 'content:read'), false)
 })
 
-test('isOrgRole solo acepta los tres roles reales', () => {
+test('isOrgRole solo acepta los cuatro roles reales', () => {
     assert.equal(isOrgRole('owner'), true)
     assert.equal(isOrgRole('admin'), true)
     assert.equal(isOrgRole('operator'), true)
-    assert.equal(isOrgRole('viewer'), false)
+    assert.equal(isOrgRole('viewer'), true)
     assert.equal(isOrgRole(null), false)
     assert.equal(isOrgRole(42), false)
     // 'toString' existe en Object.prototype: `in` sin cuidado lo aceptaria.
