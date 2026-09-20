@@ -49,13 +49,38 @@ test('image_urls es un ARRAY, con la cara primero', async () => {
     assert.equal(req.input.image_url, undefined)
 })
 
-test('los acompañantes se respetan hasta el tope declarado', async () => {
+test('sin Clone Ref, la cara es el lienzo y los extras la acompañan', async () => {
     const req = await qwen3Route.build(
-        ctx({ referenceImages: [ref('body'), ref('asset'), ref('clone')] }),
+        ctx({ referenceImages: [ref('body'), ref('asset')] }),
     )
     const urls = req.input.image_urls as string[]
     assert.equal(urls[0], 'https://r2.example/face.png')
     assert.ok(urls.length <= 3, `maxRefs=3 pero viajaron ${urls.length}`)
+})
+
+test('CON Clone Ref el lienzo es el CLONE y la cara va SEGUNDA', async () => {
+    // El bug que llegó a producción: Qwen EDITA la primera imagen. Con la cara
+    // ahí, devolvía a la mujer del clone —tres avatares distintas salieron
+    // idénticas y una pelirroja salió morena—. Verificado en vivo: invirtiendo
+    // el orden, sale la avatar con el vestuario y el sitio del clone.
+    const req = await qwen3Route.build(
+        ctx({ referenceImages: [ref('face'), ref('clone')] }),
+    )
+    assert.deepEqual(req.input.image_urls, [
+        'https://r2.example/clone.png',
+        'https://r2.example/face.png',
+    ])
+})
+
+test('el peso del Clone Ref cambia el trabajo del lienzo', async () => {
+    const alto = await qwen3Route.build(
+        ctx({ referenceImages: [ref('clone')], cloneWeight: 100 }),
+    )
+    const bajo = await qwen3Route.build(
+        ctx({ referenceImages: [ref('clone')], cloneWeight: 15 }),
+    )
+    assert.match(alto.input.prompt as string, /Keep the SAME outfit/i)
+    assert.match(bajo.input.prompt as string, /LOOSE inspiration/i)
 })
 
 test('image_size lleva el ratio crudo, no el vocabulario de fal', async () => {
@@ -113,4 +138,80 @@ test('los campos opcionales no viajan vacíos', async () => {
     // Fuera del rango de la doc: un 422 por un dato que no aporta.
     const fuera = await qwen3Route.build(ctx({ seed: 99999999999 }))
     assert.equal('seed' in fuera.input, false)
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Identidad del avatar. Estos tests nacen de un fallo en producción: la ruta
+// llamaba a `stripIdentityRedundancy` copiando a Qwen 2 —que borra el preámbulo
+// de edad, [BODY:] y [FACE:]— pero SIN copiar el ancla que Qwen 2 pone para
+// compensarlo. El prompt llegaba al motor con la escena y el clone solamente,
+// así que tres avatares distintas salieron idénticas y una pelirroja salió
+// morena. Los tests de antes miraban la FORMA del request (que `image_urls`
+// fuese un array, que el model no se reescribiera) y ninguno miraba si la
+// persona seguía ahí.
+// ─────────────────────────────────────────────────────────────────────────────
+
+const conIdentidad = (over: Partial<ImageRouteContext> = {}) =>
+    ctx({
+        prompt:
+            'A 24 year old woman. [BODY: hourglass] [FACE: oval face] standing in a dark room. ' +
+            '[CLONE: a woman with long wavy hair in a white corset]',
+        referenceImages: [ref('face'), ref('clone')],
+        hairEmphasis: 'long wavy COPPER RED hair',
+        eyeEmphasis: 'green eyes',
+        bodyEmphasis: 'hourglass, 90-60-100',
+        ...over,
+    })
+
+test('el color de pelo del avatar viaja aunque el strip borre los tags', async () => {
+    const req = await qwen3Route.build(conIdentidad())
+    assert.match(req.input.prompt as string, /COPPER RED/i)
+})
+
+test('los ojos y el cuerpo del avatar también sobreviven', async () => {
+    const p = (await qwen3Route.build(conIdentidad())).input.prompt as string
+    assert.match(p, /green eyes/i)
+    assert.match(p, /90-60-100/)
+})
+
+test('la identidad va DELANTE de la escena: en un editor literal manda el frente', async () => {
+    const p = (await qwen3Route.build(conIdentidad())).input.prompt as string
+    assert.ok(
+        p.indexOf('FIRST image') < p.indexOf('[CLONE:'),
+        'el ancla de identidad quedó detrás del clone',
+    )
+})
+
+test('con Clone Ref, la cara y el pelo salen de la SEGUNDA imagen', async () => {
+    const p = (await qwen3Route.build(conIdentidad())).input.prompt as string
+    assert.match(p, /FACE SWAP is MANDATORY/i)
+    assert.match(p, /face from the SECOND image/i)
+    // El pelo también: sin decirlo, el motor lo tomaba del lienzo (medido).
+    assert.match(p, /HAIR also comes from the SECOND image/i)
+    // Y no puede quedar la orden contraria de "la primera imagen es la persona".
+    assert.equal(/FIRST image is the person/i.test(p), false)
+})
+
+test('el spec corporal no se duplica si la escena ya lo trae', async () => {
+    // Body Lab o prompt de perfil pegado: inyectarlo otra vez lo amplifica.
+    const p = (
+        await qwen3Route.build(
+            conIdentidad({
+                prompt: 'standing in a room. Her hip-to-waist ratio is 1.5, bust 90cm.',
+            }),
+        )
+    ).input.prompt as string
+    assert.equal(p.includes('Her body: hourglass'), false)
+})
+
+test('sin datos de identidad el ancla no inventa nada', async () => {
+    const p = (
+        await qwen3Route.build(
+            ctx({ hairEmphasis: undefined, eyeEmphasis: undefined }),
+        )
+    ).input.prompt as string
+    assert.equal(/Her hair MUST be/.test(p), false)
+    assert.equal(/Her eyes are/.test(p), false)
+    // El face-lock sí va SIEMPRE: es lo que impide que el motor invente cara.
+    assert.match(p, /FIRST image is the person/i)
 })
