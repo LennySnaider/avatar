@@ -7,7 +7,11 @@ import type { BodyShape } from '@/@types/supabase'
 // no cm). Ortogonal al tamaño (eso es BUILD_PHRASE).
 const SHAPE_CLAUSE: Record<BodyShape, string> = {
     hourglass:
-        'hourglass silhouette — shoulders and hips balanced in width, with a sharply cinched waist noticeably narrower than both the bust and the hips',
+        // Sin "sharply cinched" (2026-09-20): la silueta es GEOMETRÍA; la
+        // intensidad de la cintura la pone la banda de ratio. Con 90/60/90
+        // "cinched" viajaba TRES veces desde tres sitios que no se conocen
+        // (silueta + banda + rango de cm) y el motor pintaba corsé.
+        'hourglass silhouette — shoulders and hips balanced in width, with a waist noticeably narrower than both the bust and the hips',
     pear: 'pear (triangle) shape — hips clearly wider than the shoulders and bust, with a defined waist and fuller lower body',
     apple: 'apple (round) shape — fuller midsection and broad bust, with a less defined waist and comparatively slimmer hips',
     rectangle:
@@ -55,10 +59,17 @@ export function describeShapeAndBuild(m: PhysicalMeasurements): string {
         else if (whr <= 0.55)
             // ratio >= ~1.8 (Emily 45/85=0.53): wasp dramática REAL.
             parts.push('extremely small, dramatically cinched waist')
-        else if (whr <= 0.68)
-            // ratio 1.47-1.8 (Raven 60/90): marcada, no dramática.
+        else if (whr <= 0.62)
+            // ratio 1.61-1.8 (58/95=0.61): marcada de verdad.
             parts.push(
                 'sharply cinched waist, clearly narrower than bust and hips',
+            )
+        else if (whr <= 0.68)
+            // ratio 1.47-1.61 (60/90=0.667, el 90/60/90 de libro): reloj de
+            // arena NATURAL. Aquí vivía "sharply cinched" y, sumado a la
+            // silueta y al rango de cm, salía corsé (2026-09-20, MiaUltra).
+            parts.push(
+                'naturally defined waist, clearly narrower than bust and hips',
             )
         else if (whr <= 0.78) parts.push('clearly defined narrow waist')
     }
@@ -125,11 +136,11 @@ export function getBodyDescriptors(m: PhysicalMeasurements): string {
             'waist far narrower than natural proportions',
         )
     } else if (m.waist <= 60) {
-        descriptors.push(
-            'very defined waistline',
-            'narrow midsection',
-            'cinched waist',
-        )
+        // Sin 'cinched waist' (2026-09-20): este rango es por cm ABSOLUTOS y
+        // no sabe de proporción — un 60 con cadera 90 es un 90/60/90 normal.
+        // Si de verdad es avispa (60 con 110, ratio 0,545), la banda de ratio
+        // de describeShapeAndBuild ya lo dice sola; repetirlo aquí amplifica.
+        descriptors.push('defined waistline', 'trim midsection')
     } else if (m.waist <= 68) {
         descriptors.push('defined waist', 'tapered midsection')
     } else if (m.waist >= 80) {
