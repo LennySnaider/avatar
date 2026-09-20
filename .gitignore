@@ -59,3 +59,8 @@ scripts/.preflight-org-counts.snapshot.json
 
 # Maquetas y documentos de diseño (se publican como artifacts, no son código)
 .design/
+
+# Muestras y salidas del spike del limpiador de marcas: son generaciones de
+# clientes descargadas de R2, no pertenecen al repo.
+services/cleaner/spike/muestras/
+services/cleaner/spike/salida/

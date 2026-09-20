@@ -13,7 +13,7 @@ import { cache } from 'react'
 import { orgSupabase, orgTable } from '@/lib/org/orgTable'
 import type { OrgContext } from '@/lib/tenant/getOrgContext'
 
-export type ModuleSlug = 'telegram' | 'strategist'
+export type ModuleSlug = 'telegram' | 'strategist' | 'ai-mark-cleaner'
 
 export type OrgModuleStatus = 'installed' | 'suspended' | 'uninstalled'
 
@@ -97,4 +97,35 @@ export async function hasModuleForOrg(
 ): Promise<boolean> {
     const slugs = await listInstalledSlugsForOrg(organizationId)
     return slugs.includes(slug)
+}
+
+/**
+ * Ajustes de un módulo para una org, SIN sesión (cron, webhooks, rutas de
+ * persistencia). Vive aquí y no junto a cada módulo para no alargar la lista de
+ * exenciones de `orgSupabase`: este fichero ya es el lector autorizado de
+ * `org_modules` sin ctx, y "qué ajustes tiene esta organización" es la misma
+ * pregunta que responde el resto del módulo.
+ *
+ * Devuelve `{}` cuando no hay fila. Un ERROR de lectura se registra y también
+ * devuelve `{}`: quien llama normaliza con sus propios valores por defecto, que
+ * es lo que el tenant pidió al instalar. Apagar la función en silencio porque
+ * la consulta falló sería peor que hacerla con los valores por defecto.
+ */
+export async function moduleSettingsForOrg(
+    organizationId: string,
+    slug: ModuleSlug | string,
+): Promise<Record<string, unknown>> {
+    const { data, error } = await orgSupabase()
+        .from('org_modules')
+        .select('settings')
+        .eq('organization_id', organizationId)
+        .eq('module_slug', slug)
+        .maybeSingle()
+    if (error) {
+        console.error(
+            `[modules] ${organizationId} leer-ajustes ${slug}: ${error.message}; se usan los valores por defecto`,
+        )
+        return {}
+    }
+    return ((data as { settings?: Record<string, unknown> | null } | null)?.settings) ?? {}
 }

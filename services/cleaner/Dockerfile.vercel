@@ -1,0 +1,47 @@
+# Limpiador de marcas de IA — imagen del servicio.
+#
+# Dos etapas a proposito:
+#   `engine` = motor + ffmpeg, SIN nuestro codigo. Es lo que usa el spike de
+#              medicion (`docker build --target engine`) para correr el CLI
+#              `remove-ai-watermarks identify` sobre muestras reales de R2 sin
+#              instalar nada en la maquina del desarrollador.
+#   final    = engine + la app FastAPI.
+# Mantenerlas separadas evita reconstruir ~700 MB de dependencias cada vez que
+# cambia una linea de Python nuestro.
+FROM python:3.12-slim AS engine
+
+# ffmpeg es requisito de `remove-ai-watermarks[video]`: PyAV empaqueta los
+# fotogramas ya procesados pero el encode final lo hace el ffmpeg del sistema.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends ffmpeg \
+    && rm -rf /var/lib/apt/lists/*
+
+# HF_HOME apunta dentro de la imagen para que los pesos de MI-GAN queden
+# horneados en el build. En runtime HF_HUB_OFFLINE=1 impide cualquier descarga:
+# si el peso no esta, el arranque falla ruidosamente en vez de bajarlo en la
+# primera peticion de un usuario.
+ENV HF_HOME=/opt/hf \
+    PIP_NO_CACHE_DIR=1 \
+    PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1
+
+# Version clavada: el detector, sus umbrales y el registro de marcas cambian
+# entre releases, y el reporte que guardamos en `generations.ai_marks` nombra
+# esta version. Subirla es un cambio deliberado, no un `pip install` al azar.
+ARG RAIW_VERSION=0.41.1
+RUN pip install --no-cache-dir "remove-ai-watermarks[video,migan]==${RAIW_VERSION}"
+
+WORKDIR /srv
+
+# Los pesos de MI-GAN (~28 MB) se hornean AQUI, no se bajan en la primera
+# peticion. Medido el 2026-09-20: sin este paso el primer `visible` de cada
+# contenedor nuevo va al Hub de Hugging Face, lo que suma latencia a una
+# generacion de usuario y ata el arranque a que un tercero este arriba.
+# `warmup.py` hace una restauracion real sobre un PNG sintetico, que es lo que
+# fuerza la descarga; no basta con importar el modulo.
+COPY app/warmup.py /srv/app/warmup.py
+RUN python3 /srv/app/warmup.py
+
+# A partir de aqui ninguna descarga: si el peso no quedo en la imagen, el
+# arranque falla ruidosamente en vez de bajarlo a espaldas del usuario.
+ENV HF_HUB_OFFLINE=1
