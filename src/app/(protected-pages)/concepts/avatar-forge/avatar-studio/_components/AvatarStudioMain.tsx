@@ -415,7 +415,7 @@ const isKieAsyncImageModel = (m: string): boolean =>
  */
 async function pollKieTalkingVideoTask(
     params: Parameters<typeof submitTalkingVideoKieTask>[0],
-): Promise<string> {
+): Promise<{ url: string; taskId: string }> {
     const sub = await submitTalkingVideoKieTask(params)
     if (!sub.success) {
         throw new Error(sub.error)
@@ -427,11 +427,11 @@ async function pollKieTalkingVideoTask(
         interval: 5000,
     })
     if (polled.outcome === 'done') {
-        // El mp4 ya está en Storage (checkKieVideoTask persiste al terminar):
-        // deja de ser reclamable y el cobro se confirma. Sin esta baja, el
-        // barrido automático lo rescataría otra vez y saldría DUPLICADO.
-        void apiClearPendingGeneration(sub.taskId, 'delivered')
-        return polled.url
+        // La baja NO va aquí: el mp4 en Storage no es la fila de `generations`.
+        // La cierra persistGeneration con la fila ya escrita (mismo contrato
+        // que genVideoKie y pollKieImageTask) — hasta entonces sigue siendo
+        // reclamable con 🔄 y su cobro solo RETENIDO, no confirmado.
+        return { url: polled.url, taskId: sub.taskId }
     }
     if (polled.outcome === 'failed') {
         void apiClearPendingGeneration(sub.taskId, 'failed')
@@ -440,8 +440,7 @@ async function pollKieTalkingVideoTask(
     // Sin veredicto: se le pregunta a KIE antes de dar el vídeo por perdido.
     const rescued = await salvageKieTask(sub.taskId, 'VIDEO').catch(() => null)
     if (rescued?.status === 'done') {
-        void apiClearPendingGeneration(sub.taskId, 'delivered')
-        return rescued.url
+        return { url: rescued.url, taskId: sub.taskId }
     }
     throw new Error(
         `${polled.error} El job ${sub.taskId} puede seguir corriendo en kie.ai/logs — pulsa 🔄 en la galería para reclamarlo.`,
@@ -476,7 +475,16 @@ async function genVideoGemini(
  */
 async function genVideoKie(
     params: Parameters<typeof submitVideoKieTask>[0],
-): Promise<{ url: string; lastFrameUrl?: string }> {
+): Promise<{
+    url: string
+    lastFrameUrl?: string
+    /**
+     * Id de la tarea en KIE. Sale de aquí porque el rastro de rescate ya NO se
+     * da de baja al recibir la URL: quien persista el resultado es quien debe
+     * cerrarlo, y necesita este id. Mismo contrato que `pollKieImageTask`.
+     */
+    taskId: string
+}> {
     // Hasta 2 tareas: mismo self-healing que pollKieImageTask para el
     // "internal error, please try again later" transitorio de KIE (las tareas
     // fallidas cobran 0 créditos).
@@ -494,12 +502,22 @@ async function genVideoKie(
             interval: 5000,
         })
         if (polled.outcome === 'done') {
-            // Entregado y ya persistido en Storage: fuera del rastro (si no, el
-            // barrido lo rescataría de nuevo y saldría duplicado).
-            void apiClearPendingGeneration(sub.taskId, 'delivered')
+            // La baja NO va aquí (mismo arreglo que la rama de imagen y la de
+            // MuleRouter, 2026-08-20): tener la URL —y hasta el mp4 ya en
+            // Storage— NO es tener la generación GUARDADA. La fila de
+            // `generations` la escribe persistGeneration después, y ese tramo
+            // puede fallar (plazo de 240s en la subida). Cerrando aquí se
+            // cobraba y se borraba el rastro antes de tiempo: cualquier fallo
+            // posterior quedaba cobrado, sin fila y ya no reclamable con 🔄.
+            // Medido 18/19-sep: 8 vídeos así. La cierra persistGeneration vía
+            // `generationMeta.providerTaskId`, con la fila ya escrita.
             // lastFrameUrl solo llega con `return_last_frame` (Seedance
             // 2.5); en los demás motores viaja undefined y nadie lo mira.
-            return { url: polled.url, lastFrameUrl: polled.lastFrameUrl }
+            return {
+                url: polled.url,
+                lastFrameUrl: polled.lastFrameUrl,
+                taskId: sub.taskId,
+            }
         }
         if (polled.outcome === 'timeout') {
             // Se le pregunta a KIE antes de rendirse; el rastro se conserva.
@@ -507,8 +525,8 @@ async function genVideoKie(
                 () => null,
             )
             if (rescued?.status === 'done') {
-                void apiClearPendingGeneration(sub.taskId, 'delivered')
-                return { url: rescued.url }
+                // Igual que arriba: el rescate da la URL, no la fila.
+                return { url: rescued.url, taskId: sub.taskId }
             }
             throw new Error(
                 `${polled.error} El job ${sub.taskId} puede seguir corriendo en kie.ai/logs — pulsa 🔄 en la galería para reclamarlo. NO regeneres: se cobraría dos veces.`,
@@ -3416,7 +3434,7 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                             try {
                                 const speakModel =
                                     useAvatarStudioStore.getState().speakModel
-                                resultUrl = await pollKieTalkingVideoTask({
+                                const talking = await pollKieTalkingVideoTask({
                                     image: speakImage,
                                     audioUrl,
                                     prompt: visualPrompt || undefined,
@@ -3427,6 +3445,14 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                                         ? durationMs / 1000
                                         : undefined,
                                 })
+                                resultUrl = talking.url
+                                // El taskId viaja hasta persistGeneration, que
+                                // cierra el rastro y confirma el cobro CON LA
+                                // FILA YA ESCRITA (ver genVideoKie).
+                                generationMeta = {
+                                    ...(generationMeta ?? {}),
+                                    providerTaskId: talking.taskId,
+                                }
 
                                 // Kling genera gran video pero IGNORA el audio del element
                                 // (verificado: la pista sale casi en silencio). Paso 2:
@@ -3608,17 +3634,23 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                                 // Continue-Video con identidad: se queda en 2.0
                                 // A PROPÓSITO — es el camino validado. 2.5 vive
                                 // como card aparte hasta medirlo aquí.
-                                resultUrl = (
-                                    await genVideoKie({
-                                        prompt: fullPrompt,
-                                        firstFrameImage: optimizedVideoInput,
-                                        referenceImages: identityRefs,
-                                        model: 'bytedance/seedance-2',
-                                        aspectRatio,
-                                        duration: videoDuration,
-                                        resolution: videoResolution,
-                                    })
-                                ).url
+                                const kieVideo = await genVideoKie({
+                                    prompt: fullPrompt,
+                                    firstFrameImage: optimizedVideoInput,
+                                    referenceImages: identityRefs,
+                                    model: 'bytedance/seedance-2',
+                                    aspectRatio,
+                                    duration: videoDuration,
+                                    resolution: videoResolution,
+                                })
+                                resultUrl = kieVideo.url
+                                // El taskId viaja hasta persistGeneration,
+                                // que cierra el rastro y confirma el cobro CON
+                                // LA FILA YA ESCRITA (ver genVideoKie).
+                                generationMeta = {
+                                    ...(generationMeta ?? {}),
+                                    providerTaskId: kieVideo.taskId,
+                                }
                             }
                         } else if (isKlingProvider) {
                             // Check if Motion Control is enabled (v2.6+ only).
@@ -3918,6 +3950,13 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                                     }),
                                 })
                                 resultUrl = kieVideo.url
+                                // El taskId viaja hasta persistGeneration,
+                                // que cierra el rastro y confirma el cobro CON
+                                // LA FILA YA ESCRITA (ver genVideoKie).
+                                generationMeta = {
+                                    ...(generationMeta ?? {}),
+                                    providerTaskId: kieVideo.taskId,
+                                }
                                 // Solo el run EN PRIMER PLANO adopta el frame:
                                 // `adoptLastFrame` pisa `videoInputImage`, que es
                                 // estado global. Un run "en espera" que resuelve
@@ -4100,6 +4139,13 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                                     }),
                                 })
                                 resultUrl = kieVideo.url
+                                // El taskId viaja hasta persistGeneration,
+                                // que cierra el rastro y confirma el cobro CON
+                                // LA FILA YA ESCRITA (ver genVideoKie).
+                                generationMeta = {
+                                    ...(generationMeta ?? {}),
+                                    providerTaskId: kieVideo.taskId,
+                                }
                                 // Ver la nota del otro call site: el frame solo lo
                                 // adopta el run en primer plano.
                                 if (
