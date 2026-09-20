@@ -52,8 +52,10 @@ test('Auto conserva exactamente las frases de anchura por rangos de cm', async (
     assert.match(getBodyDescriptors(m(105)), /generous hip width/)
     assert.match(getBodyDescriptors(m(80)), /narrow hip width/)
     assert.match(getBodyDescriptors(m(95)), /proportionate hips/)
-    // El hueco 86-91 sigue sin frase de anchura en Auto: no se inventa nada.
-    assert.doesNotMatch(getBodyDescriptors(m(90)), /hip width|wide|narrow hips/)
+    // 86-91 ya no calla: Auto dice "proporcionada" (decisión 20-sep), y NO
+    // "wide" ni "narrow" — eso es de los cm extremos o del chip.
+    assert.match(getBodyDescriptors(m(90)), /proportionate hip width seen from the front/)
+    assert.doesNotMatch(getBodyDescriptors(m(90)), /wide hip|narrow hip/)
 })
 
 test('un eje explícito sustituye a los rangos de cm, no se suma a ellos', async () => {
