@@ -46,6 +46,11 @@ export interface BodyLabProps {
     // true si los atributos físicos cambiaron desde que se generó/guardó el
     // sheet mostrado → overlay "desactualizado" + botón Actualizar + ojo.
     stale?: boolean
+    // QUÉ cambió, ya en castellano ("cintura, cadera"). El aviso se deriva de
+    // esta lista: si viene vacía es que no hay nada que avisar. Nació de un
+    // fallo en el que el overlay salía con el formulario intacto y no había
+    // forma de saber qué campo lo disparaba.
+    staleFields?: string
     // Variante NUDE de la hoja (se genera en pareja con la vestida). Solo viaja
     // a motores permisivos en runs NSFW; aquí se muestra como miniatura para
     // confirmar que existe. null = este avatar no tiene variante NSFW.
@@ -94,9 +99,7 @@ const GeneratingOverlay = ({ compact }: { compact?: boolean }) => (
         <HiOutlineRefresh
             className={`animate-spin text-white ${compact ? 'w-4 h-4' : 'w-6 h-6'}`}
         />
-        {!compact && (
-            <span className="text-xs text-white">Generando…</span>
-        )}
+        {!compact && <span className="text-xs text-white">Generando…</span>}
     </div>
 )
 
@@ -147,9 +150,7 @@ const BodyLab = (props: BodyLabProps) => {
                     disabled={props.models.length === 0 || props.isGenerating}
                 >
                     {props.models.length === 0 ? (
-                        <option value="">
-                            Sin modelo KIE configurado
-                        </option>
+                        <option value="">Sin modelo KIE configurado</option>
                     ) : (
                         props.models.map((m) => (
                             <option key={m.id} value={m.model}>
@@ -200,8 +201,9 @@ const BodyLab = (props: BodyLabProps) => {
                     {props.stale && (
                         <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-black/55 backdrop-blur-[1px] rounded-lg">
                             <span className="text-xs text-white text-center px-3">
-                                Cambiaste los atributos — este cuerpo está
-                                desactualizado
+                                {props.staleFields
+                                    ? `Cambiaste ${props.staleFields} — este cuerpo está desactualizado`
+                                    : 'Cambiaste los atributos — este cuerpo está desactualizado'}
                             </span>
                             <div className="flex items-center gap-2">
                                 <button

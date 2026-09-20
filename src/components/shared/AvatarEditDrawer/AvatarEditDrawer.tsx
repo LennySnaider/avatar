@@ -23,7 +23,7 @@ import { generateAvatar, analyzeFaceFromImages } from '@/services/GeminiService'
 import type { PhysicalMeasurements } from '@/@types/supabase'
 import { createThumbnail, resizeBase64Image } from '@/utils/imageOptimization'
 import { cleanRefWatermarkInBackground } from '@/utils/refWatermarkClean'
-import { sameBodyShape } from '@/utils/bodySheetPrompt'
+import { diffBodyShape, describeBodyShapeDiff } from '@/utils/bodySheetPrompt'
 import { generateBodySheetPair } from '@/utils/bodySheetGenerate'
 import {
     DEFAULT_PROVIDERS,
@@ -759,10 +759,13 @@ const AvatarEditDrawer = ({
     const shownBody = bodySheet || localBodyRef
     // Ignora los campos de apariencia que el sheet no dibuja (pezones) — cambiarlos
     // no altera el cuerpo, así que NO debe pedir regenerar (gasto de tokens).
+    // QUÉ cambió exactamente. El aviso se deriva de esta lista, así que no
+    // puede aparecer sin un atributo que lo justifique.
+    const bodyDiff = diffBodyShape(localMeasurements, sheetMeasurements)
     const bodyStale =
         !!shownBody &&
         !!sheetMeasurements &&
-        !sameBodyShape(localMeasurements, sheetMeasurements)
+        bodyDiff.length > 0
 
     // Reference Slot Component
     const ReferenceSlot = ({
@@ -1160,6 +1163,7 @@ const AvatarEditDrawer = ({
                                         if (s) setPreviewImage(s)
                                     }}
                                     stale={bodyStale}
+                                    staleFields={describeBodyShapeDiff(bodyDiff)}
                                     missingSheetNotice={
                                         // Igual que en el Studio: una hoja
                                         // fresca ya tapa el hueco.

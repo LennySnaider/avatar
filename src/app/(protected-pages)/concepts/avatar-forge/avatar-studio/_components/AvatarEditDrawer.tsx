@@ -20,7 +20,7 @@ import {
     HiOutlineSparkles,
 } from 'react-icons/hi'
 import { generateAvatar, analyzeFaceFromImages } from '@/services/GeminiService'
-import { sameBodyShape } from '@/utils/bodySheetPrompt'
+import { diffBodyShape, describeBodyShapeDiff } from '@/utils/bodySheetPrompt'
 import { newestReference } from '@/utils/avatarReferences'
 import { generateBodySheetPair } from '@/utils/bodySheetGenerate'
 import { urlToDataUrl } from '@/utils/imageStitch'
@@ -816,10 +816,13 @@ const AvatarEditDrawer = ({
     const shownBody = bodySheet || bodyRef
     // Ignora los campos de apariencia que el sheet no dibuja (pezones) — cambiarlos
     // no altera el cuerpo, así que NO debe pedir regenerar (gasto de tokens).
+    // QUÉ cambió exactamente. El aviso se deriva de esta lista, así que no
+    // puede aparecer sin un atributo que lo justifique.
+    const bodyDiff = diffBodyShape(localMeasurements, sheetMeasurements)
     const bodyStale =
         !!shownBody &&
         !!sheetMeasurements &&
-        !sameBodyShape(localMeasurements, sheetMeasurements)
+        bodyDiff.length > 0
 
     // Default: primer modelo permisivo (los face:true ya vienen primero).
     useEffect(() => {
@@ -1216,6 +1219,7 @@ const AvatarEditDrawer = ({
                                         if (s) setPreviewImage(s)
                                     }}
                                     stale={bodyStale}
+                                    staleFields={describeBodyShapeDiff(bodyDiff)}
                                     nudeSheet={bodySheetNude || bodyRefNsfw}
                                     onPreviewNude={() => {
                                         const n = bodySheetNude || bodyRefNsfw

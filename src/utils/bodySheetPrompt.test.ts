@@ -74,3 +74,57 @@ test('sin medidas guardadas no se compara nada', () => {
     assert.equal(sameBodyShape(null, null), true)
     assert.equal(sameBodyShape(base, null), false)
 })
+
+// ─────────────────────────────────────────────────────────────────────────────
+// `diffBodyShape`: el aviso de "desactualizado" se deriva de esta lista, así
+// que no puede aparecer sin un atributo que lo justifique. Cuando el aviso
+// salía con el formulario intacto, nadie podía nombrar el campo culpable.
+// ─────────────────────────────────────────────────────────────────────────────
+
+test('sin cambios reales la lista va vacía', async () => {
+    const { diffBodyShape } = await import('./bodySheetPrompt.ts')
+    assert.deepEqual(diffBodyShape(base, como({ ...base })), [])
+    assert.deepEqual(
+        diffBodyShape(base, como({ hips: 100, waist: 60, bust: 92, bodyType: 'hourglass', height: 168, age: 24 })),
+        [],
+    )
+})
+
+test('nombra exactamente el atributo que cambió', async () => {
+    const { diffBodyShape } = await import('./bodySheetPrompt.ts')
+    assert.deepEqual(diffBodyShape(base, como({ ...base, waist: 70 })), ['waist'])
+    assert.deepEqual(
+        diffBodyShape(base, como({ ...base, waist: 70, hips: 105 })).sort(),
+        ['hips', 'waist'],
+    )
+})
+
+test('los nombres se muestran en castellano', async () => {
+    const { describeBodyShapeDiff } = await import('./bodySheetPrompt.ts')
+    assert.equal(describeBodyShapeDiff(['waist', 'hips']), 'cintura, cadera')
+    // Un campo sin etiqueta se enseña tal cual antes que no decir nada.
+    assert.equal(describeBodyShapeDiff(['loQueSea']), 'loQueSea')
+})
+
+test('sin hoja previa no hay cambios que mostrar', async () => {
+    const { diffBodyShape } = await import('./bodySheetPrompt.ts')
+    assert.deepEqual(diffBodyShape(base, null), [])
+    assert.deepEqual(diffBodyShape(null, base), [])
+})
+
+test('el aviso y la lista no pueden discrepar', async () => {
+    const { diffBodyShape, sameBodyShape } = await import('./bodySheetPrompt.ts')
+    const casos = [
+        [base, como({ ...base })],
+        [base, como({ ...base, waist: 70 })],
+        [base, como({ ...base, nippleColor: 'rosy' })],
+        [base, como({ ...base, legType: '' })],
+    ] as const
+    for (const [a, b] of casos) {
+        assert.equal(
+            sameBodyShape(a, b),
+            diffBodyShape(a, b).length === 0,
+            `discrepan para ${JSON.stringify(b)}`,
+        )
+    }
+})
