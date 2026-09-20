@@ -996,6 +996,8 @@ export type Database = {
       }
       generations: {
         Row: {
+          ai_marks: Json
+          ai_marks_status: string
           aspect_ratio: string | null
           avatar_id: string | null
           created_at: string | null
@@ -1010,6 +1012,8 @@ export type Database = {
           user_id: string | null
         }
         Insert: {
+          ai_marks?: Json
+          ai_marks_status?: string
           aspect_ratio?: string | null
           avatar_id?: string | null
           created_at?: string | null
@@ -1024,6 +1028,8 @@ export type Database = {
           user_id?: string | null
         }
         Update: {
+          ai_marks?: Json
+          ai_marks_status?: string
           aspect_ratio?: string | null
           avatar_id?: string | null
           created_at?: string | null
