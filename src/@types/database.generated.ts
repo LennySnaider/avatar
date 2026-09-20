@@ -98,6 +98,8 @@ export type Database = {
           chat_id: string
           created_at: string
           direction: Database["public"]["Enums"]["agent_msg_direction"]
+          discard_note: string | null
+          discard_reason: string | null
           error_message: string | null
           external_created_at: string | null
           external_message_id: string | null
@@ -105,6 +107,7 @@ export type Database = {
           id: string
           media: Json
           organization_id: string
+          original_text: string | null
           send_after: string | null
           sent_at: string | null
           status: Database["public"]["Enums"]["agent_msg_status"]
@@ -116,6 +119,8 @@ export type Database = {
           chat_id: string
           created_at?: string
           direction: Database["public"]["Enums"]["agent_msg_direction"]
+          discard_note?: string | null
+          discard_reason?: string | null
           error_message?: string | null
           external_created_at?: string | null
           external_message_id?: string | null
@@ -123,6 +128,7 @@ export type Database = {
           id?: string
           media?: Json
           organization_id: string
+          original_text?: string | null
           send_after?: string | null
           sent_at?: string | null
           status: Database["public"]["Enums"]["agent_msg_status"]
@@ -134,6 +140,8 @@ export type Database = {
           chat_id?: string
           created_at?: string
           direction?: Database["public"]["Enums"]["agent_msg_direction"]
+          discard_note?: string | null
+          discard_reason?: string | null
           error_message?: string | null
           external_created_at?: string | null
           external_message_id?: string | null
@@ -141,6 +149,7 @@ export type Database = {
           id?: string
           media?: Json
           organization_id?: string
+          original_text?: string | null
           send_after?: string | null
           sent_at?: string | null
           status?: Database["public"]["Enums"]["agent_msg_status"]
@@ -996,6 +1005,8 @@ export type Database = {
       }
       generations: {
         Row: {
+          ai_marks: Json
+          ai_marks_status: string
           aspect_ratio: string | null
           avatar_id: string | null
           created_at: string | null
@@ -1010,6 +1021,8 @@ export type Database = {
           user_id: string | null
         }
         Insert: {
+          ai_marks?: Json
+          ai_marks_status?: string
           aspect_ratio?: string | null
           avatar_id?: string | null
           created_at?: string | null
@@ -1024,6 +1037,8 @@ export type Database = {
           user_id?: string | null
         }
         Update: {
+          ai_marks?: Json
+          ai_marks_status?: string
           aspect_ratio?: string | null
           avatar_id?: string | null
           created_at?: string | null

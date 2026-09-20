@@ -12,6 +12,11 @@
  * chat de entrada sí estaba acotado, pero a partir de ahí se navegaba por ids
  * sin volver a comprobar el tenant.
  */
+import {
+    buildApprovalPatch,
+    isDiscardReason,
+    type DiscardReason,
+} from '@/lib/agent/draftCorrection'
 import { getOrgContext } from '@/lib/tenant/getOrgContext'
 import { requirePermission, isExpectedDenial } from '@/lib/org/guards'
 import { orgTable, orgInsert } from '@/lib/org/orgTable'
@@ -421,15 +426,35 @@ export async function regenerateDraft(
     }
 }
 
+/**
+ * Tirar un borrador, DICIENDO POR QUÉ.
+ *
+ * El motivo es obligatorio y no por burocracia: un `status='discarded'` suelto
+ * —lo que se guardaba antes— dice "esto estuvo mal" sin decir en qué, y así no
+ * se puede corregir nada. Con el motivo, los descartes se agrupan y se ve qué
+ * falla más: si el agente se sale del personaje o si vende demasiado pronto son
+ * arreglos distintos, en sitios distintos.
+ *
+ * Valida contra la lista cerrada y FALLA CERRADO: esto llega del cliente, y un
+ * motivo inventado rompería el agrupado en silencio. La base tiene el mismo
+ * espejo en un CHECK, porque la tabla también la escriben backfills.
+ */
 export async function discardDraft(
     messageId: string,
+    reason: DiscardReason,
+    note?: string,
 ): Promise<InboxResult<{ id: string }>> {
     try {
         const ctx = await getOrgContext()
         requirePermission(ctx, 'inbox:reply')
+        if (!isDiscardReason(reason)) {
+            return { success: false, error: 'Motivo de descarte no válido' }
+        }
         const { error } = await orgTable(ctx, 'agent_messages')
             .update({
                 status: 'discarded',
+                discard_reason: reason,
+                discard_note: note?.trim() || null,
                 updated_at: new Date().toISOString(),
             })
             .eq('id', messageId)
@@ -505,7 +530,14 @@ export async function approveAndSend(
                 error: `Cannot send a ${msg.status} message`,
             }
 
-        const text = (editedText ?? msg.text ?? '').trim()
+        // El borrador del modelo se conserva cuando el humano lo cambia: ese
+        // par es la señal que alimenta la cola de revisión. Antes se pisaba.
+        const correction = buildApprovalPatch({
+            draftText: msg.text,
+            editedText,
+            existingOriginal: msg.original_text,
+        })
+        const text = correction.text
         if (!text) return { success: false, error: 'Message is empty' }
 
         // Approve with the edited text + human approver, clear any attention flag.
@@ -514,6 +546,11 @@ export async function approveAndSend(
                 status: 'approved',
                 approved_by: ctx.userId,
                 text,
+                // Sólo se escribe si hubo corrección de verdad: un envío sin
+                // tocar no debe ensuciar el dataset con un par vacío.
+                ...(correction.isCorrection
+                    ? { original_text: correction.originalText }
+                    : {}),
                 updated_at: new Date().toISOString(),
             })
             .eq('id', messageId)
@@ -632,7 +669,14 @@ export async function approveAndSendVoiceNote(
                 success: false,
                 error: `Cannot send a ${msg.status} message`,
             }
-        const text = (editedText ?? msg.text ?? '').trim()
+        // El borrador del modelo se conserva cuando el humano lo cambia: ese
+        // par es la señal que alimenta la cola de revisión. Antes se pisaba.
+        const correction = buildApprovalPatch({
+            draftText: msg.text,
+            editedText,
+            existingOriginal: msg.original_text,
+        })
+        const text = correction.text
         if (!text) return { success: false, error: 'Message is empty' }
 
         // Los saltos siguientes (chat → avatar → voz) iban por id SIN filtro de
@@ -700,6 +744,11 @@ export async function approveAndSendVoiceNote(
                 status: 'approved',
                 approved_by: ctx.userId,
                 text,
+                // Sólo se escribe si hubo corrección de verdad: un envío sin
+                // tocar no debe ensuciar el dataset con un par vacío.
+                ...(correction.isCorrection
+                    ? { original_text: correction.originalText }
+                    : {}),
                 updated_at: new Date().toISOString(),
             })
             .eq('id', messageId)

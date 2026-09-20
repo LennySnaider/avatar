@@ -173,6 +173,16 @@ interface AgentMessagesTable {
         direction: AgentMsgDirection
         external_message_id: string | null
         text: string | null
+        /**
+         * El borrador TAL CUAL salió del modelo, cuando un humano lo editó
+         * antes de enviar. NULL = nadie lo corrigió. Nunca se pisa: ver
+         * `lib/agent/draftCorrection.ts`.
+         */
+        original_text: string | null
+        /** Por qué se tiró el borrador. Espejo de `DISCARD_REASONS`. */
+        discard_reason: string | null
+        /** Matiz libre del descarte; el motivo se agrupa, la nota explica. */
+        discard_note: string | null
         media: Json
         status: AgentMsgStatus
         generated_by: Json | null
