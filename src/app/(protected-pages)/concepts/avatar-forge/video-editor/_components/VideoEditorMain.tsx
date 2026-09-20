@@ -41,6 +41,7 @@ import {
     type VideoRegion,
 } from '@/services/VideoEditService'
 import { stitchVideos } from '@/services/VideoStitchService'
+import { releaseFFmpeg } from '@/services/_ffmpegRuntime'
 
 // ─── Single-track timeline model ──────────────────────────────────────
 // One clip = one segment on the track. `duration` is the SOURCE video's
@@ -232,6 +233,9 @@ interface VideoEditorMainProps {
 
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 const VideoEditorMain = ({ userId, initialVideoUrl }: VideoEditorMainProps) => {
+    // Al salir del editor se devuelve la memoria de ffmpeg, aunque no se haya
+    // exportado nada: basta un recorte para dejar el heap de wasm inflado.
+    useEffect(() => releaseFFmpeg, [])
     const addToGallery = useAvatarStudioStore((s) => s.addToGallery)
     const gallery = useAvatarStudioStore((s) => s.gallery)
     const [isGalleryPickerOpen, setIsGalleryPickerOpen] = useState(false)
@@ -1370,6 +1374,12 @@ const VideoEditorMain = ({ userId, initialVideoUrl }: VideoEditorMainProps) => {
             setIsProcessing(false)
             setProgress(0)
             setProgressLabel('')
+            // Terminada la exportación, se suelta el runtime de ffmpeg: su heap
+            // de WebAssembly solo crece, y re-encodear lo deja inflado para el
+            // resto de la vida de la pestaña. La siguiente operación lo vuelve
+            // a cargar (~5s), que es un precio barato frente a dejar varios GB
+            // reservados sin usarlos.
+            releaseFFmpeg()
         }
     }, [clips, buildFinalVideo, addToGallery])
 

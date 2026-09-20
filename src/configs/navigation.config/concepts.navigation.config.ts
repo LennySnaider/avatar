@@ -64,7 +64,7 @@ const conceptsNavigationConfig: NavigationTree[] = [
                 path: `${CONCEPTS_PREFIX_PATH}/avatar-forge/agent`,
                 title: 'AI Agent',
                 translateKey: 'nav.avatarForge.agent',
-                icon: 'aiProviders',
+                icon: 'avatarAgent',
                 type: NAV_ITEM_TYPE_ITEM,
                 authority: [ADMIN, USER],
                 meta: {
@@ -80,7 +80,7 @@ const conceptsNavigationConfig: NavigationTree[] = [
                 path: `${CONCEPTS_PREFIX_PATH}/avatar-forge/inbox`,
                 title: 'Agent Inbox',
                 translateKey: 'nav.avatarForge.inbox',
-                icon: 'aiProviders',
+                icon: 'avatarInbox',
                 type: NAV_ITEM_TYPE_ITEM,
                 authority: [ADMIN, USER],
                 meta: {
@@ -96,7 +96,7 @@ const conceptsNavigationConfig: NavigationTree[] = [
                 path: `${CONCEPTS_PREFIX_PATH}/avatar-forge/trending-sounds`,
                 title: 'Trending Sounds',
                 translateKey: 'nav.avatarForge.trendingSounds',
-                icon: 'avatarSocial',
+                icon: 'trendingSounds',
                 type: NAV_ITEM_TYPE_ITEM,
                 authority: [ADMIN, USER],
                 meta: {
@@ -128,7 +128,7 @@ const conceptsNavigationConfig: NavigationTree[] = [
                 path: '',
                 title: 'Fanvue',
                 translateKey: 'nav.avatarForge.fanvue',
-                icon: 'avatarSocial',
+                icon: 'fanvue',
                 type: NAV_ITEM_TYPE_COLLAPSE,
                 authority: [ADMIN, USER],
                 subMenu: [

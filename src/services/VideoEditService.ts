@@ -330,6 +330,45 @@ async function generateFeatherMaskPng(
  * If you ever need frame-exact trimming, switch to `-c:v libx264 -c:a aac`
  * but expect the operation to take roughly as long as a re-encode.
  */
+/**
+ * Argumentos de ffmpeg para recortar. Pura y exportada para poder afirmarlos en
+ * un test: la versión anterior no lo era y el fallo salió en producción.
+ *
+ * POR QUÉ SE RE-ENCODEA (y no `-c copy`, que sería instantáneo): con copia de
+ * flujo el corte solo puede caer en un KEYFRAME, y los vídeos que genera la
+ * plataforma casi no tienen. Medido sobre uno real de la galería —10.00s de
+ * duración— tenía DOS keyframes: uno en 0.00s y otro en 8.33s. Recortar desde
+ * cualquier punto intermedio saltaba al de 8.33 y devolvía 1.67s: es el bug de
+ * "pedí 5.8s y guardó 1 segundo".
+ *
+ * El `-ss` va ANTES de `-i` a propósito (input seeking): ffmpeg salta directo
+ * al keyframe anterior en vez de decodificar el archivo entero, y como además
+ * re-encodea, el primer fotograma cae exactamente donde se pidió. Con `-ss`
+ * después de `-i` sería igual de exacto pero mucho más lento.
+ *
+ * Y la duración viaja en `-t`, no en `-to`: con el seek en la entrada, los
+ * tiempos de salida cuentan desde el corte, así que un `-to` absoluto recortaba
+ * de más.
+ */
+export function buildTrimArgs(
+    input: string,
+    output: string,
+    startSec: number,
+    endSec: number,
+): string[] {
+    return [
+        '-ss', startSec.toFixed(3),
+        '-i', input,
+        '-t', (endSec - startSec).toFixed(3),
+        // Mismos ajustes que crop y stitch, que ya re-encodean con este core.
+        '-c:v', 'libx264',
+        '-preset', 'ultrafast',
+        '-crf', '23',
+        '-c:a', 'aac',
+        output,
+    ]
+}
+
 export async function trimVideo(
     videoUrl: string,
     startSec: number,
@@ -361,17 +400,7 @@ export async function trimVideo(
         await ff.writeFile(input, data)
         onProgress?.(35)
 
-        // `-avoid_negative_ts make_zero` rebases timestamps to 0 so the
-        // output starts cleanly even if -ss landed mid-GOP. Without this
-        // some players (Safari especially) show a black frame at the start.
-        const exitCode = await ff.exec([
-            '-i', input,
-            '-ss', startSec.toFixed(3),
-            '-to', endSec.toFixed(3),
-            '-c', 'copy',
-            '-avoid_negative_ts', 'make_zero',
-            output,
-        ])
+        const exitCode = await ff.exec(buildTrimArgs(input, output, startSec, endSec))
 
         if (exitCode !== 0) {
             throw new Error(`FFmpeg trim exited with code ${exitCode}. See [FFmpeg Log] for details.`)

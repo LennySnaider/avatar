@@ -84,6 +84,10 @@ import {
     PiMapTrifoldDuotone,
     PiBookDuotone,
     PiShareNetworkDuotone,
+    PiRobotDuotone,
+    PiTrayDuotone,
+    PiMusicNotesDuotone,
+    PiHeartDuotone,
     PiToolboxDuotone,
     PiCodeDuotone,
     PiPasswordDuotone,
@@ -225,6 +229,13 @@ const navigationIcon: NavigationIcons = {
     voiceStudio: <PiMicrophoneDuotone />,
     videoFlows: <PiFlowArrowDuotone />,
     avatarSocial: <PiShareNetworkDuotone />,
+    // Cada entrada del menú con su propio icono: 'aiProviders' se repetía en
+    // AI Agent, Agent Inbox y AI Providers, y 'avatarSocial' en Trending
+    // Sounds, Social Media y Fanvue — seis entradas y dos dibujos.
+    avatarAgent: <PiRobotDuotone />,
+    avatarInbox: <PiTrayDuotone />,
+    trendingSounds: <PiMusicNotesDuotone />,
+    fanvue: <PiHeartDuotone />,
     telegram: <PiTelegramLogoDuotone />,
 }
 

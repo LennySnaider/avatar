@@ -1,6 +1,12 @@
 import type { PhysicalMeasurements } from '@/@types/supabase'
 import { generateImageKie } from '@/services/KieService'
 import { urlToDataUrl } from '@/utils/imageStitch'
+import {
+    esUrlPublica,
+    origenPublico,
+    tipoPorExtension,
+    type SheetRef,
+} from '@/utils/sheetRef'
 import { engineCaps } from '@/services/kie/engineCaps'
 import {
     BODY_SHEET_NEGATIVE_PROMPT,
@@ -65,7 +71,7 @@ export async function generateBodySheetPair(params: {
      * el mismo bug que el encadenado viene a matar. Con esto, refrescar una
      * sola hoja sigue dando la misma mujer.
      */
-    nudeSheet?: { base64: string; mimeType: string }
+    nudeSheet?: SheetRef
 }): Promise<BodySheetPair> {
     const { measurements, model } = params
     const wantClothed = params.only !== 'nude'
@@ -73,13 +79,28 @@ export async function generateBodySheetPair(params: {
 
     // Preferido: plantilla FIJA de turnaround + i2i → poses/layout consistentes
     // de la plantilla + curvas del config. Fallback: t2i si no está o falla.
-    let tmpl: { base64: string; mimeType: string } | null = null
-    try {
-        const dataUrl = await urlToDataUrl(BODY_TURNAROUND_TEMPLATE_URL)
-        const mt = dataUrl.match(/^data:(.+);base64,(.+)$/)
-        if (mt) tmpl = { mimeType: mt[1], base64: mt[2] }
-    } catch {
-        // plantilla ausente → fallback t2i
+    //
+    // VIAJA POR URL, NO EN BASE64. La plantilla pesa 1,88 MB y codificada son
+    // ~2,5 MB: mandarla como bytes en cada generación reventaba el tope de
+    // body de Vercel con un `413 Content Too Large` y dejaba el Body Lab sin
+    // poder generar. `resolveRefUrl` ya acepta una ref YA hospedada y la pasa
+    // tal cual al proveedor, que la descarga él mismo. Es la misma lección que
+    // el editor de imagen aprendió en su día con las refs de R2.
+    let tmpl: SheetRef | null = null
+    if (esUrlPublica(origenPublico())) {
+        tmpl = {
+            url: `${origenPublico()}${BODY_TURNAROUND_TEMPLATE_URL}`,
+            mimeType: 'image/png',
+        }
+    } else {
+        // En local el proveedor no puede descargar de localhost → van los bytes.
+        try {
+            const dataUrl = await urlToDataUrl(BODY_TURNAROUND_TEMPLATE_URL)
+            const mt = dataUrl.match(/^data:(.+);base64,(.+)$/)
+            if (mt) tmpl = { mimeType: mt[1], base64: mt[2] }
+        } catch {
+            // plantilla ausente → fallback t2i
+        }
     }
 
     // Sin plantilla no se puede t2i con un motor i2i-only → cae a Wan. Antes
@@ -99,7 +120,7 @@ export async function generateBodySheetPair(params: {
      */
     const run = (
         nude: boolean,
-        ref: { base64: string; mimeType: string } | null,
+        ref: SheetRef | null,
         fromOwnSheet = false,
     ) =>
         ref
@@ -155,19 +176,11 @@ export async function generateBodySheetPair(params: {
     let clothedRef = tmpl
     let clothedFromNude = false
     if (wantClothed && nude.success && nude.url) {
-        try {
-            const dataUrl = await urlToDataUrl(nude.url)
-            const mt = dataUrl.match(/^data:(.+);base64,(.+)$/)
-            if (mt) {
-                clothedRef = { mimeType: mt[1], base64: mt[2] }
-                clothedFromNude = true
-            }
-        } catch (e) {
-            console.warn(
-                '[BodySheet] No se pudo leer la hoja NSFW para encadenar; la vestida sale de la plantilla:',
-                e,
-            )
-        }
+        // También por URL: la hoja recién generada ya está hospedada, y a 2K
+        // pesa varios MB. Leerla a base64 para reenviarla era el otro medio
+        // `413` de este flujo (y un string enorme de más en el navegador).
+        clothedRef = { url: nude.url, mimeType: tipoPorExtension(nude.url) }
+        clothedFromNude = true
     } else if (wantClothed && !wantNude && params.nudeSheet) {
         // Refresh de SOLO la vestida: se hereda de la nude que el avatar ya
         // tiene, para que refrescar una hoja no la separe de la otra.

@@ -1,4 +1,5 @@
-import type { PhysicalMeasurements, CurveLevel } from '@/@types/supabase'
+import type {
+    HipWidth, PhysicalMeasurements, CurveLevel } from '@/@types/supabase'
 import { deriveShapeFromMeasurements } from '@/utils/bodyShapes'
 import type { BodyShape } from '@/@types/supabase'
 
@@ -137,7 +138,17 @@ export function getBodyDescriptors(m: PhysicalMeasurements): string {
 
     // Lower body proportions (umbral dramático = 130, el XXL de las tablas
     // de tallas reales; 100-129 = wide natural, sin salto).
-    if (m.hips >= 130) {
+    //
+    // ANCHURA FRONTAL EXPLÍCITA (2026-09-20). Los cm son PERÍMETRO e incluyen
+    // los glúteos, así que derivar de ellos la anchura de frente es una
+    // aproximación que falla con glúteos altos (la proyección se come
+    // perímetro). Y peor: 86-91 cm no producía NINGUNA frase de anchura, así que
+    // con cadera 90 la única anchura que llegaba al prompt era la que colara la
+    // forma del glúteo. Si el usuario fija el eje, manda él y los buckets de cm
+    // no opinan; si no lo fija (Auto), todo sigue exactamente como antes.
+    if (m.hipWidth) {
+        descriptors.push(HIP_WIDTH_PHRASE[m.hipWidth])
+    } else if (m.hips >= 130) {
         descriptors.push(
             'dramatically wide exaggerated hips far beyond natural proportions',
             'hips clearly wider than her shoulders',
@@ -330,15 +341,24 @@ export const THIGHS_LEVEL_PHRASE: Record<number, string> = {
 // buildCurvesEmphasis y comparten su gating permisivo.
 export const GLUTES_SHAPE_PHRASE: Record<string, string> = {
     square: 'square-shaped glutes — straight vertical line from waist to glutes with little side curve',
+    // FORMA SIN ANCHURA (2026-09-20, reporte con hoja: cadera 90 cm + Heart
+    // salía con caderas ANCHAS en Qwen 3). Tres formas afirmaban anchura por su
+    // cuenta — 'heart' decía "with wide hips", 'v-shape' "slim hips" y
+    // 'a-shape' "widest at the bottom… hips" — y el prompt las ponía a dos
+    // frases de "hips 90cm". Un motor literal resuelve la contradicción a favor
+    // de la frase, no del número. Es la MISMA lección que los niveles 4 y 6 ya
+    // aprendieron el 31-jul ("el glúteo es PROYECCIÓN hacia atrás; la anchura
+    // la fijan los cm"), aplicada a los textos de forma que se quedaron fuera.
+    // Forma = geometría del glúteo; anchura = los cm de cadera, y nada más.
     'v-shape':
-        'V-shaped glutes — fuller at the top narrowing downward, slim hips with little lower fullness',
+        'V-shaped glutes — fuller at the top narrowing downward, with little lower fullness; her hip width stays true to her measured hips',
     'a-shape':
-        'A-shaped pear glutes — narrow at the top and widest at the bottom, volume concentrated low on the glutes and hips',
+        'A-shaped pear glutes — narrow at the top and fullest at the bottom of the glutes, the volume concentrated low and projecting BACKWARD; her hip width stays true to her measured hips',
     // "Round" SIN palabras de tamaño (2026-08-01, reporte: glúteos 1 salían
     // como 3): decía "full and balanced" — la FORMA llevaba tamaño escondido
     // y con nivel bajo el "full" ganaba. Forma = geometría; tamaño = el nivel.
     round: 'perfectly round glutes — evenly rounded in every direction, symmetric youthful shape',
-    heart: 'heart-shaped glutes — voluminous curvy lower part tapering up to a narrow waist, upside-down-heart silhouette with wide hips',
+    heart: 'heart-shaped glutes — fullest at the lower part and tapering up toward a narrow waist, an upside-down-heart outline seen from behind; the fullness projects BACKWARD and her hip width stays true to her measured hips',
 }
 
 // FORMA SIN ANATOMÍA DESCUBIERTA (2026-08-20, reporte "marca los pezones sobre
@@ -589,6 +609,24 @@ export function vulvaClause(scenePrompt?: string): string {
         return `her vulva IS fully visible and anatomically real: ${spec}`
     }
     return `only when fully nude below the waist: her vulva shows ${spec}; when wearing bottoms the area stays smoothly covered with no explicit detail through fabric`
+}
+
+/**
+ * Frases del eje de ANCHURA FRONTAL. Las tres dicen "seen from the front" para
+ * que no peleen con el nivel de glúteo (que es proyección hacia atrás): son
+ * dimensiones distintas y así el motor no tiene que elegir entre ellas.
+ */
+export const HIP_WIDTH_PHRASE: Record<HipWidth, string> = {
+    narrow: 'narrow hip width seen from the front — any lower-body volume sits in the glutes projecting BACKWARD, never sideways',
+    normal: 'proportionate hip width seen from the front, in balance with her shoulders',
+    wide: 'wide hip width seen from the front, hips clearly wider than her shoulders',
+}
+export const HIP_WIDTHS = ['narrow', 'normal', 'wide'] as const
+/** Etiquetas de los chips (es-MX). */
+export const HIP_WIDTH_LABEL: Record<HipWidth, string> = {
+    narrow: 'estrecha',
+    normal: 'normal',
+    wide: 'ancha',
 }
 
 // Listas para los chips de la UI (orden de despliegue)
