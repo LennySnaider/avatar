@@ -143,6 +143,7 @@
             "editArticleDesc": "Modificar el contenido del artículo",
             "manageArticleDesc": "Gestión de artículos"
         },
+        "platform": "Plataforma",
         "calendar": "Calendario",
         "fileManager": "Gestor de archivos",
         "mail": "Correo",

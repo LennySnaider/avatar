@@ -143,6 +143,7 @@
             "editArticleDesc": "Modify article content",
             "manageArticleDesc": "Article management"
         },
+        "platform": "Platform",
         "calendar": "Calendar",
         "fileManager": "File Manager",
         "mail": "Mail",

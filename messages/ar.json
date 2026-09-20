@@ -129,6 +129,7 @@
             "editArticleDesc": "تعديل محتوى المقالة",
             "manageArticleDesc": "إدارة المقالات"
         },
+        "platform": "المنصة",
         "calendar": "التقويم",
         "fileManager": "مدير الملفات",
         "mail": "البريد",
