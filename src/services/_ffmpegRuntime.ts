@@ -77,8 +77,17 @@ export async function loadFFmpeg(): Promise<FFmpeg> {
         console.log('[FFmpeg] Starting to load FFmpeg WASM...')
 
         const ff = new FFmpeg()
+        // El log de ffmpeg NO se vuelca entero en producción. Con `-c copy`
+        // eran cuatro líneas; desde que el recorte re-encodea son miles por
+        // clip, y el navegador retiene todo ese historial de consola en
+        // memoria. En producción solo pasan las líneas que describen un fallo,
+        // que son las que sirven para diagnosticar; en desarrollo sigue todo.
+        const esFallo = (m: string) =>
+            /error|invalid|failed|unable|not found|no such/i.test(m)
         ff.on('log', ({ message }) => {
-            console.log('[FFmpeg Log]', message)
+            if (process.env.NODE_ENV !== 'production' || esFallo(message)) {
+                console.log('[FFmpeg Log]', message)
+            }
         })
 
         try {
@@ -134,4 +143,30 @@ export async function fetchVideoData(url: string): Promise<Uint8Array> {
     console.log('[FFmpeg] Video fetched, size:', Math.round(arrayBuffer.byteLength / 1024), 'KB')
 
     return new Uint8Array(arrayBuffer)
+}
+
+/**
+ * Suelta el runtime y su memoria.
+ *
+ * El heap de WebAssembly SOLO CRECE: una vez que una operación pesada lo
+ * infla —y re-encodear un vídeo lo infla mucho— esa memoria se queda reservada
+ * mientras viva la instancia, que hasta ahora era hasta cerrar la pestaña.
+ * Terminando el worker se devuelve entera.
+ *
+ * El precio es que la siguiente operación vuelve a cargar el runtime (~5s +
+ * la descarga del core), así que esto se llama al TERMINAR de trabajar —al
+ * cerrar el editor o al acabar una exportación—, nunca entre dos pasos de la
+ * misma tarea.
+ */
+export function releaseFFmpeg(): void {
+    if (!ffmpeg) return
+    try {
+        ffmpeg.terminate()
+        console.log('[FFmpeg] Runtime liberado')
+    } catch (e) {
+        console.warn('[FFmpeg] No se pudo terminar el runtime:', e)
+    }
+    ffmpeg = null
+    isLoading = false
+    loadPromise = null
 }
