@@ -10,6 +10,7 @@ import type {
     CameraMotion,
     SubjectAction,
     VideoResolution,
+    ImageResolution,
     CameraShot,
     CinemaLens,
     CinemaFocalLength,
@@ -19,7 +20,10 @@ import type { Avatar, AIProvider, Prompt, SkinTone } from '@/@types/supabase'
 import type { ClonedVoice } from '@/@types/voice'
 import { describeBody, describeHair } from '@/utils/bodyDescriptors'
 import { stripNegatedTattoos } from '@/utils/promptSanitizer'
-import { stripSceneIdentity, ANTI_WATERMARK_CLAUSE } from '@/utils/sceneSanitizer'
+import {
+    stripSceneIdentity,
+    ANTI_WATERMARK_CLAUSE,
+} from '@/utils/sceneSanitizer'
 import type {
     KlingCameraControlType,
     KlingCameraSimpleConfig,
@@ -106,6 +110,7 @@ interface AvatarStudioState {
     speakAudioUrl: string | null
     aspectRatio: AspectRatio
     videoResolution: VideoResolution
+    imageResolution: ImageResolution
     cameraMotion: CameraMotion
     cameraShot: CameraShot // Framing (close-up, medium, full, etc.)
     cameraAngle: CameraShot | null // Angle (low, high, dutch, etc.) - null means AI decides
@@ -328,6 +333,7 @@ interface AvatarStudioState {
     setSpeakAudioUrl: (url: string | null) => void
     setAspectRatio: (ratio: AspectRatio) => void
     setVideoResolution: (resolution: VideoResolution) => void
+    setImageResolution: (resolution: ImageResolution) => void
     setVideoAudio: (on: boolean) => void
     setVideoRefUrls: (urls: string[]) => void
     setVideoVoiceUrl: (url: string | null) => void
@@ -510,6 +516,8 @@ const initialState = {
     speakAudioUrl: null as string | null,
     aspectRatio: '1:1' as AspectRatio,
     videoResolution: '720p' as VideoResolution,
+    // 2K es lo que ya generan de hecho el resto de motores del Studio.
+    imageResolution: '2K' as ImageResolution,
     cameraMotion: 'NONE' as CameraMotion,
     cameraShot: 'AUTO' as CameraShot,
     cameraAngle: null as CameraShot | null,
@@ -777,9 +785,7 @@ export const useAvatarStudioStore = create<AvatarStudioState>()(
                     // ("wavy brown") caen al fallback free-text y seguían diciendo el
                     // color, pero los valores canónicos perdían la redundancia que sí
                     // pesa en modelos de difusión.
-                    bodyParts.push(
-                        describeHair(measurements),
-                    )
+                    bodyParts.push(describeHair(measurements))
                 }
                 // Exact measurements kept as a parenthetical suffix — no info lost.
                 const cmParts: string[] = []
@@ -840,11 +846,12 @@ export const useAvatarStudioStore = create<AvatarStudioState>()(
             setAspectRatio: (ratio) => set({ aspectRatio: ratio }),
             setVideoResolution: (resolution) =>
                 set({ videoResolution: resolution }),
+            setImageResolution: (resolution) =>
+                set({ imageResolution: resolution }),
             setVideoAudio: (on) => set({ videoAudio: on }),
             setVideoRefUrls: (urls) => set({ videoRefUrls: urls.slice(0, 3) }),
             setVideoVoiceUrl: (url) => set({ videoVoiceUrl: url }),
-            setVideoReturnLastFrame: (on) =>
-                set({ videoReturnLastFrame: on }),
+            setVideoReturnLastFrame: (on) => set({ videoReturnLastFrame: on }),
             setCameraMotion: (motion) => set({ cameraMotion: motion }),
             setCameraShot: (shot) => set({ cameraShot: shot }),
             setCameraAngle: (angle) => set({ cameraAngle: angle }),

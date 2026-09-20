@@ -30,7 +30,8 @@ import {
     aggressiveSanitize,
     stripNegatedTattoos,
 } from '@/utils/promptSanitizer'
-import { buildImageRequest } from './kie/dispatch'
+import { buildImageRequest, routePermissive } from './kie/dispatch'
+import { engineCaps, type EngineResolution } from './kie/engineCaps'
 import { probeKieTask } from './kie/taskProbe'
 import { seedance25AspectRatio } from './kie/seedance25Aspect'
 import { seedance25Scene } from './kie/seedance25Scene'
@@ -846,6 +847,10 @@ export interface GenerateImageKieParams {
     // lo pasa aún — se derivará del perfil del usuario EN EL SERVIDOR (un flag
     // de cliente se falsifica).
     safeMode?: boolean
+    // Tramo de salida elegido en la UI. Solo lo declaran (y solo lo cobran por
+    // tramo) los motores con `resolutions` en engineCaps; en el resto ni se
+    // manda a KIE ni llega al quote, así que su precio se queda como está.
+    resolution?: EngineResolution
 }
 
 /**
@@ -869,6 +874,11 @@ export async function generateImageKie(
     const gate = await holdForOperation({
         kind: 'image',
         providerId: resolveImageProviderId(params.model),
+        // Filtrado EN EL SERVIDOR, no en el cliente: sin este guard, un
+        // `resolution` cualquiera haría que `quote()` buscase tramo en motores
+        // que hoy cobran precio plano y les cambiaría la tarifa. Solo cotiza
+        // por tramo quien declara tramos (hoy, los dos motores nuevos).
+        resolution: engineCaps(params.model) ? params.resolution : undefined,
     })
     if (!gate.ok) {
         return { success: false, error: insufficientTokensMessage(gate) }
@@ -981,6 +991,7 @@ async function generateImageKieInner(
             negativePrompt,
             seed,
             safeMode: params.safeMode,
+            resolution: params.resolution,
             uploadRef: resolveRefUrl,
             cropToAspect: cropRefToAspect,
         })
@@ -1137,14 +1148,24 @@ async function generateImageKieInner(
     // safeMode (age-gate/entitlement) apaga el TRATO permisivo: el prompt se
     // sanitiza como en los modelos filtrados y las rutas ya prenden el
     // nsfw_checker de KIE (ctx.safeMode).
+    // Manda lo que declare la RUTA del modelo; lo que no tiene ruta propia
+    // conserva el cálculo legacy, byte por byte. Era la deuda que el propio
+    // `routePermissive` anunciaba en su comentario y que nadie había cobrado:
+    // hoy las ocho rutas migradas coinciden con la lista de abajo —hay un test
+    // que lo afirma— así que empezar a preguntarle no cambia ningún valor, y a
+    // partir de ahora un motor nuevo declara su permisividad en UN solo sitio.
+    // (Flare la declara `false`: OpenAI modera río arriba, así que su prompt
+    // tiene que pasar por el saneador en vez de viajar crudo.)
+    const routeSaysPermissive = routePermissive(model)
     const isPermissiveModel =
-        (model.startsWith('seedream/') ||
-            model.startsWith('flux-2/') ||
-            model.startsWith('qwen') ||
-            model === 'z-image' ||
-            model === 'wan/2-7-image' ||
-            model === 'wan/2-7-image-pro' ||
-            model.startsWith('grok-imagine/')) &&
+        (routeSaysPermissive ??
+            (model.startsWith('seedream/') ||
+                model.startsWith('flux-2/') ||
+                model.startsWith('qwen') ||
+                model === 'z-image' ||
+                model === 'wan/2-7-image' ||
+                model === 'wan/2-7-image-pro' ||
+                model.startsWith('grok-imagine/'))) &&
         !params.safeMode
 
     // Submit-only mode: ONE submit, no sanitization ladder (permissive models
@@ -1244,6 +1265,11 @@ export async function submitKieImageTask(
     const gate = await holdForOperation({
         kind: 'image',
         providerId: resolveImageProviderId(params.model),
+        // Filtrado EN EL SERVIDOR, no en el cliente: sin este guard, un
+        // `resolution` cualquiera haría que `quote()` buscase tramo en motores
+        // que hoy cobran precio plano y les cambiaría la tarifa. Solo cotiza
+        // por tramo quien declara tramos (hoy, los dos motores nuevos).
+        resolution: engineCaps(params.model) ? params.resolution : undefined,
     })
     if (!gate.ok) {
         return { success: false, error: insufficientTokensMessage(gate) }
@@ -1447,7 +1473,11 @@ export async function salvageKieTask(
         if (probe.state === 'success') {
             const url =
                 mediaType === 'VIDEO'
-                    ? await persistToSupabase(probe.urls[0], 'mp4', 'kie-videos')
+                    ? await persistToSupabase(
+                          probe.urls[0],
+                          'mp4',
+                          'kie-videos',
+                      )
                     : await persistToSupabase(
                           probe.urls[0],
                           inferImageExt(probe.urls[0]),
@@ -2696,7 +2726,10 @@ async function submitVideoSeedance25(
     })
     let imageRefCount = 0
     let frameIsRef = false
-    if (scene === 'references' && (firstFrameImage || referenceImages?.length)) {
+    if (
+        scene === 'references' &&
+        (firstFrameImage || referenceImages?.length)
+    ) {
         const allRefs: Array<{ base64: string; mimeType: string }> = []
         // El frame se antepone SOLO si no es ya una de las refs. En modo avatar
         // el "first frame" que arma el caller ES la cara del avatar, y meterla

@@ -7,7 +7,9 @@ import {
     ASSISTANT_TURN_CEILING_USD,
     COST_MARGIN,
     MODEL_USD_PER_M,
+    IMAGE_COST_USD,
     MODULE_SKU,
+    resolveImageProviderId,
     margenEfectivoLimpieza,
     STAR_USD,
     TOKEN_USD,
@@ -101,7 +103,10 @@ test('tokensForUsage cae a la tarifa de Flash con un modelo desconocido y avisa'
         assert.equal(unknown.tokens, flash.tokens)
         assert.equal(unknown.estimated, true)
         // Segunda llamada con el MISMO modelo desconocido no vuelve a avisar.
-        tokensForUsage({ inputTokens: 1, outputTokens: 1 }, 'un-modelo-que-no-existe')
+        tokensForUsage(
+            { inputTokens: 1, outputTokens: 1 },
+            'un-modelo-que-no-existe',
+        )
         assert.equal(warnCalls, 1)
     } finally {
         console.warn = originalWarn
@@ -121,8 +126,14 @@ test('tokensForUsage trata conteos ausentes como 0', () => {
 })
 
 test('MODEL_USD_PER_M trae los tres modelos del Estratega', () => {
-    assert.deepEqual(MODEL_USD_PER_M['gemini-flash-latest'], { input: 0.3, output: 2.5 })
-    assert.deepEqual(MODEL_USD_PER_M['gemini-2.5-flash'], { input: 0.3, output: 2.5 })
+    assert.deepEqual(MODEL_USD_PER_M['gemini-flash-latest'], {
+        input: 0.3,
+        output: 2.5,
+    })
+    assert.deepEqual(MODEL_USD_PER_M['gemini-2.5-flash'], {
+        input: 0.3,
+        output: 2.5,
+    })
     assert.equal(MODEL_USD_PER_M['gemini-2.5-pro'].estimated, true)
 })
 
@@ -177,7 +188,11 @@ test('limpieza de marcas: un vídeo con relleno cuesta más que uno sin relleno'
 test('limpieza de marcas: nunca se vende por debajo de coste', () => {
     // El caso caro es el que menos margen tiene; si alguien baja un precio o
     // sube un coste medido, esta prueba lo dice antes que la factura.
-    for (const clave of ['imagen', 'videoSinRelleno', 'videoConRelleno'] as const) {
+    for (const clave of [
+        'imagen',
+        'videoSinRelleno',
+        'videoConRelleno',
+    ] as const) {
         assert.ok(
             margenEfectivoLimpieza(clave) > 1,
             `${clave} se vendería por debajo de coste`,
@@ -188,15 +203,96 @@ test('limpieza de marcas: nunca se vende por debajo de coste', () => {
 test('limpieza de marcas: limpiar es una fracción pequeña de generar', () => {
     // La limpieza no puede acercarse al precio de la generación: el tenant
     // dejaría de instalar el módulo.
-    const generarImagen = quote({ kind: 'image', providerId: 'kie-seedream-5-pro' }).tokens
-    const limpiarImagen = quote({ kind: 'ai_mark_clean', mediaType: 'IMAGE' }).tokens
-    assert.ok(limpiarImagen < generarImagen / 4, 'limpiar debe ser mucho más barato que generar')
+    const generarImagen = quote({
+        kind: 'image',
+        providerId: 'kie-seedream-5-pro',
+    }).tokens
+    const limpiarImagen = quote({
+        kind: 'ai_mark_clean',
+        mediaType: 'IMAGE',
+    }).tokens
+    assert.ok(
+        limpiarImagen < generarImagen / 4,
+        'limpiar debe ser mucho más barato que generar',
+    )
 })
 
 test('limpieza de marcas: el sku lleva el prefijo que el resumen del módulo sabe leer', () => {
     // Un sku con forma propia dejaría el resumen de ese módulo a cero.
     const prefijo = MODULE_SKU.usagePrefix('ai-mark-cleaner')
     for (const mediaType of ['IMAGE', 'VIDEO'] as const) {
-        assert.ok(quote({ kind: 'ai_mark_clean', mediaType }).sku.startsWith(prefijo))
+        assert.ok(
+            quote({ kind: 'ai_mark_clean', mediaType }).sku.startsWith(prefijo),
+        )
     }
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Paridad catálogo ↔ precio. Un motor sin entrada en IMAGE_COST_USD no falla:
+// `quote` lo cobra al fallback de $0.13 y deja un console.warn que nadie lee.
+// Estos tests hacen que ese olvido rompa CI en vez de la factura del cliente.
+// ─────────────────────────────────────────────────────────────────────────────
+import { DEFAULT_PROVIDERS } from '../../app/(protected-pages)/concepts/avatar-forge/_shared/providerCatalog.ts'
+
+test('todo motor de imagen del catálogo tiene precio propio', () => {
+    const sinPrecio = DEFAULT_PROVIDERS.filter(
+        (p) => p.type === 'KIE' && p.supports_image && !!p.model,
+    )
+        .map((p) => ({
+            model: p.model as string,
+            id: resolveImageProviderId(p.model as string),
+        }))
+        .filter(({ id }) => !IMAGE_COST_USD[id])
+
+    assert.deepEqual(
+        sinPrecio,
+        [],
+        'estos modelos caerían al fallback de $0.13 con un warn silencioso',
+    )
+})
+
+test('el id del catálogo y el que resuelve el cobro son el mismo', () => {
+    // El hold usa `resolveImageProviderId(params.model)`, no el id de la card.
+    // Si divergen, el ledger atribuye el gasto a otro motor y el histórico miente.
+    for (const p of DEFAULT_PROVIDERS) {
+        if (p.type !== 'KIE' || !p.supports_image || !p.model) continue
+        assert.equal(
+            resolveImageProviderId(p.model),
+            p.id,
+            `"${p.model}" cobra como "${resolveImageProviderId(p.model)}" pero la card dice "${p.id}"`,
+        )
+    }
+})
+
+test('el prefijo de GPT Image 2.5 Flare no se lo come el de GPT Image 2', () => {
+    // `resolveFamily` ordena por prefijo más largo, así que la entrada nueva
+    // gana SIN tocar la vieja. Sin ella, Flare se cobraría a $0.03.
+    assert.equal(
+        resolveImageProviderId('gpt-image-2-text-to-image'),
+        'kie-gpt-image-2',
+    )
+    assert.equal(
+        resolveImageProviderId('gpt-image-2-image-to-image'),
+        'kie-gpt-image-2',
+    )
+    assert.equal(
+        resolveImageProviderId('gpt-image-2-5-flare-text-to-image'),
+        'kie-gpt-image-2-5-flare',
+    )
+    assert.equal(
+        resolveImageProviderId('gpt-image-2-5-flare-image-to-image'),
+        'kie-gpt-image-2-5-flare',
+    )
+})
+
+test('qwen3 se cobra como qwen3, nunca como qwen2', () => {
+    assert.equal(
+        resolveImageProviderId('qwen2/text-to-image'),
+        'kie-qwen-image',
+    )
+    assert.equal(
+        resolveImageProviderId('qwen3/pro-image-to-image'),
+        'kie-qwen3-pro',
+    )
+    assert.equal(resolveImageProviderId('qwen3/image-to-image'), 'kie-qwen3')
 })
