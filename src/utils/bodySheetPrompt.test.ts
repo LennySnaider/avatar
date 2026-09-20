@@ -61,7 +61,7 @@ test('un cambio REAL sí desactualiza la hoja', () => {
     assert.equal(sameBodyShape(base, como({ ...base, bodyType: 'pear' })), false)
     assert.equal(sameBodyShape(base, como({ ...base, legType: 'long' })), false)
     // La anchura frontal cambia el cuerpo: sí pide regenerar la hoja.
-    assert.equal(sameBodyShape(base, como({ ...base, hipWidth: 'wide' })), false)
+    assert.equal(sameBodyShape(base, como({ ...base, hipWidth: 5 })), false)
 })
 
 test('los campos que la hoja no dibuja siguen sin desactualizarla', () => {

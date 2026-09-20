@@ -54,40 +54,52 @@ test('Auto conserva exactamente las frases de anchura por rangos de cm', async (
     assert.match(getBodyDescriptors(m(95)), /proportionate hips/)
     // 86-91 ya no calla: Auto dice "proporcionada" (decisión 20-sep), y NO
     // "wide" ni "narrow" — eso es de los cm extremos o del chip.
-    assert.match(getBodyDescriptors(m(90)), /proportionate hip width seen from the front/)
+    assert.match(getBodyDescriptors(m(90)), /hip width matching her shoulders seen from the front/)
     assert.doesNotMatch(getBodyDescriptors(m(90)), /wide hip|narrow hip/)
 })
 
-test('un eje explícito sustituye a los rangos de cm, no se suma a ellos', async () => {
+test('un nivel explícito sustituye a los rangos de cm, no se suma a ellos', async () => {
     const { getBodyDescriptors, HIP_WIDTH_PHRASE } = await import('./bodyDescriptors.ts')
     const base = { age: 24, height: 168, bodyType: 'hourglass', bust: 90, waist: 60 }
-    // 105 cm en Auto dice "generous hip width"; con 'narrow' explícito, no.
-    const d = getBodyDescriptors({ ...base, hips: 105, hipWidth: 'narrow' } as never)
-    assert.ok(d.includes(HIP_WIDTH_PHRASE.narrow))
+    // 105 cm en Auto dice "generous hip width"; a nivel 2, no.
+    const d = getBodyDescriptors({ ...base, hips: 105, hipWidth: 2 } as never)
+    assert.ok(d.includes(HIP_WIDTH_PHRASE[2]))
     assert.doesNotMatch(d, /generous hip width|wide lower frame/)
-    // Y 80 cm con 'wide' no dice "narrow".
-    const w = getBodyDescriptors({ ...base, hips: 80, hipWidth: 'wide' } as never)
-    assert.ok(w.includes(HIP_WIDTH_PHRASE.wide))
+    // Y 80 cm a nivel 5 no dice "narrow".
+    const w = getBodyDescriptors({ ...base, hips: 80, hipWidth: 5 } as never)
+    assert.ok(w.includes(HIP_WIDTH_PHRASE[5]))
     assert.doesNotMatch(w, /narrow hip width|slim lower frame/)
 })
 
-test('las tres frases hablan de la vista FRONTAL y no pelean con la proyección', async () => {
-    const { HIP_WIDTH_PHRASE, HIP_WIDTHS } = await import('./bodyDescriptors.ts')
-    assert.deepEqual([...HIP_WIDTHS], Object.keys(HIP_WIDTH_PHRASE))
-    for (const w of HIP_WIDTHS) assert.match(HIP_WIDTH_PHRASE[w], /seen from the front/)
-    // 'estrecha' con glúteo alto es el caso del reporte: el volumen va ATRÁS.
-    assert.match(HIP_WIDTH_PHRASE.narrow, /BACKWARD/)
+test('los seis niveles hablan de la vista FRONTAL y los estrechos mandan el volumen atrás', async () => {
+    const { HIP_WIDTH_PHRASE, HIP_WIDTH_LABEL } = await import('./bodyDescriptors.ts')
+    assert.deepEqual(Object.keys(HIP_WIDTH_PHRASE), ['1', '2', '3', '4', '5', '6'])
+    assert.deepEqual(Object.keys(HIP_WIDTH_LABEL), ['1', '2', '3', '4', '5', '6'])
+    for (const n of [1, 2, 3, 4, 5, 6]) assert.match(HIP_WIDTH_PHRASE[n], /seen from the front/)
+    // 1-3 conviven con un glúteo grande diciendo que el volumen va ATRÁS —
+    // medido: es lo único que frena el relleno del frente con glúteo 5.
+    for (const n of [1, 2, 3]) assert.match(HIP_WIDTH_PHRASE[n], /BACKWARD/)
+    // 3 es "como los hombros", ni más ni menos.
+    assert.match(HIP_WIDTH_PHRASE[3], /no wider than her shoulders/)
+})
+
+test('las etiquetas viejas de los chips siguen entendiéndose', async () => {
+    // Vivieron unas horas el 20-sep; un avatar guardado con ellas no se pierde.
+    const { hipWidthLevel } = await import('./bodyDescriptors.ts')
+    assert.equal(hipWidthLevel({ hipWidth: 'narrow' } as never), 2)
+    assert.equal(hipWidthLevel({ hipWidth: 'normal' } as never), 3)
+    assert.equal(hipWidthLevel({ hipWidth: 'wide' } as never), 5)
+    assert.equal(hipWidthLevel({ hipWidth: 4 } as never), 4)
+    assert.equal(hipWidthLevel({ hipWidth: 9 } as never), undefined)
+    assert.equal(hipWidthLevel({} as never), undefined)
 })
 
 test('los cuatro ejes convergen en el prompt de la hoja sin contradecirse', async () => {
-    // La forma del glúteo NO viaja en describeBody (la compone la hoja vía
-    // buildBodySheetCurves); el sitio donde se juntan todos los ejes es el
-    // prompt de la hoja, y ahí es donde tiene que leerse coherente.
     const { buildTurnaroundRefinePrompt } = await import('./bodySheetPrompt.ts')
     const m = { age: 24, height: 168, bodyType: 'hourglass', bust: 90, waist: 60, hips: 90,
-        glutesLevel: 5, glutesShape: 'heart', hipWidth: 'narrow' } as never
+        glutesLevel: 5, glutesShape: 'heart', hipWidth: 2 } as never
     const p = buildTurnaroundRefinePrompt(m, { nude: false })
-    assert.match(p, /narrow hip width seen from the front/) // anchura (eje nuevo)
+    assert.match(p, /narrow hip width seen from the front/) // anchura (nivel 2)
     assert.match(p, /heart-shaped glutes/) // forma
     assert.match(p, /bubble/) // nivel 5 = proyección
     assert.match(p, /hips 90cm/) // perímetro

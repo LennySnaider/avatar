@@ -536,9 +536,11 @@ export type GlutesShape = 'square' | 'v-shape' | 'a-shape' | 'round' | 'heart'
  * proyectado y hueso ancho + glúteo plano pueden medir los mismos 90. Sin este
  * eje, la anchura se derivaba de los cm y fallaba justo con glúteos altos (la
  * proyección se come perímetro y de frente debería salir estrecha).
- * `undefined` = Auto: se deriva de los cm como siempre.
+ * `undefined` = Auto: se deriva de los cm como siempre. Es un NIVEL 1-6 como
+ * el de glúteos (3 = en línea con los hombros): una etiqueta de tres palabras
+ * no dejaba compensar cuando el motor se pasaba; un nivel sí.
  */
-export type HipWidth = 'narrow' | 'normal' | 'wide'
+export type HipWidth = CurveLevel
 export type BustShape =
     | 'round'
     | 'athletic'
@@ -616,7 +618,7 @@ export interface PhysicalMeasurements {
     bust: number
     waist: number
     hips: number
-    hipWidth?: HipWidth // anchura FRONTAL; undefined = Auto (derivada de los cm)
+    hipWidth?: HipWidth // anchura FRONTAL 1-6 (3 = como los hombros); undefined = Auto
     legType?: LegType // optional leg shape; unset = follows the body type
     // Sliders de curvas 1-5 (solo modelos permisivos; undefined = Auto)
     bustLevel?: CurveLevel

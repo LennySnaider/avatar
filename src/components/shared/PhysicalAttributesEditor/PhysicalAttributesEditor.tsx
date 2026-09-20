@@ -43,9 +43,9 @@ import {
     GLUTES_SHAPES,
     BUST_SHAPE_PHRASE,
     GLUTES_SHAPE_PHRASE,
-    HIP_WIDTHS,
     HIP_WIDTH_PHRASE,
     HIP_WIDTH_LABEL,
+    hipWidthLevel,
     BUST_LEVEL_TO_CM,
     cmToBustLevel,
     effectiveThighsLevel,
@@ -61,7 +61,6 @@ import { sizeLabelFor } from '@/utils/sizeChart'
 import type {
     PhysicalMeasurements,
     CurveLevel,
-    HipWidth,
     BustShape,
     GlutesShape,
     BodyShape,
@@ -540,8 +539,8 @@ const PhysicalAttributesEditor = ({
                 title="Cadera, glúteos y vello púbico"
                 summary={[
                     measurements.hips ? `cadera ${measurements.hips}` : null,
-                    measurements.hipWidth
-                        ? `anchura ${HIP_WIDTH_LABEL[measurements.hipWidth]}`
+                    hipWidthLevel(measurements)
+                        ? `anchura ${hipWidthLevel(measurements)}/6`
                         : null,
                     measurements.glutesLevel
                         ? `glúteos ${measurements.glutesLevel}/6`
@@ -562,38 +561,40 @@ const PhysicalAttributesEditor = ({
                     value={measurements.hips}
                     onChange={(v) => set({ hips: v })}
                 />
-                {/* ANCHURA FRONTAL — Auto deriva de los cm como siempre (nada
-                    cambia para los avatares existentes). Fijarla manda sobre
-                    los rangos de cm: dos mujeres con 90 cm de perímetro pueden
-                    verse estrecha o ancha de frente según cuánto proyecte el
-                    glúteo, y eso los cm no lo saben. */}
-                <div className="flex flex-wrap items-center gap-1 mt-1.5">
-                    <span className="text-[10px] text-gray-500 mr-0.5">
-                        Anchura frontal
-                    </span>
-                    {[undefined, ...HIP_WIDTHS].map((w) => (
-                        <Tooltip
-                            key={w ?? 'auto'}
-                            title={
-                                w
-                                    ? HIP_WIDTH_PHRASE[w]
-                                    : 'Auto — se deriva de los cm de cadera, como hasta ahora'
-                            }
-                        >
-                            <button
-                                onClick={() =>
-                                    set({ hipWidth: w as HipWidth | undefined })
-                                }
-                                className={`px-1.5 py-0.5 text-[10px] rounded border transition-colors ${
-                                    (measurements.hipWidth ?? undefined) === w
-                                        ? 'bg-primary text-white border-primary'
-                                        : 'bg-gray-50 dark:bg-gray-800 border-gray-200 dark:border-gray-700 hover:border-primary'
-                                }`}
-                            >
-                                {w ? HIP_WIDTH_LABEL[w] : 'auto'}
-                            </button>
-                        </Tooltip>
-                    ))}
+                {/* ANCHURA FRONTAL — NIVEL 1-6 como el de glúteos (3 = en
+                    línea con los hombros; 0 = Auto, derivada de los cm como
+                    siempre). Los cm son PERÍMETRO e incluyen los glúteos, así
+                    que no saben lo ancha que se ve de frente: eso lo dices tú
+                    aquí, y no se deduce del glúteo. */}
+                <div>
+                    <div className="flex items-center justify-between">
+                        <span className="text-xs text-gray-500">
+                            Anchura frontal
+                        </span>
+                        <span className="text-xs font-mono text-primary">
+                            {hipWidthLevel(measurements)
+                                ? `${hipWidthLevel(measurements)}/6 · ${HIP_WIDTH_LABEL[hipWidthLevel(measurements) as number]}`
+                                : 'Auto'}
+                        </span>
+                    </div>
+                    <Slider
+                        value={hipWidthLevel(measurements) ?? 0}
+                        onChange={(val) =>
+                            set({
+                                hipWidth:
+                                    (val as number) === 0
+                                        ? undefined
+                                        : (val as number as CurveLevel),
+                            })
+                        }
+                        min={0}
+                        max={6}
+                    />
+                    <p className="text-[10px] text-gray-400 mt-0.5">
+                        {hipWidthLevel(measurements)
+                            ? HIP_WIDTH_PHRASE[hipWidthLevel(measurements) as number]
+                            : 'Auto = se deriva de los cm de cadera. Si de frente sale más ancha de lo que quieres, baja el nivel; si más estrecha, súbelo.'}
+                    </p>
                 </div>
                 {/* Glúteos = nivel/VOLUMEN puro (no escribe cm — la cadera es
                     el slider de arriba). SOLO viaja a modelos permissive. */}

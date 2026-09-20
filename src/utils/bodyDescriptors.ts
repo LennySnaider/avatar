@@ -1,5 +1,5 @@
 import type {
-    HipWidth, PhysicalMeasurements, CurveLevel } from '@/@types/supabase'
+    PhysicalMeasurements, CurveLevel } from '@/@types/supabase'
 import { deriveShapeFromMeasurements } from '@/utils/bodyShapes'
 import type { BodyShape } from '@/@types/supabase'
 
@@ -146,8 +146,9 @@ export function getBodyDescriptors(m: PhysicalMeasurements): string {
     // con cadera 90 la única anchura que llegaba al prompt era la que colara la
     // forma del glúteo. Si el usuario fija el eje, manda él y los buckets de cm
     // no opinan; si no lo fija (Auto), todo sigue exactamente como antes.
-    if (m.hipWidth) {
-        descriptors.push(HIP_WIDTH_PHRASE[m.hipWidth])
+    const anchura = hipWidthLevel(m)
+    if (anchura) {
+        descriptors.push(HIP_WIDTH_PHRASE[anchura])
     } else if (m.hips >= 130) {
         descriptors.push(
             'dramatically wide exaggerated hips far beyond natural proportions',
@@ -174,7 +175,7 @@ export function getBodyDescriptors(m: PhysicalMeasurements): string {
         // MiaUltra: 90 cm y salía ancha). Decisión del usuario: Auto dice aquí
         // "proporcionada", sin mirar el glúteo — la variante que fuerza el
         // volumen hacia atrás ('estrecha') queda para el chip.
-        descriptors.push(HIP_WIDTH_PHRASE.normal)
+        descriptors.push(HIP_WIDTH_PHRASE[3])
     } else if (m.hips <= 85) {
         // COHERENCIA con el slider de glúteos (2026-07-25, reporte con
         // imagen): 'slim lower frame' contradecía frontalmente un glúteo
@@ -620,21 +621,46 @@ export function vulvaClause(scenePrompt?: string): string {
 }
 
 /**
- * Frases del eje de ANCHURA FRONTAL. Las tres dicen "seen from the front" para
- * que no peleen con el nivel de glúteo (que es proyección hacia atrás): son
- * dimensiones distintas y así el motor no tiene que elegir entre ellas.
+ * Frases del eje de ANCHURA FRONTAL, por NIVEL 1-6 (3 = en línea con los
+ * hombros). Todas dicen "seen from the front" y todas llevan el "hacia ATRÁS":
+ * medido el 20-sep con cadera 90 + glúteo 5, la única redacción que frena el
+ * relleno del frente es decir que el volumen del glúteo proyecta hacia atrás y
+ * no suma anchura. No deduce nada del nivel de glúteo — solo explica cómo
+ * conviven los dos ejes que el usuario pidió. Fue slider y no chips a petición
+ * del usuario: con tres palabras, "normal" salía ancha y no había con qué
+ * compensar; con un nivel, se baja uno y ya.
  */
-export const HIP_WIDTH_PHRASE: Record<HipWidth, string> = {
-    narrow: 'narrow hip width seen from the front — any lower-body volume sits in the glutes projecting BACKWARD, never sideways',
-    normal: 'proportionate hip width seen from the front, in balance with her shoulders',
-    wide: 'wide hip width seen from the front, hips clearly wider than her shoulders',
+export const HIP_WIDTH_PHRASE: Record<number, string> = {
+    1: 'very narrow hip width seen from the front, hips clearly narrower than her shoulders — whatever glute volume she has projects BACKWARD and adds no width at the front',
+    2: 'narrow hip width seen from the front, hips a little narrower than her shoulders — whatever glute volume she has projects BACKWARD, never sideways',
+    3: 'hip width matching her shoulders seen from the front — no wider than her shoulders; whatever glute volume she has projects BACKWARD and adds no width at the front',
+    4: 'slightly wide hip width seen from the front, hips a little wider than her shoulders',
+    5: 'wide hip width seen from the front, hips clearly wider than her shoulders',
+    6: 'very wide hip width seen from the front, hips dramatically wider than her shoulders with a pronounced hip shelf',
 }
-export const HIP_WIDTHS = ['narrow', 'normal', 'wide'] as const
-/** Etiquetas de los chips (es-MX). */
-export const HIP_WIDTH_LABEL: Record<HipWidth, string> = {
-    narrow: 'estrecha',
-    normal: 'normal',
-    wide: 'ancha',
+
+/** Etiqueta corta de cada nivel para la UI (es-MX). */
+export const HIP_WIDTH_LABEL: Record<number, string> = {
+    1: 'muy estrecha',
+    2: 'estrecha',
+    3: 'como los hombros',
+    4: 'algo ancha',
+    5: 'ancha',
+    6: 'muy ancha',
+}
+
+/**
+ * Nivel efectivo de anchura. Acepta las etiquetas del primer diseño (chips
+ * 'narrow' | 'normal' | 'wide', vivas unas horas el 20-sep) por si algún avatar
+ * las guardó, para que no se pierdan al abrirlo.
+ */
+export function hipWidthLevel(m: PhysicalMeasurements): number | undefined {
+    const v = (m as unknown as { hipWidth?: unknown }).hipWidth
+    if (typeof v === 'number') return v >= 1 && v <= 6 ? v : undefined
+    if (v === 'narrow') return 2
+    if (v === 'normal') return 3
+    if (v === 'wide') return 5
+    return undefined
 }
 
 // Listas para los chips de la UI (orden de despliegue)
