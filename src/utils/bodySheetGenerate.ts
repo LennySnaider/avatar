@@ -1,6 +1,7 @@
 import type { PhysicalMeasurements } from '@/@types/supabase'
 import { generateImageKie } from '@/services/KieService'
 import { urlToDataUrl } from '@/utils/imageStitch'
+import { engineCaps } from '@/services/kie/engineCaps'
 import {
     BODY_SHEET_NEGATIVE_PROMPT,
     BODY_SHEET_NUDE_NEGATIVE_PROMPT,
@@ -81,9 +82,14 @@ export async function generateBodySheetPair(params: {
         // plantilla ausente → fallback t2i
     }
 
-    // Sin plantilla no se puede t2i con Seedream Pro (i2i-only) → cae a Wan.
+    // Sin plantilla no se puede t2i con un motor i2i-only → cae a Wan. Antes
+    // era una comparación contra Seedream Pro; ahora se pregunta por la
+    // CAPACIDAD, así que cualquier motor que exija imagen de entrada (Qwen 3)
+    // queda cubierto sin tener que acordarse de añadirlo a una lista.
     const t2iModel =
-        model === BODY_SHEET_REFINE_MODEL ? 'wan/2-7-image' : model
+        model === BODY_SHEET_REFINE_MODEL || engineCaps(model)?.requiresRefs
+            ? 'wan/2-7-image'
+            : model
 
     /**
      * `ref` = imagen de la que parte el i2i. Normalmente la plantilla; para la
@@ -173,7 +179,9 @@ export async function generateBodySheetPair(params: {
         : { success: false as const, error: 'skipped' }
 
     const nudeError =
-        wantNude && !nude.success ? nude.error || 'nude sheet failed' : undefined
+        wantNude && !nude.success
+            ? nude.error || 'nude sheet failed'
+            : undefined
     if (nudeError) {
         console.warn('[BodySheet] Variante NSFW falló:', nudeError)
     }

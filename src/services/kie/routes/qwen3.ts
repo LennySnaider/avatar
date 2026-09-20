@@ -72,6 +72,21 @@ async function build(ctx: ImageRouteContext): Promise<KieImageRequest> {
     const identidad = `${hair}${eyes}${body}${INTACT_BODY_CLAUSE}`
 
     const faceUrl = await ctx.uploadRef(ctx.referenceImage)
+
+    // ── PROMPT AUTO-CONTENIDO (Body Lab) ─────────────────────────────────
+    // La hoja del Body Lab se define a sí misma: su prompt ya dice qué es la
+    // referencia, qué copiar de ella y qué no. Envolverla en el ancla de
+    // identidad —que habla de conservar una cara que la plantilla no aporta—
+    // la deforma, y es lo que hacía que la hoja vestida y la nude salieran con
+    // cuerpos distintos. Mismo trato que en la ruta de Seedream.
+    if (ctx.selfContainedPrompt) {
+        return {
+            model: ctx.model,
+            input: baseInput(ctx, caps, escena, [faceUrl]),
+            fullApiPrompt: escena,
+        }
+    }
+
     const clone = (ctx.referenceImages ?? []).find((r) => r.role === 'clone')
 
     // ── CON CLONE REF ────────────────────────────────────────────────────
