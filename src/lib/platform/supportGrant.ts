@@ -80,6 +80,16 @@ export interface ResolveImpersonationInput {
     isPlatformAdmin: boolean
     /** La organización a la que se quiere entrar. */
     targetOrganizationId: string
+    /**
+     * La organización PROPIA de quien llama, si tiene una.
+     *
+     * Existe para que nadie se suplante a sí mismo: sin esto, un admin de
+     * plataforma que pulsa «Ver como» sobre su propia organización se degrada
+     * a `viewer` en su propia cuenta y se queda sin poder hacer nada hasta
+     * salir, sin entender por qué. Y no es un caso rebuscado: mientras haya
+     * una sola organización en el sistema, es el primer clic que se da.
+     */
+    actorOwnOrganizationId?: string | null
     /** La concesión más reciente de ESA organización, si la hay. */
     grant: SupportGrant | null | undefined
     now: Date
@@ -107,12 +117,21 @@ export interface ImpersonationDecision {
 export function resolveImpersonation({
     isPlatformAdmin,
     targetOrganizationId,
+    actorOwnOrganizationId,
     grant,
     now,
 }: ResolveImpersonationInput): ImpersonationDecision {
     // Quien no es admin de plataforma no suplanta, tenga la cookie que tenga.
     // Ésta es la línea que hace inofensivo un `org_override` falsificado.
     if (!isPlatformAdmin) {
+        return { allowed: false, role: 'viewer', elevated: false, kind: null }
+    }
+
+    // Uno no se suplanta a sí mismo: en su propia organización manda su rol de
+    // siempre. Se resuelve como "no hay suplantación" y no como un error para
+    // que una cookie apuntando a la organización propia simplemente no haga
+    // nada, en vez de dejar a nadie fuera de su cuenta.
+    if (actorOwnOrganizationId && actorOwnOrganizationId === targetOrganizationId) {
         return { allowed: false, role: 'viewer', elevated: false, kind: null }
     }
 

@@ -82,11 +82,20 @@ export async function getOrgContext(): Promise<OrgContext> {
  */
 async function resolveForSession(userId: string): Promise<OrgContext | null> {
     const target = await readOverrideTarget()
+    // La membresía propia se resuelve SIEMPRE, también al suplantar: es lo que
+    // permite descartar el «ver como» sobre la propia organización, donde
+    // manda el rol de siempre. Sin override esta consulta ya se hacía, así que
+    // el coste extra sólo lo paga quien está suplantando.
+    const own = await getOrgContextForUser(userId)
     if (target) {
-        const impersonated = await impersonatedContext(userId, target)
+        const impersonated = await impersonatedContext(
+            userId,
+            target,
+            own?.organizationId ?? null,
+        )
         if (impersonated) return impersonated
     }
-    return getOrgContextForUser(userId)
+    return own
 }
 
 async function readOverrideTarget(): Promise<string | null> {
@@ -103,12 +112,18 @@ async function readOverrideTarget(): Promise<string | null> {
 async function impersonatedContext(
     userId: string,
     organizationId: string,
+    ownOrganizationId: string | null,
 ): Promise<OrgContext | null> {
+    // El atajo barato primero: si el destino es la organización propia no hay
+    // nada que suplantar, y así no se paga ni la lectura de `users` ni la de
+    // `support_grants`.
+    if (ownOrganizationId && ownOrganizationId === organizationId) return null
     const admin = await isPlatformAdmin(userId)
     if (!admin) return null
     const decision = resolveImpersonation({
         isPlatformAdmin: admin,
         targetOrganizationId: organizationId,
+        actorOwnOrganizationId: ownOrganizationId,
         grant: await latestGrantFor(organizationId),
         now: new Date(),
     })

@@ -108,7 +108,21 @@ const localRules = {
                     'getOrgContext',
                     'getOrgContextForUser',
                 ])
-                const GUARDS = new Set(['requirePermission', 'ctxCan', 'can'])
+                // F4.4 — `requirePlatformAdmin` cuenta como guard, y es el
+                // MÁS estricto de todos: no pregunta qué puede hacer alguien
+                // dentro de su organización, sino si opera el sistema. Las
+                // acciones de `/platform` resuelven contexto de organización
+                // (para saber cuál es la propia, o a cuál se entra) y jamás
+                // van a llamar a `requirePermission`, porque no se gobiernan
+                // por la matriz de roles. Reconocerlo aquí evita ir sembrando
+                // una exención por cada acción nueva del panel — que es como
+                // un candado se convierte en una lista de excepciones.
+                const GUARDS = new Set([
+                    'requirePermission',
+                    'ctxCan',
+                    'can',
+                    'requirePlatformAdmin',
+                ])
                 const ES_FUNCION = new Set([
                     'FunctionDeclaration',
                     'FunctionExpression',
