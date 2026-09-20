@@ -161,6 +161,13 @@ export enum AppState {
 
 // Video specific types
 export type VideoResolution = '480p' | '720p' | '1080p'
+
+/**
+ * Resolución de salida de IMAGEN. Se re-exporta desde `engineCaps` a propósito:
+ * es el mismo valor que viaja en el `input` de KIE y el que cotiza el tramo de
+ * precio, así que un segundo tipo solo serviría para que un día divergieran.
+ */
+export type { EngineResolution as ImageResolution } from '@/services/kie/engineCaps'
 export type CameraMotion =
     | 'NONE'
     | 'PUSH_IN'
@@ -808,6 +815,17 @@ export const STYLE_CATEGORIES: { value: StyleCategory; label: string }[] = [
 ]
 
 // Aspect ratio options
+// Tramos de imagen que puede ofrecer la UI. Qué subconjunto ve el usuario lo
+// decide el MOTOR (getImageResolutionOptionsForProvider), no esta lista.
+export const IMAGE_RESOLUTIONS: {
+    value: '1K' | '2K' | '4K'
+    label: string
+}[] = [
+    { value: '1K', label: '1K' },
+    { value: '2K', label: '2K' },
+    { value: '4K', label: '4K' },
+]
+
 export const ASPECT_RATIOS: { value: AspectRatio; label: string }[] = [
     { value: '1:1', label: 'Square (1:1)' },
     { value: '16:9', label: 'Landscape (16:9)' },

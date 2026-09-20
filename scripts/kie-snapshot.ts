@@ -56,7 +56,29 @@ const MODELS = [
     'flux-2/pro-text-to-image',
     'z-image',
     'ideogram/v3-text-to-image',
+    'qwen3/pro-image-to-image',
+    'gpt-image-2-5-flare-text-to-image',
 ]
+
+/**
+ * Modelos SIN baseline legacy que reproducir: nacieron con ruta propia, así que
+ * `buildLegacyRequest` no sabe construirlos (y para `qwen3/*` ni siquiera lo
+ * intentaría bien: su rama legacy es la de Qwen 2). No se les genera golden.
+ */
+const SIN_BASELINE_LEGACY = ['qwen3/', 'gpt-image-2-5-flare']
+const sinBaseline = (m: string) =>
+    SIN_BASELINE_LEGACY.some((p) => m.startsWith(p))
+
+/**
+ * Fixtures en los que el build DEBE lanzar: son motores i2i puros contra un
+ * caso sin imagen de entrada. Aquí el éxito es la excepción, y que NO lance
+ * es el fallo — antes el harness contaba estos casos como CRASH y dejaba el
+ * `--check` permanentemente en rojo por un comportamiento correcto.
+ */
+const EXPECT_THROW = new Set([
+    'qwen2/text-to-image :: t2i',
+    'qwen3/pro-image-to-image :: t2i',
+])
 
 function fixturesFor(
     model: string,
@@ -173,6 +195,7 @@ async function goldens(): Promise<
     > = {}
     try {
         for (const model of MODELS) {
+            if (sinBaseline(model)) continue
             for (const fx of fixturesFor(model)) {
                 out[`${model} :: ${fx.name}`] = await buildLegacyRequest(fx.ctx)
             }
@@ -207,7 +230,14 @@ async function main() {
     // El resto queda CONGELADO: deepEqual == legacy es obligatorio.
     // flux-2 divergió el 2026-07-23: INTACT_BODY_CLAUSE (anti-mutilación) en
     // su ancla i2i + safeMode en nsfw_checker.
-    const DIVERGED = ['grok-imagine', 'qwen', 'seedream', 'wan', 'flux-2']
+    const DIVERGED = [
+        'grok-imagine',
+        'qwen',
+        'seedream',
+        'wan',
+        'flux-2',
+        'gpt-image-2-5-flare',
+    ]
     const isDiverged = (m: string) => DIVERGED.some((d) => m.startsWith(d))
     let fail = 0
     let checked = 0
@@ -218,6 +248,18 @@ async function main() {
         for (const fx of fixturesFor(model)) {
             const key = `${model} :: ${fx.name}`
             checked++
+            if (EXPECT_THROW.has(key)) {
+                try {
+                    await route.build(fx.ctx)
+                    fail++
+                    pass.push(
+                        `❌ ${route.label} ${key}: debía RECHAZAR (i2i puro sin imagen) y construyó una petición`,
+                    )
+                } catch {
+                    pass.push(`✅ ${route.label} ${key} (rechaza, como debe)`)
+                }
+                continue
+            }
             if (isDiverged(model)) {
                 try {
                     await route.build(fx.ctx)

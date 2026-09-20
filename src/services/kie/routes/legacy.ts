@@ -94,7 +94,10 @@ export async function buildLegacyRequest(
     } else if (model === 'z-image') {
         input.aspect_ratio = aspectRatio
         input.nsfw_checker = false
-    } else if (model.startsWith('qwen')) {
+    } else if (/^qwen2?\//.test(model)) {
+        // Mismo prefijo cerrado que `qwenRoute.matches`: el baseline del
+        // snapshot tiene que decir de qwen2 exactamente lo que dice la ruta.
+        // `qwen3/*` NO tiene baseline legacy que reproducir.
         input.image_size = aspectRatio
         input.enable_safety_checker = false
         input.nsfw_checker = false
@@ -123,7 +126,7 @@ export async function buildLegacyRequest(
     if (
         referenceImage &&
         (model.startsWith('flux-2/') ||
-            model.startsWith('qwen') ||
+            /^qwen2?\//.test(model) ||
             model.startsWith('seedream/') ||
             model.startsWith('nano-banana-2') ||
             model === 'wan/2-7-image' ||
@@ -153,9 +156,7 @@ export async function buildLegacyRequest(
                     cloneWeight,
                     resolveNudityIntent(ctx.nsfwIntent, promptText),
                 )
-                const urls: string[] = [
-                    await uploadRef(referenceImage),
-                ]
+                const urls: string[] = [await uploadRef(referenceImage)]
                 for (const r of extras) {
                     urls.push(await uploadRef(r))
                 }
@@ -230,9 +231,7 @@ export async function buildLegacyRequest(
                     cloneWeight,
                     resolveNudityIntent(ctx.nsfwIntent, promptText),
                 )
-                const wanUrls: string[] = [
-                    await uploadRef(referenceImage),
-                ]
+                const wanUrls: string[] = [await uploadRef(referenceImage)]
                 for (const r of wanExtras) {
                     wanUrls.push(await uploadRef(r))
                 }
@@ -279,9 +278,7 @@ export async function buildLegacyRequest(
                     cloneWeight,
                     resolveNudityIntent(ctx.nsfwIntent, promptText),
                 )
-                const urls: string[] = [
-                    await uploadRef(referenceImage),
-                ]
+                const urls: string[] = [await uploadRef(referenceImage)]
                 for (const r of fluxExtras) {
                     urls.push(await uploadRef(r))
                 }

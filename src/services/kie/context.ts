@@ -8,6 +8,7 @@
  */
 
 import type { KieRefWithRole } from './shared'
+import type { EngineResolution } from './engineCaps'
 
 /** El request final que se manda a KIE createTask. */
 export interface KieImageRequest {
@@ -116,6 +117,12 @@ export interface ImageRouteContext {
     /** Seed (reproducibilidad). Hoy solo Wan base/pro lo soportan en KIE
      *  (0-2147483647; 0/undefined = aleatorio). Para A/B de calibración. */
     seed?: number
+    /**
+     * Tramo de salida elegido en la UI ('1K' | '2K' | '4K'). Solo lo declaran
+     * los motores que cobran distinto por resolución; los demás ni lo reciben
+     * ni lo mandan, así que su precio no se mueve.
+     */
+    resolution?: EngineResolution
     /**
      * SAFE MODE (cimiento del age-gate / entitlement "paquete NSFW"): true →
      * las rutas prenden el filtro de contenido de KIE (`nsfw_checker: true`,

@@ -58,6 +58,7 @@ import toast from '@/components/ui/toast'
 import { apiDeleteGeneration } from '@/services/AvatarForgeService'
 import type { GeneratedMedia } from '../types'
 import type { AspectRatio } from '@/@types/supabase'
+import { engineCaps } from '@/services/kie/engineCaps'
 
 // Edit asset for reference during editing
 interface EditAsset {
@@ -118,7 +119,10 @@ const ImagePreviewModal = ({
         if (p.type !== 'KIE') return false
         const m = p.model || ''
         return (
-            m.startsWith('flux-kontext') ||
+            // Los motores descritos en engineCaps mandan; el resto conserva su
+            // lista de siempre (`??`, no `||`).
+            engineCaps(m)?.canEdit ??
+            (m.startsWith('flux-kontext') ||
             m === 'gpt-image-2-text-to-image' ||
             m === 'nano-banana-pro' ||
             m.startsWith('flux-2/') ||
@@ -126,7 +130,7 @@ const ImagePreviewModal = ({
             m.startsWith('seedream/') || // real i2i variants (4.5-edit / 5-lite i2i)
             m === 'wan/2-7-image' || // unified t2i+edit vía input_urls, NSFW real
             m === 'wan/2-7-image-pro' || // mismo schema + seed/bbox (docs 2026-07-23)
-            m.startsWith('grok-imagine/')
+            m.startsWith('grok-imagine/'))
         )
     }
     // Orden manual + ocultos de la página AI Providers también aplican aquí.

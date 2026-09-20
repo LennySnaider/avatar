@@ -173,6 +173,7 @@ import type {
     GenerationMetadata,
 } from '@/@types/supabase'
 import { useImageOptimization } from '../_hooks/useImageOptimization'
+import { engineCaps } from '@/services/kie/engineCaps'
 
 interface AvatarStudioMainProps {
     userId?: string
@@ -350,11 +351,15 @@ const KIE_ASYNC_MODELS = ['nano-banana-pro', 'gpt-image-2-text-to-image']
  * Gemini/Nano filtro Google.
  */
 const isExplicitCapableModel = (m: string): boolean =>
-    m.startsWith('seedream/') ||
-    m === 'wan/2-7-image' ||
-    m === 'wan/2-7-image-pro' ||
-    m.startsWith('qwen') ||
-    m.startsWith('mulerouter/')
+    // `??`, no `||`: un motor sin caps declaradas evalúa exactamente la
+    // expresión de siempre. Así el alta de un motor nuevo no puede cambiar en
+    // silencio el comportamiento de los que ya facturan.
+    engineCaps(m)?.explicitCapable ??
+    (m.startsWith('seedream/') ||
+        m === 'wan/2-7-image' ||
+        m === 'wan/2-7-image-pro' ||
+        m.startsWith('qwen') ||
+        m.startsWith('mulerouter/'))
 
 /**
  * Params que SOLO entiende Seedance 2.5. Devuelve `{}` para cualquier otro
@@ -397,16 +402,17 @@ function seedance25Extras(opts: {
 }
 
 const isKieAsyncImageModel = (m: string): boolean =>
-    KIE_ASYNC_MODELS.includes(m) ||
-    m.startsWith('seedream/') ||
-    m.startsWith('flux-2/') ||
-    m.startsWith('qwen') ||
-    m.startsWith('ideogram/') ||
-    m === 'z-image' ||
-    m.startsWith('nano-banana-2') ||
-    m.startsWith('grok-imagine/') ||
-    m === 'wan/2-7-image' ||
-    m === 'wan/2-7-image-pro'
+    engineCaps(m)?.asyncSubmit ??
+    (KIE_ASYNC_MODELS.includes(m) ||
+        m.startsWith('seedream/') ||
+        m.startsWith('flux-2/') ||
+        m.startsWith('qwen') ||
+        m.startsWith('ideogram/') ||
+        m === 'z-image' ||
+        m.startsWith('nano-banana-2') ||
+        m.startsWith('grok-imagine/') ||
+        m === 'wan/2-7-image' ||
+        m === 'wan/2-7-image-pro')
 
 /**
  * InfiniteTalk talking-heads regularly run past 10 minutes — same async
@@ -823,6 +829,7 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
         avatarDefaultVoice,
         aspectRatio,
         videoResolution,
+        imageResolution,
         videoAudio,
         videoVoiceUrl,
         videoRefUrls,
@@ -1648,14 +1655,15 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
             if (generationMode === 'IMAGE' && deepfakeImage?.base64) {
                 const m = activeProvider?.model || ''
                 const dfCapable =
-                    m.startsWith('seedream/') ||
-                    m === 'wan/2-7-image' ||
-                    m === 'wan/2-7-image-pro' ||
-                    m.startsWith('flux-2/') ||
-                    m.startsWith('qwen') ||
-                    m === 'nano-banana-pro' ||
-                    m.startsWith('nano-banana-2') ||
-                    m === 'gpt-image-2-text-to-image'
+                    engineCaps(m)?.deepfakeCapable ??
+                    (m.startsWith('seedream/') ||
+                        m === 'wan/2-7-image' ||
+                        m === 'wan/2-7-image-pro' ||
+                        m.startsWith('flux-2/') ||
+                        m.startsWith('qwen') ||
+                        m === 'nano-banana-pro' ||
+                        m.startsWith('nano-banana-2') ||
+                        m === 'gpt-image-2-text-to-image')
                 if (!dfCapable) {
                     toast.push(
                         <Notification type="warning" title="Deepfake">
@@ -2164,14 +2172,15 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                         // manda en TODO menos la cara. Solo modelos con ancla
                         // multi-imagen calibrada.
                         const deepfakeCapable =
-                            kieModel.startsWith('seedream/') ||
-                            kieModel === 'wan/2-7-image' ||
-                            kieModel === 'wan/2-7-image-pro' ||
-                            kieModel.startsWith('flux-2/') ||
-                            kieModel.startsWith('qwen') ||
-                            kieModel === 'nano-banana-pro' ||
-                            kieModel.startsWith('nano-banana-2') ||
-                            kieModel === 'gpt-image-2-text-to-image'
+                            engineCaps(kieModel)?.deepfakeCapable ??
+                            (kieModel.startsWith('seedream/') ||
+                                kieModel === 'wan/2-7-image' ||
+                                kieModel === 'wan/2-7-image-pro' ||
+                                kieModel.startsWith('flux-2/') ||
+                                kieModel.startsWith('qwen') ||
+                                kieModel === 'nano-banana-pro' ||
+                                kieModel.startsWith('nano-banana-2') ||
+                                kieModel === 'gpt-image-2-text-to-image')
                         const deepfakeActive = Boolean(
                             optimizedDeepfakeRef &&
                             deepfakeCapable &&
@@ -2207,6 +2216,27 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                         // gpt-4o / generic). Defaults to the face; flux-kontext edit
                         // mode overrides it to the Clone (the canvas to edit).
                         let kieSingleRef = referenceImage
+
+                        // Motores i2i PUROS (Qwen 3): sin imagen de entrada no
+                        // hay petición posible. KIE acepta el task igualmente y
+                        // falla luego con un 500 sin cuerpo, así que avisar aquí
+                        // ahorra el viaje y deja el mensaje en castellano en vez
+                        // de un error opaco. El hold se refunda solo si llegara
+                        // más lejos, pero mejor no llegar.
+                        if (
+                            engineCaps(kieModel)?.requiresRefs &&
+                            !kieSingleRef
+                        ) {
+                            toast.push(
+                                <Notification
+                                    type="warning"
+                                    title="Falta la imagen de entrada"
+                                >
+                                    {`${activeProvider?.name ?? 'Este modelo'} es un editor: necesita la cara del avatar, un Clone Ref o una imagen a editar. Para generar desde cero elige Seedream, Z-Image o GPT Image 2.5.`}
+                                </Notification>,
+                            )
+                            return
+                        }
 
                         // Feed the Clone Ref IMAGE (not just the [CLONE:] text) so the
                         // model clones the EXACT pose/outfit/framing/scene — same lever
@@ -2571,7 +2601,12 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                         // modelo correcto. Costo ~1.5× — el precio de la
                         // consistencia (principio rector de la plataforma).
                         const qwenTwoPhase =
-                            kieModel.startsWith('qwen') &&
+                            // La fase 1 HARDCODEA `qwen2/text-to-image`: dejar
+                            // entrar aquí a otro miembro de la familia serían
+                            // dos motores distintos y DOS cobros por un solo
+                            // pick del usuario.
+                            (engineCaps(kieModel)?.twoPhase ??
+                                kieModel.startsWith('qwen')) &&
                             !!kieSingleRef &&
                             !optimizedCloneRef &&
                             !optimizedDeepfakeRef
@@ -3000,6 +3035,10 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                                     referenceImages: kieRefsToSend,
                                     aspectRatio,
                                     model: kieModel,
+                                    // Tramo elegido en la barra. Solo lo usan
+                                    // los motores que lo declaran; en el resto
+                                    // el servidor lo descarta antes de cotizar.
+                                    resolution: imageResolution,
                                     // Concrete body descriptors for the Seedream/Wan
                                     // i2i anchor — Pro ignores body text that isn't in
                                     // the anchor's early tokens (kept rendering her
@@ -3725,7 +3764,8 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                                 // El param es opcional pero no admite null; la
                                 // imagen existe siempre aquí (el gate solo
                                 // exime a Wan 2.6).
-                                firstFrameImage: optimizedVideoInput ?? undefined,
+                                firstFrameImage:
+                                    optimizedVideoInput ?? undefined,
                                 model:
                                     (activeProvider?.model as MiniMaxVideoModel) ||
                                     'MiniMax-Hailuo-2.3',
@@ -3756,7 +3796,10 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                             // API de i2v no las tiene). Descartarlas en
                             // silencio deja al usuario creyendo que las mandó
                             // — mismo criterio que el aviso viejo de r2v.
-                            if (wanModel === 'wan2.6-i2v' && videoRefUrls.length > 0) {
+                            if (
+                                wanModel === 'wan2.6-i2v' &&
+                                videoRefUrls.length > 0
+                            ) {
                                 toast.push(
                                     <Notification
                                         type="warning"
@@ -3765,8 +3808,8 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                                         Con imagen de Input el vídeo sale de
                                         animar esa foto y los vídeos de
                                         referencia no aplican. Quita la imagen
-                                        si quieres construir la escena desde
-                                        las referencias del personaje.
+                                        si quieres construir la escena desde las
+                                        referencias del personaje.
                                     </Notification>,
                                 )
                             }
@@ -3781,11 +3824,11 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                                         type="warning"
                                         title="Video desde texto puro"
                                     >
-                                        Sin imagen de Input ni Character Ref,
-                                        la identidad del avatar viaja solo como
+                                        Sin imagen de Input ni Character Ref, la
+                                        identidad del avatar viaja solo como
                                         descripción y la cara puede variar.
-                                        Adjunta una imagen del avatar o marca
-                                        un video suyo como Character Ref para
+                                        Adjunta una imagen del avatar o marca un
+                                        video suyo como Character Ref para
                                         anclarla.
                                     </Notification>,
                                 )
@@ -4131,9 +4174,7 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                                             optimizedPayload.bodyRef,
                                             ...optimizedPayload.generalRefs,
                                         ].filter(
-                                            (
-                                                r,
-                                            ): r is NonNullable<typeof r> =>
+                                            (r): r is NonNullable<typeof r> =>
                                                 !!r,
                                         ),
                                     }),
@@ -4267,6 +4308,7 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
             }
         },
         [
+            imageResolution,
             isGenerating,
             isLoadingReferences,
             avatarId,
@@ -4822,6 +4864,7 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                                 referenceImages: editKieAssets,
                                 aspectRatio: targetAspectRatio,
                                 model: editModel,
+                                resolution: imageResolution,
                                 // La foto que se edita YA lleva su ropa: sin
                                 // esto el dispatcher inyectaba un outfit.
                                 editMode: true,
@@ -4907,6 +4950,7 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
             }
         },
         [
+            imageResolution,
             providers,
             avatarId,
             getActiveProvider,

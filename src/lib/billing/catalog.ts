@@ -144,6 +144,37 @@ export const IMAGE_COST_USD: Record<string, CostEntry> = {
     'kie-grok-imagine': { usd: 0.02 },
     'kie-wan-image': { usd: 0.024 },
     'kie-wan-image-pro': { usd: 0.06 },
+    // ── Altas del 19-sep-2026. MEDIDOS EN VIVO, tramo por tramo ──────────
+    // KIE no publica cifra por modelo, así que cada tramo sale de una
+    // generación real: saldo antes − saldo después, × $0.005 el crédito.
+    // Flare t2i 1K = 6.0cr · 2K = 10.0cr · 4K = 16.0cr. Medido también su i2i
+    // a 2K: 10.0cr, EXACTAMENTE lo mismo que el t2i — las referencias no se
+    // facturan aparte en este motor, así que no lleva `usdPorReferenciaExtra`.
+    'kie-gpt-image-2-5-flare': {
+        usd: 0.05,
+        porResolucion: {
+            '1K': { usd: 0.03 },
+            '2K': { usd: 0.05 },
+            '4K': { usd: 0.08 },
+        },
+    },
+    // Qwen 3 Pro 1K = 14.9cr · 2K = 20.5cr. OJO: a 2K son $0.1025, el motor de
+    // imagen MÁS CARO del catálogo — casi el triple que Seedream 5 Lite y el
+    // doble que Seedream 5 Pro a la misma resolución. La estimación previa
+    // (~$0.07) se quedaba corta en un 46%, que es justo lo que habríamos
+    // perdido en cada generación.
+    'kie-qwen3-pro': {
+        usd: 0.1025,
+        porResolucion: { '1K': { usd: 0.0745 }, '2K': { usd: 0.1025 } },
+    },
+    // El hermano no-pro no está en el selector y NO se ha medido: se le deja el
+    // precio del Pro para que, si algún día entra, no cobre de menos por un
+    // olvido. Sigue `estimated` a propósito.
+    'kie-qwen3': {
+        usd: 0.1025,
+        estimated: true,
+        porResolucion: { '1K': { usd: 0.0745 }, '2K': { usd: 0.1025 } },
+    },
 }
 
 /**
@@ -205,7 +236,10 @@ export const VIDEO_COST_USD_PER_SECOND: Record<string, CostEntry> = {
 }
 
 /** TTS y clonado — sin medida en vivo todavía (los calibra el measure-only). */
-export const TTS_COST_USD_PER_1K_CHARS: CostEntry = { usd: 0.05, estimated: true }
+export const TTS_COST_USD_PER_1K_CHARS: CostEntry = {
+    usd: 0.05,
+    estimated: true,
+}
 export const VOICE_CLONE_COST_USD: CostEntry = { usd: 0.3, estimated: true }
 export const AGENT_MESSAGE_COST_USD: CostEntry = { usd: 0.004, estimated: true }
 
@@ -319,12 +353,20 @@ const IMAGE_MODEL_FAMILIES: Array<[prefix: string, providerId: string]> = [
     ['nano-banana-pro', 'kie-nano-banana-pro'],
     ['nano-banana-2-lite', 'kie-nano-banana-2-lite'],
     ['nano-banana-2', 'kie-nano-banana-2'],
+    // Más largo que 'gpt-image-2', así que `resolveFamily` le da prioridad y
+    // Flare deja de cobrarse al precio del modelo al que releva.
+    ['gpt-image-2-5-flare', 'kie-gpt-image-2-5-flare'],
     ['gpt-image-2', 'kie-gpt-image-2'],
     ['gpt-4o-image', 'kie-gpt-4o-image'],
     ['flux-kontext-max', 'kie-flux-kontext-max'],
     ['flux-kontext', 'kie-flux-kontext'],
     ['flux-2/', 'kie-flux-2-pro'],
     ['qwen2/', 'kie-qwen-image'],
+    ['qwen3/pro-image-to-image', 'kie-qwen3-pro'],
+    // Seguro para el hermano no-pro: sin esta entrada corta caería al fallback
+    // caro con un warn que nadie lee. Nunca pisa a la larga de arriba porque
+    // `resolveFamily` ordena por longitud de prefijo, no por posición.
+    ['qwen3/', 'kie-qwen3'],
     ['mulerouter/qwen', 'mulerouter-qwen-edit-max'],
     ['ideogram/', 'kie-ideogram-v3'],
     ['grok-imagine/', 'kie-grok-imagine'],
@@ -464,7 +506,8 @@ export function quote(op: PaidOperation): Quote {
             // cobran; sólo se factura a partir de la segunda.
             const refsExtra = Math.max(0, (op.referenceImages ?? 0) - 1)
             const costUsd =
-                unitario * count + refsExtra * (entry?.usdPorReferenciaExtra ?? 0)
+                unitario * count +
+                refsExtra * (entry?.usdPorReferenciaExtra ?? 0)
             return {
                 sku: `image:${op.providerId}`,
                 tokens: tokensForCostUsd(costUsd),
@@ -533,7 +576,8 @@ export function quote(op: PaidOperation): Quote {
             // quiere reservar como máximo, ese es el hold. `costUsd` se deriva
             // del mismo número (inverso de `tokensForCostUsd`) para que quede
             // consistente con `tokens` — no es un segundo precio independiente.
-            const tokens = op.maxTokens ?? tokensForCostUsd(ASSISTANT_TURN_CEILING_USD)
+            const tokens =
+                op.maxTokens ?? tokensForCostUsd(ASSISTANT_TURN_CEILING_USD)
             const costUsd =
                 op.maxTokens != null
                     ? (tokens * TOKEN_USD) / COST_MARGIN

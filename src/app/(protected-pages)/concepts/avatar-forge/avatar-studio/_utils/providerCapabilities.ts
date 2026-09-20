@@ -1,5 +1,6 @@
 import type { AIProvider } from '@/@types/supabase'
-import type { VideoResolution } from '../types'
+import type { VideoResolution, ImageResolution } from '../types'
+import { engineCaps } from '@/services/kie/engineCaps'
 
 /**
  * Valid output durations (in seconds) for each video provider. Single
@@ -10,7 +11,9 @@ import type { VideoResolution } from '../types'
  * limits — Kling: 5/10, MiniMax: 6/10, Veo 3 (Gemini): fixed 8s, Seedance:
  * 4–15, Wan 2.7: 2–15. Adjust as new models or tiers ship.
  */
-export function getDurationOptionsForProvider(provider: AIProvider | null): number[] {
+export function getDurationOptionsForProvider(
+    provider: AIProvider | null,
+): number[] {
     if (!provider) return [5]
     switch (provider.type) {
         case 'KLING':
@@ -22,20 +25,24 @@ export function getDurationOptionsForProvider(provider: AIProvider | null): numb
             return [8]
         case 'KIE':
             if (provider.model === 'kling-3.0/video') return [5, 10]
-            if (provider.model === 'bytedance/seedance-2') return [4, 5, 6, 8, 10, 12, 15]
+            if (provider.model === 'bytedance/seedance-2')
+                return [4, 5, 6, 8, 10, 12, 15]
             // Seedance 2.5 llega a 30s ("Video duration in 4-30 seconds"). El
             // `-1` = "que elija el modelo" que acepta la API NO se expone: con
             // precio por segundo, una duración decidida río arriba es un cobro
             // que no se puede cotizar antes del hold.
             if (provider.model === 'bytedance/seedance-2-5')
                 return [4, 5, 6, 8, 10, 12, 15, 20, 25, 30]
-            if (provider.model === 'wan/2-7-image-to-video') return [2, 5, 7, 10, 12, 15]
+            if (provider.model === 'wan/2-7-image-to-video')
+                return [2, 5, 7, 10, 12, 15]
             // Wan 2.6 unificado (MuleRouter): la API acepta 5/10/15; si la
             // ruta automática cae en r2v (que rechaza 15) el submit ya
             // redondea a 10.
-            if (provider.model?.startsWith('mulerouter/wan2.6')) return [5, 10, 15]
+            if (provider.model?.startsWith('mulerouter/wan2.6'))
+                return [5, 10, 15]
             // Wan 2.2 turbo no expone duración — clip fijo (~5s).
-            if (provider.model === 'wan/2-2-a14b-image-to-video-turbo') return [5]
+            if (provider.model === 'wan/2-2-a14b-image-to-video-turbo')
+                return [5]
             // Wan 3.0: entero 2-30s (el 31 vuelve con 422). El -1 de "que
             // elija el modelo" NO se expone — con precio POR SEGUNDO, una
             // duración decidida río arriba es un cobro que no se puede
@@ -67,9 +74,11 @@ export function clampDurationForProvider(
 ): number {
     const options = getDurationOptionsForProvider(provider)
     if (options.includes(desired)) return desired
-    return options.reduce((best, opt) =>
-        Math.abs(opt - desired) < Math.abs(best - desired) ? opt : best,
-    options[0])
+    return options.reduce(
+        (best, opt) =>
+            Math.abs(opt - desired) < Math.abs(best - desired) ? opt : best,
+        options[0],
+    )
 }
 
 /**
@@ -96,20 +105,26 @@ export function getResolutionOptionsForProvider(
             return ['720p', '1080p']
         case 'KIE':
             if (provider.model === 'kling-3.0/video') return ['720p', '1080p']
-            if (provider.model === 'bytedance/seedance-2') return ['480p', '720p', '1080p']
+            if (provider.model === 'bytedance/seedance-2')
+                return ['480p', '720p', '1080p']
             // 2.5 NO tiene 1080p — al revés de lo que sugiere el número de
             // versión: "480p for faster generation, 720p for balance".
-            if (provider.model === 'bytedance/seedance-2-5') return ['480p', '720p']
-            if (provider.model === 'wan/2-7-image-to-video') return ['720p', '1080p']
+            if (provider.model === 'bytedance/seedance-2-5')
+                return ['480p', '720p']
+            if (provider.model === 'wan/2-7-image-to-video')
+                return ['720p', '1080p']
             // Wan 2.6 unificado (MuleRouter): el submit mapea a 720P/1080P
             // (i2v vía `resolution`, t2v/r2v vía `size`).
-            if (provider.model?.startsWith('mulerouter/wan2.6')) return ['720p', '1080p']
-            if (provider.model === 'wan/2-2-a14b-image-to-video-turbo') return ['480p', '720p']
+            if (provider.model?.startsWith('mulerouter/wan2.6'))
+                return ['720p', '1080p']
+            if (provider.model === 'wan/2-2-a14b-image-to-video-turbo')
+                return ['480p', '720p']
             // Minúsculas de cara a la UI (su convención); buildWan30Input las
             // sube a '480P'/'720P'/'1080P', que es lo único que acepta la API.
             if (provider.model === 'wan/3-0-video')
                 return ['480p', '720p', '1080p']
-            if (provider.model === 'grok-imagine-video-1-5-preview') return ['480p', '720p']
+            if (provider.model === 'grok-imagine-video-1-5-preview')
+                return ['480p', '720p']
             // Other KIE models (legacy Veo wiring, etc.) don't expose resolution.
             return null
         case 'GATEWAY':
@@ -137,6 +152,43 @@ export function clampResolutionForProvider(
     const order: VideoResolution[] = ['480p', '720p', '1080p']
     const desiredIdx = order.indexOf(desired)
     for (let i = desiredIdx; i >= 0; i--) {
+        if (options.includes(order[i])) return order[i]
+    }
+    return options[0]
+}
+
+/**
+ * Tramos de resolución que ofrece un motor de IMAGEN, o `null` si no expone la
+ * elección — que es el caso de TODOS los motores anteriores a Qwen 3 y GPT
+ * Image 2.5: cada uno fija la suya dentro de su ruta. Devolver `null` hace dos
+ * cosas a la vez: la UI esconde el control, y el submit no manda `resolution`,
+ * así que `quote()` sigue cobrando su precio plano de siempre. El cobro por
+ * tramo se estrena SOLO donde hay tramos declarados.
+ */
+export function getImageResolutionOptionsForProvider(
+    provider: AIProvider | null,
+): ImageResolution[] | null {
+    if (!provider || provider.type !== 'KIE') return null
+    const caps = engineCaps(provider.model)
+    if (!caps || caps.resolutions.length < 2) return null
+    return [...caps.resolutions]
+}
+
+/**
+ * Ajusta la resolución deseada a lo que acepta el motor. Al no haber opción,
+ * devuelve la deseada tal cual: el caller esconde el control y ese valor nunca
+ * llega a viajar.
+ */
+export function clampImageResolutionForProvider(
+    provider: AIProvider | null,
+    desired: ImageResolution,
+): ImageResolution {
+    const options = getImageResolutionOptionsForProvider(provider)
+    if (!options) return desired
+    if (options.includes(desired)) return desired
+    // Degradar antes que subir: nadie quiere descubrir un 4K en la factura.
+    const order: ImageResolution[] = ['1K', '2K', '4K']
+    for (let i = order.indexOf(desired); i >= 0; i--) {
         if (options.includes(order[i])) return order[i]
     }
     return options[0]

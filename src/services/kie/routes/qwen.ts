@@ -178,9 +178,10 @@ async function build(ctx: ImageRouteContext): Promise<KieImageRequest> {
                     // Seedream con las mismas medidas"): Qwen pesa las frases
                     // cualitativas de curvas sobre los cm y EXAGERA. Los números
                     // son la verdad — ni más flaca ni más ancha.
-                    const cloneBodyClause = !sceneCarriesSpec && ctx.bodyEmphasis
-                        ? ` Take her body proportions from THIS description, not from the first image: ${capAtWordBoundary(ctx.bodyEmphasis, 1200, 'qwen-clone-body')}. Keep her hip width, waist and overall frame EXACTLY at the stated centimetres (slim if the numbers are slim); her glutes' fullness is ROUND — projecting BACKWARD as a rounded bubble shape — NOT wide hips, thick thighs or a widened silhouette.`
-                        : ''
+                    const cloneBodyClause =
+                        !sceneCarriesSpec && ctx.bodyEmphasis
+                            ? ` Take her body proportions from THIS description, not from the first image: ${capAtWordBoundary(ctx.bodyEmphasis, 1200, 'qwen-clone-body')}. Keep her hip width, waist and overall frame EXACTLY at the stated centimetres (slim if the numbers are slim); her glutes' fullness is ROUND — projecting BACKWARD as a rounded bubble shape — NOT wide hips, thick thighs or a widened silhouette.`
+                            : ''
                     const cloneMatch = String(ctx.prompt).match(
                         /\[CLONE:\s*([^\]]*)\]/i,
                     )
@@ -246,9 +247,10 @@ async function build(ctx: ImageRouteContext): Promise<KieImageRequest> {
                     // glúteo (proyecta atrás) de ANCHURA del cuerpo (cm mandan).
                     // General: avatares realmente anchos ya traen "wide hips" en su
                     // texto, así que "cm mandan" los respeta.
-                    const qwenBodyClause = !sceneCarriesSpec && ctx.bodyEmphasis
-                        ? ` Her body (MANDATORY): ${capAtWordBoundary(ctx.bodyEmphasis, 1200, 'qwen-body')} — keep her hip width, waist and overall frame EXACTLY at the stated centimetres (slim if the numbers are slim); her glutes' fullness is ROUND, projecting BACKWARD as a rounded bubble shape, NOT wide hips, thick thighs or a widened silhouette.${anatomySentence ? '' : BODY_SPEC_NOT_WARDROBE_CLAUSE}`
-                        : ''
+                    const qwenBodyClause =
+                        !sceneCarriesSpec && ctx.bodyEmphasis
+                            ? ` Her body (MANDATORY): ${capAtWordBoundary(ctx.bodyEmphasis, 1200, 'qwen-body')} — keep her hip width, waist and overall frame EXACTLY at the stated centimetres (slim if the numbers are slim); her glutes' fullness is ROUND, projecting BACKWARD as a rounded bubble shape, NOT wide hips, thick thighs or a widened silhouette.${anatomySentence ? '' : BODY_SPEC_NOT_WARDROBE_CLAUSE}`
+                            : ''
                     // Lock de cara AUTORITATIVO y COMPACTO (cap 800): Qwen
                     // obedece el TEXTO por encima de la imagen — un prompt
                     // "mujer coreana" le cambió la cara al avatar (caso real,
@@ -262,11 +264,11 @@ async function build(ctx: ImageRouteContext): Promise<KieImageRequest> {
                     // el modelo "resolvía" recortando piernas/pies. Se le da la
                     // MISMA cláusula positiva que ya llevan seedream/wan/flux2/grok
                     // (el negative_prompt se conserva como defensa en profundidad).
-                // EDICION (2026-07-26): el ancla de generacion presenta la
-                // imagen como REFERENCIA DE CARA, re-especifica el cuerpo y
-                // exige "hands and feet fully rendered" — que obliga a alejar la
-                // camara hasta que quepan los pies. Al editar una foto recortada
-                // eso es un zoom out y se pierde el encuadre original.
+                    // EDICION (2026-07-26): el ancla de generacion presenta la
+                    // imagen como REFERENCIA DE CARA, re-especifica el cuerpo y
+                    // exige "hands and feet fully rendered" — que obliga a alejar la
+                    // camara hasta que quepan los pies. Al editar una foto recortada
+                    // eso es un zoom out y se pierde el encuadre original.
                     input.prompt = ctx.editMode
                         ? `${EDIT_ANCHOR_CLAUSE} ${cappedSansAnatomy}`
                         : `Keep her EXACT face, hair and natural realistic eyes from the reference image — IGNORE any nationality, ethnicity or facial description in the text.${hairClause}${qwenBodyClause}${INTACT_BODY_CLAUSE}${anatomyFront} ${cappedSansAnatomy}`
@@ -298,7 +300,11 @@ async function build(ctx: ImageRouteContext): Promise<KieImageRequest> {
 
 export const qwenRoute: ImageRoute = {
     label: 'qwen',
-    matches: (m) => m.startsWith('qwen'),
+    // Prefijo CERRADO, no abierto. `startsWith('qwen')` se tragaba también a
+    // `qwen3/*`, y como esta ruta reescribe el model a `qwen2/image-edit` en
+    // cuanto hay referencia, elegir Qwen 3 habría generado —y COBRADO— Qwen 2
+    // sin un solo error visible. El `2?` mantiene vivos los ids legacy `qwen/*`.
+    matches: (m) => /^qwen2?\//.test(m),
     isPermissive: true,
     build,
 }
