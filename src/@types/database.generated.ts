@@ -1975,6 +1975,115 @@ export type Database = {
           },
         ]
       }
+      superadmin_audit_log: {
+        Row: {
+          action: string
+          actor_user_id: string
+          created_at: string
+          detail: Json
+          elevated: boolean
+          grant_kind: string | null
+          id: string
+          organization_id: string | null
+          reason: string | null
+        }
+        Insert: {
+          action: string
+          actor_user_id: string
+          created_at?: string
+          detail?: Json
+          elevated?: boolean
+          grant_kind?: string | null
+          id?: string
+          organization_id?: string | null
+          reason?: string | null
+        }
+        Update: {
+          action?: string
+          actor_user_id?: string
+          created_at?: string
+          detail?: Json
+          elevated?: boolean
+          grant_kind?: string | null
+          id?: string
+          organization_id?: string | null
+          reason?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "superadmin_audit_log_actor_user_id_fkey"
+            columns: ["actor_user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "superadmin_audit_log_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      support_grants: {
+        Row: {
+          created_at: string
+          expires_at: string
+          granted_by: string
+          id: string
+          kind: string
+          organization_id: string
+          reason: string | null
+          revoked_at: string | null
+          revoked_by: string | null
+        }
+        Insert: {
+          created_at?: string
+          expires_at: string
+          granted_by: string
+          id?: string
+          kind: string
+          organization_id: string
+          reason?: string | null
+          revoked_at?: string | null
+          revoked_by?: string | null
+        }
+        Update: {
+          created_at?: string
+          expires_at?: string
+          granted_by?: string
+          id?: string
+          kind?: string
+          organization_id?: string
+          reason?: string | null
+          revoked_at?: string | null
+          revoked_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "support_grants_granted_by_fkey"
+            columns: ["granted_by"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "support_grants_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "support_grants_revoked_by_fkey"
+            columns: ["revoked_by"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       telegram_paid_media_items: {
         Row: {
           avatar_id: string
@@ -2602,7 +2711,7 @@ export type Database = {
         | "sent"
         | "failed"
         | "discarded"
-      org_member_role: "owner" | "admin" | "operator"
+      org_member_role: "owner" | "admin" | "operator" | "viewer"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -2740,7 +2849,7 @@ export const Constants = {
         "failed",
         "discarded",
       ],
-      org_member_role: ["owner", "admin", "operator"],
+      org_member_role: ["owner", "admin", "operator", "viewer"],
     },
   },
 } as const

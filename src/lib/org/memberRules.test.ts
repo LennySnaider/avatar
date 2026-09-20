@@ -27,7 +27,11 @@ test('solo el propietario gestiona miembros (la bifurcacion documentada)', () =>
 })
 
 test('no se invita a nadie como propietario', () => {
-    assert.deepEqual([...INVITABLE_ROLES], ['operator', 'admin'])
+    // `viewer` entró en la F4.4: es invitable como cualquier otro. El que
+    // sigue fuera —y es lo que prueba este test— es `owner`: la propiedad se
+    // transfiere subiendo a un miembro existente, no se regala por enlace.
+    assert.deepEqual([...INVITABLE_ROLES], ['viewer', 'operator', 'admin'])
+    assert.equal(INVITABLE_ROLES.includes('owner'), false)
 })
 
 test('countOwners', () => {
@@ -88,7 +92,9 @@ test('cambiar al rol que ya tiene se rechaza con mensaje propio', () => {
 test('objetivo que no esta en la lista, actor que no esta, y rol inexistente', () => {
     assert.equal(decideRoleChange([A, B], 'a', 'zzz', 'admin').ok, false)
     assert.equal(decideRoleChange([A, B], 'zzz', 'b', 'admin').ok, false)
-    assert.equal(decideRoleChange([A, B], 'a', 'b', 'viewer').ok, false)
+    // 'viewer' ya es un rol válido desde la F4.4; el inexistente ahora es otro.
+    assert.equal(decideRoleChange([A, B], 'a', 'b', 'finance').ok, false)
+    assert.equal(decideRoleChange([A, B], 'a', 'b', 'viewer').ok, true)
 })
 
 // ── Expulsar ─────────────────────────────────────────────────────────────

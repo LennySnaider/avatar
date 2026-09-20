@@ -191,6 +191,9 @@ const navigationIcon: NavigationIcons = {
     helpCeterEditArticle: <PiTextIndentDuotone />,
     helpCeterManageArticle: <PiQuotesDuotone />,
     authentication: <PiShieldCheckDuotone />,
+    // F4.4 — El panel de plataforma. Reusa el escudo ya importado: es la
+    // misma idea (esto protege el sistema) y no añade peso al bundle.
+    platform: <PiShieldCheckDuotone />,
     signIn: <PiKeyDuotone />,
     signUp: <PiUserPlusDuotone />,
     forgotPassword: <PiLockKeyOpenDuotone />,

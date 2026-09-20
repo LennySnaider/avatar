@@ -32,13 +32,14 @@ export const ROLE_DESCRIPTION: Record<OrgRole, string> = {
     admin: 'Todo el producto, la facturación y las conexiones. No gestiona miembros.',
     operator:
         'Opera y genera: avatares, generaciones, inbox, ventas y publicaciones. No toca facturación, conexiones ni precios.',
+    viewer: 'Sólo mira. Ve el contenido de la organización y no puede cambiar nada, ni generar (generar gasta tokens).',
 }
 
 /**
  * Roles que se pueden INVITAR. `owner` no está: la propiedad se transfiere
  * subiendo a un miembro existente, no se regala por enlace.
  */
-export const INVITABLE_ROLES: readonly OrgRole[] = ['operator', 'admin']
+export const INVITABLE_ROLES: readonly OrgRole[] = ['viewer', 'operator', 'admin']
 
 /**
  * ¿Puede este rol gestionar miembros? Hoy sólo `owner`. Abrirlo a `admin` es

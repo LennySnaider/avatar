@@ -57,6 +57,9 @@ const ROLE_TAG: Record<OrgRole, string> = {
     owner: 'bg-indigo-100 text-indigo-700',
     admin: 'bg-emerald-100 text-emerald-700',
     operator: 'bg-gray-100 text-gray-700',
+    // Más apagado que operator a propósito: es el único rol que no puede
+    // cambiar nada, y la lista se lee de un vistazo por el color.
+    viewer: 'bg-slate-100 text-slate-500',
 }
 
 const fecha = (iso: string) =>

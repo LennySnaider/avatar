@@ -38,6 +38,7 @@ export const ROLE_LABEL: Record<OrgRole, string> = {
     owner: 'Propietario',
     admin: 'Administrador',
     operator: 'Operador',
+    viewer: 'Observador',
 }
 
 /**

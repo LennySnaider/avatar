@@ -39,7 +39,12 @@ export interface OrgMemberRow {
     image: string | null
 }
 
-const ROLE_ORDER: Record<OrgRole, number> = { owner: 0, admin: 1, operator: 2 }
+const ROLE_ORDER: Record<OrgRole, number> = {
+    owner: 0,
+    admin: 1,
+    operator: 2,
+    viewer: 3,
+}
 
 /**
  * Miembros de la organización con su perfil.

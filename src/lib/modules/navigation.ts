@@ -18,6 +18,13 @@ export interface NavigationFilter {
     installedModules: string[]
     /** null sin sesión o sin membresía: los ítems con permiso se ocultan (falla cerrado). */
     role: OrgRole | null
+    /**
+     * F4.4 — ¿Opera el sistema? Opcional, y su ausencia significa NO: sin
+     * saberlo, el ítem se esconde. Es un eje aparte del rol de organización, y
+     * mezclarlos sería el error caro: `owner` es la cima dentro de UNA
+     * organización, no por encima de todas.
+     */
+    isPlatformAdmin?: boolean
 }
 
 export function filterNavigation(
@@ -34,6 +41,9 @@ export function filterNavigation(
 
             const permission = node.meta?.requiredPermission
             if (permission && !can(filter.role, permission)) continue
+
+            if (node.meta?.requiresPlatformAdmin && !filter.isPlatformAdmin)
+                continue
 
             const subMenu = node.subMenu?.length ? walk(node.subMenu) : []
 

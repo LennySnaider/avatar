@@ -320,6 +320,16 @@ const eslintConfig = [
       // tabla tenant; todas se filtran a mano por el organizationId del ctx.
       // La única tenant que toca, `organization_invitations`, va por orgTable.
       "src/lib/org/membersDb.ts",
+      // F4.4 — Acceso a datos del admin de plataforma. Ninguna de sus tablas
+      // es tenant en el sentido del builder: `users` es la persona (anterior a
+      // cualquier organización); `support_grants` es quien DECIDE la elevación
+      // y la lee `getOrgContext()` para poder construir el ctx que orgTable
+      // exige —misma circularidad que exime a `organization_members`—; y tanto
+      // `superadmin_audit_log` como el listado de organizaciones se leen A
+      // PROPÓSITO entre tenants: ése es justo el trabajo del panel. Quien
+      // autoriza aquí no es el filtro de organización sino
+      // `requirePlatformAdmin()`, que relee `is_platform_admin` de la base.
+      "src/lib/platform/platformDb.ts",
       // Resumen de cobro por módulo (cuota + comisión del mes en curso): misma
       // tabla no tenant que wallet.ts (`token_ledger`), filtrada a mano por
       // organization_id — que aquí llega ya resuelto por parámetro, no por ctx.

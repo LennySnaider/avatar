@@ -23,8 +23,9 @@
  * monótono. El día que entre un rol no-monótono (un "finance" que toca
  * facturación pero no contenido), la escalera REINTERPRETA en silencio los 17
  * permisos. Con conjuntos, el spread ES la herencia y un rol nuevo es un array
- * más aquí: cero call sites tocados. Añadir `viewer` sería
- * `const VIEWER = ['content:read'] as const` y `OPERATOR = [...VIEWER, …]`.
+ * más aquí: cero call sites tocados. `viewer` (F4.4) entró exactamente así —
+ * `const VIEWER = ['content:read']` y `OPERATOR = [...VIEWER, …]`— sin tocar
+ * ni uno de los ~121 `requirePermission` repartidos por los servicios.
  *
  * PURO A PROPÓSITO: ni un import de runtime (sólo `import type`). Eso es lo que
  * lo hace testeable con `node:test` sin base de datos y seguro de importar
@@ -36,7 +37,7 @@ import type { OrgMemberRole } from '@/lib/agent/db'
  * Los roles, de menos a más capaz. El orden es documentación: la herencia real
  * la hacen los spreads de abajo, no este array.
  */
-export const ORG_ROLES = ['operator', 'admin', 'owner'] as const
+export const ORG_ROLES = ['viewer', 'operator', 'admin', 'owner'] as const
 
 /** Mismo conjunto que el enum SQL `org_member_role`, verificado por el `satisfies` final. */
 export type OrgRole = (typeof ORG_ROLES)[number]
@@ -86,8 +87,20 @@ export const PERMISSIONS = [
 
 export type Permission = (typeof PERMISSIONS)[number]
 
+/**
+ * Mira y no toca. Es el rol de quien quiere ver el trabajo sin poder romperlo
+ * —un socio, un contable, el cliente de una agencia— y TAMBIÉN el rol efectivo
+ * con el que un admin de plataforma entra a un tenant sin concesión de soporte
+ * viva (F4.4). Esa segunda función es la que evita inventar un rol sintético
+ * para la suplantación en lectura: aquí reusa los guards que ya existen.
+ *
+ * Sólo `content:read`. Ni siquiera `generation:create`, que parece inofensivo y
+ * GASTA TOKENS del monedero de la organización.
+ */
+const VIEWER: readonly Permission[] = ['content:read']
+
 const OPERATOR: readonly Permission[] = [
-    'content:read',
+    ...VIEWER,
     'content:write',
     'content:delete',
     'generation:create',
@@ -115,6 +128,7 @@ const OWNER: readonly Permission[] = [...ADMIN, 'members:manage', 'plan:manage']
  * alguien añade el rol a `ORG_ROLES` sin darle permisos, `tsc` protesta aquí.
  */
 export const PERMISSIONS_BY_ROLE = {
+    viewer: new Set(VIEWER),
     operator: new Set(OPERATOR),
     admin: new Set(ADMIN),
     owner: new Set(OWNER),
@@ -166,5 +180,6 @@ const _rolesMatchDbEnum: Record<OrgMemberRole, OrgRole> = {
     owner: 'owner',
     admin: 'admin',
     operator: 'operator',
+    viewer: 'viewer',
 }
 void _rolesMatchDbEnum
