@@ -129,6 +129,7 @@
             "editArticleDesc": "修改文章内容",
             "manageArticleDesc": "文章管理"
         },
+        "platform": "平台",
         "calendar": "日历",
         "fileManager": "文件管理器",
         "mail": "邮件",
