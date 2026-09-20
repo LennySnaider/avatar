@@ -108,7 +108,25 @@ const Tooltip = (props: TooltipProps) => {
                             ...floatingStyles,
                             opacity: isAnimated ? 1 : 0,
                             visibility: isAnimated ? 'visible' : 'hidden',
-                            transition: 'opacity 0.15s ease-out, visibility 0.15s ease-out',
+                            transition:
+                                'opacity 0.15s ease-out, visibility 0.15s ease-out',
+                            // El tooltip NO puede recibir el puntero. Vive en un
+                            // portal, así que en cuanto el cursor lo pisa el
+                            // `useHover` da por salido el elemento de
+                            // referencia y lo cierra; al cerrarse, el cursor
+                            // vuelve a estar sobre el botón y lo abre otra vez.
+                            // Eso es el PARPADEO que se ve al mover el ratón
+                            // por la zona donde asoma el tooltip, y pasa sobre
+                            // todo cuando `flip` lo coloca del lado al que uno
+                            // mueve la mano (el Delete del visor, pegado al
+                            // borde, lo hacía siempre).
+                            //
+                            // Se puede poner en todos porque ningún tooltip de
+                            // la app lleva contenido con el que se interactúe:
+                            // todos son texto. El día que uno lo lleve,
+                            // necesitará `safePolygon()` en el useHover en vez
+                            // de esto.
+                            pointerEvents: 'none',
                         }}
                         {...getFloatingProps()}
                     >
