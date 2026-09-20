@@ -47,11 +47,35 @@ export function sameBodyShape(
     a?: PhysicalMeasurements | null,
     b?: PhysicalMeasurements | null,
 ): boolean {
+    // OJO con comparar `JSON.stringify` de los objetos tal cual: el resultado
+    // depende del ORDEN de las claves y distingue cosas que aquí son lo mismo.
+    // Los editores de atributos emiten `{...measurements, ...patch}`, que manda
+    // al final cualquier clave que antes no estuviera, y el cuerpo derivado
+    // añade `shape` por su cuenta. Con eso, dos medidas idénticas daban
+    // distinto y la hoja aparecía "desactualizada" sin que nadie tocara nada:
+    // el overlay tapaba el cuerpo, escondía la variante nude y no dejaba
+    // guardar. Se compara por claves ORDENADAS y con los valores normalizados.
+    const vacio = (v: unknown) => v === undefined || v === null || v === ''
+    const norm = (v: unknown): unknown => {
+        if (typeof v === 'string') {
+            const t = v.trim()
+            // '168' y 168 son la misma altura: un <input> devuelve texto.
+            if (t !== '' && Number.isFinite(Number(t))) return Number(t)
+            return t
+        }
+        return v
+    }
     const strip = (m?: PhysicalMeasurements | null): string => {
         if (!m) return ''
-        const clone: Record<string, unknown> = { ...m }
-        for (const k of SHEET_IGNORED_KEYS) delete clone[k]
-        return JSON.stringify(clone)
+        const src = m as unknown as Record<string, unknown>
+        const out: Record<string, unknown> = {}
+        for (const k of Object.keys(src).sort()) {
+            if ((SHEET_IGNORED_KEYS as readonly string[]).includes(k)) continue
+            // Un campo vacío y uno ausente son el mismo cuerpo.
+            if (vacio(src[k])) continue
+            out[k] = norm(src[k])
+        }
+        return JSON.stringify(out)
     }
     return strip(a) === strip(b)
 }
