@@ -167,6 +167,14 @@ export function getBodyDescriptors(m: PhysicalMeasurements): string {
         if (!m.glutesLevel) {
             descriptors.push('proportionate hips', 'balanced lower body')
         }
+    } else if (m.hips >= 86) {
+        // 86-91 (2026-09-20). Este rango no emitía NADA de anchura: con cadera
+        // 90 la única anchura que llegaba al prompt era la que colara la forma
+        // del glúteo, y con glúteo 5 el motor rellenaba el frente (hoja de
+        // MiaUltra: 90 cm y salía ancha). Decisión del usuario: Auto dice aquí
+        // "proporcionada", sin mirar el glúteo — la variante que fuerza el
+        // volumen hacia atrás ('estrecha') queda para el chip.
+        descriptors.push(HIP_WIDTH_PHRASE.normal)
     } else if (m.hips <= 85) {
         // COHERENCIA con el slider de glúteos (2026-07-25, reporte con
         // imagen): 'slim lower frame' contradecía frontalmente un glúteo
