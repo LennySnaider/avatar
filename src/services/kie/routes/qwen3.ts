@@ -19,10 +19,16 @@ import {
     stripIdentityRedundancy,
     flattenJsonPromptToProse,
     planExtraRefs,
+    hairClauseCompact,
+    eyeClause,
+    INTACT_BODY_CLAUSE,
 } from '../shared'
 
 /** Doc KIE: `prompt` ≤ 5000. Se deja margen igual que en la ruta de Qwen 2. */
 const PROMPT_CAP = 4800
+
+/** Sub-cap del spec corporal dentro del ancla: largo satura al editor. */
+const BODY_CAP = 1200
 
 /** `image_size` por defecto de la doc, y fallback si el ratio no es válido. */
 const RATIO_FALLBACK = '16:9'
@@ -44,12 +50,71 @@ async function build(ctx: ImageRouteContext): Promise<KieImageRequest> {
     // Mismo pre-proceso que Qwen 2, por la misma razón medida: un blob JSON con
     // llaves y comillas descarrila al editor, y el preámbulo de identidad +
     // [BODY:] + [FACE:] lo SATURAN cuando esa identidad ya viaja en la imagen.
-    let promptText = relocatePoseTag(flattenJsonPromptToProse(ctx.prompt))
-    promptText = stripIdentityRedundancy(promptText, true)
+    const escena = stripIdentityRedundancy(
+        relocatePoseTag(flattenJsonPromptToProse(ctx.prompt)),
+        true,
+    )
 
-    // Cara primero (imagen 1, que es lo que asumen las cláusulas indexadas) y
-    // hasta `maxRefs - 1` acompañantes en el orden canónico del resto de rutas.
+    // IDENTIDAD DEL AVATAR. Va aparte y SIEMPRE, porque el strip de arriba
+    // acaba de borrar el preámbulo de edad, `[BODY:]` y `[FACE:]`: sin esto el
+    // prompt se queda solo con la escena y el motor rinde a otra persona
+    // (reporte con evidencia: tres avatares distintas salieron idénticas y una
+    // pelirroja salió morena). El pelo y los ojos vuelven por aquí y no por los
+    // tags justamente porque esto no pasa por el strip.
+    const hair = hairClauseCompact(ctx.hairEmphasis)
+    const eyes = eyeClause(ctx.eyeEmphasis)
+    // El cuerpo solo si la ESCENA no lo trae ya (el usuario pegó el spec del
+    // perfil o una hoja del Body Lab): inyectarlo dos veces lo amplifica.
+    const body =
+        ctx.bodyEmphasis && !/hip-to-waist ratio/i.test(escena)
+            ? ` Her body: ${capAtWordBoundary(ctx.bodyEmphasis, BODY_CAP, ctx.model)}.`
+            : ''
+    const identidad = `${hair}${eyes}${body}${INTACT_BODY_CLAUSE}`
+
     const faceUrl = await ctx.uploadRef(ctx.referenceImage)
+    const clone = (ctx.referenceImages ?? []).find((r) => r.role === 'clone')
+
+    // ── CON CLONE REF ────────────────────────────────────────────────────
+    // Qwen EDITA la PRIMERA imagen, así que el lienzo es el CLONE (de él salen
+    // pose, cuerpo, outfit y escena) y la cara del avatar entra SEGUNDA con un
+    // face-swap explícito. Ya estaba medido en la ruta de Qwen 2 ("con la cara
+    // como imagen 1, Qwen anclaba la composición del RETRATO") y esta ruta
+    // repitió el error hasta que se comprobó en vivo: con la cara primero
+    // devolvía la mujer del clone; invirtiendo el orden, devuelve a la avatar
+    // con el vestuario y el sitio del clone.
+    if (clone) {
+        const cloneUrl = await ctx.uploadRef(clone)
+        const cw = ctx.cloneWeight ?? 100
+        // Mismos tramos que Qwen 2: el peso del slider le cambia el TRABAJO al
+        // lienzo, no un adjetivo.
+        const fidelidad =
+            cw >= 75
+                ? 'Keep the SAME outfit (every garment piece), pose, framing and FULL background as the FIRST image'
+                : cw >= 50
+                  ? 'Keep the outfit, pose, framing and background close to the FIRST image, minor natural variation allowed'
+                  : cw >= 25
+                    ? 'Use the FIRST image as a general BASIS for outfit, pose and setting, reinterpreting the details freely'
+                    : 'Take only LOOSE inspiration from the FIRST image (vibe, outfit style, kind of setting)'
+        const swap =
+            'The FACE SWAP is MANDATORY: replace the face in the FIRST image ' +
+            'with the face from the SECOND image (exact features and likeness) ' +
+            "— never keep the first image's original face. Her HAIR also comes " +
+            "from the SECOND image (colour and length), never the first one's."
+        return {
+            model: ctx.model,
+            input: baseInput(
+                ctx,
+                caps,
+                `${swap}${identidad} ${fidelidad}. ${escena}`,
+                [cloneUrl, faceUrl],
+            ),
+            fullApiPrompt: escena,
+        }
+    }
+
+    // ── SIN CLONE: la cara ES el lienzo ──────────────────────────────────
+    // Aquí sí manda la imagen 1, así que las cláusulas indexadas de
+    // `planExtraRefs` (que asumen "la cara es la imagen 1") encajan.
     const { extras, clauses } = planExtraRefs(
         ctx.referenceImages,
         Math.max(0, (caps?.maxRefs ?? 3) - 1),
@@ -58,12 +123,33 @@ async function build(ctx: ImageRouteContext): Promise<KieImageRequest> {
         ctx.nsfwIntent,
     )
     const extraUrls = await Promise.all(extras.map((r) => ctx.uploadRef(r)))
-    const promptConClausulas = clauses ? `${promptText}${clauses}` : promptText
+    const faceLock =
+        'The FIRST image is the person — keep her EXACT face, hair and natural ' +
+        'eye colour, unchanged regardless of any ethnicity, hair colour or ' +
+        'facial description stated in the text.'
+    const soloWardrobe = extras.length
+        ? ' The other reference images provide ONLY the wardrobe, the location and the pose — never her hair colour, her hair length or her face.'
+        : ''
+    const prompt = `${faceLock}${identidad}${soloWardrobe} ${escena}${clauses}`
 
+    return {
+        model: ctx.model,
+        input: baseInput(ctx, caps, prompt, [faceUrl, ...extraUrls]),
+        fullApiPrompt: escena,
+    }
+}
+
+/** Los campos que no dependen del camino: tamaño, tramo y banderas. */
+function baseInput(
+    ctx: ImageRouteContext,
+    caps: ReturnType<typeof engineCaps>,
+    prompt: string,
+    imageUrls: string[],
+): Record<string, unknown> {
     const ratios = caps?.aspectRatios
     const input: Record<string, unknown> = {
-        prompt: capAtWordBoundary(promptConClausulas, PROMPT_CAP, ctx.model),
-        image_urls: [faceUrl, ...extraUrls],
+        prompt: capAtWordBoundary(prompt.trim(), PROMPT_CAP, ctx.model),
+        image_urls: imageUrls,
         // Ratio CRUDO, no `aspectToImageSize`: ese helper devuelve el
         // vocabulario de fal ('landscape_16_9'), que este motor no entiende.
         image_size:
@@ -79,7 +165,6 @@ async function build(ctx: ImageRouteContext): Promise<KieImageRequest> {
         prompt_extend: false,
         nsfw_checker: !!ctx.safeMode,
     }
-
     if (ctx.negativePrompt) input.negative_prompt = ctx.negativePrompt
     // Rango de la doc; un seed fuera de él es un 422 por un dato que no aporta.
     if (
@@ -90,8 +175,7 @@ async function build(ctx: ImageRouteContext): Promise<KieImageRequest> {
     ) {
         input.seed = ctx.seed
     }
-
-    return { model: ctx.model, input, fullApiPrompt: promptConClausulas }
+    return input
 }
 
 export const qwen3Route: ImageRoute = {
