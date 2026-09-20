@@ -64,6 +64,18 @@ export function usdToTokens(usd: number): number {
 export const MODULE_SKU = {
     fee: (slug: string) => `module_fee:${slug}`,
     commission: (slug: string) => `commission:${slug}`,
+    /**
+     * Cobro POR USO de un módulo (`module_usage:ai-mark-cleaner:image`).
+     *
+     * Comparte el prefijo `module_usage:` a propósito: `getModuleBillingSummary`
+     * (`src/lib/billing/moduleSummary.ts`) lee los asientos de un módulo
+     * filtrando por sus skus, así que un sku con forma propia —`clean:image`,
+     * por ejemplo— dejaría el resumen de ese módulo a cero para siempre sin
+     * que nada lo avisara.
+     */
+    usage: (slug: string, unidad: string) => `module_usage:${slug}:${unidad}`,
+    /** Prefijo para consultar todos los usos de un módulo de una vez. */
+    usagePrefix: (slug: string) => `module_usage:${slug}:`,
 }
 
 type CostEntry = {
@@ -208,6 +220,37 @@ export const VIDEO_COST_USD_PER_SECOND: Record<string, CostEntry> = {
 export const TTS_COST_USD_PER_1K_CHARS: CostEntry = { usd: 0.05, estimated: true }
 export const VOICE_CLONE_COST_USD: CostEntry = { usd: 0.3, estimated: true }
 export const AGENT_MESSAGE_COST_USD: CostEntry = { usd: 0.004, estimated: true }
+
+/**
+ * Coste de limpiar UN archivo de marcas de IA (módulo `ai-mark-cleaner`).
+ *
+ * MEDIDO el 2026-09-20 sobre generaciones reales, no estimado:
+ *  - imagen: 2-3 s de pared en el contenedor de 2 vCPU / 4 GB (detector +
+ *    relleno MI-GAN + borrado de metadatos verificado).
+ *  - vídeo SIN marca esperada —el caso común, porque el proveedor se le pasa
+ *    al motor y no tiene que escanear las siete marcas—: 3-5 s.
+ *  - vídeo CON marca que hay que rellenar fotograma a fotograma: hasta 115 s
+ *    en un clip de 141 fotogramas.
+ *
+ * Con la tarifa de Vercel (`iad1`: 0,128 USD/hora de CPU activa y 0,0106
+ * USD/GB-hora de memoria aprovisionada, consultada el 2026-09-20) sale:
+ *    imagen              ≈ 0,00021 USD
+ *    vídeo sin relleno   ≈ 0,00030 USD
+ *    vídeo con relleno   ≈ 0,00670 USD
+ *
+ * OJO CON EL PRECIO RESULTANTE: con `COST_MARGIN` de 3× y tokens a 0,001 USD,
+ * una imagen limpia sale a 1 token. Es el coste real más el margen de siempre,
+ * igual que el resto de este catálogo; si el negocio quiere que la limpieza
+ * valga más que su coste, eso es una decisión de precio y va aquí arriba, no
+ * escondida en un redondeo.
+ */
+export const AI_MARK_CLEAN_COST_USD = {
+    imagen: { usd: 0.00021, estimated: false },
+    /** Vídeo en el que no hay logo que rellenar (mayoría de los medidos). */
+    videoSinRelleno: { usd: 0.0003, estimated: false },
+    /** Vídeo en el que sí hay que rellenar cada fotograma. */
+    videoConRelleno: { usd: 0.0067, estimated: false },
+} as const
 
 /**
  * TECHO por turno del Estratega (agente de la organización, F5.2/Fase 1):
@@ -431,6 +474,18 @@ export type PaidOperation =
      * real del SDK, en el settle (ver `src/lib/assistant/billing.ts`).
      */
     | { kind: 'assistant_turn'; maxTokens?: number }
+    /**
+     * Limpieza de marcas de IA de UN archivo ya generado. Se cotiza DESPUÉS
+     * del trabajo, no antes: hasta que el motor no mira el archivo no se sabe
+     * si había un logo que rellenar (el caso caro) o sólo metadatos que
+     * borrar. Por eso `rellenoDeFotogramas` lo fija quien ya vio el informe.
+     */
+    | {
+          kind: 'ai_mark_clean'
+          mediaType: 'IMAGE' | 'VIDEO'
+          /** El motor tuvo que rellenar píxeles, no sólo borrar metadatos. */
+          rellenoDeFotogramas?: boolean
+      }
 
 export type Quote = {
     /** Identificador estable del SKU para el ledger ('image:kie-seedream-5-lite'). */
@@ -527,6 +582,20 @@ export function quote(op: PaidOperation): Quote {
                 costUsd: AGENT_MESSAGE_COST_USD.usd,
                 estimated: true,
             }
+        case 'ai_mark_clean': {
+            const esVideo = op.mediaType === 'VIDEO'
+            const entrada = !esVideo
+                ? AI_MARK_CLEAN_COST_USD.imagen
+                : op.rellenoDeFotogramas
+                  ? AI_MARK_CLEAN_COST_USD.videoConRelleno
+                  : AI_MARK_CLEAN_COST_USD.videoSinRelleno
+            return {
+                sku: MODULE_SKU.usage('ai-mark-cleaner', esVideo ? 'video' : 'image'),
+                tokens: tokensForCostUsd(entrada.usd),
+                costUsd: entrada.usd,
+                estimated: entrada.estimated,
+            }
+        }
         case 'assistant_turn': {
             // `maxTokens` (el tope de `org_modules.settings`, ver Task 4) manda
             // sobre el techo por defecto: si el caller ya sabe cuántos tokens

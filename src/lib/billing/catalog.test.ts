@@ -2,17 +2,18 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import {
-    STAR_USD,
-    starsToUsd,
-    usdToTokens,
-    MODULE_SKU,
-    TOKEN_USD,
+    AI_MARK_CLEAN_COST_USD,
+    ASSISTANT_TURN_CEILING_USD,
     COST_MARGIN,
     MODEL_USD_PER_M,
-    tokensForUsage,
+    MODULE_SKU,
+    STAR_USD,
+    TOKEN_USD,
     quote,
-    ASSISTANT_TURN_CEILING_USD,
+    starsToUsd,
     tokensForCostUsd,
+    tokensForUsage,
+    usdToTokens,
 } from './catalog.ts'
 
 test('una Star vale lo que Telegram paga al desarrollador', () => {
@@ -144,4 +145,38 @@ test('quote({kind:assistant_turn, maxTokens}) respeta el override (tope de org_m
     // no un segundo precio independiente.
     assert.equal(q.costUsd, (500 * TOKEN_USD) / COST_MARGIN)
     assert.equal(q.estimated, true)
+})
+
+test('limpieza de marcas: una imagen cuesta lo que costó limpiarla, con el margen de siempre', () => {
+    const q = quote({ kind: 'ai_mark_clean', mediaType: 'IMAGE' })
+    assert.equal(q.sku, 'module_usage:ai-mark-cleaner:image')
+    assert.equal(q.tokens, tokensForCostUsd(AI_MARK_CLEAN_COST_USD.imagen.usd))
+    assert.equal(q.estimated, false, 'el coste está medido, no estimado')
+})
+
+test('limpieza de marcas: un vídeo sin relleno cuesta casi lo mismo que una imagen', () => {
+    // Es el caso común: se le pasa el proveedor al motor y no escanea las
+    // siete marcas, así que sólo borra metadatos.
+    const q = quote({ kind: 'ai_mark_clean', mediaType: 'VIDEO' })
+    assert.equal(q.sku, 'module_usage:ai-mark-cleaner:video')
+    assert.equal(q.tokens, tokensForCostUsd(AI_MARK_CLEAN_COST_USD.videoSinRelleno.usd))
+})
+
+test('limpieza de marcas: rellenar fotograma a fotograma cuesta mucho más', () => {
+    const barato = quote({ kind: 'ai_mark_clean', mediaType: 'VIDEO' })
+    const caro = quote({
+        kind: 'ai_mark_clean',
+        mediaType: 'VIDEO',
+        rellenoDeFotogramas: true,
+    })
+    assert.ok(caro.tokens > barato.tokens * 10, 'el relleno domina el coste')
+    assert.equal(caro.tokens, tokensForCostUsd(AI_MARK_CLEAN_COST_USD.videoConRelleno.usd))
+})
+
+test('limpieza de marcas: el sku lleva el prefijo que el resumen del módulo sabe leer', () => {
+    // Un sku con forma propia dejaría el resumen de ese módulo a cero.
+    const prefijo = MODULE_SKU.usagePrefix('ai-mark-cleaner')
+    for (const mediaType of ['IMAGE', 'VIDEO'] as const) {
+        assert.ok(quote({ kind: 'ai_mark_clean', mediaType }).sku.startsWith(prefijo))
+    }
 })
