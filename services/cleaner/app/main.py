@@ -161,7 +161,11 @@ async def _procesar(peticion: PeticionLimpieza) -> JSONResponse:
         # de eventos y poder atender `/health` mientras tanto.
         if es_video:
             informe, salida = await asyncio.to_thread(
-                limpiar_video, origen, trabajo, peticion.options.backend
+                limpiar_video,
+                origen,
+                trabajo,
+                peticion.options.backend,
+                peticion.options.proveedor,
             )
         else:
             informe, salida = await asyncio.to_thread(
@@ -171,6 +175,7 @@ async def _procesar(peticion: PeticionLimpieza) -> JSONResponse:
                 peticion.options.backend,
                 peticion.options.sensibilidad,
                 ruta_miniatura,
+                peticion.options.proveedor,
             )
 
         if salida is not None:

@@ -26,6 +26,7 @@ import time
 from pathlib import Path
 from typing import Any
 
+from app.marcas import decidir_marca
 from app.informe import (
     InformeLimpieza,
     InformeMetadatos,
@@ -100,6 +101,7 @@ def limpiar_imagen(
     backend: str = "migan",
     sensibilidad: str = "auto",
     miniatura: Path | None = None,
+    proveedor: str | None = None,
 ) -> tuple[InformeLimpieza, Path | None]:
     """Devuelve (informe, ruta del archivo limpio o None si no habia nada)."""
     import remove_ai_watermarks as raiw
@@ -115,20 +117,27 @@ def limpiar_imagen(
     # hay marca; asi `tras_visible.exists()` responde "hubo logo" sin ambiguedad.
     tras_visible = carpeta_trabajo / f"{origen.stem}.v{origen.suffix}"
     visibles: list[MarcaVisible] = []
-    try:
-        reporte = raiw.remove_visible_detailed(
-            trabajo,
-            tras_visible,
-            sensitivity=sensibilidad,  # type: ignore[arg-type]
-            backend=backend,  # type: ignore[arg-type]
-            strip_metadata=False,  # lo hace el paso 2, siempre
-            write_noop=False,
-        )
-        visibles = [_marca_desde_motor(m) for m in reporte.marks]
-    except Exception as err:  # noqa: BLE001
-        # Un fallo del inpainting NO cancela el borrado de metadatos, que es la
-        # capa que de verdad quita la etiqueta "Hecho con IA" de las redes.
-        print(f"[limpieza] paso visible fallido en {origen.name}: {err}", flush=True)
+    decision = decidir_marca(proveedor, es_video=False)
+    if decision.saltar:
+        # Motor medido sin logo: no se escanea. Ahorra una pasada de detector
+        # por imagen y, sobre todo, cierra la puerta a un falso positivo que
+        # rellenaria pixeles buenos.
+        print(f"[limpieza] {origen.name}: {proveedor} no estampa logo, se salta el paso visible", flush=True)
+    else:
+        try:
+            reporte = raiw.remove_visible_detailed(
+                trabajo,
+                tras_visible,
+                sensitivity=sensibilidad,  # type: ignore[arg-type]
+                backend=backend,  # type: ignore[arg-type]
+                strip_metadata=False,  # lo hace el paso 2, siempre
+                write_noop=False,
+            )
+            visibles = [_marca_desde_motor(m) for m in reporte.marks]
+        except Exception as err:  # noqa: BLE001
+            # Un fallo del inpainting NO cancela el borrado de metadatos, que es
+            # la capa que de verdad quita la etiqueta "Hecho con IA" de las redes.
+            print(f"[limpieza] paso visible fallido en {origen.name}: {err}", flush=True)
 
     hubo_logo = tras_visible.exists() and tras_visible.stat().st_size > 0
     entrada_meta = tras_visible if hubo_logo else trabajo
@@ -193,6 +202,7 @@ def limpiar_video(
     origen: Path,
     carpeta_trabajo: Path,
     backend: str = "migan",
+    proveedor: str | None = None,
 ) -> tuple[InformeLimpieza, Path | None]:
     """Igual que `limpiar_imagen` pero por la ruta de video del motor.
 
@@ -209,8 +219,14 @@ def limpiar_video(
         shutil.copy2(origen, trabajo)
     final = carpeta_trabajo / f"{origen.stem}.limpio{origen.suffix}"
 
+    decision = decidir_marca(proveedor, es_video=True)
     try:
-        resultado = raiw.remove_video_all(trabajo, final, backend=backend)
+        # `mark` restringe el escaneo a la marca del proveedor. Con `auto`,
+        # la silueta de Kling daba falso positivo en videos de MiniMax y
+        # recodificaba el archivo entero para nada (medido el 2026-09-20).
+        resultado = raiw.remove_video_all(
+            trabajo, final, backend=backend, mark=decision.marca
+        )
     except Exception as err:  # noqa: BLE001
         texto = str(err)
         # El motor rechaza HDR/10 bits antes de codificar. Es un desenlace
