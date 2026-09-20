@@ -23,6 +23,13 @@ export interface ModuleBillingSummary {
     commissionTokens: number
     commissionUsd: number
     salesCount: number
+    /**
+     * Cobros POR USO del módulo (`module_usage:<slug>:*`). Los usa el
+     * limpiador de marcas de IA, que no tiene cuota mensual: sin esto su
+     * resumen saldría a cero para siempre y nadie lo notaría.
+     */
+    usageTokens: number
+    usageCount: number
     entries: LedgerEntry[]
     /**
      * true si PostgREST cortó la respuesta antes de traer todas las filas del
@@ -69,6 +76,7 @@ export async function getModuleBillingSummary(
 ): Promise<ModuleBillingSummary> {
     const feeSku = MODULE_SKU.fee(slug)
     const commissionSku = MODULE_SKU.commission(slug)
+    const usagePrefix = MODULE_SKU.usagePrefix(slug)
 
     // ADVERTENCIA: la capa REST de Supabase (PostgREST) limita a 1000 filas por
     // defecto y TRUNCA EN SILENCIO — no hay error, sólo faltan filas. Este
@@ -83,7 +91,9 @@ export async function getModuleBillingSummary(
         .from('token_ledger')
         .select('id, created_at, sku, tokens, metadata', { count: 'exact' })
         .eq('organization_id', organizationId)
-        .in('sku', [feeSku, commissionSku])
+        // `or` y no `in`: los cobros por uso llevan la unidad en el sku
+        // (`...:image`, `...:video`), así que hay que casar por prefijo.
+        .or(`sku.eq.${feeSku},sku.eq.${commissionSku},sku.like.${usagePrefix}%`)
         .gte('created_at', periodStart(period))
         .lt('created_at', periodEnd(period))
         .order('created_at', { ascending: false })
@@ -125,6 +135,7 @@ export async function getModuleBillingSummary(
         entries.filter((e) => e.sku === sku).reduce((acc, e) => acc + Math.abs(e.tokens), 0)
 
     const commissionTokens = sum(commissionSku)
+    const usoPorUso = entries.filter((e) => e.sku.startsWith(usagePrefix))
 
     return {
         slug,
@@ -133,6 +144,8 @@ export async function getModuleBillingSummary(
         commissionTokens,
         commissionUsd: commissionTokens * TOKEN_USD,
         salesCount: entries.filter((e) => e.sku === commissionSku).length,
+        usageTokens: usoPorUso.reduce((acc, e) => acc + Math.abs(e.tokens), 0),
+        usageCount: usoPorUso.length,
         entries,
         truncated,
     }

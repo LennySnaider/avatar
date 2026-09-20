@@ -12,6 +12,7 @@ import ConfirmDialog from '@/components/shared/ConfirmDialog'
 import { installModule, uninstallModule } from '@/services/ModulesService'
 import type { ModuleCatalogRow } from '@/lib/modules/catalog'
 import type { OrgModuleRow } from '@/lib/modules/entitlements'
+import AiMarkCleanerSettingsDrawer from './AiMarkCleanerSettingsDrawer'
 import StrategistSettingsDrawer from './StrategistSettingsDrawer'
 
 const UNIT_LABEL: Record<string, string> = {
@@ -42,7 +43,7 @@ const UNIT_LABEL: Record<string, string> = {
  * Deliberadamente NO es una columna de `module_catalog`: es un hecho sobre el
  * REPOSITORIO (¿existe el código?), no sobre los datos.
  */
-const AVAILABLE_MODULES = new Set<string>(['telegram', 'strategist'])
+const AVAILABLE_MODULES = new Set<string>(['telegram', 'strategist', 'ai-mark-cleaner'])
 
 interface Props {
     catalog: ModuleCatalogRow[]
@@ -54,7 +55,10 @@ export default function ModulesClient({ catalog, installed, canManage }: Props) 
     const router = useRouter()
     const [pending, startTransition] = useTransition()
     const [confirmSlug, setConfirmSlug] = useState<string | null>(null)
+    // Qué cajón de ajustes está abierto, por slug. Un booleano por módulo se
+    // desincroniza en cuanto aparece el tercero.
     const [settingsOpen, setSettingsOpen] = useState(false)
+    const [ajustesLimpiezaAbierto, setAjustesLimpiezaAbierto] = useState(false)
 
     const statusOf = (slug: string) =>
         installed.find((m) => m.moduleSlug === slug)?.status ?? 'uninstalled'
@@ -132,6 +136,15 @@ export default function ModulesClient({ catalog, installed, canManage }: Props) 
                                                     Ajustes
                                                 </Button>
                                             )}
+                                            {mod.slug === 'ai-mark-cleaner' && canManage && (
+                                                <Button
+                                                    variant="default"
+                                                    disabled={pending}
+                                                    onClick={() => setAjustesLimpiezaAbierto(true)}
+                                                >
+                                                    Ajustes
+                                                </Button>
+                                            )}
                                             <Button
                                                 variant="plain"
                                                 disabled={!canManage || pending}
@@ -181,6 +194,7 @@ export default function ModulesClient({ catalog, installed, canManage }: Props) 
                         // una reinstalación posterior lo remontaría ya
                         // abierto sin que nadie lo pidiera.
                         if (slug === 'strategist') setSettingsOpen(false)
+                        if (slug === 'ai-mark-cleaner') setAjustesLimpiezaAbierto(false)
                         run(() => uninstallModule(slug), 'Módulo desinstalado.')
                     }
                 }}
@@ -195,6 +209,13 @@ export default function ModulesClient({ catalog, installed, canManage }: Props) 
                 <StrategistSettingsDrawer
                     isOpen={settingsOpen}
                     onClose={() => setSettingsOpen(false)}
+                />
+            )}
+
+            {statusOf('ai-mark-cleaner') === 'installed' && canManage && (
+                <AiMarkCleanerSettingsDrawer
+                    isOpen={ajustesLimpiezaAbierto}
+                    onClose={() => setAjustesLimpiezaAbierto(false)}
                 />
             )}
         </div>
