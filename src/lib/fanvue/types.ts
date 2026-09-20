@@ -228,11 +228,19 @@ export interface FanvueAgencyEarningsRow {
     currency: string
 }
 
+/**
+ * Forma REAL comprobada contra la API el 2026-09-19. Este endpoint NO usa
+ * cursores: pagina por `page` y avisa con `hasMore`. Antes se declaraba con
+ * `nextCursor`, que nunca llega — y leer un campo inexistente hacía que el
+ * recorrido cortase en la primera página creyéndose completo.
+ */
 export interface FanvueAgencyEarningsResponse {
     data: FanvueAgencyEarningsRow[]
-    nextCursor: string | null
-    /** Siempre null en este endpoint (conjunto no acotado). */
-    total: number | null
+    pagination: {
+        page: number
+        size: number
+        hasMore: boolean
+    }
 }
 
 export interface ListAgencyEarningsParams {
@@ -242,7 +250,8 @@ export interface ListAgencyEarningsParams {
     endDate: string
     /** Máximo 50 por llamada (lo impone Fanvue). */
     creatorUuids?: string[]
-    cursor?: string
+    /** 1-based. Este endpoint pagina por número de página, no por cursor. */
+    page?: number
     /** 1..50, por defecto 15 en Fanvue. */
     size?: number
 }

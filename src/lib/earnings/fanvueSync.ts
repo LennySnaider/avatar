@@ -169,7 +169,7 @@ export async function syncOrgFanvueEarnings(
             pages: 1,
             rowsFetched: page.data.length,
             sample: page.data.slice(0, 5),
-            truncated: Boolean(page.nextCursor),
+            truncated: Boolean(page.pagination?.hasMore),
         }
     }
 

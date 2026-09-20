@@ -15,6 +15,7 @@
  *  - POST  /creators/{uuid}/posts                                      create post
  */
 import { FANVUE_API_BASE, FANVUE_API_VERSION } from './oauth'
+import { collectAgencyEarnings } from './agencyEarningsPaging'
 import type {
     CreatePostInput,
     CreateUploadSessionInput,
@@ -159,9 +160,7 @@ export class FanvueClient {
      * the authenticated user with no prefix. Pass `null` for self.
      */
     private base(creatorUuid: string | null): string {
-        return creatorUuid
-            ? `/creators/${encodeURIComponent(creatorUuid)}`
-            : ''
+        return creatorUuid ? `/creators/${encodeURIComponent(creatorUuid)}` : ''
     }
 
     /** `POST [/creators/{uuid}]/media/uploads`. */
@@ -344,12 +343,17 @@ export class FanvueClient {
         name: string,
     ): Promise<boolean> {
         try {
-            await this.requestJson('POST', `${this.base(creatorUuid)}/vault/folders`, {
-                name,
-            })
+            await this.requestJson(
+                'POST',
+                `${this.base(creatorUuid)}/vault/folders`,
+                {
+                    name,
+                },
+            )
             return true
         } catch (err) {
-            if (err instanceof FanvueApiError && err.status === 409) return false
+            if (err instanceof FanvueApiError && err.status === 409)
+                return false
             throw err
         }
     }
@@ -440,16 +444,22 @@ export class FanvueClient {
         opts?: { path?: string },
     ): Promise<FanvueAgencyEarningsResponse> {
         if (params.creatorUuids && params.creatorUuids.length > 50) {
-            throw new Error('Fanvue admite como mucho 50 creatorUuids por llamada')
+            throw new Error(
+                'Fanvue admite como mucho 50 creatorUuids por llamada',
+            )
         }
-        if (params.size !== undefined && (params.size < 1 || params.size > 50)) {
+        if (
+            params.size !== undefined &&
+            (params.size < 1 || params.size > 50)
+        ) {
             throw new Error('Fanvue admite size entre 1 y 50')
         }
         const qs = new URLSearchParams()
         qs.set('startDate', params.startDate)
         qs.set('endDate', params.endDate)
-        if (params.creatorUuids?.length) qs.set('creatorUuids', params.creatorUuids.join(','))
-        if (params.cursor) qs.set('cursor', params.cursor)
+        if (params.creatorUuids?.length)
+            qs.set('creatorUuids', params.creatorUuids.join(','))
+        if (params.page && params.page > 1) qs.set('page', String(params.page))
         if (params.size) qs.set('size', String(params.size))
         return this.requestJson<FanvueAgencyEarningsResponse>(
             'GET',
@@ -458,31 +468,28 @@ export class FanvueClient {
     }
 
     /**
-     * Recorre la paginación por cursor de `listAgencyEarnings` (acotada). Un
-     * cursor repetido corta el bucle: mejor quedarse corto que dar vueltas
-     * para siempre contra la API. `truncated` = se agotó `maxPages` antes de
-     * llegar a `nextCursor: null` — el llamador lo registra como hace
-     * `moduleSummary.truncated`.
+     * Recorre TODAS las páginas de `listAgencyEarnings` (acotada). El recorrido
+     * vive en `./agencyEarningsPaging` —puro y con tests— porque es la pieza
+     * que estuvo rota en silencio: se paginaba por un `nextCursor` que este
+     * endpoint no devuelve, así que cortaba en la página 1 diciendo
+     * `truncated:false`. `truncated` = se agotó `maxPages` con `hasMore` aún
+     * en true; el llamador lo registra como hace `moduleSummary.truncated`.
      */
     async listAllAgencyEarnings(
-        params: Omit<ListAgencyEarningsParams, 'cursor'>,
+        params: Omit<ListAgencyEarningsParams, 'page'>,
         opts?: { maxPages?: number; path?: string },
-    ): Promise<{ rows: FanvueAgencyEarningsRow[]; pages: number; truncated: boolean }> {
-        const maxPages = opts?.maxPages ?? 60
-        const rows: FanvueAgencyEarningsRow[] = []
-        const seen = new Set<string>()
-        let cursor: string | undefined
-        let pages = 0
-        while (pages < maxPages) {
-            const page = await this.listAgencyEarnings({ ...params, cursor }, { path: opts?.path })
-            pages += 1
-            rows.push(...page.data)
-            if (!page.nextCursor) return { rows, pages, truncated: false }
-            if (seen.has(page.nextCursor)) return { rows, pages, truncated: true }
-            seen.add(page.nextCursor)
-            cursor = page.nextCursor
-        }
-        return { rows, pages, truncated: true }
+    ): Promise<{
+        rows: FanvueAgencyEarningsRow[]
+        pages: number
+        truncated: boolean
+    }> {
+        return collectAgencyEarnings(
+            (page) =>
+                this.listAgencyEarnings(
+                    { ...params, page },
+                    { path: opts?.path },
+                ),
+            { maxPages: opts?.maxPages },
+        )
     }
-
 }
