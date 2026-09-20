@@ -541,9 +541,9 @@ export const PROVIDER_COST: Record<string, string> = {
     'kie-flux-kontext-max': '~$0.08',
     'kie-gpt-4o-image': '~$0.03',
     'kie-gpt-image-2': '~$0.03',
-    // Medidos en vivo el 19-sep-2026 en el tramo 2K (el que manda la UI).
+    // Medidos el 19-sep-2026 con `creditsConsumed` de recordInfo, tramo 2K.
     'kie-gpt-image-2-5-flare': '~$0.05',
-    'kie-qwen3-pro': '~$0.10',
+    'kie-qwen3-pro': '~$0.06',
     'kie-seedream-4-5': '~$0.033',
     'kie-flux-2-pro': '~$0.035',
     'kie-seedream-5-lite': '~$0.028',
@@ -649,7 +649,7 @@ export const getProviderDescription = (provider: AIProvider): string => {
         case 'kie-gpt-image-2-5-flare':
             return 'GPT Image 2.5 Flare (OpenAI) — releva a GPT Image 2: menos latencia y mejor fidelidad a la referencia. Genera desde texto y también edita con refs (hasta 16). Resolución elegible 1K/2K/4K. OJO: OpenAI modera río arriba, no sirve para picante'
         case 'kie-qwen3-pro':
-            return 'Qwen 3 Pro (Alibaba) — EDITOR: necesita imagen de entrada (cara del avatar, Clone Ref o la foto a editar). Resolución elegible 1K/2K y NO rebota el NSFW (medido). OJO: es el motor más caro del catálogo — a 2K cuesta el doble que Seedream 5 Pro'
+            return 'Qwen 3 Pro (Alibaba) — EDITOR: necesita imagen de entrada (cara del avatar, Clone Ref o la foto a editar). Resolución elegible 1K/2K y NO rebota el NSFW (medido). A 1K cuesta como Seedream 5 Pro; a 2K, casi el doble'
         case 'kie-seedream-4-5':
             return 'Seedream 4.5 (ByteDance) — PERMISIVO (filtro NSFW off) + usa la CARA del avatar (i2i 4.5-edit, verificado). Calidad 2K, ideal fashion/sensual'
         case 'kie-flux-2-pro':
