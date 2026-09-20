@@ -342,7 +342,7 @@ export function glutesLevelPhrase(m: PhysicalMeasurements): string {
     const lvl = m.glutesLevel
     if (!lvl || !GLUTES_LEVEL_PHRASE[lvl]) return ''
     if (lvl >= 6 && (m.hips ?? 0) < 130) {
-        return 'MASSIVE exaggerated BBL-style glutes, dramatically oversized beyond natural anatomy — ALL of the volume projects straight BACKWARD as an extreme shelf-like curve, most dramatic in the side and back views, while her hip width stays true to her measured hips from the front AND from behind — the mass is depth, not sideways spread'
+        return 'MASSIVE exaggerated BBL-style glutes, dramatically oversized beyond natural anatomy — shaped as a TALL, DEEP shelf, not a sphere: ALL of the volume projects straight BACKWARD and drops steeply, most dramatic in the side view; from behind they stay within her hip line with a vertical outer edge and no round outward bulge, while her hip width stays true to her measured hips from the front AND from behind — the size lives in the depth, not sideways spread'
     }
     return GLUTES_LEVEL_PHRASE[lvl]
 }
