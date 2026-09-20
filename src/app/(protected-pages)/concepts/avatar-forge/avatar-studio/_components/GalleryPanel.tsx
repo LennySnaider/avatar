@@ -11,6 +11,7 @@ import ScrollBar, { type ScrollBarRef } from '@/components/ui/ScrollBar'
 import Notification from '@/components/ui/Notification'
 import toast from '@/components/ui/toast'
 import ConfirmDialog from '@/components/shared/ConfirmDialog'
+import AiMarksBadge from './AiMarksBadge'
 import VaultDialog from './VaultDialog'
 import AssignAvatarDialog from './AssignAvatarDialog'
 import KieTaskRescueDialog from './KieTaskRescueDialog'
@@ -1120,6 +1121,10 @@ const GalleryPanel = ({
                                                 Bóveda
                                             </span>
                                         )}
+                                        <AiMarksBadge
+                                            estado={media.aiMarksStatus}
+                                            aiMarks={media.aiMarks}
+                                        />
                                         {media.postedPlatforms &&
                                             media.postedPlatforms.length >
                                                 0 && (

@@ -131,6 +131,14 @@ export interface GeneratedMedia {
     providerName?: string
     /** Supabase `generations` row id once the media has been persisted. */
     generationId?: string
+    /**
+     * Estado de la limpieza de marcas de IA (`generations.ai_marks_status`).
+     * Va en columna y no en `metadata` porque ese JSON lo reescribe entero el
+     * cliente al marcar un favorito, y pisaría un vídeo limpiado más tarde.
+     */
+    aiMarksStatus?: string
+    /** Detalle e informe de esa limpieza (`generations.ai_marks`). */
+    aiMarks?: Record<string, unknown> | null
     /** Owning avatar (`generations.avatar_id`) — decides which avatar's
      * Upload-Post account a post goes out through. Null for avatar-less
      * auto-saves. */

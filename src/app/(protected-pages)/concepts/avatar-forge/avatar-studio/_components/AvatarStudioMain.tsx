@@ -1042,6 +1042,8 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                         archived:
                             (gen.metadata as { archived?: boolean } | null)
                                 ?.archived ?? false,
+                        aiMarksStatus: gen.ai_marks_status,
+                        aiMarks: gen.ai_marks,
                         generationId: gen.id,
                         avatarId: gen.avatar_id,
                         postedPlatforms: postedMap[gen.id],
