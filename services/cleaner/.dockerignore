@@ -1,0 +1,7 @@
+# El spike descarga generaciones de clientes: jamas deben entrar en la imagen.
+spike/muestras/
+spike/salida/
+spike/*.jsonl
+__pycache__/
+*.pyc
+.pytest_cache/

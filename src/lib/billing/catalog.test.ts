@@ -3,10 +3,12 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import {
     AI_MARK_CLEAN_COST_USD,
+    AI_MARK_CLEAN_PRICE_TOKENS,
     ASSISTANT_TURN_CEILING_USD,
     COST_MARGIN,
     MODEL_USD_PER_M,
     MODULE_SKU,
+    margenEfectivoLimpieza,
     STAR_USD,
     TOKEN_USD,
     quote,
@@ -147,30 +149,48 @@ test('quote({kind:assistant_turn, maxTokens}) respeta el override (tope de org_m
     assert.equal(q.estimated, true)
 })
 
-test('limpieza de marcas: una imagen cuesta lo que costó limpiarla, con el margen de siempre', () => {
+test('limpieza de marcas: el precio es de negocio, no coste por margen', () => {
     const q = quote({ kind: 'ai_mark_clean', mediaType: 'IMAGE' })
     assert.equal(q.sku, 'module_usage:ai-mark-cleaner:image')
-    assert.equal(q.tokens, tokensForCostUsd(AI_MARK_CLEAN_COST_USD.imagen.usd))
-    assert.equal(q.estimated, false, 'el coste está medido, no estimado')
+    assert.equal(q.tokens, AI_MARK_CLEAN_PRICE_TOKENS.imagen)
+    // El coste medido sigue viajando en el asiento para poder calcular el
+    // margen de verdad más tarde, aunque no sea lo que se cobra.
+    assert.equal(q.costUsd, AI_MARK_CLEAN_COST_USD.imagen.usd)
+    assert.notEqual(
+        q.tokens,
+        tokensForCostUsd(AI_MARK_CLEAN_COST_USD.imagen.usd),
+        'si esto coincide, alguien volvió a derivar el precio del coste',
+    )
 })
 
-test('limpieza de marcas: un vídeo sin relleno cuesta casi lo mismo que una imagen', () => {
-    // Es el caso común: se le pasa el proveedor al motor y no escanea las
-    // siete marcas, así que sólo borra metadatos.
-    const q = quote({ kind: 'ai_mark_clean', mediaType: 'VIDEO' })
-    assert.equal(q.sku, 'module_usage:ai-mark-cleaner:video')
-    assert.equal(q.tokens, tokensForCostUsd(AI_MARK_CLEAN_COST_USD.videoSinRelleno.usd))
-})
-
-test('limpieza de marcas: rellenar fotograma a fotograma cuesta mucho más', () => {
+test('limpieza de marcas: un vídeo con relleno cuesta más que uno sin relleno', () => {
     const barato = quote({ kind: 'ai_mark_clean', mediaType: 'VIDEO' })
     const caro = quote({
         kind: 'ai_mark_clean',
         mediaType: 'VIDEO',
         rellenoDeFotogramas: true,
     })
-    assert.ok(caro.tokens > barato.tokens * 10, 'el relleno domina el coste')
-    assert.equal(caro.tokens, tokensForCostUsd(AI_MARK_CLEAN_COST_USD.videoConRelleno.usd))
+    assert.ok(caro.tokens > barato.tokens, 'el relleno domina el coste')
+    assert.equal(caro.tokens, AI_MARK_CLEAN_PRICE_TOKENS.videoConRelleno)
+})
+
+test('limpieza de marcas: nunca se vende por debajo de coste', () => {
+    // El caso caro es el que menos margen tiene; si alguien baja un precio o
+    // sube un coste medido, esta prueba lo dice antes que la factura.
+    for (const clave of ['imagen', 'videoSinRelleno', 'videoConRelleno'] as const) {
+        assert.ok(
+            margenEfectivoLimpieza(clave) > 1,
+            `${clave} se vendería por debajo de coste`,
+        )
+    }
+})
+
+test('limpieza de marcas: limpiar es una fracción pequeña de generar', () => {
+    // La limpieza no puede acercarse al precio de la generación: el tenant
+    // dejaría de instalar el módulo.
+    const generarImagen = quote({ kind: 'image', providerId: 'kie-seedream-5-pro' }).tokens
+    const limpiarImagen = quote({ kind: 'ai_mark_clean', mediaType: 'IMAGE' }).tokens
+    assert.ok(limpiarImagen < generarImagen / 4, 'limpiar debe ser mucho más barato que generar')
 })
 
 test('limpieza de marcas: el sku lleva el prefijo que el resumen del módulo sabe leer', () => {

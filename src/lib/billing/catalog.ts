@@ -222,27 +222,19 @@ export const VOICE_CLONE_COST_USD: CostEntry = { usd: 0.3, estimated: true }
 export const AGENT_MESSAGE_COST_USD: CostEntry = { usd: 0.004, estimated: true }
 
 /**
- * Coste de limpiar UN archivo de marcas de IA (módulo `ai-mark-cleaner`).
+ * Coste REAL de limpiar UN archivo de marcas de IA (módulo `ai-mark-cleaner`).
  *
- * MEDIDO el 2026-09-20 sobre generaciones reales, no estimado:
+ * MEDIDO el 2026-09-20 sobre 118 generaciones reales, no estimado:
  *  - imagen: 2-3 s de pared en el contenedor de 2 vCPU / 4 GB (detector +
  *    relleno MI-GAN + borrado de metadatos verificado).
- *  - vídeo SIN marca esperada —el caso común, porque el proveedor se le pasa
- *    al motor y no tiene que escanear las siete marcas—: 3-5 s.
+ *  - vídeo SIN marca que rellenar —el caso común, porque el proveedor se le
+ *    pasa al motor y no tiene que escanear las siete marcas—: 3-5 s.
  *  - vídeo CON marca que hay que rellenar fotograma a fotograma: hasta 115 s
  *    en un clip de 141 fotogramas.
  *
- * Con la tarifa de Vercel (`iad1`: 0,128 USD/hora de CPU activa y 0,0106
- * USD/GB-hora de memoria aprovisionada, consultada el 2026-09-20) sale:
- *    imagen              ≈ 0,00021 USD
- *    vídeo sin relleno   ≈ 0,00030 USD
- *    vídeo con relleno   ≈ 0,00670 USD
- *
- * OJO CON EL PRECIO RESULTANTE: con `COST_MARGIN` de 3× y tokens a 0,001 USD,
- * una imagen limpia sale a 1 token. Es el coste real más el margen de siempre,
- * igual que el resto de este catálogo; si el negocio quiere que la limpieza
- * valga más que su coste, eso es una decisión de precio y va aquí arriba, no
- * escondida en un redondeo.
+ * Cruzado con la tarifa publicada de Vercel para `iad1` (0,128 USD/hora de CPU
+ * activa y 0,0106 USD/GB-hora de memoria aprovisionada, consultada el
+ * 2026-09-20). Esto es COSTE, no precio: el precio está abajo.
  */
 export const AI_MARK_CLEAN_COST_USD = {
     imagen: { usd: 0.00021, estimated: false },
@@ -251,6 +243,47 @@ export const AI_MARK_CLEAN_COST_USD = {
     /** Vídeo en el que sí hay que rellenar cada fotograma. */
     videoConRelleno: { usd: 0.0067, estimated: false },
 } as const
+
+/**
+ * PRECIO de la limpieza, en tokens de monedero. Decisión de negocio del
+ * 2026-09-20, no una derivada del coste.
+ *
+ * POR QUÉ NO SE USA `tokensForCostUsd` AQUÍ: con el margen de 3× del catálogo
+ * una imagen limpia saldría a 1 token, porque limpiar cuesta 0,00021 USD. Ese
+ * número es correcto y es inviable como producto: el valor que se vende no es
+ * la CPU, es que la publicación no salga etiquetada como "Hecho con IA".
+ * `COST_MARGIN` sirve para reventar a un proveedor cuyo coste manda; aquí el
+ * coste es ruido y el precio lo pone el negocio.
+ *
+ * LOS NÚMEROS, EN CONTEXTO (lo que cuesta GENERAR lo que se va a limpiar):
+ *   imagen Qwen              60 tokens   → limpiarla es el 17 %
+ *   imagen Seedream 5.0 Pro 106 tokens   → el 9 %
+ *   imagen Nano Banana 2    180 tokens   → el 6 %
+ *   vídeo Kling 3.0 de 5 s 1350 tokens   → limpiarlo es el 1,5 %
+ *   vídeo Seedance 2.5     4725 tokens   → el 0,4 %
+ *
+ * Son cifras redondas a propósito: el tenant tiene que poder leerlas en su
+ * factura sin hacer cuentas. El margen efectivo sobre el coste queda en
+ * `margenEfectivoLimpieza()` para que nadie tenga que calcularlo a mano al
+ * revisar esta decisión.
+ */
+export const AI_MARK_CLEAN_PRICE_TOKENS = {
+    imagen: 10,
+    videoSinRelleno: 20,
+    videoConRelleno: 50,
+} as const
+
+/**
+ * Cuántas veces el precio cubre el coste medido. Existe para que revisar el
+ * precio no exija sacar la calculadora, y para que una prueba pueda vigilar
+ * que nunca se venda por debajo de coste.
+ */
+export function margenEfectivoLimpieza(
+    clave: keyof typeof AI_MARK_CLEAN_PRICE_TOKENS,
+): number {
+    const ingresoUsd = AI_MARK_CLEAN_PRICE_TOKENS[clave] * TOKEN_USD
+    return ingresoUsd / AI_MARK_CLEAN_COST_USD[clave].usd
+}
 
 /**
  * TECHO por turno del Estratega (agente de la organización, F5.2/Fase 1):
@@ -584,16 +617,20 @@ export function quote(op: PaidOperation): Quote {
             }
         case 'ai_mark_clean': {
             const esVideo = op.mediaType === 'VIDEO'
-            const entrada = !esVideo
-                ? AI_MARK_CLEAN_COST_USD.imagen
+            const clave = !esVideo
+                ? ('imagen' as const)
                 : op.rellenoDeFotogramas
-                  ? AI_MARK_CLEAN_COST_USD.videoConRelleno
-                  : AI_MARK_CLEAN_COST_USD.videoSinRelleno
+                  ? ('videoConRelleno' as const)
+                  : ('videoSinRelleno' as const)
             return {
                 sku: MODULE_SKU.usage('ai-mark-cleaner', esVideo ? 'video' : 'image'),
-                tokens: tokensForCostUsd(entrada.usd),
-                costUsd: entrada.usd,
-                estimated: entrada.estimated,
+                // PRECIO, no coste×margen: ver el docblock de
+                // AI_MARK_CLEAN_PRICE_TOKENS.
+                tokens: AI_MARK_CLEAN_PRICE_TOKENS[clave],
+                // `costUsd` sigue siendo el coste REAL: es lo que el ledger
+                // guarda para poder calcular el margen de verdad más tarde.
+                costUsd: AI_MARK_CLEAN_COST_USD[clave].usd,
+                estimated: AI_MARK_CLEAN_COST_USD[clave].estimated,
             }
         }
         case 'assistant_turn': {

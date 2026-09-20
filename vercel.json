@@ -28,5 +28,32 @@
             "path": "/api/cron/earnings-sync",
             "schedule": "41 * * * *"
         }
+    ],
+    "services": {
+        "web": {
+            "root": ".",
+            "framework": "nextjs",
+            "bindings": [
+                {
+                    "type": "service",
+                    "service": "cleaner",
+                    "format": "url",
+                    "env": "AI_MARKS_CLEANER_URL"
+                }
+            ]
+        },
+        "cleaner": {
+            "root": "services/cleaner",
+            "runtime": "container",
+            "entrypoint": "Dockerfile.vercel"
+        }
+    },
+    "rewrites": [
+        {
+            "source": "/(.*)",
+            "destination": {
+                "service": "web"
+            }
+        }
     ]
 }
