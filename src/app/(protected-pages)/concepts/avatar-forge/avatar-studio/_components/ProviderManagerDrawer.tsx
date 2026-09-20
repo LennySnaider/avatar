@@ -343,13 +343,14 @@ const ProviderManagerDrawer = () => {
                         [
                             ['all', 'Todos'],
                             ['favorites', '⭐ Favoritos'],
-                            // Cara/Permisivo traits solo aplican a modelos de imagen
-                            ...(generationMode === 'IMAGE'
-                                ? ([
-                                      ['face', '👤 Cara'],
-                                      ['permissive', '🔓 Permisivo'],
-                                  ] as const)
-                                : []),
+                            // También en VIDEO: la premisa de que estos traits
+                            // eran cosa de imagen dejó de ser cierta — hoy los
+                            // llevan Seedance 2.5, Wan 2.6, Grok Video y Wan
+                            // 3.0. Las tarjetas ya pintaban el badge en vídeo;
+                            // solo el FILTRO se había quedado atrás, que es
+                            // justo lo que sirve para encontrar el permisivo.
+                            ['face', '👤 Cara'],
+                            ['permissive', '🔓 Permisivo'],
                         ] as ReadonlyArray<readonly [typeof filter, string]>
                     ).map(([key, label]) => (
                         <button
@@ -447,44 +448,45 @@ const ProviderManagerDrawer = () => {
                                         bloquea NSFW upstream y la llamada se
                                         cobra igual, asi que ofrecerlo seria
                                         vender un fallo. */}
-                                    {provider.supports_image && tr?.permissive && (
-                                        <button
-                                            type="button"
-                                            disabled={batchNsfwDisabled}
-                                            onClick={(e) =>
-                                                handleToggleBatch(
-                                                    e,
-                                                    provider.id,
-                                                    true,
-                                                )
-                                            }
-                                            title={
-                                                isInBatchNsfw
-                                                    ? 'Quitar del Batch 🌶️'
-                                                    : batchNsfwDisabled
-                                                      ? `Batch 🌶️ lleno (máx ${BATCH_MAX})`
-                                                      : 'Añadir al Batch 🌶️ (se usa cuando Spicy está ON)'
-                                            }
-                                            aria-label={
-                                                isInBatchNsfw
-                                                    ? 'Quitar del Batch Spicy'
-                                                    : 'Añadir al Batch Spicy'
-                                            }
-                                            className={`p-1 rounded-lg text-xs leading-none transition-colors ${
-                                                batchNsfwDisabled
-                                                    ? 'opacity-30 cursor-not-allowed'
-                                                    : 'hover:bg-gray-200 dark:hover:bg-gray-700'
-                                            } ${
-                                                isInBatchNsfw
-                                                    ? 'opacity-100'
-                                                    : 'opacity-35 grayscale'
-                                            }`}
-                                        >
-                                            <span className="block w-4 h-4 text-center">
-                                                🌶️
-                                            </span>
-                                        </button>
-                                    )}
+                                    {provider.supports_image &&
+                                        tr?.permissive && (
+                                            <button
+                                                type="button"
+                                                disabled={batchNsfwDisabled}
+                                                onClick={(e) =>
+                                                    handleToggleBatch(
+                                                        e,
+                                                        provider.id,
+                                                        true,
+                                                    )
+                                                }
+                                                title={
+                                                    isInBatchNsfw
+                                                        ? 'Quitar del Batch 🌶️'
+                                                        : batchNsfwDisabled
+                                                          ? `Batch 🌶️ lleno (máx ${BATCH_MAX})`
+                                                          : 'Añadir al Batch 🌶️ (se usa cuando Spicy está ON)'
+                                                }
+                                                aria-label={
+                                                    isInBatchNsfw
+                                                        ? 'Quitar del Batch Spicy'
+                                                        : 'Añadir al Batch Spicy'
+                                                }
+                                                className={`p-1 rounded-lg text-xs leading-none transition-colors ${
+                                                    batchNsfwDisabled
+                                                        ? 'opacity-30 cursor-not-allowed'
+                                                        : 'hover:bg-gray-200 dark:hover:bg-gray-700'
+                                                } ${
+                                                    isInBatchNsfw
+                                                        ? 'opacity-100'
+                                                        : 'opacity-35 grayscale'
+                                                }`}
+                                            >
+                                                <span className="block w-4 h-4 text-center">
+                                                    🌶️
+                                                </span>
+                                            </button>
+                                        )}
                                     {/* 📌 fija el DEFAULT de arranque del modo
                                         sin seleccionar ni cerrar el modal. */}
                                     <button

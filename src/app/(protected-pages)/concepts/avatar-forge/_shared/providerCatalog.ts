@@ -567,9 +567,17 @@ export const PROVIDER_TRAITS: Record<
     // Ambos reciben la cara vía image_input[] (mismo patrón que nano-banana-pro)
     'kie-nano-banana-2': { face: true },
     'kie-nano-banana-2-lite': { face: true },
-    // i2v: la identidad viaja en la imagen (first frame). Open-weights sin
-    // filtro; en KIE nsfw_checker default false → el permisivo REAL de video.
-    'kie-wan-2-2-uncensored': { face: true, permissive: true },
+    // i2v: la identidad viaja en la imagen (first frame). Ya NO es permisivo:
+    // MEDIDO 2026-09-19 con nsfw_checker:false y prompt explícito, KIE lo
+    // rechaza dos veces con failCode 400 "The input or output was flagged as
+    // sensitive". Ser open-weights no basta — el filtro lo pone KIE delante.
+    // Sigue sirviendo para MOVIMIENTO SFW sobre la foto del avatar.
+    'kie-wan-2-2-uncensored': { face: true },
+    // El permisivo REAL de vídeo, y con la misma prueba que tumbó al 2.2:
+    // primer fotograma VESTIDO + prompt explícito + nsfw_checker:false →
+    // genera el desnudo. face: la identidad va en first_frame_url (o en
+    // reference_image_urls, que son escenas excluyentes).
+    'kie-wan-3-0': { face: true, permissive: true },
     // Unified t2i+edit; refs vía input_urls (cara + body). Sin moderación
     // upstream (edit NSFW verificado live) → el permisivo REAL de imagen.
     'kie-wan-image': { face: true, permissive: true },
@@ -628,7 +636,7 @@ export const getProviderDescription = (provider: AIProvider): string => {
         case 'kie-nano-banana-2-lite':
             return 'Nano Banana 2 Lite (Gemini 3.1 Flash-Lite) — el más RÁPIDO (~4s) y barato de Google, 1K, usa la cara del avatar (image_input). Filtro estricto de Google — para SFW con identidad y volumen'
         case 'kie-grok-imagine-video':
-            return 'Grok Imagine Video 1.5 (xAI) · image-to-video — #1 en el I2V Arena de KIE. Anima tu avatar (first frame + prompt de movimiento), 480p/720p, 1-15s. OJO: filtro estilo Grok imagen → probablemente SFW (para NSFW en video usa Wan 2.2 Sin Censura). Precio sin medir aún'
+            return 'Grok Imagine Video 1.5 (xAI) · image-to-video — #1 en el I2V Arena de KIE. Anima tu avatar (first frame + prompt de movimiento), 480p/720p, 1-15s. OJO: filtro estilo Grok imagen → probablemente SFW (para NSFW en video usa Wan 3.0 Sin Censura). Precio sin medir aún'
         case 'kie-grok-imagine':
             return 'Grok Imagine (xAI) · image-to-image — usa la cara del avatar (la ref se recorta al aspect ratio pedido: su salida copia el ratio del input). OJO: su PROPIO filtro bloquea bikini/sensual aun con nsfw off — para sensual usa Seedream / FLUX.2. Para SFW con identidad'
         case 'kie-wan-image-pro':
@@ -639,8 +647,10 @@ export const getProviderDescription = (provider: AIProvider): string => {
             return 'Kling 3.0 vía KIE — video i2v/t2v + motion-control v2v, audio nativo opcional, ~20% más barato que el directo'
         case 'mulerouter-wan26':
             return 'Wan 2.6 (Alibaba) vía MuleRouter — se adapta solo a lo que le des: con imagen de Input ANIMA esa foto; sin imagen pero con Character Ref (vídeos del avatar) mantiene su identidad en la escena nueva; con solo texto genera desde cero. Audio nativo opcional y voz clonada con lip-sync (audio_url). 720p/1080p, 5-15s'
+        case 'kie-wan-3-0':
+            return 'Wan 3.0 (Alibaba) — el video SIN CENSURA de verdad: verificado en vivo (primer fotograma vestido + prompt explícito → genera el desnudo), justo donde Wan 2.2 responde "flagged as sensitive". i2v con first frame o hasta 10 refs (excluyentes entre sí), 2-30s, 480P/720P/1080P. Precio MEDIDO por segundo: $0.04 / $0.08 / $0.16 según resolución'
         case 'kie-wan-2-2-uncensored':
-            return 'Wan 2.2 A14B turbo (Alibaba, open-weights) — video SIN CENSURA: sin filtro embebido y nsfw_checker off. i2v: anima una imagen (la identidad viaja en el first frame — usa Animate sobre una foto del avatar). 480p/720p, ~5s, hereda el aspect de la imagen'
+            return 'Wan 2.2 A14B turbo (Alibaba, open-weights) — i2v: anima una imagen (la identidad viaja en el first frame — usa Animate sobre una foto del avatar). 480p/720p, ~5s, hereda el aspect de la imagen. OJO: ya NO es sin censura — medido, KIE rechaza el NSFW con "flagged as sensitive" pese a nsfw_checker off. Para NSFW en video usa Wan 3.0'
         case 'kie-nano-banana-pro':
             return 'Gemini 3 Pro Image vía KIE - mismo modelo que el directo, ~30% más barato, 9:16 nativo, 2K'
         default:
