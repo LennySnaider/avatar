@@ -80,5 +80,20 @@ export default auth((req) => {
 })
 
 export const config = {
+    /**
+     * Node.js y no Edge. Dos motivos, y el segundo es el que obliga:
+     *
+     * 1. Vercel ya no recomienda el runtime Edge: el middleware corre sobre
+     *    Vercel Functions igual, con Node.js completo y el mismo precio.
+     * 2. Vercel Services —que es como se despliega el limpiador de marcas de
+     *    IA junto a esta app— NO admite salidas de función Edge. Con Edge el
+     *    despliegue falla entero: "Edge Runtime is not supported in services"
+     *    (medido el 2026-09-20 en el preview de feat/ai-mark-cleaner).
+     *
+     * Estable desde Next.js 15.5 (aquí 15.5.9); en 16 pasa a ser el valor por
+     * defecto. Este middleware sólo lee la sesión de NextAuth y redirige, así
+     * que no depende de ninguna API exclusiva de Edge.
+     */
+    runtime: 'nodejs',
     matcher: ['/((?!.+\\.[\\w]+$|_next).*)', '/', '/(api)(.*)'],
 }

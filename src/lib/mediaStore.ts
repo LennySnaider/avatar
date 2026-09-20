@@ -266,6 +266,33 @@ export async function createPresignedPutUrl(
 }
 
 /**
+ * URL firmada de LECTURA. Contrapartida de `createPresignedPutUrl`.
+ *
+ * Existe para el limpiador de marcas de IA: ese servicio corre en un
+ * contenedor aparte y necesita leer el objeto original, pero darle las llaves
+ * de R2 le daría el bucket entero. Con una URL firmada sólo puede leer ESE
+ * objeto y sólo durante su ventana.
+ *
+ * POR QUÉ NO SE USA LA URL PÚBLICA: los objetos viven bajo `org/{id}/`, y aunque
+ * hoy el bucket sirva por un dominio público, una lectura firmada no depende de
+ * que esa exposición siga existiendo ni de que el objeto esté publicado.
+ */
+export async function createPresignedGetUrl(
+    path: string,
+    expiresSeconds = 1800,
+): Promise<string> {
+    const cfg = r2Config()
+    if (!cfg) throw new Error('R2 no está configurado')
+    const url = new URL(r2ObjectUrl(cfg, path))
+    url.searchParams.set('X-Amz-Expires', String(expiresSeconds))
+    const signed = await getAwsClient(cfg).sign(
+        new Request(url.toString(), { method: 'GET' }),
+        { aws: { signQuery: true } },
+    )
+    return signed.url
+}
+
+/**
  * Borra un objeto de media. Contrapartida de `putMediaObject`.
  *
  * POR QUÉ NO EXISTÍA Y QUÉ COSTÓ (medido 2026-08-20): había PUT y no había
