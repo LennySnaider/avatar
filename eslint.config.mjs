@@ -370,6 +370,11 @@ const eslintConfig = [
       // orgTable, que exige el ctx que aquí no existe. La organizationId sale de
       // la fila ya cargada, nunca se adivina. Ver check-tenant-access.mjs.
       "src/lib/aiMarks/runJob.server.ts",
+      // Barrido del mismo módulo: lo dispara un cron, sin sesión, y recorre a
+      // propósito las filas pendientes de TODAS las organizaciones (mismo
+      // perfil que billing/moduleFees.ts). No decide por organización: la
+      // limpieza de cada fila la hace runJob.server.ts con la org de la fila.
+      "src/lib/aiMarks/sweep.server.ts",
       // Task 8 — motor de oferta, mismo perfil que paidMedia.ts: sin sesión
       // (lo dispara el webhook dentro de su `after()`), parte del borrador que
       // nuestro propio pipeline acaba de crear —esa fila RESUELVE la org— y

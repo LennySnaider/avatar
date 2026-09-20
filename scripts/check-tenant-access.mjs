@@ -148,6 +148,10 @@ const EXENTOS = [
         'Limpiador de marcas de IA (`ai-mark-cleaner`). Corre SIN sesion en tres caminos distintos: el `after()` de apiSaveGeneration, el cron de barrido y los rescates de tareas KIE. La fila se toma por su id con un UPDATE CONDICIONAL —no un SELECT seguido de UPDATE— porque dos barridos solapados limpiarian y cobrarian la misma generacion dos veces; ese UPDATE no puede pasar por orgTable, que exige el ctx que aqui no existe. La organizationId NUNCA se adivina: sale de la propia fila ya cargada y es lo unico que se le pasa al cobro. El servicio limpiador no recibe credenciales de R2, solo dos URLs prefirmadas de ESE objeto.',
     ],
     [
+        'src/lib/aiMarks/sweep.server.ts',
+        'Barrido del limpiador de marcas de IA. Lo dispara un cron, sin sesion, y barre a proposito las filas pendientes de TODAS las organizaciones: ese es su trabajo, igual que billing/moduleFees.ts o earnings/fanvueSync.ts. No decide nada por organizacion —solo selecciona por `ai_marks_status` y por los tiempos guardados en `ai_marks`— y la limpieza de cada fila la ejecuta runJob.server.ts, que toma la organizationId de la propia fila. La unica escritura es el sello de purgado sobre la fila que acaba de leer, por su id.',
+    ],
+    [
         'src/lib/telegram/bots.ts',
         'telegramUnitActivity (Task 6, informe de unidades para la cuota prorrateada) corre sin sesión, disparada por el cron de module-fees — mismo perfil que moduleFees.ts. La organizationId llega por parámetro (la resuelve chargeModuleFees fila a fila desde org_modules) y la única consulta del fichero la filtra explícitamente con .eq(\'organization_id\', organizationId).',
     ],
