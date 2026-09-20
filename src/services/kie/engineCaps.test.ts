@@ -81,18 +81,41 @@ test('engineCaps tolera model nulo o vacío sin lanzar', () => {
     assert.equal(engineCaps(''), undefined)
 })
 
-test('el Body Lab no ofrece motores que exigen imagen de entrada', async () => {
-    // La hoja del Body Lab se genera DESDE TEXTO: un editor i2i puro fallaría
-    // en todas las filas.
-    const { getBodyLabModels, DEFAULT_PROVIDERS: TODOS } =
-        await import('../../app/(protected-pages)/concepts/avatar-forge/_shared/providerCatalog.ts')
-    const ofrecidos = getBodyLabModels(TODOS)
-    assert.ok(ofrecidos.length > 0, 'el Body Lab se quedó sin motores')
-    for (const p of ofrecidos) {
-        assert.notEqual(
-            engineCaps(p.model)?.requiresRefs,
-            true,
-            `"${p.model}" es un editor y no puede generar la hoja desde texto`,
-        )
-    }
+test('el Body Lab ofrece SOLO los dos motores de la prueba en curso', async () => {
+    // Reducción deliberada (20-sep-2026) para comparar medidas en igualdad de
+    // condiciones. Un editor i2i puro como Qwen 3 puede estar aquí porque la
+    // hoja parte de la plantilla de turnaround; si esa plantilla no carga, lo
+    // que lo protege es el fallback a Wan de `bodySheetGenerate`.
+    const { getBodyLabModels, DEFAULT_PROVIDERS: TODOS } = await import(
+        '../../app/(protected-pages)/concepts/avatar-forge/_shared/providerCatalog.ts'
+    )
+    assert.deepEqual(
+        getBodyLabModels(TODOS).map((p) => p.model),
+        ['seedream/5-pro-image-to-image', 'qwen3/pro-image-to-image'],
+    )
+})
+
+test('el Body Lab manda el prompt de la hoja TAL CUAL, sin ancla de identidad', async () => {
+    // El ancla habla de conservar una cara que la plantilla no aporta: metida
+    // aquí deforma la hoja y hace que la vestida y la nude salgan con cuerpos
+    // distintos. Por eso el Body Lab pone `selfContainedPrompt`.
+    const { qwen3Route } = await import('./routes/qwen3.ts')
+    const hoja =
+        'Turnaround sheet, three views, mini bikini, hip-to-waist ratio 1.5.'
+    const req = await qwen3Route.build({
+        model: 'qwen3/pro-image-to-image',
+        aspectRatio: '16:9',
+        prompt: hoja,
+        referenceImage: { mimeType: 'image/png', url: 'https://r2/tmpl.png' },
+        selfContainedPrompt: true,
+        bodyEmphasis: 'hourglass 90-60-100',
+        hairEmphasis: 'copper red hair',
+        uploadRef: async (r: { url?: string }) => r.url ?? '',
+        cropToAspect: async (r: unknown) => r,
+    } as never)
+    assert.equal(req.input.prompt, hoja)
+    assert.equal(
+        /FIRST image is the person/.test(String(req.input.prompt)),
+        false,
+    )
 })

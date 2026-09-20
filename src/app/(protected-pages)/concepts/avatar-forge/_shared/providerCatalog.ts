@@ -4,7 +4,6 @@
 // esto desde un módulo 'use client' en un server component convierte los
 // exports en referencias opacas del RSC ('DEFAULT_PROVIDERS is not iterable').
 import type { AIProvider, ProviderType } from '@/@types/supabase'
-import { engineCaps } from '@/services/kie/engineCaps'
 
 // Predefined providers - exported for use in initialization
 export const DEFAULT_PROVIDERS: AIProvider[] = [
@@ -721,16 +720,31 @@ export const BODY_SHEET_MODEL_ORDER = [
  * luego el resto en su orden de catálogo.
  */
 export function getBodyLabModels(providers: AIProvider[]): AIProvider[] {
+    // ── PRUEBA EN CURSO (20-sep-2026) ────────────────────────────────────
+    // El Body Lab queda reducido A PROPÓSITO a dos motores para comparar en
+    // igualdad de condiciones si las medidas (cintura, cadera, pezones) salen
+    // fieles al config: Seedream 5 Pro, que es el de referencia hasta hoy, y
+    // Qwen 3 Pro, que está bajo sospecha de exagerarlas.
+    //
+    // Es TEMPORAL y se revierte borrando esta constante y su filtro: vuelve
+    // entonces el catálogo completo ordenado por BODY_SHEET_MODEL_ORDER. Si al
+    // revertir se quiere excluir a los editores i2i puros, el filtro es
+    // `!engineCaps(p.model)?.requiresRefs` — pero hoy NO hace falta: la hoja
+    // parte de la plantilla de turnaround, y si esa plantilla no carga
+    // `bodySheetGenerate` ya cae a Wan por capacidad.
+    // Mientras esté, el orden de esa lista no decide nada para los que no estén
+    // aquí, porque no llegan.
+    const EN_PRUEBA = [
+        'seedream/5-pro-image-to-image',
+        'qwen3/pro-image-to-image',
+    ]
+
     const usable = providers.filter(
         (p) =>
             p.type === 'KIE' &&
             p.supports_image === true &&
             !!p.model &&
-            // El Body Lab genera la hoja DESDE TEXTO, así que un motor i2i puro
-            // (Qwen 3) fallaría aquí siempre. Este filtro es el que lo excluye:
-            // hasta ahora ningún editor entraba por suerte del orden de
-            // BODY_SHEET_MODEL_ORDER, no porque nadie lo hubiera excluido.
-            !engineCaps(p.model)?.requiresRefs,
+            EN_PRUEBA.includes(p.model),
     )
     const rank = (m: string) => {
         const i = BODY_SHEET_MODEL_ORDER.indexOf(m)
