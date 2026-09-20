@@ -45,3 +45,22 @@ RUN python3 /srv/app/warmup.py
 # A partir de aqui ninguna descarga: si el peso no quedo en la imagen, el
 # arranque falla ruidosamente en vez de bajarlo a espaldas del usuario.
 ENV HF_HUB_OFFLINE=1
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Etapa final: el motor + nuestra app. Separada para que un cambio en una linea
+# de Python nuestro NO reconstruya los ~1,4 GB de dependencias de arriba.
+# ─────────────────────────────────────────────────────────────────────────────
+FROM engine AS final
+
+RUN pip install --no-cache-dir "fastapi>=0.115" "uvicorn[standard]>=0.30" "httpx>=0.27"
+
+COPY app /srv/app
+
+# 80 es el puerto que Vercel espera por defecto en un contenedor; se puede
+# cambiar con la variable PORT del proyecto.
+ENV PORT=80 \
+    CLEANER_MAX_CONCURRENCY=2
+EXPOSE 80
+
+CMD ["sh", "-c", "uvicorn app.main:app --host 0.0.0.0 --port ${PORT}"]
