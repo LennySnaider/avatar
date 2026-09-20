@@ -43,41 +43,92 @@ const SHEET_IGNORED_KEYS = [
  * de apariencia que el sheet no dibuja. Úsalo para el flag "desactualizado" en
  * vez de comparar el objeto de medidas entero.
  */
+/** Nombre legible de cada atributo, para poder DECIR qué cambió. */
+const ETIQUETA_ATRIBUTO: Record<string, string> = {
+    age: 'edad',
+    height: 'estatura',
+    bodyType: 'tipo de cuerpo',
+    shape: 'silueta',
+    bust: 'busto',
+    waist: 'cintura',
+    hips: 'cadera',
+    legType: 'piernas',
+    bustLevel: 'volumen de busto',
+    bustShape: 'forma de busto',
+    glutesLevel: 'volumen de glúteos',
+    glutesShape: 'forma de glúteos',
+    thighsLevel: 'muslos',
+    skinTone: 'tono de piel',
+    tanLines: 'marcas de bronceado',
+    pubicStyle: 'vello púbico',
+    pubicAmount: 'densidad del vello',
+    pubicColor: 'color del vello',
+}
+
+const vacioMedida = (v: unknown) => v === undefined || v === null || v === ''
+
+const normMedida = (v: unknown): unknown => {
+    if (typeof v === 'string') {
+        const t = v.trim()
+        // '168' y 168 son la misma estatura: un <input> devuelve texto.
+        if (t !== '' && Number.isFinite(Number(t))) return Number(t)
+        return t
+    }
+    return v
+}
+
+/** Las medidas que SÍ dibuja la hoja, normalizadas y sin los campos vacíos. */
+function medidasComparables(
+    m?: PhysicalMeasurements | null,
+): Record<string, unknown> {
+    const out: Record<string, unknown> = {}
+    if (!m) return out
+    const src = m as unknown as Record<string, unknown>
+    for (const k of Object.keys(src)) {
+        if ((SHEET_IGNORED_KEYS as readonly string[]).includes(k)) continue
+        // Un campo vacío y uno ausente son el mismo cuerpo.
+        if (vacioMedida(src[k])) continue
+        out[k] = normMedida(src[k])
+    }
+    return out
+}
+
+/**
+ * QUÉ cambió entre las medidas con las que se dibujó la hoja y las actuales.
+ *
+ * Existe porque el aviso "Cambiaste los atributos" era un booleano y, cuando se
+ * equivocaba, nadie podía nombrar el campo: el usuario lo veía con el
+ * formulario intacto y no había forma de saber por qué. Ahora el aviso se
+ * DERIVA de esta lista, así que no puede salir sin al menos un atributo que lo
+ * justifique — y puede decir cuál.
+ */
+export function diffBodyShape(
+    a?: PhysicalMeasurements | null,
+    b?: PhysicalMeasurements | null,
+): string[] {
+    // Sin hoja previa no hay nada que comparar; eso no es un cambio.
+    if (!a || !b) return []
+    const A = medidasComparables(a)
+    const B = medidasComparables(b)
+    const claves = [...new Set([...Object.keys(A), ...Object.keys(B)])].sort()
+    return claves.filter((k) => JSON.stringify(A[k]) !== JSON.stringify(B[k]))
+}
+
+/** Los mismos campos, con nombre legible para enseñárselos al usuario. */
+export function describeBodyShapeDiff(campos: string[]): string {
+    return campos.map((k) => ETIQUETA_ATRIBUTO[k] ?? k).join(', ')
+}
+
+/**
+ * ¿La hoja sigue representando estas medidas? Se apoya en `diffBodyShape` para
+ * que haya UNA sola definición de "cambió".
+ */
 export function sameBodyShape(
     a?: PhysicalMeasurements | null,
     b?: PhysicalMeasurements | null,
 ): boolean {
-    // OJO con comparar `JSON.stringify` de los objetos tal cual: el resultado
-    // depende del ORDEN de las claves y distingue cosas que aquí son lo mismo.
-    // Los editores de atributos emiten `{...measurements, ...patch}`, que manda
-    // al final cualquier clave que antes no estuviera, y el cuerpo derivado
-    // añade `shape` por su cuenta. Con eso, dos medidas idénticas daban
-    // distinto y la hoja aparecía "desactualizada" sin que nadie tocara nada:
-    // el overlay tapaba el cuerpo, escondía la variante nude y no dejaba
-    // guardar. Se compara por claves ORDENADAS y con los valores normalizados.
-    const vacio = (v: unknown) => v === undefined || v === null || v === ''
-    const norm = (v: unknown): unknown => {
-        if (typeof v === 'string') {
-            const t = v.trim()
-            // '168' y 168 son la misma altura: un <input> devuelve texto.
-            if (t !== '' && Number.isFinite(Number(t))) return Number(t)
-            return t
-        }
-        return v
-    }
-    const strip = (m?: PhysicalMeasurements | null): string => {
-        if (!m) return ''
-        const src = m as unknown as Record<string, unknown>
-        const out: Record<string, unknown> = {}
-        for (const k of Object.keys(src).sort()) {
-            if ((SHEET_IGNORED_KEYS as readonly string[]).includes(k)) continue
-            // Un campo vacío y uno ausente son el mismo cuerpo.
-            if (vacio(src[k])) continue
-            out[k] = norm(src[k])
-        }
-        return JSON.stringify(out)
-    }
-    return strip(a) === strip(b)
+    if (!a || !b) return !a && !b
+    return diffBodyShape(a, b).length === 0
 }
 
 /**

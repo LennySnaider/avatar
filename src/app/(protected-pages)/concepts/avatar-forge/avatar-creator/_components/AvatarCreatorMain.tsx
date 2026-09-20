@@ -23,7 +23,7 @@ import ImageLightbox from '@/components/shared/ImageLightbox'
 import PhysicalAttributesEditor from '@/components/shared/PhysicalAttributesEditor'
 import AppearanceEditor from '@/components/shared/AppearanceEditor'
 import BodyLab from '@/components/shared/BodyLab'
-import { sameBodyShape } from '@/utils/bodySheetPrompt'
+import { diffBodyShape, describeBodyShapeDiff } from '@/utils/bodySheetPrompt'
 import { generateBodySheetPair } from '@/utils/bodySheetGenerate'
 import { urlToDataUrl } from '@/utils/imageStitch'
 import UnsavedChangesDialog, {
@@ -119,10 +119,13 @@ const AvatarCreatorMain = ({
     // ¿el sheet mostrado quedó desactualizado vs los atributos? (ignora los
     // campos de apariencia que el sheet no dibuja — pezones — vía sameBodyShape).
     const shownBody = bodySheet || bodyRef
+    // QUÉ cambió exactamente. El aviso se deriva de esta lista, así que no
+    // puede aparecer sin un atributo que lo justifique.
+    const bodyDiff = diffBodyShape(measurements, sheetMeasurements)
     const bodyStale =
         !!shownBody &&
         !!sheetMeasurements &&
-        !sameBodyShape(measurements, sheetMeasurements)
+        bodyDiff.length > 0
 
     useEffect(() => {
         if (!selectedBodyModel && bodyLabModels.length > 0) {
@@ -1162,6 +1165,7 @@ const AvatarCreatorMain = ({
                                         if (s) setPreviewImage(s)
                                     }}
                                     stale={bodyStale}
+                                    staleFields={describeBodyShapeDiff(bodyDiff)}
                                     disabledReason={
                                         bodyLabModels.length === 0
                                             ? 'No hay modelos KIE de imagen. Actívalos en AI Providers.'
