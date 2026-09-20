@@ -66,17 +66,23 @@ export default auth((req) => {
         )
     }
 
-    /** Uncomment this and `import { protectedRoutes } from '@/configs/routes.config'` if you want to enable role based access */
-    // if (isSignedIn && nextUrl.pathname !== '/access-denied' && !nextUrl.pathname.startsWith(appConfig.apiPrefix)) {
-    //     const routeMeta = protectedRoutes[nextUrl.pathname]
-    //     const existingRoute = routeMeta
-    //     const includedRole = routeMeta?.authority.some((role) => req.auth?.user?.authority.includes(role))
-    //     if (existingRoute && !includedRole) {
-    //         return Response.redirect(
-    //             new URL('/access-denied', nextUrl),
-    //         )
-    //     }
-    // }
+    // AQUÍ VENÍA el bloque de "role based access" comentado de la plantilla
+    // ECME, invitando a descomentarlo. Se retira en la F4.4 porque proponía un
+    // control de acceso que este producto NO usa y que no funcionaría:
+    //
+    //  1. Leía `req.auth.user.authority`, que es el eje muerto de la plantilla
+    //     (todo usuario nace con `['user']` y todas las rutas piden
+    //     `[ADMIN, USER]`, así que no filtraba nada).
+    //  2. El control real vive en otro sitio y con otro eje: el rol de
+    //     `organization_members` → `getOrgContext()` → los ~121
+    //     `requirePermission` de los servicios, más `requirePlatformAdmin()`
+    //     para el panel de plataforma.
+    //  3. Este middleware corre en EDGE y no puede consultar la base, así que
+    //     nunca podría evaluar ninguno de los dos.
+    //
+    // Dejarlo comentado era peor que no tenerlo: el día que alguien lo
+    // descomente creyendo que activa permisos, habrá añadido una comprobación
+    // que siempre pasa y la sensación de tener un candado donde no hay ninguno.
 })
 
 export const config = {
