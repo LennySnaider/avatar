@@ -60,6 +60,8 @@ test('un cambio REAL sí desactualiza la hoja', () => {
     assert.equal(sameBodyShape(base, como({ ...base, waist: 70 })), false)
     assert.equal(sameBodyShape(base, como({ ...base, bodyType: 'pear' })), false)
     assert.equal(sameBodyShape(base, como({ ...base, legType: 'long' })), false)
+    // La anchura frontal cambia el cuerpo: sí pide regenerar la hoja.
+    assert.equal(sameBodyShape(base, como({ ...base, hipWidth: 'wide' })), false)
 })
 
 test('los campos que la hoja no dibuja siguen sin desactualizarla', () => {
@@ -102,6 +104,7 @@ test('nombra exactamente el atributo que cambió', async () => {
 test('los nombres se muestran en castellano', async () => {
     const { describeBodyShapeDiff } = await import('./bodySheetPrompt.ts')
     assert.equal(describeBodyShapeDiff(['waist', 'hips']), 'cintura, cadera')
+    assert.equal(describeBodyShapeDiff(['hipWidth']), 'anchura de cadera')
     // Un campo sin etiqueta se enseña tal cual antes que no decir nada.
     assert.equal(describeBodyShapeDiff(['loQueSea']), 'loQueSea')
 })
