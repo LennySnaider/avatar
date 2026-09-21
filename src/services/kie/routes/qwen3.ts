@@ -32,6 +32,13 @@ const PROMPT_CAP = 4800
 /** Sub-cap del spec corporal dentro del ancla: largo satura al editor. */
 const BODY_CAP = 1200
 
+/**
+ * Integración del face-swap (la de seedream.ts en canvas): sin ella la cara
+ * llega con la luz y la piel del retrato de referencia, no de la foto.
+ */
+const BLEND_CLAUSE =
+    " Blend the swap invisibly: relight her face to the scene's own light direction and colour, with the same grain, sharpness and skin texture as the rest of the photo — no pasted-on look, the head at natural size for the body."
+
 /** `image_size` por defecto de la doc, y fallback si el ratio no es válido. */
 const RATIO_FALLBACK = '16:9'
 
@@ -178,11 +185,18 @@ async function build(ctx: ImageRouteContext): Promise<KieImageRequest> {
                 : tier === 'moderate'
                   ? `The FIRST image is a STYLE reference: keep the KIND of outfit${ctx.nsfwIntent ? '' : ' (its category, silhouette and colour palette)'}, the KIND of place and the overall mood — then reinvent the garment's details, the pose, the framing and the composition.${dressTail}`
                   : `The FIRST image is a MOOD reference: take ONLY its lighting quality and direction, its colour palette and its general atmosphere. Outfit, pose, framing and setting come from the scene text, not from this image.`
+        // MEZCLA (reporte 20-sep, "la cara se ve sobrepuesta"): el swap sin
+        // orden de integrar dejaba la cara con la luz suave y la piel mate del
+        // RETRATO de referencia sobre un cuerpo con flash — un recorte. El
+        // lienzo EXACT ya llevaba la cláusula de mezcla de Seedream y salía
+        // integrado; estos tramos no la llevaban. Medido: la misma petición a
+        // 65% con solo esta frase añadida → cara relit a la luz de la foto.
         const swap =
             'The FACE SWAP is MANDATORY: replace the face in the FIRST image ' +
             'with the face from the SECOND image (exact features and likeness) ' +
             "— never keep the first image's original face. Her HAIR also comes " +
-            "from the SECOND image (colour and length), never the first one's."
+            "from the SECOND image (colour and length), never the first one's." +
+            BLEND_CLAUSE
         return {
             model: ctx.model,
             input: baseInput(

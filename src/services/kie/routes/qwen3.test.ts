@@ -325,6 +325,17 @@ test('EXACT con desnudo: la foto manda en todo menos en la ropa', async () => {
     assert.doesNotMatch(p, /every garment piece|FULLY dressed/)
 })
 
+test('los tramos de abajo también integran la cara a la luz de la foto', async () => {
+    // Reporte 20-sep ("la cara se ve sobrepuesta"): a 65% el swap iba sin
+    // orden de mezcla y la cara salía con la luz suave del retrato de
+    // referencia sobre un cuerpo con flash. EXACT ya la llevaba.
+    for (const w of [100, 65, 40, 15]) {
+        const p = await promptDe(exact({ cloneWeight: w }))
+        assert.match(p, /relight/, `al ${w}% no se pide relight`)
+        assert.match(p, /no pasted-on look/, `al ${w}% no se pide integrar`)
+    }
+})
+
 test('ningún tramo deja un punto doble entre la orden y la escena', async () => {
     for (const w of [100, 65, 40, 15]) {
         const p = await promptDe(exact({ cloneWeight: w }))
