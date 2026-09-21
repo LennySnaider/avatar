@@ -42,6 +42,16 @@ import {
 } from '@/services/VideoEditService'
 import { stitchVideos } from '@/services/VideoStitchService'
 import { releaseFFmpeg } from '@/services/_ffmpegRuntime'
+import {
+    apiCreateGenerationUploadUrl,
+    apiSaveGeneration,
+} from '@/services/AvatarForgeService'
+import { uploadGenerationTicket } from '@/lib/storageUpload'
+import { getGenerationMediaUrl } from '@/lib/storagePaths'
+import {
+    buildExportProvenance,
+    type ExportAudioChoice,
+} from '../_utils/exportProvenance'
 
 // ─── Single-track timeline model ──────────────────────────────────────
 // One clip = one segment on the track. `duration` is the SOURCE video's
@@ -58,6 +68,12 @@ interface TimelineClip {
      * toca, así que se puede quitar y poner sin degradar nada. La pista se
      * elimina de verdad al exportar. */
     muted?: boolean
+    /** Avatar del clip de origen. Decide por qué cuenta de Upload-Post sale el
+     * post; sin esto el export nace huérfano y no se puede publicar. */
+    avatarId?: string | null
+    /** `generations.id` del clip de origen. Re-atribuye el badge "Posted" al
+     * item original de la galería (ver `buildExportProvenance`). */
+    sourceGenerationId?: string
 }
 
 type ToolMode = 'none' | 'crop' | 'watermark'
@@ -888,6 +904,8 @@ const VideoEditorMain = ({ userId, initialVideoUrl }: VideoEditorMainProps) => {
                 duration,
                 inPoint: 0,
                 outPoint: duration,
+                avatarId: item.avatarId ?? null,
+                sourceGenerationId: item.generationId,
             }
             setClips((prev) => [...prev, clip])
             setSelectedClipId((prev) => prev ?? clip.id)
@@ -1332,13 +1350,30 @@ const VideoEditorMain = ({ userId, initialVideoUrl }: VideoEditorMainProps) => {
         }
     }, [clips.length, buildFinalVideo])
 
+    /** La pista horneada en ESTE export, para dejarla anotada en la fila. */
+    const chosenAudio = useCallback((): ExportAudioChoice | undefined => {
+        if (audioMode === 'trending' && selectedSound) {
+            return {
+                name: selectedSound.name,
+                author: selectedSound.author ?? undefined,
+                trackId: selectedSound.soundId ?? undefined,
+                source: 'trending-apify',
+            }
+        }
+        if (audioMode === 'upload' && uploadedAudio) {
+            return { name: uploadedAudio.name.replace(/\.[^.]+$/, ''), source: 'upload' }
+        }
+        return undefined
+    }, [audioMode, selectedSound, uploadedAudio])
+
     const handleSaveToGallery = useCallback(async () => {
         if (clips.length === 0) return
         setIsProcessing(true)
         setProgress(0)
         setProgressLabel('Preparing export…')
+        let finalUrl: string | null = null
         try {
-            const finalUrl = await buildFinalVideo()
+            finalUrl = await buildFinalVideo()
             if (!finalUrl) return
             setProgress(100)
             let aspectRatio: '16:9' | '9:16' = '16:9'
@@ -1349,24 +1384,54 @@ const VideoEditorMain = ({ userId, initialVideoUrl }: VideoEditorMainProps) => {
                 }
             } catch { /* keep default aspect ratio */ }
             const label = clips.length > 1 ? `${clips.length} clips combined` : clips[0].name
+
+            // PERSISTENCIA REAL. Antes esto metía el `blob:` en el store y ya:
+            // el vídeo moría al cerrar la pestaña y, sin fila en `generations`,
+            // no se podía publicar — por eso "postear con música" no funcionaba
+            // aunque el muxeo sí. El binario sube por URL firmada porque un
+            // server action lo rechaza con 413 (~4.5MB de Vercel) y TODO vídeo
+            // pasa de ahí.
+            setProgressLabel('Saving…')
+            const res = await fetch(finalUrl)
+            if (!res.ok) throw new Error(`No se pudo leer el vídeo exportado (HTTP ${res.status})`)
+            const blob = await res.blob()
+            const ticket = await apiCreateGenerationUploadUrl('VIDEO', 'mp4')
+            await uploadGenerationTicket(ticket, blob, 'video/mp4')
+            const { avatarId, metadata } = buildExportProvenance(clips, chosenAudio())
+            const row = await apiSaveGeneration({
+                avatar_id: avatarId,
+                media_type: 'VIDEO',
+                storage_path: ticket.path,
+                ...(ticket.provider === 'r2' ? { storage_provider: 'r2' } : {}),
+                prompt: `Video Editor: ${label}`,
+                metadata,
+            })
+
             addToGallery({
-                id: `editor-${Date.now()}`,
-                url: finalUrl,
+                id: row.id,
+                url: getGenerationMediaUrl(ticket.path, ticket.provider),
+                generationId: row.id,
+                avatarId,
                 prompt: `Video Editor: ${label}`,
                 aspectRatio,
                 timestamp: Date.now(),
                 mediaType: 'VIDEO',
             })
+            // Ya vive en Storage: el blob local sobra.
+            try { URL.revokeObjectURL(finalUrl) } catch { /* ignore */ }
             toast.push(
                 <Notification type="success" title="Saved">
-                    Video added to Avatar Studio gallery.
+                    Video saved to your gallery — ready to publish.
                 </Notification>,
             )
         } catch (err) {
+            // Nada de "guardado" optimista: si la subida falla, el vídeo NO
+            // entra en la galería. Meterlo como blob era exactamente el fallo
+            // que se está arreglando aquí.
             const message = err instanceof Error ? err.message : 'Unknown error'
             console.error('[VideoEditor] Export (save) failed:', err)
             toast.push(
-                <Notification type="danger" title="Export failed">
+                <Notification type="danger" title="Save failed">
                     {message}
                 </Notification>,
             )
@@ -1381,7 +1446,7 @@ const VideoEditorMain = ({ userId, initialVideoUrl }: VideoEditorMainProps) => {
             // reservados sin usarlos.
             releaseFFmpeg()
         }
-    }, [clips, buildFinalVideo, addToGallery])
+    }, [clips, buildFinalVideo, addToGallery, chosenAudio])
 
     // Saved videos from the studio gallery, offered by the "From gallery" picker.
     const galleryVideoCandidates = gallery.filter((g) => g.mediaType === 'VIDEO' && !!g.url)
