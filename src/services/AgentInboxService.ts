@@ -594,7 +594,7 @@ export async function regenerateDraft(
         if (!result)
             return {
                 success: false,
-                error: 'Could not generate a draft (no persona or no fan message)',
+                error: 'Could not generate a draft: the fan has no recent message to reply to, or the avatar has no agent persona.',
             }
         const { data: row } = await orgTable(ctx, 'agent_messages')
             .select('*')

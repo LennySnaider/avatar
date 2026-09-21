@@ -18,9 +18,13 @@ import { toPersonaDTO } from './personaMapper'
 import { retrieveKnowledge } from './retrieval'
 import { AGENT_UTILITY_MODEL } from './models'
 import { commenterIdFromChat, platformFromChat } from '@/lib/social/comments/ids'
+import { fanvueMediaUuids } from '@/lib/fanvue/messageMedia'
 import type { RetrievedChunk } from './types'
 
 const HISTORY_LIMIT = 20
+/** Lo que ve el modelo en lugar de un mensaje de sólo foto/vídeo: no puede
+ *  ver la imagen, pero sí saber que se mandó una (y quién la mandó). */
+const MEDIA_ONLY_PLACEHOLDER = '[sent a photo or video]'
 
 export interface DraftResult {
     messageId: string
@@ -62,21 +66,38 @@ export async function generateDraftReply(chatId: string): Promise<DraftResult | 
     // History (oldest→newest); fan 'in' = user, our sent 'out' = assistant.
     const { data: history } = await supabase
         .from('agent_messages')
-        .select('direction, text, status, created_at')
+        .select('direction, text, media, status, created_at')
         .eq('organization_id', chat.organization_id)
         .eq('chat_id', chatId)
         .in('status', ['received', 'sent'])
         .order('created_at', { ascending: false })
         .limit(HISTORY_LIMIT)
     const ordered = (history ?? []).slice().reverse()
-    const lastFanText = [...ordered].reverse().find((m) => m.direction === 'in')?.text ?? ''
-    if (!lastFanText.trim()) return null
+    // Un mensaje de sólo foto también es algo a lo que contestar. Antes sólo
+    // se miraba el TEXTO del último mensaje del fan: si mandaba una foto sin
+    // texto no salía borrador ("no fan message"), y la foto tampoco entraba
+    // en el historial, así que el modelo no sabía que existía.
+    const contentOf = (m: { text: string | null; media: unknown }): string =>
+        m.text?.trim()
+            ? m.text
+            : fanvueMediaUuids(m.media).length > 0
+              ? MEDIA_ONLY_PLACEHOLDER
+              : ''
+    const newestFirst = [...ordered].reverse()
+    if (!newestFirst.some((m) => m.direction === 'in' && contentOf(m)))
+        return null
+    // Para buscar en el conocimiento hace falta texto de verdad: el último del
+    // fan que lo tenga (si sólo mandó fotos, no se busca).
+    const lastFanText =
+        newestFirst.find((m) => m.direction === 'in' && m.text?.trim())?.text ??
+        ''
 
     const messages: ModelMessage[] = ordered
-        .filter((m) => m.text?.trim())
+        .map((m) => ({ role: m.direction, content: contentOf(m) }))
+        .filter((m) => m.content)
         .map((m) => ({
-            role: m.direction === 'in' ? 'user' : 'assistant',
-            content: m.text as string,
+            role: m.role === 'in' ? 'user' : 'assistant',
+            content: m.content,
         }))
 
     const promptChannel = promptChannelFor(chat.platform)
@@ -92,7 +113,9 @@ export async function generateDraftReply(chatId: string): Promise<DraftResult | 
         ragChunks = []
     } else {
         try {
-            ragChunks = await retrieveKnowledge(chat.avatar_id, lastFanText)
+            ragChunks = lastFanText.trim()
+                ? await retrieveKnowledge(chat.avatar_id, lastFanText)
+                : []
         } catch {
             ragChunks = []
         }

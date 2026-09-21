@@ -127,6 +127,10 @@ const ThreadPane = ({ thread, onChanged }: ThreadPaneProps) => {
     const { chat, messages, fanMemory, hasVoice } = thread
     const draft = messages.find((m) => m.status === 'draft')
     const conversation = messages.filter((m) => m.status !== 'draft')
+    // Chats donde sólo escribió el avatar (p.ej. la bienvenida a un seguidor
+    // que nunca contestó): no hay nada a lo que responder y el borrador
+    // fallaría. Se dice en vez de dejar pulsar y dar error.
+    const fanHasWritten = conversation.some((m) => m.direction === 'in')
 
     // Acciones que sólo hablan Fanvue (nota de voz por TTS, PPV con precio en
     // centavos). En un chat de Telegram o de comentarios sociales no pueden
@@ -734,12 +738,14 @@ const ThreadPane = ({ thread, onChanged }: ThreadPaneProps) => {
                 ) : (
                     <div className="flex items-center justify-between gap-2">
                         <p className="text-xs text-gray-400">
-                            No draft. Regenerate one, or the agent will draft when the fan writes.
+                            {fanHasWritten
+                                ? 'No draft. Regenerate one, or the agent will draft when the fan writes.'
+                                : "The fan hasn't written yet — there's nothing to reply to. The agent will draft when they do."}
                         </p>
                         <Button
                             size="sm"
                             loading={busy === 'regen'}
-                            disabled={busy !== null}
+                            disabled={busy !== null || !fanHasWritten}
                             onClick={handleRegenerate}
                         >
                             Generate draft
