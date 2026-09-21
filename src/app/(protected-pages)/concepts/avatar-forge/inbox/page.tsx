@@ -3,15 +3,32 @@ import { redirect } from 'next/navigation'
 import Container from '@/components/shared/Container'
 import Card from '@/components/ui/Card'
 import InboxView from './_components/InboxView'
-import { getAgentMetrics, listAgentChats } from '@/services/AgentInboxService'
+import {
+    getAgentMetrics,
+    listAgentChats,
+    listInboxAvatars,
+} from '@/services/AgentInboxService'
 
-export default async function Page() {
+export default async function Page({
+    searchParams,
+}: {
+    searchParams: Promise<{ [key: string]: string | string[] | undefined }>
+}) {
     const session = await auth()
     if (!session?.user?.id) redirect('/sign-in')
 
+    // `?avatar=<id>`: la bandeja de un avatar. Se valida contra los avatares
+    // de la org — un id ajeno o viejo cae a "todos" en vez de pintar vacío.
+    const avatarsRes = await listInboxAvatars()
+    const avatars = avatarsRes.success ? (avatarsRes.data ?? []) : []
+    const requested = (await searchParams).avatar
+    const avatarId = avatars.some((a) => a.id === requested)
+        ? (requested as string)
+        : undefined
+
     const [result, metricsRes] = await Promise.all([
-        listAgentChats(),
-        getAgentMetrics(),
+        listAgentChats({ avatarId }),
+        getAgentMetrics({ avatarId }),
     ])
     const m = metricsRes.success ? metricsRes.data : null
 
@@ -37,9 +54,9 @@ export default async function Page() {
         <Container className="py-6">
             <h3 className="mb-1">Agent Inbox</h3>
             <p className="text-sm text-gray-500 mb-4">
-                Your avatars&apos; Fanvue chats. The agent drafts a reply in
-                each — review, edit and approve. Nothing is sent without you
-                (until you switch a chat to auto).
+                Your avatars&apos; chats — Fanvue, Telegram and social comments.
+                The agent drafts a reply in each — review, edit and approve.
+                Nothing is sent without you (until you switch a chat to auto).
             </p>
 
             {/*
@@ -70,7 +87,15 @@ export default async function Page() {
                 </Card>
             )}
 
+            {/*
+                `key` por avatar: cambiar de bandeja remonta la vista para que
+                búsqueda, chat seleccionado e hilo no arrastren nada del otro
+                avatar (el estado se inicializa desde estas props una vez).
+            */}
             <InboxView
+                key={avatarId ?? 'all'}
+                avatars={avatars}
+                avatarId={avatarId ?? null}
                 initialChats={result.success ? (result.data ?? []) : []}
                 loadError={result.success ? null : (result.error ?? null)}
             />

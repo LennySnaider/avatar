@@ -128,31 +128,51 @@ export interface AgentMetrics {
     autoRate: number // % of sends that were autopilot
 }
 
-/** Inbox headline metrics for the org (fan chats only). */
-export async function getAgentMetrics(): Promise<InboxResult<AgentMetrics>> {
+/**
+ * Inbox headline metrics (fan chats only) — de toda la org, o de un avatar
+ * cuando el Inbox está filtrado por uno: si no, la tira diría "3 borradores"
+ * mirando un avatar que no tiene ninguno.
+ */
+export async function getAgentMetrics(filter?: {
+    avatarId?: string
+}): Promise<InboxResult<AgentMetrics>> {
     try {
         const ctx = await getOrgContext()
         requirePermission(ctx, 'content:read')
+        const avatarId = filter?.avatarId
 
         // `orgTable(...).select(cols, { count, head })` pasa las opciones tal
         // cual a PostgREST — por eso los conteos no necesitan esquivar la
         // puerta org-scoped (ver orgTable.ts, Tarea 3).
+        const countChats = () => {
+            const q = orgTable(ctx, 'agent_chats').select('id', {
+                count: 'exact',
+                head: true,
+            })
+            return avatarId ? q.eq('avatar_id', avatarId) : q
+        }
+        // `agent_messages` no tiene `avatar_id`: se filtra por el del chat
+        // con un join `!inner` (FK `agent_messages.chat_id`). Sin filtro de
+        // avatar se usa el select plano, igual que antes.
+        const countMessages = () =>
+            avatarId
+                ? orgTable(ctx, 'agent_messages')
+                      .select('id, agent_chats!inner(avatar_id)', {
+                          count: 'exact',
+                          head: true,
+                      })
+                      .eq('agent_chats.avatar_id', avatarId)
+                : orgTable(ctx, 'agent_messages').select('id', {
+                      count: 'exact',
+                      head: true,
+                  })
         const [fanChats, needsAttn, drafts, sentTotal, autoSent] =
             await Promise.all([
-                orgTable(ctx, 'agent_chats')
-                    .select('id', { count: 'exact', head: true })
-                    .eq('is_creator', false),
-                orgTable(ctx, 'agent_chats')
-                    .select('id', { count: 'exact', head: true })
-                    .eq('needs_attention', true),
-                orgTable(ctx, 'agent_messages')
-                    .select('id', { count: 'exact', head: true })
-                    .eq('status', 'draft'),
-                orgTable(ctx, 'agent_messages')
-                    .select('id', { count: 'exact', head: true })
-                    .eq('status', 'sent'),
-                orgTable(ctx, 'agent_messages')
-                    .select('id', { count: 'exact', head: true })
+                countChats().eq('is_creator', false),
+                countChats().eq('needs_attention', true),
+                countMessages().eq('status', 'draft'),
+                countMessages().eq('status', 'sent'),
+                countMessages()
                     .eq('status', 'sent')
                     .eq('approved_by', 'autopilot'),
             ])
@@ -172,6 +192,33 @@ export async function getAgentMetrics(): Promise<InboxResult<AgentMetrics>> {
         }
     } catch (e) {
         return fail('getAgentMetrics', e)
+    }
+}
+
+/** Un avatar en el selector del Inbox: solo lo que se pinta. */
+export interface InboxAvatarOption {
+    id: string
+    name: string
+}
+
+/**
+ * Avatares de la org para el selector del Inbox. Todos, no solo los que
+ * aparecen en los 200 chats más recientes: un avatar con poca actividad
+ * quedaría fuera de ese corte y no habría forma de abrir su bandeja.
+ */
+export async function listInboxAvatars(): Promise<
+    InboxResult<InboxAvatarOption[]>
+> {
+    try {
+        const ctx = await getOrgContext()
+        requirePermission(ctx, 'content:read')
+        const { data, error } = await orgTable(ctx, 'avatars')
+            .select('id, name')
+            .order('name', { ascending: true })
+        if (error) throw new Error(error.message)
+        return { success: true, data: (data ?? []) as InboxAvatarOption[] }
+    } catch (e) {
+        return fail('listInboxAvatars', e)
     }
 }
 

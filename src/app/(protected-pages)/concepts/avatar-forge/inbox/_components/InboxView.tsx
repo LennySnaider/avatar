@@ -1,9 +1,11 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useTransition } from 'react'
+import { usePathname, useRouter } from 'next/navigation'
 import Card from '@/components/ui/Card'
 import Button from '@/components/ui/Button'
 import Input from '@/components/ui/Input'
+import Select from '@/components/ui/Select'
 import Tag from '@/components/ui/Tag'
 import Notification from '@/components/ui/Notification'
 import toast from '@/components/ui/toast'
@@ -12,14 +14,23 @@ import {
     getAgentChatThread,
     listAgentChats,
     type AgentChatListItem,
+    type InboxAvatarOption,
 } from '@/services/AgentInboxService'
 import AskStrategistButton from '@/components/shared/StrategistWidget/AskStrategistButton'
 import ThreadPane from './ThreadPane'
 
 interface InboxViewProps {
+    /** Avatares de la org para el selector de bandeja. */
+    avatars: InboxAvatarOption[]
+    /** Bandeja abierta (`?avatar=`), o null = todos los avatares. */
+    avatarId: string | null
     initialChats: AgentChatListItem[]
     loadError: string | null
 }
+
+type AvatarOption = { value: string; label: string }
+
+const ALL_AVATARS: AvatarOption = { value: '', label: 'All avatars' }
 
 type ThreadData = Awaited<ReturnType<typeof getAgentChatThread>>['data']
 
@@ -56,7 +67,19 @@ function channelTag(c: AgentChatListItem): { label: string; className: string } 
     }
 }
 
-const InboxView = ({ initialChats, loadError }: InboxViewProps) => {
+const InboxView = ({
+    avatars,
+    avatarId,
+    initialChats,
+    loadError,
+}: InboxViewProps) => {
+    const router = useRouter()
+    const pathname = usePathname()
+    const [isSwitching, startSwitch] = useTransition()
+    const avatarOptions: AvatarOption[] = [
+        ALL_AVATARS,
+        ...avatars.map((a) => ({ value: a.id, label: a.name })),
+    ]
     const [chats, setChats] = useState<AgentChatListItem[]>(initialChats)
     const [error, setError] = useState<string | null>(loadError)
     const [search, setSearch] = useState('')
@@ -66,7 +89,10 @@ const InboxView = ({ initialChats, loadError }: InboxViewProps) => {
     const [isLoadingThread, setIsLoadingThread] = useState(false)
 
     const refreshChats = async (includeCreators = showCreators) => {
-        const result = await listAgentChats({ includeCreators })
+        const result = await listAgentChats({
+            includeCreators,
+            avatarId: avatarId ?? undefined,
+        })
         if (result.success) {
             setChats(result.data ?? [])
             setError(null)
@@ -116,6 +142,21 @@ const InboxView = ({ initialChats, loadError }: InboxViewProps) => {
         refreshChats()
     }
 
+    // Cambiar de bandeja va por la URL (`?avatar=`), no por estado local: el
+    // servidor vuelve a pedir chats Y métricas de ese avatar, y el enlace se
+    // puede guardar. La página remonta esta vista con `key` por avatar.
+    const switchAvatar = (next: string) => {
+        if (next === (avatarId ?? '')) return
+        startSwitch(() => {
+            router.replace(
+                next
+                    ? `${pathname}?avatar=${encodeURIComponent(next)}`
+                    : pathname,
+                { scroll: false },
+            )
+        })
+    }
+
     return (
         <div className="flex flex-col gap-4">
             {/* F5.2 — atajo al Estratega con la pregunta escrita, sin enviar. */}
@@ -135,7 +176,28 @@ const InboxView = ({ initialChats, loadError }: InboxViewProps) => {
 
             <div className="grid grid-cols-1 lg:grid-cols-[340px_1fr] gap-4">
                 {/* Chat list */}
-                <Card className="p-0! overflow-hidden">
+                <Card
+                    className={`p-0! overflow-hidden transition-opacity ${isSwitching ? 'opacity-60' : ''}`}
+                >
+                    {avatars.length > 1 && (
+                        <div className="p-3 pb-0">
+                            <Select<AvatarOption>
+                                instanceId="inbox-avatar"
+                                size="sm"
+                                options={avatarOptions}
+                                value={
+                                    avatarOptions.find(
+                                        (o) => o.value === (avatarId ?? ''),
+                                    ) ?? ALL_AVATARS
+                                }
+                                isSearchable={avatarOptions.length > 6}
+                                isDisabled={isSwitching}
+                                onChange={(opt) =>
+                                    switchAvatar(opt?.value ?? '')
+                                }
+                            />
+                        </div>
+                    )}
                     <div className="p-3 border-b border-gray-100 dark:border-gray-700 flex items-center gap-2">
                         <Input
                             size="sm"
@@ -168,8 +230,9 @@ const InboxView = ({ initialChats, loadError }: InboxViewProps) => {
                     <div className="max-h-[65vh] overflow-y-auto">
                         {filtered.length === 0 ? (
                             <p className="text-sm text-gray-500 p-4">
-                                No chats yet. Open an avatar with Fanvue connected and hit
-                                &quot;Sync inbox&quot; on its Agent page.
+                                {avatarId
+                                    ? 'No chats for this avatar yet.'
+                                    : 'No chats yet. Connect Fanvue or Telegram, or turn on AI comment replies for an avatar in Social Accounts.'}
                             </p>
                         ) : (
                             filtered.map((c) => (
