@@ -94,6 +94,9 @@ export interface SocialPostRow {
     created_at: string
     generation_id: string | null
     avatar_id: string | null
+    /** Junta las filas de un post que salió en varias llamadas (música: el MP4
+     *  limpio a TikTok, el horneado al resto). NULL en los posts normales. */
+    post_group_id: string | null
     avatar_name: string | null
 }
 
@@ -341,6 +344,7 @@ async function attachAvatarInfo(
             content_type: row.content_type,
             media_urls: row.media_urls,
             platforms: row.platforms,
+            post_group_id: row.post_group_id ?? null,
             status: row.status,
             scheduled_at: row.scheduled_at,
             published_at: row.published_at,

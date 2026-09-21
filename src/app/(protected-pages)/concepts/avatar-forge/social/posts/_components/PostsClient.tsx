@@ -9,6 +9,7 @@ import Notification from '@/components/ui/Notification'
 import toast from '@/components/ui/toast'
 import AskStrategistButton from '@/components/shared/StrategistWidget/AskStrategistButton'
 import { cancelScheduledPost, type SocialPostRow } from '@/services/SocialService'
+import { groupSplitPosts } from '@/lib/social/groupSplitPosts'
 
 interface PostsClientProps {
     initialPosts: SocialPostRow[]
@@ -41,7 +42,10 @@ const PostsClient = ({ initialPosts, loadError }: PostsClientProps) => {
     const router = useRouter()
     // `initialPosts` is re-fetched server-side and passed down fresh whenever
     // `router.refresh()` runs (e.g. after a cancel) — no local mirror needed.
-    const posts = initialPosts
+    // Un post con música puede haber salido en DOS llamadas (MP4 limpio a
+    // TikTok con pista nativa, horneado al resto). Para el usuario fue uno
+    // solo, así que las filas hermanas se pintan juntas.
+    const posts = groupSplitPosts(initialPosts)
     const [error, setError] = useState<string | null>(loadError)
     const [cancellingId, setCancellingId] = useState<string | null>(null)
 

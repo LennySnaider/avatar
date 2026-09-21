@@ -365,6 +365,11 @@ export type Database = {
                     upload_post_job_id: string | null
                     upload_post_response: Json | null
                     error_message: string | null
+                    /** Junta las filas de un post publicado en varias llamadas
+                     *  a Upload-Post (música: el MP4 limpio va a TikTok con
+                     *  pista nativa y el horneado al resto). NULL en los posts
+                     *  de una sola llamada, que son la mayoría. */
+                    post_group_id: string | null
                     created_at: string
                     updated_at: string
                 }
@@ -385,6 +390,7 @@ export type Database = {
                     upload_post_request_id?: string | null
                     upload_post_job_id?: string | null
                     upload_post_response?: Json | null
+                    post_group_id?: string | null
                     error_message?: string | null
                     created_at?: string
                     updated_at?: string
@@ -406,6 +412,7 @@ export type Database = {
                     upload_post_request_id?: string | null
                     upload_post_job_id?: string | null
                     upload_post_response?: Json | null
+                    post_group_id?: string | null
                     error_message?: string | null
                     created_at?: string
                     updated_at?: string
