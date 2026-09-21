@@ -72,15 +72,29 @@ test('CON Clone Ref el lienzo es el CLONE y la cara va SEGUNDA', async () => {
     ])
 })
 
-test('el peso del Clone Ref cambia el trabajo del lienzo', async () => {
-    const alto = await qwen3Route.build(
-        ctx({ referenceImages: [ref('clone')], cloneWeight: 100 }),
-    )
-    const bajo = await qwen3Route.build(
-        ctx({ referenceImages: [ref('clone')], cloneWeight: 15 }),
-    )
-    assert.match(alto.input.prompt as string, /Keep the SAME outfit/i)
-    assert.match(bajo.input.prompt as string, /LOOSE inspiration/i)
+test('el peso del Clone Ref sigue los tramos de cloneTier, no una copia', async () => {
+    // A 65% (STRONG) viajaba "keep framing close to the first image": una
+    // orden de COPIA sobre un editor de la imagen 1 → fotocopias del clone
+    // (reporte 20-sep). STRONG es "otra toma de la misma sesión".
+    const con = async (cloneWeight: number) =>
+        (await qwen3Route.build(ctx({ referenceImages: [ref('clone')], cloneWeight })))
+            .input.prompt as string
+    assert.match(await con(100), /CLONE source: recreate its EXACT pose/)
+    assert.match(await con(65), /ANOTHER SHOT of that session/)
+    assert.match(await con(65), /never a pixel copy/)
+    assert.doesNotMatch(await con(65), /close to the FIRST image|minor natural variation/)
+    assert.match(await con(40), /STYLE reference/)
+    assert.match(await con(15), /MOOD reference/)
+    // Los umbrales son los de cloneTier (75 / 50 / 25), no otros.
+    assert.match(await con(75), /EXACT pose/)
+    assert.match(await con(50), /ANOTHER SHOT/)
+    assert.match(await con(25), /STYLE reference/)
+})
+
+test('con desnudo en la escena, el clone no impone su ropa', async () => {
+    const p = (await qwen3Route.build(ctx({ referenceImages: [ref('clone')], cloneWeight: 65, nsfwIntent: true }))).input.prompt as string
+    assert.match(p, /IGNORE its clothing/)
+    assert.doesNotMatch(p, /every garment/)
 })
 
 test('image_size lleva el ratio crudo, no el vocabulario de fal', async () => {
