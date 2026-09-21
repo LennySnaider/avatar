@@ -2318,9 +2318,18 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                             // identidad la sostiene el guard de maniquí del texto
                             // ("FACELESS MANNEQUIN — face ONLY from image 1"),
                             // que es exactamente cómo se protege ya en Qwen.
+                            // QWEN 3 NO hereda la excepción de Qwen 2 (20-sep):
+                            // con la cara del clone a la vista —grande y frontal—
+                            // la CONSERVA (Clone 65 y 100, 2/2 con la cara de la
+                            // foto); la misma petición con el clone difuminado
+                            // pinta la de la avatar (1/1), pose intacta y sin
+                            // óvalo. Lo declara el motor en engineCaps
+                            // (`cloneRaw`); el prefijo `qwen` queda para Qwen 2.
+                            const quiereCloneRaw =
+                                engineCaps(kieModel)?.cloneRaw ??
+                                (kieModel.startsWith('qwen') || isWanImage)
                             const cloneForModel =
-                                (kieModel.startsWith('qwen') || isWanImage) &&
-                                optimizedCloneRawRef
+                                quiereCloneRaw && optimizedCloneRawRef
                                     ? optimizedCloneRawRef
                                     : optimizedCloneRef
                             // SEGUNDA PALANCA (2026-08-20) — menos DETALLE en los
