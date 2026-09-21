@@ -20,6 +20,7 @@ import { UploadPostProviderError } from '@/lib/social/providers/UploadPostProvid
 import { validatePostForPlatforms } from '@/lib/social/platformValidators'
 import { appendHashtagsToCaption } from '@/lib/social/hashtagHelpers'
 import { buildTikTokPhotoText } from '@/lib/social/tiktokPhotoText'
+import { audioLabelFromMetadata } from '@/lib/social/audioLabel'
 import { validateSocialCommentSettingsPatch } from '@/lib/social/comments/settingsValidation'
 import { ALL_PLATFORMS } from '@/@types/social'
 import type { Platform, PlatformTarget } from '@/@types/social'
@@ -876,6 +877,7 @@ export async function createSocialPost(input: CreateSocialPostInput): Promise<So
         let mediaUrls: string[] = []
         let contentType: 'photo' | 'video' | 'text' = 'text'
         let generationId: string | null = null
+        let audioName: string | undefined
         if (requestedIds.length > 0) {
             // select('*') y no la lista de columnas: la URL de la media depende
             // de `storage_provider` (era R2) y esa columna puede no existir
@@ -913,6 +915,10 @@ export async function createSocialPost(input: CreateSocialPostInput): Promise<So
             mediaUrls = ordered.map((g) => getRowMediaUrl(g))
             contentType = ordered[0].media_type === 'VIDEO' ? 'video' : 'photo'
             generationId = ordered[0].id
+            // Etiqueta de la pista ya horneada en el MP4 (la escribe el Video
+            // Editor al guardar). Sólo aplica a Reels de Instagram; en el
+            // resto de plataformas Upload-Post la ignora sin quejarse.
+            audioName = audioLabelFromMetadata(ordered[0].metadata)
 
             // Feed de Instagram: 4:5–1.91:1 o Upload-Post rellena con franjas
             // blancas (visto el 2026-09-18). Se manda una variante preparada;
@@ -975,7 +981,7 @@ export async function createSocialPost(input: CreateSocialPostInput): Promise<So
         let dispatch: PublishResponse
         if (contentType === 'video') {
             if (mediaUrls.length === 0) return { success: false, error: 'Video post requires media' }
-            dispatch = await provider.publishVideo({ ...publishBase, videoUrl: mediaUrls[0] })
+            dispatch = await provider.publishVideo({ ...publishBase, videoUrl: mediaUrls[0], audioName })
         } else if (contentType === 'photo') {
             if (mediaUrls.length === 0) return { success: false, error: 'Photo post requires media' }
             dispatch = await provider.publishPhoto({ ...publishBase, photoUrls: mediaUrls })
