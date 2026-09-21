@@ -53,6 +53,19 @@ test('qwen3 entra al 🌶️: medido en vivo, no rebota río arriba', () => {
     assert.equal(engineCaps('qwen3/pro-image-to-image')?.explicitCapable, true)
 })
 
+test('qwen3 recibe el Clone Ref con la cara difuminada, como Seedream', () => {
+    // 20-sep-2026: con la cara del clone a la vista (regla heredada de Qwen 2
+    // por el prefijo `qwen`), Qwen 3 Pro conservó la cara de la FOTO en Clone
+    // 65 y 100 (2/2); la misma petición con el clone difuminado pintó la de
+    // la avatar (1/1). El Studio delega en este cap con `??`, así que Qwen 2 y
+    // Wan siguen recibiendo el clone a la vista.
+    assert.equal(engineCaps('qwen3/pro-image-to-image')?.cloneRaw, false)
+    assert.equal(engineCaps('qwen3/image-to-image')?.cloneRaw, false)
+    assert.equal(engineCaps('gpt-image-2-5-flare-image-to-image')?.cloneRaw, false)
+    // Qwen 2 no está descrito: el prefijo sigue mandando ahí.
+    assert.equal(engineCaps('qwen2/image-edit'), undefined)
+})
+
 test('pro y no-pro comparten contrato pero no precio', () => {
     const pro = engineCaps('qwen3/pro-image-to-image')
     const base = engineCaps('qwen3/image-to-image')

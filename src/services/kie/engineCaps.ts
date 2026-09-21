@@ -43,6 +43,20 @@ export interface EngineCaps {
     canEdit: boolean
     /** Usa el flujo de dos fases (t2i + face-swap) del Studio. */
     twoPhase: boolean
+    /**
+     * Recibe el Clone Ref con la cara A LA VISTA (true) o DIFUMINADA (false).
+     *
+     * El Studio difumina la cara del clone para que el motor no la copie, y
+     * exceptúa por prefijo a Qwen 2 ("face-swap limpio, y la máscara le
+     * cuesta la pose") y a Wan (fusor: calca el óvalo). Ese prefijo `qwen`
+     * capturaba también a Qwen 3, y Qwen 3 Pro NO hace el swap limpio de
+     * Qwen 2: con la cara del clone a la vista —grande y frontal— la CONSERVA
+     * (medido 20-sep-2026, Clone 65 y 100, 2/2 con la cara de la foto); con
+     * la misma petición y el clone difuminado pinta la de la avatar (1/1), sin
+     * artefacto del óvalo y con la pose intacta. En la cocina (cara pequeña y
+     * distinta) había salido bien de casualidad.
+     */
+    cloneRaw: boolean
     /** Resolución que se manda si nadie elige otra. */
     defaultResolution: EngineResolution
     /** Tramos que la API acepta; el orden es el que verá la UI. */
@@ -107,6 +121,8 @@ const QWEN3_PRO: EngineCaps = {
     deepfakeCapable: false,
     canEdit: true,
     twoPhase: false,
+    // Clone con la cara difuminada, como Seedream: a la vista la conserva.
+    cloneRaw: false,
     // 2K son $0.0625 por imagen; 1K, $0.0345 (casi la mitad, y lo mismo que
     // cuesta Seedream 5 Pro).
     defaultResolution: '2K',
@@ -131,6 +147,9 @@ const FLARE: EngineCaps = {
     deepfakeCapable: true,
     canEdit: true,
     twoPhase: false,
+    // Hoy el Studio no le adjunta clone; si algún día lo hace, que sea el
+    // difuminado (el default seguro, el de Seedream), no el de Qwen 2 / Wan.
+    cloneRaw: false,
     defaultResolution: '2K',
     resolutions: ['1K', '2K', '4K'],
     aspectRatios: FLARE_RATIOS,
