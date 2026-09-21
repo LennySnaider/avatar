@@ -292,9 +292,10 @@ const TrendingSoundsClient = ({
             )}
 
             <p className="text-xs text-gray-400">
-                Heads up: TikTok and Instagram only let you attach an official trending sound from
-                inside their app (licensing). Publish your video to drafts, then add the sound
-                there — this chart is your shortlist.
+                Heads up: these viral sounds can be baked into your video from the Video Editor,
+                but they stay your own audio track — they do not appear on the sound page, and a
+                copyrighted one may get muted. For a native, licensed track on TikTok, pick one
+                from its Commercial Music Library when you publish.
             </p>
         </div>
     )

@@ -1,7 +1,17 @@
 /**
  * Client-side audio muxing — bakes a soundtrack into a video so automated
- * posts go out WITH music (the only way to have audio on API-published
- * Instagram/TikTok posts; official trending sounds can't be attached via API).
+ * posts go out WITH music.
+ *
+ * Ojo con el matiz, que cambió y este comentario lo daba por cerrado: adjuntar
+ * una pista OFICIAL por API ya no es imposible en todas partes.
+ *   - Instagram: Meta tiene Audio API (`audio_configuration`), pero
+ *     Upload-Post no la expone todavía — sólo `audio_name`, que es la etiqueta
+ *     de lo que ya viene embebido. Aquí hornear sigue siendo la vía.
+ *   - TikTok: Upload-Post SÍ expone su Commercial Music Library
+ *     (`tiktok_music_id`), que es mejor que hornear — pista nativa, con página
+ *     de sonido y sin riesgo de muteo.
+ * Hornear sigue siendo lo correcto para música propia y para el resto de
+ * plataformas.
  *
  * Runs entirely in the browser on the shared FFmpeg WASM runtime (same as
  * VideoEditService). Returns a blob URL the caller uploads to Storage via a

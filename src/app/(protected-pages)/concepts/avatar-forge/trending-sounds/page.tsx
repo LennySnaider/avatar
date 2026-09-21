@@ -14,8 +14,8 @@ export default async function Page() {
         <Container className="py-6">
             <h3 className="mb-1">Trending Sounds</h3>
             <p className="text-sm text-gray-500 mb-6">
-                Viral TikTok audio, ranked. Preview a sound, open its TikTok page, and use it
-                when you finish a Reel in the app — the official sound can only be attached there.
+                Viral TikTok audio, ranked. Preview a sound, open its TikTok page, or bake it
+                into a video from the Video Editor before publishing.
             </p>
             <TrendingSoundsClient
                 initialSounds={initial.success ? (initial.data?.sounds ?? []) : []}
