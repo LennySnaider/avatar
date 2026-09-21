@@ -62,6 +62,9 @@ interface TelegramAddContentDialogProps {
     nextSortOrder: number
     /** El ítem recién guardado, tal y como lo devuelve el servicio. */
     onAdded: (item: PaidMediaItemView) => void
+    /** Abrir ya marcado como gratis: lo pasa el "+" de la sección Free del
+     *  diálogo de envío. Se puede cambiar dentro del formulario. */
+    defaultFree?: boolean
 }
 
 /** El rango lo decide `mediaPricing.ts` —el mismo fichero puro que valida el
@@ -77,6 +80,7 @@ const TelegramAddContentDialog = ({
     avatarId,
     nextSortOrder,
     onAdded,
+    defaultFree = false,
 }: TelegramAddContentDialogProps) => {
     const [generations, setGenerations] = useState<
         TelegramGenerationPickerItem[]
@@ -94,7 +98,8 @@ const TelegramAddContentDialog = ({
     const [starPrice, setStarPrice] = useState('50')
     // Arranca en "de pago", igual que el alta de la galería: dar de alta algo
     // gratis tiene que ser una decisión explícita, no el camino por defecto.
-    const [isFree, setIsFree] = useState(false)
+    // Pulsar el "+" de la sección Free ES esa decisión (`defaultFree`).
+    const [isFree, setIsFree] = useState(defaultFree)
     const [isSaving, setIsSaving] = useState(false)
     const [isGeneratingAi, setIsGeneratingAi] = useState(false)
     const [aiError, setAiError] = useState<string | null>(null)
@@ -109,7 +114,7 @@ const TelegramAddContentDialog = ({
         setTitle('')
         setCaption('')
         setStarPrice('50')
-        setIsFree(false)
+        setIsFree(defaultFree)
         setAiError(null)
         setIsLoading(true)
         setLoadError(null)
@@ -136,7 +141,7 @@ const TelegramAddContentDialog = ({
         return () => {
             cancelled = true
         }
-    }, [isOpen, avatarId])
+    }, [isOpen, avatarId, defaultFree])
 
     // Título + caption de una vez (`withTitle: true`) sobre la generación ya
     // seleccionada. Tono pícaro porque es contenido para fans, igual que el

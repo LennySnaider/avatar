@@ -132,7 +132,9 @@ const TelegramSendContentDialog = ({
     const [starsOverride, setStarsOverride] = useState('')
     const [captionOverride, setCaptionOverride] = useState('')
     const [isSending, setIsSending] = useState(false)
-    const [addOpen, setAddOpen] = useState(false)
+    // Qué se va a dar de alta: el "+" de cada sección abre el formulario ya
+    // marcado como gratis o de pago (se puede cambiar dentro). null = cerrado.
+    const [addKind, setAddKind] = useState<'free' | 'paid' | null>(null)
     // Testigo de carga. La galería ya no se pide sólo al abrir (también se
     // recarga tras dar de alta), así que el `cancelled` de un efecto no basta:
     // una respuesta lenta podía pisar a una más nueva y devolver la lista de
@@ -210,7 +212,7 @@ const TelegramSendContentDialog = ({
      *  paso recoge lo que se haya dado de alta en otra pestaña. */
     const handleAdded = useCallback(
         (item: PaidMediaItemView) => {
-            setAddOpen(false)
+            setAddKind(null)
             void loadItems(item.id)
         },
         [loadItems],
@@ -319,29 +321,58 @@ const TelegramSendContentDialog = ({
     const nextSortOrder =
         items.reduce((max, i) => Math.max(max, i.sortOrder), -1) + 1
 
-    /* El "+" es UNA BALDOSA MÁS, al final y del mismo tamaño que las
-       miniaturas: se lee como "añade uno más" y no como una acción suelta del
-       diálogo. Va fuera de los dos grupos a propósito — meterlo dentro de
-       "Free teasers" o de "Paid" prometería de qué tipo va a ser lo que se dé
-       de alta, y eso se decide dentro del formulario.
+    /* Dos secciones SIEMPRE visibles, gratis y de pago, cada una con su "+"
+       al final (una baldosa más, del tamaño de las miniaturas). Antes el "+"
+       iba suelto fuera de los grupos y la sección gratis sólo aparecía si ya
+       había algo gratis: con todo de pago no había forma de ver que existía
+       contenido sin Stars (feedback de Lenny, 21-sep: "no todas llevan
+       Stars"). El "+" de cada sección abre el formulario ya marcado con su
+       tipo; se puede cambiar dentro.
        Con `pricing:manage` porque dar de alta fija un precio; es cosmético,
        `upsertPaidMediaItem` lo vuelve a comprobar. */
-    const addTile = (
+    const addTile = (kind: 'free' | 'paid') => (
         <RoleCheck permission="pricing:manage">
-            <div>
-                <p className="text-xs text-gray-500 mb-1">Add something new</p>
-                <div className="flex flex-wrap gap-2 p-1">
-                    <button
-                        type="button"
-                        title="Add content to the gallery"
-                        className="w-16 h-16 shrink-0 rounded-lg border-2 border-dashed border-gray-300 dark:border-gray-600 text-gray-400 hover:border-primary hover:text-primary transition-colors flex items-center justify-center"
-                        onClick={() => setAddOpen(true)}
-                    >
-                        <HiOutlinePlus className="text-2xl" />
-                    </button>
-                </div>
-            </div>
+            <button
+                type="button"
+                title={
+                    kind === 'free'
+                        ? 'Add free content (no Stars)'
+                        : 'Add paid content (Stars)'
+                }
+                className="w-16 h-16 shrink-0 rounded-lg border-2 border-dashed border-gray-300 dark:border-gray-600 text-gray-400 hover:border-primary hover:text-primary transition-colors flex items-center justify-center"
+                onClick={() => setAddKind(kind)}
+            >
+                <HiOutlinePlus className="text-2xl" />
+            </button>
         </RoleCheck>
+    )
+
+    const section = (kind: 'free' | 'paid', list: PaidMediaItemView[]) => (
+        <div>
+            <p className="text-xs text-gray-500 mb-1">
+                {kind === 'free'
+                    ? 'Free — sent unlocked, no Stars'
+                    : 'Paid — locked behind Stars'}
+            </p>
+            <div className="flex flex-wrap gap-2 max-h-40 overflow-y-auto p-1">
+                {list.map((item) => (
+                    <Thumb
+                        key={item.id}
+                        item={item}
+                        selected={item.id === selectedItemId}
+                        onPick={() => pickItem(item)}
+                    />
+                ))}
+                {addTile(kind)}
+            </div>
+            {list.length === 0 && (
+                <p className="text-[11px] text-gray-400 mt-1">
+                    {kind === 'free'
+                        ? 'No free content yet — add a teaser the fan can see without paying.'
+                        : 'No paid content yet — add something to sell for Stars.'}
+                </p>
+            )}
+        </div>
     )
 
     return (
@@ -362,52 +393,10 @@ const TelegramSendContentDialog = ({
                         </div>
                     ) : loadError ? (
                         <p className="text-sm text-red-500">{loadError}</p>
-                    ) : items.length === 0 ? (
-                        <div className="flex flex-col gap-3">
-                            <p className="text-sm text-gray-500">
-                                No enabled content yet — add one with the +
-                                below, or from this avatar&apos;s Telegram
-                                Gallery tab.
-                            </p>
-                            {addTile}
-                        </div>
                     ) : (
                         <div className="flex flex-col gap-3">
-                            {freeItems.length > 0 && (
-                                <div>
-                                    <p className="text-xs text-gray-500 mb-1">
-                                        Free teasers — sent unlocked, no Stars
-                                    </p>
-                                    <div className="flex flex-wrap gap-2 max-h-40 overflow-y-auto p-1">
-                                        {freeItems.map((item) => (
-                                            <Thumb
-                                                key={item.id}
-                                                item={item}
-                                                selected={item.id === selectedItemId}
-                                                onPick={() => pickItem(item)}
-                                            />
-                                        ))}
-                                    </div>
-                                </div>
-                            )}
-                            {paidItems.length > 0 && (
-                                <div>
-                                    <p className="text-xs text-gray-500 mb-1">
-                                        Paid content — locked behind Stars
-                                    </p>
-                                    <div className="flex flex-wrap gap-2 max-h-40 overflow-y-auto p-1">
-                                        {paidItems.map((item) => (
-                                            <Thumb
-                                                key={item.id}
-                                                item={item}
-                                                selected={item.id === selectedItemId}
-                                                onPick={() => pickItem(item)}
-                                            />
-                                        ))}
-                                    </div>
-                                </div>
-                            )}
-                            {addTile}
+                            {section('free', freeItems)}
+                            {section('paid', paidItems)}
                             {selectedItem && (
                                 <>
                                     <div className="flex items-center gap-2">
@@ -478,10 +467,11 @@ const TelegramSendContentDialog = ({
                 de aquí (ítem elegido, precio, caption) sigue intacto, y el
                 recién dado de alta queda seleccionado para pulsar Send. */}
             <TelegramAddContentDialog
-                isOpen={addOpen}
+                isOpen={addKind !== null}
                 avatarId={avatarId}
                 nextSortOrder={nextSortOrder}
-                onClose={() => setAddOpen(false)}
+                defaultFree={addKind === 'free'}
+                onClose={() => setAddKind(null)}
                 onAdded={handleAdded}
             />
         </Dialog>
