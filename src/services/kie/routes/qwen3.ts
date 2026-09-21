@@ -6,9 +6,10 @@
  *
  * Aislada de la ruta de Qwen 2 a propósito. Comparten apellido pero NO
  * contrato: Qwen 2 manda `image_url` (singular, a veces string suelto) y aquí
- * el campo es `image_urls` (array). Los prompts de clone/deepfake de Qwen 2
- * están calibrados A/B contra `qwen2/image-edit` y NO se heredan a ciegas: esta
- * v1 cubre el path plano (cara) y el de clone, ambos con los helpers comunes.
+ * el campo es `image_urls` (array). Los prompts de Qwen 2 NO se heredan a
+ * ciegas: los tramos del Clone Ref salen de `cloneTier`, y el tramo EXACT es el
+ * modo LIENZO calibrado en seedream.ts / wan.ts (ropa y pose mandan desde la
+ * imagen, cuerpo clavado en cm, pelo = color de la avatar + peinado de la foto).
  */
 
 import type { ImageRoute, ImageRouteContext, KieImageRequest } from '../context'
@@ -66,10 +67,11 @@ async function build(ctx: ImageRouteContext): Promise<KieImageRequest> {
     const eyes = eyeClause(ctx.eyeEmphasis)
     // El cuerpo solo si la ESCENA no lo trae ya (el usuario pegó el spec del
     // perfil o una hoja del Body Lab): inyectarlo dos veces lo amplifica.
-    const body =
-        ctx.bodyEmphasis && !/hip-to-waist ratio/i.test(escena)
-            ? ` Her body: ${capAtWordBoundary(ctx.bodyEmphasis, BODY_CAP, ctx.model)}.`
-            : ''
+    const bodyAllowed =
+        !!ctx.bodyEmphasis && !/hip-to-waist ratio/i.test(escena)
+    const body = bodyAllowed
+        ? ` Her body: ${capAtWordBoundary(ctx.bodyEmphasis!, BODY_CAP, ctx.model)}.`
+        : ''
     const identidad = `${hair}${eyes}${body}${INTACT_BODY_CLAUSE}`
 
     const faceUrl = await ctx.uploadRef(ctx.referenceImage)
@@ -109,21 +111,73 @@ async function build(ctx: ImageRouteContext): Promise<KieImageRequest> {
         // con esas palabras. Adaptado a Qwen: el clone es la imagen 1 (lienzo)
         // y la cara la 2, así que aquí es "the FIRST image".
         const tier = cloneTier(ctx.cloneWeight ?? 100).key
-        const outfit = ctx.nsfwIntent ? '' : 'outfit, '
+        // La ropa se ordena desde la IMAGEN, nunca "as the scene describes": el
+        // caption de Gemini es una lotería — la MISMA foto salió descrita como
+        // "bodysuit with integrated feet" y, en la corrida siguiente, como
+        // "bodysuit" a secas (= leotardo) → piernas y pies desnudos (20-sep).
+        const dressTail = ctx.nsfwIntent
+            ? ' IGNORE its clothing — follow the nudity described in the scene below.'
+            : ' Keep her FULLY dressed; do NOT remove or reduce clothing.'
+
+        // ── EXACT = modo LIENZO (espejo de seedream.ts / wan.ts en canvas) ──
+        // Reporte 20-sep 18:28: Clone 100% salió con piernas y pies desnudos,
+        // otra pose (mano apoyada en la barra) y muslos repintados; Seedream,
+        // con el MISMO clone y el MISMO caption, devolvió la foto. Además del
+        // caption como fuente del vestuario (arriba), el descriptor completo
+        // del cuerpo ("very large prominent bubble butt… thighs almost
+        // touching") es, para un motor que EDITA la imagen 1, una orden de
+        // repintar la parte de abajo — y al repintarla se van la prenda y la
+        // pose (las dos corridas, con textos de outfit distintos, comparten el
+        // mismo cuerpo y la misma mano apoyada). En lienzo el cuerpo se CLAVA
+        // (cm + el candado anti-ensanche de la ruta de Qwen 2), no se describe;
+        // el pelo es COLOR de la avatar + peinado de la foto (regla calibrada de
+        // Seedream/Wan: la hairClause autoritativa pelea con el lienzo); y el
+        // texto de escena queda subordinado a la foto. Las dos decisiones las
+        // tomó el usuario el 20-sep. Los tramos de abajo NO cambian: a 65% es
+        // "otra toma" y ahí sí manda la ficha entera de pelo y cuerpo.
+        if (tier === 'exact') {
+            const outfitExact = ctx.nsfwIntent
+                ? ''
+                : 'outfit (every garment piece, including any sunglasses, eyewear, hat, jewellery and accessories — NO restyling, NO merging pieces, and a full-length garment stays full-length down to the feet), '
+            const dressExact = ctx.nsfwIntent
+                ? dressTail
+                : ' Keep her FULLY dressed as shown; do NOT remove or reduce clothing.'
+            const lienzo = `The FIRST image is the original photo to recreate — reproduce it EXACTLY: keep the SAME ${outfitExact}pose, hands, framing, camera angle, background, setting and its lighting, shadows and colour grade. Do NOT re-imagine the scene.${dressExact} REMOVE overlaid stickers/watermarks/emojis — output a clean photo.`
+            const faceSwap =
+                " Swap ONLY the FACE: the output face is 100% the woman in the SECOND image and 0% the person in the first — her exact features, bone structure and likeness; never keep the first image's original face. Match the head angle and direction of the first image, and relight the face to the scene's own light with the same grain and skin texture as the rest of the photo — no pasted-on look."
+            const colour = hairColourOnly(ctx.hairEmphasis)
+            const hairColour = colour
+                ? ` Her hair COLOUR is ${colour} — recolor if needed; keep the exact hairstyle, cut, length and up/down styling from the first image.`
+                : ''
+            const dense = bodyAllowed ? denseBodySpec(ctx.bodyEmphasis!) : ''
+            const bodyExact = !bodyAllowed
+                ? ''
+                : dense
+                  ? ` Her BODY measures ${dense}: keep her hip width, waist and overall frame EXACTLY at those centimetres — neither slimmer nor curvier than the numbers say; whatever glute fullness she has projects BACKWARD as depth, NOT as wide hips, thick thighs or a widened silhouette.`
+                  : ` Her silhouette keeps her own real proportions (${capAtWordBoundary(ctx.bodyEmphasis!.split(';')[0].trim(), 300, ctx.model)}).`
+            const cierre =
+                ' Render EXACTLY ONE person, her body complete with all limbs. Above all: her FACE must remain EXACTLY the woman in the SECOND image. The text after this describes the SAME photo — use it only to resolve fine details.'
+            return {
+                model: ctx.model,
+                input: baseInput(
+                    ctx,
+                    caps,
+                    `${lienzo}${faceSwap}${hairColour}${eyes}${bodyExact}${cierre} ${escena}`,
+                    [cloneUrl, faceUrl],
+                ),
+                fullApiPrompt: escena,
+            }
+        }
+
         const outfitDetail = ctx.nsfwIntent
             ? ''
             : ' (every garment, its colour, cut and accessories)'
-        const dressTail = ctx.nsfwIntent
-            ? 'IGNORE its clothing — follow the nudity described in the scene below.'
-            : 'Keep her dressed as the scene describes.'
         const fidelidad =
-            tier === 'exact'
-                ? `The FIRST image is the CLONE source: recreate its EXACT pose, body position, ${outfit}hands, objects held, framing, camera angle, lighting and setting. ${dressTail}`
-                : tier === 'strong'
-                  ? `The FIRST image is the WARDROBE, LOCATION and POSE reference: she wears that same outfit${outfitDetail}, stands in that same place and holds a pose of that same family — but this is ANOTHER SHOT of that session: shift the camera angle and the exact framing, and let her weight, hands and expression fall differently. Same wardrobe and same place, DIFFERENT photograph — never a pixel copy. ${dressTail}`
-                  : tier === 'moderate'
-                    ? `The FIRST image is a STYLE reference: keep the KIND of outfit${ctx.nsfwIntent ? '' : ' (its category, silhouette and colour palette)'}, the KIND of place and the overall mood — then reinvent the garment's details, the pose, the framing and the composition. ${dressTail}`
-                    : `The FIRST image is a MOOD reference: take ONLY its lighting quality and direction, its colour palette and its general atmosphere. Outfit, pose, framing and setting come from the scene text, not from this image.`
+            tier === 'strong'
+                ? `The FIRST image is the WARDROBE, LOCATION and POSE reference: she wears that same outfit${outfitDetail}, stands in that same place and holds a pose of that same family — but this is ANOTHER SHOT of that session: shift the camera angle and the exact framing, and let her weight, hands and expression fall differently. Same wardrobe and same place, DIFFERENT photograph — never a pixel copy.${dressTail}`
+                : tier === 'moderate'
+                  ? `The FIRST image is a STYLE reference: keep the KIND of outfit${ctx.nsfwIntent ? '' : ' (its category, silhouette and colour palette)'}, the KIND of place and the overall mood — then reinvent the garment's details, the pose, the framing and the composition.${dressTail}`
+                  : `The FIRST image is a MOOD reference: take ONLY its lighting quality and direction, its colour palette and its general atmosphere. Outfit, pose, framing and setting come from the scene text, not from this image.`
         const swap =
             'The FACE SWAP is MANDATORY: replace the face in the FIRST image ' +
             'with the face from the SECOND image (exact features and likeness) ' +
@@ -134,7 +188,7 @@ async function build(ctx: ImageRouteContext): Promise<KieImageRequest> {
             input: baseInput(
                 ctx,
                 caps,
-                `${swap}${identidad} ${fidelidad}. ${escena}`,
+                `${swap}${identidad} ${fidelidad} ${escena}`,
                 [cloneUrl, faceUrl],
             ),
             fullApiPrompt: escena,
@@ -166,6 +220,43 @@ async function build(ctx: ImageRouteContext): Promise<KieImageRequest> {
         input: baseInput(ctx, caps, prompt, [faceUrl, ...extraUrls]),
         fullApiPrompt: escena,
     }
+}
+
+/**
+ * Solo el COLOR de una descripción de pelo: tira largo, textura y la palabra
+ * "hair". Para el tramo EXACT, donde el peinado viene de la foto y de la ficha
+ * solo se toma el color (regla de seedream.ts / wan.ts en canvas). Si no queda
+ * nada —la ficha solo describía forma— devuelve la frase entera antes que un
+ * vacío, que dejaría el color a criterio del motor.
+ */
+export function hairColourOnly(hairEmphasis?: string): string {
+    if (!hairEmphasis) return ''
+    const colour = hairEmphasis
+        .replace(HAIR_SHAPE_WORDS, ' ')
+        .replace(/\b(?:in|with|into)\s+an?\s*$/i, '')
+        .replace(/\s{2,}/g, ' ')
+        .replace(/^[\s,—–-]+|[\s,—–-]+$/g, '')
+        .trim()
+    return colour || hairEmphasis
+}
+
+const HAIR_SHAPE_WORDS =
+    /\b(?:very\s+|extra\s+)?(?:long|short|medium(?:-length)?|chest-length|shoulder-length|waist-length|hip-length|chin-length|jaw-length|pixie|bob|lob|wavy|waves|straight|sleek|curly|curls|coily|kinky|braided|braids|ponytail|bun|updo|layered|layers|voluminous|messy|tousled|frizzy|silky|hairstyle|hair)\b[,\s]*/gi
+
+/**
+ * El paréntesis de cm del bodyEmphasis —"(bust Xcm, waist Ycm, hips Zcm —
+ * hip-to-waist ratio R)"— sin paréntesis; '' si la ficha no lo trae. Mismo
+ * recorte que la dieta del spec de seedream.ts (2026-07-23): con la foto como
+ * lienzo, la forma la lleva la IMAGEN y el texto solo clava los números.
+ */
+export function denseBodySpec(bodyEmphasis: string): string {
+    const i = bodyEmphasis.indexOf(' (bust')
+    if (i < 0) return ''
+    return bodyEmphasis
+        .slice(i + 1)
+        .split(';')[0]
+        .trim()
+        .replace(/^\(|\)$/g, '')
 }
 
 /** Los campos que no dependen del camino: tamaño, tramo y banderas. */
