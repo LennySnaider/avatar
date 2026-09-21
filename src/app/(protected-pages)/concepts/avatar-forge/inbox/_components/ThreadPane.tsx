@@ -15,6 +15,7 @@ import {
     regenerateDraft,
     removeDraftOffer,
     sendPpvOffer,
+    setChatHidden,
     setChatMode,
     suggestPpvOffer,
     type AgentMessageDTO,
@@ -144,7 +145,9 @@ const ThreadPane = ({ thread, onChanged }: ThreadPaneProps) => {
         : 'social'
 
     const [draftText, setDraftText] = useState(draft?.text ?? '')
-    const [busy, setBusy] = useState<'send' | 'voice' | 'regen' | 'discard' | 'removeOffer' | null>(null)
+    const [busy, setBusy] = useState<
+        'send' | 'voice' | 'regen' | 'discard' | 'removeOffer' | 'hide' | null
+    >(null)
     const [showMemory, setShowMemory] = useState(false)
     const [discardOpen, setDiscardOpen] = useState(false)
 
@@ -226,6 +229,35 @@ const ThreadPane = ({ thread, onChanged }: ThreadPaneProps) => {
                     {result.error}
                 </Notification>,
             )
+    }
+
+    // Fanvue no marca como creadoras a las cuentas que spamean con mensajes
+    // masivos: el humano las esconde aquí (ver `setChatHidden`). Al ocultarlo
+    // desaparece de la lista; se recupera desde "Show other-creator / spam".
+    const handleHidden = async () => {
+        const hide = !chat.isCreator
+        setBusy('hide')
+        try {
+            const result = await setChatHidden(chat.id, hide)
+            if (result.success) {
+                toast.push(
+                    <Notification type="success" title={hide ? 'Hidden' : 'Unhidden'}>
+                        {hide
+                            ? 'Moved to other-creator / spam chats. The agent stops drafting here.'
+                            : 'Back in the inbox. The chat stays Off until you switch it on.'}
+                    </Notification>,
+                )
+                onChanged()
+            } else {
+                toast.push(
+                    <Notification type="danger" title="Failed">
+                        {result.error}
+                    </Notification>,
+                )
+            }
+        } finally {
+            setBusy(null)
+        }
     }
 
     const handleApprove = async () => {
@@ -361,11 +393,22 @@ const ThreadPane = ({ thread, onChanged }: ThreadPaneProps) => {
                         </button>
                     )}
                 </div>
-                <Segment value={chat.mode} onChange={(val) => handleMode(val as string)}>
-                    <Segment.Item value="off">Off</Segment.Item>
-                    <Segment.Item value="draft">Draft</Segment.Item>
-                    <Segment.Item value="auto">Auto</Segment.Item>
-                </Segment>
+                <div className="flex items-center gap-2 shrink-0">
+                    <Button
+                        size="xs"
+                        variant="plain"
+                        loading={busy === 'hide'}
+                        disabled={busy !== null}
+                        onClick={handleHidden}
+                    >
+                        {chat.isCreator ? 'Unhide' : 'Hide as spam'}
+                    </Button>
+                    <Segment value={chat.mode} onChange={(val) => handleMode(val as string)}>
+                        <Segment.Item value="off">Off</Segment.Item>
+                        <Segment.Item value="draft">Draft</Segment.Item>
+                        <Segment.Item value="auto">Auto</Segment.Item>
+                    </Segment>
+                </div>
             </div>
 
             {chat.context && (

@@ -210,7 +210,12 @@ async function handleNewInbound(payload: FanvueWebhookBody) {
     if (!result) return
     await touchFanMemory(target, fanUuid)
 
-    if (result.latestFromFan && result.mode !== 'off' && target.personaEnabled) {
+    if (
+        result.latestFromFan &&
+        result.mode !== 'off' &&
+        !result.isCreator &&
+        target.personaEnabled
+    ) {
         const draft = await generateDraftReply(result.chatId)
         if (draft && result.mode === 'auto') {
             await maybeAutopilotSend(result.chatId, draft.messageId)
@@ -258,7 +263,14 @@ async function handleLegacyInbound(payload: FanvueWebhookBody) {
     await touchFanMemory(target, fanUuid, payload.sender?.displayName)
 
     // Draft if the chat is on and the persona is enabled. New inbound only.
-    if (inserted && chat.mode !== 'off' && target.personaEnabled) {
+    // Nunca en un chat oculto como spam / otra creadora, aunque alguien le
+    // haya vuelto a subir el modo: ahí cada mensaje masivo era un borrador.
+    if (
+        inserted &&
+        chat.mode !== 'off' &&
+        !chat.is_creator &&
+        target.personaEnabled
+    ) {
         const draft = await generateDraftReply(chat.id)
         if (draft && chat.mode === 'auto') {
             await maybeAutopilotSend(chat.id, draft.messageId)

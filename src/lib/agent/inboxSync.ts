@@ -186,8 +186,13 @@ export async function upsertChat(input: {
         if (input.fanAvatarUrl) patch.fan_avatar_url = input.fanAvatarUrl
         if (input.lastMessageAt) patch.last_message_at = input.lastMessageAt
         if (input.lastFanMessageAt) patch.last_fan_message_at = input.lastFanMessageAt
-        // Keep the creator flag fresh, but NEVER override a mode the user set.
-        if (input.isCreator !== undefined) patch.is_creator = input.isCreator
+        // El flag de creador sólo SUBE, nunca baja: los llamadores pasan
+        // `false` en cada sync (Fanvue manda `isCreator: false` hasta para las
+        // creadoras que spamean con mensajes masivos — 0 chats marcados en
+        // producción el 2026-09-21), y eso pisaba cada 5 min la marca que el
+        // humano pone con "Hide as spam" (`setChatHidden`). Quitarla es cosa
+        // del humano, no del sync. Y NUNCA se pisa un modo que eligió él.
+        if (input.isCreator) patch.is_creator = true
         if (input.context !== undefined) patch.context = input.context
         const { data, error } = await supabase
             .from('agent_chats')
@@ -322,7 +327,12 @@ export async function ingestFanChat(input: {
     target: ResolvedTarget
     fanUuid: string
     connectionAccountUuid: string | null
-}): Promise<{ chatId: string; latestFromFan: boolean; mode: string } | null> {
+}): Promise<{
+    chatId: string
+    latestFromFan: boolean
+    mode: string
+    isCreator: boolean
+} | null> {
     const client = makeFanvueClient(input.userId)
     const creatorSideUuids = new Set<string>(
         [input.target.creatorUuid, input.connectionAccountUuid].filter((v): v is string => Boolean(v)),
@@ -364,5 +374,6 @@ export async function ingestFanChat(input: {
         chatId: chat.id,
         latestFromFan: Boolean(latest && messageDirection(latest, creatorSideUuids) === 'in'),
         mode: chat.mode,
+        isCreator: chat.is_creator,
     }
 }

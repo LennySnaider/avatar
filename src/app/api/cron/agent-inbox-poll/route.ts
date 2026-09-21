@@ -62,6 +62,11 @@ export async function GET(request: NextRequest) {
     let polled = 0
     let chatCount = 0
     let drafts = 0
+    /** Chats que Fanvue marca `isCreator` — diagnóstico: el 2026-09-21 había
+     *  0 marcados en producción con creadoras spameando a MiaUltra, así que
+     *  la marca real la pone el humano ("Hide as spam"). Si esto sale > 0,
+     *  Fanvue sí distingue a alguien. */
+    let fanvueCreators = 0
 
     for (const avatar of avatars ?? []) {
         if (!avatar.user_id) continue
@@ -95,6 +100,7 @@ export async function GET(request: NextRequest) {
                 size: 15,
             })
             polled++
+            fanvueCreators += chatsRes.data.filter((s) => s.isCreator).length
             for (const summary of chatsRes.data) {
                 // Resiliencia POR CHAT: Fanvue devuelve 400 "Invalid user
                 // UUID" en /messages para hilos cuyo interlocutor no es un
@@ -144,6 +150,7 @@ export async function GET(request: NextRequest) {
                     if (
                         anyInserted &&
                         chat.mode !== 'off' &&
+                        !chat.is_creator &&
                         latest &&
                         messageDirection(latest, creatorSideUuids) === 'in'
                     ) {
@@ -179,5 +186,15 @@ export async function GET(request: NextRequest) {
         }
     }
 
-    return NextResponse.json({ polled, chats: chatCount, drafts })
+    if (polled > 0) {
+        console.log(
+            `[agent-inbox-poll] ${polled} avatares · ${chatCount} chats · ${fanvueCreators} marcados creador por Fanvue · ${drafts} borradores`,
+        )
+    }
+    return NextResponse.json({
+        polled,
+        chats: chatCount,
+        drafts,
+        fanvueCreators,
+    })
 }

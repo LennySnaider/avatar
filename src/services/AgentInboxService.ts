@@ -446,6 +446,59 @@ export async function setChatMode(
     }
 }
 
+/**
+ * "Hide as spam": marca el chat como de otra creadora / spam (`is_creator`),
+ * que es lo que la lista del Inbox ya esconde por defecto. Hace falta a mano
+ * porque Fanvue no marca a nadie (ver `upsertChat`): creadoras que mandan
+ * cientos de mensajes masivos salían como fans normales, en modo draft y
+ * gastando un borrador de LLM por mensaje.
+ *
+ * Al ocultar: modo `off` (el agente deja de redactar) y los borradores
+ * pendientes se descartan — si no, seguirían contando en "Pending drafts".
+ * Van sin `discard_reason`: esa lista mide la CALIDAD de los borradores
+ * (ver `DISCARD_REASONS`) y aquí el borrador no tenía nada de malo.
+ *
+ * Al mostrar de nuevo sólo se quita la marca: el modo se queda en `off` y
+ * el humano lo sube si quiere que el agente vuelva a redactar.
+ */
+export async function setChatHidden(
+    chatId: string,
+    hidden: boolean,
+): Promise<InboxResult<{ id: string; isCreator: boolean }>> {
+    try {
+        const ctx = await getOrgContext()
+        requirePermission(ctx, 'inbox:reply')
+        const now = new Date().toISOString()
+        const patch: Record<string, unknown> = hidden
+            ? { is_creator: true, mode: 'off', updated_at: now }
+            : { is_creator: false, updated_at: now }
+        const { data, error } = await orgTable(ctx, 'agent_chats')
+            .update(patch)
+            .eq('id', chatId)
+            .select('id, is_creator')
+            .single()
+        if (error) throw new Error(error.message)
+        if (hidden) {
+            const { error: draftsError } = await orgTable(ctx, 'agent_messages')
+                .update({
+                    status: 'discarded',
+                    discard_note: 'Chat hidden as spam / other creator',
+                    updated_at: now,
+                })
+                .eq('chat_id', chatId)
+                .eq('status', 'draft')
+            if (draftsError) throw new Error(draftsError.message)
+        }
+        const updated = data as { id: string; is_creator: boolean }
+        return {
+            success: true,
+            data: { id: updated.id, isCreator: updated.is_creator },
+        }
+    } catch (e) {
+        return fail('setChatHidden', e)
+    }
+}
+
 export async function regenerateDraft(
     chatId: string,
 ): Promise<InboxResult<AgentMessageDTO>> {
@@ -1211,6 +1264,7 @@ export async function syncFanvueInbox(
                 if (
                     target.personaEnabled &&
                     chat.mode !== 'off' &&
+                    !chat.is_creator &&
                     latest &&
                     messageDirection(latest, creatorSideUuids) === 'in'
                 ) {
