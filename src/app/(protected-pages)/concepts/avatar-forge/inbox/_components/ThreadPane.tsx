@@ -127,10 +127,41 @@ const ThreadPane = ({ thread, onChanged }: ThreadPaneProps) => {
     const { chat, messages, fanMemory, hasVoice } = thread
     const draft = messages.find((m) => m.status === 'draft')
     const conversation = messages.filter((m) => m.status !== 'draft')
-    // Chats donde sólo escribió el avatar (p.ej. la bienvenida a un seguidor
-    // que nunca contestó): no hay nada a lo que responder y el borrador
-    // fallaría. Se dice en vez de dejar pulsar y dar error.
+    // Qué redacta "Generate draft" (ver `DraftOptions.reengage`): si el
+    // último mensaje es del fan, una respuesta; si no, un mensaje para
+    // reactivar — primer mensaje si el fan nunca escribió (la bienvenida a un
+    // seguidor que no contestó), seguimiento si no contestó al último del
+    // avatar. En un comentario público no se reactiva nada.
     const fanHasWritten = conversation.some((m) => m.direction === 'in')
+    const lastMessage = conversation[conversation.length - 1]
+    const draftKind: 'reply' | 'followup' | 'opener' | 'none' =
+        lastMessage?.direction === 'in'
+            ? 'reply'
+            : chat.channel === 'social_comment'
+              ? fanHasWritten
+                  ? 'reply'
+                  : 'none'
+              : fanHasWritten
+                ? 'followup'
+                : 'opener'
+    const DRAFT_COPY: Record<
+        typeof draftKind,
+        { hint: string; button: string }
+    > = {
+        reply: {
+            hint: 'No draft. Regenerate one, or the agent will draft when the fan writes.',
+            button: 'Generate draft',
+        },
+        followup: {
+            hint: "The fan hasn't replied to your last message. Generate a follow-up to re-engage them.",
+            button: 'Generate follow-up',
+        },
+        opener: {
+            hint: "The fan hasn't written yet. Generate an opener to start the conversation.",
+            button: 'Generate opener',
+        },
+        none: { hint: 'Nothing to reply to yet.', button: 'Generate draft' },
+    }
 
     // Acciones que sólo hablan Fanvue (nota de voz por TTS, PPV con precio en
     // centavos). En un chat de Telegram o de comentarios sociales no pueden
@@ -448,7 +479,7 @@ const ThreadPane = ({ thread, onChanged }: ThreadPaneProps) => {
     const factEntries = Object.entries(fanMemory?.facts ?? {})
 
     return (
-        <div className="flex flex-col h-full">
+        <div className="flex flex-col h-full min-h-0 lg:flex-1">
             {/* Header */}
             <div className="p-3 border-b border-gray-100 dark:border-gray-700 flex items-center justify-between gap-2">
                 <div className="min-w-0">
@@ -537,7 +568,7 @@ const ThreadPane = ({ thread, onChanged }: ThreadPaneProps) => {
             )}
 
             {/* Messages */}
-            <div className="flex-1 overflow-y-auto p-3 flex flex-col gap-2 max-h-[45vh]">
+            <div className="flex-1 min-h-0 overflow-y-auto p-3 flex flex-col gap-2 max-h-[45vh] lg:max-h-none">
                 {conversation.length === 0 && (
                     <p className="text-sm text-gray-400">No messages yet.</p>
                 )}
@@ -738,17 +769,15 @@ const ThreadPane = ({ thread, onChanged }: ThreadPaneProps) => {
                 ) : (
                     <div className="flex items-center justify-between gap-2">
                         <p className="text-xs text-gray-400">
-                            {fanHasWritten
-                                ? 'No draft. Regenerate one, or the agent will draft when the fan writes.'
-                                : "The fan hasn't written yet — there's nothing to reply to. The agent will draft when they do."}
+                            {DRAFT_COPY[draftKind].hint}
                         </p>
                         <Button
                             size="sm"
                             loading={busy === 'regen'}
-                            disabled={busy !== null || !fanHasWritten}
+                            disabled={busy !== null || draftKind === 'none'}
                             onClick={handleRegenerate}
                         >
-                            Generate draft
+                            {DRAFT_COPY[draftKind].button}
                         </Button>
                     </div>
                 )}

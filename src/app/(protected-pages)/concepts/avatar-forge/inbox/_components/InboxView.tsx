@@ -174,10 +174,17 @@ const InboxView = ({
                 </div>
             )}
 
-            <div className="grid grid-cols-1 lg:grid-cols-[340px_1fr] gap-4">
+            {/*
+                En pantalla ancha la bandeja ocupa el alto de la ventana (menos
+                cabecera, título y tira de métricas) y cada panel hace scroll
+                por dentro: antes el hilo tenía un tope de 45vh y quedaba un
+                hueco vacío debajo. En móvil sigue apilado con sus topes.
+            */}
+            <div className="grid grid-cols-1 lg:grid-cols-[340px_1fr] gap-4 lg:h-[calc(100dvh-16rem)] lg:min-h-140">
                 {/* Chat list */}
                 <Card
-                    className={`p-0! overflow-hidden transition-opacity ${isSwitching ? 'opacity-60' : ''}`}
+                    className={`p-0! overflow-hidden transition-opacity lg:h-full ${isSwitching ? 'opacity-60' : ''}`}
+                    bodyClass="lg:h-full lg:flex lg:flex-col lg:min-h-0"
                 >
                     {avatars.length > 1 && (
                         <div className="p-3 pb-0">
@@ -227,7 +234,7 @@ const InboxView = ({
                             ? '← Hide other-creator / spam chats'
                             : 'Show other-creator / spam chats (hidden)'}
                     </button>
-                    <div className="max-h-[65vh] overflow-y-auto">
+                    <div className="max-h-[65vh] overflow-y-auto lg:max-h-none lg:flex-1 lg:min-h-0">
                         {filtered.length === 0 ? (
                             <p className="text-sm text-gray-500 p-4">
                                 {avatarId
@@ -288,7 +295,10 @@ const InboxView = ({
                 </Card>
 
                 {/* Thread */}
-                <Card className="p-0! overflow-hidden min-h-[65vh]">
+                <Card
+                    className="p-0! overflow-hidden min-h-[65vh] lg:min-h-0 lg:h-full"
+                    bodyClass="lg:h-full lg:flex lg:flex-col lg:min-h-0"
+                >
                     {isLoadingThread ? (
                         <p className="text-sm text-gray-500 p-4">Loading conversation…</p>
                     ) : thread ? (
