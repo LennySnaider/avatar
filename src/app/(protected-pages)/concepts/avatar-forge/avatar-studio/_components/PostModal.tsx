@@ -1,9 +1,10 @@
 'use client'
 
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import Link from 'next/link'
 import Dialog from '@/components/ui/Dialog'
 import Card from '@/components/ui/Card'
+import Select from '@/components/ui/Select'
 import Button from '@/components/ui/Button'
 import Input from '@/components/ui/Input'
 import Checkbox from '@/components/ui/Checkbox'
@@ -20,7 +21,19 @@ import {
     HiChevronLeft,
     HiChevronRight,
 } from 'react-icons/hi'
-import { createSocialPost, getSocialProfileAction } from '@/services/SocialService'
+import {
+    createSocialPost,
+    getSocialProfileAction,
+    listTikTokMusic,
+} from '@/services/SocialService'
+import {
+    TIKTOK_MUSIC_DATE_RANGES,
+    TIKTOK_MUSIC_GENRES,
+    DEFAULT_TIKTOK_MUSIC_GENRE,
+    DEFAULT_TIKTOK_MUSIC_DATE_RANGE,
+    type TikTokMusicDateRange,
+    type TikTokMusicTrack,
+} from '@/lib/social/tiktokMusic'
 import { createFanvuePost, getFanvueConnection } from '@/services/FanvueService'
 import { apiGetAvatarById } from '@/services/AvatarForgeService'
 import { generateSocialCaption, translateSocialCaption } from '@/services/GeminiService'
@@ -106,6 +119,18 @@ const PostModal = ({
     const [selectedPlatforms, setSelectedPlatforms] = useState<string[]>([])
     // Fotos verticales en el feed de Instagram: ver instagramFitRules.
     const [instagramFit, setInstagramFit] = useState<InstagramFit>(DEFAULT_INSTAGRAM_FIT)
+    // Música NATIVA de TikTok (Commercial Music Library). Es la única
+    // adjuntable por API; en Instagram la música sigue teniendo que venir
+    // horneada desde el Video Editor.
+    const [tiktokTracks, setTiktokTracks] = useState<TikTokMusicTrack[] | null>(null)
+    const [tiktokTrack, setTiktokTrack] = useState<TikTokMusicTrack | null>(null)
+    const [musicGenre, setMusicGenre] = useState<string>(DEFAULT_TIKTOK_MUSIC_GENRE)
+    const [musicRange, setMusicRange] = useState<TikTokMusicDateRange>(
+        DEFAULT_TIKTOK_MUSIC_DATE_RANGE,
+    )
+    const [musicLoading, setMusicLoading] = useState(false)
+    const [musicError, setMusicError] = useState<string | null>(null)
+
     const [hasSocialAccount, setHasSocialAccount] = useState(false)
     const [fanvueConnected, setFanvueConnected] = useState(false)
     // The Fanvue creator THIS avatar maps to (agency mode). Null when the avatar
@@ -128,6 +153,33 @@ const PostModal = ({
     // media's own avatar (generations.avatar_id) wins; the studio's current
     // avatar covers avatar-less auto-saves. Null → social publishing is off.
     const effectiveAvatarId = media?.avatarId ?? fallbackAvatarId ?? null
+
+    const loadTikTokMusic = useCallback(
+        async (genre: string, dateRange: TikTokMusicDateRange) => {
+            if (!effectiveAvatarId) return
+            setMusicLoading(true)
+            setMusicError(null)
+            try {
+                const res = await listTikTokMusic({
+                    avatarId: effectiveAvatarId,
+                    genre,
+                    dateRange,
+                })
+                if (res.success) {
+                    setTiktokTracks(res.data ?? [])
+                } else {
+                    setTiktokTracks([])
+                    setMusicError(res.error ?? 'Could not load sounds')
+                }
+            } catch (e) {
+                setTiktokTracks([])
+                setMusicError(e instanceof Error ? e.message : 'Could not load sounds')
+            } finally {
+                setMusicLoading(false)
+            }
+        },
+        [effectiveAvatarId],
+    )
     // Persisted gallery items carry no avatarInfo — resolve the owner's name
     // so the hints can say WHICH avatar the media belongs to.
     const [ownerName, setOwnerName] = useState<string | null>(null)
@@ -499,6 +551,7 @@ const PostModal = ({
                         platforms: selectedPlatforms,
                         scheduledAt,
                         instagramFit,
+                        tiktokMusicId: tiktokTrack?.id ?? null,
                     }).then((r) => ({
                         label: selectedPlatforms
                             .map((p) => p[0].toUpperCase() + p.slice(1))
@@ -908,6 +961,124 @@ const PostModal = ({
                                             </Checkbox>
                                         ))}
                                     </div>
+                                    {isVideo && selectedPlatforms.includes('tiktok') && (
+                                        <div>
+                                            <div className="flex items-center justify-between gap-2 mb-1">
+                                                <p className="text-xs text-gray-400">
+                                                    TikTok sound (optional) — a native licensed
+                                                    track, shown on its own sound page
+                                                </p>
+                                                <Button
+                                                    size="xs"
+                                                    variant="plain"
+                                                    loading={musicLoading}
+                                                    onClick={() =>
+                                                        loadTikTokMusic(musicGenre, musicRange)
+                                                    }
+                                                >
+                                                    {tiktokTracks === null ? 'Browse' : 'Refresh'}
+                                                </Button>
+                                            </div>
+
+                                            {tiktokTracks !== null && (
+                                                <>
+                                                    <div className="flex flex-wrap gap-2 mb-2">
+                                                        <Select
+                                                            size="sm"
+                                                            className="min-w-[10rem]"
+                                                            value={{
+                                                                value: musicGenre,
+                                                                label: musicGenre,
+                                                            }}
+                                                            options={TIKTOK_MUSIC_GENRES.map((g) => ({
+                                                                value: g,
+                                                                label: g,
+                                                            }))}
+                                                            onChange={(opt: { value: string; label: string } | null) => {
+                                                                const g = opt?.value ?? DEFAULT_TIKTOK_MUSIC_GENRE
+                                                                setMusicGenre(g)
+                                                                void loadTikTokMusic(g, musicRange)
+                                                            }}
+                                                        />
+                                                        <Select
+                                                            size="sm"
+                                                            className="min-w-[8rem]"
+                                                            value={{
+                                                                value: musicRange,
+                                                                label: musicRange,
+                                                            }}
+                                                            options={TIKTOK_MUSIC_DATE_RANGES.map((r) => ({
+                                                                value: r,
+                                                                label: r,
+                                                            }))}
+                                                            onChange={(opt: { value: string; label: string } | null) => {
+                                                                const r = (opt?.value ??
+                                                                    DEFAULT_TIKTOK_MUSIC_DATE_RANGE) as TikTokMusicDateRange
+                                                                setMusicRange(r)
+                                                                void loadTikTokMusic(musicGenre, r)
+                                                            }}
+                                                        />
+                                                    </div>
+
+                                                    {musicError ? (
+                                                        <p className="text-xs text-amber-600 dark:text-amber-400">
+                                                            {musicError}
+                                                        </p>
+                                                    ) : tiktokTracks.length === 0 ? (
+                                                        <p className="text-xs text-gray-400">
+                                                            No trending tracks for this genre or
+                                                            period. TikTok has no search by title —
+                                                            try another combination.
+                                                        </p>
+                                                    ) : (
+                                                        <div className="max-h-48 overflow-y-auto pr-1 flex flex-col gap-1">
+                                                            {tiktokTracks.map((track) => (
+                                                                <button
+                                                                    key={track.id}
+                                                                    type="button"
+                                                                    onClick={() =>
+                                                                        setTiktokTrack(
+                                                                            tiktokTrack?.id === track.id
+                                                                                ? null
+                                                                                : track,
+                                                                        )
+                                                                    }
+                                                                    className={`flex items-center gap-2 rounded-lg px-2 py-1.5 text-left transition-colors ${
+                                                                        tiktokTrack?.id === track.id
+                                                                            ? 'bg-primary-subtle'
+                                                                            : 'hover:bg-gray-100 dark:hover:bg-gray-700'
+                                                                    }`}
+                                                                >
+                                                                    <span className="text-xs text-gray-400 w-5 shrink-0">
+                                                                        {track.rank ?? ''}
+                                                                    </span>
+                                                                    <span className="min-w-0">
+                                                                        <span className="block text-sm truncate">
+                                                                            {track.title}
+                                                                        </span>
+                                                                        {track.artist && (
+                                                                            <span className="block text-xs text-gray-400 truncate">
+                                                                                {track.artist}
+                                                                            </span>
+                                                                        )}
+                                                                    </span>
+                                                                </button>
+                                                            ))}
+                                                        </div>
+                                                    )}
+
+                                                    {tiktokTrack && (
+                                                        <p className="text-xs text-gray-400 mt-2">
+                                                            TikTok gets this track natively.
+                                                            {selectedPlatforms.length > 1
+                                                                ? ' The other networks get your video as it is — their music has to be baked in from the Video Editor.'
+                                                                : ''}
+                                                        </p>
+                                                    )}
+                                                </>
+                                            )}
+                                        </div>
+                                    )}
                                     {selectedPlatforms.includes('instagram') && (
                                         <div>
                                             <p className="text-xs text-gray-400 mb-1">

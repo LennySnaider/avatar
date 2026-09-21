@@ -22,6 +22,7 @@ import { appendHashtagsToCaption } from '@/lib/social/hashtagHelpers'
 import { buildTikTokPhotoText } from '@/lib/social/tiktokPhotoText'
 import { audioLabelFromMetadata } from '@/lib/social/audioLabel'
 import { planMusicDispatch, type MusicDispatchLeg } from '@/lib/social/musicDispatch'
+import type { TikTokMusicDateRange, TikTokMusicTrack } from '@/lib/social/tiktokMusic'
 import { validateSocialCommentSettingsPatch } from '@/lib/social/comments/settingsValidation'
 import { ALL_PLATFORMS } from '@/@types/social'
 import type { Platform, PlatformTarget } from '@/@types/social'
@@ -1162,6 +1163,49 @@ export async function createSocialPost(input: CreateSocialPostInput): Promise<So
 
         const [enriched] = await attachAvatarInfo(ctx, [row as SocialPostDbRow])
         return { success: true, data: enriched }
+    } catch (e) {
+        return fail(e)
+    }
+}
+
+/**
+ * Charts de la Commercial Music Library de TikTok para el avatar dado.
+ *
+ * Es la única música adjuntable por API: la pista se manda por
+ * `tiktok_music_id` y sale como sonido NATIVO, con su página y sin riesgo de
+ * muteo. El endpoint NO busca por título — sólo devuelve trending, así que
+ * para ampliar hay que cambiar género, país o periodo.
+ */
+export async function listTikTokMusic(input: {
+    avatarId: string
+    genre?: string
+    countryCode?: string
+    dateRange?: TikTokMusicDateRange
+}): Promise<SocialResult<TikTokMusicTrack[]>> {
+    try {
+        const ctx = await getOrgContext()
+        requirePermission(ctx, 'content:read')
+
+        const { data: profile } = await orgTable(ctx, 'social_profiles')
+            .select('*')
+            .eq('avatar_id', input.avatarId)
+            .eq('status', 'active')
+            .maybeSingle()
+        if (!profile) {
+            return {
+                success: false,
+                error: 'This avatar has no Upload-Post profile — create or assign one in Social Accounts',
+            }
+        }
+
+        const provider = getSocialProvider()
+        const tracks = await provider.listTikTokMusic({
+            profile: profile.upload_post_username,
+            genre: input.genre,
+            countryCode: input.countryCode,
+            dateRange: input.dateRange,
+        })
+        return { success: true, data: tracks }
     } catch (e) {
         return fail(e)
     }
