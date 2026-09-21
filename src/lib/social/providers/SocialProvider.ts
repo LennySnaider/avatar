@@ -20,6 +20,10 @@ import type {
   SocialCommentsPage,
   UploadPostHistoryEntry,
 } from '@/@types/social'
+import type {
+  TikTokMusicDateRange,
+  TikTokMusicTrack,
+} from '@/lib/social/tiktokMusic'
 
 // ---------------------------------------------------------------------------
 // Shared value types
@@ -67,6 +71,19 @@ export interface PublishParams {
   platforms: PlatformTarget[]
   title?: string
   scheduledAt?: Date
+}
+
+/**
+ * Pistas de la Commercial Music Library de TikTok. Es la única música
+ * adjuntable por API: `TikTokMusicTrack.id` viaja como `tiktok_music_id`.
+ * Sólo charts de trending — el proveedor NO ofrece búsqueda por título.
+ */
+export interface ListTikTokMusicParams {
+  /** Username de Upload-Post del avatar. */
+  profile: string
+  genre?: string
+  countryCode?: string
+  dateRange?: TikTokMusicDateRange
 }
 
 export interface VideoPostParams extends PublishParams {
@@ -186,6 +203,11 @@ export interface SocialProvider {
   validateJwt(
     token: string,
   ): Promise<{ valid: boolean; username?: string }>
+
+  // --- Música nativa (sólo TikTok) ---
+  /** Charts de la Commercial Music Library. Sin búsqueda por título: para
+   *  ampliar se cambia género, país o periodo. */
+  listTikTokMusic(params: ListTikTokMusicParams): Promise<TikTokMusicTrack[]>
 
   // --- Publishing ---
   publishVideo(params: VideoPostParams): Promise<PublishResponse>

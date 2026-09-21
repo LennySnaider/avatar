@@ -36,6 +36,7 @@ import type {
   GenerateConnectUrlParams,
   GenerateConnectUrlResult,
   HistoryEntry,
+  ListTikTokMusicParams,
   PhotoPostParams,
   PlatformPage,
   ProfileDetails,
@@ -53,6 +54,11 @@ import type {
 // El armado del multipart vive aparte para poder testearlo sin red: ahí está
 // documentado por qué `audio_name` NO puede viajar prefijado.
 import { buildPublishForm, buildVideoUploadForm } from './uploadPostForm'
+import {
+  buildTikTokMusicQuery,
+  normalizeTikTokMusicTrack,
+  type TikTokMusicTrack,
+} from '@/lib/social/tiktokMusic'
 
 // `RateLimitInfo` vive en `SocialProvider.ts` (F4.2 Tarea 5): la interfaz
 // declara `getLastRateLimit()` y este archivo re-exporta el tipo por
@@ -452,6 +458,21 @@ export class UploadPostProvider implements SocialProvider {
   // -------------------------------------------------------------------------
   // Publishing
   // -------------------------------------------------------------------------
+
+  /**
+   * Charts de la Commercial Music Library. El endpoint NO busca por título —
+   * sólo devuelve trending por género/país/periodo (doc del proveedor).
+   * Las filas inservibles se descartan en vez de tumbar la lista.
+   */
+  async listTikTokMusic(params: ListTikTokMusicParams): Promise<TikTokMusicTrack[]> {
+    const res = await this.request<{ tracks?: unknown[] }>(
+      '/api/uploadposts/tiktok/music/trending',
+      { query: buildTikTokMusicQuery(params) },
+    )
+    return (res?.tracks ?? [])
+      .map(normalizeTikTokMusicTrack)
+      .filter((t): t is TikTokMusicTrack => t !== null)
+  }
 
   async publishVideo(params: VideoPostParams): Promise<PublishResponse> {
     const fd = buildVideoUploadForm(params)
