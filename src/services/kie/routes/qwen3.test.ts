@@ -1,7 +1,13 @@
 // src/services/kie/routes/qwen3.test.ts
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { qwen3Route, hairColourOnly } from './qwen3.ts'
+import { qwen3Route, hairColourOnly, bodyLock } from './qwen3.ts'
+import {
+    BUST_LEVEL_PHRASE,
+    GLUTES_LEVEL_PHRASE,
+    HIP_WIDTH_PHRASE,
+    THIGHS_LEVEL_PHRASE,
+} from '../../../utils/bodyDescriptors.ts'
 import type { ImageRouteContext } from '../context.ts'
 import type { KieRefWithRole } from '../shared.ts'
 
@@ -334,6 +340,62 @@ test('los tramos de abajo también integran la cara a la luz de la foto', async 
         assert.match(p, /relight/, `al ${w}% no se pide relight`)
         assert.match(p, /no pasted-on look/, `al ${w}% no se pide integrar`)
     }
+})
+
+// La ficha de MiaUltra tal como la arma el Studio: prosa + los cuatro sliders
+// (por sus constantes) + las formas. Reporte 20-sep: con esto entero, Qwen 3
+// pintaba cadera enorme y cintura de avispa sobre cadera 90 / anchura 2 — y
+// también con los niveles solos, y también con la hoja de cuerpo como imagen.
+// Solo cm + candado (+ la anchura) salió proporcionado, en tres escenas.
+const FICHA_MIA =
+    `hourglass silhouette — shoulders and hips balanced in width, naturally defined waist, long legs, ${HIP_WIDTH_PHRASE[2]}, classic hourglass silhouette (bust 89cm, waist 60cm, hips 90cm — hip-to-waist ratio 1.50); emphasized curves: ${BUST_LEVEL_PHRASE[3]}, perfectly round breasts — even fullness in every direction, ${GLUTES_LEVEL_PHRASE[5]}, perfectly round glutes — evenly rounded in every direction, symmetric youthful shape, ${THIGHS_LEVEL_PHRASE[4]}, her glutes taper smoothly into her thighs in one continuous natural line`
+
+test('en TODOS los tramos el cuerpo son los cm clavados + la anchura, nada de volumen', async () => {
+    const casos: Partial<ImageRouteContext>[] = [
+        { cloneWeight: 100 },
+        { cloneWeight: 65 },
+        { cloneWeight: 40 },
+        { referenceImages: undefined, cloneWeight: undefined }, // sin clone
+    ]
+    for (const over of casos) {
+        const p = await promptDe(exact({ bodyEmphasis: FICHA_MIA, ...over }))
+        assert.match(
+            p,
+            /Her BODY measures bust 89cm, waist 60cm, hips 90cm — hip-to-waist ratio 1\.50: keep her hip width, waist and overall frame EXACTLY/,
+        )
+        assert.ok(p.includes(HIP_WIDTH_PHRASE[2]), 'falta la anchura del slider')
+        // Ninguna señal de volumen: ni niveles, ni formas, ni prosa.
+        assert.equal(p.includes(GLUTES_LEVEL_PHRASE[5]), false, 'viaja el nivel de glúteo')
+        assert.equal(p.includes(THIGHS_LEVEL_PHRASE[4]), false, 'viaja el nivel de muslos')
+        assert.equal(p.includes(BUST_LEVEL_PHRASE[3]), false, 'viaja el nivel de busto')
+        assert.doesNotMatch(
+            p,
+            /perfectly round|evenly rounded|taper smoothly|classic hourglass silhouette|Her body: hourglass/,
+        )
+    }
+})
+
+test('la hoja de cuerpo NO viaja a Qwen 3; los assets sí', async () => {
+    // Medido 20-sep: con la hoja como imagen 2, cadera enorme aun con el cuerpo
+    // en cm (2/2); sin la hoja, proporcionada. Qwen 2 lo tenía anotado.
+    const conHoja = await qwen3Route.build(
+        ctx({ referenceImages: [ref('body'), ref('bust'), ref('glutes')] }),
+    )
+    assert.deepEqual(conHoja.input.image_urls, ['https://r2.example/face.png'])
+    const conAsset = await qwen3Route.build(ctx({ referenceImages: [ref('asset')] }))
+    assert.deepEqual(conAsset.input.image_urls, [
+        'https://r2.example/face.png',
+        'https://r2.example/asset.png',
+    ])
+})
+
+test('bodyLock: sin cm cae a la silueta compacta, con anchura si la hay', () => {
+    assert.equal(
+        bodyLock('hourglass, 90-60-100', 'qwen3/pro-image-to-image'),
+        ' Her silhouette keeps her own real proportions (hourglass, 90-60-100).',
+    )
+    const conAnchura = bodyLock(`pear, ${HIP_WIDTH_PHRASE[5]}`, 'qwen3/pro-image-to-image')
+    assert.ok(conAnchura.includes(HIP_WIDTH_PHRASE[5]))
 })
 
 test('ningún tramo deja un punto doble entre la orden y la escena', async () => {
