@@ -72,6 +72,10 @@ export interface PublishParams {
 export interface VideoPostParams extends PublishParams {
   videoUrl: string
   coverUrl?: string
+  /** Etiqueta de la pista YA embebida en el MP4, para el Reel de Instagram.
+   *  Es sólo el nombre que Instagram muestra: no adjunta ninguna pista (eso
+   *  requiere la Audio API de Meta, que Upload-Post no expone todavía). */
+  audioName?: string
 }
 
 export interface PhotoPostParams extends PublishParams {

@@ -17,7 +17,6 @@ import type {
   CreateCommentResult,
   InstagramDmButton,
   Platform,
-  PlatformTarget,
   PrivateReplyResult,
   QueueSettings,
   SocialCommentsPage,
@@ -50,6 +49,10 @@ import type {
   VideoPostParams,
   WebhookConfigResult,
 } from './SocialProvider'
+
+// El armado del multipart vive aparte para poder testearlo sin red: ahí está
+// documentado por qué `audio_name` NO puede viajar prefijado.
+import { buildPublishForm, buildVideoUploadForm } from './uploadPostForm'
 
 // `RateLimitInfo` vive en `SocialProvider.ts` (F4.2 Tarea 5): la interfaz
 // declara `getLastRateLimit()` y este archivo re-exporta el tipo por
@@ -221,53 +224,6 @@ export class UploadPostProvider implements SocialProvider {
     }
 
     return parsed as T
-  }
-
-  /**
-   * Build a FormData payload that matches Upload-Post's /upload* schema:
-   *   user, platform[]=*, title, description, scheduled_date, timezone,
-   *   {platform}_title, etc.
-   *
-   * Notes:
-   * - `caption` (our API) maps to `title` (UP API). UP also accepts
-   *   `description` for LinkedIn/Facebook/YouTube/Pinterest/Reddit; we
-   *   mirror caption there so the same text shows on multi-platform posts.
-   * - PlatformTarget.params is flattened into `{platform}_*` overrides
-   *   when the value is a primitive (UP's per-platform field convention).
-   *   Complex objects are JSON-stringified into `{platform}_params` as a
-   *   fallback, but most params (privacy_level, share_to_feed, …) are
-   *   primitives.
-   */
-  private buildPublishForm(params: {
-    username: string
-    caption: string
-    platforms: PlatformTarget[]
-    title?: string
-    scheduledAt?: Date
-  }): FormData {
-    const fd = new FormData()
-    fd.append('user', params.username)
-    for (const target of params.platforms) {
-      fd.append('platform[]', target.platform)
-    }
-    fd.append('title', params.caption)
-    fd.append('description', params.caption)
-    if (params.scheduledAt) {
-      fd.append('scheduled_date', params.scheduledAt.toISOString())
-    }
-    for (const target of params.platforms) {
-      if (!target.params) continue
-      for (const [key, value] of Object.entries(target.params)) {
-        if (value === undefined || value === null) continue
-        const fieldName = `${target.platform}_${key}`
-        if (typeof value === 'object') {
-          fd.append(fieldName, JSON.stringify(value))
-        } else {
-          fd.append(fieldName, String(value))
-        }
-      }
-    }
-    return fd
   }
 
   private mapErrorMessage(status: number, body: unknown): string {
@@ -498,9 +454,7 @@ export class UploadPostProvider implements SocialProvider {
   // -------------------------------------------------------------------------
 
   async publishVideo(params: VideoPostParams): Promise<PublishResponse> {
-    const fd = this.buildPublishForm(params)
-    fd.append('video', params.videoUrl)
-    if (params.coverUrl) fd.append('cover_url', params.coverUrl)
+    const fd = buildVideoUploadForm(params)
     const res = await this.request<{ request_id: string; total_platforms: number }>(
       '/api/upload',
       { method: 'POST', formData: fd },
@@ -509,7 +463,7 @@ export class UploadPostProvider implements SocialProvider {
   }
 
   async publishPhoto(params: PhotoPostParams): Promise<PublishResponse> {
-    const fd = this.buildPublishForm(params)
+    const fd = buildPublishForm(params)
     for (const url of params.photoUrls) {
       fd.append('photos[]', url)
     }
@@ -521,7 +475,7 @@ export class UploadPostProvider implements SocialProvider {
   }
 
   async publishText(params: TextPostParams): Promise<PublishResponse> {
-    const fd = this.buildPublishForm(params)
+    const fd = buildPublishForm(params)
     const res = await this.request<{ request_id: string; total_platforms: number }>(
       '/api/upload_text',
       { method: 'POST', formData: fd },
@@ -530,7 +484,7 @@ export class UploadPostProvider implements SocialProvider {
   }
 
   async publishDocument(params: DocumentPostParams): Promise<PublishResponse> {
-    const fd = this.buildPublishForm(params)
+    const fd = buildPublishForm(params)
     fd.append('document', params.documentUrl)
     if (params.documentTitle) fd.append('document_title', params.documentTitle)
     const res = await this.request<{ request_id: string; total_platforms: number }>(
