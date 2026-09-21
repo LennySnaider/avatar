@@ -590,11 +590,14 @@ export async function regenerateDraft(
             .eq('id', chatId)
             .maybeSingle()
         if (!chat) return { success: false, error: 'Chat not found' }
-        const result = await generateDraftReply(chatId)
+        // Lo pide el humano: si el fan no ha contestado (o nunca escribió),
+        // sale un mensaje para reactivar la conversación en vez de un error.
+        // Queda como borrador: nunca se envía solo, ni en modo auto.
+        const result = await generateDraftReply(chatId, { reengage: true })
         if (!result)
             return {
                 success: false,
-                error: 'Could not generate a draft: the fan has no recent message to reply to, or the avatar has no agent persona.',
+                error: 'Could not generate a draft: the avatar has no agent persona, or there is nothing to reply to on this public comment.',
             }
         const { data: row } = await orgTable(ctx, 'agent_messages')
             .select('*')

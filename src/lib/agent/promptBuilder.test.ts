@@ -130,3 +130,58 @@ test('social_comment: ni prohibición de prometer media ni FREE TEASERS, aunque 
     assert.doesNotMatch(prompt, NO_PROMISE)
     assert.doesNotMatch(prompt, /FREE TEASERS/)
 })
+
+test('reengage: con mensajes previos pide seguimiento, los enseña y fija su idioma', () => {
+    const prompt = buildSystemPrompt({
+        persona,
+        avatarName: 'Mia',
+        channel: 'fanvue',
+        reengage: { previousMessages: ['Hola corazón, gracias por seguirme', 'me extrañas???'] },
+    })
+
+    assert.match(prompt, /## NO REPLY YET/)
+    assert.match(prompt, /hasn't written back since your last messages/)
+    assert.match(prompt, /- Hola corazón, gracias por seguirme\n- me extrañas\?\?\?/)
+    assert.match(prompt, /same language as those messages/)
+    assert.match(prompt, /Never guilt-trip/)
+})
+
+test('reengage: sin mensajes previos es un primer mensaje, en su idioma principal', () => {
+    const prompt = buildSystemPrompt({
+        persona: { ...persona, languages: ['es', 'en'] },
+        avatarName: 'Mia',
+        channel: 'telegram',
+        reengage: { previousMessages: [] },
+    })
+
+    assert.match(prompt, /has never written to you/)
+    assert.match(prompt, /first main language \(es\)/)
+})
+
+test('reengage: sólo enseña los últimos 6 mensajes previos', () => {
+    const previousMessages = Array.from({ length: 9 }, (_, i) => `mensaje ${i + 1}`)
+    const prompt = buildSystemPrompt({
+        persona,
+        avatarName: 'Mia',
+        channel: 'fanvue',
+        reengage: { previousMessages },
+    })
+
+    assert.doesNotMatch(prompt, /- mensaje 3\n/)
+    assert.match(prompt, /- mensaje 4\n/)
+    assert.match(prompt, /- mensaje 9/)
+})
+
+test('reengage: se ignora en un comentario público y no aparece sin pedirlo', () => {
+    const publico = buildSystemPrompt({
+        persona,
+        avatarName: 'Mia',
+        channel: 'social_comment',
+        postContext: { platform: 'instagram', caption: 'Playa' },
+        reengage: { previousMessages: ['hola'] },
+    })
+    assert.doesNotMatch(publico, /NO REPLY YET/)
+
+    const normal = buildSystemPrompt({ persona, avatarName: 'Mia', channel: 'fanvue' })
+    assert.doesNotMatch(normal, /NO REPLY YET/)
+})

@@ -18,7 +18,17 @@ export interface BuildSystemPromptInput {
     freeCatalog?: { title: string }[]
     /** Datos del post bajo el que se comenta (sólo `social_comment`). */
     postContext?: { platform: string; caption: string | null; postUrl?: string | null }
+    /**
+     * Reactivar: el fan no ha contestado (o nunca escribió) y el humano pidió
+     * un borrador igual. `previousMessages` = lo que el avatar ya le mandó,
+     * del más viejo al más nuevo, para no repetirlo. Sólo chats privados:
+     * en un comentario público no tiene sentido y se ignora.
+     */
+    reengage?: { previousMessages: string[] }
 }
+
+/** Cuántos mensajes previos del avatar se le enseñan al modelo al reactivar. */
+const REENGAGE_PREVIOUS_LIMIT = 6
 
 const LENGTH_RULES: Record<string, string> = {
     short: 'Keep replies to 1-2 short sentences, like quick chat messages.',
@@ -42,8 +52,17 @@ const OBJECTIVE_RULES: Record<string, string> = {
 }
 
 export function buildSystemPrompt(input: BuildSystemPromptInput): string {
-    const { persona, avatarName, ragChunks, fanMemory, channel, paidCatalog, freeCatalog, postContext } =
-        input
+    const {
+        persona,
+        avatarName,
+        ragChunks,
+        fanMemory,
+        channel,
+        paidCatalog,
+        freeCatalog,
+        postContext,
+        reengage,
+    } = input
 
     // Manual override wins wholesale — power users own the whole prompt, but
     // RAG/fan context still gets appended so retrieval keeps working.
@@ -144,6 +163,28 @@ export function buildSystemPrompt(input: BuildSystemPromptInput): string {
                 'to reach you. Talk about the post itself when it fits — it is what they are commenting on. ' +
                 'You have no access to private knowledge here; speak only from your public persona and the post itself.' +
                 captionBlock,
+        )
+    }
+
+    if (reengage && channel !== 'social_comment') {
+        const previous = reengage.previousMessages
+            .map((m) => m.trim())
+            .filter(Boolean)
+            .slice(-REENGAGE_PREVIOUS_LIMIT)
+        const mainLanguage = persona.languages[0] ?? 'en'
+        sections.push(
+            '## NO REPLY YET\n' +
+                (previous.length > 0
+                    ? "The fan hasn't written back since your last messages. "
+                    : 'The fan has never written to you. ') +
+                'Write ONE message to (re)start the conversation: light, playful and personal, true to ' +
+                'who you are. Give them an easy reason to answer — a simple question about them works ' +
+                'best. Never guilt-trip, never complain that they did not answer, never beg. Do not ' +
+                'repeat or paraphrase what you already sent. No links, no prices.' +
+                (previous.length > 0
+                    ? `\nWhat you already sent them (oldest first):\n${previous.map((m) => `- ${m}`).join('\n')}` +
+                      '\nWrite in the same language as those messages.'
+                    : `\nWrite in your first main language (${mainLanguage}).`),
         )
     }
 

@@ -25,10 +25,26 @@ const HISTORY_LIMIT = 20
 /** Lo que ve el modelo en lugar de un mensaje de sólo foto/vídeo: no puede
  *  ver la imagen, pero sí saber que se mandó una (y quién la mandó). */
 const MEDIA_ONLY_PLACEHOLDER = '[sent a photo or video]'
+/** Último turno al reactivar: la sección NO REPLY YET del prompt dice qué
+ *  hacer; esto sólo le da al modelo un turno al que responder. */
+const REENGAGE_TURN =
+    '[No reply from the fan yet. Write your next message to them now.]'
 
 export interface DraftResult {
     messageId: string
     text: string
+}
+
+export interface DraftOptions {
+    /**
+     * Lo pidió el HUMANO ("Generate draft"), no un webhook ni un cron. Si el
+     * último mensaje del chat no es del fan —nunca escribió, o el avatar
+     * habló último y no hubo respuesta— se redacta un mensaje para reactivar
+     * la conversación, en vez de rendirse o de volver a contestar un mensaje
+     * viejo del fan. Nunca en comentarios públicos. Los llamadores
+     * automáticos no lo pasan: sólo redactan cuando el fan escribe.
+     */
+    reengage?: boolean
 }
 
 /**
@@ -37,7 +53,10 @@ export interface DraftResult {
  * chat mode isn't 'off' (callers gate that). Returns null if there's nothing
  * to reply to or the persona is missing.
  */
-export async function generateDraftReply(chatId: string): Promise<DraftResult | null> {
+export async function generateDraftReply(
+    chatId: string,
+    options: DraftOptions = {},
+): Promise<DraftResult | null> {
     const supabase = agentSupabase()
 
     const { data: chat } = await supabase
@@ -84,23 +103,48 @@ export async function generateDraftReply(chatId: string): Promise<DraftResult | 
               ? MEDIA_ONLY_PLACEHOLDER
               : ''
     const newestFirst = [...ordered].reverse()
-    if (!newestFirst.some((m) => m.direction === 'in' && contentOf(m)))
-        return null
+    const promptChannel = promptChannelFor(chat.platform)
+    const hasFanMessage = newestFirst.some(
+        (m) => m.direction === 'in' && contentOf(m),
+    )
+    const newest = newestFirst.find((m) => contentOf(m))
+    const reengage =
+        Boolean(options.reengage) &&
+        promptChannel !== 'social_comment' &&
+        newest?.direction !== 'in'
+    if (!reengage && !hasFanMessage) return null
     // Para buscar en el conocimiento hace falta texto de verdad: el último del
     // fan que lo tenga (si sólo mandó fotos, no se busca).
     const lastFanText =
         newestFirst.find((m) => m.direction === 'in' && m.text?.trim())?.text ??
         ''
 
-    const messages: ModelMessage[] = ordered
+    const turns: ModelMessage[] = ordered
         .map((m) => ({ role: m.direction, content: contentOf(m) }))
         .filter((m) => m.content)
         .map((m) => ({
             role: m.role === 'in' ? 'user' : 'assistant',
             content: m.content,
         }))
-
-    const promptChannel = promptChannelFor(chat.platform)
+    // Reactivar: lo que el avatar mandó DESPUÉS del último mensaje del fan (o
+    // todo, si nunca escribió) va al prompt para no repetirlo, y la
+    // conversación acaba en un turno de usuario explícito — el modelo tiene
+    // que responder a algo, y así no "contesta" su propio último mensaje.
+    let unanswered: string[] = []
+    if (reengage) {
+        let lastFanIndex = -1
+        ordered.forEach((m, i) => {
+            if (m.direction === 'in' && contentOf(m)) lastFanIndex = i
+        })
+        unanswered = ordered
+            .slice(lastFanIndex + 1)
+            .filter((m) => m.direction === 'out')
+            .map(contentOf)
+            .filter(Boolean)
+    }
+    const messages: ModelMessage[] = reengage
+        ? [...turns, { role: 'user', content: REENGAGE_TURN }]
+        : turns
 
     // RAG + fan memory
     let ragChunks: RetrievedChunk[]
@@ -198,6 +242,7 @@ export async function generateDraftReply(chatId: string): Promise<DraftResult | 
         paidCatalog,
         freeCatalog,
         postContext,
+        reengage: reengage ? { previousMessages: unanswered } : undefined,
     })
 
     const { text } = await generateText({
@@ -228,7 +273,11 @@ export async function generateDraftReply(chatId: string): Promise<DraftResult | 
             direction: 'out',
             text: draftText,
             status: 'draft',
-            generated_by: { provider: persona.chatProvider, model: persona.chatModel } as never,
+            generated_by: {
+                provider: persona.chatProvider,
+                model: persona.chatModel,
+                ...(reengage ? { reengage: true } : {}),
+            } as never,
         })
         .select('id')
         .single()
