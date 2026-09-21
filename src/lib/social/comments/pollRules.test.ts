@@ -9,6 +9,7 @@ import {
     postNeedsSync,
     rateLimitLow,
     shouldStopPaging,
+    targetPlatformConnected,
 } from './pollRules.ts'
 
 test('isOwnComment: true cuando el authorId coincide en la misma red', () => {
@@ -204,4 +205,28 @@ test('sin ids conocidos devuelve la misma lista (misma referencia, sin copiar)',
 test('si TODA la página es nuestra, la lista queda vacía (no se ingiere nada)', () => {
     const comments = [{ id: 'a' }, { id: 'b' }]
     assert.deepEqual(filterOutOwnReplies(comments, new Set(['a', 'b'])), [])
+})
+
+// ---------------------------------------------------------------------------
+// targetPlatformConnected (targets de redes que ya no están conectadas)
+// ---------------------------------------------------------------------------
+
+const soloInstagram = [
+    { platform: 'instagram', accountId: '259', accountName: 'emily_of26' },
+]
+
+test('targetPlatformConnected: la red del target está entre las conectadas', () => {
+    assert.equal(targetPlatformConnected('instagram', soloInstagram), true)
+})
+
+test('targetPlatformConnected: X ya no está conectada (caso real tras la migración a la cuenta agencia)', () => {
+    assert.equal(targetPlatformConnected('x', soloInstagram), false)
+})
+
+test('targetPlatformConnected: compara la red sin distinguir mayúsculas', () => {
+    assert.equal(targetPlatformConnected('Instagram', soloInstagram), true)
+})
+
+test('targetPlatformConnected: sin cuentas conocidas no filtra (falta de dato, no "nada conectado")', () => {
+    assert.equal(targetPlatformConnected('x', []), true)
 })

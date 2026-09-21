@@ -62,6 +62,9 @@ export async function GET(request: NextRequest) {
      *  presupuesto de borradores del perfil (`DRAFT_BUDGET_PER_PROFILE`);
      *  sus hilos quedan `needs_attention` en el Inbox. */
     let draftBudgetExhausted = 0
+    /** Targets de redes que el perfil ya no tiene conectadas: se saltan sin
+     *  llamar a Upload-Post (no son errores, ver `targetPlatformConnected`). */
+    let skippedDisconnected = 0
     let errors = 0
     const reauthRequired: { profile: string; platform: string }[] = []
 
@@ -93,6 +96,7 @@ export async function GET(request: NextRequest) {
             autoQueued += pollResult.autoQueued
             skippedOwn += pollResult.skippedOwn
             draftBudgetExhausted += pollResult.draftBudgetExhausted
+            skippedDisconnected += pollResult.skippedDisconnected
             errors += pollResult.errors
             for (const platform of pollResult.reauthRequired) {
                 reauthRequired.push({ profile: settings.uploadPostUsername, platform })
@@ -116,7 +120,7 @@ export async function GET(request: NextRequest) {
     const rateLimit = profiles.length > 0 ? lastRateLimit() : null
     if (profiles.length > 0) {
         console.log(
-            `[social-comments-poll] ${profiles.length} perfiles · ${targets} posts · ${newComments} comentarios nuevos · ${drafts} borradores · ${errors} errores · upload-post ${formatRateLimit(rateLimit)}`,
+            `[social-comments-poll] ${profiles.length} perfiles · ${targets} publicaciones (post × red) · ${skippedDisconnected} de redes desconectadas · ${newComments} comentarios nuevos · ${drafts} borradores · ${errors} errores · upload-post ${formatRateLimit(rateLimit)}`,
         )
     }
 
@@ -133,6 +137,7 @@ export async function GET(request: NextRequest) {
         autoQueued,
         skippedOwn,
         draftBudgetExhausted,
+        skippedDisconnected,
         reauthRequired,
         errors,
     })

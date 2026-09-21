@@ -47,6 +47,30 @@ export function isOwnComment(comment: CommentAuthorLike, ownAccounts: OwnAccount
     return false
 }
 
+/**
+ * ¿Sigue conectada la red de este target? El target nace cuando el post se
+ * publicó en esa red, pero la red puede desconectarse después, o el perfil
+ * rehacerse en otra cuenta de Upload-Post (la migración a la cuenta agencia
+ * del 2026-09-17 dejó targets de X sin cuenta de X detrás). Pedir sus
+ * comentarios devuelve 400 "Profile does not have a x account linked" en
+ * cada corrida hasta que el post sale de la ventana: una llamada tirada y un
+ * error en el log por vuelta.
+ *
+ * Sin ninguna cuenta conocida (`connected_platforms` vacío o malformado en un
+ * perfil activo) NO se filtra: es falta de dato, no "nada conectado", y dejar
+ * de sondear en silencio sería peor que el 400.
+ */
+export function targetPlatformConnected(
+    platform: string,
+    ownAccounts: OwnAccountLike[],
+): boolean {
+    if (ownAccounts.length === 0) return true
+    const platformLower = platform.toLowerCase()
+    return ownAccounts.some(
+        (account) => account.platform.toLowerCase() === platformLower,
+    )
+}
+
 /** Lo mínimo de un `SocialComment` para poder identificarlo por id. */
 export interface CommentIdLike {
     id: string

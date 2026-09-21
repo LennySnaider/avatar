@@ -33,7 +33,14 @@ import { encodeCommentChatId, toSocialChatPlatform } from './ids'
 import { shouldDraftCommentReply } from './gate'
 import { toSocialCommentSettings } from './settings'
 import { listPollableTargets, type PollableTarget } from './targets'
-import { filterOutOwnReplies, isOwnComment, pickCommenterId, rateLimitLow, shouldStopPaging } from './pollRules'
+import {
+    filterOutOwnReplies,
+    isOwnComment,
+    pickCommenterId,
+    rateLimitLow,
+    shouldStopPaging,
+    targetPlatformConnected,
+} from './pollRules'
 import type { Platform } from '@/@types/social'
 
 const SINCE_DAYS = 7
@@ -85,6 +92,9 @@ export interface PollProfileResult {
     draftBudgetExhausted: number
     /** Plataformas con reauth requerido en esta corrida (una por plataforma afectada, sin duplicar). */
     reauthRequired: string[]
+    /** Targets saltados sin llamar al proveedor porque su red ya no está en
+     *  `connected_platforms` del perfil (`targetPlatformConnected`). */
+    skippedDisconnected: number
     errors: number
 }
 
@@ -98,6 +108,7 @@ function emptyResult(): PollProfileResult {
         skippedOwn: 0,
         draftBudgetExhausted: 0,
         reauthRequired: [],
+        skippedDisconnected: 0,
         errors: 0,
     }
 }
@@ -363,6 +374,14 @@ export async function pollProfileComments(
             // `last_comments_poll_at`: si no, estos targets se quedan
             // eternamente primeros en la cola (`asc nulls first`) y se comen
             // el cupo de 20 de cada corrida sin dejar sitio a los demás.
+            await markTargetPolled(target.id, target.organizationId)
+            continue
+        }
+
+        if (!targetPlatformConnected(target.platform, settings.ownAccounts)) {
+            // Red desconectada: el proveedor contestaría 400 en cada vuelta.
+            // Se estampa igual que arriba para que no acapare el cupo de 20.
+            result.skippedDisconnected++
             await markTargetPolled(target.id, target.organizationId)
             continue
         }
