@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { fanvueMediaUuids, toInboxMedia } from './messageMedia.ts'
+import { fanvueMediaUuids, indexChatMedia } from './messageMedia.ts'
 import type { FanvueResolvedMedia } from './types.ts'
 
 test('fanvueMediaUuids: saca los uuids de Fanvue en orden', () => {
@@ -52,50 +52,48 @@ const v = (
     lengthMs: null,
 })
 
-test('toInboxMedia: miniatura para la burbuja y principal para abrir', () => {
-    const out = toInboxMedia(['a'], {
-        a: media('a', [
+test('indexChatMedia: miniatura para la burbuja y principal para abrir', () => {
+    const out = indexChatMedia([
+        media('a', [
             v('main', 'https://main'),
             v('thumbnail', 'https://thumb'),
         ]),
-    })
-    assert.deepEqual(out, [
-        {
+    ])
+    assert.deepEqual(out, {
+        a: {
             uuid: 'a',
             mediaType: 'image',
             thumbUrl: 'https://thumb',
             fullUrl: 'https://main',
         },
+    })
+})
+
+test('indexChatMedia: sin miniatura usa la principal, y al revés', () => {
+    const soloMain = indexChatMedia([media('a', [v('main', 'https://main')])])
+    assert.equal(soloMain.a.thumbUrl, 'https://main')
+    const soloThumb = indexChatMedia([
+        media('a', [v('thumbnail', 'https://thumb')]),
     ])
+    assert.equal(soloThumb.a.fullUrl, 'https://thumb')
 })
 
-test('toInboxMedia: sin miniatura usa la principal, y al revés', () => {
-    const soloMain = toInboxMedia(['a'], {
-        a: media('a', [v('main', 'https://main')]),
-    })
-    assert.equal(soloMain[0].thumbUrl, 'https://main')
-    const soloThumb = toInboxMedia(['a'], {
-        a: media('a', [v('thumbnail', 'https://thumb')]),
-    })
-    assert.equal(soloThumb[0].fullUrl, 'https://thumb')
+test('indexChatMedia: contenido de pago sin comprar sólo trae blurred y se enseña esa', () => {
+    const out = indexChatMedia([media('a', [v('blurred', 'https://blur')])])
+    assert.equal(out.a.thumbUrl, 'https://blur')
+    assert.equal(out.a.fullUrl, 'https://blur')
 })
 
-test('toInboxMedia: contenido de pago sin comprar sólo trae blurred y se enseña esa', () => {
-    const out = toInboxMedia(['a'], {
-        a: media('a', [v('blurred', 'https://blur')]),
-    })
-    assert.equal(out[0].thumbUrl, 'https://blur')
-    assert.equal(out[0].fullUrl, 'https://blur')
+test('indexChatMedia: un medio repetido (envío masivo) se queda con el primero, el más reciente', () => {
+    const out = indexChatMedia([
+        media('a', [v('main', 'https://nuevo')]),
+        media('a', [v('main', 'https://viejo')]),
+    ])
+    assert.equal(out.a.fullUrl, 'https://nuevo')
 })
 
-test('toInboxMedia: conserva el orden guardado y salta los null', () => {
-    const out = toInboxMedia(['b', 'x', 'a'], {
-        a: media('a', [v('main', 'https://a')]),
-        b: media('b', [v('main', 'https://b')]),
-        x: null,
-    })
-    assert.deepEqual(
-        out.map((m) => m.uuid),
-        ['b', 'a'],
-    )
+test('indexChatMedia: sin variantes el medio queda sin URLs, sin tirar', () => {
+    const out = indexChatMedia([media('a', [])])
+    assert.equal(out.a.thumbUrl, null)
+    assert.equal(out.a.fullUrl, null)
 })

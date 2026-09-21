@@ -52,11 +52,12 @@ import { getGenerationMediaUrl, getRowMediaUrl } from '@/lib/storagePaths'
 import { GoogleGenAI, Type } from '@google/genai'
 import { loadConnection } from '@/lib/fanvue/tokenStore'
 import {
+    CHAT_MEDIA_MAX_PAGES,
     fanvueMediaUuids,
-    MAX_MEDIA_PER_RESOLVE,
-    toInboxMedia,
+    indexChatMedia,
     type InboxMediaItem,
 } from '@/lib/fanvue/messageMedia'
+import type { FanvueResolvedMedia } from '@/lib/fanvue/types'
 
 export interface InboxResult<T> {
     success: boolean
@@ -93,7 +94,7 @@ export interface AgentMessageDTO {
     /**
      * Uuids de las fotos/vídeos de Fanvue del mensaje. Sólo los uuids: las
      * URLs las firma Fanvue y caducan, así que el hilo las pide al pintarse
-     * (`getMessageMedia`) en vez de guardarlas.
+     * (`getChatMedia`) en vez de guardarlas.
      */
     mediaUuids: string[]
 }
@@ -391,11 +392,15 @@ export async function getAgentChatThread(
                     .select('name, default_voice_id')
                     .eq('id', chat.avatar_id)
                     .maybeSingle(),
+                // Los 200 MÁS RECIENTES (desc + limit, y se dan la vuelta
+                // abajo). Con `ascending: true` el límite se quedaba con los
+                // 200 más viejos: en un chat de 300 mensajes no se veían los
+                // últimos, que son los que hay que contestar.
                 orgTable(ctx, 'agent_messages')
                     .select('*')
                     .eq('chat_id', chatId)
                     .not('status', 'eq', 'discarded')
-                    .order('created_at', { ascending: true })
+                    .order('created_at', { ascending: false })
                     .limit(200),
                 // `platform` DERIVADA del chat, no fija a 'fanvue': el
                 // webhook de Telegram guarda su memoria bajo 'telegram'
@@ -416,7 +421,9 @@ export async function getAgentChatThread(
                     .maybeSingle(),
             ])
 
-        const messages = ((msgs ?? []) as AgentMessageRow[]).map(toMessageDTO)
+        const messages = ((msgs ?? []) as AgentMessageRow[])
+            .reverse()
+            .map(toMessageDTO)
         return {
             success: true,
             data: {
@@ -440,40 +447,26 @@ export async function getAgentChatThread(
 }
 
 /**
- * Fotos/vídeos de un mensaje de Fanvue, con URLs FIRMADAS para pintarlas en
- * el hilo. Se piden al pintar y no se guardan: Fanvue las firma y caducan.
- * El hilo sólo las pide para los mensajes que entran en pantalla — un chat
- * de spam trae cientos de mensajes con media y pedirlas todas al abrirlo
- * serían cientos de llamadas.
+ * Fotos/vídeos de un chat de Fanvue, con URLs FIRMADAS para pintarlas en el
+ * hilo, indexadas por uuid del medio (lo que guarda `agent_messages.media`).
+ * Se piden al abrir el hilo y no se guardan: Fanvue las firma y caducan.
  *
- * Telegram y comentarios no tienen medios de Fanvue: devuelven lista vacía.
+ * UNA llamada por hilo (hasta `CHAT_MEDIA_MAX_PAGES` páginas de 50, los más
+ * recientes) en vez de una por mensaje: el resolve por mensaje contestaba
+ * 404 "Message not found" a los envíos masivos, y las server actions van en
+ * cola, así que N llamadas de ~10 s dejaban el hilo en gris un buen rato.
+ *
+ * Telegram y comentarios no tienen medios de Fanvue: devuelven vacío.
  */
-export async function getMessageMedia(
-    messageId: string,
-): Promise<InboxResult<InboxMediaItem[]>> {
+export async function getChatMedia(
+    chatId: string,
+): Promise<InboxResult<Record<string, InboxMediaItem>>> {
     try {
         const ctx = await getOrgContext()
         requirePermission(ctx, 'content:read')
-        const { data: msgRow } = await orgTable(ctx, 'agent_messages')
-            .select('id, chat_id, external_message_id, media')
-            .eq('id', messageId)
-            .maybeSingle()
-        if (!msgRow) return { success: false, error: 'Message not found' }
-        const msg = msgRow as Pick<
-            AgentMessageRow,
-            'id' | 'chat_id' | 'external_message_id' | 'media'
-        >
-        const uuids = fanvueMediaUuids(msg.media).slice(
-            0,
-            MAX_MEDIA_PER_RESOLVE,
-        )
-        if (uuids.length === 0) return { success: true, data: [] }
-        if (!msg.external_message_id)
-            return { success: false, error: 'Message has no Fanvue id' }
-
         const { data: chatRow } = await orgTable(ctx, 'agent_chats')
             .select('avatar_id, platform, external_chat_id')
-            .eq('id', msg.chat_id)
+            .eq('id', chatId)
             .maybeSingle()
         const chat = chatRow as Pick<
             AgentChatRow,
@@ -481,7 +474,7 @@ export async function getMessageMedia(
         > | null
         if (!chat) return { success: false, error: 'Chat not found' }
         if (resolveDeliveryChannel(chat.platform) !== 'fanvue')
-            return { success: true, data: [] }
+            return { success: true, data: {} }
 
         const { data: avatarRow } = await orgTable(ctx, 'avatars')
             .select('user_id, fanvue_creator_uuid')
@@ -494,17 +487,22 @@ export async function getMessageMedia(
         if (!avatar?.user_id)
             return { success: false, error: 'Avatar has no owner' }
 
-        const res = await makeFanvueClient(
-            avatar.user_id,
-        ).resolveChatMessageMedia(
-            avatar.fanvue_creator_uuid ?? null,
-            chat.external_chat_id,
-            msg.external_message_id,
-            uuids,
-        )
-        return { success: true, data: toInboxMedia(uuids, res.results ?? {}) }
+        const client = makeFanvueClient(avatar.user_id)
+        const items: FanvueResolvedMedia[] = []
+        let cursor: string | null = null
+        for (let page = 0; page < CHAT_MEDIA_MAX_PAGES; page++) {
+            const res = await client.listChatMedia(
+                avatar.fanvue_creator_uuid ?? null,
+                chat.external_chat_id,
+                { cursor },
+            )
+            items.push(...(res.data ?? []))
+            cursor = res.nextCursor
+            if (!cursor) break
+        }
+        return { success: true, data: indexChatMedia(items) }
     } catch (e) {
-        return fail('getMessageMedia', e)
+        return fail('getChatMedia', e)
     }
 }
 
@@ -1318,6 +1316,9 @@ export async function syncFanvueInbox(
                             : null,
                 })
                 chatCount++
+                // Oculto como spam: no se descargan sus mensajes (mismo corte
+                // que el cron agent-inbox-poll).
+                if (chat.is_creator) continue
 
                 const messagesRes = await client.listChatMessages(
                     creatorUuid,

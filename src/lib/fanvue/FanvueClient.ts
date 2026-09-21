@@ -29,7 +29,7 @@ import type {
     FanvueListMessagesResponse,
     FanvueMediaStatusResponse,
     FanvuePostResponse,
-    FanvueResolveMediaResponse,
+    FanvueChatMediaResponse,
     FanvueUploadPart,
     FanvueUploadSession,
     SendChatMessageInput,
@@ -70,6 +70,15 @@ export interface FanvueClientOptions {
 const sleep = (ms: number) =>
     new Promise<void>((resolve) => setTimeout(resolve, ms))
 
+/**
+ * Tope por llamada a la API de Fanvue. Sin él, una respuesta colgada se
+ * comía la función entera: el cron `agent-inbox-poll` moría por timeout de
+ * Vercel (120 s) en TODAS las vueltas del 2026-09-21, con un chat cuyo
+ * `/messages` acababa en 500. Las subidas de media no pasan por aquí (van a
+ * la URL firmada con su propio `fetch`, ver mediaUpload.ts).
+ */
+const REQUEST_TIMEOUT_MS = 25_000
+
 export class FanvueClient {
     private readonly getAccessToken: FanvueAccessTokenProvider
     private readonly apiBase: string
@@ -96,6 +105,7 @@ export class FanvueClient {
                     Authorization: `Bearer ${token}`,
                 },
                 body: init?.body,
+                signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
             })
 
         let res = await doFetch(await this.getAccessToken())
@@ -411,25 +421,28 @@ export class FanvueClient {
     }
 
     /**
-     * `GET /v1[/creators/{uuid}]/chats/{userUuid}/messages/{messageUuid}/media`
-     * — URLs FIRMADAS (caducan) de los medios de un mensaje, para pintarlos
-     * en el Inbox. Sólo existe en v1 (de ahí el prefijo, igual que earnings).
-     * Máximo 20 uuids por llamada. Scopes: read:chat (+ read:creator en
-     * modo agencia).
+     * `GET /v1[/creators/{uuid}]/chats/{userUuid}/media` — una página de los
+     * medios del chat (los dos lados), más recientes primero, con URLs
+     * FIRMADAS que caducan. Sólo existe en v1 (de ahí el prefijo, igual que
+     * earnings). Scopes: read:chat (+ read:creator en modo agencia).
+     *
+     * Se usa esto y NO el resolve por mensaje (`/messages/{uuid}/media`):
+     * medido 2026-09-21, el resolve contestaba 404 "Message not found" a los
+     * mensajes masivos de otras creadoras, y una llamada por mensaje hacía
+     * cola en las server actions. Aquí va una por hilo y se empareja por el
+     * uuid del MEDIO, que es lo que guardamos.
      */
-    async resolveChatMessageMedia(
+    async listChatMedia(
         creatorUuid: string | null,
         userUuid: string,
-        messageUuid: string,
-        mediaUuids: string[],
-        variants: string[] = ['thumbnail', 'main'],
-    ): Promise<FanvueResolveMediaResponse> {
+        params?: { cursor?: string | null; limit?: number },
+    ): Promise<FanvueChatMediaResponse> {
         const qs = new URLSearchParams()
-        qs.set('mediaUuids', mediaUuids.slice(0, 20).join(','))
-        if (variants.length > 0) qs.set('variants', variants.join(','))
-        return this.requestJson<FanvueResolveMediaResponse>(
+        qs.set('limit', String(params?.limit ?? 50))
+        if (params?.cursor) qs.set('cursor', params.cursor)
+        return this.requestJson<FanvueChatMediaResponse>(
             'GET',
-            `/v1${this.base(creatorUuid)}/chats/${encodeURIComponent(userUuid)}/messages/${encodeURIComponent(messageUuid)}/media?${qs.toString()}`,
+            `/v1${this.base(creatorUuid)}/chats/${encodeURIComponent(userUuid)}/media?${qs.toString()}`,
         )
     }
 

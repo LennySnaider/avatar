@@ -216,14 +216,13 @@ export interface FanvueResolvedMedia {
 }
 
 /**
- * `GET /v1/[creators/{uuid}/]chats/{userUuid}/messages/{messageUuid}/media`.
- * `results` va por uuid y puede traer `null`; lo que no se pudo resolver sale
- * en `errors` (`NOT_IN_MESSAGE` si el uuid no es de ese mensaje).
- * Doc verificada 2026-09-21: docs/v1/api-reference/resolve-media-uuids-for-a-chat-message.md
+ * `GET /v1/[creators/{uuid}/]chats/{userUuid}/media` — medios del chat, más
+ * recientes primero, paginados por cursor (`limit` 1-50).
+ * Doc verificada 2026-09-21: docs/v1/api-reference/get-media-from-a-creators-chat.md
  */
-export interface FanvueResolveMediaResponse {
-    results: Record<string, FanvueResolvedMedia | null>
-    errors?: { mediaUuid: string; code: string; message: string }[]
+export interface FanvueChatMediaResponse {
+    data: FanvueResolvedMedia[]
+    nextCursor: string | null
 }
 
 /** Body of `POST /chats/{userUuid}/message` (path is SINGULAR per docs). */

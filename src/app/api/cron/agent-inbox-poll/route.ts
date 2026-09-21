@@ -122,6 +122,11 @@ export async function GET(request: NextRequest) {
                         lastMessageAt: summary.lastMessageAt,
                     })
                     chatCount++
+                    // Oculto como spam / otra creadora: no se descargan sus
+                    // mensajes. No aportan nada y eran los más caros — Sophia
+                    // Bell (cientos de masivos) devolvía 500 en `/messages`
+                    // en cada vuelta mientras el cron moría por timeout.
+                    if (chat.is_creator) continue
 
                     const messagesRes = await client.listChatMessages(
                         creatorUuid,

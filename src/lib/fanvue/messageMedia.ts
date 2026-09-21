@@ -1,5 +1,5 @@
 /**
- * Medios de un mensaje de Fanvue en el Inbox. Fichero PURO, sin imports de
+ * Medios de los mensajes de Fanvue en el Inbox. Fichero PURO, sin imports de
  * runtime: la IO (pedir las URLs firmadas) vive en `AgentInboxService`.
  *
  * `agent_messages.media` es un jsonb libre que comparten los canales:
@@ -9,8 +9,9 @@
  */
 import type { FanvueMediaVariant, FanvueResolvedMedia } from './types'
 
-/** Máximo de uuids que Fanvue resuelve en una llamada. */
-export const MAX_MEDIA_PER_RESOLVE = 20
+/** Páginas de medios del chat que se piden por hilo (50 por página): los
+ *  medios más recientes, que son los de los mensajes que se ven. */
+export const CHAT_MEDIA_MAX_PAGES = 2
 
 /**
  * Uuids de medios de Fanvue guardados en `agent_messages.media`. Dos formas:
@@ -56,22 +57,23 @@ function variantUrl(
 }
 
 /**
- * Resultado de Fanvue → lo que se pinta, en el orden en que se guardaron los
- * uuids. La miniatura cae a la principal si no hay miniatura, y al revés;
+ * Medios del chat (lo que devuelve Fanvue) → índice por uuid del MEDIO, que
+ * es lo que guarda `agent_messages.media`. Se indexa por medio y no por
+ * mensaje porque los envíos masivos repiten el mismo medio en varios
+ * mensajes. La miniatura cae a la principal si no hay miniatura, y al revés;
  * `blurred` sólo como último recurso (contenido de pago no comprado: es lo
- * único que Fanvue enseña).
+ * único que Fanvue enseña). Si un uuid llega repetido gana el primero, que
+ * es el más reciente.
  */
-export function toInboxMedia(
-    uuids: string[],
-    results: Record<string, FanvueResolvedMedia | null>,
-): InboxMediaItem[] {
-    const out: InboxMediaItem[] = []
-    for (const uuid of uuids) {
-        const media = results[uuid]
-        if (!media) continue
+export function indexChatMedia(
+    items: FanvueResolvedMedia[],
+): Record<string, InboxMediaItem> {
+    const out: Record<string, InboxMediaItem> = {}
+    for (const media of items) {
+        if (!media?.uuid || out[media.uuid]) continue
         const variants = Array.isArray(media.variants) ? media.variants : []
-        out.push({
-            uuid,
+        out[media.uuid] = {
+            uuid: media.uuid,
             mediaType: media.mediaType,
             thumbUrl: variantUrl(variants, [
                 'thumbnail',
@@ -80,7 +82,7 @@ export function toInboxMedia(
                 'blurred',
             ]),
             fullUrl: variantUrl(variants, ['main', 'thumbnail', 'blurred']),
-        })
+        }
     }
     return out
 }

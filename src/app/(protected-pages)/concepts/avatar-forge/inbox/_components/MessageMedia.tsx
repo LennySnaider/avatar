@@ -1,118 +1,77 @@
 'use client'
 
-import { useCallback, useEffect, useRef, useState } from 'react'
-import { getMessageMedia } from '@/services/AgentInboxService'
 import type { InboxMediaItem } from '@/lib/fanvue/messageMedia'
 
 /**
- * Fotos y vídeos de un mensaje de Fanvue dentro del hilo.
- *
- * Fanvue sólo nos da uuids; las URLs las firma al pedirlas y caducan. Por eso:
- *  - se piden cuando el mensaje ENTRA EN PANTALLA (IntersectionObserver), no
- *    al abrir el hilo: un chat de spam trae cientos de mensajes con media;
- *  - se guardan en memoria mientras la página vive, para que el refresco del
- *    hilo o volver a un chat no las pida otra vez;
- *  - si una imagen falla al cargar (URL caducada), se tira la caché de ese
- *    mensaje y se piden una vez más.
+ * Fotos y vídeos de un mensaje de Fanvue dentro del hilo. Sólo pinta: quien
+ * pide las URLs firmadas es `ThreadPane`, UNA vez por hilo (`getChatMedia`),
+ * y aquí se buscan los medios de este mensaje por su uuid.
  */
-const cache = new Map<string, InboxMediaItem[]>()
-
-type State =
-    | { kind: 'idle' }
+export type ChatMediaState =
     | { kind: 'loading' }
-    | { kind: 'ready'; items: InboxMediaItem[] }
+    | { kind: 'ready'; index: Record<string, InboxMediaItem> }
     | { kind: 'error'; message: string }
 
 interface MessageMediaProps {
-    messageId: string
-    count: number
+    uuids: string[]
+    media: ChatMediaState
     align: 'start' | 'end'
+    /** Una imagen no cargó (URL caducada): el hilo vuelve a pedir la media. */
+    onBroken: () => void
+    onRetry: () => void
 }
 
-const MessageMedia = ({ messageId, count, align }: MessageMediaProps) => {
-    const ref = useRef<HTMLDivElement>(null)
-    const retried = useRef(false)
-    const [state, setState] = useState<State>(() => {
-        const cached = cache.get(messageId)
-        return cached ? { kind: 'ready', items: cached } : { kind: 'idle' }
-    })
-
-    const load = useCallback(async () => {
-        setState({ kind: 'loading' })
-        const result = await getMessageMedia(messageId)
-        if (result.success) {
-            const items = result.data ?? []
-            cache.set(messageId, items)
-            setState({ kind: 'ready', items })
-        } else {
-            setState({
-                kind: 'error',
-                message: result.error ?? 'Could not load media',
-            })
-        }
-    }, [messageId])
-
-    useEffect(() => {
-        if (state.kind !== 'idle') return
-        const el = ref.current
-        if (!el) return
-        const observer = new IntersectionObserver(
-            (entries) => {
-                if (entries.some((e) => e.isIntersecting)) {
-                    observer.disconnect()
-                    load()
-                }
-            },
-            { rootMargin: '200px' },
-        )
-        observer.observe(el)
-        return () => observer.disconnect()
-    }, [state.kind, load])
-
-    const onBroken = () => {
-        if (retried.current) return
-        retried.current = true
-        cache.delete(messageId)
-        load()
-    }
-
+const MessageMedia = ({
+    uuids,
+    media,
+    align,
+    onBroken,
+    onRetry,
+}: MessageMediaProps) => {
     const justify = align === 'end' ? 'justify-end' : 'justify-start'
 
-    if (state.kind === 'ready') {
-        if (state.items.length === 0) return null
+    if (media.kind === 'loading') {
+        // Huecos del tamaño de una miniatura, para que el hilo no salte
+        // cuando llegan las imágenes.
         return (
-            <div className={`flex flex-wrap gap-1 max-w-[80%] mb-1 ${justify}`}>
-                {state.items.map((item) => (
-                    <MediaTile
-                        key={item.uuid}
-                        item={item}
-                        onBroken={onBroken}
+            <div className={`flex flex-wrap gap-1 mb-1 ${justify}`}>
+                {Array.from({ length: Math.min(uuids.length, 4) }, (_, i) => (
+                    <div
+                        key={i}
+                        className="w-32 h-32 rounded-xl bg-gray-100 dark:bg-gray-700 animate-pulse"
                     />
                 ))}
             </div>
         )
     }
 
-    if (state.kind === 'error') {
+    if (media.kind === 'error') {
         return (
             <div className="text-[11px] text-gray-400 mb-1">
                 Couldn&apos;t load media ·{' '}
-                <button type="button" className="underline" onClick={load}>
+                <button type="button" className="underline" onClick={onRetry}>
                     retry
                 </button>
             </div>
         )
     }
 
-    // idle / loading: huecos del tamaño de una miniatura, para que el hilo no
-    // salte cuando llegan las imágenes.
+    const items = uuids
+        .map((uuid) => media.index[uuid])
+        .filter((item): item is InboxMediaItem => Boolean(item))
+    if (items.length === 0) {
+        // Fanvue no lo devolvió: es más viejo que las páginas pedidas, o ya
+        // no existe. Se dice que había algo, en vez de callarlo.
+        return (
+            <div className="text-[11px] text-gray-400 mb-1">
+                📷 Media not available
+            </div>
+        )
+    }
     return (
-        <div ref={ref} className={`flex flex-wrap gap-1 mb-1 ${justify}`}>
-            {Array.from({ length: Math.min(count, 4) }, (_, i) => (
-                <div
-                    key={i}
-                    className="w-32 h-32 rounded-xl bg-gray-100 dark:bg-gray-700 animate-pulse"
-                />
+        <div className={`flex flex-wrap gap-1 max-w-[80%] mb-1 ${justify}`}>
+            {items.map((item) => (
+                <MediaTile key={item.uuid} item={item} onBroken={onBroken} />
             ))}
         </div>
     )
@@ -145,7 +104,7 @@ const MediaTile = ({
                     alt=""
                     loading="lazy"
                     onError={onBroken}
-                    className="max-h-48 max-w-[240px] object-cover"
+                    className="max-h-48 max-w-60 object-cover"
                 />
             ) : (
                 <span className="flex w-32 h-32 items-center justify-center text-xs text-gray-500">

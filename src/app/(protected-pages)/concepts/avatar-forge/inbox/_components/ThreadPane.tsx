@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import Button from '@/components/ui/Button'
 import Input from '@/components/ui/Input'
 import Segment from '@/components/ui/Segment'
@@ -12,6 +12,7 @@ import {
     approveAndSendVoiceNote,
     discardDraft,
     getAgentChatThread,
+    getChatMedia,
     regenerateDraft,
     removeDraftOffer,
     sendPpvOffer,
@@ -23,8 +24,22 @@ import {
 } from '@/services/AgentInboxService'
 import TelegramSendContentDialog from '../../_shared/TelegramSendContentDialog'
 import DiscardReasonDialog from './DiscardReasonDialog'
-import MessageMedia from './MessageMedia'
+import MessageMedia, { type ChatMediaState } from './MessageMedia'
 import type { DiscardReason } from '@/lib/agent/draftCorrection'
+import type { InboxMediaItem } from '@/lib/fanvue/messageMedia'
+
+/**
+ * Media de Fanvue por hilo, en memoria mientras vive la página. El hilo se
+ * recarga tras cada acción (`onChanged`) y cada vez que se vuelve a un chat:
+ * sin esto, cada recarga volvería a pedirle todo a Fanvue. Se invalida
+ * cuando llega un mensaje con media nuevo (cambia `key`) o a los 10 minutos,
+ * porque las URLs firmadas caducan.
+ */
+const MEDIA_TTL_MS = 10 * 60 * 1000
+const mediaCache = new Map<
+    string,
+    { at: number; key: string | null; index: Record<string, InboxMediaItem> }
+>()
 
 type ThreadData = NonNullable<Awaited<ReturnType<typeof getAgentChatThread>>['data']>
 
@@ -151,6 +166,60 @@ const ThreadPane = ({ thread, onChanged }: ThreadPaneProps) => {
     >(null)
     const [showMemory, setShowMemory] = useState(false)
     const [discardOpen, setDiscardOpen] = useState(false)
+
+    // Fotos y vídeos del hilo: UNA petición por chat (`getChatMedia`), no una
+    // por mensaje. `mediaKey` es el último mensaje con media: si cambia, llegó
+    // media nueva y la caché ya no la tiene.
+    const mediaKey =
+        [...messages].reverse().find((m) => m.mediaUuids.length > 0)?.id ?? null
+    const wantsMedia = !hideFanvueOnlyTools && mediaKey !== null
+    const [media, setMedia] = useState<ChatMediaState>({ kind: 'loading' })
+    const mediaChatRef = useRef(chat.id)
+    const mediaRetried = useRef(false)
+
+    const loadMedia = async (force: boolean) => {
+        const chatId = chat.id
+        mediaChatRef.current = chatId
+        const hit = mediaCache.get(chatId)
+        if (
+            !force &&
+            hit &&
+            hit.key === mediaKey &&
+            Date.now() - hit.at < MEDIA_TTL_MS
+        ) {
+            setMedia({ kind: 'ready', index: hit.index })
+            return
+        }
+        setMedia({ kind: 'loading' })
+        const result = await getChatMedia(chatId)
+        // Se cambió de chat mientras tanto: esta respuesta ya no es de este hilo.
+        if (mediaChatRef.current !== chatId) return
+        if (result.success) {
+            const index = result.data ?? {}
+            mediaCache.set(chatId, { at: Date.now(), key: mediaKey, index })
+            setMedia({ kind: 'ready', index })
+        } else {
+            setMedia({
+                kind: 'error',
+                message: result.error ?? 'Could not load media',
+            })
+        }
+    }
+
+    useEffect(() => {
+        mediaRetried.current = false
+        if (wantsMedia) loadMedia(false)
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [chat.id, mediaKey, wantsMedia])
+
+    // Una imagen no cargó: casi siempre, URL firmada caducada. Se pide la
+    // media otra vez, UNA sola vez por hilo (si no, un medio roto de verdad
+    // entraría en bucle).
+    const onMediaBroken = () => {
+        if (mediaRetried.current) return
+        mediaRetried.current = true
+        loadMedia(true)
+    }
 
     // PPV offer state
     const [ppv, setPpv] = useState<PpvSuggestion | null>(null)
@@ -483,11 +552,13 @@ const ThreadPane = ({ thread, onChanged }: ThreadPaneProps) => {
                         >
                             {hasMedia && (
                                 <MessageMedia
-                                    messageId={m.id}
-                                    count={m.mediaUuids.length}
+                                    uuids={m.mediaUuids}
+                                    media={media}
                                     align={
                                         m.direction === 'out' ? 'end' : 'start'
                                     }
+                                    onBroken={onMediaBroken}
+                                    onRetry={() => loadMedia(true)}
                                 />
                             )}
                             {showBubble && (
