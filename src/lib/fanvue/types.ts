@@ -197,6 +197,35 @@ export interface FanvueListMessagesResponse {
     pagination: FanvuePagination
 }
 
+/** Una variante de un medio resuelto: la URL va FIRMADA y caduca. */
+export interface FanvueMediaVariant {
+    variantType: 'main' | 'thumbnail' | 'thumbnail_gallery' | 'blurred'
+    displayPosition: number
+    url: string
+    width: number | null
+    height: number | null
+    lengthMs: number | null
+}
+
+export interface FanvueResolvedMedia {
+    uuid: string
+    messageUuid: string
+    mediaType: 'image' | 'video' | 'audio' | 'document' | 'unknown'
+    variants: FanvueMediaVariant[]
+    purchasedAt: string | null
+}
+
+/**
+ * `GET /v1/[creators/{uuid}/]chats/{userUuid}/messages/{messageUuid}/media`.
+ * `results` va por uuid y puede traer `null`; lo que no se pudo resolver sale
+ * en `errors` (`NOT_IN_MESSAGE` si el uuid no es de ese mensaje).
+ * Doc verificada 2026-09-21: docs/v1/api-reference/resolve-media-uuids-for-a-chat-message.md
+ */
+export interface FanvueResolveMediaResponse {
+    results: Record<string, FanvueResolvedMedia | null>
+    errors?: { mediaUuid: string; code: string; message: string }[]
+}
+
 /** Body of `POST /chats/{userUuid}/message` (path is SINGULAR per docs). */
 export interface SendChatMessageInput {
     text?: string | null

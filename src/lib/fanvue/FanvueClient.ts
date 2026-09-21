@@ -29,6 +29,7 @@ import type {
     FanvueListMessagesResponse,
     FanvueMediaStatusResponse,
     FanvuePostResponse,
+    FanvueResolveMediaResponse,
     FanvueUploadPart,
     FanvueUploadSession,
     SendChatMessageInput,
@@ -406,6 +407,29 @@ export class FanvueClient {
         return this.requestJson<FanvueListMessagesResponse>(
             'GET',
             `${this.base(creatorUuid)}/chats/${encodeURIComponent(userUuid)}/messages?${qs.toString()}`,
+        )
+    }
+
+    /**
+     * `GET /v1[/creators/{uuid}]/chats/{userUuid}/messages/{messageUuid}/media`
+     * — URLs FIRMADAS (caducan) de los medios de un mensaje, para pintarlos
+     * en el Inbox. Sólo existe en v1 (de ahí el prefijo, igual que earnings).
+     * Máximo 20 uuids por llamada. Scopes: read:chat (+ read:creator en
+     * modo agencia).
+     */
+    async resolveChatMessageMedia(
+        creatorUuid: string | null,
+        userUuid: string,
+        messageUuid: string,
+        mediaUuids: string[],
+        variants: string[] = ['thumbnail', 'main'],
+    ): Promise<FanvueResolveMediaResponse> {
+        const qs = new URLSearchParams()
+        qs.set('mediaUuids', mediaUuids.slice(0, 20).join(','))
+        if (variants.length > 0) qs.set('variants', variants.join(','))
+        return this.requestJson<FanvueResolveMediaResponse>(
+            'GET',
+            `/v1${this.base(creatorUuid)}/chats/${encodeURIComponent(userUuid)}/messages/${encodeURIComponent(messageUuid)}/media?${qs.toString()}`,
         )
     }
 

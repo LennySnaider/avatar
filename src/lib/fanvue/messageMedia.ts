@@ -1,0 +1,86 @@
+/**
+ * Medios de un mensaje de Fanvue en el Inbox. Fichero PURO, sin imports de
+ * runtime: la IO (pedir las URLs firmadas) vive en `AgentInboxService`.
+ *
+ * `agent_messages.media` es un jsonb libre que comparten los canales:
+ * Fanvue guarda `[{ uuid }]` (`ingestMessage`), Telegram guarda ofertas
+ * `{ type: 'paid_media' | 'paid_media_offer' | …, itemId, … }`. Aquí sólo
+ * interesan los uuids de Fanvue.
+ */
+import type { FanvueMediaVariant, FanvueResolvedMedia } from './types'
+
+/** Máximo de uuids que Fanvue resuelve en una llamada. */
+export const MAX_MEDIA_PER_RESOLVE = 20
+
+/**
+ * Uuids de medios de Fanvue guardados en `agent_messages.media`. Dos formas:
+ * `{ uuid }` (lo ingerido y lo enviado por `sendAgentMessage`) y
+ * `{ type: 'image' | 'video', mediaUuid, price }` (el PPV de `sendPpvOffer`).
+ * Cualquier otro `type` es una oferta de Telegram y se ignora. Lo que no
+ * calza se descarta sin tirar: la fila puede venir de cualquier versión.
+ */
+export function fanvueMediaUuids(media: unknown): string[] {
+    if (!Array.isArray(media)) return []
+    const out: string[] = []
+    for (const item of media) {
+        if (!item || typeof item !== 'object') continue
+        const rec = item as Record<string, unknown>
+        const uuid =
+            rec.type === undefined
+                ? rec.uuid
+                : rec.type === 'image' || rec.type === 'video'
+                  ? rec.mediaUuid
+                  : undefined
+        if (typeof uuid === 'string' && uuid.trim() !== '') out.push(uuid)
+    }
+    return out
+}
+
+/** Lo que el Inbox pinta de un medio: miniatura para la burbuja, principal al abrirlo. */
+export interface InboxMediaItem {
+    uuid: string
+    mediaType: FanvueResolvedMedia['mediaType']
+    thumbUrl: string | null
+    fullUrl: string | null
+}
+
+function variantUrl(
+    variants: FanvueMediaVariant[],
+    order: FanvueMediaVariant['variantType'][],
+): string | null {
+    for (const type of order) {
+        const hit = variants.find((v) => v.variantType === type && v.url)
+        if (hit) return hit.url
+    }
+    return null
+}
+
+/**
+ * Resultado de Fanvue → lo que se pinta, en el orden en que se guardaron los
+ * uuids. La miniatura cae a la principal si no hay miniatura, y al revés;
+ * `blurred` sólo como último recurso (contenido de pago no comprado: es lo
+ * único que Fanvue enseña).
+ */
+export function toInboxMedia(
+    uuids: string[],
+    results: Record<string, FanvueResolvedMedia | null>,
+): InboxMediaItem[] {
+    const out: InboxMediaItem[] = []
+    for (const uuid of uuids) {
+        const media = results[uuid]
+        if (!media) continue
+        const variants = Array.isArray(media.variants) ? media.variants : []
+        out.push({
+            uuid,
+            mediaType: media.mediaType,
+            thumbUrl: variantUrl(variants, [
+                'thumbnail',
+                'thumbnail_gallery',
+                'main',
+                'blurred',
+            ]),
+            fullUrl: variantUrl(variants, ['main', 'thumbnail', 'blurred']),
+        })
+    }
+    return out
+}

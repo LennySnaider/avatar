@@ -23,6 +23,7 @@ import {
 } from '@/services/AgentInboxService'
 import TelegramSendContentDialog from '../../_shared/TelegramSendContentDialog'
 import DiscardReasonDialog from './DiscardReasonDialog'
+import MessageMedia from './MessageMedia'
 import type { DiscardReason } from '@/lib/agent/draftCorrection'
 
 type ThreadData = NonNullable<Awaited<ReturnType<typeof getAgentChatThread>>['data']>
@@ -241,7 +242,10 @@ const ThreadPane = ({ thread, onChanged }: ThreadPaneProps) => {
             const result = await setChatHidden(chat.id, hide)
             if (result.success) {
                 toast.push(
-                    <Notification type="success" title={hide ? 'Hidden' : 'Unhidden'}>
+                    <Notification
+                        type="success"
+                        title={hide ? 'Hidden' : 'Unhidden'}
+                    >
                         {hide
                             ? 'Moved to other-creator / spam chats. The agent stops drafting here.'
                             : 'Back in the inbox. The chat stays Off until you switch it on.'}
@@ -464,29 +468,49 @@ const ThreadPane = ({ thread, onChanged }: ThreadPaneProps) => {
                 {conversation.length === 0 && (
                     <p className="text-sm text-gray-400">No messages yet.</p>
                 )}
-                {conversation.map((m: AgentMessageDTO) => (
-                    <div
-                        key={m.id}
-                        className={`flex flex-col ${m.direction === 'out' ? 'items-end' : 'items-start'}`}
-                    >
+                {conversation.map((m: AgentMessageDTO) => {
+                    // Un mensaje de sólo foto no trae texto: antes salía como
+                    // una burbuja vacía. La burbuja queda para el texto (o el
+                    // fallo), y lo que no tenga ni texto ni media la conserva.
+                    const hasMedia =
+                        !hideFanvueOnlyTools && m.mediaUuids.length > 0
+                    const showBubble =
+                        Boolean(m.text) || m.status === 'failed' || !hasMedia
+                    return (
                         <div
-                            className={`px-3 py-2 rounded-2xl max-w-[80%] text-sm whitespace-pre-wrap ${
-                                m.direction === 'out'
-                                    ? 'bg-primary text-white rounded-br-sm'
-                                    : 'bg-gray-100 dark:bg-gray-700 rounded-bl-sm'
-                            }`}
+                            key={m.id}
+                            className={`flex flex-col ${m.direction === 'out' ? 'items-end' : 'items-start'}`}
                         >
-                            {m.text}
-                            {m.status === 'failed' && (
-                                <span className="block text-[10px] text-red-200 mt-1">
-                                    failed: {m.errorMessage}
-                                </span>
+                            {hasMedia && (
+                                <MessageMedia
+                                    messageId={m.id}
+                                    count={m.mediaUuids.length}
+                                    align={
+                                        m.direction === 'out' ? 'end' : 'start'
+                                    }
+                                />
                             )}
+                            {showBubble && (
+                                <div
+                                    className={`px-3 py-2 rounded-2xl max-w-[80%] text-sm whitespace-pre-wrap ${
+                                        m.direction === 'out'
+                                            ? 'bg-primary text-white rounded-br-sm'
+                                            : 'bg-gray-100 dark:bg-gray-700 rounded-bl-sm'
+                                    }`}
+                                >
+                                    {m.text}
+                                    {m.status === 'failed' && (
+                                        <span className="block text-[10px] text-red-200 mt-1">
+                                            failed: {m.errorMessage}
+                                        </span>
+                                    )}
+                                </div>
+                            )}
+                            {m.paidOffer && <OfferTag offer={m.paidOffer} className="mt-1" />}
+                            {m.freeOffer && <FreeOfferTag className="mt-1" />}
                         </div>
-                        {m.paidOffer && <OfferTag offer={m.paidOffer} className="mt-1" />}
-                        {m.freeOffer && <FreeOfferTag className="mt-1" />}
-                    </div>
-                ))}
+                    )
+                })}
             </div>
 
             {/* PPV offer suggestion */}

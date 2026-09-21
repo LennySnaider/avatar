@@ -51,6 +51,12 @@ import { textToSpeech } from '@/services/MiniMaxService'
 import { getGenerationMediaUrl, getRowMediaUrl } from '@/lib/storagePaths'
 import { GoogleGenAI, Type } from '@google/genai'
 import { loadConnection } from '@/lib/fanvue/tokenStore'
+import {
+    fanvueMediaUuids,
+    MAX_MEDIA_PER_RESOLVE,
+    toInboxMedia,
+    type InboxMediaItem,
+} from '@/lib/fanvue/messageMedia'
 
 export interface InboxResult<T> {
     success: boolean
@@ -84,9 +90,15 @@ export interface AgentMessageDTO {
      * visto ni pudiera quitarlo, y un teaser se gasta UNA VEZ por fan.
      */
     freeOffer: { itemId: string; caption: string } | null
+    /**
+     * Uuids de las fotos/vídeos de Fanvue del mensaje. Sólo los uuids: las
+     * URLs las firma Fanvue y caducan, así que el hilo las pide al pintarse
+     * (`getMessageMedia`) en vez de guardarlas.
+     */
+    mediaUuids: string[]
 }
 
-const fail = (where: string, e: unknown): { success: false; error: string } => {
+const fail =(where: string, e: unknown): { success: false; error: string } => {
     // Un rechazo por permisos (o por modulo no instalado) es una respuesta
     // NORMAL, no una averia: si todo se registra como error, nada destaca.
     if (!isExpectedDenial(e)) console.error(`[inbox] ${where}:`, e)
@@ -116,6 +128,7 @@ function toMessageDTO(row: AgentMessageRow): AgentMessageDTO {
         freeOffer: freeOffer
             ? { itemId: freeOffer.itemId, caption: freeOffer.caption }
             : null,
+        mediaUuids: fanvueMediaUuids(row.media),
     }
 }
 
@@ -423,6 +436,75 @@ export async function getAgentChatThread(
         }
     } catch (e) {
         return fail('getAgentChatThread', e)
+    }
+}
+
+/**
+ * Fotos/vídeos de un mensaje de Fanvue, con URLs FIRMADAS para pintarlas en
+ * el hilo. Se piden al pintar y no se guardan: Fanvue las firma y caducan.
+ * El hilo sólo las pide para los mensajes que entran en pantalla — un chat
+ * de spam trae cientos de mensajes con media y pedirlas todas al abrirlo
+ * serían cientos de llamadas.
+ *
+ * Telegram y comentarios no tienen medios de Fanvue: devuelven lista vacía.
+ */
+export async function getMessageMedia(
+    messageId: string,
+): Promise<InboxResult<InboxMediaItem[]>> {
+    try {
+        const ctx = await getOrgContext()
+        requirePermission(ctx, 'content:read')
+        const { data: msgRow } = await orgTable(ctx, 'agent_messages')
+            .select('id, chat_id, external_message_id, media')
+            .eq('id', messageId)
+            .maybeSingle()
+        if (!msgRow) return { success: false, error: 'Message not found' }
+        const msg = msgRow as Pick<
+            AgentMessageRow,
+            'id' | 'chat_id' | 'external_message_id' | 'media'
+        >
+        const uuids = fanvueMediaUuids(msg.media).slice(
+            0,
+            MAX_MEDIA_PER_RESOLVE,
+        )
+        if (uuids.length === 0) return { success: true, data: [] }
+        if (!msg.external_message_id)
+            return { success: false, error: 'Message has no Fanvue id' }
+
+        const { data: chatRow } = await orgTable(ctx, 'agent_chats')
+            .select('avatar_id, platform, external_chat_id')
+            .eq('id', msg.chat_id)
+            .maybeSingle()
+        const chat = chatRow as Pick<
+            AgentChatRow,
+            'avatar_id' | 'platform' | 'external_chat_id'
+        > | null
+        if (!chat) return { success: false, error: 'Chat not found' }
+        if (resolveDeliveryChannel(chat.platform) !== 'fanvue')
+            return { success: true, data: [] }
+
+        const { data: avatarRow } = await orgTable(ctx, 'avatars')
+            .select('user_id, fanvue_creator_uuid')
+            .eq('id', chat.avatar_id)
+            .maybeSingle()
+        const avatar = avatarRow as {
+            user_id: string | null
+            fanvue_creator_uuid: string | null
+        } | null
+        if (!avatar?.user_id)
+            return { success: false, error: 'Avatar has no owner' }
+
+        const res = await makeFanvueClient(
+            avatar.user_id,
+        ).resolveChatMessageMedia(
+            avatar.fanvue_creator_uuid ?? null,
+            chat.external_chat_id,
+            msg.external_message_id,
+            uuids,
+        )
+        return { success: true, data: toInboxMedia(uuids, res.results ?? {}) }
+    } catch (e) {
+        return fail('getMessageMedia', e)
     }
 }
 
