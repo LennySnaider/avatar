@@ -1,7 +1,10 @@
 /**
  * GET /api/cron/social-comments-poll
  *
- * Cada 15 minutos (ver `vercel.json`): por cada `social_profiles` con la IA
+ * Cada 5 minutos (ver `vercel.json`; era cada 15 hasta 2026-09-21, se bajó
+ * para que el fan no espere un cuarto de hora a ver su respuesta — el gasto
+ * de LLM no cambia: los borradores salen por comentario NUEVO, no por
+ * vuelta): por cada `social_profiles` con la IA
  * de comentarios encendida (`status='active' and
  * ai_comment_replies_enabled=true`), primero sincroniza sus
  * `social_post_targets` desde el history de Upload-Post
@@ -27,6 +30,8 @@ import { listPollableProfiles } from '@/lib/social/comments/settings'
 import { syncPostTargets } from '@/lib/social/comments/targets'
 import { pollProfileComments } from '@/lib/social/comments/poll'
 import { clampSinceDays } from '@/lib/social/comments/pollRules'
+import { getSocialProvider } from '@/lib/social/provider'
+import type { RateLimitInfo } from '@/lib/social/providers/SocialProvider'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 120
@@ -100,9 +105,25 @@ export async function GET(request: NextRequest) {
         }
     }
 
+    // Margen de Upload-Post al cerrar la vuelta, para vigilar el límite
+    // (118 llamadas por ventana de ~1 min, medido 2026-09-21) a medida que
+    // crecen los perfiles con IA: cada perfil gasta 1-3 llamadas por post y
+    // red de los últimos 7 días, más el history de sus posts recientes. Si
+    // `remaining` baja de ~30 de forma sostenida, toca espaciar el cron o
+    // repartir perfiles entre vueltas. El proveedor es un singleton: si esta
+    // vuelta no llamó a nada, el dato es de una anterior — comparar `reset`
+    // con la hora del log.
+    const rateLimit = profiles.length > 0 ? lastRateLimit() : null
+    if (profiles.length > 0) {
+        console.log(
+            `[social-comments-poll] ${profiles.length} perfiles · ${targets} posts · ${newComments} comentarios nuevos · ${drafts} borradores · ${errors} errores · upload-post ${formatRateLimit(rateLimit)}`,
+        )
+    }
+
     return NextResponse.json({
         profiles: profiles.length,
         sinceDays,
+        rateLimit,
         synced,
         historyFailed,
         targets,
@@ -115,4 +136,23 @@ export async function GET(request: NextRequest) {
         reauthRequired,
         errors,
     })
+}
+
+function lastRateLimit(): RateLimitInfo | null {
+    try {
+        return getSocialProvider().getLastRateLimit()
+    } catch {
+        // Sin key no hubo vuelta que medir: los dos pasos ya lo avisaron.
+        return null
+    }
+}
+
+/** "112/118 restantes (reset 18:44:00Z)" — el margen en una línea del log. */
+function formatRateLimit(rl: RateLimitInfo | null): string {
+    if (!rl || rl.remaining === null) return 'sin dato de límite'
+    const reset =
+        rl.reset !== null
+            ? ` (reset ${new Date(rl.reset * 1000).toISOString().slice(11, 19)}Z)`
+            : ''
+    return `${rl.remaining}/${rl.limit ?? '?'} restantes${reset}`
 }

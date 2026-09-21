@@ -653,7 +653,7 @@ export async function assignSocialProfileToAvatar(
  * Quita el avatar del perfil: el perfil sigue en la cuenta agencia (con sus
  * redes) y vuelve a la lista de libres. Apaga la IA de comentarios de la
  * fila: sin avatar no hay a quién responder, y `listPollableProfiles`
- * avisaría cada 15 min de una fila con IA encendida y sin avatar.
+ * avisaría cada 5 min de una fila con IA encendida y sin avatar.
  */
 export async function unassignSocialProfile(avatarId: string): Promise<SocialResult<SocialProfileSummary>> {
     try {

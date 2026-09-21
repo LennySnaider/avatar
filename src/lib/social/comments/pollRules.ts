@@ -175,7 +175,7 @@ const SYNC_GRACE_MS = 2 * 60 * 60 * 1000 // 2 horas
  * ¿Hay que volver a pedirle `listHistory` a este post? Medido en vivo
  * (2026-09-16 con Emily, `?sinceDays=30`): un post con una plataforma que
  * FALLÓ (p.ej. Instagram con `account_reauth_required`) nunca iba a tener
- * `platform_post_id` — sin este corte, cada corrida del cron (cada 15 min,
+ * `platform_post_id` — sin este corte, cada corrida del cron (cada 5 min,
  * para siempre) lo volvía a mandar a `listHistory` porque "le falta
  * Instagram", gastando una llamada al proveedor por nada: la falla ya
  * quedó logueada la primera vez que se vio.

@@ -22,7 +22,7 @@
         },
         {
             "path": "/api/cron/social-comments-poll",
-            "schedule": "*/15 * * * *"
+            "schedule": "*/5 * * * *"
         },
         {
             "path": "/api/cron/earnings-sync",

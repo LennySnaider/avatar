@@ -48,7 +48,7 @@ const PAGE_LIMIT = 50
  * función con `maxDuration = 120` — se corta a la mitad por timeout, con la
  * mitad de la factura gastada y sin dejar rastro de qué quedó sin hacer. 30
  * borradores caben de sobra en 120 s (≈2-3 s cada uno) y cubren el volumen
- * real de comentarios entre dos corridas del cron (cada 15 min).
+ * real de comentarios entre dos corridas del cron (cada 5 min).
  *
  * Pasado el tope los comentarios SE SIGUEN INGIRIENDO (no se pierde
  * ninguno): sólo se deja el hilo marcado `needs_attention` para que el humano
