@@ -29,6 +29,10 @@ import { maybeAutopilotSend } from '@/lib/agent/autopilot'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 120
+/** Se deja de empezar chats nuevos pasado esto: con el tope de 25 s por
+ *  llamada a Fanvue (FanvueClient), la vuelta termina limpia antes de que
+ *  Vercel la mate a los 120 s. Lo que quede, en la vuelta siguiente. */
+const TIME_BUDGET_MS = 85_000
 
 export async function GET(request: NextRequest) {
     const secret = process.env.CRON_SECRET
@@ -67,8 +71,13 @@ export async function GET(request: NextRequest) {
      *  la marca real la pone el humano ("Hide as spam"). Si esto sale > 0,
      *  Fanvue sí distingue a alguien. */
     let fanvueCreators = 0
+    /** Chats que no se descargaron: sin mensajes nuevos, u ocultos como spam. */
+    let skipped = 0
+    const startedAt = Date.now()
+    let budgetExhausted = false
 
     for (const avatar of avatars ?? []) {
+        if (budgetExhausted) break
         if (!avatar.user_id) continue
         // One connection per owner; skip if not connected.
         const connection = await loadConnection(avatar.user_id)
@@ -101,7 +110,49 @@ export async function GET(request: NextRequest) {
             })
             polled++
             fanvueCreators += chatsRes.data.filter((s) => s.isCreator).length
+
+            // Lo que ya tenemos de cada chat. Antes se pedían los mensajes de
+            // los 15 chats en CADA vuelta, hubiera novedad o no, y los de
+            // otras creadoras (vixenbabe, sophiabell…) se colgaban hasta el
+            // tope de 25 s: el cron moría por timeout de Vercel en todas las
+            // vueltas del 2026-09-21.
+            const { data: knownRows } = await supabase
+                .from('agent_chats')
+                .select('external_chat_id, last_message_at, is_creator')
+                .eq('organization_id', target.organizationId)
+                .eq('avatar_id', target.avatarId)
+                .eq('platform', 'fanvue')
+                .in(
+                    'external_chat_id',
+                    chatsRes.data.map((s) => s.user.uuid),
+                )
+            const known = new Map(
+                (knownRows ?? []).map((k) => [k.external_chat_id, k]),
+            )
+
             for (const summary of chatsRes.data) {
+                if (Date.now() - startedAt > TIME_BUDGET_MS) {
+                    budgetExhausted = true
+                    break
+                }
+                const prev = known.get(summary.user.uuid)
+                // Oculto como spam / otra creadora: ni se toca. Sus mensajes
+                // no aportan nada y eran los más caros — Sophia Bell (cientos
+                // de masivos) devolvía 500 en `/messages` en cada vuelta.
+                if (prev?.is_creator) {
+                    skipped++
+                    continue
+                }
+                // Sin novedad desde lo último que se ingirió: nada que pedir.
+                if (
+                    prev?.last_message_at &&
+                    summary.lastMessageAt &&
+                    Date.parse(summary.lastMessageAt) <=
+                        Date.parse(prev.last_message_at)
+                ) {
+                    skipped++
+                    continue
+                }
                 // Resiliencia POR CHAT: Fanvue devuelve 400 "Invalid user
                 // UUID" en /messages para hilos cuyo interlocutor no es un
                 // fan normal (cuentas creator/oficiales, p.ej. creator-coach
@@ -110,7 +161,10 @@ export async function GET(request: NextRequest) {
                 // de los 15 chats en cada corrida del cron, para siempre.
                 // Ahora el hilo malo se salta y el resto sigue.
                 try {
-                    // Only touch chats with a fan message newer than what we know.
+                    // SIN `lastMessageAt`: se apunta abajo, cuando los
+                    // mensajes ya están ingeridos. Si se apuntara aquí y
+                    // `/messages` fallara, la vuelta siguiente vería el chat
+                    // "al día" y esos mensajes no se pedirían nunca.
                     const chat = await upsertChat({
                         target,
                         fanUuid: summary.user.uuid,
@@ -119,13 +173,8 @@ export async function GET(request: NextRequest) {
                         fanHandle: summary.user.handle,
                         fanAvatarUrl: summary.user.avatarUrl ?? null,
                         isCreator: Boolean(summary.isCreator),
-                        lastMessageAt: summary.lastMessageAt,
                     })
                     chatCount++
-                    // Oculto como spam / otra creadora: no se descargan sus
-                    // mensajes. No aportan nada y eran los más caros — Sophia
-                    // Bell (cientos de masivos) devolvía 500 en `/messages`
-                    // en cada vuelta mientras el cron moría por timeout.
                     if (chat.is_creator) continue
 
                     const messagesRes = await client.listChatMessages(
@@ -149,6 +198,17 @@ export async function GET(request: NextRequest) {
                             externalCreatedAt: m.sentAt,
                         })
                         anyInserted = anyInserted || inserted
+                    }
+                    // Ya ingerido: ahora sí se apunta hasta dónde llegamos
+                    // (lo que la vuelta siguiente compara para saltarse el
+                    // chat). Si el webhook apuntó algo más nuevo entretanto,
+                    // lo peor es una descarga de más en la vuelta siguiente.
+                    if (summary.lastMessageAt) {
+                        await supabase
+                            .from('agent_chats')
+                            .update({ last_message_at: summary.lastMessageAt })
+                            .eq('id', chat.id)
+                            .eq('organization_id', target.organizationId)
                     }
 
                     const latest = messagesRes.data[messagesRes.data.length - 1]
@@ -193,7 +253,7 @@ export async function GET(request: NextRequest) {
 
     if (polled > 0) {
         console.log(
-            `[agent-inbox-poll] ${polled} avatares · ${chatCount} chats · ${fanvueCreators} marcados creador por Fanvue · ${drafts} borradores`,
+            `[agent-inbox-poll] ${polled} avatares · ${chatCount} chats descargados · ${skipped} sin novedad u ocultos · ${fanvueCreators} marcados creador por Fanvue · ${drafts} borradores${budgetExhausted ? ' · CORTADO por tiempo' : ''}`,
         )
     }
     return NextResponse.json({
@@ -201,5 +261,7 @@ export async function GET(request: NextRequest) {
         chats: chatCount,
         drafts,
         fanvueCreators,
+        skipped,
+        budgetExhausted,
     })
 }
