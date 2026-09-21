@@ -1833,6 +1833,7 @@ export type Database = {
           media_urls: string[]
           organization_id: string
           platforms: Json
+          post_group_id: string | null
           published_at: string | null
           scheduled_at: string | null
           social_profile_id: string | null
@@ -1854,6 +1855,7 @@ export type Database = {
           media_urls?: string[]
           organization_id: string
           platforms?: Json
+          post_group_id?: string | null
           published_at?: string | null
           scheduled_at?: string | null
           social_profile_id?: string | null
@@ -1875,6 +1877,7 @@ export type Database = {
           media_urls?: string[]
           organization_id?: string
           platforms?: Json
+          post_group_id?: string | null
           published_at?: string | null
           scheduled_at?: string | null
           social_profile_id?: string | null

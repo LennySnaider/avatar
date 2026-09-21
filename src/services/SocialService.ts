@@ -21,6 +21,7 @@ import { validatePostForPlatforms } from '@/lib/social/platformValidators'
 import { appendHashtagsToCaption } from '@/lib/social/hashtagHelpers'
 import { buildTikTokPhotoText } from '@/lib/social/tiktokPhotoText'
 import { audioLabelFromMetadata } from '@/lib/social/audioLabel'
+import { planMusicDispatch, type MusicDispatchLeg } from '@/lib/social/musicDispatch'
 import { validateSocialCommentSettingsPatch } from '@/lib/social/comments/settingsValidation'
 import { ALL_PLATFORMS } from '@/@types/social'
 import type { Platform, PlatformTarget } from '@/@types/social'
@@ -114,6 +115,14 @@ export interface CreateSocialPostInput {
      * llega a todas las redes del post.
      */
     instagramFit?: InstagramFit
+    /**
+     * Pista NATIVA de la Commercial Music Library de TikTok
+     * (`TikTokMusicTrack.id`, nunca `commercial_music_id`: ese TikTok lo
+     * rechaza en posts públicos). Es la única música adjuntable por API, y
+     * sólo TikTok la entiende: si el post va además a otras redes, obliga a
+     * publicar en dos llamadas (ver `planMusicDispatch`).
+     */
+    tiktokMusicId?: string | null
 }
 
 const fail = (e: unknown): { success: false; error: string } => ({
@@ -878,6 +887,7 @@ export async function createSocialPost(input: CreateSocialPostInput): Promise<So
         let contentType: 'photo' | 'video' | 'text' = 'text'
         let generationId: string | null = null
         let audioName: string | undefined
+        let cleanVideoUrl: string | null = null
         if (requestedIds.length > 0) {
             // select('*') y no la lista de columnas: la URL de la media depende
             // de `storage_provider` (era R2) y esa columna puede no existir
@@ -919,6 +929,23 @@ export async function createSocialPost(input: CreateSocialPostInput): Promise<So
             // Editor al guardar). Sólo aplica a Reels de Instagram; en el
             // resto de plataformas Upload-Post la ignora sin quejarse.
             audioName = audioLabelFromMetadata(ordered[0].metadata)
+
+            // Versión SIN música horneada, para mandársela a TikTok con su
+            // pista nativa: es la generación de la que salió esta copia
+            // (`metadata.muxedFrom`, que escribe el Video Editor). Si no se
+            // puede resolver, `planMusicDispatch` simplemente no parte.
+            const muxedFrom = (ordered[0].metadata as { muxedFrom?: unknown } | null)?.muxedFrom
+            if (contentType === 'video' && typeof muxedFrom === 'string' && muxedFrom) {
+                const { data: sourceGen } = await orgTable(ctx, 'generations')
+                    .select('*')
+                    .eq('id', muxedFrom)
+                    .maybeSingle()
+                if (sourceGen) {
+                    cleanVideoUrl = getRowMediaUrl(
+                        sourceGen as unknown as Database['public']['Tables']['generations']['Row'],
+                    )
+                }
+            }
 
             // Feed de Instagram: 4:5–1.91:1 o Upload-Post rellena con franjas
             // blancas (visto el 2026-09-18). Se manda una variante preparada;
@@ -978,10 +1005,44 @@ export async function createSocialPost(input: CreateSocialPostInput): Promise<So
             scheduledAt,
         }
 
+        // Con pista nativa de TikTok el post puede necesitar DOS llamadas: a
+        // TikTok le va el MP4 limpio + `tiktok_music_id` y al resto el que
+        // lleva la música horneada. `planMusicDispatch` decide cuándo NO hay
+        // que partir, que es la mitad de los casos.
+        const legs: MusicDispatchLeg[] =
+            contentType === 'video' && mediaUrls.length > 0
+                ? planMusicDispatch({
+                      platforms,
+                      videoUrl: mediaUrls[0],
+                      cleanVideoUrl,
+                      tiktokMusicId: input.tiktokMusicId,
+                  })
+                : []
+
+        /** Targets de UNA llamada: los de arriba, recortados a sus plataformas
+         *  y con la pista nativa añadida. La clave es `music_id` y no
+         *  `tiktok_music_id` porque `buildPublishForm` ya prefija con la
+         *  plataforma — escribirlo entero daría `tiktok_tiktok_music_id`. */
+        const targetsForLeg = (leg: MusicDispatchLeg): PlatformTarget[] =>
+            leg.platforms.map((platform) => {
+                const base = platformTargets.find((t) => t.platform === platform) ?? { platform }
+                if (platform === 'tiktok' && leg.tiktokMusicId) {
+                    return { ...base, params: { ...(base.params ?? {}), music_id: leg.tiktokMusicId } }
+                }
+                return base
+            })
+
         let dispatch: PublishResponse
         if (contentType === 'video') {
             if (mediaUrls.length === 0) return { success: false, error: 'Video post requires media' }
-            dispatch = await provider.publishVideo({ ...publishBase, videoUrl: mediaUrls[0], audioName })
+            dispatch = await provider.publishVideo({
+                ...publishBase,
+                platforms: targetsForLeg(legs[0]),
+                videoUrl: legs[0].videoUrl,
+                // La llamada con pista NATIVA no lleva etiqueta: audio_name
+                // describe lo que viene horneado, y ahí no viene nada.
+                audioName: legs[0].tiktokMusicId ? undefined : audioName,
+            })
         } else if (contentType === 'photo') {
             if (mediaUrls.length === 0) return { success: false, error: 'Photo post requires media' }
             dispatch = await provider.publishPhoto({ ...publishBase, photoUrls: mediaUrls })
@@ -1004,6 +1065,11 @@ export async function createSocialPost(input: CreateSocialPostInput): Promise<So
             }
         }
 
+        // Sólo cuando hay más de una llamada: es lo que vuelve a juntar las
+        // filas de cara a la UI. NULL en los posts normales, que son la
+        // mayoría.
+        const postGroupId = legs.length > 1 ? crypto.randomUUID() : null
+
         // Insert manual (no orgInsert): mismo patrón que apiSaveGeneration en
         // AvatarForgeService — organization_id + "creado por" de ctx.
         const { data: row, error: insErr } = await orgSupabase()
@@ -1023,10 +1089,55 @@ export async function createSocialPost(input: CreateSocialPostInput): Promise<So
                 upload_post_job_id: uploadPostJobId,
                 upload_post_response: toJson(dispatch),
                 organization_id: ctx.organizationId,
+                post_group_id: postGroupId,
             } as never)
             .select('*')
             .single()
         if (insErr) throw new Error(insErr.message)
+
+        // Llamadas restantes (sólo cuando la música obligó a partir). Van
+        // DESPUÉS de que la primera fila esté guardada: si una de estas falla,
+        // lo ya publicado sigue registrado en vez de perderse. Cada una lleva
+        // su propio upload_post_request_id, que es como el webhook las
+        // encuentra — ya contempla que ese id no sea único.
+        for (const leg of legs.slice(1)) {
+            try {
+                const legDispatch = await provider.publishVideo({
+                    ...publishBase,
+                    platforms: targetsForLeg(leg),
+                    videoUrl: leg.videoUrl,
+                    audioName: leg.tiktokMusicId ? undefined : audioName,
+                })
+                const { error: legErr } = await orgSupabase()
+                    .from('social_posts')
+                    .insert({
+                        social_profile_id: profile.id,
+                        generation_id: generationId,
+                        user_id: ctx.userId,
+                        caption,
+                        hashtags: input.hashtags,
+                        content_type: contentType,
+                        media_urls: [leg.videoUrl],
+                        platforms: toJson(leg.platforms),
+                        status: input.scheduledAt ? 'scheduled' : 'processing',
+                        scheduled_at: input.scheduledAt ?? null,
+                        upload_post_request_id: legDispatch.requestId ?? null,
+                        upload_post_response: toJson(legDispatch),
+                        organization_id: ctx.organizationId,
+                        post_group_id: postGroupId,
+                    } as never)
+                if (legErr) throw new Error(legErr.message)
+            } catch (e) {
+                // Publicado a medias: se avisa fuerte en el log en vez de
+                // tragárselo. La primera llamada YA salió, así que fallar el
+                // resultado entero mentiría sobre lo que pasó.
+                console.error(
+                    '[SocialService] la publicación partida falló en una de sus llamadas',
+                    { postGroupId, platforms: leg.platforms },
+                    e,
+                )
+            }
+        }
 
         // Agent RAG hook: published captions become avatar knowledge —
         // fire-and-forget, must never affect the publish result. El ctx ya
