@@ -1,7 +1,7 @@
 /**
  * GET /api/cron/social-comments-poll
  *
- * Cada 5 minutos (ver `vercel.json`; era cada 15 hasta 2026-09-21, se bajó
+ * Cada 5 minutos (ver `vercel.json`; era cada 15 hasta 2026-09-21; se bajó
  * para que el fan no espere un cuarto de hora a ver su respuesta — el gasto
  * de LLM no cambia: los borradores salen por comentario NUEVO, no por
  * vuelta): por cada `social_profiles` con la IA
@@ -109,14 +109,15 @@ export async function GET(request: NextRequest) {
         }
     }
 
-    // Margen de Upload-Post al cerrar la vuelta, para vigilar el límite
-    // (118 llamadas por ventana de ~1 min, medido 2026-09-21) a medida que
-    // crecen los perfiles con IA: cada perfil gasta 1-3 llamadas por post y
-    // red de los últimos 7 días, más el history de sus posts recientes. Si
-    // `remaining` baja de ~30 de forma sostenida, toca espaciar el cron o
-    // repartir perfiles entre vueltas. El proveedor es un singleton: si esta
-    // vuelta no llamó a nada, el dato es de una anterior — comparar `reset`
-    // con la hora del log.
+    // Margen de Upload-Post al cerrar la vuelta, para vigilar el límite a
+    // medida que crecen los perfiles con IA. La ventana es de 1 min y el tope
+    // varía según el endpoint (60 y 118 vistos el 2026-09-21): aquí sale el
+    // de la ÚLTIMA llamada. Cada perfil gasta 1-3 llamadas por post y red de
+    // los últimos 7 días, más el history de sus posts recientes. Si
+    // `remaining` baja de la mitad del tope de forma sostenida, toca espaciar
+    // el cron o repartir perfiles entre vueltas. El proveedor es un
+    // singleton: si esta vuelta no llamó a nada, el dato es de una anterior —
+    // comparar `reset` con la hora del log.
     const rateLimit = profiles.length > 0 ? lastRateLimit() : null
     if (profiles.length > 0) {
         console.log(
