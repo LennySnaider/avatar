@@ -13,6 +13,7 @@
 
 import type { ImageRoute, ImageRouteContext, KieImageRequest } from '../context'
 import { engineCaps } from '../engineCaps'
+import { cloneTier } from '@/utils/cloneTiers'
 import {
     relocatePoseTag,
     capAtWordBoundary,
@@ -99,17 +100,30 @@ async function build(ctx: ImageRouteContext): Promise<KieImageRequest> {
     // con el vestuario y el sitio del clone.
     if (clone) {
         const cloneUrl = await ctx.uploadRef(clone)
-        const cw = ctx.cloneWeight ?? 100
-        // Mismos tramos que Qwen 2: el peso del slider le cambia el TRABAJO al
-        // lienzo, no un adjetivo.
+        // TRAMOS del Clone Ref: los de `cloneTier` (utils/cloneTiers), la fuente
+        // de verdad que también usa planExtraRefs — NO la escalera vieja de
+        // Qwen 2. Con aquella, a 65% (STRONG) viajaba "keep framing close to the
+        // first image, minor variation": una orden de COPIA sobre un motor que
+        // edita la imagen 1 → dos generaciones idénticas a la foto (reporte
+        // 20-sep). STRONG es "otra toma de la misma sesión", y hay que pedirlo
+        // con esas palabras. Adaptado a Qwen: el clone es la imagen 1 (lienzo)
+        // y la cara la 2, así que aquí es "the FIRST image".
+        const tier = cloneTier(ctx.cloneWeight ?? 100).key
+        const outfit = ctx.nsfwIntent ? '' : 'outfit, '
+        const outfitDetail = ctx.nsfwIntent
+            ? ''
+            : ' (every garment, its colour, cut and accessories)'
+        const dressTail = ctx.nsfwIntent
+            ? 'IGNORE its clothing — follow the nudity described in the scene below.'
+            : 'Keep her dressed as the scene describes.'
         const fidelidad =
-            cw >= 75
-                ? 'Keep the SAME outfit (every garment piece), pose, framing and FULL background as the FIRST image'
-                : cw >= 50
-                  ? 'Keep the outfit, pose, framing and background close to the FIRST image, minor natural variation allowed'
-                  : cw >= 25
-                    ? 'Use the FIRST image as a general BASIS for outfit, pose and setting, reinterpreting the details freely'
-                    : 'Take only LOOSE inspiration from the FIRST image (vibe, outfit style, kind of setting)'
+            tier === 'exact'
+                ? `The FIRST image is the CLONE source: recreate its EXACT pose, body position, ${outfit}hands, objects held, framing, camera angle, lighting and setting. ${dressTail}`
+                : tier === 'strong'
+                  ? `The FIRST image is the WARDROBE, LOCATION and POSE reference: she wears that same outfit${outfitDetail}, stands in that same place and holds a pose of that same family — but this is ANOTHER SHOT of that session: shift the camera angle and the exact framing, and let her weight, hands and expression fall differently. Same wardrobe and same place, DIFFERENT photograph — never a pixel copy. ${dressTail}`
+                  : tier === 'moderate'
+                    ? `The FIRST image is a STYLE reference: keep the KIND of outfit${ctx.nsfwIntent ? '' : ' (its category, silhouette and colour palette)'}, the KIND of place and the overall mood — then reinvent the garment's details, the pose, the framing and the composition. ${dressTail}`
+                    : `The FIRST image is a MOOD reference: take ONLY its lighting quality and direction, its colour palette and its general atmosphere. Outfit, pose, framing and setting come from the scene text, not from this image.`
         const swap =
             'The FACE SWAP is MANDATORY: replace the face in the FIRST image ' +
             'with the face from the SECOND image (exact features and likeness) ' +
