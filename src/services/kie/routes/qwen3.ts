@@ -15,6 +15,7 @@
 import type { ImageRoute, ImageRouteContext, KieImageRequest } from '../context'
 import { engineCaps } from '../engineCaps'
 import { cloneTier } from '@/utils/cloneTiers'
+import { HIP_WIDTH_PHRASE } from '@/utils/bodyDescriptors'
 import {
     relocatePoseTag,
     capAtWordBoundary,
@@ -28,9 +29,6 @@ import {
 
 /** Doc KIE: `prompt` ≤ 5000. Se deja margen igual que en la ruta de Qwen 2. */
 const PROMPT_CAP = 4800
-
-/** Sub-cap del spec corporal dentro del ancla: largo satura al editor. */
-const BODY_CAP = 1200
 
 /**
  * Integración del face-swap (la de seedream.ts en canvas): sin ella la cara
@@ -76,9 +74,8 @@ async function build(ctx: ImageRouteContext): Promise<KieImageRequest> {
     // perfil o una hoja del Body Lab): inyectarlo dos veces lo amplifica.
     const bodyAllowed =
         !!ctx.bodyEmphasis && !/hip-to-waist ratio/i.test(escena)
-    const body = bodyAllowed
-        ? ` Her body: ${capAtWordBoundary(ctx.bodyEmphasis!, BODY_CAP, ctx.model)}.`
-        : ''
+    // cm clavados + anchura declarada, nunca la ficha entera: ver `bodyLock`.
+    const body = bodyAllowed ? bodyLock(ctx.bodyEmphasis!, ctx.model) : ''
     const identidad = `${hair}${eyes}${body}${INTACT_BODY_CLAUSE}`
 
     const faceUrl = await ctx.uploadRef(ctx.referenceImage)
@@ -156,12 +153,9 @@ async function build(ctx: ImageRouteContext): Promise<KieImageRequest> {
             const hairColour = colour
                 ? ` Her hair COLOUR is ${colour} — recolor if needed; keep the exact hairstyle, cut, length and up/down styling from the first image.`
                 : ''
-            const dense = bodyAllowed ? denseBodySpec(ctx.bodyEmphasis!) : ''
-            const bodyExact = !bodyAllowed
-                ? ''
-                : dense
-                  ? ` Her BODY measures ${dense}: keep her hip width, waist and overall frame EXACTLY at those centimetres — neither slimmer nor curvier than the numbers say; whatever glute fullness she has projects BACKWARD as depth, NOT as wide hips, thick thighs or a widened silhouette.`
-                  : ` Her silhouette keeps her own real proportions (${capAtWordBoundary(ctx.bodyEmphasis!.split(';')[0].trim(), 300, ctx.model)}).`
+            // El MISMO bloque de cuerpo que los demás tramos (`bodyLock`): un
+            // solo físico para toda la ruta.
+            const bodyExact = body
             const cierre =
                 ' Render EXACTLY ONE person, her body complete with all limbs. Above all: her FACE must remain EXACTLY the woman in the SECOND image. The text after this describes the SAME photo — use it only to resolve fine details.'
             return {
@@ -212,8 +206,17 @@ async function build(ctx: ImageRouteContext): Promise<KieImageRequest> {
     // ── SIN CLONE: la cara ES el lienzo ──────────────────────────────────
     // Aquí sí manda la imagen 1, así que las cláusulas indexadas de
     // `planExtraRefs` (que asumen "la cara es la imagen 1") encajan.
+    // La HOJA DE CUERPO no viaja a Qwen 3 (20-sep, medido con la MISMA
+    // petición): con la hoja como imagen 2 la cadera salía enorme aun con el
+    // cuerpo reducido a cm (2/2); sin la hoja, proporcionada (1/1). Qwen 2 ya
+    // lo tenía anotado ("body/pose/scene NO — los funde en la escena"). Aquí
+    // se quitan solo los refs de CUERPO; assets/pose/scene/place siguen igual
+    // porque no se han medido.
+    const refsSinCuerpo = (ctx.referenceImages ?? []).filter(
+        (r) => !REFS_DE_CUERPO.has(r.role ?? ''),
+    )
     const { extras, clauses } = planExtraRefs(
-        ctx.referenceImages,
+        refsSinCuerpo,
         Math.max(0, (caps?.maxRefs ?? 3) - 1),
         ctx.deepfakeMode,
         ctx.cloneWeight,
@@ -256,6 +259,42 @@ export function hairColourOnly(hairEmphasis?: string): string {
 
 const HAIR_SHAPE_WORDS =
     /\b(?:very\s+|extra\s+)?(?:long|short|medium(?:-length)?|chest-length|shoulder-length|waist-length|hip-length|chin-length|jaw-length|pixie|bob|lob|wavy|waves|straight|sleek|curly|curls|coily|kinky|braided|braids|ponytail|bun|updo|layered|layers|voluminous|messy|tousled|frizzy|silky|hairstyle|hair)\b[,\s]*/gi
+
+/** Roles de referencia que describen el CUERPO (la hoja del Body Lab y sus
+ *  recortes). Ver el filtro del camino sin clone. */
+const REFS_DE_CUERPO: ReadonlySet<string> = new Set(['body', 'bust', 'glutes'])
+
+/**
+ * El CUERPO para el ancla de Qwen 3: cm CLAVADOS + anchura declarada, y nada
+ * más (20-sep, "sigue poniendo las medidas mal: cintura y cadera").
+ *
+ * Medido con la misma petición (cadera 90 / anchura 2 / glúteo 5 / muslos 4):
+ *   · ficha entera (prosa + niveles + formas)            → cadera enorme
+ *   · cm + candado + frases de nivel + hoja como img 2   → cadera enorme
+ *   · cm + candado + hoja como img 2                     → cadera enorme
+ *   · cm + candado, sin hoja                             → proporcionada
+ *   · EXACT (cm + candado, sin hoja), dos escenas        → proporcionada
+ * Qwen 3 es un editor literal: cualquier señal de VOLUMEN —"very large
+ * prominent bubble butt", "thighs almost touching" o la hoja de cuerpo como
+ * imagen— la pinta como ANCHURA en un plano frontal. Lo único que da un físico
+ * consistente son los números (bidireccionales: ni más flaca ni más curva) y
+ * la frase de ANCHURA del slider (la misma que en el Body Lab estrecha el
+ * frente 3/3), reconocida por igualdad exacta con la constante. Los niveles
+ * de busto, glúteo y muslos NO viajan a este motor: quedan expresados por los
+ * cm y el ratio (pendiente medir una escena de espaldas). Sin cm ni anchura
+ * cae a la silueta compacta.
+ */
+export function bodyLock(bodyEmphasis: string, model: string): string {
+    const dense = denseBodySpec(bodyEmphasis)
+    const anchura =
+        Object.values(HIP_WIDTH_PHRASE).find((f) => bodyEmphasis.includes(f)) ??
+        ''
+    const cola = anchura ? `; ${anchura}` : ''
+    if (!dense) {
+        return ` Her silhouette keeps her own real proportions (${capAtWordBoundary(bodyEmphasis.split(';')[0].trim(), 300, model)})${cola}.`
+    }
+    return ` Her BODY measures ${dense}: keep her hip width, waist and overall frame EXACTLY at those centimetres — neither slimmer nor curvier than the numbers say; whatever glute fullness she has projects BACKWARD as depth, NOT as wide hips, thick thighs or a widened silhouette${cola}.`
+}
 
 /**
  * El paréntesis de cm del bodyEmphasis —"(bust Xcm, waist Ycm, hips Zcm —
