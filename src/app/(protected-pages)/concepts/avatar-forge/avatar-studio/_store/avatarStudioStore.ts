@@ -20,6 +20,41 @@ import type { Avatar, AIProvider, Prompt, SkinTone } from '@/@types/supabase'
 import type { ClonedVoice } from '@/@types/voice'
 import { describeBody, describeHair } from '@/utils/bodyDescriptors'
 import { stripNegatedTattoos } from '@/utils/promptSanitizer'
+import { REALISM_DEFAULT_LEVEL } from '@/services/kie/realism'
+
+/**
+ * Preferencia de "✨ Realism" en localStorage (sobrevive a cerrar la pestaña,
+ * a diferencia del `persist` de este store, que es de sesión). Todo con
+ * try/catch: en modo privado o con el almacenamiento bloqueado, leer o
+ * escribir lanza — y una preferencia nunca debe romper el estudio.
+ */
+const REALISM_PREFS_KEY = 'avatar-studio-realism'
+
+function saveRealismPrefs(prefs: { on: boolean; level: number }): void {
+    try {
+        localStorage.setItem(REALISM_PREFS_KEY, JSON.stringify(prefs))
+    } catch {
+        /* sin almacenamiento: se recuerda sólo en esta sesión */
+    }
+}
+
+function loadRealismPrefs(): { on: boolean; level: number } | null {
+    try {
+        const raw = localStorage.getItem(REALISM_PREFS_KEY)
+        if (!raw) return null
+        const parsed = JSON.parse(raw) as { on?: unknown; level?: unknown }
+        return {
+            on: parsed.on === true,
+            level:
+                typeof parsed.level === 'number' &&
+                Number.isFinite(parsed.level)
+                    ? Math.min(100, Math.max(0, parsed.level))
+                    : REALISM_DEFAULT_LEVEL,
+        }
+    } catch {
+        return null
+    }
+}
 import {
     stripSceneIdentity,
     ANTI_WATERMARK_CLAUSE,
@@ -327,12 +362,20 @@ interface AvatarStudioState {
     /**
      * "✨ Realism" (2026-09-22): acabado fotográfico —piel sin retocar,
      * poros, grano— al final del prompt de Seedream (ver
-     * services/kie/realism.ts). De SESIÓN y apagado por defecto a propósito:
-     * es un A/B contra un Seedream que ya funciona bien, y no debe quedarse
-     * encendido sin que el usuario lo vea.
+     * services/kie/realism.ts). Apagado la PRIMERA vez; después se RECUERDA
+     * (localStorage, pedido de Lenny tras el A/B: "si lo dejas prendido, que
+     * se quede prendido"). No va en el `persist` de abajo porque ese usa
+     * sessionStorage a propósito (el flag de NSFW no debe sobrevivir).
      */
     realismBoost: boolean
     setRealismBoost: (on: boolean) => void
+    /** Slider 0-100 → tramo Sutil / Natural / Crudo (`realismTier`). */
+    realismLevel: number
+    setRealismLevel: (level: number) => void
+    /** Lee de localStorage la preferencia de ✨ Realism. Se llama al MONTAR
+     *  la barra (no al crear el store): leerla en el render del servidor
+     *  daría un desajuste de hidratación. */
+    hydrateRealismPrefs: () => void
     setNsfwMode: (on: boolean) => void
     setNsfwLevel: (level: number) => void
     setBatchMode: (on: boolean) => void
@@ -520,6 +563,7 @@ const initialState = {
     nsfwLevel: 100,
     batchMode: false,
     realismBoost: false,
+    realismLevel: REALISM_DEFAULT_LEVEL,
     videoSubMode: 'ANIMATE' as VideoSubMode,
     avatarDefaultVoice: null as ClonedVoice | null,
     speakModel: 'infinitalk' as SpeakModel,
@@ -840,7 +884,19 @@ export const useAvatarStudioStore = create<AvatarStudioState>()(
                 return `${stripNegatedTattoos(assembled)} ${ANTI_WATERMARK_CLAUSE}`
             },
             setNsfwMode: (on) => set({ nsfwMode: on }),
-            setRealismBoost: (on) => set({ realismBoost: on }),
+            setRealismBoost: (on) => {
+                set({ realismBoost: on })
+                saveRealismPrefs({ on, level: get().realismLevel })
+            },
+            setRealismLevel: (level) => {
+                set({ realismLevel: level })
+                saveRealismPrefs({ on: get().realismBoost, level })
+            },
+            hydrateRealismPrefs: () => {
+                const prefs = loadRealismPrefs()
+                if (prefs)
+                    set({ realismBoost: prefs.on, realismLevel: prefs.level })
+            },
             setNsfwLevel: (level) => set({ nsfwLevel: level }),
             setBatchMode: (on) => set({ batchMode: on }),
             setGenerationMode: (mode) =>

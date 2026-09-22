@@ -915,6 +915,8 @@ export interface GenerateImageKieParams {
     // "✨ Realism" del estudio: bloque de acabado fotográfico al final del
     // prompt (hoy sólo Seedream). Ver kie/realism.ts.
     realismBoost?: boolean
+    // Slider 0-100 del ✨ Realism → tramo (Sutil/Natural/Crudo).
+    realismLevel?: number
     // Dónde alojar las referencias. `undefined` = camino normal (R2). 'kie' =
     // plan B, sólo al reintentar una tarea que falló con "Timeout while
     // downloading url" (ver uploadRefToKieFiles).
@@ -1016,6 +1018,7 @@ async function generateImageKieInner(
         nsfwIntent,
         selfContainedPrompt,
         realismBoost,
+        realismLevel,
         maskBBox,
         curveBoost,
         cloneWeight,
@@ -1080,6 +1083,7 @@ async function generateImageKieInner(
             nsfwIntent,
             selfContainedPrompt,
             realismBoost,
+            realismLevel,
             maskBBox,
             curveBoost,
             cloneWeight,

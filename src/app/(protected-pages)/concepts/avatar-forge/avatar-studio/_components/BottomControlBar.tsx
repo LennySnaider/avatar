@@ -28,6 +28,7 @@ import Button from '@/components/ui/Button'
 import Switcher from '@/components/ui/Switcher'
 import Slider from '@/components/ui/Slider'
 import { spicyTier } from '@/utils/spicyTiers'
+import { REALISM_TIER_LABEL, realismTier } from '@/services/kie/realism'
 import { uploadToSignedStorageUrl } from '@/lib/storageUpload'
 import { createMotionVideoUploadUrl } from '@/services/KieService'
 import Dialog from '@/components/ui/Dialog'
@@ -644,7 +645,16 @@ const BottomControlBar = ({
         setBatchMode,
         realismBoost,
         setRealismBoost,
+        realismLevel,
+        setRealismLevel,
+        hydrateRealismPrefs,
     } = useAvatarStudioStore()
+
+    // ✨ Realism se RECUERDA entre sesiones (localStorage): se lee al montar,
+    // no al crear el store, para no desajustar la hidratación.
+    useEffect(() => {
+        hydrateRealismPrefs()
+    }, [hydrateRealismPrefs])
 
     // Get avatar thumbnail
     const thumbnail =
@@ -2262,20 +2272,26 @@ const BottomControlBar = ({
                                 >
                                     {label}
                                 </Button>
+                                {/* TARJETAS DE MODO (22-sep, feedback de Lenny):
+                                    cada modo es UNA tarjeta con su interruptor
+                                    y, encendido, su intensidad DENTRO. Antes el
+                                    slider del 🌶️ vivía en una caja aparte debajo
+                                    y el ✨ Realism quedaba metido entre los dos.
+                                    Batch va en su tarjeta compacta al final: al
+                                    lado de Spicy, el slider no cabía en la
+                                    columna de ancho fijo. Mismo lenguaje que los
+                                    dropzones (borde punteado que se tiñe con el
+                                    color del modo activo). */}
                                 {showSpicy && (
-                                    // Cajas punteadas con el MISMO lenguaje que
-                                    // los dropzones de referencia de al lado
-                                    // (borde discontinuo + esquinas redondas):
-                                    // se leen como "ranuras de modo" y el borde
-                                    // se tiñe con el color del modo activo, asi
-                                    // que el estado se ve sin leer el switch.
-                                    <div className="flex items-stretch gap-2">
+                                    <div
+                                        className={`rounded-lg border-2 border-dashed px-2 py-2 transition-colors ${
+                                            nsfwMode
+                                                ? 'border-red-400 bg-red-50 dark:bg-red-500/10'
+                                                : 'border-gray-300 dark:border-gray-600 hover:border-red-300'
+                                        }`}
+                                    >
                                         <label
-                                            className={`flex flex-1 cursor-pointer select-none items-center justify-between gap-1.5 rounded-lg border-2 border-dashed px-2 py-2 transition-colors ${
-                                                nsfwMode
-                                                    ? 'border-red-400 bg-red-50 dark:bg-red-500/10'
-                                                    : 'border-gray-300 dark:border-gray-600 hover:border-red-300'
-                                            }`}
+                                            className="flex cursor-pointer select-none items-center justify-between gap-1.5"
                                             title={
                                                 !isImage
                                                     ? 'Spicy en vídeo: manda nsfw_checker=false a Seedance 2.5 (apaga el filtro de KIE). El filtro de ByteDance sobre la imagen de entrada sigue activo.'
@@ -2296,106 +2312,144 @@ const BottomControlBar = ({
                                                 }
                                             />
                                         </label>
-                                        {/* Batch sólo en IMAGEN: en vídeo el
-                                            botón manda un único modelo y el
-                                            contenedor se abre por el 🌶️. */}
-                                        {isImage && (
-                                            <label
-                                                className={`flex flex-1 cursor-pointer select-none items-center justify-between gap-1.5 rounded-lg border-2 border-dashed px-2 py-2 transition-colors ${
-                                                    batchMode
-                                                        ? 'border-blue-400 bg-blue-50 dark:bg-blue-500/10'
-                                                        : 'border-gray-300 dark:border-gray-600 hover:border-blue-300'
-                                                }`}
-                                                title={
-                                                    n > 0
-                                                        ? `Batch ON: Generate manda el mismo prompt a los ${n} modelo${n === 1 ? '' : 's'} marcados (☑ en el selector).`
-                                                        : 'Batch ON: al generar podrás elegir a qué modelos mandar el mismo prompt (o márcalos con ☑ en el selector).'
-                                                }
-                                            >
-                                                <span
-                                                    className={`flex items-center gap-1 text-xs font-medium ${batchMode ? 'text-blue-500' : 'text-gray-500 dark:text-gray-400'}`}
-                                                >
-                                                    <TbStack2 className="text-sm" />
-                                                    Batch
-                                                    {n > 0 ? ` · ${n}` : ''}
-                                                </span>
-                                                <Switcher
-                                                    checked={batchMode}
-                                                    onChange={(checked) =>
-                                                        setBatchMode(checked)
+                                        {/* Intensidad: solo encendido (apagado es
+                                            ruido). Tramos = cuartiles del Clone
+                                            Ref, y la etiqueta DICE lo que va a
+                                            salir. */}
+                                        {isImage && nsfwMode && (
+                                            <div className="mt-2 border-t border-red-200 pt-2 dark:border-red-500/30">
+                                                <div className="mb-1 flex items-center justify-between">
+                                                    <span className="text-[11px] font-medium text-red-500">
+                                                        {
+                                                            spicyTier(nsfwLevel)
+                                                                .label
+                                                        }
+                                                    </span>
+                                                    <span className="text-[11px] tabular-nums text-gray-500">
+                                                        {nsfwLevel}%
+                                                    </span>
+                                                </div>
+                                                <Slider
+                                                    value={nsfwLevel}
+                                                    onChange={(v) =>
+                                                        setNsfwLevel(
+                                                            Array.isArray(v)
+                                                                ? v[0]
+                                                                : v,
+                                                        )
                                                     }
+                                                    min={10}
+                                                    max={100}
+                                                    step={5}
                                                 />
-                                            </label>
+                                            </div>
                                         )}
                                     </div>
                                 )}
                                 {/* ✨ REALISM — solo en imagen y con Seedream
                                     (el único motor que lo lee hoy; en Batch se
                                     enseña porque puede ir un Seedream en el
-                                    lote). Fila propia: la columna tiene ancho
-                                    fijo y un tercer switch junto a Spicy y
-                                    Batch no cabe. Ver services/kie/realism.ts. */}
+                                    lote). El slider elige TRAMO (Sutil /
+                                    Natural / Crudo): Natural es el texto
+                                    validado en el A/B. Ver
+                                    services/kie/realism.ts. */}
                                 {isImage &&
                                     (activeProvider?.model?.startsWith(
                                         'seedream/',
                                     ) ||
                                         batchMode) && (
-                                        <label
-                                            className={`flex cursor-pointer select-none items-center justify-between gap-1.5 rounded-lg border-2 border-dashed px-2 py-2 transition-colors ${
+                                        <div
+                                            className={`rounded-lg border-2 border-dashed px-2 py-2 transition-colors ${
                                                 realismBoost
                                                     ? 'border-amber-400 bg-amber-50 dark:bg-amber-500/10'
                                                     : 'border-gray-300 dark:border-gray-600 hover:border-amber-300'
                                             }`}
-                                            title={
-                                                realismBoost
-                                                    ? 'Realism ON: Seedream añade acabado de foto real — piel sin retocar, poros, grano suave. No inventa pecas ni lunares: los de la avatar vienen de su ficha.'
-                                                    : 'Añade a Seedream acabado de foto real (piel sin retocar, poros, grano suave). Apagado, Seedream genera exactamente igual que siempre.'
-                                            }
                                         >
-                                            <span
-                                                className={`flex items-center gap-1 text-xs font-medium ${realismBoost ? 'text-amber-600' : 'text-gray-500 dark:text-gray-400'}`}
-                                            >
-                                                ✨ Realism
-                                                <span className="text-[10px] font-normal text-gray-400">
-                                                    Seedream
-                                                </span>
-                                            </span>
-                                            <Switcher
-                                                checked={realismBoost}
-                                                onChange={(checked) =>
-                                                    setRealismBoost(checked)
+                                            <label
+                                                className="flex cursor-pointer select-none items-center justify-between gap-1.5"
+                                                title={
+                                                    realismBoost
+                                                        ? 'Realism ON: Seedream añade acabado de foto real — piel sin retocar, poros, grano. No inventa pecas ni lunares: los de la avatar vienen de su ficha. Se queda encendido hasta que lo apagues.'
+                                                        : 'Añade a Seedream acabado de foto real (piel sin retocar, poros, grano). Apagado, Seedream genera exactamente igual que siempre.'
                                                 }
-                                            />
-                                        </label>
-                                    )}
-                                {/* INTENSIDAD 🌶️ — solo con Spicy encendido: un
-                                    control de intensidad apagado es ruido. Los
-                                    tramos son los mismos cuartiles del Clone
-                                    Ref, y la etiqueta DICE lo que va a salir
-                                    (antes el toggle mandaba todo a desnudo
-                                    total, sin variedad). */}
-                                {isImage && nsfwMode && (
-                                    <div className="rounded-lg border-2 border-dashed border-red-400 bg-red-50 px-2.5 py-2 dark:bg-red-500/10">
-                                        <div className="mb-1 flex items-center justify-between">
-                                            <span className="text-[11px] font-medium text-red-500">
-                                                {spicyTier(nsfwLevel).label}
-                                            </span>
-                                            <span className="text-[11px] tabular-nums text-gray-500">
-                                                {nsfwLevel}%
-                                            </span>
+                                            >
+                                                <span
+                                                    className={`flex items-center gap-1 text-xs font-medium ${realismBoost ? 'text-amber-600' : 'text-gray-500 dark:text-gray-400'}`}
+                                                >
+                                                    ✨ Realism
+                                                    <span className="text-[10px] font-normal text-gray-400">
+                                                        Seedream
+                                                    </span>
+                                                </span>
+                                                <Switcher
+                                                    checked={realismBoost}
+                                                    onChange={(checked) =>
+                                                        setRealismBoost(checked)
+                                                    }
+                                                />
+                                            </label>
+                                            {realismBoost && (
+                                                <div className="mt-2 border-t border-amber-200 pt-2 dark:border-amber-500/30">
+                                                    <div className="mb-1 flex items-center justify-between">
+                                                        <span className="text-[11px] font-medium text-amber-600">
+                                                            {
+                                                                REALISM_TIER_LABEL[
+                                                                    realismTier(
+                                                                        realismLevel,
+                                                                    )
+                                                                ]
+                                                            }
+                                                        </span>
+                                                        <span className="text-[11px] tabular-nums text-gray-500">
+                                                            {realismLevel}%
+                                                        </span>
+                                                    </div>
+                                                    <Slider
+                                                        value={realismLevel}
+                                                        onChange={(v) =>
+                                                            setRealismLevel(
+                                                                Array.isArray(v)
+                                                                    ? v[0]
+                                                                    : v,
+                                                            )
+                                                        }
+                                                        min={0}
+                                                        max={100}
+                                                        step={5}
+                                                    />
+                                                </div>
+                                            )}
                                         </div>
-                                        <Slider
-                                            value={nsfwLevel}
-                                            onChange={(v) =>
-                                                setNsfwLevel(
-                                                    Array.isArray(v) ? v[0] : v,
-                                                )
+                                    )}
+                                {/* Batch sólo en IMAGEN: en vídeo el botón
+                                    manda un único modelo. */}
+                                {isImage && (
+                                    <label
+                                        className={`flex cursor-pointer select-none items-center justify-between gap-1.5 rounded-lg border-2 border-dashed px-2 py-2 transition-colors ${
+                                            batchMode
+                                                ? 'border-blue-400 bg-blue-50 dark:bg-blue-500/10'
+                                                : 'border-gray-300 dark:border-gray-600 hover:border-blue-300'
+                                        }`}
+                                        title={
+                                            n > 0
+                                                ? `Batch ON: Generate manda el mismo prompt a los ${n} modelo${n === 1 ? '' : 's'} marcados (☑ en el selector).`
+                                                : 'Batch ON: al generar podrás elegir a qué modelos mandar el mismo prompt (o márcalos con ☑ en el selector).'
+                                        }
+                                    >
+                                        <span
+                                            className={`flex items-center gap-1 text-xs font-medium ${batchMode ? 'text-blue-500' : 'text-gray-500 dark:text-gray-400'}`}
+                                        >
+                                            <TbStack2 className="text-sm" />
+                                            Batch
+                                            {n > 0 ? ` · ${n}` : ''}
+                                        </span>
+                                        <Switcher
+                                            checked={batchMode}
+                                            onChange={(checked) =>
+                                                setBatchMode(checked)
                                             }
-                                            min={10}
-                                            max={100}
-                                            step={5}
                                         />
-                                    </div>
+                                    </label>
                                 )}
                             </>
                         )

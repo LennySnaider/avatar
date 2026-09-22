@@ -612,6 +612,7 @@ async function build(ctx: ImageRouteContext): Promise<KieImageRequest> {
         String(input.prompt),
         ctx.realismBoost && !ctx.editMode,
         SEEDREAM_HARD_LIMIT,
+        ctx.realismLevel,
     )
 
     return { model: resolvedModel, input, fullApiPrompt: promptText }

@@ -3180,6 +3180,10 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                                     realismBoost:
                                         useAvatarStudioStore.getState()
                                             .realismBoost,
+                                    // Slider → tramo Sutil/Natural/Crudo.
+                                    realismLevel:
+                                        useAvatarStudioStore.getState()
+                                            .realismLevel,
                                 },
                                 {
                                     avatarId,
@@ -3205,7 +3209,12 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                                 // realismo en la galería y en BD.
                                 ...(kieModel.startsWith('seedream/') &&
                                 useAvatarStudioStore.getState().realismBoost
-                                    ? { realism: true }
+                                    ? {
+                                          realism: true,
+                                          realism_level:
+                                              useAvatarStudioStore.getState()
+                                                  .realismLevel,
+                                      }
                                     : {}),
                             }
                         } else {
@@ -3219,6 +3228,9 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                                 realismBoost:
                                     useAvatarStudioStore.getState()
                                         .realismBoost,
+                                realismLevel:
+                                    useAvatarStudioStore.getState()
+                                        .realismLevel,
                                 model:
                                     activeProvider.model ||
                                     'flux-kontext/text-to-image',

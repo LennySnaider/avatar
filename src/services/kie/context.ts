@@ -101,6 +101,9 @@ export interface ImageRouteContext {
      * sale aerografiada. `undefined`/`false` = prompt idéntico a antes.
      */
     realismBoost?: boolean
+    /** Slider del estudio (0-100) → tramo Sutil / Natural / Crudo
+     *  (`realismTier`). Sin él, Natural — el texto validado en el A/B. */
+    realismLevel?: number
     /**
      * Region a editar en PIXELES de la imagen original [x1,y1,x2,y2].
      *
