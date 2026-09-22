@@ -3125,6 +3125,13 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                                     // Escala la cláusula de fidelidad facial del
                                     // ancla (port condensado del identity harness).
                                     identityWeight,
+                                    // ✨ Realism (A/B): acabado de foto real al
+                                    // final del prompt. Hoy solo lo lee la ruta
+                                    // de Seedream; el resto lo ignora. Se lee
+                                    // del store AL GENERAR, no del render.
+                                    realismBoost:
+                                        useAvatarStudioStore.getState()
+                                            .realismBoost,
                                 },
                                 {
                                     avatarId,
@@ -3146,6 +3153,12 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                                 ...(generationMeta ?? {}),
                                 providerTaskId: polled.taskId,
                                 kieTaskId: polled.taskId,
+                                // Para distinguir las generaciones del A/B de
+                                // realismo en la galería y en BD.
+                                ...(kieModel.startsWith('seedream/') &&
+                                useAvatarStudioStore.getState().realismBoost
+                                    ? { realism: true }
+                                    : {}),
                             }
                         } else {
                             const result = await generateImageKie({
@@ -3155,6 +3168,9 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                                 aspectRatio,
                                 // Mismo criterio que la rama async de arriba.
                                 nsfwIntent: nsfwRun ? undefined : false,
+                                realismBoost:
+                                    useAvatarStudioStore.getState()
+                                        .realismBoost,
                                 model:
                                     activeProvider.model ||
                                     'flux-kontext/text-to-image',

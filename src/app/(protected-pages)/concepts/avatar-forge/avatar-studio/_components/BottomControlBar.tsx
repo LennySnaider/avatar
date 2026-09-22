@@ -642,6 +642,8 @@ const BottomControlBar = ({
         setNsfwMode,
         batchMode,
         setBatchMode,
+        realismBoost,
+        setRealismBoost,
     } = useAvatarStudioStore()
 
     // Get avatar thumbnail
@@ -2327,6 +2329,45 @@ const BottomControlBar = ({
                                         )}
                                     </div>
                                 )}
+                                {/* ✨ REALISM — solo en imagen y con Seedream
+                                    (el único motor que lo lee hoy; en Batch se
+                                    enseña porque puede ir un Seedream en el
+                                    lote). Fila propia: la columna tiene ancho
+                                    fijo y un tercer switch junto a Spicy y
+                                    Batch no cabe. Ver services/kie/realism.ts. */}
+                                {isImage &&
+                                    (activeProvider?.model?.startsWith(
+                                        'seedream/',
+                                    ) ||
+                                        batchMode) && (
+                                        <label
+                                            className={`flex cursor-pointer select-none items-center justify-between gap-1.5 rounded-lg border-2 border-dashed px-2 py-2 transition-colors ${
+                                                realismBoost
+                                                    ? 'border-amber-400 bg-amber-50 dark:bg-amber-500/10'
+                                                    : 'border-gray-300 dark:border-gray-600 hover:border-amber-300'
+                                            }`}
+                                            title={
+                                                realismBoost
+                                                    ? 'Realism ON: Seedream añade acabado de foto real — piel sin retocar, poros, grano suave. No inventa pecas ni lunares: los de la avatar vienen de su ficha.'
+                                                    : 'Añade a Seedream acabado de foto real (piel sin retocar, poros, grano suave). Apagado, Seedream genera exactamente igual que siempre.'
+                                            }
+                                        >
+                                            <span
+                                                className={`flex items-center gap-1 text-xs font-medium ${realismBoost ? 'text-amber-600' : 'text-gray-500 dark:text-gray-400'}`}
+                                            >
+                                                ✨ Realism
+                                                <span className="text-[10px] font-normal text-gray-400">
+                                                    Seedream
+                                                </span>
+                                            </span>
+                                            <Switcher
+                                                checked={realismBoost}
+                                                onChange={(checked) =>
+                                                    setRealismBoost(checked)
+                                                }
+                                            />
+                                        </label>
+                                    )}
                                 {/* INTENSIDAD 🌶️ — solo con Spicy encendido: un
                                     control de intensidad apagado es ruido. Los
                                     tramos son los mismos cuartiles del Clone

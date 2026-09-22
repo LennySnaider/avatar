@@ -324,6 +324,15 @@ interface AvatarStudioState {
      *  en uno solo. Combinado con nsfwMode da las 4 variantes (normal, spicy,
      *  batch, batch+spicy) desde un mismo botón. */
     batchMode: boolean
+    /**
+     * "✨ Realism" (2026-09-22): acabado fotográfico —piel sin retocar,
+     * poros, grano— al final del prompt de Seedream (ver
+     * services/kie/realism.ts). De SESIÓN y apagado por defecto a propósito:
+     * es un A/B contra un Seedream que ya funciona bien, y no debe quedarse
+     * encendido sin que el usuario lo vea.
+     */
+    realismBoost: boolean
+    setRealismBoost: (on: boolean) => void
     setNsfwMode: (on: boolean) => void
     setNsfwLevel: (level: number) => void
     setBatchMode: (on: boolean) => void
@@ -510,6 +519,7 @@ const initialState = {
     nsfwMode: false,
     nsfwLevel: 100,
     batchMode: false,
+    realismBoost: false,
     videoSubMode: 'ANIMATE' as VideoSubMode,
     avatarDefaultVoice: null as ClonedVoice | null,
     speakModel: 'infinitalk' as SpeakModel,
@@ -830,6 +840,7 @@ export const useAvatarStudioStore = create<AvatarStudioState>()(
                 return `${stripNegatedTattoos(assembled)} ${ANTI_WATERMARK_CLAUSE}`
             },
             setNsfwMode: (on) => set({ nsfwMode: on }),
+            setRealismBoost: (on) => set({ realismBoost: on }),
             setNsfwLevel: (level) => set({ nsfwLevel: level }),
             setBatchMode: (on) => set({ batchMode: on }),
             setGenerationMode: (mode) =>

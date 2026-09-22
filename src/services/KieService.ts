@@ -826,6 +826,9 @@ export interface GenerateImageKieParams {
     // identidad ni recortarlo contra el presupuesto de escena. Lo usa el Body
     // Lab, cuyas hojas se definen a sí mismas (ver context.ts).
     selfContainedPrompt?: boolean
+    // "✨ Realism" del estudio: bloque de acabado fotográfico al final del
+    // prompt (hoy sólo Seedream). Ver kie/realism.ts.
+    realismBoost?: boolean
     // Region a editar en pixeles [x1,y1,x2,y2] — Wan la acepta como bbox_list.
     maskBBox?: [number, number, number, number]
     // Refuerzo de curvas EXCLUSIVO de Seedream (Pro aplana el hourglass cuando
@@ -922,6 +925,7 @@ async function generateImageKieInner(
         bodySheetNude,
         nsfwIntent,
         selfContainedPrompt,
+        realismBoost,
         maskBBox,
         curveBoost,
         cloneWeight,
@@ -985,6 +989,7 @@ async function generateImageKieInner(
             bodySheetNude,
             nsfwIntent,
             selfContainedPrompt,
+            realismBoost,
             maskBBox,
             curveBoost,
             cloneWeight,

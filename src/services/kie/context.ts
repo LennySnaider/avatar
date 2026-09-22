@@ -95,6 +95,13 @@ export interface ImageRouteContext {
      */
     selfContainedPrompt?: boolean
     /**
+     * "✨ Realism" del estudio (2026-09-22): añade al final del prompt un
+     * bloque corto de acabado fotográfico (piel sin retocar, poros, grano) —
+     * ver `./realism.ts`. Hoy sólo lo lee la ruta de Seedream, que es la que
+     * sale aerografiada. `undefined`/`false` = prompt idéntico a antes.
+     */
+    realismBoost?: boolean
+    /**
      * Region a editar en PIXELES de la imagen original [x1,y1,x2,y2].
      *
      * Wan 2.7 (base y pro) la acepta como `bbox_list`, un canal NATIVO. Es la

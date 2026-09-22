@@ -29,6 +29,7 @@ import {
     eyeClause as buildEyeClause,
     faceFidelityClause as buildFaceFidelityClause,
 } from '../shared'
+import { appendRealism } from '../realism'
 
 async function build(ctx: ImageRouteContext): Promise<KieImageRequest> {
     const hairClause = buildHairClause(ctx.hairEmphasis)
@@ -600,6 +601,18 @@ async function build(ctx: ImageRouteContext): Promise<KieImageRequest> {
             console.warn('[KIE] ref upload failed, staying text-only:', e)
         }
     }
+
+    // ✨ REALISM (2026-09-22, ver ../realism.ts): acabado fotográfico al FINAL
+    // del prompt, fuera de los presupuestos de ancla y de escena — no es
+    // identidad, así que no compite con la cara. Cubre t2i, i2i y el i2i que
+    // cayó a texto. Ni en EDICIÓN (lo que no se toca no se re-acaba) ni en el
+    // prompt auto-contenido del Body Lab (que ya retornó arriba). Apagado =
+    // prompt byte-idéntico a antes.
+    input.prompt = appendRealism(
+        String(input.prompt),
+        ctx.realismBoost && !ctx.editMode,
+        SEEDREAM_HARD_LIMIT,
+    )
 
     return { model: resolvedModel, input, fullApiPrompt: promptText }
 }
