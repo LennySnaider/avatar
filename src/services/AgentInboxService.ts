@@ -58,6 +58,12 @@ import {
     type InboxMediaItem,
 } from '@/lib/fanvue/messageMedia'
 import type { FanvueResolvedMedia } from '@/lib/fanvue/types'
+import {
+    centsToUsd,
+    isValidPpvCents,
+    MAX_PPV_CENTS,
+    MIN_PPV_CENTS,
+} from '@/lib/fanvue/pricing'
 
 export interface InboxResult<T> {
     success: boolean
@@ -1240,6 +1246,129 @@ export async function sendPpvOffer(input: {
         return { success: true, data: { sent: true } }
     } catch (e) {
         return fail('sendPpvOffer', e)
+    }
+}
+
+/**
+ * Manda un elemento de la GALERÍA del avatar a un chat de Fanvue — la misma
+ * galería de Telegram (`telegram_paid_media_items`), con su misma
+ * clasificación: lo gratis sale desbloqueado y lo de pago como PPV. Pedido
+ * por Lenny (21-sep, "una galería compartida"): antes en Fanvue sólo existía
+ * "Suggest PPV", que elige la media solo, y no había forma de mandar algo
+ * gratis ni de escoger qué.
+ *
+ * El precio en $ va por envío (`priceCents`): la galería guarda Stars, que
+ * son de Telegram. Se sube la media a Fanvue en cada envío, igual que el PPV.
+ */
+export async function sendGalleryItemToFanvue(input: {
+    chatId: string
+    itemId: string
+    /** Obligatorio para contenido de pago; se ignora en uno gratis. */
+    priceCents?: number | null
+    caption?: string
+}): Promise<InboxResult<{ free: boolean; priceCents: number | null }>> {
+    try {
+        const ctx = await getOrgContext()
+        requirePermission(ctx, 'sale:send')
+        const { data: chatRow } = await orgTable(ctx, 'agent_chats')
+            .select('*')
+            .eq('id', input.chatId)
+            .maybeSingle()
+        if (!chatRow) return { success: false, error: 'Chat not found' }
+        const chat = chatRow as AgentChatRow
+        if (resolveDeliveryChannel(chat.platform) !== 'fanvue') {
+            return { success: false, error: 'Esta acción es sólo para Fanvue.' }
+        }
+
+        // Del MISMO avatar que el chat: un id de otro avatar de la org no
+        // debe poder colarse en esta conversación.
+        const { data: itemRow } = await orgTable(
+            ctx,
+            'telegram_paid_media_items',
+        )
+            .select(
+                'id, avatar_id, storage_path, storage_provider, media_kind, caption, is_free, enabled',
+            )
+            .eq('id', input.itemId)
+            .eq('avatar_id', chat.avatar_id)
+            .maybeSingle()
+        const item = itemRow as {
+            storage_path: string
+            storage_provider: string | null
+            media_kind: string
+            caption: string | null
+            is_free: boolean
+            enabled: boolean
+        } | null
+        if (!item || !item.enabled)
+            return { success: false, error: 'Content not found or disabled' }
+
+        const free = item.is_free
+        const priceCents = free ? null : (input.priceCents ?? null)
+        if (!free && !isValidPpvCents(priceCents)) {
+            return {
+                success: false,
+                error: `PPV price must be between $${centsToUsd(MIN_PPV_CENTS)} and $${centsToUsd(MAX_PPV_CENTS)}`,
+            }
+        }
+
+        const { data: avatarRow } = await orgTable(ctx, 'avatars')
+            .select('user_id, fanvue_creator_uuid')
+            .eq('id', chat.avatar_id)
+            .single()
+        const avatar = avatarRow as {
+            user_id: string | null
+            fanvue_creator_uuid: string | null
+        } | null
+        if (!avatar?.user_id)
+            return { success: false, error: 'Avatar has no owner' }
+        const connection = await loadConnection(avatar.user_id)
+        if (!connection)
+            return { success: false, error: 'Fanvue not connected' }
+
+        const creatorUuid = avatar.fanvue_creator_uuid ?? null
+        const client = makeFanvueClient(avatar.user_id)
+        const mediaType = item.media_kind === 'video' ? 'video' : 'image'
+        const mediaUuid = await uploadGenerationMedia({
+            client,
+            creatorUuid,
+            storagePath: item.storage_path,
+            storageProvider: item.storage_provider,
+            mediaType,
+        })
+        const text = input.caption?.trim() || item.caption?.trim() || undefined
+        const res = await client.sendChatMessage(
+            creatorUuid,
+            chat.external_chat_id,
+            {
+                text,
+                mediaUuids: [mediaUuid],
+                ...(priceCents !== null ? { price: priceCents } : {}),
+            },
+        )
+
+        // Mismas formas que el resto del Inbox (`fanvueMediaUuids`): un
+        // gratis como `{uuid}` (lo que guarda la ingesta), un PPV como el de
+        // `sendPpvOffer`. Así el hilo pinta la imagen en los dos casos.
+        const now = new Date().toISOString()
+        await orgInsert(ctx, 'agent_messages', {
+            chat_id: chat.id,
+            direction: 'out',
+            external_message_id: res.messageUuid,
+            text: text ?? null,
+            media: (priceCents !== null
+                ? [{ type: mediaType, mediaUuid, price: priceCents }]
+                : [{ uuid: mediaUuid }]) as never,
+            status: 'sent',
+            approved_by: ctx.userId,
+            sent_at: now,
+        })
+        await orgTable(ctx, 'agent_chats')
+            .update({ last_message_at: now })
+            .eq('id', chat.id)
+        return { success: true, data: { free, priceCents } }
+    } catch (e) {
+        return fail('sendGalleryItemToFanvue', e)
     }
 }
 

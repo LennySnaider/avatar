@@ -183,6 +183,9 @@ const ThreadPane = ({ thread, onChanged }: ThreadPaneProps) => {
     // Inbox manda"). El diálogo es el mismo componente compartido que usa la
     // pestaña Conversations de ese panel.
     const isTelegramChat = chat.channel === 'telegram'
+    // Desde el 21-sep también en Fanvue: la galería es compartida y el mismo
+    // diálogo manda lo gratis desbloqueado y lo de pago como PPV en $.
+    const canSendContent = isTelegramChat || chat.channel === 'fanvue'
     const [sendContentOpen, setSendContentOpen] = useState(false)
 
     // Comentario en un post social: cabecera con la red, el caption y el
@@ -679,13 +682,17 @@ const ThreadPane = ({ thread, onChanged }: ThreadPaneProps) => {
                     a propósito: mandar una foto no depende de que el agente
                     tenga una respuesta escrita (y con `auto` puede no haberla
                     nunca). */}
-                {isTelegramChat && (
+                {canSendContent && (
                     <div className="flex items-center justify-end mb-2">
                         <Button
                             size="sm"
                             variant="plain"
                             onClick={() => setSendContentOpen(true)}
-                            title="Send a free teaser or Stars-locked content from this avatar's Telegram gallery"
+                            title={
+                                isTelegramChat
+                                    ? "Send a free teaser or Stars-locked content from this avatar's gallery"
+                                    : "Send free content or a PPV from this avatar's gallery"
+                            }
                         >
                             📷 Send content
                         </Button>
@@ -798,9 +805,10 @@ const ThreadPane = ({ thread, onChanged }: ThreadPaneProps) => {
                 onConfirm={handleDiscard}
             />
 
-            {isTelegramChat && sendContentOpen && (
+            {canSendContent && sendContentOpen && (
                 <TelegramSendContentDialog
                     isOpen
+                    channel={isTelegramChat ? 'telegram' : 'fanvue'}
                     avatarId={chat.avatarId}
                     chatId={chat.id}
                     fanLabel={chat.fanDisplayName ?? chat.fanHandle}

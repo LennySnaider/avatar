@@ -28,6 +28,12 @@
  * la rejilla (`TelegramAddContentDialog`): el usuario pidió no tener que
  * salirse al panel de Telegram para añadir una foto y volver. Lo recién dado
  * de alta queda ya seleccionado, listo para Send.
+ *
+ * Desde el 21-sep sirve también a los chats de FANVUE (`channel="fanvue"`):
+ * la galería es compartida (pedido de Lenny), así que es la misma lista y la
+ * misma clasificación gratis/pago. Cambian el precio —en $ por envío, mínimo
+ * $3, en vez de Stars— y el envío (`sendGalleryItemToFanvue`): lo gratis sale
+ * desbloqueado y lo de pago como PPV.
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react'
@@ -47,6 +53,13 @@ import {
 } from '@/services/AgentTelegramService'
 import type { PaidMediaItemView } from '@/services/AgentTelegramService'
 import { isValidStarPrice } from '@/lib/telegram/mediaPricing'
+import { sendGalleryItemToFanvue } from '@/services/AgentInboxService'
+import {
+    centsToUsd,
+    DEFAULT_PPV_CENTS,
+    MIN_PPV_CENTS,
+    parseUsdToCents,
+} from '@/lib/fanvue/pricing'
 import TelegramAddContentDialog from './TelegramAddContentDialog'
 
 /** Lo que el llamador necesita saber de un envío que YA salió. Unión
@@ -67,6 +80,13 @@ export type TelegramSendContentResult =
           messageId: string
           telegramMessageId: number
       }
+    | {
+          /** Envío a un chat de Fanvue: gratis o PPV en centavos de USD. */
+          kind: 'fanvue'
+          item: PaidMediaItemView
+          free: boolean
+          priceCents: number | null
+      }
 
 interface TelegramSendContentDialogProps {
     isOpen: boolean
@@ -77,6 +97,9 @@ interface TelegramSendContentDialogProps {
     /** Nombre del fan para la cabecera; opcional, es sólo copy. */
     fanLabel?: string | null
     onSent?: (result: TelegramSendContentResult) => void
+    /** Canal del chat destino. Default `telegram` (el panel de Telegram no
+     *  lo pasa). En `fanvue` el precio va en $ y el envío es un PPV. */
+    channel?: 'telegram' | 'fanvue'
 }
 
 /** El rango lo decide `mediaPricing.ts` — el mismo fichero puro que valida el
@@ -122,7 +145,9 @@ const TelegramSendContentDialog = ({
     chatId,
     fanLabel,
     onSent,
+    channel = 'telegram',
 }: TelegramSendContentDialogProps) => {
+    const isFanvue = channel === 'fanvue'
     const [items, setItems] = useState<PaidMediaItemView[]>([])
     const [isLoading, setIsLoading] = useState(false)
     // El fallo de carga se PINTA, no se traga: sin galería no hay nada que
@@ -130,6 +155,8 @@ const TelegramSendContentDialog = ({
     const [loadError, setLoadError] = useState<string | null>(null)
     const [selectedItemId, setSelectedItemId] = useState<string | null>(null)
     const [starsOverride, setStarsOverride] = useState('')
+    // Precio en $ de un PPV de Fanvue, por envío (la galería guarda Stars).
+    const [usdOverride, setUsdOverride] = useState('')
     const [captionOverride, setCaptionOverride] = useState('')
     const [isSending, setIsSending] = useState(false)
     // Qué se va a dar de alta: el "+" de cada sección abre el formulario ya
@@ -150,12 +177,14 @@ const TelegramSendContentDialog = ({
         // El precio del catálogo es sólo el valor de partida del override; en
         // un gratis ni se enseña ni se manda (el servicio lo forzaría a 0).
         setStarsOverride(item.isFree ? '' : String(item.starPrice))
+        setUsdOverride(item.isFree ? '' : centsToUsd(DEFAULT_PPV_CENTS))
         setCaptionOverride(item.caption ?? '')
     }, [])
 
     const clearSelection = useCallback(() => {
         setSelectedItemId(null)
         setStarsOverride('')
+        setUsdOverride('')
         setCaptionOverride('')
     }, [])
 
@@ -223,6 +252,10 @@ const TelegramSendContentDialog = ({
         if (!item) return
 
         const caption = captionOverride.trim() || undefined
+        if (isFanvue) {
+            await sendToFanvue(item, caption)
+            return
+        }
         let stars: number | null = null
         if (!item.isFree) {
             stars = parseStars(starsOverride)
@@ -311,7 +344,67 @@ const TelegramSendContentDialog = ({
         }
     }
 
-    const priceInvalid = !!selectedItem && !selectedItem.isFree && parseStars(starsOverride) === null
+    const sendToFanvue = async (item: PaidMediaItemView, caption?: string) => {
+        const priceCents = item.isFree ? null : parseUsdToCents(usdOverride)
+        if (!item.isFree && priceCents === null) {
+            toast.push(
+                <Notification type="danger" title="Invalid price">
+                    PPV price must be at least ${centsToUsd(MIN_PPV_CENTS)}.
+                </Notification>,
+            )
+            return
+        }
+        setIsSending(true)
+        try {
+            const result = await sendGalleryItemToFanvue({
+                chatId,
+                itemId: item.id,
+                priceCents,
+                caption,
+            })
+            if (result.success && result.data) {
+                toast.push(
+                    <Notification
+                        type="success"
+                        title={item.isFree ? 'Free content sent' : 'PPV sent'}
+                    >
+                        {item.isFree
+                            ? `${item.title} went out to ${fanLabel ?? 'this fan'}.`
+                            : `$${centsToUsd(priceCents ?? 0)} PPV offered to ${fanLabel ?? 'this fan'}.`}
+                    </Notification>,
+                )
+                onSent?.({
+                    kind: 'fanvue',
+                    item,
+                    free: result.data.free,
+                    priceCents: result.data.priceCents,
+                })
+                onClose()
+            } else {
+                toast.push(
+                    <Notification type="danger" title="Could not send content">
+                        {result.error}
+                    </Notification>,
+                )
+            }
+        } catch (e) {
+            // Mismo motivo que en `handleSend`: un fallo de transporte lanza.
+            toast.push(
+                <Notification type="danger" title="Could not send content">
+                    {e instanceof Error ? e.message : String(e)}
+                </Notification>,
+            )
+        } finally {
+            setIsSending(false)
+        }
+    }
+
+    const priceInvalid =
+        !!selectedItem &&
+        !selectedItem.isFree &&
+        (isFanvue
+            ? parseUsdToCents(usdOverride) === null
+            : parseStars(starsOverride) === null)
 
     // Siguiente hueco libre, no `items.length`: si algo se borró en medio,
     // reusar una longitud como índice repetiría un sort_order ya usado (mismo
@@ -351,8 +444,12 @@ const TelegramSendContentDialog = ({
         <div>
             <p className="text-xs text-gray-500 mb-1">
                 {kind === 'free'
-                    ? 'Free — sent unlocked, no Stars'
-                    : 'Paid — locked behind Stars'}
+                    ? isFanvue
+                        ? 'Free — sent unlocked'
+                        : 'Free — sent unlocked, no Stars'
+                    : isFanvue
+                      ? 'Paid — sent as PPV, priced in $'
+                      : 'Paid — locked behind Stars'}
             </p>
             <div className="flex flex-wrap gap-2 max-h-40 overflow-y-auto p-1">
                 {list.map((item) => (
@@ -369,7 +466,9 @@ const TelegramSendContentDialog = ({
                 <p className="text-[11px] text-gray-400 mt-1">
                     {kind === 'free'
                         ? 'No free content yet — add a teaser the fan can see without paying.'
-                        : 'No paid content yet — add something to sell for Stars.'}
+                        : isFanvue
+                          ? 'No paid content yet — add something to sell as PPV.'
+                          : 'No paid content yet — add something to sell for Stars.'}
                 </p>
             )}
         </div>
@@ -409,24 +508,44 @@ const TelegramSendContentDialog = ({
                                             </Tag>
                                         ) : (
                                             <Tag className="bg-amber-100 text-amber-700 dark:bg-amber-500/20 dark:text-amber-100 border-0">
-                                                ⭐ {selectedItem.starPrice}
+                                                {isFanvue
+                                                    ? 'PPV'
+                                                    : `⭐ ${selectedItem.starPrice}`}
                                             </Tag>
                                         )}
                                     </div>
-                                    {!selectedItem.isFree && (
-                                        <div>
-                                            <p className="text-xs text-gray-500 mb-1">
-                                                Price for this send (Stars, 1-25000)
-                                            </p>
-                                            <Input
-                                                type="number"
-                                                min={1}
-                                                max={25000}
-                                                value={starsOverride}
-                                                onChange={(e) => setStarsOverride(e.target.value)}
-                                            />
-                                        </div>
-                                    )}
+                                    {!selectedItem.isFree &&
+                                        (isFanvue ? (
+                                            <div>
+                                                <p className="text-xs text-gray-500 mb-1">
+                                                    PPV price for this send ($, min{' '}
+                                                    {centsToUsd(MIN_PPV_CENTS)})
+                                                </p>
+                                                <Input
+                                                    inputMode="decimal"
+                                                    prefix="$"
+                                                    value={usdOverride}
+                                                    onChange={(e) =>
+                                                        setUsdOverride(e.target.value)
+                                                    }
+                                                />
+                                            </div>
+                                        ) : (
+                                            <div>
+                                                <p className="text-xs text-gray-500 mb-1">
+                                                    Price for this send (Stars, 1-25000)
+                                                </p>
+                                                <Input
+                                                    type="number"
+                                                    min={1}
+                                                    max={25000}
+                                                    value={starsOverride}
+                                                    onChange={(e) =>
+                                                        setStarsOverride(e.target.value)
+                                                    }
+                                                />
+                                            </div>
+                                        ))}
                                     <div>
                                         <p className="text-xs text-gray-500 mb-1">
                                             Caption for this send (optional)
