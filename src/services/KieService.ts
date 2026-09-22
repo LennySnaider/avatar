@@ -611,6 +611,92 @@ async function resolveRefUrl(ref: {
 }
 
 /**
+ * PLAN B de alojamiento de referencias: el almacenamiento PROPIO de KIE (File
+ * Upload API). Sólo se usa al REINTENTAR una tarea que KIE rechazó con
+ * "Timeout while downloading url=…": el proveedor (ByteDance, en el caso
+ * medido) no consiguió bajar la ref desde nuestro `r2.dev`. Pasó el
+ * 2026-09-22 con la hoja de cuerpo de Emily, INTERMITENTE (bien 13:29 y
+ * 14:20, falló 14:03, 14:08 y 14:3x) con el archivo sano y bajando en <1 s
+ * desde fuera. Alojada en KIE, la ref queda junto a sus descargadores.
+ *
+ * El camino normal NO pasa por aquí: sigue R2 (caché de borde, sin egress),
+ * que es lo que mató los timeouts de Alibaba. Los archivos de KIE caducan
+ * solos (24 h – 3 días según su doc), de sobra para una tarea de minutos.
+ * Doc: docs.kie.ai/file-upload-api/upload-file-base-64 (usar `downloadUrl`).
+ */
+const KIE_FILE_UPLOAD_BASE = 'https://kieai.redpandaai.co'
+
+async function uploadRefToKieFiles(ref: {
+    base64?: string
+    mimeType?: string
+    url?: string
+}): Promise<string> {
+    const bytes = await ensureRefBytes({
+        base64: ref.base64,
+        url: ref.url,
+        mimeType: ref.mimeType ?? 'image/jpeg',
+    } as KieRefWithRole)
+    const clean = bytes.base64.includes(',')
+        ? bytes.base64.split(',')[1]
+        : bytes.base64
+    const hash = createHash('sha256')
+        .update(Buffer.from(clean, 'base64'))
+        .digest('hex')
+        .slice(0, 32)
+    const res = await fetchWithAbort(
+        `${KIE_FILE_UPLOAD_BASE}/api/file-base64-upload`,
+        {
+            method: 'POST',
+            headers: {
+                Authorization: `Bearer ${getApiKey()}`,
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                base64Data: `data:${bytes.mimeType};base64,${clean}`,
+                uploadPath: 'avatarlab-refs',
+                fileName: `${hash}.${extensionForMime(bytes.mimeType)}`,
+            }),
+        },
+        30_000,
+    )
+    const json = (await res.json().catch(() => null)) as {
+        success?: boolean
+        msg?: string
+        data?: { downloadUrl?: string; fileUrl?: string }
+    } | null
+    const url = json?.data?.downloadUrl ?? json?.data?.fileUrl
+    if (!res.ok || !json?.success || !url) {
+        throw new Error(
+            `KIE file upload failed (${res.status}): ${json?.msg ?? 'sin respuesta'}`,
+        )
+    }
+    console.log(`[KIE/ref] plan B: ref alojada en KIE (${hash})`)
+    return url
+}
+
+/**
+ * Cómo se alojan las refs de una tarea: el camino normal o el plan B.
+ *
+ * El plan B NUNCA puede ser peor que el normal: si la subida a KIE falla, se
+ * cae a la URL de R2 de siempre. Sin esto, un fallo aquí acababa en el catch
+ * de la ruta ("ref upload failed, staying text-only") y Seedream generaba SIN
+ * la cara — otra persona, y cobrada.
+ */
+function refResolverFor(
+    refHost: GenerateImageKieParams['refHost'],
+): typeof resolveRefUrl {
+    if (refHost !== 'kie') return resolveRefUrl
+    return (ref) =>
+        uploadRefToKieFiles(ref).catch((e) => {
+            console.warn(
+                '[KIE/ref] plan B falló, se usa la URL normal:',
+                e instanceof Error ? e.message : e,
+            )
+            return resolveRefUrl(ref)
+        })
+}
+
+/**
  * Bytes de una referencia, descargándolos si solo llegó su URL.
  *
  * Casi ninguna ruta necesita los bytes —el proveedor descarga la URL él mismo—
@@ -829,6 +915,10 @@ export interface GenerateImageKieParams {
     // "✨ Realism" del estudio: bloque de acabado fotográfico al final del
     // prompt (hoy sólo Seedream). Ver kie/realism.ts.
     realismBoost?: boolean
+    // Dónde alojar las referencias. `undefined` = camino normal (R2). 'kie' =
+    // plan B, sólo al reintentar una tarea que falló con "Timeout while
+    // downloading url" (ver uploadRefToKieFiles).
+    refHost?: 'kie'
     // Region a editar en pixeles [x1,y1,x2,y2] — Wan la acepta como bbox_list.
     maskBBox?: [number, number, number, number]
     // Refuerzo de curvas EXCLUSIVO de Seedream (Pro aplana el hourglass cuando
@@ -997,7 +1087,7 @@ async function generateImageKieInner(
             seed,
             safeMode: params.safeMode,
             resolution: params.resolution,
-            uploadRef: resolveRefUrl,
+            uploadRef: refResolverFor(params.refHost),
             cropToAspect: cropRefToAspect,
         })
         const resolvedModel = built.model
@@ -1331,7 +1421,8 @@ async function submitKieImageTaskInner(
                 resolution: '2K',
                 output_format: 'png',
             }
-            if (refs.length > 0) input.image_input = await uploadRefs(refs)
+            if (refs.length > 0)
+                input.image_input = await uploadRefs(refs, params.refHost)
             const taskId = await withTimeout(
                 submitTask({ model: 'nano-banana-pro', input }),
                 30_000,
@@ -1353,7 +1444,7 @@ async function submitKieImageTaskInner(
             }
             let kieModel = 'gpt-image-2-text-to-image'
             if (refs.length > 0) {
-                input.input_urls = await uploadRefs(refs)
+                input.input_urls = await uploadRefs(refs, params.refHost)
                 kieModel = 'gpt-image-2-image-to-image'
             }
             const taskId = await withTimeout(
@@ -1911,8 +2002,10 @@ async function generateImageGpt4o(
  */
 async function uploadRefs(
     refs: Array<{ base64?: string; mimeType: string; url?: string }>,
+    refHost?: GenerateImageKieParams['refHost'],
 ): Promise<string[]> {
-    return Promise.all(refs.map((r) => resolveRefUrl(r)))
+    const resolve = refResolverFor(refHost)
+    return Promise.all(refs.map((r) => resolve(r)))
 }
 
 /**
@@ -1953,7 +2046,7 @@ async function generateImageNanoBananaPro(
         output_format: 'png',
     }
     if (refs.length > 0) {
-        input.image_input = await uploadRefs(refs)
+        input.image_input = await uploadRefs(refs, params.refHost)
     }
 
     console.log(
@@ -2009,7 +2102,7 @@ async function generateImageGptImage2(
     }
     let kieModel = 'gpt-image-2-text-to-image'
     if (refs.length > 0) {
-        input.input_urls = await uploadRefs(refs)
+        input.input_urls = await uploadRefs(refs, params.refHost)
         kieModel = 'gpt-image-2-image-to-image'
         console.log(
             `[KIE/GptImage2] Image-to-image with ${refs.length} reference(s)`,
