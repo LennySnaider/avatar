@@ -619,6 +619,13 @@ const ThreadPane = ({ thread, onChanged }: ThreadPaneProps) => {
                 })}
             </div>
 
+            {/*
+                PPV + borrador, juntos y con tope: con la bandeja a toda altura
+                (alto fijo en pantalla ancha), el panel de PPV abierto se comía
+                el hilo hasta dejarlo en una franja. Como mucho el 60% del
+                panel, con scroll propio; el hilo se queda el resto.
+            */}
+            <div className="shrink-0 lg:max-h-[60%] lg:overflow-y-auto">
             {/* PPV offer suggestion */}
             {ppv && !hideFanvueOnlyTools && (
                 <div className="p-3 border-t border-primary/30 bg-primary/5">
@@ -781,6 +788,7 @@ const ThreadPane = ({ thread, onChanged }: ThreadPaneProps) => {
                         </Button>
                     </div>
                 )}
+            </div>
             </div>
 
             <DiscardReasonDialog

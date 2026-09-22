@@ -176,11 +176,12 @@ const InboxView = ({
 
             {/*
                 En pantalla ancha la bandeja ocupa el alto de la ventana (menos
-                cabecera, título y tira de métricas) y cada panel hace scroll
-                por dentro: antes el hilo tenía un tope de 45vh y quedaba un
-                hueco vacío debajo. En móvil sigue apilado con sus topes.
+                la cabecera de la app: título y métricas quedan encima, a un
+                scroll) y cada panel hace scroll por dentro. Antes el hilo
+                tenía un tope de 45vh y quedaba un hueco vacío debajo. En móvil
+                sigue apilado con sus topes.
             */}
-            <div className="grid grid-cols-1 lg:grid-cols-[340px_1fr] gap-4 lg:h-[calc(100dvh-16rem)] lg:min-h-140">
+            <div className="grid grid-cols-1 lg:grid-cols-[340px_1fr] gap-4 lg:h-[calc(100dvh-8rem)] lg:min-h-140">
                 {/* Chat list */}
                 <Card
                     className={`p-0! overflow-hidden transition-opacity lg:h-full ${isSwitching ? 'opacity-60' : ''}`}
