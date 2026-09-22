@@ -229,10 +229,30 @@ interface VideoEditorMainProps {
      * stays intact for the standalone /video-editor route.
      */
     initialVideoUrl?: string
+    /**
+     * Gallery video the editor was opened on (Avatar Studio host). The export
+     * inherits its avatar, so the edited copy keeps posting as the same one.
+     */
+    sourceMedia?: GeneratedMedia
+    /**
+     * Host persistence for "Save to Gallery". Without it the export is a
+     * session-only blob and the Post button stays locked until a manual Save;
+     * the host writes the `generations` row and resolves true once the item
+     * is 'saved' (false → card left on its retry badge).
+     */
+    onSavedToGallery?: (media: GeneratedMedia) => Promise<boolean>
+    /** Opens with the Audio panel expanded (Post modal → "Add music"). */
+    initialAudioPanelOpen?: boolean
 }
 
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-const VideoEditorMain = ({ userId, initialVideoUrl }: VideoEditorMainProps) => {
+const VideoEditorMain = ({
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    userId,
+    initialVideoUrl,
+    sourceMedia,
+    onSavedToGallery,
+    initialAudioPanelOpen = false,
+}: VideoEditorMainProps) => {
     // Al salir del editor se devuelve la memoria de ffmpeg, aunque no se haya
     // exportado nada: basta un recorte para dejar el heap de wasm inflado.
     useEffect(() => releaseFFmpeg, [])
@@ -242,7 +262,7 @@ const VideoEditorMain = ({ userId, initialVideoUrl }: VideoEditorMainProps) => {
 
     // ─── Audio: bake a track into the exported video (moved here from the Post
     // modal). Applied at export in buildFinalVideo via ffmpeg mux. ──────────
-    const [audioPanelOpen, setAudioPanelOpen] = useState(false)
+    const [audioPanelOpen, setAudioPanelOpen] = useState(initialAudioPanelOpen)
     const [audioMode, setAudioMode] = useState<'none' | 'trending' | 'upload'>('none')
     const [trendingSounds, setTrendingSounds] = useState<TrendingSoundDTO[] | null>(null)
     const [selectedSound, setSelectedSound] = useState<TrendingSoundDTO | null>(null)
@@ -1340,6 +1360,16 @@ const VideoEditorMain = ({ userId, initialVideoUrl }: VideoEditorMainProps) => {
         try {
             const finalUrl = await buildFinalVideo()
             if (!finalUrl) return
+            // Sin recorte, audio ni edición el export ES el vídeo de origen:
+            // guardarlo solo duplicaría la fila y el fichero.
+            if (initialVideoUrl && finalUrl === initialVideoUrl) {
+                toast.push(
+                    <Notification type="info" title="Nothing to save">
+                        Add audio or edit the clip first — this is the original video.
+                    </Notification>,
+                )
+                return
+            }
             setProgress(100)
             let aspectRatio: '16:9' | '9:16' = '16:9'
             try {
@@ -1349,18 +1379,38 @@ const VideoEditorMain = ({ userId, initialVideoUrl }: VideoEditorMainProps) => {
                 }
             } catch { /* keep default aspect ratio */ }
             const label = clips.length > 1 ? `${clips.length} clips combined` : clips[0].name
-            addToGallery({
+            const media: GeneratedMedia = {
                 id: `editor-${Date.now()}`,
                 url: finalUrl,
                 prompt: `Video Editor: ${label}`,
                 aspectRatio,
                 timestamp: Date.now(),
                 mediaType: 'VIDEO',
-            })
+                avatarId: sourceMedia?.avatarId,
+                avatarInfo: sourceMedia?.avatarInfo,
+            }
+            addToGallery(media)
+            if (!onSavedToGallery) {
+                toast.push(
+                    <Notification type="success" title="Saved">
+                        Video added to Avatar Studio gallery.
+                    </Notification>,
+                )
+                return
+            }
+            setProgressLabel('Saving to gallery…')
+            const persisted = await onSavedToGallery(media)
             toast.push(
-                <Notification type="success" title="Saved">
-                    Video added to Avatar Studio gallery.
-                </Notification>,
+                persisted ? (
+                    <Notification type="success" title="Saved">
+                        Video saved to your gallery — ready to post.
+                    </Notification>
+                ) : (
+                    <Notification type="warning" title="Not saved yet">
+                        The video is in the gallery but its upload failed — retry from its
+                        card before posting.
+                    </Notification>
+                ),
             )
         } catch (err) {
             const message = err instanceof Error ? err.message : 'Unknown error'
@@ -1381,7 +1431,7 @@ const VideoEditorMain = ({ userId, initialVideoUrl }: VideoEditorMainProps) => {
             // reservados sin usarlos.
             releaseFFmpeg()
         }
-    }, [clips, buildFinalVideo, addToGallery])
+    }, [clips, buildFinalVideo, addToGallery, initialVideoUrl, sourceMedia, onSavedToGallery])
 
     // Saved videos from the studio gallery, offered by the "From gallery" picker.
     const galleryVideoCandidates = gallery.filter((g) => g.mediaType === 'VIDEO' && !!g.url)

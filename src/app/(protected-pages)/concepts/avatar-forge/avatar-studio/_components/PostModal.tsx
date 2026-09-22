@@ -19,6 +19,7 @@ import {
     HiOutlinePlus,
     HiChevronLeft,
     HiChevronRight,
+    HiOutlineMusicNote,
 } from 'react-icons/hi'
 import { createSocialPost, getSocialProfileAction } from '@/services/SocialService'
 import { createFanvuePost, getFanvueConnection } from '@/services/FanvueService'
@@ -46,6 +47,10 @@ interface PostModalProps {
      * i2i Seedream 5 Pro), la guarda en galería+BD y la devuelve lista para
      * el carrusel (con generationId). Implementada en AvatarStudioMain. */
     onCreateVariant?: (source: GeneratedMedia) => Promise<GeneratedMedia | null>
+    /** Videos: la música se hornea en el Video Editor (no aquí). Abre el
+     * editor en su panel de Audio; al guardar, el Post vuelve con el vídeo
+     * nuevo. Implementada en AvatarStudioMain. */
+    onAddMusic?: (media: GeneratedMedia) => void
 }
 
 type ScheduleMode = 'now' | 'schedule'
@@ -74,6 +79,7 @@ const PostModal = ({
     fallbackAvatarId,
     onClose,
     onCreateVariant,
+    onAddMusic,
 }: PostModalProps) => {
     const updateGalleryItem = useAvatarStudioStore((s) => s.updateGalleryItem)
     const gallery = useAvatarStudioStore((s) => s.gallery)
@@ -620,7 +626,23 @@ const PostModal = ({
                             Media{postMediaItems.length > 1 ? ` (${postMediaItems.length})` : ''}
                         </p>
                         {isVideo && (
-                            <span className="text-xs text-gray-400">Videos post individually</span>
+                            <div className="flex items-center gap-3">
+                                {onAddMusic && (
+                                    <Button
+                                        size="xs"
+                                        variant="plain"
+                                        icon={<HiOutlineMusicNote />}
+                                        disabled={isSubmitting}
+                                        onClick={() => onAddMusic(media)}
+                                        title="Opens the Video Editor on its Audio panel — saving there brings the new video back to this post"
+                                    >
+                                        Add music
+                                    </Button>
+                                )}
+                                <span className="text-xs text-gray-400">
+                                    Videos post individually
+                                </span>
+                            </div>
                         )}
                     </div>
                     <div className="flex flex-wrap gap-2">

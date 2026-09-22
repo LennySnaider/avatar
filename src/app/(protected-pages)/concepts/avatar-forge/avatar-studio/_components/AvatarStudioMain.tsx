@@ -776,6 +776,9 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
     // media.id so switching videos forces a fresh mount.
     const [videoEditorMedia, setVideoEditorMedia] =
         useState<GeneratedMedia | null>(null)
+    // Editor opened from the Post modal's "Add music": it opens on the Audio
+    // panel and, once the export is saved, hands the NEW video back to Post.
+    const [videoEditorForPost, setVideoEditorForPost] = useState(false)
 
     // Studio-consolidation tools hosted in ToolModals (Voice / Remix / Downloader).
     // Voice Studio needs the avatar list — fetched lazily on first open.
@@ -1440,6 +1443,30 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
             }
         },
         [userId, avatarId, updateGalleryItem],
+    )
+
+    /**
+     * "Save to Gallery" del Video Editor: el export (con la música ya
+     * horneada) sale como blob de sesión y, sin fila en `generations`, el Post
+     * seguía bloqueado hasta un Save manual que nadie encontraba. Aquí se
+     * persiste en el acto; si el editor vino del "Add music" del Post, se
+     * cierra y el Post se reabre con el vídeo NUEVO.
+     */
+    const handleEditorSaved = useCallback(
+        async (media: GeneratedMedia): Promise<boolean> => {
+            await persistGeneration(media)
+            const saved = useAvatarStudioStore
+                .getState()
+                .gallery.find((m) => m.id === media.id)
+            if (saved?.saveState !== 'saved') return false
+            if (videoEditorForPost) {
+                setVideoEditorMedia(null)
+                setVideoEditorForPost(false)
+                setPostMedia(saved)
+            }
+            return true
+        },
+        [persistGeneration, videoEditorForPost],
     )
 
     /**
@@ -5573,6 +5600,11 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                 fallbackAvatarId={avatarId ?? null}
                 onClose={() => setPostMedia(null)}
                 onCreateVariant={createCarouselVariant}
+                onAddMusic={(m: GeneratedMedia) => {
+                    setPostMedia(null)
+                    setVideoEditorForPost(true)
+                    setVideoEditorMedia(m)
+                }}
             />
 
             {/* Lipsync — gallery video + Voice Studio audio */}
@@ -5586,13 +5618,19 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
             {/* Video Editor — opens in-place instead of navigating to /video-editor */}
             <ToolModal
                 isOpen={!!videoEditorMedia}
-                onClose={() => setVideoEditorMedia(null)}
+                onClose={() => {
+                    setVideoEditorMedia(null)
+                    setVideoEditorForPost(false)
+                }}
             >
                 {videoEditorMedia && (
                     <VideoEditorMain
                         key={videoEditorMedia.id}
                         userId={userId}
                         initialVideoUrl={videoEditorMedia.url}
+                        sourceMedia={videoEditorMedia}
+                        onSavedToGallery={handleEditorSaved}
+                        initialAudioPanelOpen={videoEditorForPost}
                     />
                 )}
             </ToolModal>
