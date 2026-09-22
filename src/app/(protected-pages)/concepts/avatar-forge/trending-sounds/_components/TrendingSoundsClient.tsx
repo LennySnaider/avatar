@@ -119,7 +119,8 @@ const TrendingSoundsClient = ({
             if (result.success) {
                 toast.push(
                     <Notification type="success" title="Chart refreshed">
-                        Pulled {result.data?.count ?? 0} sounds from TikTok
+                        Pulled {result.data?.count ?? 0} sounds from TikTok —{' '}
+                        {result.data?.withAudio ?? 0} with audio ready for the Video Editor
                     </Notification>,
                 )
                 await loadBoard(country, period)

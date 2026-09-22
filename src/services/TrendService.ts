@@ -8,6 +8,8 @@
 import { auth } from '@/auth'
 import { fetchTrendingSounds } from '@/lib/trends/apifyTikTok'
 import { trendsSupabase, type TrendingSoundRow } from '@/lib/trends/db'
+import { persistSoundAudio } from '@/lib/trends/persistSoundAudio'
+import { isPlayableSoundUrl } from '@/lib/trends/soundUrl'
 import type { TrendingSoundDTO } from '@/lib/trends/constants'
 
 export interface TrendResult<T> {
@@ -36,7 +38,9 @@ function toDTO(row: TrendingSoundRow): TrendingSoundDTO {
         name: row.name,
         author: row.author,
         coverUrl: row.cover_url,
-        playUrl: row.play_url,
+        // Una play_url de TikTok caducada se expone como "sin audio": así ni la
+        // página ni el Video Editor ofrecen un sonido que ya no se descarga.
+        playUrl: isPlayableSoundUrl(row.play_url) ? row.play_url : null,
         linkUrl: row.link_url,
         videoCount: row.video_count,
         trend: row.trend,
@@ -83,7 +87,7 @@ export async function listTrendingSounds(params: {
 export async function refreshTrendingBoard(params: {
     countryCode?: string
     period?: number
-}): Promise<TrendResult<{ count: number }>> {
+}): Promise<TrendResult<{ count: number; withAudio: number }>> {
     try {
         await requireSession()
         return refreshBoardInternal(params.countryCode || 'GLOBAL', params.period ?? 7)
@@ -96,13 +100,17 @@ export async function refreshTrendingBoard(params: {
 export async function refreshBoardInternal(
     countryCode: string,
     period: number,
-): Promise<TrendResult<{ count: number }>> {
+): Promise<TrendResult<{ count: number; withAudio: number }>> {
     try {
-        const sounds = await fetchTrendingSounds({
+        const fetched = await fetchTrendingSounds({
             countryCode: countryCode === 'GLOBAL' ? '' : countryCode,
             period: (period as 7 | 30 | 120) ?? 7,
             maxResults: REFRESH_LIMIT,
         })
+        // La play_url de TikTok caduca a ~1 h: este es el único momento en que
+        // se puede copiar. Con la copia el sonido sirve para hornear música
+        // mientras siga en el chart.
+        const { sounds, copied } = await persistSoundAudio(fetched)
         const supabase = trendsSupabase()
         const fetchedAt = new Date().toISOString()
 
@@ -115,7 +123,8 @@ export async function refreshBoardInternal(
             .eq('country_code', countryCode)
             .eq('period', period)
 
-        if (sounds.length === 0) return { success: true, data: { count: 0 } }
+        if (sounds.length === 0)
+            return { success: true, data: { count: 0, withAudio: 0 } }
 
         const rows = sounds.map((s) => ({
             source: 'tiktok',
@@ -135,7 +144,7 @@ export async function refreshBoardInternal(
         }))
         const { error } = await supabase.from('trending_sounds').insert(rows)
         if (error) throw new Error(error.message)
-        return { success: true, data: { count: rows.length } }
+        return { success: true, data: { count: rows.length, withAudio: copied } }
     } catch (e) {
         return fail(e)
     }

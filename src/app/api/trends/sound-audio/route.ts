@@ -10,6 +10,7 @@ import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
 import { auth } from '@/auth'
 import { trendsSupabase } from '@/lib/trends/db'
+import { isPlayableSoundUrl } from '@/lib/trends/soundUrl'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 30
@@ -30,7 +31,18 @@ export async function GET(request: NextRequest) {
         .eq('id', id)
         .maybeSingle()
     if (!sound?.play_url) {
-        return NextResponse.json({ error: 'Sound not found or has no audio' }, { status: 404 })
+        return NextResponse.json(
+            { error: 'This sound has no audio — refresh its board in Trending Sounds' },
+            { status: 404 },
+        )
+    }
+    // Enlace de TikTok firmado y ya caducado (~1 h tras el refresh): ni se
+    // intenta, el CDN respondería 403 y el editor no sabría por qué.
+    if (!isPlayableSoundUrl(sound.play_url)) {
+        return NextResponse.json(
+            { error: "This sound's TikTok link expired — refresh its board in Trending Sounds" },
+            { status: 410 },
+        )
     }
 
     let upstream: Response
@@ -45,7 +57,10 @@ export async function GET(request: NextRequest) {
         )
     }
     if (!upstream.ok || !upstream.body) {
-        return NextResponse.json({ error: `Upstream ${upstream.status}` }, { status: 502 })
+        return NextResponse.json(
+            { error: `Audio download failed (${upstream.status}) — refresh its board in Trending Sounds` },
+            { status: 502 },
+        )
     }
 
     return new NextResponse(upstream.body, {

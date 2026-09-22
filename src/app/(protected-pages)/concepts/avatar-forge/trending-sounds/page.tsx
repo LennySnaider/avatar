@@ -4,6 +4,10 @@ import Container from '@/components/shared/Container'
 import TrendingSoundsClient from './_components/TrendingSoundsClient'
 import { listTrendingSounds } from '@/services/TrendService'
 
+// El server action de Refresh corre bajo esta página: Apify tarda hasta ~2 min
+// y encima se copia el audio de cada sonido (ver persistSoundAudio).
+export const maxDuration = 300
+
 export default async function Page() {
     const session = await auth()
     if (!session?.user?.id) redirect('/sign-in')

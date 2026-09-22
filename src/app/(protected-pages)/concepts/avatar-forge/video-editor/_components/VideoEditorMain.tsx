@@ -31,7 +31,7 @@ import { useAvatarStudioStore } from '../../avatar-studio/_store/avatarStudioSto
 import type { GeneratedMedia } from '../../avatar-studio/types'
 import { muxAudioIntoVideo } from '@/services/AudioMuxService'
 import { listTrendingSounds } from '@/services/TrendService'
-import type { TrendingSoundDTO } from '@/lib/trends/constants'
+import { TREND_COUNTRIES, type TrendingSoundDTO } from '@/lib/trends/constants'
 import {
     probeVideo,
     removeWatermark,
@@ -266,6 +266,10 @@ const VideoEditorMain = ({
     const [audioMode, setAudioMode] = useState<'none' | 'trending' | 'upload'>('none')
     const [trendingSounds, setTrendingSounds] = useState<TrendingSoundDTO[] | null>(null)
     const [selectedSound, setSelectedSound] = useState<TrendingSoundDTO | null>(null)
+    // Board del chart que se lista (period 7d). Cada país se refresca aparte
+    // en Trending Sounds, así que puede haber uno con audio y otro vacío.
+    const [trendCountry, setTrendCountry] = useState<string>('GLOBAL')
+    const trendRequestRef = useRef(0)
     const [uploadedAudio, setUploadedAudio] = useState<File | null>(null)
     const [keepOriginalSound, setKeepOriginalSound] = useState(false)
     /** Nivel de la pista AÑADIDA cuando se conserva el sonido del clip. 25% es
@@ -1185,29 +1189,52 @@ const VideoEditorMain = ({
 
     // ─── Export: trim each clip as needed, stitch if >1, then download or
     // save to gallery via the existing addToGallery contract ───────────
-    const loadTrendingSounds = useCallback(async () => {
-        if (trendingSounds !== null) return
-        const result = await listTrendingSounds({ countryCode: 'GLOBAL', period: 7 })
-        setTrendingSounds(result.success ? (result.data?.sounds ?? []) : [])
-    }, [trendingSounds])
+    const loadTrendingSounds = useCallback(
+        async (country: string, force = false) => {
+            if (!force && trendingSounds !== null) return
+            const req = ++trendRequestRef.current
+            setTrendingSounds(null)
+            const result = await listTrendingSounds({ countryCode: country, period: 7 })
+            // Cambio de país rápido: solo aterriza la respuesta más reciente.
+            if (req !== trendRequestRef.current) return
+            // Solo sonidos con audio descargable — el DTO ya anula los enlaces
+            // de TikTok caducados. Ofrecer uno muerto acababa en un 404 al
+            // exportar ("Failed to fetch video: 404", 2026-09-22).
+            setTrendingSounds(
+                result.success ? (result.data?.sounds ?? []).filter((s) => !!s.playUrl) : [],
+            )
+        },
+        [trendingSounds],
+    )
 
     // Bake the chosen audio into a built video (ffmpeg). Returns a NEW blob url;
     // revokes the pre-mux url only if it was a minted intermediate (never a
     // timeline clip.url passthrough).
     const applyAudioToVideo = useCallback(
         async (videoUrl: string, videoIsMinted: boolean): Promise<string> => {
-            if (audioMode === 'none') return videoUrl
-            const audioUrl =
-                audioMode === 'trending'
-                    ? selectedSound
-                        ? `/api/trends/sound-audio?id=${encodeURIComponent(selectedSound.id)}`
-                        : null
-                    : uploadedAudio
-                      ? URL.createObjectURL(uploadedAudio)
-                      : null
-            if (!audioUrl) return videoUrl
+            const sound = audioMode === 'trending' ? selectedSound : null
+            const file = audioMode === 'upload' ? uploadedAudio : null
+            if (!sound && !file) return videoUrl
             setProgressLabel('Adding audio…')
             setProgress(0)
+            let audioUrl: string
+            if (sound) {
+                // El sonido se baja ANTES del mux: dentro de él un fallo salía
+                // como "Failed to fetch video: 404", sin decir que era el
+                // audio ni qué hacer.
+                const res = await fetch(
+                    `/api/trends/sound-audio?id=${encodeURIComponent(sound.id)}`,
+                )
+                if (!res.ok) {
+                    const body = (await res.json().catch(() => null)) as { error?: string } | null
+                    throw new Error(
+                        `"${sound.name}" can't be used: ${body?.error ?? `HTTP ${res.status}`}. Pick another sound or use Upload audio.`,
+                    )
+                }
+                audioUrl = URL.createObjectURL(await res.blob())
+            } else {
+                audioUrl = URL.createObjectURL(file as File)
+            }
             try {
                 const muxed = await muxAudioIntoVideo(videoUrl, audioUrl, {
                     // Conservar el sonido del clip lo deja al FRENTE (1) y
@@ -1223,9 +1250,8 @@ const VideoEditorMain = ({
                 }
                 return muxed
             } finally {
-                if (audioMode === 'upload' && audioUrl.startsWith('blob:')) {
-                    try { URL.revokeObjectURL(audioUrl) } catch { /* ignore */ }
-                }
+                // Ambos modos acuñan ya un blob propio (el trending también).
+                try { URL.revokeObjectURL(audioUrl) } catch { /* ignore */ }
             }
         },
         [audioMode, selectedSound, uploadedAudio, keepOriginalSound, bedVolume],
@@ -1799,7 +1825,7 @@ const VideoEditorMain = ({
                                 icon={<HiOutlineMusicNote />}
                                 onClick={() => {
                                     setAudioPanelOpen((o) => !o)
-                                    void loadTrendingSounds()
+                                    void loadTrendingSounds(trendCountry)
                                 }}
                                 disabled={isProcessing}
                             >
@@ -1816,7 +1842,7 @@ const VideoEditorMain = ({
                                             type="button"
                                             onClick={() => {
                                                 setAudioMode(mode)
-                                                if (mode === 'trending') void loadTrendingSounds()
+                                                if (mode === 'trending') void loadTrendingSounds(trendCountry)
                                             }}
                                             disabled={isProcessing}
                                             className={`px-2.5 py-1 text-xs rounded-lg border transition-colors ${
@@ -1835,13 +1861,44 @@ const VideoEditorMain = ({
                                 </div>
 
                                 {audioMode === 'trending' && (
+                                    <label className="flex items-center gap-2 text-xs">
+                                        <span className="text-gray-500">Chart</span>
+                                        <select
+                                            value={trendCountry}
+                                            disabled={isProcessing}
+                                            onChange={(e) => {
+                                                setTrendCountry(e.target.value)
+                                                setSelectedSound(null)
+                                                void loadTrendingSounds(e.target.value, true)
+                                            }}
+                                            className="px-1.5 py-0.5 rounded border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800"
+                                        >
+                                            {TREND_COUNTRIES.map((c) => (
+                                                <option key={c} value={c}>
+                                                    {c === 'GLOBAL' ? 'Global' : c}
+                                                </option>
+                                            ))}
+                                        </select>
+                                    </label>
+                                )}
+
+                                {audioMode === 'trending' && (
                                     <div className="max-h-40 overflow-y-auto flex flex-col gap-1 pr-1">
                                         {trendingSounds === null ? (
                                             <p className="text-xs text-gray-500">Loading chart…</p>
                                         ) : trendingSounds.length === 0 ? (
                                             <p className="text-xs text-amber-600 dark:text-amber-400">
-                                                No sounds cached — open Trending Sounds and hit Refresh
-                                                first.
+                                                No sounds with audio in this chart — TikTok links
+                                                expire, so{' '}
+                                                <a
+                                                    href="/concepts/avatar-forge/trending-sounds"
+                                                    target="_blank"
+                                                    rel="noopener noreferrer"
+                                                    className="underline font-semibold"
+                                                >
+                                                    refresh it in Trending Sounds
+                                                </a>{' '}
+                                                (that saves a lasting copy), or use Upload audio.
                                             </p>
                                         ) : (
                                             trendingSounds.map((sound) => (
