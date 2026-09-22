@@ -33,6 +33,7 @@ import ProviderManagerDrawer, {
 } from './ProviderManagerDrawer'
 import Button from '@/components/ui/Button'
 import Dialog from '@/components/ui/Dialog'
+import ConfirmDialog from '@/components/shared/ConfirmDialog'
 import Dropdown from '@/components/ui/Dropdown'
 import Spinner from '@/components/ui/Spinner'
 import Notification from '@/components/ui/Notification'
@@ -50,6 +51,7 @@ import {
     apiGetGenerations,
     apiGetAvatars,
     getSignedUrl,
+    apiIsGenerationVideoSilent,
 } from '@/services/AvatarForgeService'
 import { urlToDataUrl } from '@/utils/imageStitch'
 import { newestReference } from '@/utils/avatarReferences'
@@ -779,6 +781,13 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
     // Editor opened from the Post modal's "Add music": it opens on the Audio
     // panel and, once the export is saved, hands the NEW video back to Post.
     const [videoEditorForPost, setVideoEditorForPost] = useState(false)
+    // Vídeo MUDO a punto de publicarse: abre el "¿publicar sin audio?". El
+    // usuario no sabe que la música se añade en el editor — se lo ofrecemos
+    // en el momento en que importa.
+    const [silentPostMedia, setSilentPostMedia] = useState<GeneratedMedia | null>(null)
+    // Veredicto por generationId (true = mudo): el fichero no cambia, así que
+    // se mira una vez por sesión.
+    const silentVerdictRef = useRef(new Map<string, boolean>())
 
     // Studio-consolidation tools hosted in ToolModals (Voice / Remix / Downloader).
     // Voice Studio needs the avatar list — fetched lazily on first open.
@@ -1468,6 +1477,44 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
         },
         [persistGeneration, videoEditorForPost],
     )
+
+    /**
+     * Puerta de entrada al Post (galería y visor). Un vídeo sin sonido no va
+     * directo: antes pregunta "¿publicar sin audio?" y ofrece la música. Si no
+     * se puede saber (error, formato raro) se publica como siempre.
+     */
+    const requestPost = useCallback(async (media: GeneratedMedia) => {
+        const generationId = media.generationId
+        if (media.mediaType !== 'VIDEO' || !generationId) {
+            setPostMedia(media)
+            return
+        }
+        let silent = silentVerdictRef.current.get(generationId)
+        if (silent === undefined) {
+            // Solo si tarda se avisa: la mayoría de veces ni se nota.
+            const slow = setTimeout(() => {
+                toast.push(
+                    <Notification type="info" title="Post" duration={2000}>
+                        Checking the video&apos;s sound…
+                    </Notification>,
+                )
+            }, 700)
+            const verdict = await apiIsGenerationVideoSilent(generationId).catch(() => null)
+            clearTimeout(slow)
+            if (verdict !== null) silentVerdictRef.current.set(generationId, verdict)
+            silent = verdict ?? false
+        }
+        if (silent) setSilentPostMedia(media)
+        else setPostMedia(media)
+    }, [])
+
+    /** Editor en su panel de Audio; al guardar, el Post vuelve con el vídeo nuevo. */
+    const openMusicEditor = useCallback((media: GeneratedMedia) => {
+        setPostMedia(null)
+        setSilentPostMedia(null)
+        setVideoEditorForPost(true)
+        setVideoEditorMedia(media)
+    }, [])
 
     /**
      * Persiste un resultado KIE async con preview instantáneo: el card ya
@@ -5481,7 +5528,7 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                     uploadInputRef={galleryUploadInputRef}
                     onCreateVariant={handleCreateVariant}
                     onSaveToGallery={handleSaveToGallery}
-                    onPost={(m: GeneratedMedia) => setPostMedia(m)}
+                    onPost={(m: GeneratedMedia) => void requestPost(m)}
                     onUploaded={persistGeneration}
                     onSendToBackground={handleSendToBackground}
                 />
@@ -5601,7 +5648,7 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                 onSave={handleSaveToGallery}
                 onContinueVideo={handleContinueVideo}
                 onReuse={handleReuse}
-                onPost={(m: GeneratedMedia) => setPostMedia(m)}
+                onPost={(m: GeneratedMedia) => void requestPost(m)}
                 onEditVideo={(m: GeneratedMedia) => setVideoEditorMedia(m)}
                 onLipsync={(m: GeneratedMedia) => setLipsyncMedia(m)}
             />
@@ -5612,12 +5659,33 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                 fallbackAvatarId={avatarId ?? null}
                 onClose={() => setPostMedia(null)}
                 onCreateVariant={createCarouselVariant}
-                onAddMusic={(m: GeneratedMedia) => {
-                    setPostMedia(null)
-                    setVideoEditorForPost(true)
-                    setVideoEditorMedia(m)
-                }}
+                onAddMusic={openMusicEditor}
             />
+
+            {/* Vídeo mudo → "¿publicar sin audio?" antes del Post */}
+            <ConfirmDialog
+                isOpen={!!silentPostMedia}
+                type="info"
+                title="Post this video without sound?"
+                confirmText="Add music"
+                cancelText="Post without sound"
+                onClose={() => setSilentPostMedia(null)}
+                onRequestClose={() => setSilentPostMedia(null)}
+                onCancel={() => {
+                    const media = silentPostMedia
+                    setSilentPostMedia(null)
+                    if (media) setPostMedia(media)
+                }}
+                onConfirm={() => {
+                    if (silentPostMedia) openMusicEditor(silentPostMedia)
+                }}
+            >
+                <p>
+                    This video has no audio. Reels and TikToks usually perform better
+                    with sound — add a trending sound or your own track in the Video
+                    Editor, and you&apos;ll come right back here to post it.
+                </p>
+            </ConfirmDialog>
 
             {/* Lipsync — gallery video + Voice Studio audio */}
             <LipsyncDialog

@@ -16,7 +16,9 @@ import {
     r2Enabled,
     createPresignedPutUrl,
     r2ObjectExists,
+    getMediaObject,
 } from '@/lib/mediaStore'
+import { inspectMp4Audio, isSilentVideo } from '@/lib/mp4Audio'
 import type { GenerationUploadTicket } from '@/lib/storageUpload'
 import {
     orgStoragePath,
@@ -367,6 +369,43 @@ export async function apiDeleteGeneration(generationId: string) {
         }
     }
     return true
+}
+
+/**
+ * ¿Es MUDO este vídeo guardado? Alimenta el "¿publicar sin audio?" del Post:
+ * la mayoría de modelos (Wan, Seedance…) entregan el vídeo sin pista de
+ * audio y el usuario no sabe que la música se añade en el editor.
+ *
+ * Los bytes se leen aquí (almacén → servidor, sin CORS) y solo sale el
+ * veredicto. null = no se pudo saber; el cliente entonces no pregunta.
+ */
+export async function apiIsGenerationVideoSilent(
+    generationId: string,
+): Promise<boolean | null> {
+    const ctx = await getOrgContext()
+    requirePermission(ctx, 'content:read')
+    await assertGenerationInOrg(ctx, generationId)
+    const { data } = await orgTable(ctx, 'generations')
+        .select('storage_path, storage_provider, media_type')
+        .eq('id', generationId)
+        .maybeSingle()
+    const fila = data as {
+        storage_path: string | null
+        storage_provider: 'r2' | 'supabase' | null
+        media_type: string | null
+    } | null
+    if (!fila?.storage_path || fila.media_type !== 'VIDEO') return null
+    try {
+        const bytes = await getMediaObject({
+            path: fila.storage_path,
+            provider: fila.storage_provider,
+        })
+        const info = inspectMp4Audio(new Uint8Array(bytes))
+        return info ? isSilentVideo(info) : null
+    } catch (err) {
+        console.warn(`[audio-check] ${generationId}:`, err)
+        return null
+    }
 }
 
 // =============================================
