@@ -174,6 +174,11 @@ function markLine(mark: AvatarMarkInput): string {
  *    bajo la ropa.
  *  - "never move it to another part of the body": sin esto el modelo
  *    recoloca la marca en la zona que le viene bien al encuadre.
+ *  - la zona MANDA sobre la descripción. Los campos libres los escribe el
+ *    análisis de la foto y suelen nombrar una parte del cuerpo ("casi todo
+ *    el antebrazo exterior"); si luego se corrige la zona, ese texto viejo
+ *    contradice a la frase y el modelo hace caso al texto. Pasó: el tatuaje
+ *    salía en el antebrazo exterior con la zona ya puesta en interior.
  *
  * Devuelve '' sin marcas: el llamador no añade tag vacío.
  */
@@ -183,7 +188,10 @@ export function buildMarksTag(marks: readonly AvatarMarkInput[]): string {
     return (
         '[MARKS — permanent tattoos and marks on her skin, part of her body, not clothing: ' +
         lines.join('; ') +
-        '. These are as fixed as her face: whenever a listed area is in frame and uncovered, ' +
+        '. For each mark the body location written BEFORE the dash is the authoritative one: ' +
+        'if the description after the dash names a different body part, ignore that and place ' +
+        'the mark where the location before the dash says. ' +
+        'These are as fixed as her face: whenever a listed area is in frame and uncovered, ' +
         'its mark MUST be drawn there, complete and in the described style — do not omit it, ' +
         'do not move it to another part of the body, never print it on clothing. ' +
         'Omit a mark ONLY when its area is out of frame or covered by clothing.]'

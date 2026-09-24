@@ -101,6 +101,10 @@ test('el tag reúne las marcas con sus cláusulas', () => {
     // ("solo si...") hacía que el modelo se saltara la mano medio tapada.
     assert.ok(tag.includes('MUST be drawn there'))
     assert.ok(tag.includes('do not move it to another part of the body'))
+    // La zona manda sobre el texto libre: el análisis de la foto escribe
+    // cosas como "casi todo el antebrazo exterior" y, corregida la zona,
+    // ese texto viejo se peleaba con la frase — y ganaba.
+    assert.ok(tag.includes('authoritative'))
 })
 
 test('sin marcas no hay tag', () => {
