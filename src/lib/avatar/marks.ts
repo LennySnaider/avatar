@@ -163,12 +163,17 @@ function markLine(mark: AvatarMarkInput): string {
 /**
  * El tag que se inyecta en CADA generación, junto a `[FACE:]` y `[BODY:]`.
  *
- * Dos cláusulas que no son adorno:
+ * Tres cláusulas que no son adorno:
  *  - "not clothing": sin ella el modelo estampa el diseño en la camiseta
  *    (es lo que le pasa al rol `asset`, cuya cláusula habla de ropa).
- *  - "only when that area is in frame and uncovered": una marca del antebrazo
- *    no existe en un primer plano de cara ni bajo manga larga, y forzarla hace
- *    que el modelo recorte raro o invente ropa transparente.
+ *  - la marca es OBLIGATORIA cuando su zona se ve. La primera versión decía
+ *    "reprodúcela solo si la zona está en cuadro y descubierta" y eso, leído
+ *    por el modelo, es un permiso para saltársela: con una mano medio tapada
+ *    por el pelo decide que no toca y el tatuaje desaparece. Ahora el permiso
+ *    está acotado al revés — si se ve, va; solo se omite fuera de cuadro o
+ *    bajo la ropa.
+ *  - "never move it to another part of the body": sin esto el modelo
+ *    recoloca la marca en la zona que le viene bien al encuadre.
  *
  * Devuelve '' sin marcas: el llamador no añade tag vacío.
  */
@@ -178,7 +183,10 @@ export function buildMarksTag(marks: readonly AvatarMarkInput[]): string {
     return (
         '[MARKS — permanent tattoos and marks on her skin, part of her body, not clothing: ' +
         lines.join('; ') +
-        '. Reproduce each one ONLY when that area is in frame and uncovered; never print them on clothing.]'
+        '. These are as fixed as her face: whenever a listed area is in frame and uncovered, ' +
+        'its mark MUST be drawn there, complete and in the described style — do not omit it, ' +
+        'do not move it to another part of the body, never print it on clothing. ' +
+        'Omit a mark ONLY when its area is out of frame or covered by clothing.]'
     )
 }
 

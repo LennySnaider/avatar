@@ -94,9 +94,13 @@ test('el tag reúne las marcas con sus cláusulas', () => {
         ),
     )
     assert.ok(tag.includes('right groin, bikini line — rosa pequeña con tallo'))
-    // Las dos cláusulas que evitan los fallos conocidos.
+    // Las cláusulas que evitan los fallos conocidos.
     assert.ok(tag.includes('not clothing'))
     assert.ok(tag.includes('in frame and uncovered'))
+    // La marca es obligatoria si su zona se ve: decirlo como permiso
+    // ("solo si...") hacía que el modelo se saltara la mano medio tapada.
+    assert.ok(tag.includes('MUST be drawn there'))
+    assert.ok(tag.includes('do not move it to another part of the body'))
 })
 
 test('sin marcas no hay tag', () => {
