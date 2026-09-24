@@ -499,15 +499,22 @@ const AvatarMarksDialog = ({
             width={900}
             className="bg-white! dark:bg-gray-900!"
         >
-            <h5 className="mb-1">Marcas permanentes{avatarName ? ` · ${avatarName}` : ''}</h5>
-            <p className="text-sm text-gray-500 mb-4">
+            {/* El diálogo NO tiene tope de alto propio: con contenido largo
+                crece hasta pasarse de la pantalla y el pie —donde vive el botón
+                de hornear— queda por debajo del borde, inalcanzable en un móvil.
+                Acotamos AQUÍ el conjunto a la pantalla (`svh`, no `vh`: en el
+                móvil `vh` mide el viewport grande, con la barra del navegador
+                retraída) y dejamos que scrollee solo el centro. Con `flex-1
+                min-h-0`, en vez de restar a ojo la altura de cabecera y pie:
+                cualquier cambio en esos textos descuadraba la cuenta. */}
+            <div className="flex flex-col max-h-[calc(100svh-7rem)]">
+            <h5 className="mb-1 shrink-0">Marcas permanentes{avatarName ? ` · ${avatarName}` : ''}</h5>
+            <p className="text-sm text-gray-500 mb-4 shrink-0">
                 Tatuajes, cicatrices y lunares que forman parte de su cuerpo en toda
                 generación. No hay que escribirlos en el prompt.
             </p>
 
-            {/* Mismo motivo que en PostModal: `svh` en vez de `vh` para que el
-                botón del pie no se salga de la pantalla en el móvil. */}
-            <div className="flex flex-col lg:flex-row gap-5 max-h-[calc(100svh-14rem)] sm:max-h-[70vh] overflow-y-auto pr-1">
+            <div className="flex-1 min-h-0 flex flex-col lg:flex-row gap-5 overflow-y-auto overflow-x-hidden pr-1">
                 {/* Mapa corporal */}
                 <div className="lg:w-[320px] shrink-0">
                     <div className="flex gap-1 p-1 bg-gray-100 dark:bg-gray-800 rounded-lg mb-2">
@@ -873,7 +880,7 @@ const AvatarMarksDialog = ({
                 </div>
             </div>
 
-            <div className="flex flex-wrap items-center justify-end gap-3 mt-4">
+            <div className="shrink-0 flex flex-wrap items-center justify-end gap-3 mt-4 pt-3 border-t border-gray-200 dark:border-gray-700">
                 {rows.length > 0 && (
                     <p className="mr-auto text-[11px] text-gray-500 leading-relaxed max-w-sm">
                         {rows.every((r) => r.baked_at)
@@ -883,8 +890,9 @@ const AvatarMarksDialog = ({
                 )}
                 {rows.length > 0 && (
                     <Button
-                        size="sm"
-                        variant="plain"
+                        // Con borde, no `plain`: en el móvil el texto suelto no
+                        // se lee como un botón, y este es el que hay que pulsar.
+                        variant="default"
                         loading={!!baking}
                         disabled={!!baking}
                         onClick={handleBake}
@@ -895,6 +903,7 @@ const AvatarMarksDialog = ({
                 <Button variant="solid" onClick={onClose} disabled={!!baking}>
                     Listo
                 </Button>
+            </div>
             </div>
         </Dialog>
     )
