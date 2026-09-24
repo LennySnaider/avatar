@@ -3,6 +3,8 @@
 import { useEffect, useRef } from 'react'
 import { useAvatarStudioStore } from '../_store/avatarStudioStore'
 import { getSignedUrl } from '@/services/AvatarForgeService'
+import { listAvatarMarks } from '@/services/AvatarMarksService'
+import { markFromRow } from '@/lib/avatar/marks'
 import { createThumbnail } from '@/utils/imageOptimization'
 import type { Avatar, AIProvider, Prompt, MediaType } from '@/@types/supabase'
 import type { ClonedVoice } from '@/@types/voice'
@@ -144,6 +146,7 @@ const AvatarStudioProvider = ({
     const setPrompt = useAvatarStudioStore((state) => state.setPrompt)
     const setGenerationMode = useAvatarStudioStore((state) => state.setGenerationMode)
     const setAvatarDefaultVoice = useAvatarStudioStore((state) => state.setAvatarDefaultVoice)
+    const setAvatarMarks = useAvatarStudioStore((state) => state.setAvatarMarks)
 
     // Initialize providers and prompts only once
     useEffect(() => {
@@ -199,6 +202,20 @@ const AvatarStudioProvider = ({
                         bodyRef,
                         bodyRefNsfw,
                     )
+
+                    // Las marcas se cargan AQUÍ, después de `loadAvatarData`,
+                    // que las deja vacías a propósito para no pintarle a este
+                    // avatar los tatuajes del anterior. Este es el único sitio
+                    // donde el estudio carga un avatar, así que es el único
+                    // donde pueden volver: sin esto el tag [MARKS:] se queda
+                    // fuera de todas las generaciones y los tatuajes solo
+                    // aparecen si acabas de abrir el diálogo que los edita.
+                    return listAvatarMarks(avatar.id)
+                        .then((rows) => setAvatarMarks(rows.map(markFromRow)))
+                        .catch(() => {
+                            // Sin marcas se genera igual: no se bloquea el
+                            // estudio por esto.
+                        })
                 })
                 .finally(() => {
                     setIsLoadingReferences(false)
