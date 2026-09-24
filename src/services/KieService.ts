@@ -870,6 +870,10 @@ export interface GenerateImageKieParams {
         mimeType: string
         role?: string
         url?: string
+        /** Solo role:'mark' — zona ya resuelta con su lado ("inner right
+         *  forearm"). La cláusula de piel la nombra para que el motor sepa
+         *  DÓNDE va el tatuaje. */
+        markZone?: string
     }>
     // Short body-shape phrase (describeBody(measurements)) woven INTO the i2i
     // face anchor. Image-heavy models (Seedream 5.0 Pro) copy the slim build

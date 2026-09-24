@@ -18,6 +18,7 @@ import { requirePermission } from '@/lib/org/guards'
 import { orgInsert, orgTable } from '@/lib/org/orgTable'
 import { MARK_ZONE_IDS, type MarkSide } from '@/lib/avatar/marks'
 import { putMediaObject } from '@/lib/mediaStore'
+import { getReferenceMediaUrl } from '@/lib/storagePaths'
 import { analyzeMarkFromImage } from './GeminiService'
 import type { Database } from '@/@types/supabase'
 
@@ -201,3 +202,114 @@ export async function analyzeMarkPhoto(
     return analyzeMarkFromImage({ base64, mimeType }, MARK_ZONE_IDS)
 }
 
+
+// =============================================
+// HORNEADO EN LAS HOJAS CANÓNICAS
+// =============================================
+//
+// Por qué existe: el tag [MARKS: ...] describe la marca con PALABRAS en cada
+// generación, así que el modelo la dibuja de nuevo cada vez — otra peonía,
+// otro tamaño, otro sitio del antebrazo. Pintándola DENTRO de la hoja de
+// ángulos y de las del Body Lab, que viajan como imagen de referencia, el
+// modelo la COPIA en vez de inventarla. Eso es lo que la vuelve parte del
+// cuerpo y no una instrucción más del prompt.
+
+export type SheetType = 'angle' | 'body' | 'body_nsfw'
+
+export interface SheetToBake {
+    referenceId: string
+    type: SheetType
+    url: string
+}
+
+/** Las hojas canónicas del avatar, la más reciente de cada tipo. */
+export async function getSheetsForBaking(
+    avatarId: string,
+): Promise<SheetToBake[]> {
+    const ctx = await getOrgContext()
+    requirePermission(ctx, 'content:read')
+    await assertOwnedAvatar(ctx, avatarId)
+
+    const { data, error } = await orgTable(ctx, 'avatar_references')
+        .select('id, type, storage_path, storage_provider, created_at')
+        .eq('avatar_id', avatarId)
+        .in('type', ['angle', 'body', 'body_nsfw'])
+        .order('created_at', { ascending: false })
+    if (error) throw error
+
+    const filas = (data ?? []) as unknown as {
+        id: string
+        type: SheetType
+        storage_path: string
+        storage_provider: string | null
+    }[]
+
+    // Una por tipo: la primera de cada uno, que con el orden de arriba es la
+    // más nueva. Refrescar el Body Lab deja filas viejas y hornear la
+    // equivocada dejaría el avatar con dos cuerpos distintos.
+    const vistas = new Set<string>()
+    const hojas: SheetToBake[] = []
+    for (const fila of filas) {
+        if (vistas.has(fila.type)) continue
+        vistas.add(fila.type)
+        hojas.push({
+            referenceId: fila.id,
+            type: fila.type,
+            url: getReferenceMediaUrl(fila.storage_path, fila.storage_provider),
+        })
+    }
+    return hojas
+}
+
+/**
+ * Guarda la hoja ya horneada y REPUNTA la referencia a ella.
+ *
+ * La hoja anterior NO se borra del almacén a propósito: si el horneado sale
+ * mal, sus bytes siguen ahí para volver atrás. Cuesta céntimos y evita perder
+ * la identidad del avatar por una edición fallida.
+ */
+export async function persistBakedSheet(
+    avatarId: string,
+    referenceId: string,
+    type: SheetType,
+    imageUrl: string,
+): Promise<void> {
+    const ctx = await getOrgContext()
+    requirePermission(ctx, 'content:write')
+    await assertOwnedAvatar(ctx, avatarId)
+
+    const res = await fetch(imageUrl, { signal: AbortSignal.timeout(60_000) })
+    if (!res.ok) throw new Error(`No se pudo descargar la hoja horneada (${res.status})`)
+    const body = Buffer.from(await res.arrayBuffer())
+    if (body.byteLength === 0) throw new Error('La hoja horneada llegó vacía')
+
+    const path = `${ctx.userId}/references/${avatarId}/${type}/${Date.now()}.jpg`
+    const { provider } = await putMediaObject({
+        path,
+        body,
+        contentType: 'image/jpeg',
+        // Las referencias viven en `avatars`, no en `generations`: con R2
+        // apagado, el default mandaría los bytes al bucket equivocado.
+        supabaseBucket: 'avatars',
+    })
+
+    const { error } = await orgTable(ctx, 'avatar_references')
+        .update({ storage_path: path, storage_provider: provider })
+        .eq('id', referenceId)
+    if (error) throw error
+}
+
+/** Sella las marcas del avatar como ya pintadas en las hojas. */
+export async function markMarksAsBaked(
+    avatarId: string,
+): Promise<AvatarMarkRow[]> {
+    const ctx = await getOrgContext()
+    requirePermission(ctx, 'content:write')
+    await assertOwnedAvatar(ctx, avatarId)
+
+    const { error } = await orgTable(ctx, 'avatar_marks')
+        .update({ baked_at: new Date().toISOString() })
+        .eq('avatar_id', avatarId)
+    if (error) throw error
+    return listAvatarMarks(avatarId)
+}

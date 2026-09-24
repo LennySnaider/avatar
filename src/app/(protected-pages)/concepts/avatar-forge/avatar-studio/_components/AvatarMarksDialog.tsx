@@ -28,15 +28,20 @@ import {
     MARK_ZONES,
     exposureLabel,
     findZone,
+    markFromRow,
     markPhrase,
     zoneLabel,
     type MarkSide,
 } from '@/lib/avatar/marks'
+import { checkKieImageTask, submitKieImageTask } from '@/services/KieService'
 import {
     analyzeMarkPhoto,
     createAvatarMark,
     deleteAvatarMark,
     listAvatarMarks,
+    getSheetsForBaking,
+    markMarksAsBaked,
+    persistBakedSheet,
     updateAvatarMark,
     uploadMarkPhoto,
     type AvatarMarkRow,
@@ -181,6 +186,7 @@ const AvatarMarksDialog = ({
     const [isLoading, setIsLoading] = useState(false)
     const [isSaving, setIsSaving] = useState(false)
     const [isReading, setIsReading] = useState(false)
+    const [baking, setBaking] = useState<string | null>(null)
     const fotoInputRef = useRef<HTMLInputElement>(null)
 
     const publish = useCallback(
@@ -296,6 +302,107 @@ const AvatarMarksDialog = ({
             )
         } finally {
             setIsReading(false)
+        }
+    }
+
+    /**
+     * Hornea las marcas en las hojas canónicas con Seedream i2i.
+     *
+     * Se conduce desde el CLIENTE (enviar y sondear) por lo mismo que el
+     * estudio: una generación tarda entre medio minuto y dos, y una server
+     * action de Vercel no puede quedarse abierta tanto. Cada hoja se persiste
+     * en cuanto sale, así que un fallo a mitad deja hechas las anteriores en
+     * vez de perderlo todo.
+     */
+    const handleBake = async () => {
+        // Predicado de tipo: `filter` a secas no estrecha `storage_path`, y
+        // la URL de la referencia lo necesita no nulo.
+        const conFoto = rows.filter(
+            (r): r is AvatarMarkRow & { storage_path: string } => !!r.storage_path,
+        )
+        if (conFoto.length === 0) {
+            toast.push(
+                <Notification type="warning" title="Faltan las fotos">
+                    Para hornear hace falta la foto de cada marca: es lo que el
+                    motor copia.
+                </Notification>,
+            )
+            return
+        }
+        setBaking('Buscando las hojas…')
+        try {
+            const hojas = await getSheetsForBaking(avatarId)
+            if (hojas.length === 0) {
+                toast.push(
+                    <Notification type="warning" title="Sin hojas que hornear">
+                        Este avatar no tiene todavía hoja de ángulos ni cuerpo del
+                        Body Lab. Genéralos y vuelve.
+                    </Notification>,
+                )
+                return
+            }
+
+            const refs = conFoto.map((m) => ({
+                url: getGenerationMediaUrl(m.storage_path, m.storage_provider),
+                mimeType: 'image/jpeg',
+                role: 'mark',
+                markZone: markPhrase(markFromRow(m)),
+            }))
+            const lista = conFoto
+                .map((m) => `${markPhrase(markFromRow(m))}: ${m.content}`)
+                .join('; ')
+
+            for (let i = 0; i < hojas.length; i++) {
+                const hoja = hojas[i]
+                setBaking(`Horneando hoja ${i + 1} de ${hojas.length}…`)
+
+                const prompt =
+                    `Image 1 is a reference sheet of this woman. Add her permanent skin marks to it and change NOTHING else: ` +
+                    `same face, same body, same poses, same framing, same lighting, same background. ` +
+                    `The marks to add, each on her own skin at the stated place: ${lista}. ` +
+                    `Reproduce each design, its scale and its placement exactly as the extra reference images show. ` +
+                    `Never print them on clothing, and do not add any other tattoo, scar or mark.`
+
+                const sub = await submitKieImageTask({
+                    prompt,
+                    model: 'seedream/5-pro-text-to-image',
+                    referenceImage: { url: hoja.url, mimeType: 'image/jpeg' },
+                    referenceImages: refs,
+                    // Igual que la variante de carrusel: que copie la hoja tal
+                    // cual en vez de reinterpretarla.
+                    deepfakeMode: true,
+                    identityWeight: 100,
+                })
+                if (!sub.success) throw new Error(sub.error)
+
+                let url: string | null = null
+                for (let intento = 0; intento < 90 && !url; intento++) {
+                    await new Promise((r) => setTimeout(r, 4000))
+                    const estado = await checkKieImageTask(sub.taskId)
+                    if (estado.status === 'done') url = estado.url
+                    else if (estado.status === 'failed') throw new Error(estado.error)
+                }
+                if (!url) throw new Error('El horneado tardó demasiado')
+
+                setBaking(`Guardando hoja ${i + 1} de ${hojas.length}…`)
+                await persistBakedSheet(avatarId, hoja.referenceId, hoja.type, url)
+            }
+
+            publish(await markMarksAsBaked(avatarId))
+            toast.push(
+                <Notification type="success" title="Marcas horneadas">
+                    Ya están pintadas en las hojas del avatar: a partir de ahora el
+                    motor las copia en vez de inventarlas.
+                </Notification>,
+            )
+        } catch (err) {
+            toast.push(
+                <Notification type="danger" title="No se pudo hornear">
+                    {err instanceof Error ? err.message : 'Error desconocido'}
+                </Notification>,
+            )
+        } finally {
+            setBaking(null)
         }
     }
 
@@ -740,8 +847,26 @@ const AvatarMarksDialog = ({
                 </div>
             </div>
 
-            <div className="flex justify-end mt-4">
-                <Button variant="solid" onClick={onClose}>
+            <div className="flex flex-wrap items-center justify-end gap-3 mt-4">
+                {rows.length > 0 && (
+                    <p className="mr-auto text-[11px] text-gray-500 leading-relaxed max-w-sm">
+                        {rows.every((r) => r.baked_at)
+                            ? 'Pintadas en las hojas del avatar: el motor las copia en vez de inventarlas.'
+                            : 'Ahora viajan como texto y el motor las redibuja en cada imagen. Hornéalas para que salgan idénticas siempre.'}
+                    </p>
+                )}
+                {rows.length > 0 && (
+                    <Button
+                        size="sm"
+                        variant="plain"
+                        loading={!!baking}
+                        disabled={!!baking}
+                        onClick={handleBake}
+                    >
+                        {baking ?? 'Hornear en las hojas'}
+                    </Button>
+                )}
+                <Button variant="solid" onClick={onClose} disabled={!!baking}>
                     Listo
                 </Button>
             </div>
