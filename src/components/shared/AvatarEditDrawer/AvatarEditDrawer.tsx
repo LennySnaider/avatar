@@ -12,6 +12,7 @@ import ScrollBar from '@/components/ui/ScrollBar'
 import Notification from '@/components/ui/Notification'
 import toast from '@/components/ui/toast'
 import Tooltip from '@/components/ui/Tooltip'
+import AvatarMarksDialog from '@/app/(protected-pages)/concepts/avatar-forge/avatar-studio/_components/AvatarMarksDialog'
 import {
     HiOutlineUpload,
     HiOutlineX,
@@ -87,6 +88,12 @@ export interface AvatarEditData {
 interface AvatarEditDrawerProps {
     isOpen: boolean
     onClose: () => void
+    /**
+     * Id del avatar que se edita. Sin él no se pueden gestionar las marcas
+     * permanentes (viven en `avatar_marks`, por avatar): la tarjeta entonces
+     * no se muestra. En el creador todavía no existe, y ahí es correcto.
+     */
+    avatarId?: string
     title?: string
     avatarName?: string
     initialData?: AvatarEditData
@@ -111,6 +118,7 @@ const defaultMeasurements: PhysicalMeasurements = {
 const AvatarEditDrawer = ({
     isOpen,
     onClose,
+    avatarId,
     title,
     avatarName,
     initialData,
@@ -119,6 +127,7 @@ const AvatarEditDrawer = ({
     isSaving = false,
     isLoading = false,
 }: AvatarEditDrawerProps) => {
+    const [showMarks, setShowMarks] = useState(false)
     const fileInputRef = useRef<HTMLInputElement>(null)
     const faceInputRef = useRef<HTMLInputElement>(null)
     const angleInputRef = useRef<HTMLInputElement>(null)
@@ -903,6 +912,31 @@ const AvatarEditDrawer = ({
                                     </span>
                                 </div>
                             )}
+                            {/* Marcas permanentes: identidad del avatar, no
+                                escena. Solo con el avatar ya creado. */}
+                            {avatarId && (
+                                <Card className="p-3">
+                                    <div className="flex flex-wrap items-center justify-between gap-2">
+                                        <div>
+                                            <h3 className="text-sm font-semibold">
+                                                Marcas permanentes
+                                            </h3>
+                                            <p className="text-xs text-gray-500">
+                                                Tatuajes, cicatrices o lunares
+                                                con su zona del cuerpo
+                                            </p>
+                                        </div>
+                                        <button
+                                            type="button"
+                                            onClick={() => setShowMarks(true)}
+                                            className="text-xs text-primary hover:underline"
+                                        >
+                                            Gestionar
+                                        </button>
+                                    </div>
+                                </Card>
+                            )}
+
                             {/* General Identity Photos */}
                             <Card className="p-3">
                                 <div className="flex items-center justify-between mb-3">
@@ -1270,6 +1304,15 @@ const AvatarEditDrawer = ({
                 onDiscard={handleDiscard}
                 onKeepEditing={handleKeepEditing}
             />
+
+            {avatarId && (
+                <AvatarMarksDialog
+                    isOpen={showMarks}
+                    onClose={() => setShowMarks(false)}
+                    avatarId={avatarId}
+                    avatarName={avatarName}
+                />
+            )}
         </>
     )
 }

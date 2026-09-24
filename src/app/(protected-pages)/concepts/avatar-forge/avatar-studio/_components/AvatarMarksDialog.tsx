@@ -28,7 +28,6 @@ import {
     MARK_ZONES,
     exposureLabel,
     findZone,
-    markFromRow,
     markPhrase,
     zoneLabel,
     type MarkSide,
@@ -40,7 +39,6 @@ import {
     updateAvatarMark,
     type AvatarMarkRow,
 } from '@/services/AvatarMarksService'
-import { useAvatarStudioStore } from '../_store/avatarStudioStore'
 
 interface Shape {
     view: 'front' | 'back'
@@ -128,6 +126,14 @@ interface AvatarMarksDialogProps {
     onClose: () => void
     avatarId: string
     avatarName?: string
+    /**
+     * Marcas tras cada cambio. El diálogo NO escribe en el store del estudio a
+     * propósito: se abre también desde la lista de avatares, y ahí el avatar
+     * editado no es el que el estudio tiene cargado — sus marcas acabarían en
+     * el prompt de OTRA. Quien sí es el avatar activo (el panel del estudio)
+     * pasa este callback y las vuelca él.
+     */
+    onChange?: (marks: AvatarMarkRow[]) => void
 }
 
 const AvatarMarksDialog = ({
@@ -135,8 +141,8 @@ const AvatarMarksDialog = ({
     onClose,
     avatarId,
     avatarName,
+    onChange,
 }: AvatarMarksDialogProps) => {
-    const setAvatarMarks = useAvatarStudioStore((s) => s.setAvatarMarks)
     const [rows, setRows] = useState<AvatarMarkRow[]>([])
     const [form, setForm] = useState<FormState>(EMPTY)
     const [view, setView] = useState<'front' | 'back'>('front')
@@ -146,9 +152,9 @@ const AvatarMarksDialog = ({
     const publish = useCallback(
         (next: AvatarMarkRow[]) => {
             setRows(next)
-            setAvatarMarks(next.map(markFromRow))
+            onChange?.(next)
         },
-        [setAvatarMarks],
+        [onChange],
     )
 
     useEffect(() => {

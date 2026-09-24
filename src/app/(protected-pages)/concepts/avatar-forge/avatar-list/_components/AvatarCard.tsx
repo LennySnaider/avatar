@@ -698,6 +698,7 @@ const AvatarCard = ({ avatar }: AvatarCardProps) => {
             <AvatarEditDrawer
                 isOpen={editDrawerOpen}
                 onClose={() => setEditDrawerOpen(false)}
+                avatarId={avatar.id}
                 title="Edit Avatar"
                 avatarName={avatar.name}
                 initialData={initialEditData || undefined}

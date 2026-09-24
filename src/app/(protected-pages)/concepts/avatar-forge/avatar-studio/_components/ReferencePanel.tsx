@@ -601,6 +601,7 @@ const ReferencePanel = ({ onSaveAvatar, onAnalyzeFace }: ReferencePanelProps) =>
                     onClose={() => setShowMarks(false)}
                     avatarId={avatarId}
                     avatarName={avatarName ?? undefined}
+                    onChange={(rows) => setAvatarMarks(rows.map(markFromRow))}
                 />
             )}
         </div>

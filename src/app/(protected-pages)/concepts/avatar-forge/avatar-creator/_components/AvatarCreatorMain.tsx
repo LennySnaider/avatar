@@ -980,7 +980,7 @@ const AvatarCreatorMain = ({
                                 onChange={(e) => handleFileChange(e, 'general')}
                             />
                             {generalReferences.length > 0 ? (
-                                <div className="grid grid-cols-4 gap-3">
+                                <div className="grid grid-cols-3 sm:grid-cols-4 gap-3">
                                     {generalReferences.map((ref) => (
                                         <div
                                             key={ref.id}
@@ -1031,7 +1031,7 @@ const AvatarCreatorMain = ({
                             <h3 className="text-sm font-semibold mb-4">
                                 Specific References (Optional)
                             </h3>
-                            <div className="grid grid-cols-2 gap-4">
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                 <ReferenceSlot
                                     title="Face Close-up"
                                     subtitle="For facial details"
@@ -1106,7 +1106,7 @@ const AvatarCreatorMain = ({
                         </Card>
 
                         {/* Identity Settings */}
-                        <div className="grid grid-cols-2 gap-6">
+                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
                             <div className="space-y-6">
                             <Card className="p-4">
                                 <div className="flex items-center justify-between mb-3">

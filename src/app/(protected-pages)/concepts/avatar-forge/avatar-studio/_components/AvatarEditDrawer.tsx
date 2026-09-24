@@ -1,6 +1,8 @@
 'use client'
 
 import { useRef, useCallback, useState, useEffect } from 'react'
+import AvatarMarksDialog from './AvatarMarksDialog'
+import { markFromRow } from '@/lib/avatar/marks'
 import { useAvatarStudioStore } from '../_store/avatarStudioStore'
 import Drawer from '@/components/ui/Drawer'
 import Button from '@/components/ui/Button'
@@ -121,6 +123,7 @@ const AvatarEditDrawer = ({
             hairColor: 'brown',
         })
     const [localFaceDescription, setLocalFaceDescription] = useState('')
+    const [showMarks, setShowMarks] = useState(false)
 
     const {
         generalReferences,
@@ -131,6 +134,8 @@ const AvatarEditDrawer = ({
         faceDescription,
         avatarName,
         avatarId,
+        avatarMarks,
+        setAvatarMarks,
         isSavingAvatar,
         isLoadingReferences,
         providers,
@@ -967,6 +972,33 @@ const AvatarEditDrawer = ({
                                     </span>
                                 </div>
                             )}
+                            {/* Marcas permanentes (tatuajes, cicatrices,
+                                lunares): anatomía del avatar, así que se
+                                editan aquí y no solo desde el estudio. */}
+                            {avatarId && (
+                                <Card className="p-3">
+                                    <div className="flex flex-wrap items-center justify-between gap-2">
+                                        <div>
+                                            <h3 className="text-sm font-semibold">
+                                                Marcas permanentes
+                                            </h3>
+                                            <p className="text-xs text-gray-400 mt-0.5">
+                                                {avatarMarks.length > 0
+                                                    ? `${avatarMarks.length} en su cuerpo, en todas las generaciones`
+                                                    : 'Tatuajes, cicatrices o lunares con su zona del cuerpo'}
+                                            </p>
+                                        </div>
+                                        <button
+                                            type="button"
+                                            onClick={() => setShowMarks(true)}
+                                            className="text-xs text-primary hover:underline"
+                                        >
+                                            {avatarMarks.length > 0 ? 'Gestionar' : '+ Añadir'}
+                                        </button>
+                                    </div>
+                                </Card>
+                            )}
+
                             {/* General Identity Photos */}
                             <Card className="p-3">
                                 <div className="flex items-center justify-between mb-3">
@@ -1327,6 +1359,16 @@ const AvatarEditDrawer = ({
                 onDiscard={handleDiscard}
                 onKeepEditing={handleKeepEditing}
             />
+
+            {avatarId && (
+                <AvatarMarksDialog
+                    isOpen={showMarks}
+                    onClose={() => setShowMarks(false)}
+                    avatarId={avatarId}
+                    avatarName={avatarName ?? undefined}
+                    onChange={(rows) => setAvatarMarks(rows.map(markFromRow))}
+                />
+            )}
         </>
     )
 }
