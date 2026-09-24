@@ -13,6 +13,8 @@ import {
     uploadBufferToGenerations,
 } from '@/lib/mediaPersist'
 import { orgStoragePath } from '@/lib/storagePaths'
+import { listAvatarMarks } from './AvatarMarksService'
+import { buildMarksTag, markFromRow } from '@/lib/avatar/marks'
 import { tryGetOrgContext } from '@/lib/tenant/getOrgContext'
 import {
     holdForOperation,
@@ -852,6 +854,9 @@ export interface GenerateImageKieParams {
     prompt: string
     model: string
     aspectRatio?: string
+    /** Avatar de la toma. Sirve para traer sus marcas permanentes aquí, en el
+     *  servidor — ver `conMarcasDelAvatar`. */
+    avatarId?: string | null
     // `url` = la ref YA está subida y es pública: se pasa tal cual al proveedor
     // en vez de viajar en base64. Es lo que evita el 413 del editor — una foto
     // de 3.5 MB inflada por base64 (~4.6 MB) pasa del tope de 4.5 MB que Vercel
@@ -1354,12 +1359,46 @@ async function generateImageKieInner(
  * abandoned slow tasks at 600s (orphaned results + wasted credits + phantom
  * re-runs). Use this for those two models; flux/gpt-4o stay on generateImageKie.
  */
-export async function submitKieImageTask(
+/**
+ * Añade el tag [MARKS: …] leyendo las marcas del avatar EN EL SERVIDOR.
+ *
+ * Antes solo lo ponía el store del estudio, y por eso no llegaba: de doce
+ * generaciones seguidas solo UNA lo llevaba —justo la que se hizo con el
+ * diálogo de marcas recién abierto—. Los tatuajes son anatomía del avatar,
+ * no una preferencia de la toma: no pueden depender de que una pantalla
+ * concreta haya cargado su estado. Por aquí pasan TODAS las imágenes de KIE,
+ * venga de donde venga la llamada.
+ *
+ * No duplica: si el prompt ya trae el tag, se respeta el que viene. Y no
+ * toca los prompts vacíos — la fase 2 del deepfake es un face-swap sin
+ * escena, y meterle anatomía ahí no pinta nada.
+ */
+async function conMarcasDelAvatar(
     params: GenerateImageKieParams,
+): Promise<GenerateImageKieParams> {
+    if (!params.avatarId) return params
+    if (!params.prompt.trim()) return params
+    if (params.prompt.includes('[MARKS')) return params
+    try {
+        const rows = await listAvatarMarks(params.avatarId)
+        const tag = buildMarksTag(rows.map(markFromRow))
+        if (!tag) return params
+        return { ...params, prompt: `${tag} ${params.prompt}` }
+    } catch {
+        // Sin marcas se genera igual: una marca perdida no vale una
+        // generación abortada.
+        return params
+    }
+}
+
+export async function submitKieImageTask(
+    paramsEntrantes: GenerateImageKieParams,
 ): Promise<
     | { success: true; taskId: string; fullApiPrompt: string }
     | { success: false; error: string }
 > {
+    const params = await conMarcasDelAvatar(paramsEntrantes)
+
     // F5.0 — CHOKEPOINT. El gate va aquí, en la server action, no en el
     // dispatcher de cliente: llamar esta action directo desde devtools es
     // trivial. Wrapper en vez de tocar el cuerpo porque tiene ~15 `return`

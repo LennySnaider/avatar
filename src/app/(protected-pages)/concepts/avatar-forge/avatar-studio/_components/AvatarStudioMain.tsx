@@ -221,7 +221,14 @@ async function pollKieImageTask(
     // lo dispara.
     // Los params pueden cambiar entre intentos: el plan B de alojamiento de
     // referencias (ver el fallo "Timeout while downloading" más abajo).
-    let submitParams = params
+    // El avatar viaja al SERVIDOR con el submit: allí se leen sus marcas
+    // permanentes y se inyecta el tag [MARKS: …]. Va desde aquí, y no en cada
+    // rama de `handleGenerate`, porque este es el único sitio por el que pasan
+    // todas — el `pendingCtx` ya traía el avatarId para reclamar la tarea.
+    let submitParams = {
+        ...params,
+        avatarId: params.avatarId ?? pendingCtx?.avatarId ?? undefined,
+    }
     for (let attempt = 1; attempt <= 2; attempt++) {
         const sub = await submitKieImageTask(submitParams)
         if (!sub.success) {
