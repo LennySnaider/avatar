@@ -13,7 +13,7 @@ export default async function Page({ params }: PageProps) {
     const { slug: avatarId } = await params
     if (!session?.user?.id) redirect('/sign-in')
 
-    const { avatar, persona, knowledgeCount } = await getAvatarAgentData(avatarId)
+    const { avatar, persona, knowledgeCount, liveModuleInstalled } = await getAvatarAgentData(avatarId)
     // El filtro por user_id sobra: getAvatarAgentData ya acota por
     // organizacion, asi que si el avatar no es de tu org, avatar viene null.
     // Exigir ademas user_id === yo rompia con un segundo miembro en la org:
@@ -35,6 +35,7 @@ export default async function Page({ params }: PageProps) {
                 initialPersona={persona}
                 initialKnowledgeCount={knowledgeCount}
                 initialFanvueCreatorUuid={avatar.fanvue_creator_uuid ?? null}
+                liveModuleInstalled={liveModuleInstalled}
             />
         </Container>
     )

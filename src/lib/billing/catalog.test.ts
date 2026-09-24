@@ -225,3 +225,13 @@ test('qwen3 se cobra como qwen3, nunca como qwen2', () => {
     )
     assert.equal(resolveImageProviderId('qwen3/image-to-image'), 'kie-qwen3')
 })
+
+test('live_minute: un minuto por defecto, lineal en minutos, con su propio sku', () => {
+    const one = quote({ kind: 'live_minute' })
+    assert.equal(one.sku, 'live:minute')
+    assert.equal(one.estimated, true)
+    assert.ok(one.tokens > 0)
+    const three = quote({ kind: 'live_minute', minutes: 3 })
+    assert.ok(Math.abs(three.costUsd - one.costUsd * 3) < 1e-9)
+    assert.equal(quote({ kind: 'live_minute', minutes: -2 }).tokens, 0)
+})

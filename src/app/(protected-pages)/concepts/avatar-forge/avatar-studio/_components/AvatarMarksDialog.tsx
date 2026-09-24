@@ -274,7 +274,9 @@ const AvatarMarksDialog = ({
                 generación. No hay que escribirlos en el prompt.
             </p>
 
-            <div className="flex flex-col lg:flex-row gap-5 max-h-[70vh] overflow-y-auto pr-1">
+            {/* Mismo motivo que en PostModal: `svh` en vez de `vh` para que el
+                botón del pie no se salga de la pantalla en el móvil. */}
+            <div className="flex flex-col lg:flex-row gap-5 max-h-[calc(100svh-14rem)] sm:max-h-[70vh] overflow-y-auto pr-1">
                 {/* Mapa corporal */}
                 <div className="lg:w-[320px] shrink-0">
                     <div className="flex gap-1 p-1 bg-gray-100 dark:bg-gray-800 rounded-lg mb-2">

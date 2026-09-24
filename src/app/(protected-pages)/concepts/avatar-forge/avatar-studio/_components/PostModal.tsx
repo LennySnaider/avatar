@@ -613,7 +613,13 @@ const PostModal = ({
                 Publish or schedule this generation to your connected accounts
             </p>
 
-            <div className="flex flex-col gap-4 max-h-[70vh] overflow-y-auto pr-1">
+            {/* En móvil el alto NO puede ser `70vh`: `vh` mide el viewport
+                GRANDE (sin la barra del navegador), así que cabecera + 70% +
+                pie se salían de la pantalla y los botones de publicar
+                quedaban debajo del borde, inalcanzables (reporte 24-sep).
+                `svh` mide el viewport visible de verdad, y restarle la
+                cabecera y el pie deja el botón siempre a la vista. */}
+            <div className="flex flex-col gap-4 max-h-[calc(100svh-14rem)] sm:max-h-[70vh] overflow-y-auto pr-1">
                 {error && (
                     <div className="p-2 bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-700 rounded-lg">
                         <p className="text-xs text-red-600 dark:text-red-400">{error}</p>
@@ -1090,7 +1096,7 @@ const PostModal = ({
                         gallery first.
                     </p>
                 ) : (
-                    <div className="grid grid-cols-3 sm:grid-cols-4 gap-2 max-h-[60vh] overflow-y-auto pr-1">
+                    <div className="grid grid-cols-3 sm:grid-cols-4 gap-2 max-h-[calc(100svh-16rem)] sm:max-h-[60vh] overflow-y-auto pr-1">
                         {pickerCandidates.map((g) => (
                             <button
                                 key={g.id}

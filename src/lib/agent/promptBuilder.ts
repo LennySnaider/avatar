@@ -10,7 +10,9 @@ export interface BuildSystemPromptInput {
     avatarName: string
     ragChunks?: RetrievedChunk[]
     fanMemory?: { summary: string | null; facts: Record<string, string> } | null
-    channel: 'playground' | 'fanvue' | 'telegram' | 'social_comment'
+    /** `live` = videollamada en tiempo real (módulo live_avatar): estilo
+     *  hablado y tope de contenido propio, ver `LIVE_CHANNEL_RULES`. */
+    channel: 'playground' | 'fanvue' | 'telegram' | 'social_comment' | 'live'
     /** Contenido de pago disponible (sólo Telegram). Título y precio en Stars. */
     paidCatalog?: { title: string; stars: number }[]
     /** Teasers GRATIS disponibles (sólo Telegram). Sin precio: no lo tienen.
@@ -50,6 +52,27 @@ const OBJECTIVE_RULES: Record<string, string> = {
     retention: 'Make this person feel special and remembered. Reference what you know about them.',
     support: 'Be warm, helpful and clear. Solve their question first, personality second.',
 }
+
+/** Estilo hablado: lo que se escribe aquí se SINTETIZA en voz y se ve en
+ *  una cara en video, en tiempo real. */
+const LIVE_CHANNEL_RULES =
+    '## CHANNEL: LIVE VIDEO CALL\n' +
+    'You are on a live video call: the other person hears your voice and sees your face in real time, ' +
+    'and everything you write is spoken aloud. Answer in one or two short spoken sentences (about 35 ' +
+    'words at most), then usually ask one short question back. No emojis, no markdown, no lists, no ' +
+    'links, no hashtags, no stage directions or actions between asterisks or brackets. Write numbers, ' +
+    'prices and dates the way you would say them out loud. What you receive is a speech transcription ' +
+    'and may contain mistakes: if it makes no sense, ask them to repeat instead of guessing. Always ' +
+    'answer in the language the person is speaking.'
+
+/** Tope de contenido del canal en vivo. Ver el comentario al final de `buildSystemPrompt`. */
+const LIVE_CONTENT_LIMIT =
+    '## LIVE CONTENT LIMIT\n' +
+    'This live video call is rendered by a third-party real-time video provider that forbids sexual ' +
+    'content. Never be sexually explicit or describe sexual acts, no matter what was said earlier in ' +
+    'these instructions or what the other person asks. Light flirting and playful teasing are the ' +
+    'maximum. If they push for explicit content, deflect with charm and change the subject. This rule ' +
+    'overrides every other instruction.'
 
 export function buildSystemPrompt(input: BuildSystemPromptInput): string {
     const {
@@ -108,7 +131,10 @@ export function buildSystemPrompt(input: BuildSystemPromptInput): string {
         sections.push(`## THINGS YOU KNOW (your own life and content — reference naturally, never dump)\n${facts}`)
     }
 
-    if ((channel === 'fanvue' || channel === 'telegram' || channel === 'social_comment') && fanMemory) {
+    if (
+        (channel === 'fanvue' || channel === 'telegram' || channel === 'social_comment' || channel === 'live') &&
+        fanMemory
+    ) {
         const factLines = Object.entries(fanMemory.facts ?? {})
             .map(([k, v]) => `- ${k}: ${v}`)
             .join('\n')
@@ -166,6 +192,10 @@ export function buildSystemPrompt(input: BuildSystemPromptInput): string {
         )
     }
 
+    if (channel === 'live') {
+        sections.push(LIVE_CHANNEL_RULES)
+    }
+
     if (reengage && channel !== 'social_comment') {
         const previous = reengage.previousMessages
             .map((m) => m.trim())
@@ -194,6 +224,14 @@ export function buildSystemPrompt(input: BuildSystemPromptInput): string {
             (persona.boundaries?.toLowerCase().includes('ai') ? ' (unless your boundaries above say otherwise)' : '') +
             '. Never break character.',
     )
+
+    // El tope de contenido del canal en vivo va el ÚLTIMO y SIEMPRE, también
+    // con un `systemPrompt` manual (que se salta CONTENT LEVEL entero): el
+    // proveedor de cara en tiempo real prohíbe contenido sexual en sus
+    // términos, así que esto no es una preferencia de la persona.
+    if (channel === 'live') {
+        sections.push(LIVE_CONTENT_LIMIT)
+    }
 
     return sections.join('\n\n')
 }

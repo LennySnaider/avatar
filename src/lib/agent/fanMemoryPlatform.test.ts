@@ -25,3 +25,8 @@ test('social:x guarda memoria bajo la red pelada (x), no bajo social:x', () => {
 test('social:instagram guarda memoria bajo instagram', () => {
     assert.equal(fanMemoryPlatform('social:instagram'), 'instagram')
 })
+
+test('los visitantes del modo en vivo guardan memoria bajo live', () => {
+    assert.equal(fanMemoryPlatform('live'), 'live')
+    assert.equal(fanMemoryPlatform('live:widget'), 'live')
+})
