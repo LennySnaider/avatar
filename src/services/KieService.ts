@@ -963,7 +963,7 @@ export interface GenerateImageKieParams {
  * createTask for everything.
  */
 export async function generateImageKie(
-    params: GenerateImageKieParams,
+    paramsEntrantes: GenerateImageKieParams,
     // When provided, run in SUBMIT-ONLY mode: build the input, submit the KIE
     // task, write its id into `submitSink.taskId`, and return WITHOUT the long
     // server-side poll. The browser then polls `checkKieImageTask` — keeping the
@@ -974,6 +974,11 @@ export async function generateImageKie(
     | { success: true; url: string; fullApiPrompt: string }
     | { success: false; error: string }
 > {
+    // Las marcas del avatar se leen AQUÍ igual que en el otro chokepoint:
+    // este es el camino síncrono (Seedream entre otros) y sin esto los
+    // tatuajes solo viajaban por la rama async.
+    const params = await conMarcasDelAvatar(paramsEntrantes)
+
     // F5.0 — CHOKEPOINT (ver la nota en submitKieImageTask).
     const gate = await holdForOperation({
         kind: 'image',

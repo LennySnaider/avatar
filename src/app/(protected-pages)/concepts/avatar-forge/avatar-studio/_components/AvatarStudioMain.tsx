@@ -3277,6 +3277,9 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                                 referenceImage: kieSingleRef,
                                 referenceImages: kieRefsToSend,
                                 aspectRatio,
+                                // Para que el servidor le añada sus marcas
+                                // permanentes (ver conMarcasDelAvatar).
+                                avatarId,
                                 // Mismo criterio que la rama async de arriba.
                                 nsfwIntent: nsfwRun ? undefined : false,
                                 realismBoost:
