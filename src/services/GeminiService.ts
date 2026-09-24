@@ -3550,3 +3550,98 @@ function cameraShotToNaturalLanguage(
     if (angle && angleMap[angle]) parts.push(angleMap[angle] as string)
     return parts.join(', ')
 }
+
+// =============================================
+// MARCAS PERMANENTES (tatuajes, cicatrices, lunares)
+// =============================================
+
+/**
+ * Lee la foto de una marca y propone sus campos.
+ *
+ * DOS DECISIONES:
+ *  - La ZONA se pide como uno de los ids del catálogo (`MARK_ZONES`), no como
+ *    texto libre: con texto libre cada generación describiría el sitio de otra
+ *    forma y el modelo lo colocaría en otro sitio. Si no reconoce la zona
+ *    devuelve cadena vacía y la elige la persona.
+ *  - El LADO no se pide. Una foto de un antebrazo no dice si es el derecho o
+ *    el izquierdo (y espejeada, miente), así que inventarlo sería peor que
+ *    dejarlo: un lado equivocado rompe la continuidad entre generaciones.
+ *    Lo confirma siempre una persona.
+ */
+export async function analyzeMarkFromImage(
+    image: { base64: string; mimeType: string },
+    zonasValidas: readonly string[],
+): Promise<{
+    zone: string
+    content: string
+    inkStyle: string
+    coverage: string
+    orientation: string
+}> {
+    const apiKey = getApiKey()
+    const ai = new GoogleGenAI({ apiKey })
+
+    const instructions = `Esta foto muestra una marca permanente en la piel de una persona: un tatuaje, una cicatriz o un lunar.
+
+Descríbela para que otra IA pueda reproducirla EXACTAMENTE en ese mismo sitio del cuerpo, en castellano y sin preámbulos.
+
+- zone: la zona del cuerpo, EXACTAMENTE uno de estos identificadores: ${zonasValidas.join(', ')}. Si no puedes determinarla con seguridad, devuelve "".
+- content: qué representa el diseño, concreto y en pocas palabras (p. ej. "peonía abierta con hojas y un capullo de rosa"). Si hay texto dentro del tatuaje, dilo, pero NO lo transcribas como si fuera legible.
+- inkStyle: la técnica y el color de la tinta (p. ej. "negro y gris, línea fina con sombreado suave", "contorno sin relleno", "tinta sólida").
+- coverage: cuánto ocupa DE ESA ZONA, en proporción, nunca en centímetros (p. ej. "dos tercios del antebrazo", "pequeña, como una palma").
+- orientation: hacia dónde va sobre el cuerpo (p. ej. "de la muñeca al codo", "vertical", "rodea el brazo").
+
+No describas a la persona, ni su ropa, ni el fondo, ni la iluminación: solo la marca.`
+
+    const response = await askGemini(ai, {
+        model: 'gemini-2.5-flash',
+        contents: {
+            parts: [
+                {
+                    inlineData: {
+                        mimeType: image.mimeType,
+                        data: cleanBase64Data(image.base64),
+                    },
+                },
+                { text: instructions },
+            ],
+        },
+        config: {
+            responseMimeType: 'application/json',
+            responseSchema: {
+                type: Type.OBJECT,
+                properties: {
+                    zone: { type: Type.STRING },
+                    content: { type: Type.STRING },
+                    inkStyle: { type: Type.STRING },
+                    coverage: { type: Type.STRING },
+                    orientation: { type: Type.STRING },
+                },
+                required: ['content'],
+            },
+        },
+    })
+
+    const raw = response.text
+    if (!raw) throw new Error('Gemini devolvió un análisis vacío')
+    const parsed = JSON.parse(raw) as Partial<{
+        zone: string
+        content: string
+        inkStyle: string
+        coverage: string
+        orientation: string
+    }>
+
+    // Una zona que no esté en el catálogo se descarta: vale más que la elija
+    // la persona que guardar un id que el CHECK de la tabla va a rechazar.
+    const zone =
+        parsed.zone && zonasValidas.includes(parsed.zone) ? parsed.zone : ''
+
+    return {
+        zone,
+        content: parsed.content?.trim() ?? '',
+        inkStyle: parsed.inkStyle?.trim() ?? '',
+        coverage: parsed.coverage?.trim() ?? '',
+        orientation: parsed.orientation?.trim() ?? '',
+    }
+}

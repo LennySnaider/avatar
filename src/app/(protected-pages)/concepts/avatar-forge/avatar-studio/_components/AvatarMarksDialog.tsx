@@ -17,13 +17,13 @@
  * El selector de zona lista TODAS las zonas del catálogo; el mapa solo dibuja
  * las que tienen geometría. Una zona sin dibujo sigue siendo elegible.
  */
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import Dialog from '@/components/ui/Dialog'
 import Button from '@/components/ui/Button'
 import Notification from '@/components/ui/Notification'
 import toast from '@/components/ui/toast'
 import Spinner from '@/components/ui/Spinner'
-import { HiOutlineTrash } from 'react-icons/hi'
+import { HiOutlineCamera, HiOutlineTrash } from 'react-icons/hi'
 import {
     MARK_ZONES,
     exposureLabel,
@@ -33,12 +33,16 @@ import {
     type MarkSide,
 } from '@/lib/avatar/marks'
 import {
+    analyzeMarkPhoto,
     createAvatarMark,
     deleteAvatarMark,
     listAvatarMarks,
     updateAvatarMark,
+    uploadMarkPhoto,
     type AvatarMarkRow,
 } from '@/services/AvatarMarksService'
+import { optimizeForApi } from '@/utils/imageOptimization'
+import { getGenerationMediaUrl } from '@/lib/storagePaths'
 
 interface Shape {
     view: 'front' | 'back'
@@ -99,6 +103,8 @@ interface FormState {
     inkStyle: string
     coverage: string
     orientation: string
+    storagePath: string | null
+    storageProvider: string | null
 }
 
 const EMPTY: FormState = {
@@ -109,6 +115,8 @@ const EMPTY: FormState = {
     inkStyle: '',
     coverage: '',
     orientation: '',
+    storagePath: null,
+    storageProvider: null,
 }
 
 const rowToForm = (row: AvatarMarkRow): FormState => ({
@@ -119,6 +127,8 @@ const rowToForm = (row: AvatarMarkRow): FormState => ({
     inkStyle: row.ink_style ?? '',
     coverage: row.coverage ?? '',
     orientation: row.orientation ?? '',
+    storagePath: row.storage_path,
+    storageProvider: row.storage_provider,
 })
 
 interface AvatarMarksDialogProps {
@@ -148,6 +158,8 @@ const AvatarMarksDialog = ({
     const [view, setView] = useState<'front' | 'back'>('front')
     const [isLoading, setIsLoading] = useState(false)
     const [isSaving, setIsSaving] = useState(false)
+    const [isReading, setIsReading] = useState(false)
+    const fotoInputRef = useRef<HTMLInputElement>(null)
 
     const publish = useCallback(
         (next: AvatarMarkRow[]) => {
@@ -183,6 +195,9 @@ const AvatarMarksDialog = ({
     }, [isOpen, avatarId, publish])
 
     const zone = findZone(form.zone)
+    const fotoUrl = form.storagePath
+        ? getGenerationMediaUrl(form.storagePath, form.storageProvider)
+        : null
     const marked = new Set(rows.map((r) => r.zone))
 
     const selectZone = (zoneId: string) => {
@@ -197,6 +212,69 @@ const AvatarMarksDialog = ({
             zone: zoneId,
             side: def?.lateral ? 'right' : null,
         })
+    }
+
+    /**
+     * Foto de la marca. Se redimensiona ANTES de salir del navegador (un
+     * server action de Vercel corta a 4,5 MB y una foto de móvil se pasa
+     * sola), y luego se sube y se analiza a la vez: la subida deja el fichero
+     * para hornearlo después, el análisis rellena los campos.
+     *
+     * El LADO nunca se toca aquí: una foto no dice si es el brazo derecho o
+     * el izquierdo, y espejeada miente. Lo elige la persona.
+     */
+    const handlePhoto = async (file: File) => {
+        setIsReading(true)
+        try {
+            const dataUrl = await new Promise<string>((resolve, reject) => {
+                const reader = new FileReader()
+                reader.onload = () => resolve(reader.result as string)
+                reader.onerror = () => reject(reader.error)
+                reader.readAsDataURL(file)
+            })
+            const base64 = await optimizeForApi(dataUrl)
+
+            const [analysis, uploaded] = await Promise.all([
+                analyzeMarkPhoto(base64, 'image/jpeg').catch(() => null),
+                uploadMarkPhoto(avatarId, base64, 'image/jpeg'),
+            ])
+
+            setForm((prev) => {
+                const zoneId = analysis?.zone || prev.zone
+                const def = findZone(zoneId)
+                return {
+                    ...prev,
+                    zone: zoneId,
+                    side: def?.lateral ? (prev.side ?? 'right') : null,
+                    content: analysis?.content || prev.content,
+                    inkStyle: analysis?.inkStyle || prev.inkStyle,
+                    coverage: analysis?.coverage || prev.coverage,
+                    orientation: analysis?.orientation || prev.orientation,
+                    storagePath: uploaded.storagePath,
+                    storageProvider: uploaded.storageProvider,
+                }
+            })
+            if (analysis?.zone) {
+                const shape = ZONE_SHAPES[analysis.zone]
+                if (shape) setView(shape.view)
+            }
+            if (analysis && !analysis.zone) {
+                toast.push(
+                    <Notification type="info" title="Elige la zona">
+                        La foto no dice en qué parte del cuerpo va: elígela en el
+                        mapa.
+                    </Notification>,
+                )
+            }
+        } catch (err) {
+            toast.push(
+                <Notification type="danger" title="No se pudo leer la foto">
+                    {err instanceof Error ? err.message : 'Error desconocido'}
+                </Notification>,
+            )
+        } finally {
+            setIsReading(false)
+        }
     }
 
     const handleSave = async () => {
@@ -219,6 +297,8 @@ const AvatarMarksDialog = ({
                 inkStyle: form.inkStyle,
                 coverage: form.coverage,
                 orientation: form.orientation,
+                storagePath: form.storagePath,
+                storageProvider: form.storageProvider,
             }
             const saved = form.id
                 ? await updateAvatarMark(form.id, payload)
@@ -446,6 +526,46 @@ const AvatarMarksDialog = ({
                         )}
 
                         <div className="space-y-3">
+                            <div className="flex items-start gap-3">
+                                <input
+                                    ref={fotoInputRef}
+                                    type="file"
+                                    accept="image/*"
+                                    className="hidden"
+                                    onChange={(e) => {
+                                        const file = e.target.files?.[0]
+                                        if (file) void handlePhoto(file)
+                                        e.target.value = ''
+                                    }}
+                                />
+                                <button
+                                    type="button"
+                                    onClick={() => fotoInputRef.current?.click()}
+                                    disabled={isReading}
+                                    className="w-24 h-24 shrink-0 rounded-xl border border-dashed border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-800 overflow-hidden flex flex-col items-center justify-center gap-1 text-gray-400 hover:border-primary hover:text-primary transition-colors disabled:opacity-60"
+                                >
+                                    {isReading ? (
+                                        <Spinner size={22} />
+                                    ) : fotoUrl ? (
+                                        <img
+                                            src={fotoUrl}
+                                            alt=""
+                                            className="w-full h-full object-cover"
+                                        />
+                                    ) : (
+                                        <>
+                                            <HiOutlineCamera className="w-6 h-6" />
+                                            <span className="text-[10px]">Foto</span>
+                                        </>
+                                    )}
+                                </button>
+                                <div className="text-xs text-gray-500 leading-relaxed pt-1">
+                                    {isReading
+                                        ? 'Leyendo la foto…'
+                                        : 'Sube una foto de la marca y se rellenan solos la zona, qué es, el estilo y el tamaño. El lado lo eliges tú: una foto no lo dice.'}
+                                </div>
+                            </div>
+
                             <div>
                                 <label
                                     htmlFor="mark-content"

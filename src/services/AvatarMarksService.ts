@@ -17,6 +17,8 @@ import { getOrgContext, type OrgContext } from '@/lib/tenant/getOrgContext'
 import { requirePermission } from '@/lib/org/guards'
 import { orgInsert, orgTable } from '@/lib/org/orgTable'
 import { MARK_ZONE_IDS, type MarkSide } from '@/lib/avatar/marks'
+import { putMediaObject } from '@/lib/mediaStore'
+import { analyzeMarkFromImage } from './GeminiService'
 import type { Database } from '@/@types/supabase'
 
 export type AvatarMarkRow = Database['public']['Tables']['avatar_marks']['Row']
@@ -142,3 +144,60 @@ export async function deleteAvatarMark(markId: string): Promise<boolean> {
     if (error) throw error
     return true
 }
+
+/**
+ * Sube la foto de una marca y devuelve dónde quedó.
+ *
+ * Va por `putMediaObject` (el mismo almacén que las generaciones) y NO por
+ * `avatar_references`: la foto es un campo de la marca, no una referencia de
+ * identidad — no debe viajar como FACE_ANCHOR ni contar como foto del avatar.
+ *
+ * El cliente manda la imagen YA redimensionada: un server action de Vercel
+ * corta a 4,5 MB y una foto de móvil se pasa sola.
+ */
+export async function uploadMarkPhoto(
+    avatarId: string,
+    base64: string,
+    mimeType: string,
+): Promise<{ storagePath: string; storageProvider: string; url: string }> {
+    const ctx = await getOrgContext()
+    requirePermission(ctx, 'content:write')
+    await assertOwnedAvatar(ctx, avatarId)
+
+    const limpio = base64.includes(',') ? base64.split(',')[1] : base64
+    const body = Buffer.from(limpio, 'base64')
+    if (body.byteLength === 0) throw new Error('La imagen llegó vacía')
+    if (body.byteLength > 8 * 1024 * 1024) {
+        throw new Error('La imagen pesa demasiado: redimensiónala antes de subirla')
+    }
+
+    const ext = mimeType.includes('png') ? 'png' : mimeType.includes('webp') ? 'webp' : 'jpg'
+    const storagePath = `avatar-marks/${avatarId}/${Date.now()}.${ext}`
+    const { url, provider } = await putMediaObject({
+        path: storagePath,
+        body,
+        contentType: mimeType || 'image/jpeg',
+        upsert: true,
+    })
+    return { storagePath, storageProvider: provider, url }
+}
+
+/**
+ * Propone los campos de la marca leyendo su foto. La ZONA vuelve solo si es
+ * una del catálogo; el LADO no se propone nunca (ver analyzeMarkFromImage).
+ */
+export async function analyzeMarkPhoto(
+    base64: string,
+    mimeType: string,
+): Promise<{
+    zone: string
+    content: string
+    inkStyle: string
+    coverage: string
+    orientation: string
+}> {
+    const ctx = await getOrgContext()
+    requirePermission(ctx, 'content:write')
+    return analyzeMarkFromImage({ base64, mimeType }, MARK_ZONE_IDS)
+}
+
