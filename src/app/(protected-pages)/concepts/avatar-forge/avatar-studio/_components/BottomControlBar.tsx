@@ -360,7 +360,13 @@ const ImageDropzone = ({
                             e.stopPropagation()
                             onRemove()
                         }}
-                        className="absolute -top-1 -right-1 p-0.5 bg-red-500 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
+                        /* Las X de quitar (avatar, refs, assets) se revelaban
+                           SOLO con `group-hover`, y en una pantalla táctil no
+                           hay hover: eran invisibles e inalcanzables. En móvil
+                           se ven siempre; el hover se conserva de sm en
+                           adelante, donde no estorban. Mismo patrón en todo
+                           este fichero. */
+                        className="absolute -top-1 -right-1 p-0.5 bg-red-500 text-white rounded-full opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity"
                     >
                         <HiOutlineX className="w-3 h-3" />
                     </button>
@@ -1266,7 +1272,7 @@ const BottomControlBar = ({
                                                 e.stopPropagation()
                                                 onDeselectAvatar()
                                             }}
-                                            className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-gray-500/80 hover:bg-red-500 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                                            className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-gray-500/80 hover:bg-red-500 text-white flex items-center justify-center opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity"
                                             title="Deselect avatar"
                                         >
                                             <HiOutlineX className="w-2.5 h-2.5" />
@@ -1590,7 +1596,7 @@ const BottomControlBar = ({
                                         onClick={() =>
                                             setDescribeInputImage(null)
                                         }
-                                        className="absolute -top-1 -right-1 p-0.5 bg-red-500 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
+                                        className="absolute -top-1 -right-1 p-0.5 bg-red-500 text-white rounded-full opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity"
                                     >
                                         <HiOutlineX className="w-3 h-3" />
                                     </button>
@@ -1761,7 +1767,7 @@ const BottomControlBar = ({
                                                 className={`absolute -top-1 -right-1 z-10 p-0.5 bg-red-500 text-white rounded-full transition-opacity ${
                                                     isAnalyzingClone
                                                         ? 'opacity-100'
-                                                        : 'opacity-0 group-hover:opacity-100'
+                                                        : 'opacity-100 sm:opacity-0 sm:group-hover:opacity-100'
                                                 }`}
                                                 title={
                                                     isAnalyzingClone
@@ -1838,7 +1844,7 @@ const BottomControlBar = ({
                                                 onClick={() =>
                                                     setPoseImage(null)
                                                 }
-                                                className="absolute -top-1 -right-1 p-0.5 bg-red-500 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
+                                                className="absolute -top-1 -right-1 p-0.5 bg-red-500 text-white rounded-full opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity"
                                             >
                                                 <HiOutlineX className="w-3 h-3" />
                                             </button>
@@ -1891,7 +1897,7 @@ const BottomControlBar = ({
                                         </button>
                                         <button
                                             onClick={() => setBodyRef(null)}
-                                            className="absolute -top-1 -right-1 p-0.5 bg-red-500 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
+                                            className="absolute -top-1 -right-1 p-0.5 bg-red-500 text-white rounded-full opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity"
                                         >
                                             <HiOutlineX className="w-3 h-3" />
                                         </button>
@@ -2005,7 +2011,7 @@ const BottomControlBar = ({
                                                         }}
                                                         disabled={isSavingAsset}
                                                         title="Save these objects to your library"
-                                                        className="absolute -top-1 -left-1 p-0.5 bg-teal-500 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity disabled:opacity-50"
+                                                        className="absolute -top-1 -left-1 p-0.5 bg-teal-500 text-white rounded-full opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity disabled:opacity-50"
                                                     >
                                                         {isSavingAsset ? (
                                                             <Spinner
@@ -2023,7 +2029,7 @@ const BottomControlBar = ({
                                                         removeAssetImage(a.id),
                                                     )
                                                 }}
-                                                className="absolute -top-1 -right-1 p-0.5 bg-red-500 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
+                                                className="absolute -top-1 -right-1 p-0.5 bg-red-500 text-white rounded-full opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity"
                                             >
                                                 <HiOutlineX className="w-2.5 h-2.5" />
                                             </button>
@@ -2106,7 +2112,7 @@ const BottomControlBar = ({
                                                         }
                                                         disabled={isSavingPlace}
                                                         title="Save this place to your library"
-                                                        className="absolute -top-1 -left-1 p-0.5 bg-teal-500 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity disabled:opacity-50"
+                                                        className="absolute -top-1 -left-1 p-0.5 bg-teal-500 text-white rounded-full opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity disabled:opacity-50"
                                                     >
                                                         {isSavingPlace ? (
                                                             <Spinner
@@ -2121,7 +2127,7 @@ const BottomControlBar = ({
                                                 onClick={() =>
                                                     setPlaceImage(null)
                                                 }
-                                                className="absolute -top-1 -right-1 p-0.5 bg-red-500 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
+                                                className="absolute -top-1 -right-1 p-0.5 bg-red-500 text-white rounded-full opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity"
                                             >
                                                 <HiOutlineX className="w-3 h-3" />
                                             </button>
@@ -2168,7 +2174,7 @@ const BottomControlBar = ({
                                                 onClick={() =>
                                                     setSceneImage(null)
                                                 }
-                                                className="absolute -top-1 -right-1 p-0.5 bg-red-500 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
+                                                className="absolute -top-1 -right-1 p-0.5 bg-red-500 text-white rounded-full opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity"
                                             >
                                                 <HiOutlineX className="w-3 h-3" />
                                             </button>
@@ -2211,7 +2217,7 @@ const BottomControlBar = ({
                                                 onClick={() =>
                                                     setVideoInputImage(null)
                                                 }
-                                                className="absolute -top-1 -right-1 p-0.5 bg-red-500 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
+                                                className="absolute -top-1 -right-1 p-0.5 bg-red-500 text-white rounded-full opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity"
                                             >
                                                 <HiOutlineX className="w-3 h-3" />
                                             </button>
