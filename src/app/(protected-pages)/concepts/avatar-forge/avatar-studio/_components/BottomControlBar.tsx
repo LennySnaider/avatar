@@ -1271,6 +1271,27 @@ const BottomControlBar = ({
                                         >
                                             <HiOutlineX className="w-2.5 h-2.5" />
                                         </button>
+                                        {/* En móvil el bloque con el nombre y
+                                            el enlace "Edit" está oculto (no
+                                            cabe), así que editar el avatar
+                                            —donde se gestionan sus marcas— no
+                                            tenía NINGUNA entrada desde el
+                                            estudio. Este lápiz es esa entrada:
+                                            va sobre la miniatura, abajo a la
+                                            derecha para no chocar con la X de
+                                            soltar avatar, y desaparece en sm+
+                                            porque allí ya está el enlace. */}
+                                        <button
+                                            onClick={(e) => {
+                                                e.stopPropagation()
+                                                onEditAvatar()
+                                            }}
+                                            className="sm:hidden absolute -bottom-1.5 -right-1.5 w-6 h-6 rounded-full bg-primary text-white flex items-center justify-center shadow-md"
+                                            title="Editar avatar"
+                                            aria-label="Editar avatar"
+                                        >
+                                            <HiOutlinePencil className="w-3 h-3" />
+                                        </button>
                                     </div>
                                     <div className="hidden sm:block">
                                         <p className="text-sm font-medium truncate max-w-[104px]">
