@@ -80,9 +80,13 @@ export function planExtraRefs(
         // (solo la veían nano-banana-pro y gpt-image-2, que no pasan por
         // planExtraRefs). Es identidad perdida en los motores más usados.
         ...byRole('angle').slice(0, 1),
-        // Marcas permanentes de la piel (tatuajes, cicatrices): dos como mucho,
-        // que es lo que cabe sin comerse las ranuras de pose/scene/clone.
-        ...byRole('mark').slice(0, 2),
+        // Marcas permanentes de la piel (tatuajes, cicatrices). Cuatro: el
+        // horneado manda TODAS las fotos de marcas de golpe y con dos se
+        // quedaban fuera las demás — se hornean unas bien y el resto se las
+        // inventa el motor, que es justo lo que el horneado viene a evitar.
+        // No se come ranuras de pose/scene/clone porque hoy el horneado es el
+        // único que manda refs de marca, y no manda ninguna de las otras.
+        ...byRole('mark').slice(0, 4),
         ...byRole('bust').slice(0, 1),
         ...byRole('glutes').slice(0, 1),
         ...byRole('asset').slice(0, 3),
