@@ -3586,6 +3586,7 @@ export async function analyzeMarkFromImage(
 Descríbela para que otra IA pueda reproducirla EXACTAMENTE en ese mismo sitio del cuerpo, en castellano y sin preámbulos.
 
 - zone: la zona del cuerpo, EXACTAMENTE uno de estos identificadores: ${zonasValidas.join(', ')}. Si no puedes determinarla con seguridad, devuelve "".
+- Regla estricta para las zonas que van en pares interior/exterior (antebrazo, brazo, muslo): NO adivines la cara. Solo di "interior" o "exterior" si la foto lo demuestra — para el antebrazo y el brazo, porque se ve la palma (interior) o el dorso de la mano (exterior); para el muslo, porque se ve la otra pierna. Si el encuadre no lo demuestra, devuelve "" aunque sepas de qué miembro se trata: elegir la cara equivocada pone el tatuaje en el lado contrario del brazo en TODAS las generaciones, y eso es peor que dejar que lo elija la persona.
 - content: qué representa el diseño, concreto y en pocas palabras (p. ej. "peonía abierta con hojas y un capullo de rosa"). Si hay texto dentro del tatuaje, dilo, pero NO lo transcribas como si fuera legible.
 - inkStyle: la técnica y el color de la tinta (p. ej. "negro y gris, línea fina con sombreado suave", "contorno sin relleno", "tinta sólida").
 - coverage: cuánto ocupa DE ESA ZONA, en proporción, nunca en centímetros (p. ej. "dos tercios del antebrazo", "pequeña, como una palma").

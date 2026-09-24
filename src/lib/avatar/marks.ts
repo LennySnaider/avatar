@@ -45,6 +45,16 @@ export interface MarkZone {
     plural?: true
 }
 
+/**
+ * Las frases de "interior" y "exterior" llevan ancla anatómica a propósito.
+ *
+ * "inner forearm" a secas es una palabra que el modelo puede ignorar sin que
+ * la imagen se contradiga: la cara del antebrazo que se ve depende de cómo
+ * gire el brazo en la pose, así que ante la duda dibuja la marca en la cara
+ * que tiene delante — que es justo lo que pasó con el primer tatuaje real.
+ * Atándola a algo VISIBLE en la propia imagen (la palma, el dorso de la mano,
+ * la otra pierna) el modelo tiene con qué comprobar dónde va.
+ */
 export const MARK_ZONES: readonly MarkZone[] = [
     // Cuello y cabeza
     { id: 'cuello_lateral', label: 'Cuello lateral', phrase: '{side} side of the neck', lateral: true, exposure: 'always' },
@@ -53,10 +63,10 @@ export const MARK_ZONES: readonly MarkZone[] = [
 
     // Brazos y manos
     { id: 'hombro', label: 'Hombro', phrase: '{side} shoulder', lateral: true, exposure: 'skin' },
-    { id: 'brazo_exterior', label: 'Brazo exterior', phrase: 'outer {side} upper arm', lateral: true, exposure: 'skin' },
-    { id: 'brazo_interior', label: 'Brazo interior', phrase: 'inner {side} upper arm', lateral: true, exposure: 'skin' },
-    { id: 'antebrazo_interior', label: 'Antebrazo interior', phrase: 'inner {side} forearm', lateral: true, exposure: 'always' },
-    { id: 'antebrazo_exterior', label: 'Antebrazo exterior', phrase: 'outer {side} forearm', lateral: true, exposure: 'always' },
+    { id: 'brazo_exterior', label: 'Brazo exterior', phrase: 'outer {side} upper arm, the deltoid and triceps side facing away from the torso', lateral: true, exposure: 'skin' },
+    { id: 'brazo_interior', label: 'Brazo interior', phrase: 'inner {side} upper arm, the side that faces the torso', lateral: true, exposure: 'skin' },
+    { id: 'antebrazo_interior', label: 'Antebrazo interior', phrase: 'inner {side} forearm, the soft underside on the same face as the palm', lateral: true, exposure: 'always' },
+    { id: 'antebrazo_exterior', label: 'Antebrazo exterior', phrase: 'outer {side} forearm, the top face on the same side as the back of the hand', lateral: true, exposure: 'always' },
     { id: 'muneca', label: 'Muñeca', phrase: '{side} wrist', fem: true, lateral: true, exposure: 'always' },
     { id: 'dorso_mano', label: 'Dorso de la mano', phrase: 'back of the {side} hand', fem: true, lateral: true, exposure: 'always' },
     { id: 'dedos', label: 'Dedos', phrase: '{side} fingers', plural: true, lateral: true, exposure: 'always' },
@@ -79,8 +89,8 @@ export const MARK_ZONES: readonly MarkZone[] = [
 
     // Piernas
     { id: 'muslo_frontal', label: 'Muslo frontal', phrase: 'front of the {side} thigh', lateral: true, exposure: 'skin' },
-    { id: 'muslo_exterior', label: 'Muslo exterior', phrase: 'outer {side} thigh', lateral: true, exposure: 'skin' },
-    { id: 'muslo_interior', label: 'Muslo interior', phrase: 'inner {side} thigh', lateral: true, exposure: 'swim' },
+    { id: 'muslo_exterior', label: 'Muslo exterior', phrase: 'outer {side} thigh, the side facing away from the other leg', lateral: true, exposure: 'skin' },
+    { id: 'muslo_interior', label: 'Muslo interior', phrase: 'inner {side} thigh, the side facing the other leg', lateral: true, exposure: 'swim' },
     { id: 'pantorrilla', label: 'Pantorrilla', phrase: '{side} calf', fem: true, lateral: true, exposure: 'skin' },
     { id: 'tobillo', label: 'Tobillo', phrase: '{side} ankle', lateral: true, exposure: 'skin' },
     { id: 'pie', label: 'Pie', phrase: 'top of the {side} foot', lateral: true, exposure: 'skin' },

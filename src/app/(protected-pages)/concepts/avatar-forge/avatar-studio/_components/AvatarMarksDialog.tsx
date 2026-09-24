@@ -187,6 +187,8 @@ const AvatarMarksDialog = ({
     const [isSaving, setIsSaving] = useState(false)
     const [isReading, setIsReading] = useState(false)
     const [baking, setBaking] = useState<string | null>(null)
+    /** Zona que propuso la FOTO y nadie ha confirmado todavía. */
+    const [zonaPropuesta, setZonaPropuesta] = useState(false)
     const fotoInputRef = useRef<HTMLInputElement>(null)
 
     const publish = useCallback(
@@ -228,17 +230,26 @@ const AvatarMarksDialog = ({
         : null
     const marked = new Set(rows.map((r) => r.zone))
 
+    /**
+     * Cambiar de zona CONSERVA el borrador: la foto y lo que el análisis
+     * rellenó siguen ahí. Corregir la zona es justo lo que se hace después de
+     * analizar una foto, y vaciar el formulario obligaba a subirla otra vez.
+     * Solo se empieza de cero al salir de una marca YA guardada.
+     */
     const selectZone = (zoneId: string) => {
+        setZonaPropuesta(false)
         const existing = rows.find((r) => r.zone === zoneId)
         if (existing) {
             setForm(rowToForm(existing))
             return
         }
         const def = findZone(zoneId)
+        const base = form.id ? EMPTY : form
         setForm({
-            ...EMPTY,
+            ...base,
+            id: null,
             zone: zoneId,
-            side: def?.lateral ? 'right' : null,
+            side: def?.lateral ? (base.side ?? 'right') : null,
         })
     }
 
@@ -282,6 +293,7 @@ const AvatarMarksDialog = ({
                     storageProvider: uploaded.storageProvider,
                 }
             })
+            setZonaPropuesta(!!analysis?.zone)
             if (analysis?.zone) {
                 const shape = ZONE_SHAPES[analysis.zone]
                 if (shape) setView(shape.view)
@@ -289,8 +301,8 @@ const AvatarMarksDialog = ({
             if (analysis && !analysis.zone) {
                 toast.push(
                     <Notification type="info" title="Elige la zona">
-                        La foto no dice en qué parte del cuerpo va: elígela en el
-                        mapa.
+                        La foto no dice en qué parte del cuerpo va —ni si es por
+                        dentro o por fuera del brazo—: elígela en el mapa.
                     </Notification>,
                 )
             }
@@ -437,6 +449,7 @@ const AvatarMarksDialog = ({
                     ? rows.map((r) => (r.id === saved.id ? saved : r))
                     : [...rows, saved],
             )
+            setZonaPropuesta(false)
             setForm(rowToForm(saved))
             toast.push(
                 <Notification type="success" title="Marca guardada">
@@ -458,7 +471,10 @@ const AvatarMarksDialog = ({
         try {
             await deleteAvatarMark(id)
             publish(rows.filter((r) => r.id !== id))
-            if (form.id === id) setForm(EMPTY)
+            if (form.id === id) {
+                setZonaPropuesta(false)
+                setForm(EMPTY)
+            }
         } catch (err) {
             toast.push(
                 <Notification type="danger" title="No se pudo borrar">
@@ -625,6 +641,15 @@ const AvatarMarksDialog = ({
                                 </span>
                             )}
                         </div>
+
+                        {zonaPropuesta && (
+                            <p className="text-[11px] text-amber-600 dark:text-amber-400 -mt-2 mb-3">
+                                Zona propuesta por la foto: compruébala. Una foto
+                                de cerca no siempre dice si va por dentro o por
+                                fuera, y esa cara queda fijada en todas las
+                                generaciones.
+                            </p>
+                        )}
 
                         {zone?.lateral && (
                             <div className="mb-3">
@@ -816,6 +841,7 @@ const AvatarMarksDialog = ({
                                         key={row.id}
                                         type="button"
                                         onClick={() => {
+                                            setZonaPropuesta(false)
                                             setForm(rowToForm(row))
                                             const shape = ZONE_SHAPES[row.zone]
                                             if (shape) setView(shape.view)
