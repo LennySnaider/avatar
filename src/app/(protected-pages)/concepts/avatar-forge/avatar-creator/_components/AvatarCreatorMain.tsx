@@ -1196,6 +1196,29 @@ const AvatarCreatorMain = ({
                                 />
                             </Card>
 
+                            {/* Marcas permanentes: van entre Appearance y
+                                Physical Attributes porque son ANATOMÍA. Aquí
+                                se ANUNCIAN pero no se editan: cuelgan del
+                                avatar en `avatar_marks` y todavía no tiene id.
+                                Mejor decirlo que dejar el hueco y que se
+                                busquen en vano. */}
+                            <Card className="p-4">
+                                <div className="flex flex-wrap items-center justify-between gap-2">
+                                    <div>
+                                        <h3 className="text-sm font-semibold">
+                                            Marcas permanentes
+                                        </h3>
+                                        <p className="text-xs text-gray-400 mt-0.5">
+                                            Tatuajes, cicatrices o lunares con
+                                            su zona del cuerpo
+                                        </p>
+                                    </div>
+                                    <span className="text-xs text-gray-400">
+                                        Al guardar el avatar
+                                    </span>
+                                </div>
+                            </Card>
+
                             <Card className="p-4">
                                 <h3 className="text-sm font-semibold mb-3">
                                     Physical Attributes

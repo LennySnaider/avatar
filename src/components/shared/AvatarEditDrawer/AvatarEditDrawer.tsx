@@ -912,31 +912,6 @@ const AvatarEditDrawer = ({
                                     </span>
                                 </div>
                             )}
-                            {/* Marcas permanentes: identidad del avatar, no
-                                escena. Solo con el avatar ya creado. */}
-                            {avatarId && (
-                                <Card className="p-3">
-                                    <div className="flex flex-wrap items-center justify-between gap-2">
-                                        <div>
-                                            <h3 className="text-sm font-semibold">
-                                                Marcas permanentes
-                                            </h3>
-                                            <p className="text-xs text-gray-500">
-                                                Tatuajes, cicatrices o lunares
-                                                con su zona del cuerpo
-                                            </p>
-                                        </div>
-                                        <button
-                                            type="button"
-                                            onClick={() => setShowMarks(true)}
-                                            className="text-xs text-primary hover:underline"
-                                        >
-                                            Gestionar
-                                        </button>
-                                    </div>
-                                </Card>
-                            )}
-
                             {/* General Identity Photos */}
                             <Card className="p-3">
                                 <div className="flex items-center justify-between mb-3">
@@ -1149,6 +1124,32 @@ const AvatarEditDrawer = ({
                                     onChange={setLocalMeasurements}
                                 />
                             </Card>
+
+                            {/* Marcas permanentes (tatuajes, cicatrices, lunares).
+                                Va aquí, entre Appearance y Physical Attributes,
+                                porque es ANATOMÍA: se edita con el resto del
+                                cuerpo, no con las referencias. */}
+                            {avatarId && (
+                                <Card className="p-3">
+                                    <div className="flex flex-wrap items-center justify-between gap-2">
+                                        <div>
+                                            <h3 className="text-sm font-semibold">
+                                                Marcas permanentes
+                                            </h3>
+                                            <p className="text-xs text-gray-400 mt-0.5">
+                                                Tatuajes, cicatrices o lunares con su zona del cuerpo
+                                            </p>
+                                        </div>
+                                        <button
+                                            type="button"
+                                            onClick={() => setShowMarks(true)}
+                                            className="text-xs text-primary hover:underline"
+                                        >
+                                            Gestionar
+                                        </button>
+                                    </div>
+                                </Card>
+                            )}
 
                             {/* Physical Attributes */}
                             <Card className="p-3">
