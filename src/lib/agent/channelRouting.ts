@@ -7,14 +7,10 @@
  * empiece por `telegram` sale por el Bot API, y todo lo demás por Fanvue,
  * que es exactamente lo que pasaba antes de existir este fichero.
  */
-export type DeliveryChannel = 'telegram' | 'fanvue' | 'social_comment' | 'live'
+export type DeliveryChannel = 'telegram' | 'fanvue' | 'social_comment'
 
 export function resolveDeliveryChannel(platform: string): DeliveryChannel {
     if (platform.startsWith('social:')) return 'social_comment'
-    // Módulo live_avatar: la conversación ya se contestó en tiempo real, por
-    // voz. No hay canal por el que "entregar" un texto después — ver el
-    // `case 'live'` de `channelDelivery.ts`.
-    if (platform === 'live' || platform.startsWith('live:')) return 'live'
     return platform.startsWith('telegram') ? 'telegram' : 'fanvue'
 }
 

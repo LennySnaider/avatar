@@ -10,8 +10,5 @@
  */
 export function fanMemoryPlatform(chatPlatform: string): string {
     if (chatPlatform.startsWith('social:')) return chatPlatform.slice('social:'.length)
-    // Visitantes del modo en vivo (módulo live_avatar): memoria propia, no
-    // mezclada con fans de Fanvue que casualmente compartan id.
-    if (chatPlatform === 'live' || chatPlatform.startsWith('live:')) return 'live'
     return chatPlatform.startsWith('telegram') ? 'telegram' : 'fanvue'
 }

@@ -176,11 +176,6 @@ const ThreadPane = ({ thread, onChanged }: ThreadPaneProps) => {
     // que la condición hace hoy: ocultar lo que sólo existe en Fanvue.
     const hideFanvueOnlyTools = chat.channel !== 'fanvue'
 
-    // Módulo live_avatar: una videollamada en vivo ya se contestó por voz en
-    // el momento. Aquí sólo se LEE la transcripción: sin modo, sin borrador,
-    // sin enviar nada (el servicio también lo rechaza).
-    const isLiveChat = chat.channel === 'live'
-
     // Lo simétrico para Telegram: mandar una foto de la galería (teaser gratis
     // o contenido de pago con Stars) sólo existe en ese canal. Vive AQUÍ, en el
     // hilo, y no sólo en el panel de Telegram, porque es donde se está leyendo
@@ -519,15 +514,11 @@ const ThreadPane = ({ thread, onChanged }: ThreadPaneProps) => {
                     >
                         {chat.isCreator ? 'Unhide' : 'Hide as spam'}
                     </Button>
-                    {isLiveChat ? (
-                        <span className="text-xs text-gray-500">🎥 Live call</span>
-                    ) : (
-                        <Segment value={chat.mode} onChange={(val) => handleMode(val as string)}>
-                            <Segment.Item value="off">Off</Segment.Item>
-                            <Segment.Item value="draft">Draft</Segment.Item>
-                            <Segment.Item value="auto">Auto</Segment.Item>
-                        </Segment>
-                    )}
+                    <Segment value={chat.mode} onChange={(val) => handleMode(val as string)}>
+                        <Segment.Item value="off">Off</Segment.Item>
+                        <Segment.Item value="draft">Draft</Segment.Item>
+                        <Segment.Item value="auto">Auto</Segment.Item>
+                    </Segment>
                 </div>
             </div>
 
@@ -685,14 +676,7 @@ const ThreadPane = ({ thread, onChanged }: ThreadPaneProps) => {
                 </div>
             )}
 
-            {/* Draft composer — no existe en una llamada en vivo (ver isLiveChat). */}
-            {isLiveChat ? (
-                <div className="p-3 border-t border-gray-100 dark:border-gray-700">
-                    <p className="text-xs text-gray-500">
-                        Live video call transcript (read only): the avatar already answered in real time.
-                    </p>
-                </div>
-            ) : (
+            {/* Draft composer */}
             <div className="p-3 border-t border-gray-100 dark:border-gray-700">
                 {/* Acciones del canal Telegram — FUERA del bloque del borrador
                     a propósito: mandar una foto no depende de que el agente
@@ -812,7 +796,6 @@ const ThreadPane = ({ thread, onChanged }: ThreadPaneProps) => {
                     </div>
                 )}
             </div>
-            )}
             </div>
 
             <DiscardReasonDialog

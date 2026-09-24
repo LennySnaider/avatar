@@ -249,10 +249,6 @@ export async function ingestMessage(input: {
     text: string | null
     mediaUuids?: string[]
     externalCreatedAt?: string | null
-    /** Opcional: quién generó un mensaje saliente (`agent_messages.generated_by`).
-     *  Sólo lo pasa el modo en vivo; Fanvue/Telegram no, y para ellos queda
-     *  exactamente como antes (sin la columna en el insert). */
-    generatedBy?: Record<string, unknown> | null
 }): Promise<{ inserted: boolean }> {
     const supabase = agentSupabase()
     if (input.externalMessageId) {
@@ -274,7 +270,6 @@ export async function ingestMessage(input: {
         media: (input.mediaUuids ?? []).map((uuid) => ({ uuid })) as never,
         status: input.direction === 'in' ? 'received' : 'sent',
         external_created_at: input.externalCreatedAt ?? null,
-        ...(input.generatedBy ? { generated_by: input.generatedBy as never } : {}),
     })
     if (error) {
         // Unique-violation races (webhook + cron at once) are benign.

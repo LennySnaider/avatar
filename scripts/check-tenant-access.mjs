@@ -151,29 +151,6 @@ const EXENTOS = [
         'src/lib/assistant/unitActivity.ts',
         'strategistUnitActivity (Estratega Fase 1, informe de unidades para la cuota prorrateada del módulo) corre sin sesión, disparada por el cron de module-fees — mismo perfil que bots.ts y moduleFees.ts. La organizationId llega por parámetro (la resuelve chargeModuleFees fila a fila desde org_modules) y la única consulta del fichero la filtra explícitamente con .eq(\'organization_id\', organizationId) además de .eq(\'module_slug\', \'strategist\').',
     ],
-    // Módulo live_avatar (Avatar en vivo) — rutas /api/live/* sin sesión de
-    // NextAuth: el visitante es anónimo y cada petición se autentica con el
-    // secreto de su sesión.
-    [
-        'src/lib/live/settings.ts',
-        'loadLiveSettings / loadLiveSettingsByPublicToken (variantes sin sesión para las rutas /api/live/*) filtran por avatar_id o por public_token, los dos UNIQUE en avatar_live_settings: identifican una fila exacta sin organizationId de entrada, y la org que haga falta después sale de esa fila. La variante con ctx va por orgTable.',
-    ],
-    [
-        'src/lib/live/session.ts',
-        'startLiveSession resuelve la org desde la fila de avatar_live_settings (UNIQUE por avatar_id) y la usa como .eq(organization_id) en avatars, avatar_personas, cloned_voices y live_sessions, y como campo fijado en el insert. authenticateLiveSession busca live_sessions por id y SÓLO la devuelve si el sha256 del secreto coincide (timingSafeEqual); todo lo posterior (claimTurn, heartbeat, markEnded, addSpokenChars) filtra por el organization_id de esa fila autenticada.',
-    ],
-    [
-        'src/lib/live/turn.ts',
-        'runLiveTurn recibe la fila de live_sessions ya autenticada por su secreto y cada consulta (avatars, avatar_personas, agent_messages, avatar_fan_memories, cloned_voices, agent_chats) filtra por su organization_id con .eq explícito.',
-    ],
-    [
-        'src/lib/live/unitActivity.ts',
-        'liveUnitActivity (informe de unidades para la cuota prorrateada del módulo live_avatar) corre sin sesión, disparada por el cron de module-fees — mismo perfil que telegram/bots.ts. La organizationId llega por parámetro y la única consulta la filtra con .eq(\'organization_id\', organizationId).',
-    ],
-    [
-        'src/lib/live/billing.ts',
-        'chargeLiveMinutes recibe la fila de live_sessions ya autenticada (o la del barrido del cron) y reclama el tramo de minutos con un update filtrado por su organization_id; hasLiveBalance lee org_wallets (no tenant) de la org que llega por parámetro.',
-    ],
     // Tarea 5 (comentarios-ia-social) — sondeo de comentarios, sin sesión
     // (lo dispara el cron `social-comments-poll`), mismo perfil que el resto
     // de `src/lib/agent/` de arriba.

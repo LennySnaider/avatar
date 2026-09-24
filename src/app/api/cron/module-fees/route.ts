@@ -25,10 +25,6 @@ import '@/lib/telegram/bots'
 // Estratega NO se cobra y el cron no falla: se limita a saltarla (`skipped`)
 // con un `console.warn` mes tras mes.
 import '@/lib/assistant/unitActivity'
-// Efecto lateral DELIBERADO, igual que los dos de arriba: registra
-// `liveUnitActivity` para el slug "live_avatar" (Avatar en vivo). Sin él la
-// cuota del módulo no se cobra y el cron sólo la salta con un aviso.
-import '@/lib/live/unitActivity'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 60

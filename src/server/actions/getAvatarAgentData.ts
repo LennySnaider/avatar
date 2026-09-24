@@ -1,7 +1,6 @@
 import { getOrgContext } from '@/lib/tenant/getOrgContext'
 import { requirePermission } from '@/lib/org/guards'
 import { orgTable } from '@/lib/org/orgTable'
-import { hasModule } from '@/lib/modules/entitlements'
 import { toPersonaDTO } from '@/lib/agent/personaMapper'
 import type { PersonaDTO } from '@/lib/agent/types'
 import type { Avatar } from '@/@types/supabase'
@@ -10,8 +9,6 @@ export interface AvatarAgentData {
     avatar: Avatar | null
     persona: PersonaDTO | null
     knowledgeCount: number
-    /** Módulo premium `live_avatar` (Avatar en vivo): decide si hay pestaña Live. */
-    liveModuleInstalled: boolean
 }
 
 /**
@@ -35,7 +32,7 @@ const getAvatarAgentData = async (avatarId: string): Promise<AvatarAgentData> =>
         ctx = await getOrgContext()
         requirePermission(ctx, 'content:read')
     } catch {
-        return { avatar: null, persona: null, knowledgeCount: 0, liveModuleInstalled: false }
+        return { avatar: null, persona: null, knowledgeCount: 0 }
     }
 
     const { data: avatar, error: avatarError } = await orgTable(ctx, 'avatars')
@@ -43,21 +40,19 @@ const getAvatarAgentData = async (avatarId: string): Promise<AvatarAgentData> =>
         .eq('id', avatarId)
         .maybeSingle()
     if (avatarError) console.error('Error fetching avatar:', avatarError)
-    if (!avatar) return { avatar: null, persona: null, knowledgeCount: 0, liveModuleInstalled: false }
+    if (!avatar) return { avatar: null, persona: null, knowledgeCount: 0 }
 
-    const [{ data: personaRow }, { count }, liveModuleInstalled] = await Promise.all([
+    const [{ data: personaRow }, { count }] = await Promise.all([
         orgTable(ctx, 'avatar_personas').select('*').eq('avatar_id', avatarId).maybeSingle(),
         orgTable(ctx, 'avatar_knowledge')
             .select('id', { count: 'exact', head: true })
             .eq('avatar_id', avatarId),
-        hasModule(ctx, 'live_avatar').catch(() => false),
     ])
 
     return {
         avatar: avatar as Avatar,
         persona: personaRow ? toPersonaDTO(personaRow) : null,
         knowledgeCount: count ?? 0,
-        liveModuleInstalled,
     }
 }
 

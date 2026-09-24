@@ -7,7 +7,6 @@ import KnowledgeManager from './KnowledgeManager'
 import Playground from './Playground'
 import FanvueChatCard from './FanvueChatCard'
 import AutopilotCard from './AutopilotCard'
-import LiveTab from './LiveTab'
 import type { PersonaDTO } from '@/lib/agent/types'
 
 const { TabList, TabNav, TabContent } = Tabs
@@ -18,8 +17,6 @@ interface AgentViewProps {
     initialPersona: PersonaDTO | null
     initialKnowledgeCount: number
     initialFanvueCreatorUuid: string | null
-    /** Módulo premium `live_avatar` instalado: sin él la pestaña Live no existe. */
-    liveModuleInstalled?: boolean
 }
 
 const AgentView = ({
@@ -28,7 +25,6 @@ const AgentView = ({
     initialPersona,
     initialKnowledgeCount,
     initialFanvueCreatorUuid,
-    liveModuleInstalled = false,
 }: AgentViewProps) => {
     const [activeTab, setActiveTab] = useState('persona')
     // Kept at this level so a save in Persona immediately affects the Playground.
@@ -40,7 +36,6 @@ const AgentView = ({
                 <TabNav value="persona">Persona</TabNav>
                 <TabNav value="knowledge">Knowledge ({initialKnowledgeCount})</TabNav>
                 <TabNav value="playground">Playground</TabNav>
-                {liveModuleInstalled && <TabNav value="live">Live</TabNav>}
             </TabList>
             <div className="pt-4">
                 <TabContent value="persona">
@@ -69,11 +64,6 @@ const AgentView = ({
                 <TabContent value="playground">
                     <Playground avatarId={avatarId} avatarName={avatarName} hasPersona={!!persona} />
                 </TabContent>
-                {liveModuleInstalled && (
-                    <TabContent value="live">
-                        <LiveTab avatarId={avatarId} avatarName={avatarName} />
-                    </TabContent>
-                )}
             </div>
         </Tabs>
     )

@@ -60,12 +60,6 @@ export async function deliverAgentText(chat: DeliverableChat, text: string): Pro
             return deliverViaSocialComment(chat, text)
         case 'fanvue':
             return deliverViaFanvue(chat, text)
-        case 'live':
-            // Una videollamada en vivo se contesta en el momento, por voz: el
-            // inbox la muestra como transcripción de sólo lectura y nunca
-            // debería llegar aquí. Si llega, falla en voz alta en vez de
-            // caer en Fanvue.
-            throw new Error('Las conversaciones en vivo son de sólo lectura: ya se contestaron en tiempo real.')
         default: {
             // Guarda `never`: si `DeliveryChannel` gana un valor nuevo y este
             // switch no se actualiza, esto deja de compilar en vez de caer

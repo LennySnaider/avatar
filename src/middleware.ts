@@ -36,15 +36,7 @@ export default auth((req) => {
      */
     if (
         nextUrl.pathname.startsWith('/api/webhooks/') ||
-        nextUrl.pathname.startsWith('/api/cron/') ||
-        // Módulo live_avatar: el visitante del link público es anónimo y
-        // cada turno se autentica con el secreto de SU sesión
-        // (`live_sessions.secret_hash`), no con cookie.
-        nextUrl.pathname.startsWith('/api/live/') ||
-        // …y su página pública `/live/<token>` (también la carga el iframe
-        // del widget en webs ajenas). `publicRoutes` es comparación exacta y
-        // no sirve para un segmento dinámico.
-        nextUrl.pathname.startsWith('/live/')
+        nextUrl.pathname.startsWith('/api/cron/')
     ) {
         return
     }

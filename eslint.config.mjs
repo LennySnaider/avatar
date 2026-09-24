@@ -388,17 +388,6 @@ const eslintConfig = [
       // .eq('organization_id', ...). Ver check-tenant-access.mjs (misma
       // exención, motivo completo allí).
       "src/lib/assistant/unitActivity.ts",
-      // Módulo live_avatar (Avatar en vivo) — las rutas /api/live/* no tienen
-      // sesión (el visitante del link público es anónimo): la org sale de la
-      // fila ya resuelta (avatar_live_settings por avatar_id/public_token
-      // UNIQUE, o live_sessions autenticada por su secreto) y cada consulta
-      // la usa como filtro .eq explícito. unitActivity.ts es el informador del
-      // cron de cuotas, mismo perfil que bots.ts. Ver check-tenant-access.mjs.
-      "src/lib/live/settings.ts",
-      "src/lib/live/session.ts",
-      "src/lib/live/turn.ts",
-      "src/lib/live/unitActivity.ts",
-      "src/lib/live/billing.ts",
       // Task 8 — motor de oferta, mismo perfil que paidMedia.ts: sin sesión
       // (lo dispara el webhook dentro de su `after()`), parte del borrador que
       // nuestro propio pipeline acaba de crear —esa fila RESUELVE la org— y

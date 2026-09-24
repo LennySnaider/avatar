@@ -519,16 +519,6 @@ export async function setChatMode(
     try {
         const ctx = await getOrgContext()
         requirePermission(ctx, 'inbox:reply')
-        // Módulo live_avatar: una llamada en vivo es sólo transcripción; darle
-        // modo draft/auto haría que el agente redactara respuestas que no
-        // tienen por dónde salir.
-        const { data: current } = await orgTable(ctx, 'agent_chats')
-            .select('platform')
-            .eq('id', chatId)
-            .maybeSingle()
-        if (current && resolveDeliveryChannel((current as { platform: string }).platform) === 'live') {
-            return { success: false, error: 'Las llamadas en vivo son de sólo lectura.' }
-        }
         const { data, error } = await orgTable(ctx, 'agent_chats')
             .update({ mode, updated_at: new Date().toISOString() })
             .eq('id', chatId)
@@ -602,13 +592,10 @@ export async function regenerateDraft(
         const ctx = await getOrgContext()
         requirePermission(ctx, 'inbox:reply')
         const { data: chat } = await orgTable(ctx, 'agent_chats')
-            .select('id, platform')
+            .select('id')
             .eq('id', chatId)
             .maybeSingle()
         if (!chat) return { success: false, error: 'Chat not found' }
-        if (resolveDeliveryChannel((chat as { platform: string }).platform) === 'live') {
-            return { success: false, error: 'Las llamadas en vivo son de sólo lectura.' }
-        }
         // Lo pide el humano: si el fan no ha contestado (o nunca escribió),
         // sale un mensaje para reactivar la conversación en vez de un error.
         // Queda como borrador: nunca se envía solo, ni en modo auto.

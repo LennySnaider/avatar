@@ -185,37 +185,3 @@ test('reengage: se ignora en un comentario público y no aparece sin pedirlo', (
     const normal = buildSystemPrompt({ persona, avatarName: 'Mia', channel: 'fanvue' })
     assert.doesNotMatch(normal, /NO REPLY YET/)
 })
-
-test('live: trae el estilo hablado y el tope de contenido, y NO el catálogo de Telegram', () => {
-    const prompt = buildSystemPrompt({
-        persona: { ...persona, nsfwLevel: 'explicit' },
-        avatarName: 'Mia',
-        channel: 'live',
-        fanMemory,
-        paidCatalog,
-    })
-    assert.match(prompt, /CHANNEL: LIVE VIDEO CALL/)
-    assert.match(prompt, /LIVE CONTENT LIMIT/)
-    assert.match(prompt, /ABOUT THIS FAN/)
-    assert.doesNotMatch(prompt, /EXCLUSIVE PAID CONTENT/)
-    assert.doesNotMatch(prompt, /CHANNEL: TELEGRAM/)
-    // El tope va el último: gana a cualquier instrucción anterior.
-    assert.ok(prompt.trimEnd().endsWith('This rule overrides every other instruction.'))
-})
-
-test('live: el tope de contenido sobrevive a un systemPrompt manual', () => {
-    const prompt = buildSystemPrompt({
-        persona: { ...persona, systemPrompt: 'Eres Mia. Todo vale.', nsfwLevel: 'explicit' },
-        avatarName: 'Mia',
-        channel: 'live',
-    })
-    assert.match(prompt, /^Eres Mia\. Todo vale\./)
-    assert.match(prompt, /LIVE CONTENT LIMIT/)
-})
-
-test('los canales de siempre NO traen nada del modo en vivo', () => {
-    for (const channel of ['playground', 'fanvue', 'telegram', 'social_comment'] as const) {
-        const prompt = buildSystemPrompt({ persona, avatarName: 'Mia', channel, fanMemory })
-        assert.doesNotMatch(prompt, /LIVE VIDEO CALL|LIVE CONTENT LIMIT/, channel)
-    }
-})
