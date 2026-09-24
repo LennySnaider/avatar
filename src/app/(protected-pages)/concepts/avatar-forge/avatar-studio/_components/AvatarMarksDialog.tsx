@@ -53,21 +53,43 @@ interface Shape {
 
 /** Geometría del muñeco (viewBox 220×380). Solo las zonas dibujables. */
 const ZONE_SHAPES: Record<string, Shape> = {
+    // Cabeza y cuello. Ojo con el lado: su DERECHA es la mitad izquierda del
+    // dibujo, porque la silueta mira de frente.
     cuello_lateral: { view: 'front', kind: 'oval', coords: [101, 70, 7, 7] },
+    detras_oreja: { view: 'front', kind: 'oval', coords: [92, 36, 6, 7] },
+
+    // Brazos: cada segmento partido en dos tiras, la interior hacia el centro
+    // del cuerpo y la exterior hacia fuera.
     hombro: { view: 'front', kind: 'oval', coords: [68, 84, 12, 10] },
-    brazo_exterior: { view: 'front', kind: 'rect', coords: [52, 92, 18, 48, 9] },
-    antebrazo_interior: { view: 'front', kind: 'rect', coords: [46, 142, 17, 60, 8] },
-    dorso_mano: { view: 'front', kind: 'oval', coords: [54, 214, 11, 14] },
+    brazo_exterior: { view: 'front', kind: 'rect', coords: [52, 92, 9, 48, 4] },
+    brazo_interior: { view: 'front', kind: 'rect', coords: [61, 92, 9, 48, 4] },
+    antebrazo_exterior: { view: 'front', kind: 'rect', coords: [46, 142, 9, 58, 4] },
+    antebrazo_interior: { view: 'front', kind: 'rect', coords: [55, 142, 8, 58, 4] },
+    muneca: { view: 'front', kind: 'oval', coords: [54, 203, 9, 5] },
+    dorso_mano: { view: 'front', kind: 'oval', coords: [54, 214, 11, 11] },
+    dedos: { view: 'front', kind: 'oval', coords: [54, 226, 9, 5] },
+
+    // Torso delantero.
     esternon: { view: 'front', kind: 'rect', coords: [100, 88, 20, 22, 6] },
-    costillas: { view: 'front', kind: 'rect', coords: [80, 112, 22, 30, 6] },
+    pecho: { view: 'front', kind: 'rect', coords: [80, 86, 19, 22, 6] },
+    bajo_pecho: { view: 'front', kind: 'rect', coords: [80, 109, 19, 9, 4] },
+    costillas: { view: 'front', kind: 'rect', coords: [80, 120, 22, 24, 6] },
     abdomen: { view: 'front', kind: 'rect', coords: [98, 150, 24, 28, 6] },
     cadera: { view: 'front', kind: 'rect', coords: [80, 176, 22, 20, 6] },
     ingle: { view: 'front', kind: 'oval', coords: [97, 198, 11, 9] },
-    muslo_frontal: { view: 'front', kind: 'rect', coords: [82, 212, 26, 60, 12] },
-    pantorrilla: { view: 'front', kind: 'rect', coords: [84, 282, 22, 56, 10] },
+
+    // Piernas: mismo criterio de tiras que los brazos.
+    muslo_exterior: { view: 'front', kind: 'rect', coords: [82, 212, 8, 60, 4] },
+    muslo_frontal: { view: 'front', kind: 'rect', coords: [90, 212, 10, 60, 4] },
+    muslo_interior: { view: 'front', kind: 'rect', coords: [100, 212, 8, 60, 4] },
+    pantorrilla: { view: 'front', kind: 'rect', coords: [84, 282, 22, 52, 10] },
+    tobillo: { view: 'front', kind: 'oval', coords: [95, 340, 9, 5] },
+    pie: { view: 'front', kind: 'oval', coords: [95, 352, 11, 9] },
+
+    // Espalda.
     nuca: { view: 'back', kind: 'rect', coords: [102, 62, 16, 12, 4] },
-    omoplato: { view: 'back', kind: 'oval', coords: [92, 94, 13, 11] },
     espalda_alta: { view: 'back', kind: 'rect', coords: [100, 78, 20, 18, 5] },
+    omoplato: { view: 'back', kind: 'oval', coords: [92, 94, 13, 11] },
     columna: { view: 'back', kind: 'rect', coords: [104, 106, 12, 48, 5] },
     lumbar: { view: 'back', kind: 'rect', coords: [94, 158, 32, 20, 6] },
     gluteo: { view: 'back', kind: 'oval', coords: [96, 194, 15, 13] },
@@ -460,8 +482,8 @@ const AvatarMarksDialog = ({
                         </svg>
                     </div>
                     <p className="text-[11px] text-gray-400 mt-2 leading-relaxed">
-                        El mapa dibuja las zonas más usadas. El resto se eligen en la
-                        lista de al lado.
+                        Toca una zona para asignarle una marca. Las que ya tienen una
+                        salen en rosa.
                     </p>
                 </div>
 
