@@ -619,7 +619,7 @@ const PostModal = ({
                 quedaban debajo del borde, inalcanzables (reporte 24-sep).
                 `svh` mide el viewport visible de verdad, y restarle la
                 cabecera y el pie deja el botón siempre a la vista. */}
-            <div className="flex flex-col gap-4 max-h-[calc(100svh-14rem)] sm:max-h-[70vh] overflow-y-auto pr-1">
+            <div className="flex flex-col gap-4 max-h-[calc(100svh-14rem)] sm:max-h-[70vh] overflow-y-auto overflow-x-hidden pr-1">
                 {error && (
                     <div className="p-2 bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-700 rounded-lg">
                         <p className="text-xs text-red-600 dark:text-red-400">{error}</p>
@@ -627,7 +627,7 @@ const PostModal = ({
                 )}
 
                 <Card>
-                    <div className="flex items-center justify-between mb-2">
+                    <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
                         <p className="text-sm font-semibold">
                             Media{postMediaItems.length > 1 ? ` (${postMediaItems.length})` : ''}
                         </p>
@@ -776,7 +776,7 @@ const PostModal = ({
                 <Card>
                     <div className="flex items-center justify-between mb-2 flex-wrap gap-2">
                         <p className="text-sm font-semibold">Caption</p>
-                        <div className="flex items-center gap-2">
+                        <div className="flex flex-wrap items-center justify-end gap-2">
                             <button
                                 type="button"
                                 onClick={() => setSpicyCaption((v) => !v)}
@@ -892,7 +892,7 @@ const PostModal = ({
                 </Card>
 
                 <Card>
-                    <div className="flex items-center justify-between mb-2 gap-2">
+                    <div className="flex flex-wrap items-center justify-between mb-2 gap-2">
                         <p className="text-sm font-semibold">Destinations</p>
                         {effectiveAvatarId && avatarName && (
                             <p className="text-xs text-gray-400">
