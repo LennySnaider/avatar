@@ -407,6 +407,19 @@ export const BUST_SHAPE_PHRASE: Record<string, string> = {
         'tubular breasts — narrow constricted base, wide spacing between the breasts, puffy forward-projecting tips',
 }
 
+/**
+ * SEPARACIÓN (eje aparte del tamaño y de la forma). Cada frase dice dónde se
+ * apoyan y hacia dónde apuntan, que es lo que el motor necesita para colocar
+ * el volumen: sin esto los pechos salían siempre juntos y centrados, y un
+ * avatar de pecho abierto no se podía describir.
+ */
+export const BUST_SPACING_PHRASE: Record<string, string> = {
+    close: 'close-set breasts — almost no gap between them, they meet in the middle and form a deep natural cleavage',
+    natural:
+        'naturally spaced breasts — a small even gap between them, neither pushed together nor splayed apart',
+    wide: 'wide-set breasts — a clear open gap down the middle of the chest, each breast sitting toward its own side and pointing slightly outward',
+}
+
 // ── Reglas de pezón POR AVATAR (consistencia NSFW) ─────────────────────────
 // Cada modelo inventaba color/areola distintos entre generaciones topless
 // (reporte con batch: Seedream café, Wan rosa, Qwen oscuras grandes). Mismo
@@ -427,6 +440,10 @@ export const NIPPLE_COLOR_PHRASE: Record<string, string> = {
     'light-brown': 'light brown',
     brown: 'medium brown',
     dark: 'deep dark-brown',
+    // Igual que el resto de la escala: se describe POR RELACIÓN con su piel,
+    // no con un color nombrable — es la receta que funcionó en piel y ojos.
+    deepest:
+        'very dark, almost black-brown, clearly darker than her surrounding skin',
 }
 
 // Tamaños RELATIVOS y directivos: 'small neat' era demasiado débil contra el
@@ -445,6 +462,7 @@ export const NIPPLE_COLORS = [
     'light-brown',
     'brown',
     'dark',
+    'deepest',
 ] as const
 export const NIPPLE_AREOLAS = ['small', 'medium', 'large', 'puffy'] as const
 
@@ -687,6 +705,8 @@ export const GLUTES_SHAPES = [
     'round',
     'heart',
 ] as const
+export const BUST_SPACINGS = ['close', 'natural', 'wide'] as const
+
 export const BUST_SHAPES = [
     'round',
     'athletic',
@@ -770,6 +790,9 @@ export function buildCurvesEmphasis(m: PhysicalMeasurements): string {
     }
     if (m.bustShape && BUST_SHAPE_PHRASE[m.bustShape]) {
         parts.push(BUST_SHAPE_PHRASE[m.bustShape])
+    }
+    if (m.bustSpacing && BUST_SPACING_PHRASE[m.bustSpacing]) {
+        parts.push(BUST_SPACING_PHRASE[m.bustSpacing])
     }
     // Vía glutesLevelPhrase (no el mapa directo): el nivel 6 con cadera
     // moderada habla de PROYECCIÓN trasera, no de anchura — ver su doc.

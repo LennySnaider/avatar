@@ -20,6 +20,7 @@ import type { Avatar, AIProvider, Prompt, SkinTone } from '@/@types/supabase'
 import type { ClonedVoice } from '@/@types/voice'
 import { describeBody, describeHair } from '@/utils/bodyDescriptors'
 import { stripNegatedTattoos } from '@/utils/promptSanitizer'
+import { buildMarksTag, type AvatarMarkInput } from '@/lib/avatar/marks'
 import { REALISM_DEFAULT_LEVEL } from '@/services/kie/realism'
 
 /**
@@ -133,6 +134,9 @@ interface AvatarStudioState {
     identityWeight: number
     measurements: PhysicalMeasurements
     faceDescription: string
+    /** Marcas permanentes del avatar cargadas de `avatar_marks`. Viven aquí
+     *  porque `getFullPrompt` las necesita en CADA generación. */
+    avatarMarks: AvatarMarkInput[]
 
     // Generation Settings
     prompt: string
@@ -327,6 +331,7 @@ interface AvatarStudioState {
     setIdentityWeight: (weight: number) => void
     setMeasurements: (measurements: PhysicalMeasurements) => void
     setFaceDescription: (description: string) => void
+    setAvatarMarks: (marks: AvatarMarkInput[]) => void
     /**
      * Resetea SOLO la identidad del avatar (identityWeight/measurements/
      * faceDescription) a sus defaults. Simétrico de `loadAvatarData`: al
@@ -555,6 +560,7 @@ const initialState = {
     identityWeight: 85,
     measurements: initialMeasurements,
     faceDescription: '',
+    avatarMarks: [],
 
     prompt: '',
     detectedTerms: [] as DetectedTerm[],
@@ -765,6 +771,7 @@ export const useAvatarStudioStore = create<AvatarStudioState>()(
             setMeasurements: (measurements) => set({ measurements }),
             setFaceDescription: (description) =>
                 set({ faceDescription: description }),
+            setAvatarMarks: (marks) => set({ avatarMarks: marks }),
 
             // Actions - Generation Settings
             setPrompt: (prompt) => set({ prompt }),
@@ -875,13 +882,31 @@ export const useAvatarStudioStore = create<AvatarStudioState>()(
                     tags.push(`[FACE: ${faceDescription.trim()}]`)
                 }
 
+                // Marcas permanentes (tatuajes, cicatrices, lunares): son
+                // ANATOMÍA del avatar, así que viajan como tag junto a [FACE:]
+                // y [BODY:] — el único camino que funciona también en los
+                // motores que solo reciben texto. El Identity Lock borra los
+                // tatuajes que se escriban en la ESCENA (los define el avatar,
+                // no la toma) y este tag se añade después, así que sobrevive.
+                const marksTag = buildMarksTag(state.avatarMarks)
+                if (marksTag) {
+                    tags.push(marksTag)
+                }
+
                 // Honor "no tattoos / sin tatuajes" for ALL providers: remove tattoo
                 // mentions (incl. the one the Clone auto-analysis injects) so image
                 // models — which draw mentioned nouns and ignore "no X" — don't render it.
+                //
+                // OJO CON EL ORDEN: el saneado se aplica al prompt de ESCENA, no
+                // al conjunto ya ensamblado. Corriéndolo sobre `assembled` (como
+                // hacía antes) se comería el [MARKS: …] que acabamos de inyectar
+                // en cuanto alguien escribiera "sin tatuajes" en la escena. El
+                // avatar manda sobre la toma.
+                const scene = stripNegatedTattoos(prompt)
                 const assembled =
-                    tags.length > 0 ? `${tags.join(' ')} ${prompt}` : prompt
+                    tags.length > 0 ? `${tags.join(' ')} ${scene}` : scene
                 // Anti-watermark universal (Seedream/Wan no tienen param negative).
-                return `${stripNegatedTattoos(assembled)} ${ANTI_WATERMARK_CLAUSE}`
+                return `${assembled} ${ANTI_WATERMARK_CLAUSE}`
             },
             setNsfwMode: (on) => set({ nsfwMode: on }),
             setRealismBoost: (on) => {
@@ -1220,6 +1245,10 @@ export const useAvatarStudioStore = create<AvatarStudioState>()(
                     identityWeight: avatar.identity_weight || 85,
                     measurements: avatar.measurements || initialMeasurements,
                     faceDescription: avatar.face_description || '',
+                    // Vacías a propósito: las carga el llamador con
+                    // `listAvatarMarks(avatar.id)`. Dejar las del avatar
+                    // anterior le pintaría sus tatuajes a este.
+                    avatarMarks: [],
                     isAvatarLocked: true,
                     appState: AppState.AVATAR_DEFINED,
                 }),
@@ -1228,6 +1257,7 @@ export const useAvatarStudioStore = create<AvatarStudioState>()(
                     identityWeight: 85,
                     measurements: initialMeasurements,
                     faceDescription: '',
+                    avatarMarks: [],
                 }),
         }),
         {

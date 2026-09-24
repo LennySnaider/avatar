@@ -1,6 +1,6 @@
 'use client'
 
-import { useRef, useCallback, useState } from 'react'
+import { useRef, useCallback, useEffect, useState } from 'react'
 import { useAvatarStudioStore } from '../_store/avatarStudioStore'
 import Button from '@/components/ui/Button'
 import Input from '@/components/ui/Input'
@@ -8,6 +8,9 @@ import Slider from '@/components/ui/Slider'
 import Card from '@/components/ui/Card'
 import ScrollBar from '@/components/ui/ScrollBar'
 import { HiOutlineUpload, HiOutlineX, HiOutlineLockClosed, HiOutlineLockOpen, HiOutlineSave, HiOutlineUser } from 'react-icons/hi'
+import AvatarMarksDialog from './AvatarMarksDialog'
+import { listAvatarMarks } from '@/services/AvatarMarksService'
+import { markFromRow } from '@/lib/avatar/marks'
 import type { ReferenceImage } from '../types'
 import { createThumbnail } from '@/utils/imageOptimization'
 
@@ -22,6 +25,7 @@ const ReferencePanel = ({ onSaveAvatar, onAnalyzeFace }: ReferencePanelProps) =>
     const angleInputRef = useRef<HTMLInputElement>(null)
     const bodyInputRef = useRef<HTMLInputElement>(null)
 
+    const [showMarks, setShowMarks] = useState(false)
     const [showSaveInput, setShowSaveInput] = useState(false)
     const [saveAvatarName, setSaveAvatarName] = useState('')
     const [isAnalyzingFace, setIsAnalyzingFace] = useState(false)
@@ -35,7 +39,10 @@ const ReferencePanel = ({ onSaveAvatar, onAnalyzeFace }: ReferencePanelProps) =>
         measurements,
         faceDescription,
         isAvatarLocked,
+        avatarId,
         avatarName,
+        avatarMarks,
+        setAvatarMarks,
         isSavingAvatar,
         addGeneralReference,
         removeGeneralReference,
@@ -49,6 +56,21 @@ const ReferencePanel = ({ onSaveAvatar, onAnalyzeFace }: ReferencePanelProps) =>
         unlockAvatar,
         hasAvatarRefs,
     } = useAvatarStudioStore()
+
+    useEffect(() => {
+        if (!avatarId) return
+        let cancelled = false
+        listAvatarMarks(avatarId)
+            .then((rows) => {
+                if (!cancelled) setAvatarMarks(rows.map(markFromRow))
+            })
+            .catch(() => {
+                // Sin marcas se genera igual: no se bloquea el estudio por esto.
+            })
+        return () => {
+            cancelled = true
+        }
+    }, [avatarId, setAvatarMarks])
 
     const processFile = useCallback(
         async (file: File, type: 'general' | 'face' | 'angle' | 'body') => {
@@ -339,6 +361,33 @@ const ReferencePanel = ({ onSaveAvatar, onAnalyzeFace }: ReferencePanelProps) =>
                     )}
                 </Card>
 
+                {/* Marcas permanentes: anatomía del avatar, no escena. Viajan
+                    en toda generación sin escribirlas en el prompt. */}
+                {avatarId && (
+                    <Card className="p-3">
+                        <div className="flex items-center justify-between mb-1">
+                            <h4 className="text-sm font-medium">Marcas permanentes</h4>
+                            <button
+                                onClick={() => setShowMarks(true)}
+                                className="text-xs text-primary hover:underline"
+                            >
+                                {avatarMarks.length > 0 ? 'Gestionar' : '+ Añadir'}
+                            </button>
+                        </div>
+                        {avatarMarks.length > 0 ? (
+                            <p className="text-xs text-gray-500">
+                                {avatarMarks.length}{' '}
+                                {avatarMarks.length === 1 ? 'marca' : 'marcas'} en su
+                                cuerpo, en todas las generaciones.
+                            </p>
+                        ) : (
+                            <p className="text-xs text-gray-400">
+                                Tatuajes, cicatrices o lunares con su zona del cuerpo.
+                            </p>
+                        )}
+                    </Card>
+                )}
+
                 {/* Specific References */}
                 <Card className="p-3 space-y-3">
                     <h4 className="text-sm font-medium">Specific References</h4>
@@ -545,6 +594,15 @@ const ReferencePanel = ({ onSaveAvatar, onAnalyzeFace }: ReferencePanelProps) =>
                 </Card>
             </div>
             </ScrollBar>
+
+            {avatarId && (
+                <AvatarMarksDialog
+                    isOpen={showMarks}
+                    onClose={() => setShowMarks(false)}
+                    avatarId={avatarId}
+                    avatarName={avatarName ?? undefined}
+                />
+            )}
         </div>
     )
 }

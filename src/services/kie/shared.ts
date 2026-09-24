@@ -31,6 +31,10 @@ export type KieRefWithRole = {
     // Solo para role:'clone' — ¿se difuminó la cara rival del clon? Wan lo usa
     // para decidir el reorden (clon SIN cara → orden normal; con cara → reordena).
     masked?: boolean
+    // Solo para role:'mark' — la zona ya resuelta con su lado ("inner right
+    // forearm", de markPhrase en @/lib/avatar/marks). Sin ella el modelo pone
+    // el tatuaje donde le parece, que es el fallo que esta ref viene a evitar.
+    markZone?: string
 }
 
 /**
@@ -71,6 +75,14 @@ export function planExtraRefs(
         (referenceImages ?? []).filter((r) => r.role === role)
     const ordered = [
         ...byRole('body').slice(0, 3),
+        // La ANGLE SHEET se caía aquí en silencio: no estaba en esta lista, así
+        // que seedream, flux-2, qwen3, gptImage25 y legacy generaban sin ella
+        // (solo la veían nano-banana-pro y gpt-image-2, que no pasan por
+        // planExtraRefs). Es identidad perdida en los motores más usados.
+        ...byRole('angle').slice(0, 1),
+        // Marcas permanentes de la piel (tatuajes, cicatrices): dos como mucho,
+        // que es lo que cabe sin comerse las ranuras de pose/scene/clone.
+        ...byRole('mark').slice(0, 2),
         ...byRole('bust').slice(0, 1),
         ...byRole('glutes').slice(0, 1),
         ...byRole('asset').slice(0, 3),
@@ -103,6 +115,19 @@ export function planExtraRefs(
             case 'glutes':
                 parts.push(
                     `Image ${n} = her real GLUTES and hips: copy ONLY their size, shape, fullness and projection (thighs proportionally full). IGNORE that image's clothing/nudity, pose, scene and lighting — outfit, pose and scene come from ${outfitSrc}.`,
+                )
+                break
+            case 'angle':
+                parts.push(
+                    `Image ${n} = her ANGLE SHEET: the same face from several angles. Use it to keep her features consistent from any viewpoint. It is a reference grid, never a scene to recreate — ignore its background, framing and lighting.`,
+                )
+                break
+            // Una marca NO es un asset: la cláusula de asset dice "print it on
+            // the outfit", y con un tatuaje eso lo estampa en la camiseta. Esta
+            // dice piel, y dice dónde.
+            case 'mark':
+                parts.push(
+                    `Image ${n} = a PERMANENT MARK on her skin (tattoo, scar, mole)${r.markZone ? ` located on her ${r.markZone}` : ''}: reproduce its design, scale and placement ON THE SKIN. Never print it on clothing. IGNORE everything else in that image — its lighting, background, pose and any other body part.`,
                 )
                 break
             // La cláusula vieja ("print this EXACT design on her clothing")

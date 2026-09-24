@@ -11,6 +11,7 @@ import {
     isExaggeratedBody,
     isStrongCurvesBody,
     BUST_SHAPE_PHRASE,
+    BUST_SPACING_PHRASE,
     GLUTES_SHAPE_PHRASE,
 } from '@/utils/bodyDescriptors'
 
@@ -56,6 +57,7 @@ const ETIQUETA_ATRIBUTO: Record<string, string> = {
     legType: 'piernas',
     bustLevel: 'volumen de busto',
     bustShape: 'forma de busto',
+    bustSpacing: 'separación de busto',
     glutesLevel: 'volumen de glúteos',
     glutesShape: 'forma de glúteos',
     thighsLevel: 'muslos',
@@ -176,6 +178,9 @@ export function buildBodySheetCurves(m: PhysicalMeasurements): string {
     const parts: string[] = []
     if (m.bustLevel && SHEET_BUST_PHRASE[m.bustLevel]) {
         parts.push(SHEET_BUST_PHRASE[m.bustLevel])
+    }
+    if (m.bustSpacing && BUST_SPACING_PHRASE[m.bustSpacing]) {
+        parts.push(BUST_SPACING_PHRASE[m.bustSpacing])
     }
     if (m.bustShape && BUST_SHAPE_PHRASE[m.bustShape]) {
         parts.push(BUST_SHAPE_PHRASE[m.bustShape])

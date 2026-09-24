@@ -93,6 +93,60 @@ export type Database = {
                 }
                 Relationships: []
             }
+            // Marcas permanentes (tatuajes, cicatrices, lunares) — migración
+            // 20260923150000. La zona sale de MARK_ZONES en
+            // src/lib/avatar/marks.ts, que es el mismo vocabulario del CHECK.
+            avatar_marks: {
+                Row: {
+                    id: string
+                    organization_id: string
+                    avatar_id: string
+                    zone: string
+                    side: 'right' | 'left' | null
+                    content: string
+                    ink_style: string | null
+                    coverage: string | null
+                    orientation: string | null
+                    storage_path: string | null
+                    storage_provider: string | null
+                    baked_at: string | null
+                    created_at: string
+                    updated_at: string
+                }
+                Insert: {
+                    id?: string
+                    organization_id?: string
+                    avatar_id: string
+                    zone: string
+                    side?: 'right' | 'left' | null
+                    content: string
+                    ink_style?: string | null
+                    coverage?: string | null
+                    orientation?: string | null
+                    storage_path?: string | null
+                    storage_provider?: string | null
+                    baked_at?: string | null
+                    created_at?: string
+                    updated_at?: string
+                }
+                Update: {
+                    id?: string
+                    organization_id?: string
+                    avatar_id?: string
+                    zone?: string
+                    side?: 'right' | 'left' | null
+                    content?: string
+                    ink_style?: string | null
+                    coverage?: string | null
+                    orientation?: string | null
+                    storage_path?: string | null
+                    storage_provider?: string | null
+                    baked_at?: string | null
+                    created_at?: string
+                    updated_at?: string
+                }
+                Relationships: []
+            }
             generations: {
                 Row: {
                     id: string
@@ -521,7 +575,15 @@ export type LegType =
 // NO se recalibraron (avatares existentes intactos).
 export type CurveLevel = 1 | 2 | 3 | 4 | 5 | 6
 
-export type NippleColor = 'rosy' | 'peach' | 'light-brown' | 'brown' | 'dark'
+export type NippleColor =
+    | 'rosy'
+    | 'peach'
+    | 'light-brown'
+    | 'brown'
+    | 'dark'
+    // Peldaño añadido el 23-sep: la escala se quedaba en 'deep dark-brown' y
+    // no llegaba a los tonos más oscuros, que en piel oscura son los reales.
+    | 'deepest'
 export type NippleAreola = 'small' | 'medium' | 'large' | 'puffy'
 
 // FORMA (ortogonal al tamaño): taxonomías del usuario — glúteos por
@@ -547,6 +609,15 @@ export type BustShape =
     | 'conical'
     | 'teardrop'
     | 'tuberous'
+
+/**
+ * SEPARACIÓN del busto, eje ORTOGONAL al tamaño (bustLevel) y a la forma
+ * (bustShape): dos pechos del mismo tamaño y la misma forma pueden ir juntos
+ * con escote marcado o abiertos hacia fuera ("east-west"), y eso cambia la
+ * silueta por completo. Faltaba: con solo tamaño y forma, el modelo lo decidía
+ * a su aire y el avatar no era el mismo entre generaciones.
+ */
+export type BustSpacing = 'close' | 'natural' | 'wide'
 
 // Body shape (overall silhouette type — hourglass, pear, apple, rectangle, inverted-triangle, spoon, diamond)
 export type BodyShape =
@@ -631,6 +702,7 @@ export interface PhysicalMeasurements {
     thighsLevel?: CurveLevel
     // Forma (ortogonal al tamaño; solo modelos permisivos)
     bustShape?: BustShape
+    bustSpacing?: BustSpacing
     glutesShape?: GlutesShape
     skinTone?: SkinTone // 1=very fair/porcelain, 9=very dark/ebony
     /**

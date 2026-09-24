@@ -553,6 +553,57 @@ export type Database = {
           },
         ]
       }
+      avatar_marks: {
+        Row: {
+          avatar_id: string
+          baked_at: string | null
+          content: string
+          coverage: string | null
+          created_at: string
+          id: string
+          ink_style: string | null
+          organization_id: string
+          orientation: string | null
+          side: string | null
+          storage_path: string | null
+          storage_provider: string | null
+          updated_at: string
+          zone: string
+        }
+        Insert: {
+          avatar_id: string
+          baked_at?: string | null
+          content: string
+          coverage?: string | null
+          created_at?: string
+          id?: string
+          ink_style?: string | null
+          organization_id: string
+          orientation?: string | null
+          side?: string | null
+          storage_path?: string | null
+          storage_provider?: string | null
+          updated_at?: string
+          zone: string
+        }
+        Update: {
+          avatar_id?: string
+          baked_at?: string | null
+          content?: string
+          coverage?: string | null
+          created_at?: string
+          id?: string
+          ink_style?: string | null
+          organization_id?: string
+          orientation?: string | null
+          side?: string | null
+          storage_path?: string | null
+          storage_provider?: string | null
+          updated_at?: string
+          zone?: string
+        }
+        Relationships: []
+      }
       avatar_references: {
         Row: {
           avatar_id: string | null

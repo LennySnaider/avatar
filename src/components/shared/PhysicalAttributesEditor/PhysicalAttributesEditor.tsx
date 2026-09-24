@@ -40,6 +40,8 @@ import {
     glutesLevelPhrase,
     THIGHS_LEVEL_PHRASE,
     BUST_SHAPES,
+    BUST_SPACINGS,
+    BUST_SPACING_PHRASE,
     GLUTES_SHAPES,
     BUST_SHAPE_PHRASE,
     GLUTES_SHAPE_PHRASE,
@@ -62,6 +64,7 @@ import type {
     PhysicalMeasurements,
     CurveLevel,
     BustShape,
+    BustSpacing,
     GlutesShape,
     BodyShape,
 } from '@/@types/supabase'
@@ -74,6 +77,9 @@ const NIPPLE_HEX: Record<string, string> = {
     'light-brown': '#B0785C',
     brown: '#8C5A42',
     dark: '#5E3A2B',
+    // Último peldaño: casi negro. La escala se quedaba en un marrón oscuro que
+    // en piel oscura no daba el tono real.
+    deepest: '#3A231A',
 }
 
 // Etiquetas cortas para el slider de Build (1-5) — replican el sentido de
@@ -190,6 +196,45 @@ const PhysicalAttributesEditor = ({
     }
     const applyShape = (shape: BodyShape) =>
         onChange({ ...measurements, ...SHAPE_PRESETS[shape], shape })
+
+    // Chips de SEPARACIÓN del busto. Eje distinto del tamaño y de la forma:
+    // dos pechos iguales pueden ir juntos con escote o abiertos hacia fuera, y
+    // sin decirlo el modelo lo resolvía distinto en cada generación.
+    const spacingChips = () => (
+        <div className="flex flex-wrap gap-1 mt-1.5">
+            {[undefined, ...BUST_SPACINGS].map((spacing) => (
+                <Tooltip
+                    key={spacing ?? 'auto'}
+                    title={
+                        spacing
+                            ? BUST_SPACING_PHRASE[spacing]
+                            : 'sin separación explícita — la decide el modelo'
+                    }
+                >
+                    <button
+                        onClick={() =>
+                            set({
+                                bustSpacing: spacing as BustSpacing | undefined,
+                            })
+                        }
+                        className={`px-1.5 py-0.5 text-[10px] rounded border transition-colors ${
+                            (measurements.bustSpacing ?? undefined) === spacing
+                                ? 'bg-primary text-white border-primary'
+                                : 'bg-gray-50 dark:bg-gray-800 border-gray-200 dark:border-gray-700 hover:border-primary'
+                        }`}
+                    >
+                        {spacing === 'close'
+                            ? 'juntas'
+                            : spacing === 'natural'
+                              ? 'natural'
+                              : spacing === 'wide'
+                                ? 'separadas'
+                                : 'auto'}
+                    </button>
+                </Tooltip>
+            ))}
+        </div>
+    )
 
     // Chips de FORMA (bust/glutes) — compartidos por Torso y Cadera.
     const shapeChips = (key: 'bustLevel' | 'glutesLevel') => (
@@ -416,6 +461,7 @@ const PhysicalAttributesEditor = ({
                         </p>
                     )}
                     {shapeChips('bustLevel')}
+                    {spacingChips()}
                 </div>
                 {/* Reglas de pezón POR AVATAR (consistencia NSFW) — condicional:
                     solo aplica cuando la escena la muestra descubierta. */}

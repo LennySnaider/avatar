@@ -26,6 +26,9 @@ import type { Database } from '@/@types/database.generated'
 export const TENANT_TABLES = [
     'avatars',
     'avatar_references',
+    // Marcas permanentes del avatar — organization_id NOT NULL (migración
+    // 20260923150000_avatar_marks).
+    'avatar_marks',
     'generations',
     'prompts',
     'cloned_voices',
