@@ -47,6 +47,7 @@ import {
     updateAvatarMark,
     uploadMarkPhoto,
     type AvatarMarkRow,
+    type SheetType,
 } from '@/services/AvatarMarksService'
 import { cacheAvatarMarks, cachedAvatarMarks } from '@/lib/avatar/marksCache'
 import { optimizeForApi } from '@/utils/imageOptimization'
@@ -371,18 +372,43 @@ const AvatarMarksDialog = ({
                 return
             }
 
-            const refs = conFoto.map((m) => ({
-                url: getGenerationMediaUrl(m.storage_path, m.storage_provider),
-                mimeType: 'image/jpeg',
-                role: 'mark',
-                markZone: markPhrase(markFromRow(m)),
-            }))
-            const lista = conFoto
-                .map((m) => `${markPhrase(markFromRow(m))}: ${m.content}`)
-                .join('; ')
+            // Cada hoja recibe SOLO las marcas que en ella están al aire.
+            //
+            // La hoja SFW lleva un bikini mínimo, y al pedirle la rosa de la
+            // ingle el motor no la omitió: la SUBIÓ al vientre, por encima de
+            // la cinta, para que se viera. Y ese error queda pintado en el
+            // cuerpo canónico de todas las generaciones vestidas. Una marca
+            // que la prenda tapa no va en esa hoja — para eso está la nude.
+            //
+            // La hoja de ángulos son caras: solo tienen sentido las marcas de
+            // cuello y cabeza; cualquier otra se la inventaría.
+            const ZONAS_DE_CABEZA = new Set([
+                'cuello_lateral',
+                'nuca',
+                'detras_oreja',
+            ])
+            const marcasDeLaHoja = (tipo: SheetType) =>
+                conFoto.filter((m) => {
+                    const z = findZone(m.zone)
+                    if (!z) return false
+                    if (tipo === 'angle') return ZONAS_DE_CABEZA.has(m.zone)
+                    if (tipo === 'body') return z.exposure !== 'swim'
+                    return true
+                })
 
             for (let i = 0; i < hojas.length; i++) {
                 const hoja = hojas[i]
+                const deEstaHoja = marcasDeLaHoja(hoja.type)
+                if (deEstaHoja.length === 0) continue
+                const refs = deEstaHoja.map((m) => ({
+                    url: getGenerationMediaUrl(m.storage_path, m.storage_provider),
+                    mimeType: 'image/jpeg',
+                    role: 'mark',
+                    markZone: markPhrase(markFromRow(m)),
+                }))
+                const lista = deEstaHoja
+                    .map((m) => `${markPhrase(markFromRow(m))}: ${m.content}`)
+                    .join('; ')
                 setBaking(`Horneando hoja ${i + 1} de ${hojas.length}…`)
 
                 const prompt =
@@ -396,6 +422,11 @@ const AvatarMarksDialog = ({
                     // glúteo porque la vista de espaldas le venía mejor.
                     `Image 1 shows the same woman from several angles: draw each mark in EVERY view where its area ` +
                     `is visible, always on the body part stated and on the stated front or back of her body, and nowhere else. ` +
+                    // Sin esto el motor "resuelve" una marca tapada moviéndola
+                    // a la piel que sí ve: la rosa de la ingle apareció encima
+                    // de la cinta del bikini, en el vientre.
+                    `Keep her clothing exactly as it is in image 1, and draw a mark only where that body part is bare there: ` +
+                    `if the garment covers it in a view, leave that view without the mark instead of moving it elsewhere. ` +
                     // La intensidad va DESPUÉS de "copia el diseño": primero
                     // que copie la forma, y solo entonces con cuánta tinta.
                     // Al revés, una intensidad baja se lleva por delante el

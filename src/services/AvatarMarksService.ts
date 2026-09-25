@@ -237,11 +237,23 @@ export async function getSheetsForBaking(
         .order('created_at', { ascending: false })
     if (error) throw error
 
+    // Una hoja ANTERIOR al último horneado ya lo lleva pintado: volver a
+    // hornearla le añadiría los tatuajes OTRA VEZ, encima de los que ya tiene.
+    // Con esto, regenerar una sola hoja en el Body Lab y darle a hornear hace
+    // lo esperable — pinta la nueva y deja en paz las que ya estaban.
+    const marcas = await listAvatarMarks(avatarId)
+    const ultimoHorneado = marcas
+        .map((m) => m.baked_at)
+        .filter((v): v is string => !!v)
+        .sort()
+        .pop()
+
     const filas = (data ?? []) as unknown as {
         id: string
         type: SheetType
         storage_path: string
         storage_provider: string | null
+        created_at: string
     }[]
 
     // Una por tipo: la primera de cada uno, que con el orden de arriba es la
@@ -252,6 +264,7 @@ export async function getSheetsForBaking(
     for (const fila of filas) {
         if (vistas.has(fila.type)) continue
         vistas.add(fila.type)
+        if (ultimoHorneado && fila.created_at <= ultimoHorneado) continue
         hojas.push({
             referenceId: fila.id,
             type: fila.type,
