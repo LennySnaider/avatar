@@ -83,7 +83,7 @@ export const MARK_ZONES: readonly MarkZone[] = [
     { id: 'costillas', label: 'Costillas', phrase: '{side} ribs', fem: true, plural: true, lateral: true, exposure: 'swim' },
     { id: 'abdomen', label: 'Abdomen', phrase: 'stomach, below the navel', lateral: false, exposure: 'swim' },
     { id: 'cadera', label: 'Cadera', phrase: '{side} hip, on the side of the body over the hip bone', fem: true, lateral: true, exposure: 'swim' },
-    { id: 'ingle', label: 'Ingle', phrase: '{side} groin at the bikini line, on the FRONT of the body where the thigh meets the lower belly', fem: true, lateral: true, exposure: 'swim' },
+    { id: 'ingle', label: 'Ingle', phrase: '{side} groin at the bikini line, low on the FRONT of the body beside the pubic mound, below the hip bone', fem: true, lateral: true, exposure: 'swim' },
 
     // Torso trasero
     { id: 'espalda_alta', label: 'Espalda alta', phrase: 'upper back', lateral: false, exposure: 'skin' },

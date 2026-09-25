@@ -526,6 +526,26 @@ async function build(ctx: ImageRouteContext): Promise<KieImageRequest> {
                 SEEDREAM_BUDGET - seedreamAnchor.length,
             )
             let sceneText = String(input.prompt)
+            // El tag [MARKS: …] es ANATOMÍA del avatar, no escena. Viaja
+            // pegado al prompt porque es la única forma de que sobreviva al
+            // saneado de identidad, pero si se queda DENTRO del texto de
+            // escena se come su presupuesto: mide ~900 caracteres y dejó la
+            // escena cortada en "Standing against a bright source directly"
+            // — sin vestido, sin puerta y sin cielo, así que el motor la
+            // resolvió con un desnudo de estudio. Se saca aquí y se recoloca
+            // junto al ancla, fuera del cap, como ya hace el acabado realista.
+            //
+            // Antes de la rama del clon a propósito: esa rama borra TODOS los
+            // corchetes de cierre y partiría el tag por la mitad.
+            let marksTag = ''
+            const marksMatch = sceneText.match(/\[MARKS[^\]]*\]/i)
+            if (marksMatch) {
+                marksTag = marksMatch[0]
+                sceneText = sceneText
+                    .replace(marksMatch[0], ' ')
+                    .replace(/\s{2,}/g, ' ')
+                    .trim()
+            }
             if (hasClone) {
                 // Se CONSERVA la descripción del clon (antes se borraba por
                 // redundante con la imagen) para REANCLAR los accesorios finos —
@@ -579,7 +599,9 @@ async function build(ctx: ImageRouteContext): Promise<KieImageRequest> {
             // rebasarlo es el TOTAL, no el ancla. Se vigila lo que la API
             // rechazaría (422) y, aparte, la señal de CALIDAD: un ancla que
             // pasa del presupuesto es un ancla que diluye la cara.
-            const finalPrompt = `${seedreamAnchor} ${sceneText}`
+            const finalPrompt = `${seedreamAnchor} ${
+                marksTag ? `${marksTag} ` : ''
+            }${sceneText}`
             if (finalPrompt.length > SEEDREAM_HARD_LIMIT) {
                 console.warn(
                     `[KIE] Seedream prompt ${finalPrompt.length} chars — pasa del límite de la API (${SEEDREAM_HARD_LIMIT}), riesgo de 422`,

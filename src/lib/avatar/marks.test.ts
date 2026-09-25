@@ -35,7 +35,7 @@ test('el lado se resuelve en la frase del prompt', () => {
     )
     assert.equal(
         markPhrase({ zone: 'ingle', side: 'right' }),
-        'right groin at the bikini line, on the FRONT of the body where the thigh meets the lower belly',
+        'right groin at the bikini line, low on the FRONT of the body beside the pubic mound, below the hip bone',
     )
 })
 
@@ -96,7 +96,7 @@ test('el tag reúne las marcas con sus cláusulas', () => {
     )
     assert.ok(
         tag.includes(
-            'on the FRONT of the body where the thigh meets the lower belly — rosa pequeña con tallo',
+            'low on the FRONT of the body beside the pubic mound, below the hip bone — rosa pequeña con tallo',
         ),
     )
     // Las cláusulas que evitan los fallos conocidos.
