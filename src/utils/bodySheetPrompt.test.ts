@@ -1,7 +1,10 @@
 // src/utils/bodySheetPrompt.test.ts
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { sameBodyShape } from './bodySheetPrompt.ts'
+import {
+    buildTurnaroundRefinePrompt,
+    sameBodyShape,
+} from './bodySheetPrompt.ts'
 import type { PhysicalMeasurements } from '@/@types/supabase'
 
 /**
@@ -130,4 +133,19 @@ test('el aviso y la lista no pueden discrepar', async () => {
             `discrepan para ${JSON.stringify(b)}`,
         )
     }
+})
+
+test('la hoja vestida encadenada lleva candado de talla', () => {
+    // El busto y los glúteos salían MÁS PEQUEÑOS que en la nude de la que
+    // nace: la prenda arrastra al modelo a comprimir y el sesgo flaco de
+    // Seedream empuja igual. "No la remodeles" no bastaba.
+    const vestida = buildTurnaroundRefinePrompt(base, { fromOwnSheet: true })
+    assert.match(vestida, /SIZE LOCK/)
+    assert.match(vestida, /does not compress, flatten, lift or reduce/)
+    // En la nude no aplica: no hay prenda que comprima nada.
+    const nude = buildTurnaroundRefinePrompt(base, {
+        fromOwnSheet: true,
+        nude: true,
+    })
+    assert.ok(!nude.includes('SIZE LOCK'))
 })

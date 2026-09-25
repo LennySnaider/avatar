@@ -415,6 +415,16 @@ function buildSheetRedressPrompt(
             ? `Change ONE thing only: her clothing. ${nudeSheetClause(m)}`
             : `Change ONE thing only: her clothing. ${CLOTHED_SHEET_CLAUSE}`,
         'Do NOT reshape, slim, enlarge or "improve" her body, and do NOT change her pose, framing or background — this is a wardrobe change on an existing photo, nothing else.',
+        // CANDADO DE TALLA (2026-09-25). La hoja vestida salía con el busto y
+        // los glúteos MÁS PEQUEÑOS que la nude de la que nace, y eso deja al
+        // avatar con dos cuerpos distintos según la toma sea vestida o no.
+        // "No la remodeles" no bastaba: la prenda misma arrastra al modelo a
+        // comprimir —un sujetador aplana, una braga recorta la cadera— y el
+        // sesgo flaco de Seedream empuja en la misma dirección. Hay que decir
+        // que la ropa va ENCIMA del mismo cuerpo, sin tocarlo.
+        opts?.nude
+            ? ''
+            : 'SIZE LOCK (CRITICAL): her bust and her glutes keep EXACTLY the same size, fullness and projection as in the reference image. The garment sits ON TOP of that same body and does not compress, flatten, lift or reduce it anywhere; her silhouette under the clothes is the silhouette of the reference.',
         [body, curves, measurements].filter(Boolean).join(', ')
             ? `For confirmation, her body already matches this specification and must stay that way: ${[body, curves, measurements].filter(Boolean).join(', ')}.`
             : '',
