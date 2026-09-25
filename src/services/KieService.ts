@@ -14,7 +14,7 @@ import {
 } from '@/lib/mediaPersist'
 import { orgStoragePath } from '@/lib/storagePaths'
 import { listAvatarMarks } from './AvatarMarksService'
-import { buildMarksTag, markFromRow } from '@/lib/avatar/marks'
+import { buildMarksTag, findZone, markFromRow } from '@/lib/avatar/marks'
 import { tryGetOrgContext } from '@/lib/tenant/getOrgContext'
 import {
     holdForOperation,
@@ -1392,7 +1392,22 @@ async function conMarcasDelAvatar(
     if (params.prompt.includes('[MARKS')) return params
     try {
         const rows = await listAvatarMarks(params.avatarId)
-        const tag = buildMarksTag(rows.map(markFromRow))
+        // Una marca cuya zona TAPA la ropa no se describe en una toma vestida.
+        // Pedirla es una orden que el motor no puede cumplir, y no la omite:
+        // la MUEVE a la piel que sí ve — la rosa de la ingle salía en el muslo
+        // una y otra vez. Es el mismo criterio que ya se aplica a pezones y
+        // vello, y por el mismo motivo.
+        //
+        // `nsfwIntent` es lo único que llega aquí sobre la intención de la
+        // toma: basta, porque las zonas 'swim' (ingle, glúteo, costillas,
+        // muslo interior, bajo el pecho) solo se ven en bañador o desnudo.
+        // Las 'skin' y 'always' —brazos, manos, cuello— se quedan siempre:
+        // ahí la cláusula de "solo si está descubierta" sí funciona.
+        const visibles =
+            params.nsfwIntent === true
+                ? rows
+                : rows.filter((r) => findZone(r.zone)?.exposure !== 'swim')
+        const tag = buildMarksTag(visibles.map(markFromRow))
         if (!tag) return params
         return { ...params, prompt: `${tag} ${params.prompt}` }
     } catch {
