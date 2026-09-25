@@ -5,6 +5,7 @@ import { useAvatarStudioStore } from '../_store/avatarStudioStore'
 import { getSignedUrl } from '@/services/AvatarForgeService'
 import { listAvatarMarks } from '@/services/AvatarMarksService'
 import { markFromRow } from '@/lib/avatar/marks'
+import { cacheAvatarMarks } from '@/lib/avatar/marksCache'
 import { createThumbnail } from '@/utils/imageOptimization'
 import type { Avatar, AIProvider, Prompt, MediaType } from '@/@types/supabase'
 import type { ClonedVoice } from '@/@types/voice'
@@ -211,7 +212,13 @@ const AvatarStudioProvider = ({
                     // fuera de todas las generaciones y los tatuajes solo
                     // aparecen si acabas de abrir el diálogo que los edita.
                     return listAvatarMarks(avatar.id)
-                        .then((rows) => setAvatarMarks(rows.map(markFromRow)))
+                        .then((rows) => {
+                            // La lista cruda queda en memoria para que el
+                            // diálogo de marcas abra pintado en vez de con un
+                            // spinner: esta consulta ya la estamos pagando.
+                            cacheAvatarMarks(avatar.id, rows)
+                            setAvatarMarks(rows.map(markFromRow))
+                        })
                         .catch(() => {
                             // Sin marcas se genera igual: no se bloquea el
                             // estudio por esto.

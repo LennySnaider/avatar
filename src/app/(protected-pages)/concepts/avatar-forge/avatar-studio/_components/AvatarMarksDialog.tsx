@@ -48,6 +48,7 @@ import {
     uploadMarkPhoto,
     type AvatarMarkRow,
 } from '@/services/AvatarMarksService'
+import { cacheAvatarMarks, cachedAvatarMarks } from '@/lib/avatar/marksCache'
 import { optimizeForApi } from '@/utils/imageOptimization'
 import { getGenerationMediaUrl } from '@/lib/storagePaths'
 
@@ -199,15 +200,25 @@ const AvatarMarksDialog = ({
     const publish = useCallback(
         (next: AvatarMarkRow[]) => {
             setRows(next)
+            cacheAvatarMarks(avatarId, next)
             onChange?.(next)
         },
-        [onChange],
+        [onChange, avatarId],
     )
 
+    // Pinta YA lo que se trajo al abrir el avatar y revalida callado. Antes
+    // toda apertura empezaba en blanco con un spinner hasta que respondía el
+    // servidor — varios segundos en el móvil, sobre una lista que ya teníamos.
     useEffect(() => {
         if (!isOpen || !avatarId) return
         let cancelled = false
-        setIsLoading(true)
+        const enMemoria = cachedAvatarMarks(avatarId)
+        if (enMemoria) {
+            setRows(enMemoria)
+            setIsLoading(false)
+        } else {
+            setIsLoading(true)
+        }
         listAvatarMarks(avatarId)
             .then((data) => {
                 if (cancelled) return
