@@ -125,3 +125,11 @@ test('sin color de ojos elegido, el ancla queda como estaba', async () => {
     assert.match(p, /EYE COLOUR, HAIR colour/)
     assert.equal(/recolou?r ONLY the iris/i.test(p), false)
 })
+
+test('FACE FIDELITY no arrastra la coma huérfana del fix de marcas de piel', async () => {
+    // 1e17e1c quitó "and only the skin markings she actually has" y dejó
+    // "jawline, ;" — basura que el motor lee en la frase de más peso.
+    const p = await conClone()
+    assert.match(p, /FACE FIDELITY/)
+    assert.equal(/, ;/.test(p), false)
+})
