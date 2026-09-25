@@ -28,6 +28,7 @@ import {
     MARK_ZONES,
     exposureLabel,
     findZone,
+    inkIntensityPhrase,
     markFromRow,
     markPhrase,
     zoneLabel,
@@ -189,6 +190,9 @@ const AvatarMarksDialog = ({
     const [baking, setBaking] = useState<string | null>(null)
     /** Zona que propuso la FOTO y nadie ha confirmado todavía. */
     const [zonaPropuesta, setZonaPropuesta] = useState(false)
+    /** Cuánta tinta se pinta al hornear (10-100). No se guarda en la marca:
+     *  queda pintada en la hoja, que es lo que el motor copia después. */
+    const [intensidad, setIntensidad] = useState(100)
     const fotoInputRef = useRef<HTMLInputElement>(null)
 
     const publish = useCallback(
@@ -373,6 +377,11 @@ const AvatarMarksDialog = ({
                     `same face, same body, same poses, same framing, same lighting, same background. ` +
                     `The marks to add, each on her own skin at the stated place: ${lista}. ` +
                     `Reproduce each design, its scale and its placement exactly as the extra reference images show. ` +
+                    // La intensidad va DESPUÉS de "copia el diseño": primero
+                    // que copie la forma, y solo entonces con cuánta tinta.
+                    // Al revés, una intensidad baja se lleva por delante el
+                    // parecido con la foto.
+                    `Draw every mark with ${inkIntensityPhrase(intensidad)} — same design and size, only the ink strength changes. ` +
                     `Never print them on clothing, and do not add any other tattoo, scar or mark.`
 
                 const sub = await submitKieImageTask({
@@ -885,8 +894,32 @@ const AvatarMarksDialog = ({
                     <p className="mr-auto text-[11px] text-gray-500 leading-relaxed max-w-sm">
                         {rows.every((r) => r.baked_at)
                             ? 'Pintadas en las hojas del avatar: el motor las copia en vez de inventarlas.'
-                            : 'Ahora viajan como texto y el motor las redibuja en cada imagen. Hornéalas para que salgan idénticas siempre.'}
+                            : 'Ahora viajan como texto y el motor las redibuja en cada imagen. Hornéalas para que salgan idénticas siempre; la intensidad es con cuánta tinta se pintan, y queda fijada en la hoja.'}
                     </p>
+                )}
+                {rows.length > 0 && (
+                    <div className="flex items-center gap-2 w-full sm:w-auto">
+                        <label
+                            htmlFor="mark-intensity"
+                            className="text-[11px] text-gray-500 shrink-0"
+                        >
+                            Intensidad
+                        </label>
+                        <input
+                            id="mark-intensity"
+                            type="range"
+                            min={10}
+                            max={100}
+                            step={10}
+                            value={intensidad}
+                            disabled={!!baking}
+                            onChange={(e) => setIntensidad(Number(e.target.value))}
+                            className="flex-1 sm:w-28 accent-primary"
+                        />
+                        <span className="text-[11px] text-gray-500 tabular-nums w-8 text-right">
+                            {intensidad}%
+                        </span>
+                    </div>
                 )}
                 {rows.length > 0 && (
                     <Button

@@ -198,6 +198,29 @@ export function buildMarksTag(marks: readonly AvatarMarkInput[]): string {
     )
 }
 
+/**
+ * Cuánta tinta se ve, del 10 al 100, en palabras.
+ *
+ * En porcentaje no sirve: un modelo de imagen no sabe qué es "al 40%", pero sí
+ * sabe dibujar tinta gastada. Cada tramo nombra un ESTADO del tatuaje —recién
+ * hecho, curado, desvaído, viejo— que es algo que el motor ha visto miles de
+ * veces en fotos reales; el número solo elige el tramo.
+ *
+ * Se usa al hornear: la intensidad queda pintada en la hoja, y a partir de ahí
+ * la copia. Por eso vale la pena acertar a la primera — bajar la intensidad
+ * después obliga a hornear otra vez.
+ */
+export function inkIntensityPhrase(intensity: number): string {
+    const v = Number.isFinite(intensity) ? intensity : 100
+    if (v >= 90) return 'fresh solid ink, full contrast against her skin'
+    if (v >= 70) return 'healed ink, slightly softened but still clearly readable'
+    if (v >= 50)
+        return 'faded ink, noticeably lower contrast — soft dark grey rather than black'
+    if (v >= 30)
+        return 'old faded ink, thin light grey lines, low contrast, the skin showing through'
+    return 'very faint old ink, pale grey, soft blurred edges, barely visible at a glance'
+}
+
 /** Forma mínima de una fila de `avatar_marks` (snake_case, como la devuelve PostgREST). */
 export interface AvatarMarkRowLike {
     zone: string

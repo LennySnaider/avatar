@@ -7,6 +7,7 @@ import {
     findZone,
     markPhrase,
     zoneLabel,
+    inkIntensityPhrase,
 } from './marks.ts'
 
 test('las zonas laterales llevan {side} y las centrales no', () => {
@@ -137,5 +138,17 @@ test('interior y exterior llevan ancla anatómica, no solo la palabra', () => {
             zone.phrase.includes(','),
             `${id}: la frase no explica qué cara es: "${zone.phrase}"`,
         )
+    }
+})
+
+test('la intensidad se traduce a un estado de la tinta, no a un porcentaje', () => {
+    // Un modelo de imagen no sabe dibujar "al 40%", pero sí tinta gastada.
+    assert.ok(inkIntensityPhrase(100).includes('fresh'))
+    assert.ok(inkIntensityPhrase(40).includes('faded'))
+    assert.ok(inkIntensityPhrase(10).includes('faint'))
+    // Nunca devuelve vacío, ni con basura: el prompt del horneado la incrusta.
+    for (const v of [0, 10, 55, 100, NaN]) {
+        assert.ok(inkIntensityPhrase(v).length > 10, String(v))
+        assert.ok(!inkIntensityPhrase(v).includes('%'))
     }
 })
