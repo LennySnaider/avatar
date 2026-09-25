@@ -353,11 +353,12 @@ const PromptLibraryDrawer = ({ userId }: PromptLibraryDrawerProps) => {
     )
 
     // Acordeones por tema (SFW primero, luego 🌶️), colapsados por default.
-    const THEME_ORDER = ['lifestyle', 'outdoor', 'boudoir', 'wet', 'tease', 'vehicles', 'sports', 'cosplay', 'custom', 'general']
+    const THEME_ORDER = ['lifestyle', 'outdoor', 'boudoir', 'lingerie', 'wet', 'tease', 'vehicles', 'sports', 'cosplay', 'custom', 'general']
     const THEME_LABEL: Record<string, string> = {
         lifestyle: 'Lifestyle',
         outdoor: 'Outdoor',
         boudoir: 'Boudoir',
+        lingerie: 'Lingerie',
         wet: 'Wet',
         tease: 'Tease',
         vehicles: 'Vehicles',
