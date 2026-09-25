@@ -269,8 +269,10 @@ async function build(ctx: ImageRouteContext): Promise<KieImageRequest> {
                 const hairColourClause = hairColourOnly
                     ? ` Her hair COLOUR is ${hairColourOnly} — recolor if needed; keep the exact hairstyle, cut and up/down styling from the first image.`
                     : ''
+                // El swap copia la cara de la imagen 2 "100%" — con ella, el iris
+                // de la FOTO. Si Appearance fija otro color, se dice que manda.
                 const eyeShortClause = ctx.eyeEmphasis
-                    ? ` Eyes: ${ctx.eyeEmphasis}.`
+                    ? ` Eyes: ${ctx.eyeEmphasis} — recolour ONLY the iris if the SECOND image shows another colour.`
                     : ''
                 // Cuerpo re-indexado a la TERCERA imagen (clon=1, cara=2). El
                 // fix ab20a32/501458b se preserva: medidas + curvas viajan
@@ -397,8 +399,14 @@ async function build(ctx: ImageRouteContext): Promise<KieImageRequest> {
                 // salía con la cara/pelo del clone y perdía las medidas de MiaUltra
                 // (reporte del usuario). Del clone se toma SOLO outfit/pose/escena; la
                 // PERSONA (cara + atributos + cuerpo/medidas) es SIEMPRE la del avatar.
+                // Con color de ojos en Appearance, el iris NO sale de "the FIRST
+                // image": esta lista lo mandaba a la foto y le ganaba al override
+                // (medido 2026-09-25, Anasofy gris con fotos café → salía café).
+                const lockEyeColour = ctx.eyeEmphasis
+                    ? 'EYE COLOUR (as stated below)'
+                    : 'EYE COLOUR'
                 const cloneFaceGuard = hasClone
-                    ? ` CRITICAL IDENTITY LOCK — the avatar is ONE consistent person: from the CLONE reference take ONLY the outfit, pose, framing and setting, NOTHING about the person herself. Her face, facial features, bone structure, skin tone, EYE COLOUR, HAIR colour, AND her BODY proportions, curves, height and measurements must ALL come from the avatar (the FIRST image + the body spec below), NEVER from the clone (whose face and body are a faceless mannequin). Render her face clearly and well-lit (not in shadow) so she reads as the SAME person every time.`
+                    ? ` CRITICAL IDENTITY LOCK — the avatar is ONE consistent person: from the CLONE reference take ONLY the outfit, pose, framing and setting, NOTHING about the person herself. Her face, facial features, bone structure, skin tone, ${lockEyeColour}, HAIR colour, AND her BODY proportions, curves, height and measurements must ALL come from the avatar (the FIRST image + the body spec below), NEVER from the clone (whose face and body are a faceless mannequin). Render her face clearly and well-lit (not in shadow) so she reads as the SAME person every time.`
                     : ''
                 const anchorHead = `The person in the FIRST attached reference image is the subject — keep her EXACT face, facial features and likeness from that image.${faceFidelityClause}${cloneFaceGuard} `
                 // Guard anti-duplicación: los prompts de VIDEO (movimiento/secuencia:
@@ -417,8 +425,15 @@ async function build(ctx: ImageRouteContext): Promise<KieImageRequest> {
                 const limbClause = hasCloseFraming(ctx.prompt)
                     ? `${INTACT_BODY_IN_FRAME_CLAUSE} The FRAMING stated in the scene text is MANDATORY — crop exactly as it says; the camera stays at that framing instead of zooming out to include more of the body.`
                     : INTACT_BODY_CLAUSE
+                // El "and eyes" del recall (8274759) es por la FORMA del ojo
+                // ("cara/ojos raros"), no por el color. Pero al ser lo último
+                // antes de la escena, con otro color en Appearance reafirmaba el
+                // iris de la foto: el recall conserva la forma y repite el color.
+                const faceRecall = ctx.eyeEmphasis
+                    ? ` Above all: her FACE and eye shape must remain EXACTLY the woman in the FIRST image, with ${ctx.eyeEmphasis}.`
+                    : ' Above all: her FACE and eyes must remain EXACTLY the woman in the FIRST image.'
                 const buildAnchorTail = (hair: string) =>
-                    `${hair}${eyeClause}${extraClauses} Render EXACTLY ONE person — a single subject in ONE pose; do NOT duplicate the figure, show multiple poses side by side, or add any extra people.${limbClause} Above all: her FACE and eyes must remain EXACTLY the woman in the FIRST image. Follow the SCENE, POSE and ACTION described below EXACTLY.`
+                    `${hair}${eyeClause}${extraClauses} Render EXACTLY ONE person — a single subject in ONE pose; do NOT duplicate the figure, show multiple poses side by side, or add any extra people.${limbClause}${faceRecall} Follow the SCENE, POSE and ACTION described below EXACTLY.`
                 const anchorTailLong = buildAnchorTail(hairClause)
                 // (La RESERVA DINÁMICA de escena que vivía aquí desde 2026-07-22 ya
                 // no hace falta: el body clause dejó de descontarse contra la

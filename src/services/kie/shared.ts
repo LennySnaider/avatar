@@ -430,8 +430,16 @@ export function eyeClause(eyeEmphasis?: string): string {
     // Qwen). Misma leccion que mannequin/doll, el rosa del pezon y freckles.
     // El positivo describe lo que SI queremos; las prohibiciones viven en
     // EYE_NEGATIVE_TERMS, que va por el canal de negative_prompt.
+    //
+    // 2026-09-25: decia "Her eyes are X" y nada mas — describia, no ANULABA.
+    // Cuando las fotos del avatar tienen otro color (Anasofy: Appearance gris,
+    // fotos cafe oscuro), el ancla que la rodea ordena "keep her EXACT face
+    // from that image" y el modelo resolvia la contradiccion a favor de los
+    // pixeles: salia cafe. Mismo patron que el override de pelo y el de Gemini
+    // (GeminiService, EYE COLOR OVERRIDE): decir que la foto puede no coincidir
+    // y que solo se recolorea el iris.
     return eyeEmphasis
-        ? ` Her eyes are ${eyeEmphasis} — natural realistic iris with subtle colour variation and soft catchlights, the tone muted and true to life.`
+        ? ` Her iris colour is MANDATORY: ${eyeEmphasis} — recolour ONLY the iris if the reference images show another; keep her exact eye shape. Natural iris with subtle colour variation and soft catchlights, muted and true to life.`
         : ''
 }
 
