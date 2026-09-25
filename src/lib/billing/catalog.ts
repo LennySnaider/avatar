@@ -250,6 +250,15 @@ export const VOICE_CLONE_COST_USD: CostEntry = { usd: 0.3, estimated: true }
 export const AGENT_MESSAGE_COST_USD: CostEntry = { usd: 0.004, estimated: true }
 
 /**
+ * Minuto de conversación en vivo (módulo live_avatar), coste BRUTO antes del
+ * margen: cara en tiempo real (Anam, el proveedor por defecto: $0.11–0.16 el
+ * minuto según plan) + TTS en streaming (~450 caracteres hablados por minuto)
+ * + speech-to-text + LLM. Estimado hasta que `live_sessions.spoken_chars` y
+ * `turns` den la medida real. Con LiveAvatar (~$0.09/min) sobra margen.
+ */
+export const LIVE_COST_USD_PER_MINUTE: CostEntry = { usd: 0.15, estimated: true }
+
+/**
  * TECHO por turno del Estratega (agente de la organización, F5.2/Fase 1):
  * cuánto se RESERVA con `quote({kind:'assistant_turn'})`, antes de conocer
  * el uso real. NO es el promedio esperado — `wallet_settle` solo puede bajar
@@ -479,6 +488,8 @@ export type PaidOperation =
      * real del SDK, en el settle (ver `src/lib/assistant/billing.ts`).
      */
     | { kind: 'assistant_turn'; maxTokens?: number }
+    /** Minutos de llamada en vivo (módulo live_avatar). Se cobra por minuto empezado. */
+    | { kind: 'live_minute'; minutes?: number }
 
 export type Quote = {
     /** Identificador estable del SKU para el ledger ('image:kie-seedream-5-lite'). */
@@ -591,6 +602,15 @@ export function quote(op: PaidOperation): Quote {
             return {
                 sku: 'assistant_turn',
                 tokens,
+                costUsd,
+                estimated: true,
+            }
+        }
+        case 'live_minute': {
+            const costUsd = LIVE_COST_USD_PER_MINUTE.usd * Math.max(0, op.minutes ?? 1)
+            return {
+                sku: 'live:minute',
+                tokens: tokensForCostUsd(costUsd),
                 costUsd,
                 estimated: true,
             }

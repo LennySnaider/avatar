@@ -71,6 +71,10 @@ export const TENANT_TABLES = [
     'org_assistant_threads',
     'org_assistant_messages',
     'org_assistant_actions',
+    // Módulo live_avatar (Avatar en vivo) — organization_id NOT NULL
+    // (migración 20260923120000_avatar_en_vivo).
+    'avatar_live_settings',
+    'live_sessions',
 ] as const
 
 export type TenantTable = (typeof TENANT_TABLES)[number]

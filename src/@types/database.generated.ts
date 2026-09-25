@@ -469,6 +469,75 @@ export type Database = {
           },
         ]
       }
+      avatar_live_settings: {
+        Row: {
+          allowed_origins: string[]
+          avatar_id: string
+          created_at: string
+          daily_minutes_cap: number
+          disabled_at: string | null
+          enabled: boolean
+          enabled_at: string | null
+          face_error: string | null
+          face_id: string | null
+          face_provider: string
+          face_status: string
+          greeting: string | null
+          id: string
+          max_concurrent_sessions: number
+          max_session_seconds: number
+          organization_id: string
+          public_enabled: boolean
+          public_token: string
+          stt_provider: string | null
+          updated_at: string
+        }
+        Insert: {
+          allowed_origins?: string[]
+          avatar_id: string
+          created_at?: string
+          daily_minutes_cap?: number
+          disabled_at?: string | null
+          enabled?: boolean
+          enabled_at?: string | null
+          face_error?: string | null
+          face_id?: string | null
+          face_provider?: string
+          face_status?: string
+          greeting?: string | null
+          id?: string
+          max_concurrent_sessions?: number
+          max_session_seconds?: number
+          organization_id: string
+          public_enabled?: boolean
+          public_token?: string
+          stt_provider?: string | null
+          updated_at?: string
+        }
+        Update: {
+          allowed_origins?: string[]
+          avatar_id?: string
+          created_at?: string
+          daily_minutes_cap?: number
+          disabled_at?: string | null
+          enabled?: boolean
+          enabled_at?: string | null
+          face_error?: string | null
+          face_id?: string | null
+          face_provider?: string
+          face_status?: string
+          greeting?: string | null
+          id?: string
+          max_concurrent_sessions?: number
+          max_session_seconds?: number
+          organization_id?: string
+          public_enabled?: boolean
+          public_token?: string
+          stt_provider?: string | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
       avatar_personas: {
         Row: {
           api_key: string | null
@@ -1119,6 +1188,75 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      live_sessions: {
+        Row: {
+          avatar_id: string
+          billed_seconds: number
+          chat_id: string | null
+          created_at: string
+          end_reason: string | null
+          ended_at: string | null
+          id: string
+          ip_hash: string | null
+          last_billed_minute: number
+          last_seen_at: string
+          organization_id: string
+          secret_hash: string
+          source: string
+          spoken_chars: number
+          started_at: string
+          status: string
+          stt_provider: string | null
+          turns: number
+          user_agent: string | null
+          visitor_id: string
+        }
+        Insert: {
+          avatar_id: string
+          billed_seconds?: number
+          chat_id?: string | null
+          created_at?: string
+          end_reason?: string | null
+          ended_at?: string | null
+          id?: string
+          ip_hash?: string | null
+          last_billed_minute?: number
+          last_seen_at?: string
+          organization_id: string
+          secret_hash: string
+          source: string
+          spoken_chars?: number
+          started_at?: string
+          status?: string
+          stt_provider?: string | null
+          turns?: number
+          user_agent?: string | null
+          visitor_id: string
+        }
+        Update: {
+          avatar_id?: string
+          billed_seconds?: number
+          chat_id?: string | null
+          created_at?: string
+          end_reason?: string | null
+          ended_at?: string | null
+          id?: string
+          ip_hash?: string | null
+          last_billed_minute?: number
+          last_seen_at?: string
+          organization_id?: string
+          secret_hash?: string
+          source?: string
+          spoken_chars?: number
+          started_at?: string
+          status?: string
+          stt_provider?: string | null
+          turns?: number
+          user_agent?: string | null
+          visitor_id?: string
+        }
+        Relationships: []
       }
       module_catalog: {
         Row: {

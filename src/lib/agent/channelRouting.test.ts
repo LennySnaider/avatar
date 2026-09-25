@@ -32,3 +32,11 @@ test('promptChannelFor coincide con resolveDeliveryChannel para los tres canales
     assert.equal(promptChannelFor('social:x'), 'social_comment')
     assert.equal(promptChannelFor(''), 'fanvue')
 })
+
+test('live (módulo live_avatar) va por su propio canal, nunca cae en fanvue', () => {
+    assert.equal(resolveDeliveryChannel('live'), 'live')
+    assert.equal(resolveDeliveryChannel('live:widget'), 'live')
+    assert.equal(promptChannelFor('live'), 'live')
+    // Un prefijo parecido no cuenta.
+    assert.equal(resolveDeliveryChannel('liveaudio'), 'fanvue')
+})
