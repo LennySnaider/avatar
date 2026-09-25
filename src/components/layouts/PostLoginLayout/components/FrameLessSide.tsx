@@ -87,7 +87,7 @@ const FrameLessSide = ({ children }: CommonProps) => {
                     contentClass="h-[calc(100vh-8rem)]"
                     mode="dark"
                 />
-                <FrameLessGap className="min-h-screen min-w-0 relative w-full">
+                <FrameLessGap className="min-h-svh min-w-0 relative w-full">
                     <div className="bg-white dark:bg-gray-900 flex flex-col flex-1 h-full rounded-2xl">
                         <Header
                             className={classNames(

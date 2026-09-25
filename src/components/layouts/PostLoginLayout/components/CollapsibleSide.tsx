@@ -24,7 +24,13 @@ const CollapsibleSide = ({ children }: CommonProps) => {
         >
             <div className="flex flex-auto min-w-0">
                 <SideNav />
-                <div className="flex flex-col flex-auto min-h-screen min-w-0 relative w-full">
+                {/* `svh`, no `screen` (= `vh`): en el móvil `vh` mide el
+                    viewport GRANDE, con la barra del navegador retraída, así
+                    que esta columna salía más alta que lo que se ve y la
+                    página quedaba con scroll propio — se veían las pestañas o
+                    el pie, nunca los dos, y sobraba un hueco abajo. En
+                    escritorio valen lo mismo. */}
+                <div className="flex flex-col flex-auto min-h-svh min-w-0 relative w-full">
                     <Header
                         className="shadow-sm dark:shadow-2xl"
                         headerStart={
