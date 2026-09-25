@@ -12,9 +12,14 @@ import {
     centerCropToAspect,
     uploadBufferToGenerations,
 } from '@/lib/mediaPersist'
-import { orgStoragePath } from '@/lib/storagePaths'
+import { getGenerationMediaUrl, orgStoragePath } from '@/lib/storagePaths'
 import { listAvatarMarks } from './AvatarMarksService'
-import { buildMarksTag, findZone, markFromRow } from '@/lib/avatar/marks'
+import {
+    buildMarksTag,
+    findZone,
+    markFromRow,
+    markPhrase,
+} from '@/lib/avatar/marks'
 import { tryGetOrgContext } from '@/lib/tenant/getOrgContext'
 import {
     holdForOperation,
@@ -1409,7 +1414,46 @@ async function conMarcasDelAvatar(
                 : rows.filter((r) => findZone(r.zone)?.exposure !== 'swim')
         const tag = buildMarksTag(visibles.map(markFromRow))
         if (!tag) return params
-        return { ...params, prompt: `${tag} ${params.prompt}` }
+
+        // La FOTO de cada marca viaja como referencia, no solo su descripción.
+        // Es la diferencia entre decirle al motor cómo es el tatuaje y
+        // enseñárselo: con texto lo redibuja cada vez —otra flor, otro
+        // tamaño—, con la imagen lo copia. Y no cuesta presupuesto de prompt,
+        // porque son imágenes.
+        //
+        // Van por URL, no en base64: los objetos son públicos y el proveedor
+        // los descarga él. En base64 engordarían el cuerpo de la server
+        // action, que Vercel corta a 4,5 MB.
+        //
+        // Tres como mucho: `planExtraRefs` las coloca ANTES de pose/escena/
+        // clone, así que una colección larga de marcas les quitaría su ranura.
+        const refsMarcas = visibles
+            .filter(
+                (r): r is typeof r & { storage_path: string } =>
+                    !!r.storage_path,
+            )
+            .slice(0, 3)
+            .map((r) => ({
+                url: getGenerationMediaUrl(r.storage_path, r.storage_provider),
+                mimeType: 'image/jpeg',
+                role: 'mark',
+                // La cláusula de piel la nombra: "Image N = una marca
+                // permanente, situada en su antebrazo interior derecho".
+                markZone: markPhrase(markFromRow(r)),
+            }))
+
+        return {
+            ...params,
+            prompt: `${tag} ${params.prompt}`,
+            ...(refsMarcas.length > 0
+                ? {
+                      referenceImages: [
+                          ...(params.referenceImages ?? []),
+                          ...refsMarcas,
+                      ],
+                  }
+                : {}),
+        }
     } catch {
         // Sin marcas se genera igual: una marca perdida no vale una
         // generación abortada.
