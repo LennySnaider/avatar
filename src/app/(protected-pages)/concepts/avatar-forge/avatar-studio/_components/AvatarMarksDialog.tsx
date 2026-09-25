@@ -245,7 +245,16 @@ const AvatarMarksDialog = ({
     const fotoUrl = form.storagePath
         ? getGenerationMediaUrl(form.storagePath, form.storageProvider)
         : null
-    const marked = new Set(rows.map((r) => r.zone))
+    // Clave zona+lado: el muñeco dibuja cada zona lateral DOS veces (una por
+    // mitad), así que marcar por zona a secas encendía las dos y parecía que
+    // el tatuaje estaba en los dos brazos.
+    const claveDe = (zone: string, side: MarkSide | null) =>
+        `${zone}|${side ?? ''}`
+    const marked = new Set(
+        rows.map((r) =>
+            claveDe(r.zone, r.side === 'right' || r.side === 'left' ? r.side : null),
+        ),
+    )
 
     /**
      * Cambiar de zona CONSERVA el borrador: la foto y lo que el análisis
@@ -253,9 +262,13 @@ const AvatarMarksDialog = ({
      * analizar una foto, y vaciar el formulario obligaba a subirla otra vez.
      * Solo se empieza de cero al salir de una marca YA guardada.
      */
-    const selectZone = (zoneId: string) => {
+    const selectZone = (zoneId: string, lado?: MarkSide | null) => {
         setZonaPropuesta(false)
-        const existing = rows.find((r) => r.zone === zoneId)
+        const existing = rows.find(
+            (r) =>
+                r.zone === zoneId &&
+                (lado === undefined || (r.side ?? null) === (lado ?? null)),
+        )
         if (existing) {
             setForm(rowToForm(existing))
             return
@@ -266,7 +279,9 @@ const AvatarMarksDialog = ({
             ...base,
             id: null,
             zone: zoneId,
-            side: def?.lateral ? (base.side ?? 'right') : null,
+            side: def?.lateral
+                ? (lado ?? base.side ?? 'right')
+                : null,
         })
     }
 
@@ -569,10 +584,72 @@ const AvatarMarksDialog = ({
     const shapeFor = (zoneId: string) => ZONE_SHAPES[zoneId]
     const visibleZones = MARK_ZONES.filter((z) => shapeFor(z.id)?.view === view)
 
-    const fillFor = (zoneId: string) =>
-        marked.has(zoneId) ? '#db2777' : 'rgba(148,163,184,.16)'
-    const strokeFor = (zoneId: string) =>
-        zoneId === form.zone ? '#2563eb' : marked.has(zoneId) ? '#db2777' : '#94a3b8'
+    const fillFor = (clave: string) =>
+        marked.has(clave) ? '#db2777' : 'rgba(148,163,184,.16)'
+    const strokeFor = (clave: string, activa: boolean) =>
+        activa ? '#2563eb' : marked.has(clave) ? '#db2777' : '#94a3b8'
+
+    /**
+     * Los puntos pulsables del muñeco.
+     *
+     * La geometría está escrita para UNA mitad, así que una zona lateral se
+     * dibuja dos veces: tal cual y espejada sobre el eje (el viewBox mide 220).
+     * Sin esto no había forma de poner nada en el lado izquierdo — el lado solo
+     * se podía cambiar con los botones, que es justo lo que nadie busca cuando
+     * tiene un mapa del cuerpo delante.
+     *
+     * Qué lado es cada mitad depende de la vista: de frente, la mitad
+     * izquierda de la pantalla es SU derecha; de espaldas, al revés. Es la
+     * misma regla que ya seguían las etiquetas de arriba.
+     */
+    const ANCHO = 220
+    const espejo = (shape: Shape): Shape =>
+        shape.kind === 'rect'
+            ? {
+                  ...shape,
+                  coords: [
+                      ANCHO - shape.coords[0] - shape.coords[2],
+                      shape.coords[1],
+                      shape.coords[2],
+                      shape.coords[3],
+                      shape.coords[4],
+                  ],
+              }
+            : {
+                  ...shape,
+                  coords: [
+                      ANCHO - shape.coords[0],
+                      shape.coords[1],
+                      shape.coords[2],
+                      shape.coords[3],
+                  ],
+              }
+
+    const ladoDeLaMitad = (izquierda: boolean): MarkSide =>
+        view === 'front'
+            ? izquierda
+                ? 'right'
+                : 'left'
+            : izquierda
+              ? 'left'
+              : 'right'
+
+    const hotspots = visibleZones.flatMap((z) => {
+        const shape = shapeFor(z.id)
+        if (!shape) return []
+        if (!z.lateral) {
+            return [{ zone: z, side: null as MarkSide | null, shape, key: z.id }]
+        }
+        return [true, false].map((izquierda) => {
+            const side = ladoDeLaMitad(izquierda)
+            return {
+                zone: z,
+                side: side as MarkSide | null,
+                shape: izquierda ? shape : espejo(shape),
+                key: `${z.id}-${side}`,
+            }
+        })
+    })
 
     return (
         <Dialog
@@ -659,20 +736,26 @@ const AvatarMarksDialog = ({
                                 stroke="#cbd5e1"
                                 strokeDasharray="3 5"
                             />
-                            {visibleZones.map((z) => {
-                                const shape = shapeFor(z.id)
+                            {hotspots.map(({ zone: z, side, shape, key }) => {
+                                const clave = claveDe(z.id, side)
+                                const activa =
+                                    z.id === form.zone &&
+                                    (form.side ?? null) === (side ?? null)
                                 const common = {
-                                    fill: fillFor(z.id),
-                                    stroke: strokeFor(z.id),
-                                    strokeWidth: z.id === form.zone ? 2.5 : 1,
+                                    fill: fillFor(clave),
+                                    stroke: strokeFor(clave, activa),
+                                    strokeWidth: activa ? 2.5 : 1,
                                     className: 'cursor-pointer',
-                                    onClick: () => selectZone(z.id),
+                                    onClick: () => selectZone(z.id, side),
                                 }
+                                const etiqueta = side
+                                    ? `${z.label} · ${side === 'right' ? 'derecho' : 'izquierdo'}`
+                                    : z.label
                                 if (shape.kind === 'rect') {
                                     const [x, y, w, h, r] = shape.coords
                                     return (
                                         <rect
-                                            key={z.id}
+                                            key={key}
                                             x={x}
                                             y={y}
                                             width={w}
@@ -680,14 +763,14 @@ const AvatarMarksDialog = ({
                                             rx={r}
                                             {...common}
                                         >
-                                            <title>{z.label}</title>
+                                            <title>{etiqueta}</title>
                                         </rect>
                                     )
                                 }
                                 const [cx, cy, rx, ry] = shape.coords
                                 return (
-                                    <ellipse key={z.id} cx={cx} cy={cy} rx={rx} ry={ry} {...common}>
-                                        <title>{z.label}</title>
+                                    <ellipse key={key} cx={cx} cy={cy} rx={rx} ry={ry} {...common}>
+                                        <title>{etiqueta}</title>
                                     </ellipse>
                                 )
                             })}
