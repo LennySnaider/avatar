@@ -352,13 +352,13 @@ const AvatarMarksDialog = ({
         if (conFoto.length === 0) {
             toast.push(
                 <Notification type="warning" title="Faltan las fotos">
-                    Para hornear hace falta la foto de cada marca: es lo que el
+                    Para aplicarlos hace falta la foto de cada uno: es lo que el
                     motor copia.
                 </Notification>,
             )
             return
         }
-        setBaking('Buscando las hojas…')
+        setBaking('Buscando las imágenes del cuerpo…')
         let tareaEnCurso: string | null = null
         try {
             const hojas = await getSheetsForBaking(avatarId)
@@ -368,10 +368,11 @@ const AvatarMarksDialog = ({
                 // (entonces no hay nada pendiente, y rehornear duplicaría los
                 // tatuajes).
                 toast.push(
-                    <Notification type="info" title="Nada pendiente de hornear">
-                        No hay ninguna hoja sin hornear. Si quieres rehacer una,
-                        regenérala en el Body Lab y vuelve; si el avatar aún no
-                        tiene cuerpo ni hoja de ángulos, genéralos primero.
+                    <Notification type="info" title="El cuerpo ya los lleva">
+                        Las imágenes del cuerpo de este avatar ya tienen los
+                        tatuajes aplicados. Si regeneras el cuerpo en el Body
+                        Lab, vuelve por aquí para aplicárselos al nuevo.
+                        ¿Todavía no tiene cuerpo? Genéralo primero.
                     </Notification>,
                 )
                 return
@@ -414,7 +415,7 @@ const AvatarMarksDialog = ({
                 const lista = deEstaHoja
                     .map((m) => `${markPhrase(markFromRow(m))}: ${m.content}`)
                     .join('; ')
-                setBaking(`Horneando hoja ${i + 1} de ${hojas.length}…`)
+                setBaking(`Aplicando ${i + 1} de ${hojas.length}…`)
 
                 const prompt =
                     `Image 1 is a reference sheet of this woman. Add her permanent skin marks to it and change NOTHING else: ` +
@@ -463,9 +464,9 @@ const AvatarMarksDialog = ({
                     if (estado.status === 'done') url = estado.url
                     else if (estado.status === 'failed') throw new Error(estado.error)
                 }
-                if (!url) throw new Error('El horneado tardó demasiado')
+                if (!url) throw new Error('Tardó demasiado en aplicarse')
 
-                setBaking(`Guardando hoja ${i + 1} de ${hojas.length}…`)
+                setBaking(`Guardando ${i + 1} de ${hojas.length}…`)
                 await persistBakedSheet(avatarId, hoja.referenceId, hoja.type, url)
                 // Cerrar el rastro de rescate. Si no, el barrido de tareas
                 // huérfanas da la hoja por una generación sin reclamar y la
@@ -478,9 +479,9 @@ const AvatarMarksDialog = ({
 
             publish(await markMarksAsBaked(avatarId))
             toast.push(
-                <Notification type="success" title="Marcas horneadas">
-                    Ya están pintadas en las hojas del avatar: a partir de ahora el
-                    motor las copia en vez de inventarlas.
+                <Notification type="success" title="Tatuajes aplicados">
+                    Ya forman parte de las imágenes del cuerpo: a partir de ahora
+                    salen copiados, no redibujados.
                 </Notification>,
             )
         } catch (err) {
@@ -490,7 +491,7 @@ const AvatarMarksDialog = ({
                 void apiClearPendingGeneration(tareaEnCurso, 'failed')
             }
             toast.push(
-                <Notification type="danger" title="No se pudo hornear">
+                <Notification type="danger" title="No se pudieron aplicar">
                     {err instanceof Error ? err.message : 'Error desconocido'}
                 </Notification>,
             )
@@ -965,8 +966,8 @@ const AvatarMarksDialog = ({
                 {rows.length > 0 && (
                     <p className="mr-auto text-[11px] text-gray-500 leading-relaxed max-w-sm">
                         {rows.every((r) => r.baked_at)
-                            ? 'Pintadas en las hojas del avatar: el motor las copia en vez de inventarlas.'
-                            : 'Ahora viajan como texto y el motor las redibuja en cada imagen. Hornéalas para que salgan idénticas siempre; la intensidad es con cuánta tinta se pintan, y queda fijada en la hoja.'}
+                            ? 'Ya forman parte del cuerpo del avatar: el motor los copia en vez de inventarlos.'
+                            : 'Ahora viajan como texto y el motor las redibuja en cada imagen. Aplícalos al cuerpo del avatar para que salgan idénticos siempre; la intensidad es con cuánta tinta se pintan, y queda fijada.'}
                     </p>
                 )}
                 {rows.length > 0 && (
@@ -1002,7 +1003,7 @@ const AvatarMarksDialog = ({
                         disabled={!!baking}
                         onClick={handleBake}
                     >
-                        {baking ?? 'Hornear en las hojas'}
+                        {baking ?? 'Aplicar al cuerpo'}
                     </Button>
                 )}
                 <Button variant="solid" onClick={onClose} disabled={!!baking}>
