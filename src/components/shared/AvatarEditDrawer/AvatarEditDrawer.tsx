@@ -128,7 +128,6 @@ const AvatarEditDrawer = ({
     isLoading = false,
 }: AvatarEditDrawerProps) => {
     const [showMarks, setShowMarks] = useState(false)
-    const fileInputRef = useRef<HTMLInputElement>(null)
     const faceInputRef = useRef<HTMLInputElement>(null)
     const angleInputRef = useRef<HTMLInputElement>(null)
     // Para enfocar el nombre cuando es lo que impide guardar (ver el diálogo
@@ -912,7 +911,12 @@ const AvatarEditDrawer = ({
                                     </span>
                                 </div>
                             )}
-                            {/* General Identity Photos */}
+                            {/* General Identity Photos — RETIRADA (2026-09-25):
+                                en la ruta de KIE no viajan al modelo y en la de
+                                Gemini ocupan ranuras que rinden más con la
+                                cara, los ángulos y el cuerpo. Solo se muestra
+                                si el avatar ya tiene, para poder quitarlas. */}
+                            {localGeneralRefs.length > 0 && (
                             <Card className="p-3">
                                 <div className="flex items-center justify-between mb-3">
                                     <div>
@@ -920,29 +924,11 @@ const AvatarEditDrawer = ({
                                             General Identity Photos
                                         </h3>
                                         <p className="text-xs text-gray-500">
-                                            Upload multiple photos from
-                                            different angles
+                                            Ya no se usan: quítalas cuando
+                                            quieras
                                         </p>
                                     </div>
-                                    <button
-                                        onClick={() =>
-                                            fileInputRef.current?.click()
-                                        }
-                                        className="text-sm text-primary hover:underline"
-                                    >
-                                        + Add Photos
-                                    </button>
                                 </div>
-                                <input
-                                    ref={fileInputRef}
-                                    type="file"
-                                    accept="image/*"
-                                    multiple
-                                    className="hidden"
-                                    onChange={(e) =>
-                                        handleFileChange(e, 'general')
-                                    }
-                                />
                                 {localGeneralRefs.length > 0 ? (
                                     <div className="grid grid-cols-4 gap-3">
                                         {localGeneralRefs.map((ref) => (
@@ -975,25 +961,9 @@ const AvatarEditDrawer = ({
                                             </div>
                                         ))}
                                     </div>
-                                ) : (
-                                    <div
-                                        onClick={() =>
-                                            fileInputRef.current?.click()
-                                        }
-                                        onDragOver={handleDragOver}
-                                        onDrop={(e) => handleDrop(e, 'general')}
-                                        className="h-32 border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-lg flex flex-col items-center justify-center text-gray-400 hover:border-primary hover:text-primary transition-colors cursor-pointer"
-                                    >
-                                        <HiOutlineUpload className="w-8 h-8 mb-2" />
-                                        <span>
-                                            Click or drag to upload photos
-                                        </span>
-                                        <span className="text-xs">
-                                            JPG, PNG, WebP supported
-                                        </span>
-                                    </div>
-                                )}
+                                ) : null}
                             </Card>
+                            )}
 
                             {/* Identity Weight */}
                             <Card className="p-3">

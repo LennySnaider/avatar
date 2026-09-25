@@ -55,7 +55,6 @@ const AvatarCreatorMain = ({
     existingAvatar,
 }: AvatarCreatorMainProps) => {
     const router = useRouter()
-    const fileInputRef = useRef<HTMLInputElement>(null)
     const faceInputRef = useRef<HTMLInputElement>(null)
     const angleInputRef = useRef<HTMLInputElement>(null)
     // Foto FUENTE (cualquier ángulo) → frontal canónica generada. La fuente se
@@ -950,7 +949,17 @@ const AvatarCreatorMain = ({
                             />
                         </Card>
 
-                        {/* General References */}
+                        {/* General Identity Photos — RETIRADA (2026-09-25).
+                            Se dejó de ofrecer: en la ruta de KIE (Seedream y
+                            compañía, que es por donde va casi todo) estas fotos
+                            NO viajan al modelo, y en la de Gemini ocupan
+                            ranuras de imagen que rinden más con la cara, la
+                            hoja de ángulos y el cuerpo. La tarjeta solo aparece
+                            si el avatar ya tiene fotos, para poder quitarlas;
+                            subir nuevas ya no se puede. Nada se borra: las
+                            existentes siguen guardadas y viajando donde ya
+                            viajaban. */}
+                        {generalReferences.length > 0 && (
                         <Card className="p-4">
                             <div className="flex items-center justify-between mb-3">
                                 <div>
@@ -958,27 +967,10 @@ const AvatarCreatorMain = ({
                                         General Identity Photos
                                     </h3>
                                     <p className="text-xs text-gray-500">
-                                        Upload multiple photos of your avatar
-                                        from different angles
+                                        Ya no se usan: quítalas cuando quieras
                                     </p>
                                 </div>
-                                <button
-                                    onClick={() =>
-                                        fileInputRef.current?.click()
-                                    }
-                                    className="text-sm text-primary hover:underline"
-                                >
-                                    + Add Photos
-                                </button>
                             </div>
-                            <input
-                                ref={fileInputRef}
-                                type="file"
-                                accept="image/*"
-                                multiple
-                                className="hidden"
-                                onChange={(e) => handleFileChange(e, 'general')}
-                            />
                             {generalReferences.length > 0 ? (
                                 <div className="grid grid-cols-3 sm:grid-cols-4 gap-3">
                                     {generalReferences.map((ref) => (
@@ -1008,23 +1000,9 @@ const AvatarCreatorMain = ({
                                         </div>
                                     ))}
                                 </div>
-                            ) : (
-                                <div
-                                    onClick={() =>
-                                        fileInputRef.current?.click()
-                                    }
-                                    onDragOver={handleDragOver}
-                                    onDrop={(e) => handleDrop(e, 'general')}
-                                    className="h-40 border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-lg flex flex-col items-center justify-center text-gray-400 hover:border-primary hover:text-primary transition-colors cursor-pointer"
-                                >
-                                    <HiOutlineUpload className="w-8 h-8 mb-2" />
-                                    <span>Click to upload photos</span>
-                                    <span className="text-xs">
-                                        JPG, PNG, WebP supported
-                                    </span>
-                                </div>
-                            )}
+                            ) : null}
                         </Card>
+                        )}
 
                         {/* Specific References */}
                         <Card className="p-4">
