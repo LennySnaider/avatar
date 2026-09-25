@@ -28,26 +28,18 @@ import {
     MARK_ZONES,
     exposureLabel,
     findZone,
-    inkIntensityPhrase,
-    markFromRow,
     markPhrase,
     zoneLabel,
     type MarkSide,
 } from '@/lib/avatar/marks'
-import { checkKieImageTask, submitKieImageTask } from '@/services/KieService'
-import { apiClearPendingGeneration } from '@/services/PendingGenerationService'
 import {
     analyzeMarkPhoto,
     createAvatarMark,
     deleteAvatarMark,
     listAvatarMarks,
-    getSheetsForBaking,
-    markMarksAsBaked,
-    persistBakedSheet,
     updateAvatarMark,
     uploadMarkPhoto,
     type AvatarMarkRow,
-    type SheetType,
 } from '@/services/AvatarMarksService'
 import { cacheAvatarMarks, cachedAvatarMarks } from '@/lib/avatar/marksCache'
 import { optimizeForApi } from '@/utils/imageOptimization'
@@ -190,12 +182,8 @@ const AvatarMarksDialog = ({
     const [isLoading, setIsLoading] = useState(false)
     const [isSaving, setIsSaving] = useState(false)
     const [isReading, setIsReading] = useState(false)
-    const [baking, setBaking] = useState<string | null>(null)
     /** Zona que propuso la FOTO y nadie ha confirmado todavía. */
     const [zonaPropuesta, setZonaPropuesta] = useState(false)
-    /** Cuánta tinta se pinta al hornear (10-100). No se guarda en la marca:
-     *  queda pintada en la hoja, que es lo que el motor copia después. */
-    const [intensidad, setIntensidad] = useState(100)
     const fotoInputRef = useRef<HTMLInputElement>(null)
 
     const publish = useCallback(
@@ -346,172 +334,6 @@ const AvatarMarksDialog = ({
             )
         } finally {
             setIsReading(false)
-        }
-    }
-
-    /**
-     * Hornea las marcas en las hojas canónicas con Seedream i2i.
-     *
-     * Se conduce desde el CLIENTE (enviar y sondear) por lo mismo que el
-     * estudio: una generación tarda entre medio minuto y dos, y una server
-     * action de Vercel no puede quedarse abierta tanto. Cada hoja se persiste
-     * en cuanto sale, así que un fallo a mitad deja hechas las anteriores en
-     * vez de perderlo todo.
-     */
-    const handleBake = async () => {
-        // Predicado de tipo: `filter` a secas no estrecha `storage_path`, y
-        // la URL de la referencia lo necesita no nulo.
-        const conFoto = rows.filter(
-            (r): r is AvatarMarkRow & { storage_path: string } => !!r.storage_path,
-        )
-        if (conFoto.length === 0) {
-            toast.push(
-                <Notification type="warning" title="Faltan las fotos">
-                    Para aplicarlos hace falta la foto de cada uno: es lo que el
-                    motor copia.
-                </Notification>,
-            )
-            return
-        }
-        setBaking('Buscando las imágenes del cuerpo…')
-        let tareaEnCurso: string | null = null
-        try {
-            const hojas = await getSheetsForBaking(avatarId)
-            if (hojas.length === 0) {
-                // Cubre los DOS casos sin mentir en ninguno: que el avatar no
-                // tenga hojas todavía, y que las que tiene ya estén horneadas
-                // (entonces no hay nada pendiente, y rehornear duplicaría los
-                // tatuajes).
-                toast.push(
-                    <Notification type="info" title="El cuerpo ya los lleva">
-                        Las imágenes del cuerpo de este avatar ya tienen los
-                        tatuajes aplicados. Si regeneras el cuerpo en el Body
-                        Lab, vuelve por aquí para aplicárselos al nuevo.
-                        ¿Todavía no tiene cuerpo? Genéralo primero.
-                    </Notification>,
-                )
-                return
-            }
-
-            // Cada hoja recibe SOLO las marcas que en ella están al aire.
-            //
-            // La hoja SFW lleva un bikini mínimo, y al pedirle la rosa de la
-            // ingle el motor no la omitió: la SUBIÓ al vientre, por encima de
-            // la cinta, para que se viera. Y ese error queda pintado en el
-            // cuerpo canónico de todas las generaciones vestidas. Una marca
-            // que la prenda tapa no va en esa hoja — para eso está la nude.
-            //
-            // La hoja de ángulos son caras: solo tienen sentido las marcas de
-            // cuello y cabeza; cualquier otra se la inventaría.
-            const ZONAS_DE_CABEZA = new Set([
-                'cuello_lateral',
-                'nuca',
-                'detras_oreja',
-            ])
-            const marcasDeLaHoja = (tipo: SheetType) =>
-                conFoto.filter((m) => {
-                    const z = findZone(m.zone)
-                    if (!z) return false
-                    if (tipo === 'angle') return ZONAS_DE_CABEZA.has(m.zone)
-                    if (tipo === 'body') return z.exposure !== 'swim'
-                    return true
-                })
-
-            for (let i = 0; i < hojas.length; i++) {
-                const hoja = hojas[i]
-                const deEstaHoja = marcasDeLaHoja(hoja.type)
-                if (deEstaHoja.length === 0) continue
-                const refs = deEstaHoja.map((m) => ({
-                    url: getGenerationMediaUrl(m.storage_path, m.storage_provider),
-                    mimeType: 'image/jpeg',
-                    role: 'mark',
-                    markZone: markPhrase(markFromRow(m)),
-                }))
-                const lista = deEstaHoja
-                    .map((m) => `${markPhrase(markFromRow(m))}: ${m.content}`)
-                    .join('; ')
-                setBaking(`Aplicando ${i + 1} de ${hojas.length}…`)
-
-                const prompt =
-                    `Image 1 is a reference sheet of this woman. Add her permanent skin marks to it and change NOTHING else: ` +
-                    `same face, same body, same poses, same framing, same lighting, same background. ` +
-                    `The marks to add, each on her own skin at the stated place: ${lista}. ` +
-                    `Reproduce each design, its scale and its placement exactly as the extra reference images show. ` +
-                    // La hoja tiene varias vistas de la misma mujer. Sin esto
-                    // el modelo pinta cada marca UNA vez, en la vista que le
-                    // resulta más cómoda: la rosa de la ingle acabó casi en el
-                    // glúteo porque la vista de espaldas le venía mejor.
-                    `Image 1 shows the same woman from several angles: draw each mark in EVERY view where its area ` +
-                    `is visible, always on the body part stated and on the stated front or back of her body, and nowhere else. ` +
-                    // Sin esto el motor "resuelve" una marca tapada moviéndola
-                    // a la piel que sí ve: la rosa de la ingle apareció encima
-                    // de la cinta del bikini, en el vientre.
-                    `Keep her clothing exactly as it is in image 1, and draw a mark only where that body part is bare there: ` +
-                    `if the garment covers it in a view, leave that view without the mark instead of moving it elsewhere. ` +
-                    // La intensidad va DESPUÉS de "copia el diseño": primero
-                    // que copie la forma, y solo entonces con cuánta tinta.
-                    // Al revés, una intensidad baja se lleva por delante el
-                    // parecido con la foto.
-                    `Draw every mark with ${inkIntensityPhrase(intensidad)} — same design and size, only the ink strength changes. ` +
-                    `Never print them on clothing, and do not add any other tattoo, scar or mark.`
-
-                const sub = await submitKieImageTask({
-                    prompt,
-                    model: 'seedream/5-pro-text-to-image',
-                    referenceImage: { url: hoja.url, mimeType: 'image/jpeg' },
-                    referenceImages: refs,
-                    // Igual que la variante de carrusel: que copie la hoja tal
-                    // cual en vez de reinterpretarla.
-                    deepfakeMode: true,
-                    identityWeight: 100,
-                    // No es una foto: va a la hoja del avatar. Sin esto, si el
-                    // horneado se corta a mitad, el barrido de huérfanas la
-                    // publica en la galería.
-                    internal: true,
-                })
-                if (!sub.success) throw new Error(sub.error)
-                tareaEnCurso = sub.taskId
-
-                let url: string | null = null
-                for (let intento = 0; intento < 90 && !url; intento++) {
-                    await new Promise((r) => setTimeout(r, 4000))
-                    const estado = await checkKieImageTask(sub.taskId)
-                    if (estado.status === 'done') url = estado.url
-                    else if (estado.status === 'failed') throw new Error(estado.error)
-                }
-                if (!url) throw new Error('Tardó demasiado en aplicarse')
-
-                setBaking(`Guardando ${i + 1} de ${hojas.length}…`)
-                await persistBakedSheet(avatarId, hoja.referenceId, hoja.type, url)
-                // Cerrar el rastro de rescate. Si no, el barrido de tareas
-                // huérfanas da la hoja por una generación sin reclamar y la
-                // publica en la galería: el usuario se encuentra su hoja de
-                // cuerpo desnuda entre las fotos, que no es donde va. La hoja
-                // ya está guardada donde toca, así que 'delivered'.
-                void apiClearPendingGeneration(sub.taskId, 'delivered')
-                tareaEnCurso = null
-            }
-
-            publish(await markMarksAsBaked(avatarId))
-            toast.push(
-                <Notification type="success" title="Tatuajes aplicados">
-                    Ya forman parte de las imágenes del cuerpo: a partir de ahora
-                    salen copiados, no redibujados.
-                </Notification>,
-            )
-        } catch (err) {
-            // Igual que arriba, en el camino malo: sin esto la hoja a medias
-            // acabaría en la galería.
-            if (tareaEnCurso) {
-                void apiClearPendingGeneration(tareaEnCurso, 'failed')
-            }
-            toast.push(
-                <Notification type="danger" title="No se pudieron aplicar">
-                    {err instanceof Error ? err.message : 'Error desconocido'}
-                </Notification>,
-            )
-        } finally {
-            setBaking(null)
         }
     }
 
@@ -1049,48 +871,12 @@ const AvatarMarksDialog = ({
                 {rows.length > 0 && (
                     <p className="mr-auto text-[11px] text-gray-500 leading-relaxed max-w-sm">
                         {rows.every((r) => r.baked_at)
-                            ? 'Ya forman parte del cuerpo del avatar: el motor los copia en vez de inventarlos.'
-                            : 'Ahora viajan como texto y el motor las redibuja en cada imagen. Aplícalos al cuerpo del avatar para que salgan idénticos siempre; la intensidad es con cuánta tinta se pintan, y queda fijada.'}
+                            ? 'Ya forman parte del cuerpo del avatar.'
+                            : 'Para que salgan siempre iguales tienen que entrar en el cuerpo del avatar: al cerrar, el Body Lab te pedirá regenerarlo.'}
                     </p>
                 )}
-                {rows.length > 0 && (
-                    <div className="flex items-center gap-2 w-full sm:w-auto">
-                        <label
-                            htmlFor="mark-intensity"
-                            className="text-[11px] text-gray-500 shrink-0"
-                        >
-                            Intensidad
-                        </label>
-                        <input
-                            id="mark-intensity"
-                            type="range"
-                            min={10}
-                            max={100}
-                            step={10}
-                            value={intensidad}
-                            disabled={!!baking}
-                            onChange={(e) => setIntensidad(Number(e.target.value))}
-                            className="flex-1 sm:w-28 accent-primary"
-                        />
-                        <span className="text-[11px] text-gray-500 tabular-nums w-8 text-right">
-                            {intensidad}%
-                        </span>
-                    </div>
-                )}
-                {rows.length > 0 && (
-                    <Button
-                        // Con borde, no `plain`: en el móvil el texto suelto no
-                        // se lee como un botón, y este es el que hay que pulsar.
-                        variant="default"
-                        loading={!!baking}
-                        disabled={!!baking}
-                        onClick={handleBake}
-                    >
-                        {baking ?? 'Aplicar al cuerpo'}
-                    </Button>
-                )}
-                <Button variant="solid" onClick={onClose} disabled={!!baking}>
-                    Listo
+                <Button variant="solid" onClick={onClose}>
+                    Guardar
                 </Button>
             </div>
             </div>

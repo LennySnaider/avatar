@@ -152,6 +152,13 @@ async function build(ctx: ImageRouteContext): Promise<KieImageRequest> {
             // su cláusula de vestuario — que es justo lo que las hacía
             // divergir. Ver `selfContainedPrompt` en context.ts.
             if (ctx.selfContainedPrompt) {
+                // Las cláusulas de las refs extra SÍ se añaden: sin ellas el
+                // modelo recibe las fotos de los tatuajes sin saber qué son ni
+                // dónde van, y las trata como inspiración suelta. Son cuatro
+                // líneas; el prompt de la hoja no tiene presupuesto que recortar.
+                if (extraClauses) {
+                    input.prompt = `${String(input.prompt)} ${extraClauses}`
+                }
                 console.log(
                     `[KIE] Seedream i2i (${resolvedModel}) prompt auto-contenido (${String(input.prompt).length} chars) — sin ancla de identidad`,
                 )

@@ -13,6 +13,7 @@ import {
     uploadBufferToGenerations,
 } from '@/lib/mediaPersist'
 import { getGenerationMediaUrl, orgStoragePath } from '@/lib/storagePaths'
+import { resolveNudityIntent } from './kie/shared'
 import { listAvatarMarks } from './AvatarMarksService'
 import {
     buildMarksTag,
@@ -1408,10 +1409,14 @@ async function conMarcasDelAvatar(
         // muslo interior, bajo el pecho) solo se ven en bañador o desnudo.
         // Las 'skin' y 'always' —brazos, manos, cuello— se quedan siempre:
         // ahí la cláusula de "solo si está descubierta" sí funciona.
-        const visibles =
-            params.nsfwIntent === true
-                ? rows
-                : rows.filter((r) => findZone(r.zone)?.exposure !== 'swim')
+        // `resolveNudityIntent` y no `nsfwIntent === true`: la hoja nude del
+        // Body Lab no declara bandera —su prompt ya dice que va desnuda—, y sin
+        // esto se quedaba sin las marcas de ingle o glúteo, que es justo donde
+        // esa hoja es la única que puede enseñarlas.
+        const desnudo = resolveNudityIntent(params.nsfwIntent, params.prompt)
+        const visibles = desnudo
+            ? rows
+            : rows.filter((r) => findZone(r.zone)?.exposure !== 'swim')
         const tag = buildMarksTag(visibles.map(markFromRow))
         if (!tag) return params
 

@@ -25,6 +25,8 @@ import { generateAvatar, analyzeFaceFromImages } from '@/services/GeminiService'
 import { diffBodyShape, describeBodyShapeDiff } from '@/utils/bodySheetPrompt'
 import { newestReference } from '@/utils/avatarReferences'
 import { generateBodySheetPair } from '@/utils/bodySheetGenerate'
+import { cachedAvatarMarks } from '@/lib/avatar/marksCache'
+import { markMarksAsBaked } from '@/services/AvatarMarksService'
 import { urlToDataUrl } from '@/utils/imageStitch'
 import {
     apiGetAvatarReferences,
@@ -761,6 +763,9 @@ const AvatarEditDrawer = ({
                 measurements: localMeasurements,
                 model: selectedBodyModel,
                 only,
+                // Con esto el servidor añade a la hoja las marcas del avatar
+                // —texto y fotos—, así que el cuerpo nace ya tatuado.
+                avatarId,
                 nudeSheet:
                     nudeExistente?.base64 && nudeExistente.mimeType
                         ? {
@@ -786,6 +791,11 @@ const AvatarEditDrawer = ({
             if (sheet) setBodyRef(sheet)
             if (nudeSheet) setBodyRefNsfw(nudeSheet)
             setSheetMeasurements(localMeasurements) // sheet ↔ medidas actuales
+            // El cuerpo nuevo ya los lleva pintados: se sellan para que el
+            // aviso de "tatuajes nuevos" no siga pidiendo regenerar.
+            if (avatarId && sheet) {
+                void markMarksAsBaked(avatarId).catch(() => {})
+            }
             const selName =
                 bodyLabModels.find((p) => p.model === selectedBodyModel)
                     ?.name || selectedBodyModel
@@ -823,10 +833,17 @@ const AvatarEditDrawer = ({
     // QUÉ cambió exactamente. El aviso se deriva de esta lista, así que no
     // puede aparecer sin un atributo que lo justifique.
     const bodyDiff = diffBodyShape(localMeasurements, sheetMeasurements)
+    // Tatuajes dados de alta que el cuerpo mostrado todavía no lleva. Desde
+    // que las marcas se pintan EN la generación del cuerpo, esto es lo mismo
+    // que un atributo cambiado: el cuerpo guardado ya no representa al avatar,
+    // y se arregla igual — regenerándolo.
+    const marcasPendientes = (cachedAvatarMarks(avatarId ?? '') ?? []).filter(
+        (m) => !m.baked_at,
+    )
     const bodyStale =
         !!shownBody &&
-        !!sheetMeasurements &&
-        bodyDiff.length > 0
+        ((!!sheetMeasurements && bodyDiff.length > 0) ||
+            marcasPendientes.length > 0)
 
     // Default: primer modelo permisivo (los face:true ya vienen primero).
     useEffect(() => {
@@ -1222,7 +1239,16 @@ const AvatarEditDrawer = ({
                                         if (s) setPreviewImage(s)
                                     }}
                                     stale={bodyStale}
-                                    staleFields={describeBodyShapeDiff(bodyDiff)}
+                                    staleFields={[
+                                        describeBodyShapeDiff(bodyDiff),
+                                        marcasPendientes.length === 0
+                                            ? ''
+                                            : marcasPendientes.length === 1
+                                              ? 'un tatuaje nuevo'
+                                              : `${marcasPendientes.length} tatuajes nuevos`,
+                                    ]
+                                        .filter(Boolean)
+                                        .join(' y ')}
                                     nudeSheet={bodySheetNude || bodyRefNsfw}
                                     onPreviewNude={() => {
                                         const n = bodySheetNude || bodyRefNsfw

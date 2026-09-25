@@ -72,6 +72,13 @@ export async function generateBodySheetPair(params: {
      * sola hoja sigue dando la misma mujer.
      */
     nudeSheet?: SheetRef
+    /**
+     * Avatar de la hoja. Con él, el servidor añade sus marcas permanentes —el
+     * tag y las FOTOS de cada tatuaje— a la generación, así que el cuerpo
+     * canónico nace ya con ellos en vez de pintarlos en un segundo paso.
+     * La hoja nude las recibe todas; la vestida, solo las que la ropa no tapa.
+     */
+    avatarId?: string | null
 }): Promise<BodySheetPair> {
     const { measurements, model } = params
     const wantClothed = params.only !== 'nude'
@@ -131,6 +138,7 @@ export async function generateBodySheetPair(params: {
                   }),
                   model,
                   aspectRatio: '16:9',
+                  avatarId: params.avatarId ?? undefined,
                   referenceImage: ref,
                   bodyEmphasis: buildBodySheetCurves(measurements),
                   // La hoja se define a sí misma: su prompt ya dice qué es la
@@ -148,6 +156,7 @@ export async function generateBodySheetPair(params: {
                   prompt: buildBodySheetPrompt(measurements, { nude }),
                   model: t2iModel,
                   aspectRatio: '16:9',
+                  avatarId: params.avatarId ?? undefined,
                   negativePrompt: nude
                       ? BODY_SHEET_NUDE_NEGATIVE_PROMPT
                       : BODY_SHEET_NEGATIVE_PROMPT,
