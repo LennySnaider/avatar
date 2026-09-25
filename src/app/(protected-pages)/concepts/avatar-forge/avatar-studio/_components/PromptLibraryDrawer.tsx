@@ -184,6 +184,8 @@ const PromptLibraryDrawer = ({ userId }: PromptLibraryDrawerProps) => {
         generationMode,
         pinnedActionIds,
         togglePinnedAction,
+        nsfwMode,
+        setNsfwMode,
     } = useAvatarStudioStore()
 
     // Load prompts
@@ -241,7 +243,27 @@ const PromptLibraryDrawer = ({ userId }: PromptLibraryDrawerProps) => {
     }
 
     // Use a prompt
-    const handleUsePrompt = (promptText: string) => {
+    /**
+     * `esNsfw` enciende el toggle 🌶️ al insertar un prompt de la librería NSFW.
+     *
+     * Sin esto se podía lanzar "corsé sobre el pecho desnudo" con el toggle
+     * apagado: el motor es permisivo y pintaba el desnudo igual, pero el run
+     * NO era NSFW, así que se quedaban fuera el color de pezón, el vello y la
+     * hoja nude del Body Lab — salía desnuda con una anatomía que no es la
+     * suya. El prompt ya declara la intención; el toggle solo tenía que
+     * enterarse. Se avisa porque es un ajuste de contenido: que se vea quién
+     * lo encendió y se pueda apagar.
+     */
+    const handleUsePrompt = (promptText: string, esNsfw = false) => {
+        if (esNsfw && !nsfwMode) {
+            setNsfwMode(true)
+            toast.push(
+                <Notification type="info" title="🌶️ Activado">
+                    Este prompt es de la librería NSFW: sin el modo picante no
+                    viajan el color de pezón, el vello ni la hoja nude.
+                </Notification>,
+            )
+        }
         setPrompt(promptText)
         setIsPromptLibraryOpen(false)
         toast.push(
@@ -620,7 +642,13 @@ const PromptLibraryDrawer = ({ userId }: PromptLibraryDrawerProps) => {
                                         <div
                                             key={p.id}
                                             className="p-3 bg-gray-50 dark:bg-gray-800 rounded-lg group hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors cursor-pointer"
-                                            onClick={() => handleUsePrompt(p.text)}
+                                            onClick={() =>
+                                                handleUsePrompt(
+                                                    p.text,
+                                                    parseCategory(p.category)
+                                                        .isNsfw,
+                                                )
+                                            }
                                         >
                                             <div className="flex items-start justify-between gap-2">
                                                 <div className="flex-1 min-w-0">
@@ -652,7 +680,12 @@ const PromptLibraryDrawer = ({ userId }: PromptLibraryDrawerProps) => {
                                                         icon={<HiOutlineClipboardCopy />}
                                                         onClick={(e) => {
                                                             e.stopPropagation()
-                                                            handleUsePrompt(p.text)
+                                                            handleUsePrompt(
+                                                                p.text,
+                                                                parseCategory(
+                                                                    p.category,
+                                                                ).isNsfw,
+                                                            )
                                                         }}
                                                     />
                                                     <Button
@@ -717,7 +750,14 @@ const PromptLibraryDrawer = ({ userId }: PromptLibraryDrawerProps) => {
                                                 {presets.map((preset) => (
                                                     <div
                                                         key={preset.id}
-                                                        onClick={() => handleUsePrompt(withNichePose(preset))}
+                                                        onClick={() =>
+                                                            handleUsePrompt(
+                                                                withNichePose(
+                                                                    preset,
+                                                                ),
+                                                                !!preset.nsfw,
+                                                            )
+                                                        }
                                                         className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 cursor-pointer transition-colors"
                                                     >
                                                         <div className="flex items-center gap-2">
