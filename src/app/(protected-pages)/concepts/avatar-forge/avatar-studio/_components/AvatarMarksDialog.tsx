@@ -363,10 +363,15 @@ const AvatarMarksDialog = ({
         try {
             const hojas = await getSheetsForBaking(avatarId)
             if (hojas.length === 0) {
+                // Cubre los DOS casos sin mentir en ninguno: que el avatar no
+                // tenga hojas todavía, y que las que tiene ya estén horneadas
+                // (entonces no hay nada pendiente, y rehornear duplicaría los
+                // tatuajes).
                 toast.push(
-                    <Notification type="warning" title="Sin hojas que hornear">
-                        Este avatar no tiene todavía hoja de ángulos ni cuerpo del
-                        Body Lab. Genéralos y vuelve.
+                    <Notification type="info" title="Nada pendiente de hornear">
+                        No hay ninguna hoja sin hornear. Si quieres rehacer una,
+                        regenérala en el Body Lab y vuelve; si el avatar aún no
+                        tiene cuerpo ni hoja de ángulos, genéralos primero.
                     </Notification>,
                 )
                 return

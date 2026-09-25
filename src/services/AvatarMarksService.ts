@@ -237,16 +237,27 @@ export async function getSheetsForBaking(
         .order('created_at', { ascending: false })
     if (error) throw error
 
-    // Una hoja ANTERIOR al último horneado ya lo lleva pintado: volver a
-    // hornearla le añadiría los tatuajes OTRA VEZ, encima de los que ya tiene.
-    // Con esto, regenerar una sola hoja en el Body Lab y darle a hornear hace
-    // lo esperable — pinta la nueva y deja en paz las que ya estaban.
+    // Una hoja cuya IMAGEN es anterior al último horneado ya lo lleva
+    // pintado: volver a hornearla le añadiría los tatuajes OTRA VEZ, encima de
+    // los que ya tiene. Así, regenerar una sola hoja en el Body Lab y darle a
+    // hornear hace lo esperable — pinta la nueva y deja en paz las demás.
+    //
+    // La edad se lee del NOMBRE del fichero, no de `created_at`: estas filas se
+    // actualizan en el sitio (tanto el Body Lab como `persistBakedSheet`
+    // repuntan la misma fila), así que `created_at` es cuando nació la fila,
+    // no cuando se escribió la imagen. Usarlo dejaba fuera TODAS las hojas y el
+    // horneado contestaba "sin hojas que hornear" siempre. Ambos escritores
+    // nombran el fichero con `Date.now()`, que es justo el dato que hace falta.
     const marcas = await listAvatarMarks(avatarId)
     const ultimoHorneado = marcas
-        .map((m) => m.baked_at)
-        .filter((v): v is string => !!v)
-        .sort()
-        .pop()
+        .map((m) => (m.baked_at ? Date.parse(m.baked_at) : 0))
+        .reduce((a, b) => Math.max(a, b), 0)
+
+    /** Milisegundos del nombre del fichero; 0 si no se puede leer (→ se hornea). */
+    const escritaEn = (path: string): number => {
+        const m = /(\d{10,})\.[a-z]+$/i.exec(path)
+        return m ? Number(m[1]) : 0
+    }
 
     const filas = (data ?? []) as unknown as {
         id: string
@@ -264,7 +275,9 @@ export async function getSheetsForBaking(
     for (const fila of filas) {
         if (vistas.has(fila.type)) continue
         vistas.add(fila.type)
-        if (ultimoHorneado && fila.created_at <= ultimoHorneado) continue
+        if (ultimoHorneado && escritaEn(fila.storage_path) <= ultimoHorneado) {
+            continue
+        }
         hojas.push({
             referenceId: fila.id,
             type: fila.type,
