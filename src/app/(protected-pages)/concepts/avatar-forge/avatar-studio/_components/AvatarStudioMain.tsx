@@ -1794,6 +1794,24 @@ const AvatarStudioMain = ({ userId }: AvatarStudioMainProps) => {
                     )
                     return
                 }
+                // La adaptación picante es una llamada a un LLM: entre 10 y
+                // 20 segundos ANTES de que empiece la generación. La pantalla
+                // se quedaba muerta todo ese rato —ni spinner ni aviso— y
+                // parecía que el botón no había hecho nada. Se enciende aquí
+                // el estado de generando (el bloque de abajo lo repite, es
+                // idempotente) y se dice qué está pasando, porque un spinner
+                // largo sin explicación se lee como colgado.
+                if (!opts?.background) {
+                    setIsGenerating(true)
+                    setAppState(AppState.GENERATING)
+                    setErrorMsg(null)
+                    toast.push(
+                        <Notification type="info" title="🌶️ Adaptando la escena">
+                            Reescribiendo el prompt para el nivel picante. Tarda
+                            unos segundos antes de empezar a generar.
+                        </Notification>,
+                    )
+                }
                 const spicy = await spicifyScenePrompt(prompt, nsfwLevel)
                 fullPrompt = getFullPrompt(spicy)
                 nsfwRun = true
