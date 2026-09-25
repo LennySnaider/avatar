@@ -187,6 +187,26 @@ export async function apiReconcilePendingGenerations(options?: {
                 continue
             }
 
+            // Tarea INTERNA (hoy, el horneado de marcas). Su resultado ya
+            // tiene destino propio —la hoja canónica del avatar—, así que no
+            // es una generación que falte en la galería: publicarla metía la
+            // hoja de cuerpo desnuda entre las fotos. El cobro sí se cierra,
+            // porque la generación ocurrió y se usó.
+            //
+            // Se marca en el SUBMIT y no al terminar: si el horneado se corta
+            // a mitad —cerrar la pestaña, bloquearse el móvil—, el cliente ya
+            // no está para avisar de nada, y es justo entonces cuando el
+            // barrido encuentra la tarea.
+            if (row.metadata?.internal === true) {
+                await settleHoldByRef(holdRef, row.task_id, { ctx })
+                await orgSupabase()
+                    .from('pending_generations')
+                    .delete()
+                    .eq('id', row.id)
+                out.notes.push(`${row.task_id}: interna, no va a la galería`)
+                continue
+            }
+
             const { path, provider } = await persistRemoteMedia(
                 ctx.organizationId,
                 status.url,

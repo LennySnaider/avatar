@@ -401,6 +401,10 @@ const AvatarMarksDialog = ({
                     // cual en vez de reinterpretarla.
                     deepfakeMode: true,
                     identityWeight: 100,
+                    // No es una foto: va a la hoja del avatar. Sin esto, si el
+                    // horneado se corta a mitad, el barrido de huérfanas la
+                    // publica en la galería.
+                    internal: true,
                 })
                 if (!sub.success) throw new Error(sub.error)
                 tareaEnCurso = sub.taskId

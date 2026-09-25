@@ -857,6 +857,12 @@ export interface GenerateImageKieParams {
     /** Avatar de la toma. Sirve para traer sus marcas permanentes aquí, en el
      *  servidor — ver `conMarcasDelAvatar`. */
     avatarId?: string | null
+    /**
+     * La imagen NO es para la galería: tiene su propio destino (hoy, el
+     * horneado de marcas, que va a la hoja canónica). Viaja al rastro de
+     * rescate para que el barrido de huérfanas cierre el cobro sin publicarla.
+     */
+    internal?: boolean
     // `url` = la ref YA está subida y es pública: se pasa tal cual al proveedor
     // en vez de viajar en base64. Es lo que evita el 413 del editor — una foto
     // de 3.5 MB inflada por base64 (~4.6 MB) pasa del tope de 4.5 MB que Vercel
@@ -1440,6 +1446,7 @@ export async function submitKieImageTask(
         model: params.model,
         prompt: params.prompt,
         aspectRatio: params.aspectRatio,
+        ...(params.internal ? { metadata: { internal: true } } : {}),
     })
     return result
 }
