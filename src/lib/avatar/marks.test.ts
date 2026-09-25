@@ -35,7 +35,7 @@ test('el lado se resuelve en la frase del prompt', () => {
     )
     assert.equal(
         markPhrase({ zone: 'ingle', side: 'right' }),
-        'right groin, bikini line',
+        'right groin at the bikini line, on the FRONT of the body where the thigh meets the lower belly',
     )
 })
 
@@ -94,7 +94,11 @@ test('el tag reúne las marcas con sus cláusulas', () => {
             'inner right forearm, the soft underside on the same face as the palm — peonía con hojas y capullo de rosa',
         ),
     )
-    assert.ok(tag.includes('right groin, bikini line — rosa pequeña con tallo'))
+    assert.ok(
+        tag.includes(
+            'on the FRONT of the body where the thigh meets the lower belly — rosa pequeña con tallo',
+        ),
+    )
     // Las cláusulas que evitan los fallos conocidos.
     assert.ok(tag.includes('not clothing'))
     assert.ok(tag.includes('in frame and uncovered'))
@@ -151,4 +155,11 @@ test('la intensidad se traduce a un estado de la tinta, no a un porcentaje', () 
         assert.ok(inkIntensityPhrase(v).length > 10, String(v))
         assert.ok(!inkIntensityPhrase(v).includes('%'))
     }
+})
+
+test('las zonas que se confunden delante/detrás lo dicen', () => {
+    // "right groin, bikini line" a secas acabó horneado casi en el glúteo: en
+    // una hoja de varias vistas el modelo elige la que le va mejor.
+    assert.ok(findZone('ingle')?.phrase.includes('FRONT'))
+    assert.ok(findZone('gluteo')?.phrase.includes('BACK'))
 })

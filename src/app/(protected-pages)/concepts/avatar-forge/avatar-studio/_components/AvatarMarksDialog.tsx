@@ -35,6 +35,7 @@ import {
     type MarkSide,
 } from '@/lib/avatar/marks'
 import { checkKieImageTask, submitKieImageTask } from '@/services/KieService'
+import { apiClearPendingGeneration } from '@/services/PendingGenerationService'
 import {
     analyzeMarkPhoto,
     createAvatarMark,
@@ -346,6 +347,7 @@ const AvatarMarksDialog = ({
             return
         }
         setBaking('Buscando las hojas…')
+        let tareaEnCurso: string | null = null
         try {
             const hojas = await getSheetsForBaking(avatarId)
             if (hojas.length === 0) {
@@ -377,6 +379,12 @@ const AvatarMarksDialog = ({
                     `same face, same body, same poses, same framing, same lighting, same background. ` +
                     `The marks to add, each on her own skin at the stated place: ${lista}. ` +
                     `Reproduce each design, its scale and its placement exactly as the extra reference images show. ` +
+                    // La hoja tiene varias vistas de la misma mujer. Sin esto
+                    // el modelo pinta cada marca UNA vez, en la vista que le
+                    // resulta más cómoda: la rosa de la ingle acabó casi en el
+                    // glúteo porque la vista de espaldas le venía mejor.
+                    `Image 1 shows the same woman from several angles: draw each mark in EVERY view where its area ` +
+                    `is visible, always on the body part stated and on the stated front or back of her body, and nowhere else. ` +
                     // La intensidad va DESPUÉS de "copia el diseño": primero
                     // que copie la forma, y solo entonces con cuánta tinta.
                     // Al revés, una intensidad baja se lleva por delante el
@@ -395,6 +403,7 @@ const AvatarMarksDialog = ({
                     identityWeight: 100,
                 })
                 if (!sub.success) throw new Error(sub.error)
+                tareaEnCurso = sub.taskId
 
                 let url: string | null = null
                 for (let intento = 0; intento < 90 && !url; intento++) {
@@ -407,6 +416,13 @@ const AvatarMarksDialog = ({
 
                 setBaking(`Guardando hoja ${i + 1} de ${hojas.length}…`)
                 await persistBakedSheet(avatarId, hoja.referenceId, hoja.type, url)
+                // Cerrar el rastro de rescate. Si no, el barrido de tareas
+                // huérfanas da la hoja por una generación sin reclamar y la
+                // publica en la galería: el usuario se encuentra su hoja de
+                // cuerpo desnuda entre las fotos, que no es donde va. La hoja
+                // ya está guardada donde toca, así que 'delivered'.
+                void apiClearPendingGeneration(sub.taskId, 'delivered')
+                tareaEnCurso = null
             }
 
             publish(await markMarksAsBaked(avatarId))
@@ -417,6 +433,11 @@ const AvatarMarksDialog = ({
                 </Notification>,
             )
         } catch (err) {
+            // Igual que arriba, en el camino malo: sin esto la hoja a medias
+            // acabaría en la galería.
+            if (tareaEnCurso) {
+                void apiClearPendingGeneration(tareaEnCurso, 'failed')
+            }
             toast.push(
                 <Notification type="danger" title="No se pudo hornear">
                     {err instanceof Error ? err.message : 'Error desconocido'}

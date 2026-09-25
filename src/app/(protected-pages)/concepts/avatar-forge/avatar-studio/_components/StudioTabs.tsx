@@ -36,7 +36,13 @@ const StudioTabs = ({ children }: StudioTabsProps) => {
             <Tabs
                 value={activeTab}
                 onChange={handleChange}
-                className="flex flex-col h-[calc(100vh-theme(spacing.16))]"
+                // `svh`, no `vh`: en el móvil `vh` mide el viewport GRANDE (con
+                // la barra del navegador retraída), así que el contenedor salía
+                // más alto que lo que se ve. Con las pestañas a la vista, la
+                // barra de creación de abajo —y su botón de desplegarla— caía
+                // por debajo del borde; al bajar para alcanzarla desaparecían
+                // las pestañas. En escritorio `svh` y `vh` valen lo mismo.
+                className="flex flex-col h-[calc(100svh-theme(spacing.16))]"
             >
                 {/* Tab bar row: tabs on the left, a portal slot on the right where the
                 Avatar Studio header actions (Prompts / Upload / Tools) land, so

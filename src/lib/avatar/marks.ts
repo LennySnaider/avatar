@@ -54,6 +54,11 @@ export interface MarkZone {
  * que tiene delante — que es justo lo que pasó con el primer tatuaje real.
  * Atándola a algo VISIBLE en la propia imagen (la palma, el dorso de la mano,
  * la otra pierna) el modelo tiene con qué comprobar dónde va.
+ *
+ * Lo mismo con DELANTE y DETRÁS. "right groin, bikini line" a secas acabó
+ * horneado casi en el glúteo: en una hoja de cuatro vistas el modelo elige la
+ * vista que le resulta más cómoda, y ingle y nalga están a un palmo. Por eso
+ * la ingle dice FRONT, el glúteo dice BACK y la cadera dice el costado.
  */
 export const MARK_ZONES: readonly MarkZone[] = [
     // Cuello y cabeza
@@ -77,15 +82,15 @@ export const MARK_ZONES: readonly MarkZone[] = [
     { id: 'bajo_pecho', label: 'Bajo el pecho', phrase: 'under the {side} breast', lateral: true, exposure: 'swim' },
     { id: 'costillas', label: 'Costillas', phrase: '{side} ribs', fem: true, plural: true, lateral: true, exposure: 'swim' },
     { id: 'abdomen', label: 'Abdomen', phrase: 'stomach, below the navel', lateral: false, exposure: 'swim' },
-    { id: 'cadera', label: 'Cadera', phrase: '{side} hip', fem: true, lateral: true, exposure: 'swim' },
-    { id: 'ingle', label: 'Ingle', phrase: '{side} groin, bikini line', fem: true, lateral: true, exposure: 'swim' },
+    { id: 'cadera', label: 'Cadera', phrase: '{side} hip, on the side of the body over the hip bone', fem: true, lateral: true, exposure: 'swim' },
+    { id: 'ingle', label: 'Ingle', phrase: '{side} groin at the bikini line, on the FRONT of the body where the thigh meets the lower belly', fem: true, lateral: true, exposure: 'swim' },
 
     // Torso trasero
     { id: 'espalda_alta', label: 'Espalda alta', phrase: 'upper back', lateral: false, exposure: 'skin' },
     { id: 'omoplato', label: 'Omóplato', phrase: '{side} shoulder blade', lateral: true, exposure: 'skin' },
     { id: 'columna', label: 'Columna', phrase: 'along the spine', lateral: false, exposure: 'swim' },
     { id: 'lumbar', label: 'Lumbar', phrase: 'lower back', lateral: false, exposure: 'swim' },
-    { id: 'gluteo', label: 'Glúteo', phrase: '{side} buttock', lateral: true, exposure: 'swim' },
+    { id: 'gluteo', label: 'Glúteo', phrase: '{side} buttock, on the BACK of the body', lateral: true, exposure: 'swim' },
 
     // Piernas
     { id: 'muslo_frontal', label: 'Muslo frontal', phrase: 'front of the {side} thigh', lateral: true, exposure: 'skin' },

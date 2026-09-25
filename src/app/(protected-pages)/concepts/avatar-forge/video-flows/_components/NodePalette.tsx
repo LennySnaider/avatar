@@ -97,7 +97,7 @@ export default function NodePalette() {
             </div>
 
             {/* Categories */}
-            <div className="max-h-[calc(100vh-16rem)] overflow-y-auto p-1.5">
+            <div className="max-h-[calc(100svh-16rem)] overflow-y-auto p-1.5">
                 {CATEGORY_ORDER.map((cat) => {
                     const templates = TEMPLATES_BY_CATEGORY[cat] ?? []
                     const colors = CATEGORY_COLORS[cat]
